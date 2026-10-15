@@ -118,7 +118,7 @@
                (doseq [r (vals readers)] (.close ^java.io.Reader r))
                vols)
         [readers stream] (open-stream)
-        mdl (model/create (structure/build vols) config)
+        mdl (model/create (structure/build vols (:structure-opts config {})) config)
         started (System/currentTimeMillis)]
     (io/make-parents (str dir "/forecasts/x"))
     (io/make-parents (str dir "/rows/x"))
