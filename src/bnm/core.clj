@@ -23,7 +23,8 @@
   is rebuilt from recent volumes by `restructure`; call it now and then (say
   monthly), or let `add-events` do it every `:restructure-every` bins."
   (:refer-clojure :exclude [load])
-  (:require [bnm.events :as ev]
+  (:require [bnm.calibrate :as cal]
+            [bnm.events :as ev]
             [bnm.eval :as eval]
             [bnm.geo :as geo]
             [bnm.model :as model]
@@ -32,6 +33,7 @@
             [bnm.store :as store]
             [bnm.structure :as structure]
             [bnm.time :as t]
+            [bnm.track :as track]
             [clojure.string :as str]))
 
 (defn create
@@ -50,13 +52,13 @@
   [m]
   (-> (model/restructure m (structure/build (series/volumes m)
                                             (get-in m [:config :structure-opts] {})))
-      (assoc :pending (:pending m))
+      (assoc :pending (:pending m) :track (:track m))
       series/with-routes))
 
 (defn- learn-bin [m b]
   (let [by-source (get-in m [:pending b] {})
-        [m _] (series/observe-bin! m b by-source)
-        m (update m :pending dissoc b)
+        [m obs] (series/observe-bin! m b by-source)
+        m (-> m (update :pending dissoc b) (track/observe b obs))
         every (get-in m [:config :restructure-every] 4)]
     (if (and (pos? every) (zero? (mod (inc (get-in m [:stats :bins])) every)))
       (restructure m)
@@ -112,8 +114,15 @@
 
 (defn outlook
   "A forecast summarized for reading: for each node and channel the expected
-  total over the horizon beside the last `horizon` bins' actual rate, and the
-  probability of escalating (see `bnm.eval/escalated?`) relative to it.
+  total over the horizon, its 80% range, and the probability of escalating
+  (see `bnm.eval/escalated?`) from :last, the last period's total, or the
+  node's typical total over the horizon (:recent) when it has no history.
+  The probability is given raw (:p-escalate) and calibrated by the model's
+  record (:p-cal), beside the benchmarks a backtest scores it against: the
+  climatology of its kind, channel and :stratum (:p-clim), and its own
+  history of escalating (:p-hist). Each row has the :bin it was made after
+  and its :horizon; one made for a whole period can be kept to be scored
+  once the period is over (see `register`).
   Options: :horizon (bins, default 13: a quarter), :sims, :seed, :levels
   (level names, default everything above the leaves), :min-rate (skip
   quieter nodes)."
@@ -121,7 +130,8 @@
       :or {horizon 13 sims 50 seed 1 levels #{:local :country :subregion :region :world}
            min-rate 0.5}}]
   (let [fc (model/forecast m {:horizon horizon :sims sims :seed seed})
-        nodes (:nodes m)]
+        nodes (:nodes m)
+        tr (:track m)]
     (vec
      (for [[i id] (map-indexed vector (:ids fc))
            :let [node (nodes i)]
@@ -130,23 +140,61 @@
            :let [recent (* horizon (aget ^doubles (:ybar node) c))
                  xs (sort (for [s (range sims)] (model/path-sum fc i s c 0 horizon)))
                  mean (/ (reduce + xs) sims)]
-           :when (>= (max recent mean) min-rate)]
+           :when (>= (max recent mean) min-rate)
+           :let [{:keys [last stratum p-clim p-hist]} (track/baseline tr id c horizon recent)
+                 p (/ (count (filter #(eval/escalated? % last horizon) xs)) (double sims))]]
        {:node id
         :name (label id)
+        :kind (geo/kind id)
         :level (geo/level-names (:level node))
         :channel ch
         :recent recent
+        :last last
         :expected mean
         :low (nth xs (int (* 0.1 (dec sims))))
         :high (nth xs (int (* 0.9 (dec sims))))
-        :p-escalate (/ (count (filter #(eval/escalated? % recent horizon) xs)) (double sims))}))))
+        :stratum stratum
+        :p-escalate p
+        :p-cal (cal/calibrate (:calibration m) [ch stratum] p)
+        :p-clim p-clim
+        :p-hist p-hist
+        :bin (:bin m)
+        :horizon horizon}))))
+
+(defn register
+  "The model keeping `outlook` as the forecast of the period it covers, to
+  score it once the period is over, when it covers exactly one: made on the
+  period's eve for :period-bins bins (a quarter by default). Otherwise the
+  model as it was. See `bnm.track`."
+  [m outlook]
+  (track/register m outlook))
+
+(defn period-eve?
+  "Whether the model's last learned bin is the eve of a period, when an
+  outlook for :period-bins bins covers the next period exactly, and none has
+  been registered for it yet."
+  [m]
+  (boolean (when-let [b (:bin m)]
+             (and (zero? (mod (inc b) (track/period-bins m)))
+                  (not (track/registered? m b))))))
+
+(defn record
+  "How the model's registered forecasts have scored once their periods were
+  over, by node kind and channel, pooled over the last periods: the Brier
+  scores of its raw (:brier-model) and calibrated (:brier-cal)
+  probabilities beside the climatology's (:brier-clim) and each node's
+  history's (:brier-hist), with how many forecasts and escalations they
+  cover."
+  [m]
+  (track/record m))
 
 (defn risks
-  "The outlook's `n` likeliest escalations in `channel` (default violence)."
+  "The outlook's `n` likeliest escalations in `channel` (default violence),
+  by calibrated probability."
   [outlook & {:keys [channel n] :or {channel :violence n 20}}]
   (->> outlook
        (filter #(= channel (:channel %)))
-       (sort-by (comp - :p-escalate))
+       (sort-by #(- (or (:p-cal %) (:p-escalate %))))
        (take n)
        vec))
 

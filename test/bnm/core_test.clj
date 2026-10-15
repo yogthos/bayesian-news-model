@@ -53,3 +53,46 @@
             "flushing a restored model learns the buffered bin too")
         (is (= (map :source (bnm/connections mdl "UKR" :verbal-conflict))
                (map :source (bnm/drivers st "UKR" :verbal-conflict))))))))
+
+(deftest scores-its-forecasts-live-as-the-backtest-does
+  (let [events (daily-events 7)
+        cfg {:period-bins 4 :structure-opts {:min-dyad-volume 5.0 :min-country-volume 5.0}}
+        st (bnm.store/memory-store)
+        [mdl registered]
+        (reduce (fn [[mdl n] day]
+                  (let [mdl (bnm/add-events mdl "newsroom" day)]
+                    (if (bnm/period-eve? mdl)
+                      [(bnm/register mdl (bnm/outlook mdl {:horizon 4 :sims 10 :levels #{:country :subregion}})) (inc n)]
+                      [mdl n])))
+                [(bnm/create cfg) 0]
+                (partition-by :date events))]
+    (testing "an outlook is registered on each period's eve"
+      (is (< 5 registered)))
+    (testing "an outlook that doesn't cover a period exactly isn't"
+      (let [o (bnm/outlook mdl {:horizon 3 :sims 5})]
+        (is (identical? (:track mdl) (:track (bnm/register mdl o))))))
+    (testing "the periods over were scored, and the history kept"
+      (is (seq (get-in mdl [:track :hist "UKR"])))
+      (is (<= (count (get-in mdl [:track :hist "UKR"])) 6))
+      (is (seq (:calibration mdl)) "the outcomes recalibrated it")
+      (is (seq (get-in mdl [:track :clim])))
+      (let [r (get (bnm/record mdl) [:country :violence])]
+        (is (pos? (:n r)))
+        (is (number? (:brier-cal r)))
+        (is (number? (:brier-clim r)))))
+    (testing "an outlook measures escalation from the last period, with its benchmarks"
+      (let [r (first (filter #(and (= "UKR" (:node %)) (= :violence (:channel %)))
+                             (bnm/outlook mdl {:horizon 4 :sims 10})))]
+        (is (= (peek (mapv #(nth % 5) (get-in mdl [:track :hist "UKR"]))) (:last r)))
+        (is (#{:quiet :low :active} (:stratum r)))
+        (is (<= 0.0 (:p-clim r) 1.0))
+        (is (<= 0.0 (:p-hist r) 1.0))
+        (is (= (:bin mdl) (:bin r)))))
+    (testing "the track survives a store, and a registration alone is saved"
+      (let [saved (bnm/save! st mdl)
+            back (bnm/load st)]
+        (is (= (bnm/record mdl) (bnm/record back)))
+        (is (= (mapv vec (get-in mdl [:track :hist "UKR"])) (mapv vec (get-in back [:track :hist "UKR"]))))
+        (let [marked (assoc-in saved [:track :forecasts 999] {:rows {}})]
+          (bnm/save! st marked)
+          (is (contains? (get-in (bnm/load st) [:track :forecasts]) 999)))))))
