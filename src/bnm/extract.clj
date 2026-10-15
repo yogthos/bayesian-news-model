@@ -12,7 +12,7 @@
             [bnm.geo :as geo]
             [clojure.string :as str]))
 
-(def prompt-version "plover-1")
+(def prompt-version "plover-2")
 
 (def codebook
   "Event types in the order the prompt lists them, with their definitions."
@@ -57,14 +57,20 @@
    "Set \"retrospective\": true for anything older (anniversaries, background, history).\n"
    "- Actors and target are places: ISO 3166 alpha-3 country codes of the actor's country "
    "(the state, its forces, its citizens or groups based there). Use null when unknown.\n"
-   "- \"where\" is the country where it happened, as an alpha-3 code.\n"
+   "- Give each actor's sector, one of: "
+   (str/join "; " (for [[k d] (sort geo/sectors)] (str k " (" d ")")))
+   ". Use null when none fits or it is unclear.\n"
+   "- \"where\" is the country where it happened, as an alpha-3 code, and \"province\" "
+   "the state, province or region within it (its usual English name), or null.\n"
    "- Skip statements of opinion with no action, sports, and business news without a political actor.\n\n"
    "Articles:\n\n"
    (str/join "\n\n" (for [{:keys [n title text published]} articles]
                       (str "[" n "] " title " (" published ")\n" text)))
    "\n\nAnswer with JSON only, in this shape:\n"
-   "{\"events\": [{\"article\": 3, \"date\": \"2026-10-14\", \"actor\": \"ISR\", \"target\": \"LBN\", "
-   "\"where\": \"LBN\", \"type\": \"assault\", \"mode\": \"did\", \"retrospective\": false, "
+   "{\"events\": [{\"article\": 3, \"date\": \"2026-10-14\", \"actor\": \"ISR\", "
+   "\"actor_sector\": \"MIL\", \"target\": \"LBN\", \"target_sector\": \"REB\", "
+   "\"where\": \"LBN\", \"province\": \"South Governorate\", "
+   "\"type\": \"assault\", \"mode\": \"did\", \"retrospective\": false, "
    "\"quote\": \"the words that report it\"}]}"))
 
 (def ^:private type-names (into {} (for [[t _] codebook] [(name t) t])))
@@ -75,6 +81,10 @@
     (let [s (str/trim s)]
       (or (geo/resolve-code (str/upper-case s)) (geo/resolve-name s)))))
 
+(defn- sector [s]
+  (let [s (some-> s str str/trim str/upper-case)]
+    (when (contains? geo/sectors s) s)))
+
 (defn- date-of [s fallback]
   (let [d (some->> s str (re-find #"\d{4}-\d{2}-\d{2}"))]
     (if d (str/replace d "-" "") fallback)))
@@ -82,17 +92,23 @@
 (defn events
   "Normalized events (see `bnm.events`) from the coder's parsed answer
   (a map with \"events\"). Unknown types, places and retrospectives are
-  dropped; `default-date` (YYYYMMDD) stands in for a missing date."
+  dropped, as are unknown sectors and provinces; `default-date` (YYYYMMDD)
+  stands in for a missing date."
   [answer default-date]
   (vec
    (for [e (get answer "events")
          :when (map? e)
          :let [t (type-names (some-> (get e "type") str str/lower-case))
                m (get mode-names (some-> (get e "mode") str str/lower-case) :did)
-               [a1 a2] (bnm.events/actors (place (get e "actor")) (place (get e "target"))
-                                          (place (get e "where")))]
+               where (place (get e "where"))
+               [[a1 s1] [a2 s2]] (bnm.events/actors (place (get e "actor")) (sector (get e "actor_sector"))
+                                                    (place (get e "target")) (sector (get e "target_sector"))
+                                                    where)
+               prov (some-> (get e "province") str)
+               adm (or (geo/resolve-province (or where a1) prov)
+                       (when (and a2 (not= a2 where)) (geo/resolve-province a2 prov)))]
          :when (and t a1 (not (true? (get e "retrospective"))))]
      {:date (date-of (get e "date") default-date)
-      :a1 a1 :a2 a2 :type t :mode m :n 1
+      :a1 a1 :s1 s1 :a2 a2 :s2 s2 :adm adm :type t :mode m :n 1
       :article (get e "article")
       :quote (get e "quote")})))

@@ -126,6 +126,25 @@
       (aset tmu c t)
       (aset mu c (/ (+ (* share (aget ybar c) w) s) (+ w t))))))
 
+(defn- refresh-alpha!
+  "The M step alone for one source's block of alpha, from its statistics and
+  the current running means (see `learn-source!`)."
+  [^doubles alpha ^doubles sa ^doubles ta ^doubles prior ^doubles ybar ^doubles sybar
+   ^long ksc ^long jsc ^long sc ^double w]
+  (dotimes [c C]
+    (let [base (+ (* c ksc) jsc)
+          yb (aget ybar c)
+          floor (+ 1e-6 (* 0.1 yb))]
+      (dotimes [q sc]
+        (let [i (+ base q)
+              sb (Math/max (aget sybar (rem q C)) floor)]
+          (aset alpha i (/ (+ (* (aget prior i) yb w) (aget sa i)) (+ (* w sb) (aget ta i)))))))))
+
+(defn- refresh-mu!
+  [^doubles mu ^doubles smu ^doubles tmu ^doubles ybar ^double w ^double share]
+  (dotimes [c C]
+    (aset mu c (/ (+ (* share (aget ybar c) w) (aget smu c)) (+ w (aget tmu c))))))
+
 (defn- ratios!
   "r[c] = y[c] / own[c]: how much of what was expected came about."
   [^doubles r ^doubles y ^doubles own]
@@ -294,6 +313,25 @@
 
 (def ^:private zeros (double-array C))
 
+(defn refresh!
+  "Recomputes every node's mu and alpha from its sufficient statistics and
+  the running means as they now stand: the M step on its own. `observe!` ends
+  with it and a restored model starts with it, so neither is stored."
+  [model]
+  (let [cfg (:config model)
+        nodes (:nodes model)
+        sc (* (scales cfg) C)
+        w (double (:prior-weight cfg))
+        share (double (get-in cfg [:share :mu]))]
+    (doseq [node nodes]
+      (let [^ints src (:src node)
+            k (alength src)]
+        (refresh-mu! (:mu node) (:smu node) (:tmu node) (:ybar node) w share)
+        (dotimes [j k]
+          (refresh-alpha! (:alpha node) (:sa node) (:ta node) (:prior node) (:ybar node)
+                          (:ybar (nodes (aget src j))) (* k sc) (* j sc) sc w))))
+    model))
+
 (defn observe!
   "Feeds one bin of observations to the model: `obs` maps node id to a double
   array of normalized values per channel; a node absent from it saw nothing.
@@ -349,6 +387,7 @@
         (let [node (nodes i)]
           (push-history! (:h node) (aget ys i) decays)
           (System/arraycopy (aget ys i) 0 (:last node) 0 C)))
+      (refresh! model)
       (-> model
           (assoc :bin bin)
           (update :stats #(-> %
@@ -503,27 +542,50 @@
 
 (defn node [model id] (get (:nodes model) ((:index model) id)))
 
-(defn connections
-  "The strongest influences on node `id`, channel `c` (an index): a seq of
+(defn node-connections
+  "The strongest influences on node `nd`, channel `c` (an index): a seq of
   {:source :kind :scale :channel :alpha :share} sorted by share, where share
   is the part of the node's typical rate the source accounts for, and scale
-  is :fast or :slow."
-  [model id c]
-  (let [nd (node model id)
-        S (scales (:config model))
+  is :fast or :slow. `ybar-of` gives a source's running means by id."
+  [cfg nd ybar-of c]
+  (let [S (scales cfg)
         sc (* S C)
         k (count (:sources nd))
         ^doubles alpha (:alpha nd)
         ybar (aget ^doubles (:ybar nd) c)]
     (->> (for [j (range k) s (range S) c2 (range C)
-               :let [src-node (node model ((:sources nd) j))
-                     a (aget alpha (+ (* c k sc) (* j sc) (* s C) c2))
-                     sbar (aget ^doubles (:ybar src-node) c2)]]
+               :let [a (aget alpha (+ (* c k sc) (* j sc) (* s C) c2))
+                     sbar (aget ^doubles (ybar-of ((:sources nd) j)) c2)]]
            {:source ((:sources nd) j) :kind ((:kinds nd) j)
             :scale (get [:fast :slow] s s)
             :channel (ont/channels c2) :alpha a
             :share (/ (* a sbar) (Math/max 1e-9 ybar))})
          (sort-by (comp - :share)))))
+
+(defn connections
+  "`node-connections` of node `id` in `model`."
+  [model id c]
+  (node-connections (:config model) (node model id) #(:ybar (node model %)) c))
+
+(defn standalone-node
+  "A fresh node outside any model, for reading one stored node on its own:
+  `structure-node` as `bnm.structure/build` gives it, with exactly `sources`."
+  [cfg structure-node sources]
+  (new-node structure-node (zipmap sources (range)) (merge-config cfg)))
+
+(defn refresh-node!
+  "`refresh!` for one standalone node, given its sources' running means in
+  the order of its sources."
+  [cfg node source-ybars]
+  (let [cfg (merge-config cfg)
+        sc (* (scales cfg) C)
+        k (count (:sources node))
+        w (double (:prior-weight cfg))]
+    (refresh-mu! (:mu node) (:smu node) (:tmu node) (:ybar node) w (double (get-in cfg [:share :mu])))
+    (dotimes [j k]
+      (refresh-alpha! (:alpha node) (:sa node) (:ta node) (:prior node) (:ybar node)
+                      (nth source-ybars j) (* k sc) (* j sc) sc w))
+    node))
 
 (defn skill
   "Mean squared log error of one-bin-ahead predictions, the model's and the
@@ -564,4 +626,4 @@
               (dotimes [c C]
                 (System/arraycopy (get prev arr) (+ (* c k-old sc) (* j0 sc))
                                   (get node arr) (+ (* c k-new sc) (* j sc)) sc)))))))
-    (merge mdl (select-keys old [:bin :exposure :stats :volumes :calibration]))))
+    (refresh! (merge mdl (select-keys old [:bin :exposure :stats :volumes :calibration])))))

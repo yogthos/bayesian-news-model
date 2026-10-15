@@ -1,7 +1,7 @@
 (ns bnm.bins
   "Compacts a source's normalized files into one weekly file the trainer
   streams through: data/bins/<source>.tsv, records of
-  bin a1 a2 channel n, sorted by bin.
+  bin a1 s1 a2 s2 adm channel n, sorted by bin.
 
     jolt -A:tools -M -m bnm.bins gdelt [bin-days]"
   (:require [bnm.events :as ev]
@@ -34,11 +34,11 @@
       (doseq [f files]
         (with-open [r (io/reader f)]
           (doseq [line (line-seq r)]
-            (let [{:keys [date a1 a2 n] :as e} (ev/parse-line line)
+            (let [{:keys [date a1 s1 a2 s2 adm n] :as e} (ev/parse-line line)
                   c (ev/channel e)]
               (when c
                 (let [b (t/bin-of (t/day date) bin-days)
-                      k (str a1 "\t" (or a2 "") "\t" c)
+                      k (str/join "\t" [a1 (or s1 "") (or a2 "") (or s2 "") (or adm "") c])
                       ^java.util.HashMap m (or (.get bins b)
                                                (let [m (java.util.HashMap.)] (.put bins b m) m))]
                   (.put m k (+ n (or (.get m k) 0.0))))))))
@@ -48,7 +48,7 @@
         (println "bins" f) (flush))
       (flush-bins! w bins Long/MAX_VALUE))
     ;; merge any bin written twice and sort
-    (p/shell "sh" "-c" (str "sort -t'\t' -k1,1n -k2,2 -k3,3 -k4,4n -S 1G '" out ".unsorted' | "
-                            "awk -F'\\t' 'BEGIN{OFS=\"\\t\"} {k=$1 FS $2 FS $3 FS $4; if (k==p) s+=$5; else {if (NR>1) print p, s; p=k; s=$5}} END{if (NR) print p, s}' > '" out "'"))
+    (p/shell "sh" "-c" (str "sort -t'\t' -k1,1n -k2,6 -k7,7n -S 1G '" out ".unsorted' | "
+                            "awk -F'\\t' 'BEGIN{OFS=\"\\t\"} {k=$1 FS $2 FS $3 FS $4 FS $5 FS $6 FS $7; if (k==p) s+=$8; else {if (NR>1) print p, s; p=k; s=$8}} END{if (NR) print p, s}' > '" out "'"))
     (io/delete-file (str out ".unsorted"))
     (println "wrote" out)))

@@ -1,7 +1,7 @@
 (ns bnm.ingest
   "Turns raw downloads under data/raw/<source>/ into normalized event files
   under data/norm/<source>/, one per raw file: TSV records of
-  date a1 a2 type mode n (see bnm.events), aggregated per day.
+  date a1 s1 a2 s2 adm type mode n (see bnm.events), aggregated per day.
 
     jolt -A:tools -M -m bnm.ingest gdelt|icews|polecat|acled [jobs]
 
@@ -51,36 +51,63 @@
   7)
 
 (def gdelt-columns
-  "The GDELT 1.0 columns read (1-based, for cut): SQLDATE, Actor1CountryCode,
-  Actor2CountryCode, EventRootCode, ActionGeo_CountryCode (FIPS). The other
-  fifty-odd are dropped before parsing, which is most of the cost."
-  "2,8,18,29,52")
+  "The GDELT 1.0 columns read (1-based, for cut): SQLDATE; for each actor its
+  CountryCode, EthnicCode, Religion1Code, Type1Code and Type2Code;
+  EventRootCode; ActionGeo_Type, ActionGeo_CountryCode (FIPS) and
+  ActionGeo_ADM1Code. The other forty-odd are dropped before parsing, which
+  is most of the cost."
+  "2,8,10,11,13,14,18,20,21,23,24,29,50,52,53")
+
+(def ^:private adm1 (cached geo/resolve-adm1))
+
+(defn- gdelt-sector [eth rel t1 t2]
+  (ont/sector-of-codes (cond-> [t1 t2] (seq eth) (conj "ETH") (seq rel) (conj "REL"))))
 
 (defn gdelt-row
   "GDELT 1.0 event fields, cut down to `gdelt-columns`."
   [f]
-  (when (and (= (count f) 5)
+  (when (and (= (count f) 15)
              (or (nil? *file-day*)
                  (let [d (f 0)]
                    (and (= 8 (count d))
                         (<= 0 (- *file-day* (bnm.time/day d)) retrospective-days)))))
-    (let [root (f 3)
+    (let [root (f 11)
           type (get ont/cameo-root->type root :other)
           mode (cond (= root "03") :intend (= root "13") :threaten :else :did)
-          [a1 a2] (ev/actors (code (f 1)) (code (f 2)) (fips (f 4)))]
+          [[a1 s1] [a2 s2]] (ev/actors (code (f 1)) (gdelt-sector (f 2) (f 3) (f 4) (f 5))
+                                       (code (f 6)) (gdelt-sector (f 7) (f 8) (f 9) (f 10))
+                                       (fips (f 13)))
+          adm (when (not= (f 12) "1") (adm1 (f 14)))]
       (when (and a1 (not= type :other))
-        [(f 0) a1 a2 type mode]))))
+        [(f 0) a1 s1 a2 s2 adm type mode]))))
 
 (def icews-columns
-  "ICEWS columns: Event Date, Source Country, CAMEO Code, Target Country, Country."
+  "ICEWS columns: Event Date, Source Sectors, Source Country, CAMEO Code,
+  Target Sectors, Target Country, Province, Country."
   (atom nil))
 
+(def ^:private province
+  (let [m (java.util.HashMap.)]
+    (fn [iso3 s]
+      (let [k [iso3 s]]
+        (if (.containsKey m k)
+          (.get m k)
+          (let [v (geo/resolve-province iso3 s)]
+            (when (and (nil? v) iso3 (seq s) (not= s "None")) (note-unknown! :province (str iso3 " " s)))
+            (.put m k v)
+            v))))))
+
+(def ^:private icews-sector (cached ont/icews-sector))
+
 (defn icews-row [f]
-  (let [{:keys [date src code tgt loc]} @icews-columns
+  (let [{:keys [date ssec src code tsec tgt prov loc]} @icews-columns
         [type mode] (ont/cameo-event (f code))
-        [a1 a2] (ev/actors (place-name (f src)) (place-name (f tgt)) (place-name (f loc)))]
+        country (place-name (f loc))
+        [[a1 s1] [a2 s2]] (ev/actors (place-name (f src)) (icews-sector (f ssec))
+                                     (place-name (f tgt)) (icews-sector (f tsec))
+                                     country)]
     (when (and a1 (not= type :other))
-      [(str/replace (f date) "-" "") a1 a2 type mode])))
+      [(str/replace (f date) "-" "") a1 s1 a2 s2 (province country (f prov)) type mode])))
 
 (def polecat-columns (atom nil))
 
@@ -93,13 +120,21 @@
         (code s)
         (place-name s)))))
 
+(defn- polecat-sector [primary all]
+  (ont/sector-of-codes (cons (some-> primary str/trim)
+                             (map str/trim (str/split (or all "") #"[;,|]")))))
+
 (defn polecat-row [f]
-  (let [{:keys [date type mode src tgt loc]} @polecat-columns
+  (let [{:keys [date type mode src ssec ssecs tgt tsec tsecs prov loc]} @polecat-columns
         t (ont/plover-type (str/upper-case (f type)))
         m (get ont/plover-mode (str/upper-case (f mode)) :did)
-        [a1 a2] (ev/actors (place (f src)) (place (f tgt)) (place (f loc)))]
+        country (place (f loc))
+        [[a1 s1] [a2 s2]] (ev/actors (place (f src)) (polecat-sector (f ssec) (f ssecs))
+                                     (place (f tgt)) (polecat-sector (f tsec) (f tsecs))
+                                     country)]
     (when (and a1 t (not= t :other))
-      [(str/replace (subs (f date) 0 (min 10 (count (f date)))) "-" "") a1 a2 t m])))
+      [(str/replace (subs (f date) 0 (min 10 (count (f date)))) "-" "") a1 s1 a2 s2
+       (province country (f prov)) t m])))
 
 (def acled-columns (atom nil))
 
@@ -119,7 +154,7 @@
         [type mode] (ont/acled-event (f etype) (f stype))
         country (place-name (f loc))]
     (when (and country (not= type :other))
-      [(acled-date (f date)) country nil type mode])))
+      [(acled-date (f date)) country nil nil nil nil type mode])))
 
 ;; --- the sources --------------------------------------------------------------------
 
@@ -135,13 +170,16 @@
    "icews" {:sep \tab :header? true :row icews-row
             :raw? #(re-find #"(?i)events.*\.(tab|zip|txt|csv)$" %)
             :columns icews-columns
-            :wanted {:date ["Event Date"] :src ["Source Country"] :code ["CAMEO Code"]
-                     :tgt ["Target Country"] :loc ["Country"]}}
+            :wanted {:date ["Event Date"] :ssec ["Source Sectors"] :src ["Source Country"]
+                     :code ["CAMEO Code"] :tsec ["Target Sectors"] :tgt ["Target Country"]
+                     :prov ["Province"] :loc ["Country"]}}
    "polecat" {:sep \tab :header? true :row polecat-row
               :raw? #(re-find #"(?i)\.(txt|tsv|csv|tab)$" %)
               :columns polecat-columns
               :wanted {:date ["Event Date" "Story Date"] :type ["Event Type"] :mode ["Event Mode"]
-                       :src ["Actor Country"] :tgt ["Recipient Country"]
+                       :src ["Actor Country"] :ssec ["Primary Actor Sector"] :ssecs ["Actor Sectors"]
+                       :tgt ["Recipient Country"] :tsec ["Primary Recipient Sector"]
+                       :tsecs ["Recipient Sectors"] :prov ["Province"]
                        :loc ["Country" "Location Country" "Event Country"]}}
    "acled" {:sep \, :header? true :row acled-row :csv? true
             :raw? #(str/ends-with? % ".csv")
@@ -185,9 +223,10 @@
                     lines)]
         (doseq [f lines]
           (vswap! rows inc)
-          (when-let [[date a1 a2 type mode] (try (row f) (catch Throwable _ nil))]
+          (when-let [[date a1 s1 a2 s2 adm type mode] (try (row f) (catch Throwable _ nil))]
             (when (and date (= 8 (count date)))
-              (let [k (str date "\t" a1 "\t" (or a2 "") "\t" (name type) "\t" (name mode))]
+              (let [k (str/join "\t" [date a1 (or s1 "") (or a2 "") (or s2 "") (or adm "")
+                                      (name type) (name mode)])]
                 (.put counts k (inc (or (.get counts k) 0)))))))))
     (when tmp (.delete tmp))
     (io/make-parents out)

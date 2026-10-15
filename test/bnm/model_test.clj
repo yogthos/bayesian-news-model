@@ -1,5 +1,6 @@
 (ns bnm.model-test
-  (:require [bnm.math :as m]
+  (:require [bnm.events :as ev]
+            [bnm.math :as m]
             [bnm.model :as model]
             [bnm.ontology :as ont]
             [bnm.series :as series]
@@ -21,11 +22,37 @@
   (let [s (toy-structure)
         levels (map :level (:nodes s))]
     (is (= levels (sort levels)))
-    (is (contains? (:tracked s) "RUS|UKR"))
+    (is (contains? (get-in s [:tracked :dyads]) "RUS|UKR"))
     (is (some #(= "world" (:id %)) (:nodes s)))
     (testing "a country's children are its rest leaf and its tracked dyads"
       (is (= #{"UKR:*" "RUS|UKR" "POL|UKR"}
              (set (:children (first (filter #(= "UKR" (:id %)) (:nodes s))))))))))
+
+(deftest actors-pairs-and-provinces
+  (let [s (-> (structure/volumes)
+              (structure/tally "UKR" "GOV" "UKR" "OPP" "UKR.12" 300.0)
+              (structure/tally "UKR" "POL" "UKR" "OPP" "UKR.12" 200.0)
+              (structure/tally "UKR" "GOV" "RUS" "MIL" nil 400.0)
+              (structure/tally "RUS" "GOV" "RUS" nil "RUS.48" 100.0)
+              (structure/build {:min-dyad-volume 100.0 :min-actor-volume 100.0
+                                :min-pair-volume 100.0 :min-province-volume 100.0}))
+        node (fn [id] (first (filter #(= id (:id %)) (:nodes s))))
+        tracked (:tracked s)]
+    (is (= (map :level (:nodes s)) (sort (map :level (:nodes s)))))
+    (is (= #{"UKR:GOV|UKR:OPP" "UKR:OPP|UKR:POL"} (:pairs tracked)))
+    (is (= #{"UKR.12" "RUS.48"} (:provinces tracked)))
+    (testing "a pair's parents are its actors, an actor's children its pairs"
+      (is (= ["UKR:GOV" "UKR:OPP"] (:parents (node "UKR:GOV|UKR:OPP"))))
+      (is (= #{"UKR:GOV|UKR:OPP" "UKR:OPP|UKR:POL"} (set (:children (node "UKR:OPP"))))))
+    (testing "a country's children are its leaves; provinces are not among them"
+      (is (= #{"UKR:*" "RUS|UKR" "UKR:GOV|UKR:OPP" "UKR:OPP|UKR:POL"} (set (:children (node "UKR")))))
+      (is (= ["UKR"] (:parents (node "UKR.12")))))
+    (testing "an event counts for its leaf, actors, province and places"
+      (is (= #{"UKR:GOV|UKR:OPP" "UKR:GOV" "UKR:OPP" "UKR.12" "UKR" "s/eastern-europe" "r/europe" "world"}
+             (ev/nodes "UKR" "GOV" "UKR" "OPP" "UKR.12" tracked)))
+      (is (= #{"UKR:*" "UKR:GOV" "UKR" "s/eastern-europe" "r/europe" "world"}
+             (ev/nodes "UKR" "GOV" "UKR" "BUS" nil tracked))
+          "an untracked pair falls to the rest leaf"))))
 
 (defn- simulate-world
   "Weekly records where RUS:* violence spikes at random and UKR:* violence
@@ -39,10 +66,10 @@
               fra (double (m/poisson! g 10.0))
               background (double (m/poisson! g 200.0))]
           (recur (inc t) rus
-                 (conj out {"toy" [["RUS" nil violence rus]
-                                   ["UKR" nil violence ukr]
-                                   ["FRA" nil protest fra]
-                                   ["FRA" nil 0 background]]})))
+                 (conj out {"toy" [["RUS" nil nil nil nil violence rus]
+                                   ["UKR" nil nil nil nil violence ukr]
+                                   ["FRA" nil nil nil nil protest fra]
+                                   ["FRA" nil nil nil nil 0 background]]})))
         out))))
 
 (deftest learns-a-lagged-connection

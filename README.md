@@ -16,26 +16,39 @@ codes articles into events, feeds them to the model, and stores the model.
 ;; code articles into events with an LLM: the prompt, then its parsed JSON answer
 (def prompt (extract/prompt [{:n 1 :title "..." :text "..." :published "2026-10-14"}]))
 (def events (extract/events parsed-answer "20261014"))
-;; => [{:date "20261014" :a1 "ISR" :a2 "LBN" :type :assault :mode :did :n 1} ...]
+;; => [{:date "20261014" :a1 "ISR" :s1 "MIL" :a2 "LBN" :s2 "REB" :adm "LBN.06"
+;;      :type :assault :mode :did :n 1} ...]
 
-(def m (-> (bnm/create) (bnm/add-events "newsroom" events)))   ; learns as weekly bins close
-(bnm/risks (bnm/outlook m {:horizon 13}))       ; likeliest escalations next quarter
-(bnm/connections m "UKR" :violence)             ; what drives Ukraine's violence
-
-(let [{:keys [meta nodes]} (bnm/->rows m)] ...) ; store; restore with bnm/load-rows
+(def m (or (bnm/load store) (bnm/create)))        ; store: any bnm.store/ModelStore
+(def m (bnm/add-events m "newsroom" events))      ; learns as weekly bins close
+(def m (bnm/save! store m))                       ; writes only what changed
+(bnm/risks (bnm/outlook m {:horizon 13}))         ; likeliest escalations next quarter
+(bnm/drivers store "UKR:OPP" :protest)            ; one node, read without loading the model
 ```
+
+### Storage
+
+A model is a few named parts of plain data and one row per node, behind the `bnm.store/ModelStore` protocol: `read-part`, `read-nodes`, `node-ids` and `write!`. A host such as newsroom implements it over two tables:
+- **parts** — `:header`, `:volumes` and `:pending`, stored as text;
+- **nodes** — id, level, links as EDN text, and data as a blob.
+
+Each node's learned arrays are packed as little-endian doubles, about 6.6 KB per node. The model is kept in memory and saved after each batch of events. Before a weekly bin closes, a save writes only the buffered events; after one closes, it writes every node. A single node's drivers can be read straight from the store.
+
+The library provides `memory-store` (for tests) and `file-store` (one binary file, for shipping a trained model).
 
 ## The model
 
 The model is described in [DESIGN.md](DESIGN.md) and in `bnm.model`'s docstring.
 
-- **Hierarchy.** The nodes are:
-  - dyads (events between two countries) and each country's remaining events;
+- **Hierarchy.** From the bottom:
+  - leaves: dyads (events between two countries), pairs (events between two actors of one country, such as `UKR:GOV|UKR:OPP`) and each country's remaining events;
+  - local nodes: actors (a country's government, military, police, opposition, armed groups, identity groups, civil society and business) and provinces;
   - countries;
   - UN M49 subregions;
   - regions;
   - the world.
-  Each event counts once for every node it touches.
+
+  Each event counts once for every node it touches. The busiest units get nodes of their own: by default 2,500 dyads, 1,500 actors, 1,500 pairs and 1,500 provinces.
 - **Connections.** Every node's expected activity in six channels is driven by its own past, its parents' past and its strongest same-level neighbours' past, at two time scales. This is a multivariate Hawkes process. The six channels are verbal cooperation, material cooperation, verbal conflict, protest, coercion and violence. The learned excitation weights are the "what drives what" graph.
 - **Recursion.** A parent predicts both from its own dynamics and from the sum of its children's predictions. It blends the two by recent accuracy, so forecasts are built up from the leaves.
 - **Online learning.** Online EM with forgetting runs under scale-free Gamma priors. Every bin fed in is training, so the model keeps refining itself.

@@ -2,7 +2,7 @@
   (:require [bnm.core :as bnm]
             [bnm.math :as m]
             [bnm.time :as t]
-            [clojure.edn :as edn]
+            [bnm.store]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- daily-events
@@ -15,6 +15,8 @@
                 flare (if (< 150 d 200) 5.0 1.0)]
           e [{:date date :a1 "RUS" :a2 "UKR" :type :assault :mode :did
               :n (m/poisson! g (* flare 3.0))}
+             {:date date :a1 "FRA" :s1 "POL" :a2 "FRA" :s2 "OPP" :adm "FRA.11" :type :coerce :mode :did
+              :n (m/poisson! g 3.0)}
              {:date date :a1 "FRA" :a2 nil :type :protest :mode :did :n (m/poisson! g 4.0)}
              {:date date :a1 "USA" :a2 "CHN" :type :consult :mode :did :n (m/poisson! g 6.0)}
              {:date date :a1 "UKR" :a2 nil :type :threaten :mode :did :n 1}]
@@ -26,11 +28,15 @@
         ;; arrives in daily batches, the way newsroom files a day
         bins (count (distinct (map #(t/bin-of (t/day (:date %)) 7) events)))
         mdl (reduce (fn [mdl day] (bnm/add-events mdl "newsroom" day))
-                    (bnm/create {:structure-opts {:min-dyad-volume 5.0 :min-country-volume 5.0}})
+                    (bnm/create {:structure-opts {:min-dyad-volume 5.0 :min-country-volume 5.0
+                                                  :min-actor-volume 5.0 :min-pair-volume 5.0
+                                                  :min-province-volume 5.0}})
                     (partition-by :date events))]
     (testing "bins close as later events arrive, and the structure grows"
       (is (= (dec bins) (get-in mdl [:stats :bins])) "all but the newest bin are learned")
-      (is (contains? (get-in mdl [:structure :tracked]) "RUS|UKR")))
+      (is (contains? (get-in mdl [:structure :tracked :dyads]) "RUS|UKR"))
+      (is (contains? (get-in mdl [:structure :tracked :pairs]) "FRA:OPP|FRA:POL"))
+      (is (contains? (get-in mdl [:structure :tracked :provinces]) "FRA.11")))
     (testing "the outlook reads as data"
       (let [o (bnm/outlook mdl {:horizon 4 :sims 10})
             r (first (bnm/risks o))]
@@ -38,9 +44,12 @@
         (is (<= 0.0 (:p-escalate r) 1.0))))
     (testing "what drives UKR's verbal conflict is visible"
       (is (seq (bnm/connections mdl "UKR" :verbal-conflict))))
-    (testing "the model survives a round trip through rows, buffered events included"
-      (let [{:keys [meta nodes]} (bnm/->rows mdl)
-            back (bnm/load-rows (edn/read-string (pr-str meta)) nodes)]
+    (testing "the model survives a round trip through a store, buffered events included"
+      (let [st (bnm.store/memory-store)
+            saved (bnm/save! st mdl)
+            back (bnm/load st)]
         (is (= (:pending mdl) (:pending back)))
         (is (= bins (get-in (bnm/flush-bins back) [:stats :bins]))
-            "flushing a restored model learns the buffered bin too")))))
+            "flushing a restored model learns the buffered bin too")
+        (is (= (map :source (bnm/connections mdl "UKR" :verbal-conflict))
+               (map :source (bnm/drivers st "UKR" :verbal-conflict))))))))

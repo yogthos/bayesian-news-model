@@ -3,7 +3,11 @@
 
   Event types are PLOVER's (the ontology behind POLECAT), which the LLM coder
   in newsroom also uses. The model works on coarser channels: six groups that
-  behave differently enough to be worth separate dynamics.")
+  behave differently enough to be worth separate dynamics.
+
+  Actors are sorted into the sectors of `bnm.geo/sectors` from the type codes
+  CAMEO-coded sources use and the sector names ICEWS uses."
+  (:require [clojure.string :as str]))
 
 (def event-types
   [:agree :consult :support :concede :cooperate :aid :retreat :request
@@ -103,3 +107,42 @@
        (acled-strategic sub-event-type)
        :other)
    :did])
+
+;; --- actor sectors (see bnm.geo/sectors) ---------------------------------------------
+
+(def cameo-sector
+  "CAMEO actor type codes (GDELT's ActorType, POLECAT's sectors) by sector."
+  {"GOV" "GOV" "LEG" "GOV" "JUD" "GOV" "ELI" "GOV" "PTY" "GOV" "SPY" "POL"
+   "MIL" "MIL" "COP" "POL"
+   "OPP" "OPP" "ACT" "OPP" "RAD" "OPP"
+   "REB" "REB" "INS" "REB" "SEP" "REB" "UAF" "REB" "CRM" "REB" "MIL-NS" "REB"
+   "ETH" "IDN" "REL" "IDN"
+   "CVL" "SOC" "EDU" "SOC" "MED" "SOC" "JRN" "SOC" "HLH" "SOC" "LAB" "SOC" "REF" "SOC"
+   "AGR" "SOC" "ENV" "SOC" "HRI" "SOC" "NGO" "SOC" "SET" "SOC"
+   "BUS" "BUS" "MNC" "BUS"})
+
+(defn sector-of-codes
+  "The sector of an actor given CAMEO-style type codes, most specific first:
+  arms and security before government, government before society."
+  [codes]
+  (let [ss (set (keep cameo-sector codes))]
+    (some ss ["MIL" "POL" "REB" "OPP" "IDN" "GOV" "BUS" "SOC"])))
+
+(def ^:private icews-patterns
+  ;; checked in order: the first that matches any of an actor's sector names wins
+  [["MIL" #"(?i)^military|armed forces|army|navy|air force"]
+   ["POL" #"(?i)police|intelligence|internal security"]
+   ["REB" #"(?i)insurgent|rebel|separatist|militia|criminal|gang|unidentified forces|terror|paramilitary"]
+   ["OPP" #"(?i)dissident|protest|opposition|activist"]
+   ["IDN" #"(?i)ethnic|religio|sunni|shia|muslim|christian|catholic|orthodox|jew|hindu|buddhist|protestant"]
+   ["GOV" #"(?i)government|executive|legislat|parliament|judicial|cabinet|ministry|elite|part(y|ies)|court"]
+   ["BUS" #"(?i)business|corporat|industr|commerc"]
+   ["SOC" #"(?i)social|civilian|population|media|education|labor|labour|medical|health|refugee|nongovernmental|ngo|agricult"]])
+
+(defn icews-sector
+  "The sector of an ICEWS actor from its comma-separated sector names; nil
+  for international actors (IGOs and the like)."
+  [s]
+  (when (and s (not (str/blank? s)) (not (re-find #"(?i)international|IGO|global" s)))
+    (let [names (str/split s #",")]
+      (some (fn [[sector re]] (when (some #(re-find re %) names) sector)) icews-patterns))))

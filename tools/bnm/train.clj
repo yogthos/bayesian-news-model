@@ -29,11 +29,13 @@
             [clojure.string :as str]))
 
 (defn- bin-records
-  "A lazy seq of [bin records] from a binned file, records [a1 a2 channel n]."
+  "A lazy seq of [bin records] from a binned file, records
+  [a1 s1 a2 s2 adm channel n]."
   [^java.io.BufferedReader rdr]
   (letfn [(parse [line]
-            (let [[b a1 a2 c n] (str/split line #"\t" -1)]
-              [(parse-long b) a1 (not-empty a2) (parse-long c) (parse-double n)]))
+            (let [[b a1 s1 a2 s2 adm c n] (str/split line #"\t" -1)]
+              [(parse-long b) a1 (not-empty s1) (not-empty a2) (not-empty s2) (not-empty adm)
+               (parse-long c) (parse-double n)]))
           (step [lines]
             (lazy-seq
              (when-let [s (seq lines)]
@@ -109,7 +111,7 @@
         vols (let [[readers stream] (open-stream)
                    y0 (year-of (ffirst stream))
                    vols (reduce (fn [v [_ by-source]]
-                                  (reduce (fn [v [a b _ n]] (structure/tally v a b n))
+                                  (reduce (fn [v [a s b t adm _ n]] (structure/tally v a s b t adm n))
                                           v (mapcat val by-source)))
                                 (structure/volumes)
                                 (take-while #(= y0 (year-of (first %))) stream))]

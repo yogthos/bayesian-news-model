@@ -139,7 +139,7 @@
     (for [[i id] (map-indexed vector (:ids fc))
           :let [past (get hist id)]
           :when (seq past)
-          :let [level ((:levels fc) i)
+          :let [level (geo/kind id)
                 ^doubles act (get actual id zero)]
           [c ch] (map-indexed vector ont/channels)
           :let [xs (sample-totals fc i c)
@@ -182,20 +182,27 @@
   channel and stratum."
   [rs]
   (for [r rs
-        :when (and (#{0 1 2} (:level r)) (escalation-row? r))]
+        :when (and (not (#{:region :world} (:level r))) (escalation-row? r))]
     {:channel [(:channel r) (:stratum r)] :p (:p-escalate r) :outcome (:escalated r)}))
+
+(def scored-kinds
+  "The kinds of node whose escalations are pooled and reported."
+  #{:actor :province :country :subregion})
+
+(def kind-order [:dyad :pair :rest :actor :province :country :subregion :region :world])
 
 (defn score
   "Scores forecast `fc` in context `ctx` ({:actual :hist :clim}, see
   `rows`). Keeps the rows (:rows), and the country and subregion escalation
-  rows (:scored) that `aggregate` pools over periods."
+  rows of `scored-kinds` (:scored) that `aggregate` pools over periods. A
+  row's :level is its node's kind (see `bnm.geo/kind`)."
   [fc ctx]
   (let [rs (vec (rows fc ctx))
         period (:period fc)]
     {:period period
      :rows rs
      :outcomes (vec (outcomes rs))
-     :scored (vec (for [r rs :when (and (#{1 2} (:level r)) (escalation-row? r))]
+     :scored (vec (for [r rs :when (and (scored-kinds (:level r)) (escalation-row? r))]
                     (-> (select-keys r [:id :level :channel :stratum :last :actual
                                         :p-escalate :p-cal :p-hist :p-clim :escalated])
                         (assoc :period period))))
@@ -295,8 +302,7 @@
   happened: the 25 it rated most likely to escalate, the 25 biggest real
   escalations, and the onsets (escalations from quiet)."
   [{:keys [period rows]}]
-  (let [rs (filter #(and (= :violence (:channel %)) (#{0 1} (:level %))
-                         (not (str/ends-with? (:id %) ":*")))
+  (let [rs (filter #(and (= :violence (:channel %)) (#{:dyad :pair :actor :province :country} (:level %)))
                    rows)
         show (fn [r] (select-keys (update r :id label)
                                   [:id :stratum :last :q10 :q50 :q90 :actual :p-escalate :p-hist :escalated]))
@@ -313,8 +319,8 @@
 (defn- pct [x] (if x (format "%+6.1f%%" (double x)) "    -  "))
 
 (defn summary-line [{:keys [period totals scored]}]
-  (let [t (totals [1 :violence])
-        g (filter #(and (= 1 (:level %)) (= :violence (:channel %))) scored)
+  (let [t (totals [:country :violence])
+        g (filter #(and (= :country (:level %)) (= :violence (:channel %))) scored)
         e (escalation-scores g)
         q (escalation-scores (filter #(= :quiet (:stratum %)) g))]
     (format "%s country violence: err %s (persist %s) crps %s (hist %s) cover80 %s | AP %s (hist %s) | onsets %d, AP %s (hist %s)"
@@ -324,13 +330,14 @@
 
 (defn report-text [results]
   (let [{:keys [periods totals escalation]} (aggregate results)
-        level-name (fn [l] (name (geo/level-names l)))]
+        level-name name
+        by-kind (fn [m] (sort-by (fn [[[l ch]]] [(.indexOf ^java.util.List kind-order l) (name ch)]) m))]
     (with-out-str
       (println "Backtest over" (count periods) "periods:" (first periods) "-" (last periods))
       (println)
       (println "Totals: mean |log error| of the forecast mean (model, persistence, mean of last 3),")
       (println "skill against persistence, CRPS in log space (model, own history as a sample), 80% coverage")
-      (doseq [[[l ch] s] totals]
+      (doseq [[[l ch] s] (by-kind totals)]
         (println (format "  %-9s %-16s n=%5.0f  err %s %s %s  skill %s  crps %s %s  cover80 %s"
                          (level-name l) (name ch) (:n s) (f3 (:err-model s)) (f3 (:err-persist s))
                          (f3 (:err-clim s)) (pct (skill (:err-model s) (:err-persist s)))
@@ -339,7 +346,7 @@
       (println (str "Escalation (>= " escalation-ratio "x the last period), by the stratum of the node's history."))
       (println "Brier skill against climatology (raw model, calibrated, own history); ROC AUC and average")
       (println (str "precision (model / history); precision and recall in the top " top-k " per period (model / history)"))
-      (doseq [l [1 2]
+      (doseq [l [:country :actor :province :subregion]
               ch escalation-channels
               st (cons :all strata)
               :let [s (escalation [l ch st])]

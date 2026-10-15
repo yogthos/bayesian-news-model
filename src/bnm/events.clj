@@ -3,74 +3,99 @@
 
   A normalized event is what every source (and newsroom's LLM coder) reduces to:
 
-    {:date \"20231007\" :a1 \"ISR\" :a2 \"PSE\" :type :assault :mode :did :n 3}
+    {:date \"20231007\" :a1 \"ISR\" :s1 \"MIL\" :a2 \"PSE\" :s2 \"REB\" :adm \"ISR.D\"
+     :type :assault :mode :did :n 3}
 
-  `:a1` and `:a2` are node ids from `bnm.geo/resolve-code`: a country, or a
-  region or subregion when the source names only that. `:n` is the number of
+  `:a1` and `:a2` are places from `bnm.geo/resolve-code`: a country, or a
+  region or subregion when the source names only that; they may be the same
+  country, for an event within it. `:s1` and `:s2` are the actors' sectors
+  (see `bnm.geo/sectors`), nil when unknown. `:adm` is the province where it
+  happened, a `bnm.geo` province id, nil when unknown. `:n` is the number of
   events the record stands for.
 
   On disk, a normalized file is TSV with one record per line:
-  date a1 a2 type mode n"
+  date a1 s1 a2 s2 adm type mode n"
   (:require [bnm.geo :as geo]
             [bnm.ontology :as ont]
             [clojure.string :as str]))
 
 (defn actors
-  "The places an event involves: its actors' places, falling back on where it
-  happened. An actor in one country acting in another (a strike abroad, say)
-  involves both. At most two."
-  [a1 a2 location]
-  (let [xs (distinct (remove nil? [a1 a2]))]
-    (vec (take 2 (if (and location (< (count xs) 2) (not (some #{location} xs)))
-                   (conj (vec xs) location)
-                   xs)))))
+  "The actors an event involves, as [place sector] pairs: its two actors, or
+  where it happened standing in for a missing one. An actor with a sector but
+  no country (GDELT's \"police\", say) is taken to be of the country where it
+  acted. An actor in one country acting in another (a strike abroad) involves
+  both. At most two; the two may be in the same country."
+  [p1 s1 p2 s2 location]
+  (let [p1 (or p1 (when s1 location))
+        p2 (or p2 (when s2 location))
+        xs (cond-> []
+             p1 (conj [p1 (when (geo/country? p1) s1)])
+             p2 (conj [p2 (when (geo/country? p2) s2)]))]
+    (if (and location (< (count xs) 2) (not (some #(= location (first %)) xs)))
+      (conj xs [location nil])
+      xs)))
 
-(defn ->line [{:keys [date a1 a2 type mode n]}]
-  (str date "\t" (or a1 "") "\t" (or a2 "") "\t" (name type) "\t" (name mode) "\t" n))
+(defn ->line [{:keys [date a1 s1 a2 s2 adm type mode n]}]
+  (str/join "\t" [date (or a1 "") (or s1 "") (or a2 "") (or s2 "") (or adm "")
+                  (name type) (name mode) n]))
 
 (defn parse-line [line]
-  (let [[date a1 a2 type mode n] (str/split line #"\t" -1)]
+  (let [[date a1 s1 a2 s2 adm type mode n] (str/split line #"\t" -1)]
     {:date date
-     :a1 (not-empty a1)
-     :a2 (not-empty a2)
+     :a1 (not-empty a1) :s1 (not-empty s1)
+     :a2 (not-empty a2) :s2 (not-empty s2)
+     :adm (not-empty adm)
      :type (keyword type)
      :mode (keyword mode)
      :n (parse-double n)}))
 
-(defn leaf
-  "The leaf an event between places `a` and `b` (either may be nil) falls into,
-  given the set of `tracked` dyads, or nil when it touches no country. An event
-  naming only regions has no leaf; it still counts for those regions."
-  [a b tracked]
-  (let [ca (when (and a (geo/country? a)) a)
-        cb (when (and b (geo/country? b)) b)]
-    (cond
-      (and ca cb (not= ca cb))
-      (let [d (geo/dyad ca cb)]
-        (if (contains? tracked d) d (geo/rest-leaf ca)))
-      ca (geo/rest-leaf ca)
-      cb (geo/rest-leaf cb)
-      :else nil)))
-
-(defn nodes
-  "Every node an event between `a` and `b` counts for, each once: its leaf
-  (dyad or rest leaf), and every place above the places it names.
-
-  An event between two tracked countries lands in their dyad. An event between
-  two countries whose dyad is not tracked lands in both countries' rest leaves
-  (it is part of the rest of each country's events)."
-  [a b tracked]
+(defn units
+  "Every unit an event adds to the volumes the structure is built from,
+  tracked or not: its places, the dyad of two countries, its actors, the
+  pair of two actors of one country, and its province."
+  [a s b t adm]
   (let [ca (when (and a (geo/country? a)) a)
         cb (when (and b (geo/country? b)) b)
+        xa (when (and ca s) (geo/actor ca s))
+        xb (when (and cb t) (geo/actor cb t))]
+    (cond-> (vec (distinct (remove nil? [a b xa xb])))
+      (and ca cb (not= ca cb)) (conj (geo/dyad ca cb))
+      (and xa xb (= ca cb)) (conj (geo/dyad xa xb))
+      (and adm (let [c (geo/country-of adm)] (or (= c ca) (= c cb)))) (conj adm))))
+
+(defn nodes
+  "Every node an event counts for, each once: its leaf, the tracked actors
+  and province it involves, and every place above the places it names.
+  `tracked` is {:dyads :pairs :actors :provinces}, sets of the ids the
+  structure gives nodes of their own.
+
+  The leaf: an event between two countries lands in their dyad when tracked,
+  else in both countries' rest leaves. An event within a country lands in the
+  pair of its two actors when both are tracked actors and the pair is
+  tracked, else in the country's rest leaf. A province counts when it is in
+  one of the event's countries."
+  [a s b t adm tracked]
+  (let [{:keys [dyads pairs actors provinces]} tracked
+        ca (when (and a (geo/country? a)) a)
+        cb (when (and b (geo/country? b)) b)
+        actor (fn [c sector]
+                (when (and c sector)
+                  (let [x (geo/actor c sector)] (when (contains? actors x) x))))
+        xa (actor ca s)
+        xb (actor cb t)
         leaves (cond
                  (and ca cb (not= ca cb))
                  (let [d (geo/dyad ca cb)]
-                   (if (contains? tracked d) [d] [(geo/rest-leaf ca) (geo/rest-leaf cb)]))
-                 ca [(geo/rest-leaf ca)]
-                 cb [(geo/rest-leaf cb)]
+                   (if (contains? dyads d) [d] [(geo/rest-leaf ca) (geo/rest-leaf cb)]))
+                 (or ca cb)
+                 (let [p (when (and xa xb) (geo/dyad xa xb))]
+                   (if (contains? pairs p) [p] [(geo/rest-leaf (or ca cb))]))
                  :else [])
+        prov (when (and adm (contains? provinces adm)
+                        (let [c (geo/country-of adm)] (or (= c ca) (= c cb))))
+               adm)
         places (distinct (remove nil? [a b]))]
-    (into (set leaves)
+    (into (set (concat leaves (remove nil? [xa xb prov])))
           (concat places (mapcat geo/ancestors-of places)))))
 
 (defn channel [{:keys [type mode]}]
