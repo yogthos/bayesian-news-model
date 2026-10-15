@@ -70,7 +70,7 @@
                        ; node's typical rate plus one
    :max-branching 0.95 ; in a forecast, excitation explains at most this share
                        ; of a node's typical rate (see `stable-params`)
-   :level-noise 0.3    ; in a forecast, the log-sd a node's level drifts by over
+   :level-noise 0.0    ; in a forecast, the log-sd a node's level drifts by over
                        ; 52 bins beyond what its dynamics explain: shocks the
                        ; model has no way to see coming
    :scale 1000.0})

@@ -3,9 +3,10 @@
   its past forecasts turned out.
 
   A simulation's escalation probability reflects only the uncertainty the
-  model knows about; it is typically overconfident. Per channel, raw
-  probabilities are binned, and each bin keeps forgetting-weighted counts of
-  how often the outcome followed. The calibrated probability is a Beta
+  model knows about; it is typically overconfident. Raw probabilities are
+  binned per key (a channel, or a channel and stratum: whatever the caller
+  keys them by), and each bin keeps forgetting-weighted counts of how often
+  the outcome followed. The calibrated probability is a Beta
   posterior mean: the bin's observed rate, shrunk toward the raw probability
   when the bin has seen little. It is plain data in the model, and learns
   whenever forecasts resolve.")

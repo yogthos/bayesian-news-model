@@ -118,7 +118,7 @@
         :expected mean
         :low (nth xs (int (* 0.1 (dec sims))))
         :high (nth xs (int (* 0.9 (dec sims))))
-        :p-escalate (/ (count (filter #(eval/escalated? % recent) xs)) (double sims))}))))
+        :p-escalate (/ (count (filter #(eval/escalated? % recent horizon) xs)) (double sims))}))))
 
 (defn risks
   "The outlook's `n` likeliest escalations in `channel` (default violence)."

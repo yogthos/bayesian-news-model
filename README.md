@@ -47,22 +47,22 @@ The historical record trains the model and tests it: give it the record up to a 
 
 ```sh
 scripts/fetch-data.sh all          # GDELT 1.0, POLECAT, ICEWS into data/raw (~60 GB)
-ACLED_EMAIL=... ACLED_PASSWORD=... scripts/fetch-data.sh acled
+# optional, needs a myACLED account: ACLED_EMAIL=... ACLED_PASSWORD=... scripts/fetch-data.sh acled
 scripts/ingest.sh gdelt 3          # normalize to data/norm/<source>, 3 processes
 jolt -A:tools -M -m bnm.bins gdelt # weekly bins: data/bins/gdelt.tsv
 jolt -A:tools -M -m bnm.train --sources gdelt --eval-from 2000 --name base --save-origins true
 jolt -A:tools -M -m bnm.refit base '{:max-branching 0.9}'   # re-forecast saved origins
 ```
 
-`bnm.train` makes one pass through time. At every year end it:
-1. reshapes the structure from the volumes seen so far;
-2. forecasts the next year;
-3. scores that forecast once the year has been observed.
+`bnm.train` makes one pass through time. From `--eval-from` on, at the start of every period (a calendar year, or with `--every 13` a quarter) it:
+1. reshapes the structure from the volumes seen so far (yearly);
+2. forecasts the period;
+3. scores that forecast once the period has been observed.
 
-It writes `data/runs/<name>/report.txt`, with:
-- errors on annual totals against persistence, per level and channel;
-- Brier score and AUC for escalation;
-- the places the model most expected to escalate, beside those that did.
+Scoring (`bnm.eval`) follows the early-warning literature (see [docs/RESEARCH.md](docs/RESEARCH.md)): most escalation is continuation, so results are split by the stratum of each node's history (quiet, where an escalation is an onset; low; active), and set against benchmarks that know only that history (persistence, a three-period mean, the node's own record as a sample, its own rate of escalating, and climatology). `data/runs/<name>/report.txt` has:
+- errors and CRPS on totals, per level and channel, against the benchmarks;
+- for escalation: Brier skill against climatology, ROC AUC, average precision, and precision and recall among the top 10 per period, by stratum;
+- per period, the places the model most expected to escalate, beside those that did and the onsets (`forecasts/`).
 
 ## Tests
 

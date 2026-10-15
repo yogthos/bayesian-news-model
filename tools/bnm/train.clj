@@ -2,16 +2,20 @@
   "Trains a model on the binned historical record and backtests it.
 
   One pass through time, week by week, as the model would have lived it:
-  learning online from each bin, reshaping itself at every year end from the
-  volumes it has seen, and forecasting the coming year at every year end from
-  `--eval-from` on. Each forecast is scored when the year it covers has been
-  observed. No forecast sees anything after its origin.
+  learning online from each bin, reshaping itself every year from the
+  volumes it has seen, and from `--eval-from` on, forecasting each period at
+  its start: a calendar year, or with `--every N` the next N bins (13 for
+  quarters). Each forecast is scored (see `bnm.eval`) when the period it
+  covers has been observed. No forecast sees anything after its origin.
 
     jolt -A:tools -M -m bnm.train --sources gdelt --eval-from 2000 --name base
+    jolt -A:tools -M -m bnm.train --sources gdelt --eval-from 2000 --every 13 --name base-q
 
-  Writes data/runs/<name>/: report.txt, years.edn (per-origin scores),
-  forecasts/<year>.edn (what was predicted, for inspection) and model.edn
-  (the model at the end, as `bnm.store` saves it)."
+  Writes data/runs/<name>/: report.txt, periods.edn (per-origin scores),
+  scored.edn (the escalation rows the report pools), rows/<period>.tsv,
+  forecasts/<period>.edn (what was predicted, for inspection) and model.edn
+  (the model at the end, as `bnm.store` saves it). With --save-origins, the
+  model and the scoring context at each origin, for `bnm.refit`."
   (:require [bnm.calibrate :as cal]
             [bnm.eval :as ev]
             [bnm.model :as model]
@@ -67,8 +71,19 @@
       (recur more (assoc opts (keyword (subs k 2)) v))
       opts)))
 
+(defn- write-rows! [path rows]
+  (spit path (apply str (for [x rows]
+                          (str (str/join "\t" ((juxt :id :level (comp name :channel) (comp name :stratum)
+                                                     :last :actual :mean :q10 :q50 :q90
+                                                     :p-escalate :p-hist :p-clim)
+                                               x))
+                               "\n")))))
+
+(defn- history->edn [hist]
+  (into {} (for [[id v] hist] [id (mapv vec v)])))
+
 (defn run
-  [{:keys [sources eval-from eval-to sims from config to save-origins] run-name :name
+  [{:keys [sources eval-from eval-to sims from config to save-origins every] run-name :name
     :or {sims "30" from "1979"}}]
   (let [sources (str/split sources #",")
         eval-from (parse-long eval-from)
@@ -76,23 +91,28 @@
         from (parse-long from)
         sims (parse-long sims)
         to (if to (parse-long to) 9999)
+        every (some-> every parse-long)
         config (if config (edn/read-string config) {})
         bin-days (:bin-days (merge model/defaults config))
+        year-of #(bin-year % bin-days)
+        ;; a period is a calendar year, or `every` bins
+        period-of (if every #(quot % every) year-of)
+        label-of (fn [b] (if every (t/date-str (* b bin-days)) (str (year-of b))))
         dir (str "data/runs/" run-name)
         open-stream (fn []
                       (let [readers (into {} (for [s sources] [s (io/reader (str "data/bins/" s ".tsv"))]))]
                         [readers
                          (->> (merged (into {} (for [[s r] readers] [s (bin-records r)])))
-                              (drop-while #(< (bin-year (first %) bin-days) from)))]))
+                              (drop-while #(< (year-of (first %)) from)))]))
         ;; the first year's volumes shape the initial structure; read it on its
         ;; own so the main pass holds no reference to the head of its stream
         vols (let [[readers stream] (open-stream)
-                   y0 (bin-year (ffirst stream) bin-days)
+                   y0 (year-of (ffirst stream))
                    vols (reduce (fn [v [_ by-source]]
                                   (reduce (fn [v [a b _ n]] (structure/tally v a b n))
                                           v (mapcat val by-source)))
                                 (structure/volumes)
-                                (take-while #(= y0 (bin-year (first %) bin-days)) stream))]
+                                (take-while #(= y0 (year-of (first %))) stream))]
                (doseq [r (vals readers)] (.close ^java.io.Reader r))
                vols)
         [readers stream] (open-stream)
@@ -100,64 +120,69 @@
         started (System/currentTimeMillis)]
     (io/make-parents (str dir "/forecasts/x"))
     (io/make-parents (str dir "/rows/x"))
-    (spit (str dir "/args.edn") (pr-str {:sources sources :eval-from eval-from :from from
+    (spit (str dir "/args.edn") (pr-str {:sources sources :eval-from eval-from :from from :every every
                                          :sims sims :config (:config mdl)}))
     (loop [mdl mdl
            [[b by-source] & more] stream
-           year nil
-           actual {}            ; this year's observed totals {id double[C]}
-           last-actual {}       ; last year's
-           pending nil          ; the forecast for this year, made at its start
+           period nil
+           start nil            ; the current period's first bin
+           actual {}            ; this period's observed totals {id double[C]}
+           hist {}              ; earlier periods' totals {id [double[C] ...]}, oldest first
+           clim {}              ; escalation climatology from the periods scored so far
+           pending nil          ; the forecast for this period, made at its start
            results []]
-      (if (or (nil? b) (> (bin-year b bin-days) to))
+      (if (or (nil? b) (> (year-of b) to))
         (do (store/write-file mdl (str dir "/model.edn"))
             (ev/write-report! dir results)
             (doseq [r readers] (.close ^java.io.Reader (val r)))
             results)
-        (let [y (bin-year b bin-days)]
-          (if (and year (not= y year))
-            ;; a year has ended: score its forecast, reshape, forecast the next
-            (let [results (if pending
-                            (let [r (ev/score pending actual last-actual)]
-                              (println (ev/summary-line r))
-                              (spit (str dir "/rows/" year ".tsv")
-                                    (apply str (for [x (ev/rows pending actual last-actual)]
-                                                 (str (str/join "\t" ((juxt :id :level (comp name :channel) :last :actual
-                                                                             :mean :q10 :q50 :q90 :p-escalate)
-                                                                       x))
-                                                      "\n"))))
-                              (spit (str dir "/forecasts/" year ".edn")
-                                    (with-out-str (pp/pprint (ev/inspect pending actual last-actual))))
-                              (conj results r))
-                            results)
-                  ;; the calibration learns from the year just scored
-                  mdl (cond-> mdl
-                        (seq results) (update :calibration cal/learn (:outcomes (peek results))))
-                  mdl (-> (model/restructure mdl (structure/build (series/volumes mdl)
-                                                                  (:structure-opts config {})))
-                          series/with-routes)
-                  horizon (count (take-while #(= y (bin-year % bin-days)) (iterate inc b)))
-                  _ (when (and save-origins (<= eval-from y eval-to))
-                      (store/write-file mdl (str dir "/origin-" y ".edn")))
-                  pending (when (<= eval-from y eval-to)
+        (let [p (period-of b)]
+          (if (and period (not= p period))
+            ;; a period has ended: score its forecast, reshape, forecast the next
+            (let [scored (when pending
+                           (let [r (ev/score pending {:actual actual :hist hist :clim clim})
+                                 lbl (:period pending)]
+                             (println (ev/summary-line r))
+                             (write-rows! (str dir "/rows/" lbl ".tsv") (:rows r))
+                             (spit (str dir "/forecasts/" lbl ".edn")
+                                   (with-out-str (pp/pprint (ev/inspect r))))
+                             (dissoc r :rows)))
+                  results (cond-> results scored (conj scored))
+                  ;; the calibration and the climatology learn from the period just scored
+                  mdl (cond-> mdl scored (update :calibration cal/learn (:outcomes scored)))
+                  clim (cond-> clim scored (ev/learn-climate (:scored scored)))
+                  hist (ev/add-history hist actual)
+                  mdl (if (or (not every) (not= (year-of b) (year-of start)))
+                        (-> (model/restructure mdl (structure/build (series/volumes mdl)
+                                                                    (:structure-opts config {})))
+                            series/with-routes)
+                        mdl)
+                  horizon (count (take-while #(= p (period-of %)) (iterate inc b)))
+                  lbl (label-of b)
+                  live? (<= eval-from (year-of b) eval-to)
+                  _ (when (and save-origins live?)
+                      (store/write-file mdl (str dir "/origin-" lbl ".edn"))
+                      (spit (str dir "/context-" lbl ".edn")
+                            (pr-str {:hist (history->edn hist) :clim clim})))
+                  pending (when live?
                             (let [t0 (System/currentTimeMillis)
-                                  fc (model/forecast mdl {:horizon horizon :sims sims :seed y})]
-                              (println "forecast" y (count (:ids fc)) "nodes"
+                                  fc (model/forecast mdl {:horizon horizon :sims sims :seed p})]
+                              (println "forecast" lbl (count (:ids fc)) "nodes"
                                        (- (System/currentTimeMillis) t0) "ms")
-                              (assoc fc :year y :levels (mapv :level (:nodes mdl))
+                              (assoc fc :period lbl :levels (mapv :level (:nodes mdl))
                                      :calibration (:calibration mdl))))]
-              (println "year" year "done;" (count (:nodes mdl)) "nodes;"
+              (println "period" (label-of start) "done;" (count (:nodes mdl)) "nodes;"
                        (quot (- (System/currentTimeMillis) started) 1000) "s"
                        (model/skill mdl))
               (flush)
-              (recur mdl (cons [b by-source] more) y {} actual pending results))
+              (recur mdl (cons [b by-source] more) p b {} hist clim pending results))
             (let [[mdl obs] (series/observe-bin! mdl b by-source)
                   actual (reduce-kv (fn [acc id ^doubles arr]
                                       (let [^doubles a (or (acc id) (double-array model/C))]
                                         (dotimes [c model/C] (aset a c (+ (aget a c) (aget arr c))))
                                         (assoc acc id a)))
                                     actual obs)]
-              (recur mdl more y actual last-actual pending results))))))))
+              (recur mdl more p (or start b) actual hist clim pending results))))))))
 
 (defn -main [& args]
   (run (parse-args args)))
