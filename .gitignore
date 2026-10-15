@@ -1,0 +1,6 @@
+data/
+.cpcache/
+*.ss
+*.so
+*.boot
+target/

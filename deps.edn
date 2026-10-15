@@ -1,0 +1,11 @@
+{:jolt/min-version "0.8.16"
+
+ ;; The library has no dependencies: the model is plain EDN data, and the
+ ;; host (newsroom) persists it however it likes.
+ :paths ["src" "resources"]
+
+ :aliases
+ {:test {:extra-paths ["test"]
+         :main-opts ["-m" "bnm.test-runner"]}
+  ;; ingestion, training and backtesting over data/ (see README)
+  :tools {:extra-paths ["tools"]}}}
