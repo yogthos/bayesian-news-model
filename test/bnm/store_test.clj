@@ -33,8 +33,8 @@
         stores [(store/read-file path) (store/load-model mem)]]
     (testing "a restored model forecasts exactly as the original"
       (doseq [m stores]
-        (is (= (vec (aget (:paths (model/forecast mdl {:horizon 4 :sims 3})) 0))
-               (vec (aget (:paths (model/forecast m {:horizon 4 :sims 3})) 0))))
+        (is (= (vec (aget (:paths (model/forecast mdl {:horizon 4 :sims 3 :paths? true})) 0))
+               (vec (aget (:paths (model/forecast m {:horizon 4 :sims 3 :paths? true})) 0))))
         (is (= (:pending mdl) (:pending m)))))
     (testing "and keeps learning from where it left off"
       (let [next-bin (first (#'mt/simulate-world 1 9))

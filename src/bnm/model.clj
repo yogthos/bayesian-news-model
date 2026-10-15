@@ -77,6 +77,24 @@
 
 (defn scales ^long [cfg] (count (:decays cfg)))
 
+;; --- parallelism ---------------------------------------------------------------------------
+
+(def ^:dynamic *workers*
+  "Threads a model spreads its work over: the machine's processors."
+  (.availableProcessors (Runtime/getRuntime)))
+
+(defn- in-parallel!
+  "Calls (f from to) on up to `parts` contiguous slices of [0, n), each on a
+  thread of its own, and waits for them all."
+  [n parts f]
+  (let [parts (max 1 (min parts n))
+        step (quot (+ n parts -1) parts)]
+    (if (= parts 1)
+      (f 0 n)
+      (run! deref (mapv (fn [p] (future (f (* p step) (min n (* (inc p) step)))))
+                        (range parts))))
+    nil))
+
 ;; --- array kernels ----------------------------------------------------------------------
 
 (defn- dot-off
@@ -94,41 +112,34 @@
     (aset out c (+ (aget out c) (dot-off alpha (+ (* c ksc) jsc) h sc)))))
 
 (defn- learn-source!
-  "E and M steps for one source's block of alpha. r[c] is observed/expected
-  for the node's channel c; sybar the source's running mean per channel."
-  [^doubles alpha ^doubles sa ^doubles ta ^doubles prior ^doubles h
-   ^doubles r ^doubles ybar ^doubles sybar
-   ^long ksc ^long jsc ^long sc ^double rho ^double w]
+  "The E step for one source's block of alpha: its sufficient statistics,
+  discounted by `rho`. r[c] is observed/expected for the node's channel c.
+  sa has a block per channel; ta, which does not depend on the channel, one
+  per source. `refresh!` makes alpha from them."
+  [^doubles alpha ^doubles sa ^doubles ta ^doubles h ^doubles r
+   ^long ksc ^long jsc ^long sc ^double rho]
+  (dotimes [q sc]
+    (let [i (+ jsc q)]
+      (aset ta i (+ (* rho (aget ta i)) (aget h q)))))
   (dotimes [c C]
     (let [base (+ (* c ksc) jsc)
-          rc (aget r c)
-          yb (aget ybar c)
-          ;; a quiet source is priced as if at a tenth of the node's own rate,
-          ;; so its alpha stays bounded and does not explode when it stirs
-          floor (+ 1e-6 (* 0.1 yb))]
+          rc (aget r c)]
       (dotimes [q sc]
-        (let [i (+ base q)
-              hv (aget h q)
-              sb (Math/max (aget sybar (rem q C)) floor)
-              s (+ (* rho (aget sa i)) (* rc (aget alpha i) hv))
-              t (+ (* rho (aget ta i)) hv)]
-          (aset sa i s)
-          (aset ta i t)
-          (aset alpha i (/ (+ (* (aget prior i) yb w) s) (+ (* w sb) t))))))))
+        (let [i (+ base q)]
+          (aset sa i (+ (* rho (aget sa i)) (* rc (aget alpha i) (aget h q)))))))))
 
 (defn- learn-baseline!
-  [^doubles mu ^doubles smu ^doubles tmu ^doubles r ^doubles ybar
-   ^double rho ^double w ^double share]
+  "The E step for mu: its sufficient statistics. `refresh!` makes mu."
+  [^doubles mu ^doubles smu ^doubles tmu ^doubles r ^double rho]
   (dotimes [c C]
-    (let [s (+ (* rho (aget smu c)) (* (aget r c) (aget mu c)))
-          t (+ (* rho (aget tmu c)) 1.0)]
-      (aset smu c s)
-      (aset tmu c t)
-      (aset mu c (/ (+ (* share (aget ybar c) w) s) (+ w t))))))
+    (aset smu c (+ (* rho (aget smu c)) (* (aget r c) (aget mu c))))
+    (aset tmu c (+ (* rho (aget tmu c)) 1.0))))
 
 (defn- refresh-alpha!
-  "The M step alone for one source's block of alpha, from its statistics and
-  the current running means (see `learn-source!`)."
+  "The M step for one source's block of alpha, from its statistics and the
+  current running means: the posterior mean under its Gamma prior. A quiet
+  source is priced as if at a tenth of the node's own rate, so its alpha
+  stays bounded and does not explode when it stirs."
   [^doubles alpha ^doubles sa ^doubles ta ^doubles prior ^doubles ybar ^doubles sybar
    ^long ksc ^long jsc ^long sc ^double w]
   (dotimes [c C]
@@ -138,7 +149,8 @@
       (dotimes [q sc]
         (let [i (+ base q)
               sb (Math/max (aget sybar (rem q C)) floor)]
-          (aset alpha i (/ (+ (* (aget prior i) yb w) (aget sa i)) (+ (* w sb) (aget ta i)))))))))
+          (aset alpha i (/ (+ (* (aget prior i) yb w) (aget sa i))
+                           (+ (* w sb) (aget ta (+ jsc q))))))))))
 
 (defn- refresh-mu!
   [^doubles mu ^doubles smu ^doubles tmu ^doubles ybar ^double w ^double share]
@@ -243,7 +255,7 @@
      :prior prior
      :h (double-array sc) :last (double-array C) :ybar (double-array C)
      :mu (double-array C) :smu (double-array C) :tmu (double-array C)
-     :alpha (double-array (* C k sc)) :sa (double-array (* C k sc)) :ta (double-array (* C k sc))
+     :alpha (double-array (* C k sc)) :sa (double-array (* C k sc)) :ta (double-array (* k sc))
      :kappa (double-array C 1.0) :sk (double-array C) :tk (double-array C)
      :loss-own (double-array C 1.0) :loss-ch (double-array C 1.0)
      :disp (double-array C 1.0)
@@ -301,8 +313,11 @@
         max-growth (double (:max-growth cfg))
         nodes (:nodes model)
         lams (object-array (map :lam nodes))]
+    ;; own rates depend only on the histories; the blend needs children first
+    (in-parallel! (count nodes) *workers*
+                  (fn [a b] (doseq [i (range a b)]
+                              (let [node (nodes i)] (own-rate! node hs (:lam-own node) sc)))))
     (doseq [node nodes]
-      (own-rate! node hs (:lam-own node) sc)
       (let [^ints ch (:children node)
             leaf? (zero? (alength ch))]
         (when-not leaf? (children-sum! (:chsum node) ch lams))
@@ -323,13 +338,17 @@
         sc (* (scales cfg) C)
         w (double (:prior-weight cfg))
         share (double (get-in cfg [:share :mu]))]
-    (doseq [node nodes]
-      (let [^ints src (:src node)
-            k (alength src)]
-        (refresh-mu! (:mu node) (:smu node) (:tmu node) (:ybar node) w share)
-        (dotimes [j k]
-          (refresh-alpha! (:alpha node) (:sa node) (:ta node) (:prior node) (:ybar node)
-                          (:ybar (nodes (aget src j))) (* k sc) (* j sc) sc w))))
+    (in-parallel!
+     (count nodes) *workers*
+     (fn [a b]
+       (doseq [i (range a b)]
+         (let [node (nodes i)
+               ^ints src (:src node)
+               k (alength src)]
+           (refresh-mu! (:mu node) (:smu node) (:tmu node) (:ybar node) w share)
+           (dotimes [j k]
+             (refresh-alpha! (:alpha node) (:sa node) (:ta node) (:prior node) (:ybar node)
+                             (:ybar (nodes (aget src j))) (* k sc) (* j sc) sc w))))))
     model))
 
 (defn observe!
@@ -353,8 +372,7 @@
         mu-share (double (get-in cfg [:share :mu]))
         rb (double (:blend-forget cfg))
         eta (double (:disp-rate cfg))
-        decays (double-array (:decays cfg))
-        chy (double-array C)]
+        decays (double-array (:decays cfg))]
     (predict! model hs)
     (let [[se seb]
           (loop [i 0 se 0.0 seb 0.0]
@@ -365,24 +383,28 @@
                        (+ se (sq-log-err y (:lam node)))
                        (+ seb (sq-log-err y (:last node)))))
               [se seb]))]
-      (dotimes [i n]
-        (let [node (nodes i)
-              ^doubles y (aget ys i)
-              ^ints src (:src node)
-              k (alength src)
-              ^ints ch (:children node)
-              has-children? (pos? (alength ch))]
-          (ratios! (:r node) y (:lam-own node))
-          (learn-baseline! (:mu node) (:smu node) (:tmu node) (:r node) (:ybar node) rho w mu-share)
-          (dotimes [j k]
-            (let [s (aget src j)]
-              (learn-source! (:alpha node) (:sa node) (:ta node) (:prior node)
-                             (aget hs s) (:r node) (:ybar node) (:ybar (nodes s))
-                             (* k sc) (* j sc) sc rho w)))
-          (when has-children? (children-sum! chy ch ys))
-          (track! y chy (:ybar node) (:disp node) (:lam node) (:lam-own node) (:lam-ch node)
-                  (:loss-own node) (:loss-ch node) (:kappa node) (:sk node) (:tk node)
-                  rho rb eta w has-children?)))
+      ;; each node learns from fixed inputs into its own arrays, so nodes run
+      ;; in parallel; the M step that needs other nodes' means is refresh!'s
+      (in-parallel!
+       n *workers*
+       (fn [a b]
+         (let [chy (double-array C)]
+           (doseq [i (range a b)]
+             (let [node (nodes i)
+                   ^doubles y (aget ys i)
+                   ^ints src (:src node)
+                   k (alength src)
+                   ^ints ch (:children node)
+                   has-children? (pos? (alength ch))]
+               (ratios! (:r node) y (:lam-own node))
+               (learn-baseline! (:mu node) (:smu node) (:tmu node) (:r node) rho)
+               (dotimes [j k]
+                 (learn-source! (:alpha node) (:sa node) (:ta node) (aget hs (aget src j)) (:r node)
+                                (* k sc) (* j sc) sc rho))
+               (when has-children? (children-sum! chy ch ys))
+               (track! y chy (:ybar node) (:disp node) (:lam node) (:lam-own node) (:lam-ch node)
+                       (:loss-own node) (:loss-ch node) (:kappa node) (:sk node) (:tk node)
+                       rho rb eta w has-children?))))))
       (dotimes [i n]
         (let [node (nodes i)]
           (push-history! (:h node) (aget ys i) decays)
@@ -401,7 +423,7 @@
 (defn- drift!
   "Advances a node's level drift, a random walk in log space with step sd
   `step`, and returns nothing; `level` holds the walk per channel."
-  [^longs g ^doubles level ^double step]
+  [^doubles g ^doubles level ^double step]
   (dotimes [c C]
     (aset level c (+ (aget level c) (* step (m/normal! g))))))
 
@@ -409,7 +431,7 @@
   "This bin's simulated values for one node: draws around its own-level
   rate shifted by its level drift, blended for a parent with its children's
   drawn values."
-  [^longs g ^doubles y ^doubles own ^doubles level ^double half-var ^doubles disp
+  [^doubles g ^doubles y ^doubles own ^doubles level ^double half-var ^doubles disp
    ^doubles chsum ^doubles kappa ^doubles lo ^doubles lc ^doubles ybar
    ^double max-growth leaf?]
   (dotimes [c C]
@@ -481,55 +503,84 @@
                      (assoc node :alpha alpha :mu mu)))
                  nodes))))
 
+(def forecast-chunks
+  "How many independent streams a forecast's simulations are split over (and
+  so how many threads it can use)."
+  8)
+
 (defn- record-path! [^doubles p ^long off ^doubles y]
   (System/arraycopy y 0 p off C))
 
+(defn- add-total! [^doubles p ^long off ^doubles y]
+  (dotimes [c C] (aset p (+ off c) (+ (aget p (+ off c)) (aget y c)))))
+
 (defn forecast
   "Simulates `horizon` bins ahead `sims` times from the model's current state,
-  without changing it. Returns {:ids [...] :horizon h :sims s :paths p} where
-  (aget p node-index) is a double array of sims × horizon × channels values,
-  laid out [sim][bin][channel]. Parents are drawn from their children, so the
-  higher levels are built from the lower ones."
-  [model {:keys [horizon sims seed] :or {horizon 52 sims 50 seed 1}}]
+  without changing it. Returns {:ids [...] :horizon h :sims s :totals t} where
+  (aget t node-index) is a double array of sims × channels totals over the
+  horizon, laid out [sim][channel]; read it with `total`. With :paths? true it
+  also keeps every bin, as :paths of sims × horizon × channels values laid out
+  [sim][bin][channel] (read with `path-sum`), which takes horizon times the
+  memory. Parents are drawn from their children, so the higher levels are
+  built from the lower ones."
+  [model {:keys [horizon sims seed paths?] :or {horizon 52 sims 50 seed 1}}]
   (let [model (stable-params model)
         cfg (:config model)
         nodes (:nodes model)
         n (count nodes)
         sc (* (scales cfg) C)
-        g (m/rng seed)
         decays (double-array (:decays cfg))
         max-growth (double (:max-growth cfg))
-        paths (object-array n)
+        paths (when paths? (object-array n))
+        totals (object-array n)
         stride (* horizon C)
-        own (double-array C)
-        chsum (double-array C)
         ;; per-bin step of the level walk, so its sd after 52 bins is :level-noise
         step (/ (double (:level-noise cfg)) (Math/sqrt 52.0))]
-    (dotimes [i n] (aset paths i (double-array (* sims stride))))
-    (dotimes [s sims]
-      (let [hs (object-array (map #(aclone ^doubles (:h %)) nodes))
-            ys (object-array (repeatedly n #(double-array C)))
-            levels (object-array (repeatedly n #(double-array C)))]
-        (dotimes [t horizon]
-          ;; the walk's variance after t+1 steps; exp(level - var/2) has mean one
-          (let [half-var (* 0.5 step step (inc t))]
-            (dotimes [i n]
-              (let [node (nodes i)
-                    ^ints ch (:children node)
-                    leaf? (zero? (alength ch))]
-                (own-rate! node hs own sc)
-                (when-not leaf? (children-sum! chsum ch ys))
-                (drift! g (aget levels i) step)
-                (draw-node! g (aget ys i) own (aget levels i) half-var (:disp node) chsum
-                            (:kappa node) (:loss-own node) (:loss-ch node) (:ybar node)
-                            max-growth leaf?))))
-          (dotimes [i n]
-            (record-path! (aget paths i) (+ (* s stride) (* t C)) (aget ys i))
-            (push-history! (aget hs i) (aget ys i) decays)))))
-    {:ids (mapv :id nodes) :horizon horizon :sims sims :paths paths}))
+    (dotimes [i n]
+      (aset totals i (double-array (* sims C)))
+      (when paths? (aset paths i (double-array (* sims stride)))))
+    ;; simulations run in a fixed number of chunks, each on its own random
+    ;; stream, so the result depends on the seed and not on the machine
+    (in-parallel!
+     forecast-chunks forecast-chunks
+     (fn [chunk _]
+       (let [from (quot (* chunk sims) forecast-chunks)
+             to (quot (* (inc chunk) sims) forecast-chunks)
+             g (m/rng (+ (* 7919 (long seed)) chunk))
+             own (double-array C)
+             chsum (double-array C)]
+         (doseq [s (range from to)]
+           (let [hs (object-array (map #(aclone ^doubles (:h %)) nodes))
+                 ys (object-array (repeatedly n #(double-array C)))
+                 levels (object-array (repeatedly n #(double-array C)))]
+             (dotimes [t horizon]
+               ;; the walk's variance after t+1 steps; exp(level - var/2) has mean one
+               (let [half-var (* 0.5 step step (inc t))]
+                 (dotimes [i n]
+                   (let [node (nodes i)
+                         ^ints ch (:children node)
+                         leaf? (zero? (alength ch))]
+                     (own-rate! node hs own sc)
+                     (when-not leaf? (children-sum! chsum ch ys))
+                     (when (pos? step) (drift! g (aget levels i) step))
+                     (draw-node! g (aget ys i) own (aget levels i) half-var (:disp node) chsum
+                                 (:kappa node) (:loss-own node) (:loss-ch node) (:ybar node)
+                                 max-growth leaf?))))
+               (dotimes [i n]
+                 (add-total! (aget totals i) (* s C) (aget ys i))
+                 (when paths? (record-path! (aget paths i) (+ (* s stride) (* t C)) (aget ys i)))
+                 (push-history! (aget hs i) (aget ys i) decays))))))))
+    (cond-> {:ids (mapv :id nodes) :horizon horizon :sims sims :totals totals}
+      paths? (assoc :paths paths))))
+
+(defn total
+  "The total of node `i`'s channel `c` over the whole horizon of simulation `s`."
+  ^double [fc i s c]
+  (aget ^doubles (aget ^objects (:totals fc) i) (+ (* s C) c)))
 
 (defn path-sum
-  "The total of node `i`'s channel `c` over bins [from, to) of simulation `s`."
+  "The total of node `i`'s channel `c` over bins [from, to) of simulation `s`,
+  from a forecast made with :paths? true."
   ^double [fc i s c from to]
   (let [^doubles p (aget ^objects (:paths fc) i)
         stride (* (:horizon fc) C)]
@@ -622,8 +673,9 @@
             old-j (zipmap (:sources prev) (range))]
         (dotimes [j k-new]
           (when-let [j0 (old-j ((:sources node) j))]
-            (doseq [arr [:alpha :sa :ta]]
+            (doseq [arr [:alpha :sa]]
               (dotimes [c C]
                 (System/arraycopy (get prev arr) (+ (* c k-old sc) (* j0 sc))
-                                  (get node arr) (+ (* c k-new sc) (* j sc)) sc)))))))
+                                  (get node arr) (+ (* c k-new sc) (* j sc)) sc)))
+            (System/arraycopy (:ta prev) (* j0 sc) (:ta node) (* j sc) sc)))))
     (refresh! (merge mdl (select-keys old [:bin :exposure :stats :volumes :calibration])))))

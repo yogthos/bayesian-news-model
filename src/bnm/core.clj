@@ -128,7 +128,7 @@
            :when (levels (geo/level-names (:level node)))
            [c ch] (map-indexed vector ont/channels)
            :let [recent (* horizon (aget ^doubles (:ybar node) c))
-                 xs (sort (for [s (range sims)] (model/path-sum fc i s c 0 horizon)))
+                 xs (sort (for [s (range sims)] (model/total fc i s c)))
                  mean (/ (reduce + xs) sims)]
            :when (>= (max recent mean) min-rate)]
        {:node id

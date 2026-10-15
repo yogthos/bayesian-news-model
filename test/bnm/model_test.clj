@@ -91,9 +91,12 @@
   (let [mdl (series/with-routes (model/create (toy-structure)))
         mdl (reduce (fn [mdl [t bin]] (first (series/observe-bin! mdl t bin)))
                     mdl (map-indexed vector (simulate-world 100 3)))
-        a (model/forecast mdl {:horizon 8 :sims 5 :seed 11})
+        a (model/forecast mdl {:horizon 8 :sims 5 :seed 11 :paths? true})
         b (model/forecast mdl {:horizon 8 :sims 5 :seed 11})
         i ((:index mdl) "world")]
-    (is (= (vec (aget (:paths a) i)) (vec (aget (:paths b) i))))
+    (is (= (vec (aget (:totals a) i)) (vec (aget (:totals b) i))) "deterministic, paths or not")
     (is (= (* 5 8 model/C) (alength ^doubles (aget (:paths a) i))))
-    (is (every? #(and (not (Double/isNaN %)) (>= % 0.0)) (aget (:paths a) i)))))
+    (is (every? #(and (not (Double/isNaN %)) (>= % 0.0)) (aget (:paths a) i)))
+    (testing "totals are the paths summed"
+      (doseq [s (range 5) c (range model/C)]
+        (is (< (Math/abs (- (model/total a i s c) (model/path-sum a i s c 0 8))) 1e-9))))))

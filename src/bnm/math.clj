@@ -42,39 +42,43 @@
   (Math/max lo (Math/min hi x)))
 
 ;; --- a seedable generator ------------------------------------------------------------
-;; L'Ecuyer's combined linear congruential generator (1988): period about
-;; 2.3e18, and every intermediate fits a Chez fixnum, which keeps it an order of
-;; magnitude faster here than a 64-bit generator, whose wrap-around overflows
-;; into bignums.
+;; L'Ecuyer's MRG32k3a (1999): two combined multiple recursive generators,
+;; period about 2^191, among the best tested generators for simulation. It is
+;; specified in double arithmetic (every product stays below 2^53), which jolt
+;; compiles to unboxed flonum code: several times faster here than any
+;; generator on 64-bit integers.
 
 (defn rng
-  "A generator seeded with `seed`: a two-slot mutable state."
+  "A generator seeded with `seed`: a six-slot mutable state."
   [seed]
-  (let [seed (Math/abs (long seed))]
-    (long-array [(inc (mod seed 2147483562))
-                 (inc (mod (+ (* (mod seed 1000003) 7919) 13) 2147483398))])))
+  (let [seed (Math/abs (long seed))
+        a (double (inc (mod seed 4294967086)))
+        b (double (inc (mod (+ (* (mod seed 1000003) 7919) 13) 4294944442)))]
+    (double-array [a 12345.0 a b 12345.0 b])))
 
 (defn next-double!
   "A uniform double in (0, 1) from generator `g`, advancing it."
-  ^double [^longs g]
-  (let [s1 (rem (* 40014 (aget g 0)) 2147483563)
-        s2 (rem (* 40692 (aget g 1)) 2147483399)
-        z (- s1 s2)
-        z (if (< z 1) (+ z 2147483562) z)]
-    (aset g 0 s1)
-    (aset g 1 s2)
-    (* (double z) 4.656613057391769e-10)))
+  ^double [^doubles g]
+  (let [p1 (- (* 1403580.0 (aget g 1)) (* 810728.0 (aget g 0)))
+        p1 (- p1 (* 4294967087.0 (Math/floor (/ p1 4294967087.0))))
+        p2 (- (* 527612.0 (aget g 5)) (* 1370589.0 (aget g 3)))
+        p2 (- p2 (* 4294944443.0 (Math/floor (/ p2 4294944443.0))))]
+    (aset g 0 (aget g 1)) (aset g 1 (aget g 2)) (aset g 2 p1)
+    (aset g 3 (aget g 4)) (aset g 4 (aget g 5)) (aset g 5 p2)
+    (if (<= p1 p2)
+      (* (+ (- p1 p2) 4294967087.0) 2.328306549295727688e-10)
+      (* (- p1 p2) 2.328306549295727688e-10))))
 
 (defn normal!
   "A standard normal draw (Box-Muller)."
-  ^double [^longs g]
+  ^double [^doubles g]
   (let [u (Math/max tiny (next-double! g))
         v (next-double! g)]
     (* (Math/sqrt (* -2.0 (Math/log u))) (Math/cos (* 2.0 Math/PI v)))))
 
 (defn gamma!
   "A Gamma(shape, scale) draw (Marsaglia-Tsang)."
-  ^double [^longs g ^double shape ^double scale]
+  ^double [^doubles g ^double shape ^double scale]
   (cond
     (<= shape 0.0) 0.0
     (< shape 1.0)
@@ -97,14 +101,14 @@
                 (* d v scale)
                 (recur)))))))))
 
-(defn beta! ^double [^longs g ^double a ^double b]
+(defn beta! ^double [^doubles g ^double a ^double b]
   (let [x (gamma! g a 1.0) y (gamma! g b 1.0)]
     (/ x (Math/max tiny (+ x y)))))
 
 (defn poisson!
   "A Poisson(lambda) draw: inversion for small means, a normal
   approximation above 50."
-  ^long [^longs g ^double lambda]
+  ^long [^doubles g ^double lambda]
   (cond
     (<= lambda 0.0) 0
     (> lambda 50.0) (Math/max 0 (Math/round (+ lambda (* (Math/sqrt lambda) (normal! g)))))
@@ -115,7 +119,7 @@
 (defn overdispersed!
   "A draw with mean `mean` and variance `disp` × mean: a Gamma whose shape
   is mean/disp. Continuous, since the model's counts are normalized."
-  ^double [^longs g ^double mean ^double disp]
+  ^double [^doubles g ^double mean ^double disp]
   (if (<= mean 0.0)
     0.0
     (let [d (Math/max 1e-6 disp)]

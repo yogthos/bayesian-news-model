@@ -122,7 +122,7 @@
   "The forecast totals of node i, channel c, one per simulation, sorted."
   [fc i c]
   (let [xs (double-array (for [s (range (:sims fc))]
-                           (model/path-sum fc i s c 0 (:horizon fc))))]
+                           (model/total fc i s c)))]
     (java.util.Arrays/sort xs)
     xs))
 

@@ -34,7 +34,7 @@
 
 (set! *unchecked-math* true)
 
-(def format-version 2)
+(def format-version 3)
 
 (defprotocol ModelStore
   (read-part [store part] "The stored value of `part` (:header, :volumes, :pending), or nil.")
@@ -49,11 +49,11 @@
 
 ;; --- node rows ---------------------------------------------------------------------------
 
-(def ^:private plain-arrays
-  "Node arrays stored as they are."
-  [:h :last :ybar :smu :tmu :sa :kappa :sk :tk :loss-own :loss-ch :disp])
+(def ^:private saved-arrays
+  "The node arrays stored: its state and sufficient statistics."
+  [:h :last :ybar :smu :tmu :sa :ta :kappa :sk :tk :loss-own :loss-ch :disp])
 
-(def ^:private magic 0x424E4D32) ; "BNM2"
+(def ^:private magic 0x424E4D33) ; "BNM3"
 
 (defn- put-doubles! [^java.nio.ByteBuffer bb ^doubles a ^long from ^long n]
   (dotimes [i n] (.putDouble bb (aget a (+ from i)))))
@@ -61,31 +61,21 @@
 (defn- get-doubles! [^java.nio.ByteBuffer bb ^doubles a ^long from ^long n]
   (dotimes [i n] (aset a (+ from i) (.getDouble bb))))
 
-(defn- ta-block
-  "The length of one channel's block of ta. ta's statistics do not depend on
-  the channel they are for (each is a discounted sum of the source's
-  history), so one block is stored and copied to the others on load."
-  ^long [node]
-  (quot (alength ^doubles (:ta node)) model/C))
-
 (defn encode-node
   "A node's learned arrays as bytes: doubles, little-endian, each array
   prefixed by its length (an int). Doubles, not floats, so a model restored
   from a store is the model that was saved, bit for bit."
   ^bytes [node]
-  (let [blk (ta-block node)
-        n (+ (* 4 (+ 2 (inc (count plain-arrays))))
-             (* 8 (+ blk (reduce + (map #(alength ^doubles (get node %)) plain-arrays)))))
+  (let [n (+ (* 4 (+ 2 (count saved-arrays)))
+             (* 8 (reduce + (map #(alength ^doubles (get node %)) saved-arrays))))
         bb (java.nio.ByteBuffer/allocate n)]
     (.order bb java.nio.ByteOrder/LITTLE_ENDIAN)
     (.putInt bb (unchecked-int magic))
-    (.putInt bb (inc (count plain-arrays)))
-    (doseq [k plain-arrays]
+    (.putInt bb (count saved-arrays))
+    (doseq [k saved-arrays]
       (let [^doubles a (get node k)]
         (.putInt bb (alength a))
         (put-doubles! bb a 0 (alength a))))
-    (.putInt bb blk)
-    (put-doubles! bb (:ta node) 0 blk)
     (.array bb)))
 
 (defn- decode-into!
@@ -95,21 +85,14 @@
   (let [bb (java.nio.ByteBuffer/wrap data)]
     (.order bb java.nio.ByteOrder/LITTLE_ENDIAN)
     (and (= (.getInt bb) (unchecked-int magic))
-         (= (.getInt bb) (inc (count plain-arrays)))
+         (= (.getInt bb) (count saved-arrays))
          (every? (fn [k]
                    (let [^doubles a (get node k)
                          n (.getInt bb)]
                      (when (= n (alength a))
                        (get-doubles! bb a 0 n)
                        true)))
-                 plain-arrays)
-         (let [^doubles ta (:ta node)
-               blk (ta-block node)]
-           (when (= blk (.getInt bb))
-             (get-doubles! bb ta 0 blk)
-             (dotimes [c (dec model/C)]
-               (System/arraycopy ta 0 ta (* (inc c) blk) blk))
-             true)))))
+                 saved-arrays))))
 
 (defn node->row [node structure-node order]
   {:id (:id node)
