@@ -622,14 +622,15 @@
   horizon, laid out [sim][channel]; read it with `total`. With :paths? true it
   also keeps every bin, as :paths of sims × horizon × channels values laid out
   [sim][bin][channel] (read with `path-sum`), which takes horizon times the
-  memory. Parents are drawn from their children, so the higher levels are
-  built from the lower ones.
+  memory; :keep-paths, a set of node indices, keeps them for those nodes only.
+  Parents are drawn from their children, so the higher levels are built from
+  the lower ones.
 
   Each simulation draws the model's parameters from their posterior (see
   `posterior-shapes`) before it runs, so the spread of the forecast carries
   what the model doesn't know about itself as well as the world's noise;
   :param-uncertainty false in the config keeps the point estimates."
-  [model {:keys [horizon sims seed paths?] :or {horizon 52 sims 50 seed 1}}]
+  [model {:keys [horizon sims seed paths? keep-paths] :or {horizon 52 sims 50 seed 1}}]
   (let [model (stable-params model)
         cfg (:config model)
         nodes (:nodes model)
@@ -637,7 +638,7 @@
         sc (* (scales cfg) C)
         decays (double-array (:decays cfg))
         max-growth (double (:max-growth cfg))
-        paths (when paths? (object-array n))
+        paths (when (or paths? keep-paths) (object-array n))
         totals (object-array n)
         stride (* horizon C)
         uncertain? (:param-uncertainty cfg true)
@@ -648,7 +649,8 @@
         step (/ (double (:level-noise cfg)) (Math/sqrt 52.0))]
     (dotimes [i n]
       (aset totals i (double-array (* sims C)))
-      (when paths? (aset paths i (double-array (* sims stride)))))
+      (when (or paths? (and keep-paths (contains? keep-paths i)))
+        (aset paths i (double-array (* sims stride)))))
     ;; simulations run in a fixed number of chunks, each on its own random
     ;; stream, so the result depends on the seed and not on the machine
     (in-parallel!
@@ -684,10 +686,11 @@
                                  max-growth leaf?))))
                (dotimes [i n]
                  (add-total! (aget totals i) (* s C) (aget ys i))
-                 (when paths? (record-path! (aget paths i) (+ (* s stride) (* t C)) (aget ys i)))
+                 (when-let [p (and paths (aget paths i))]
+                   (record-path! p (+ (* s stride) (* t C)) (aget ys i)))
                  (push-history! (aget hs i) (aget ys i) decays))))))))
     (cond-> {:ids (mapv :id nodes) :horizon horizon :sims sims :totals totals}
-      paths? (assoc :paths paths))))
+      paths (assoc :paths paths))))
 
 (defn total
   "The total of node `i`'s channel `c` over the whole horizon of simulation `s`."

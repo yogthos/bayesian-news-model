@@ -379,3 +379,77 @@
   (let [text (report-text results)]
     (spit (str dir "/report.txt") text)
     (println text)))
+
+;; --- posterior predictive checks ---------------------------------------------------------
+
+(def ppc-stats
+  "Features of a node's weekly series a posterior predictive check compares,
+  simulated against observed."
+  [:dispersion :burst :quiet :ac1])
+
+(defn- series-stats
+  "The `ppc-stats` of a weekly series `xs` (doubles)."
+  [xs]
+  (let [n (count xs)
+        mean (/ (reduce + xs) (double n))
+        var (/ (reduce + (map #(let [d (- % mean)] (* d d)) xs)) (double n))
+        ac (if (and (> n 2) (pos? var))
+             (/ (reduce + (map (fn [a b] (* (- a mean) (- b mean))) xs (rest xs)))
+                (* (dec n) var))
+             0.0)]
+    {:dispersion (/ var (+ mean 1e-9))
+     :burst (/ (reduce max xs) (+ mean 1e-9))
+     :quiet (/ (count (filter #(< % 1e-9) xs)) (double n))
+     :ac1 ac}))
+
+(defn ppc
+  "Posterior predictive p-values for the nodes whose paths forecast `fc`
+  kept: per node and channel with any activity, for each of `ppc-stats`, the
+  share of simulations whose statistic exceeds the observed one (ties
+  counted half). `observed` is {id [double[C] per bin]}, the period's weekly
+  observations. A model that reproduces the data gives p-values spread
+  evenly over [0, 1]."
+  [fc observed]
+  (let [h (:horizon fc)
+        sims (:sims fc)
+        ^objects paths (:paths fc)]
+    (for [[i id] (map-indexed vector (:ids fc))
+          :let [^doubles p (when paths (aget paths i))
+                weeks (get observed id)]
+          :when (and p (= h (count weeks)))
+          c (range model/C)
+          :let [obs (mapv #(aget ^doubles % c) weeks)
+                simulated (for [s (range sims)]
+                            (mapv #(aget p (+ (* s h model/C) (* % model/C) c)) (range h)))]
+          :when (or (some pos? obs) (some #(some pos? %) simulated))
+          :let [o (series-stats obs)
+                ss (map series-stats simulated)]]
+      (into {:id id :kind (geo/kind id) :channel (ont/channels c)}
+            (for [k ppc-stats
+                  :let [ov (k o)
+                        above (count (filter #(> (k %) ov) ss))
+                        ties (count (filter #(= (k %) ov) ss))]]
+              [k (/ (+ above (* 0.5 ties)) (double sims))])))))
+
+(defn ppc-summary
+  "Per kind of node and statistic: how many checks, the mean p-value, and the
+  shares below 0.05 and above 0.95 (0.5, 0.05 and 0.05 for a model that
+  reproduces the data)."
+  [rows]
+  (into (sorted-map)
+        (for [[kind g] (group-by :kind rows)
+              k ppc-stats
+              :let [ps (map k g)]]
+          [[kind k] {:n (count ps)
+                     :mean (mean ps)
+                     :low (mean (map #(if (< % 0.05) 1.0 0.0) ps))
+                     :high (mean (map #(if (> % 0.95) 1.0 0.0) ps))}])))
+
+(defn ppc-text [summary]
+  (with-out-str
+    (println "Posterior predictive checks: p-values of simulated weekly features against the observed")
+    (println "(dispersion = variance/mean, burst = peak/mean, quiet = share of weeks with nothing, ac1 =")
+    (println "lag-1 autocorrelation). Well specified: mean 0.50, and 0.05 below 0.05 and above 0.95.")
+    (println "A high mean says the model simulates more of the feature than happens; a low mean, less.")
+    (doseq [[[kind k] {:keys [n mean low high]}] (sort-by (fn [[[kind k]]] [(.indexOf ^java.util.List kind-order kind) (name k)]) summary)]
+      (println (format "  %-9s %-10s n=%6d  mean p %.2f  p<0.05 %.2f  p>0.95 %.2f" (name kind) (name k) n mean low high)))))

@@ -15,9 +15,12 @@
   scored.edn (the escalation rows the report pools), rows/<period>.tsv,
   forecasts/<period>.edn (what was predicted, for inspection) and model.edn
   (the model at the end, as `bnm.store` saves it). With --save-origins, the
-  model and the scoring context at each origin, for `bnm.refit`."
+  model and the scoring context at each origin, for `bnm.refit`. With
+  --ppc true, ppc.txt: posterior predictive checks of the weekly series of a
+  sample of nodes in every scored period (see `bnm.eval/ppc`)."
   (:require [bnm.calibrate :as cal]
             [bnm.eval :as ev]
+            [bnm.geo :as geo]
             [bnm.model :as model]
             [bnm.series :as series]
             [bnm.store :as store]
@@ -85,8 +88,41 @@
 (defn- history->edn [hist]
   (into {} (for [[id v] hist] [id (mapv vec v)])))
 
+(def ppc-sample
+  "Nodes of each kind below the country checked per period, at most."
+  200)
+
+(defn- ppc-nodes
+  "The node indices whose paths a forecast keeps for the posterior predictive
+  checks: every country and the levels above, and an evenly spaced sample of
+  at most `ppc-sample` of each other kind."
+  [mdl]
+  (let [by-kind (group-by (comp geo/kind :id second) (map-indexed vector (:nodes mdl)))]
+    (set (for [[kind xs] by-kind
+               :let [xs (vec xs)
+                     step (if (#{:country :subregion :region :world} kind)
+                            1
+                            (max 1 (quot (count xs) ppc-sample)))]
+               j (range 0 (count xs) step)]
+           (first (xs j))))))
+
+(defn- add-ppc [acc rows]
+  (reduce (fn [acc r]
+            (reduce (fn [acc k]
+                      (let [p (k r)]
+                        (update acc [(:kind r) k]
+                                (fn [[n sum low high]]
+                                  [(inc (or n 0)) (+ (or sum 0.0) p)
+                                   (+ (or low 0) (if (< p 0.05) 1 0)) (+ (or high 0) (if (> p 0.95) 1 0))]))))
+                    acc ev/ppc-stats))
+          acc rows))
+
+(defn- ppc-report [acc]
+  (into {} (for [[k [n sum low high]] acc]
+             [k {:n n :mean (/ sum n) :low (/ low (double n)) :high (/ high (double n))}])))
+
 (defn run
-  [{:keys [sources eval-from eval-to sims from config to save-origins every] run-name :name
+  [{:keys [sources eval-from eval-to sims from config to save-origins every ppc] run-name :name
     :or {sims "100" from "1979"}}]
   (let [sources (str/split sources #",")
         eval-from (parse-long eval-from)
@@ -95,6 +131,7 @@
         sims (parse-long sims)
         to (if to (parse-long to) 9999)
         every (some-> every parse-long)
+        ppc? (= ppc "true")
         config (if config (edn/read-string config) {})
         bin-days (:bin-days (merge model/defaults config))
         year-of #(bin-year % bin-days)
@@ -133,9 +170,14 @@
            hist {}              ; earlier periods' totals {id [double[C] ...]}, oldest first
            clim {}              ; escalation climatology from the periods scored so far
            pending nil          ; the forecast for this period, made at its start
-           results []]
+           results []
+           weeks {}             ; this period's weekly observations of the checked nodes
+           ppc-acc {}]          ; posterior predictive check counts, by kind and statistic
       (if (or (nil? b) (> (year-of b) to))
-        (do (store/write-file (cond-> mdl
+        (do (when ppc?
+              (spit (str dir "/ppc.txt") (ev/ppc-text (ppc-report ppc-acc)))
+              (println (ev/ppc-text (ppc-report ppc-acc))))
+            (store/write-file (cond-> mdl
                                 ;; quarters as live scoring cuts them: the model
                                 ;; ships the history and climatology it was
                                 ;; scored with, for a live model to carry on
@@ -158,6 +200,9 @@
                              (spit (str dir "/forecasts/" lbl ".edn")
                                    (with-out-str (pp/pprint (ev/inspect r))))
                              (dissoc r :rows)))
+                  ppc-acc (if (and ppc? pending)
+                            (add-ppc ppc-acc (ev/ppc pending (into {} (for [[id v] weeks] [id (persistent! v)]))))
+                            ppc-acc)
                   results (cond-> results scored (conj scored))
                   ;; the calibration and the climatology learn from the period just scored
                   mdl (cond-> mdl scored (update :calibration cal/learn (:outcomes scored)))
@@ -177,23 +222,32 @@
                             (pr-str {:hist (history->edn hist) :clim clim})))
                   pending (when live?
                             (let [t0 (System/currentTimeMillis)
-                                  fc (model/forecast mdl {:horizon horizon :sims sims :seed p})]
+                                  keep (when ppc? (ppc-nodes mdl))
+                                  fc (model/forecast mdl (cond-> {:horizon horizon :sims sims :seed p}
+                                                           keep (assoc :keep-paths keep)))]
                               (println "forecast" lbl (count (:ids fc)) "nodes"
                                        (- (System/currentTimeMillis) t0) "ms")
                               (assoc fc :period lbl :levels (mapv :level (:nodes mdl))
+                                     :checked (when keep (set (map (comp :id (:nodes mdl)) keep)))
                                      :calibration (:calibration mdl))))]
               (println "period" (label-of start) "done;" (count (:nodes mdl)) "nodes;"
                        (quot (- (System/currentTimeMillis) started) 1000) "s"
                        (model/skill mdl))
               (flush)
-              (recur mdl (cons [b by-source] more) p b {} hist clim pending results))
+              (recur mdl (cons [b by-source] more) p b {} hist clim pending results {} ppc-acc))
             (let [[mdl obs] (series/observe-bin! mdl b by-source)
                   actual (reduce-kv (fn [acc id ^doubles arr]
                                       (let [^doubles a (or (acc id) (double-array model/C))]
                                         (dotimes [c model/C] (aset a c (+ (aget a c) (aget arr c))))
                                         (assoc acc id a)))
                                     actual obs)]
-              (recur mdl more p (or start b) actual hist clim pending results))))))))
+              (recur mdl more p (or start b) actual hist clim pending results
+                     (if-let [checked (:checked pending)]
+                       (let [zero (double-array model/C)]
+                         (reduce (fn [w id] (assoc w id (conj! (get w id (transient [])) (get obs id zero))))
+                                 weeks checked))
+                       weeks)
+                     ppc-acc))))))))
 
 (defn -main [& args]
   (run (parse-args args)))
