@@ -216,3 +216,20 @@
       (is (< 0.6 zeros 0.85) zeros))
     (testing "and every week is a whole number of events"
       (is (every? #(< (Math/abs (- (/ % u) (Math/rint (/ % u)))) 1e-6) weeks)))))
+
+(deftest forecasts-hold-the-local-level
+  ;; protests halve and stay there: a quarter ahead is forecast at the new
+  ;; level, not pulled back toward the two-year mean
+  (let [g (m/rng 8)
+        week (fn [rate] {"toy" [["FRA" nil nil nil nil protest (double (m/poisson! g rate))]
+                                ["RUS" nil nil nil nil 0 (double (m/poisson! g 500.0))]]})
+        bins (concat (repeatedly 150 #(week 40.0)) (repeatedly 40 #(week 20.0)))
+        mdl (reduce (fn [mdl [t bin]] (first (series/observe-bin! mdl t bin)))
+                    (series/with-routes (model/create (toy-structure)))
+                    (map-indexed vector bins))
+        u (model/unit mdl)
+        i ((:index mdl) "FRA:*")
+        sims 200
+        fc (model/forecast mdl {:horizon 13 :sims sims :seed 4})
+        mean (/ (reduce + (map #(model/total fc i % protest) (range sims))) sims)]
+    (is (< 0.85 (/ mean (* 13 20.0 u)) 1.15) (/ mean (* 13 20.0 u)))))
