@@ -44,7 +44,8 @@
                              horizon (or every 52)
                              fc (assoc (model/forecast mdl {:horizon horizon :sims sims :seed (parse-long lbl)})
                                        :period lbl :levels (mapv :level (:nodes mdl))
-                                       :calibration (:calibration mdl))
+                                       :calibration (:calibration mdl)
+                                       :spread (:spread mdl))
                              ctx (assoc (context (str dir "/context-" lbl ".edn"))
                                         :actual (recorded rows))
                              r (dissoc (ev/score fc ctx) :rows)]

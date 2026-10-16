@@ -950,4 +950,4 @@
                 (System/arraycopy (get prev arr) (+ (* c k-old sc) (* j0 sc))
                                   (get node arr) (+ (* c k-new sc) (* j sc)) sc)))
             (System/arraycopy (:ta prev) (* j0 sc) (:ta node) (* j sc) sc)))))
-    (refresh! (merge mdl (select-keys old [:bin :exposure :stats :volumes :calibration])))))
+    (refresh! (merge mdl (select-keys old [:bin :exposure :stats :volumes :calibration :spread])))))

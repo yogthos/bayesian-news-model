@@ -77,7 +77,7 @@
                                [id (into {}
                                          (for [r rs :when (some #{(:channel r)} eval/escalation-channels)]
                                            [(:channel r) (select-keys r [:p-escalate :sims :p-cal :p-hist :p-clim
-                                                                         :stratum :last])]))]))})
+                                                                         :stratum :last :low :median :high])]))]))})
       m)))
 
 (defn registered?
@@ -111,9 +111,12 @@
   (let [{:keys [period actual forecasts hist clim record]} (:track m)
         rows (when-let [fc (get forecasts period)] (score m fc actual))
         scored (filterv #(eval/scored-kinds (:level %)) rows)
-        outcomes (eval/outcomes rows)]
+        outcomes (eval/outcomes rows)
+        ranges (for [r rows :when (:median r)]
+                 (assoc r :q10 (:low r) :q50 (:median r) :q90 (:high r)))]
     (-> m
         (cond-> (seq outcomes) (update :calibration #(cal/learn (or % {}) outcomes)))
+        (cond-> (seq ranges) (update :spread #(cal/learn-spread (or % {}) ranges)))
         (assoc :track {:hist (eval/add-history (or hist {}) actual)
                        :clim (cond-> (or clim {}) (seq scored) (eval/learn-climate scored))
                        :record (cond-> (vec record)

@@ -9,7 +9,8 @@
   the outcome followed. The calibrated probability is a Beta
   posterior mean: the bin's observed rate, shrunk toward the raw probability
   when the bin has seen little. It is plain data in the model, and learns
-  whenever forecasts resolve.")
+  whenever forecasts resolve."
+  (:require [bnm.math :as m]))
 
 (def edges
   "Upper edges of the probability bins."
@@ -51,3 +52,61 @@
                     (update-in [channel :n i] + 1.0)
                     (update-in [channel :pos i] + (if outcome 1.0 0.0)))))
             decayed outcomes)))
+
+;; --- spread ------------------------------------------------------------------------------
+;; The simulations' spread misses the shocks the model has no way to see coming,
+;; so their ranges are too narrow. Per key ([kind channel stratum]), the spread
+;; is widened by the factor that makes the forecasts' log errors match it,
+;; learned from forecasts that have resolved: a recalibration of the
+;; predictive distribution around its median (Gneiting & Ranjan 2013).
+
+(def ^:private z90
+  "The 0.9 quantile of the standard normal: an 80% range is 2 z90 sd wide."
+  1.2815515655446004)
+
+(def spread-shrink
+  "Pseudo-forecasts whose errors match their spread, each key starts with."
+  10.0)
+
+(def spread-limits [0.5 5.0])
+
+(defn spread-factor
+  "How much to widen forecasts for `key` under `spread`: the root of the
+  ratio of squared log errors to the simulations' log variance."
+  [spread key]
+  (if-let [{:keys [e2 v n]} (get spread key)]
+    (let [vbar (/ v (max n 1e-9))
+          k (Math/sqrt (/ (+ e2 (* spread-shrink vbar)) (max 1e-12 (+ v (* spread-shrink vbar)))))]
+      (min (second spread-limits) (max (first spread-limits) k)))
+    1.0))
+
+(defn learn-spread
+  "`spread` updated with resolved forecasts: rows with :level, :channel,
+  :stratum, :q10, :q50, :q90 and :actual, their quantiles as forecast, after
+  widening by `spread` as it stands. Rows whose range is empty say nothing
+  about their spread and are skipped."
+  [spread rows]
+  (let [decayed (into {} (for [[k s] spread] [k (update-vals s #(* forget %))]))]
+    (reduce (fn [acc {:keys [level channel stratum q10 q50 q90 actual]}]
+              (let [lo (Math/log1p (max 0.0 q10)) hi (Math/log1p (max 0.0 q90))]
+                (if (> hi lo)
+                  (let [key [level channel stratum]
+                        f (spread-factor spread key)
+                        sd (/ (- hi lo) (* 2.0 z90 f))
+                        e (- (Math/log1p (max 0.0 actual)) (Math/log1p (max 0.0 q50)))]
+                    (update acc key (fn [s] (merge-with + (or s {:e2 0.0 :v 0.0 :n 0.0})
+                                                        {:e2 (* e e) :v (* sd sd) :n 1.0}))))
+                  acc)))
+            decayed rows)))
+
+(defn widen
+  "The sorted sample `xs` (a double array) with its log1p spread around its
+  median scaled by `k`, as a new sorted array, floored at zero."
+  ^doubles [k ^doubles xs]
+  (let [n (alength xs)
+        out (double-array n)]
+    (when (pos? n)
+      (let [m (Math/log1p (max 0.0 (m/quantile xs 0.5)))]
+        (dotimes [i n]
+          (aset out i (max 0.0 (Math/expm1 (+ m (* k (- (Math/log1p (max 0.0 (aget xs i))) m)))))))))
+    out))

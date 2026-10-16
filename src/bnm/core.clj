@@ -138,11 +138,13 @@
            :when (levels (geo/level-names (:level node)))
            [c ch] (map-indexed vector ont/channels)
            :let [recent (* horizon (aget ^doubles (:ybar node) c))
-                 xs (sort (for [s (range sims)] (model/total fc i s c)))
+                 raw (double-array (for [s (range sims)] (model/total fc i s c)))
+                 _ (java.util.Arrays/sort raw)
+                 {:keys [last stratum p-clim p-hist]} (track/baseline tr id c horizon recent)
+                 xs (vec (cal/widen (cal/spread-factor (:spread m) [(geo/kind id) ch stratum]) raw))
                  mean (/ (reduce + xs) sims)]
            :when (>= (max recent mean) min-rate)
-           :let [{:keys [last stratum p-clim p-hist]} (track/baseline tr id c horizon recent)
-                 p (/ (count (filter #(eval/escalated? % last horizon) xs)) (double sims))]]
+           :let [p (/ (count (filter #(eval/escalated? % last horizon) xs)) (double sims))]]
        {:node id
         :name (label id)
         :kind (geo/kind id)
@@ -152,6 +154,7 @@
         :last last
         :expected mean
         :low (nth xs (int (* 0.1 (dec sims))))
+        :median (nth xs (quot sims 2))
         :high (nth xs (int (* 0.9 (dec sims))))
         :stratum stratum
         :p-escalate p

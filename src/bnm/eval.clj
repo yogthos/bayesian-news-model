@@ -143,12 +143,12 @@
           :let [level (geo/kind id)
                 ^doubles act (get actual id zero)]
           [c ch] (map-indexed vector ont/channels)
-          :let [xs (sample-totals fc i c)
-                n (alength xs)
-                a (aget act c)
-                series (mapv #(aget ^doubles % c) past)
+          :let [series (mapv #(aget ^doubles % c) past)
                 b (peek series)
                 st (stratum (reduce max series) h)
+                xs (cal/widen (cal/spread-factor (:spread fc) [level ch st]) (sample-totals fc i c))
+                n (alength xs)
+                a (aget act c)
                 p (/ (count (filter #(escalated? % b h) xs)) (double n))
                 pc (climate-rate clim level ch st)]]
       {:id id :level level :channel ch :stratum st

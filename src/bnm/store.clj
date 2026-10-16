@@ -117,6 +117,7 @@
    :exposure (:exposure mdl)
    :stats (:stats mdl)
    :calibration (:calibration mdl)
+   :spread (:spread mdl)
    :pool (model/pool->data (:pool mdl))})
 
 (defn- volumes-part [mdl]
@@ -147,7 +148,7 @@
         (throw (ex-info "stored node does not fit the structure" {:id (:id row)}))))
     (model/refresh!
      (merge mdl
-            (select-keys header [:bin :exposure :stats :calibration])
+            (select-keys header [:bin :exposure :stats :calibration :spread])
             {:pending (or pending {})}
             (when track {:track (track/<-part track)})
             (when volumes

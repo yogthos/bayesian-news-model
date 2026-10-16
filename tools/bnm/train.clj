@@ -195,9 +195,9 @@
         (let [p (period-of b)]
           (if (and period (not= p period))
             ;; a period has ended: score its forecast, reshape, forecast the next
-            (let [scored (when pending
-                           (let [r (ev/score pending {:actual actual :hist hist :clim clim})
-                                 lbl (:period pending)]
+            (let [r (when pending (ev/score pending {:actual actual :hist hist :clim clim}))
+                  scored (when r
+                           (let [lbl (:period pending)]
                              (println (ev/summary-line r))
                              (write-rows! (str dir "/rows/" lbl ".tsv") (:rows r))
                              (spit (str dir "/forecasts/" lbl ".edn")
@@ -210,7 +210,9 @@
                   ;; a run's scored rows are on disk; it keeps only their summaries
                   results (cond-> results scored (conj (ev/slim scored)))
                   ;; the calibration and the climatology learn from the period just scored
-                  mdl (cond-> mdl scored (update :calibration cal/learn (:outcomes scored)))
+                  mdl (cond-> mdl
+                        scored (-> (update :calibration cal/learn (:outcomes scored))
+                                   (update :spread cal/learn-spread (:rows r))))
                   clim (cond-> clim scored (ev/learn-climate (:scored scored)))
                   hist (ev/add-history hist actual)
                   mdl (if (or (not every) (not= (year-of b) (year-of start)))
@@ -234,7 +236,8 @@
                                        (- (System/currentTimeMillis) t0) "ms")
                               (assoc fc :period lbl :levels (mapv :level (:nodes mdl))
                                      :checked (when keep (set (map (comp :id (:nodes mdl)) keep)))
-                                     :calibration (:calibration mdl))))]
+                                     :calibration (:calibration mdl)
+                                     :spread (:spread mdl))))]
               (println "period" (label-of start) "done;" (count (:nodes mdl)) "nodes;"
                        (quot (- (System/currentTimeMillis) started) 1000) "s"
                        (model/skill mdl))

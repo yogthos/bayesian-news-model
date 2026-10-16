@@ -75,6 +75,7 @@
       (is (seq (get-in mdl [:track :hist "UKR"])))
       (is (<= (count (get-in mdl [:track :hist "UKR"])) 6))
       (is (seq (:calibration mdl)) "the outcomes recalibrated it")
+      (is (seq (:spread mdl)) "and taught it how wide its ranges should be")
       (is (seq (get-in mdl [:track :clim])))
       (let [r (get (bnm/record mdl) [:country :violence])]
         (is (pos? (:n r)))
@@ -92,6 +93,7 @@
       (let [saved (bnm/save! st mdl)
             back (bnm/load st)]
         (is (= (bnm/record mdl) (bnm/record back)))
+        (is (= (:spread mdl) (:spread back)))
         (is (= (mapv vec (get-in mdl [:track :hist "UKR"])) (mapv vec (get-in back [:track :hist "UKR"]))))
         (let [marked (assoc-in saved [:track :forecasts 999] {:rows {}})]
           (bnm/save! st marked)
