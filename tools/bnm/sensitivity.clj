@@ -24,12 +24,10 @@
 
 (defn- scores [run]
   (let [dir (str "data/runs/" run)
-        scored (read-edn (str dir "/scored.edn"))
         periods (read-edn (str dir "/periods.edn"))
         esc (fn [ch st]
-              (ev/escalation-scores (filter #(and (= :country (:level %)) (= ch (:channel %))
-                                                  (or (nil? st) (= st (:stratum %))))
-                                            scored)))
+              (ev/escalation-scores (filter #(or (nil? st) (= st (:stratum %)))
+                                            (ev/read-scored (str dir "/scored.edn") :country ch))))
         totals (keep #(get-in % [:totals [:country :violence]]) periods)
         mean (fn [k] (/ (reduce + (keep k totals)) (max 1 (count (keep k totals)))))]
     {:violence (esc :violence nil) :onset (esc :violence :quiet) :protest (esc :protest nil)

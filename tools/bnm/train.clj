@@ -157,9 +157,11 @@
                vols)
         [readers stream] (open-stream)
         mdl (model/create (structure/build vols (:structure-opts config {})) config)
-        started (System/currentTimeMillis)]
+        started (System/currentTimeMillis)
+        scored-path (str dir "/scored.edn")
+        _ (io/make-parents (str dir "/rows/x"))
+        scored-out (ev/open-scored scored-path)]
     (io/make-parents (str dir "/forecasts/x"))
-    (io/make-parents (str dir "/rows/x"))
     (spit (str dir "/args.edn") (pr-str {:sources sources :eval-from eval-from :from from :every every
                                          :sims sims :config (:config mdl)}))
     (loop [mdl mdl
@@ -186,7 +188,8 @@
                                                :actual (into {} (for [[id a] actual] [id (vec a)]))
                                                :hist hist :clim clim}))
                               (str dir "/model.edn"))
-            (ev/write-report! dir results)
+            (ev/close-scored! scored-out)
+            (ev/write-report! dir results scored-path)
             (doseq [r readers] (.close ^java.io.Reader (val r)))
             results)
         (let [p (period-of b)]
@@ -199,11 +202,13 @@
                              (write-rows! (str dir "/rows/" lbl ".tsv") (:rows r))
                              (spit (str dir "/forecasts/" lbl ".edn")
                                    (with-out-str (pp/pprint (ev/inspect r))))
+                             (ev/write-scored! scored-out (:scored r))
                              (dissoc r :rows)))
                   ppc-acc (if (and ppc? pending)
                             (add-ppc ppc-acc (ev/ppc pending (into {} (for [[id v] weeks] [id (persistent! v)]))))
                             ppc-acc)
-                  results (cond-> results scored (conj scored))
+                  ;; a run's scored rows are on disk; it keeps only their summaries
+                  results (cond-> results scored (conj (ev/slim scored)))
                   ;; the calibration and the climatology learn from the period just scored
                   mdl (cond-> mdl scored (update :calibration cal/learn (:outcomes scored)))
                   clim (cond-> clim scored (ev/learn-climate (:scored scored)))

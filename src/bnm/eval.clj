@@ -31,7 +31,8 @@
             [bnm.math :as m]
             [bnm.model :as model]
             [bnm.ontology :as ont]
-            [clojure.pprint :as pp]
+            [clojure.edn :as edn]
+            [clojure.java.io :as io]
             [clojure.string :as str]))
 
 (def escalation-ratio 1.5)
@@ -211,6 +212,37 @@
                    (for [[k g] (group-by (juxt :level :channel) rs)]
                      [k (total-scores g)]))}))
 
+;; --- scored rows on disk -----------------------------------------------------------------
+
+;; A run's scored rows are too many to hold or print at once (millions, with
+;; actors and provinces): they go to scored.edn as each period is scored, one
+;; row per line inside a vector, so the file reads whole as EDN or line by line.
+
+(defn open-scored ^java.io.Writer [path]
+  (doto ^java.io.Writer (io/writer path) (.write "[\n")))
+
+(defn write-scored! [^java.io.Writer w rows]
+  (doseq [r rows] (.write w (pr-str r)) (.write w "\n"))
+  (.flush w))
+
+(defn close-scored! [^java.io.Writer w]
+  (.write w "]\n")
+  (.close w))
+
+(defn read-scored
+  "The rows of a scored file, or only those of `level` and `channel`."
+  ([path] (read-scored path nil nil))
+  ([path level channel]
+   (let [want (fn [line] (and (str/starts-with? line "{")
+                              (or (nil? level) (str/includes? line (str ":level " level)))
+                              (or (nil? channel) (str/includes? line (str ":channel " channel)))))]
+     (with-open [r (io/reader path)]
+       (into [] (comp (filter want)
+                      (map edn/read-string)
+                      (filter #(and (or (nil? level) (= level (:level %)))
+                                    (or (nil? channel) (= channel (:channel %))))))
+             (line-seq r))))))
+
 ;; --- pooled escalation scores --------------------------------------------------------------
 
 (defn- auc
@@ -280,24 +312,39 @@
      :brier-mc (mean (for [r g :when (:sims r)]
                        (/ (* (:p-escalate r) (- 1.0 (:p-escalate r))) (:sims r))))}))
 
+(defn- pooled-escalation
+  "Escalation scores of `scored` rows (all of one level and channel, or any
+  mix), pooled by level, channel and stratum, and over :all strata."
+  [scored]
+  (let [groups (concat (group-by (juxt :level :channel :stratum) scored)
+                       (group-by (juxt :level :channel (constantly :all)) scored))]
+    (into {} (for [[k g] groups] [k (escalation-scores g)]))))
+
+(defn- pooled-totals [results]
+  (into (sorted-map)
+        (for [key (distinct (mapcat (comp keys :totals) results))
+              :let [xs (keep #(get-in % [:totals key]) results)]]
+          [key (into {} (for [f [:n :err-model :err-persist :err-clim :crps-model
+                                 :crps-hist :coverage80]
+                              :let [vs (keep f xs)]
+                              :when (seq vs)]
+                          [f (mean vs)]))])))
+
 (defn aggregate
   "Scores over several periods' results: totals averaged over periods,
-  escalation pooled by level, channel and stratum (and :all strata)."
-  [results]
-  (let [scored (mapcat :scored results)
-        totals (into (sorted-map)
-                     (for [key (distinct (mapcat (comp keys :totals) results))
-                           :let [xs (keep #(get-in % [:totals key]) results)]]
-                       [key (into {} (for [f [:n :err-model :err-persist :err-clim :crps-model
-                                              :crps-hist :coverage80]
-                                           :let [vs (keep f xs)]
-                                           :when (seq vs)]
-                                       [f (mean vs)]))]))
-        groups (concat (group-by (juxt :level :channel :stratum) scored)
-                       (group-by (juxt :level :channel (constantly :all)) scored))]
-    {:periods (mapv :period results)
-     :totals totals
-     :escalation (into {} (for [[k g] groups] [k (escalation-scores g)]))}))
+  escalation pooled by level, channel and stratum (and :all strata). The
+  escalation rows are the results' :scored, or those of a scored file (see
+  `write-scored!`), read one level and channel at a time."
+  ([results]
+   {:periods (mapv :period results)
+    :totals (pooled-totals results)
+    :escalation (pooled-escalation (mapcat :scored results))})
+  ([results scored-path]
+   {:periods (mapv :period results)
+    :totals (pooled-totals results)
+    :escalation (into {} (for [l (sort-by #(.indexOf ^java.util.List kind-order %) scored-kinds)
+                               ch escalation-channels]
+                           (pooled-escalation (read-scored scored-path l ch))))}))
 
 ;; --- reports ---------------------------------------------------------------------------
 
@@ -335,48 +382,63 @@
             (f2 (:coverage80 t)) (f3 (:ap-model e)) (f3 (:ap-hist e))
             (:positives q) (f3 (:ap-model q)) (f3 (:ap-hist q)))))
 
-(defn report-text [results]
-  (let [{:keys [periods totals escalation]} (aggregate results)
-        level-name name
-        by-kind (fn [m] (sort-by (fn [[[l ch]]] [(.indexOf ^java.util.List kind-order l) (name ch)]) m))]
-    (with-out-str
-      (println "Backtest over" (count periods) "periods:" (first periods) "-" (last periods))
-      (println)
-      (println "Totals: mean |log error| of the forecast mean (model, persistence, mean of last 3),")
-      (println "skill against persistence, CRPS in log space (model, own history as a sample), 80% coverage")
-      (doseq [[[l ch] s] (by-kind totals)]
-        (println (format "  %-9s %-16s n=%5.0f  err %s %s %s  skill %s  crps %s %s  cover80 %s"
-                         (level-name l) (name ch) (:n s) (f3 (:err-model s)) (f3 (:err-persist s))
-                         (f3 (:err-clim s)) (pct (skill (:err-model s) (:err-persist s)))
-                         (f3 (:crps-model s)) (f3 (:crps-hist s)) (f2 (:coverage80 s)))))
-      (println)
-      (println (str "Escalation (>= " escalation-ratio "x the last period), by the stratum of the node's history."))
-      (println "Brier skill against climatology (raw model, calibrated, own history); ROC AUC and average")
-      (println (str "precision (model / history); precision and recall in the top " top-k " per period (model / history);"))
-      (println "and the Monte Carlo standard error of the model's probabilities (mc), with what that noise adds to its Brier score")
-      (doseq [l [:country :actor :province :subregion]
-              ch escalation-channels
-              st (cons :all strata)
-              :let [s (escalation [l ch st])]
-              :when s]
-        (println (format "  %-9s %-16s %-6s n=%6d pos=%5d rate %.3f  BSS %s %s %s  auc %s/%s  ap %s/%s  P@%d %s/%s  R@%d %s/%s  mc %s (+%s)"
-                         (level-name l) (name ch) (name st) (:n s) (:positives s) (:rate s)
-                         (pct (skill (:brier-model s) (:brier-clim s)))
-                         (pct (skill (:brier-cal s) (:brier-clim s)))
-                         (pct (skill (:brier-hist s) (:brier-clim s)))
-                         (f3 (:auc-model s)) (f3 (:auc-hist s)) (f3 (:ap-model s)) (f3 (:ap-hist s))
-                         top-k (f2 (get-in s [:top-model :precision])) (f2 (get-in s [:top-hist :precision]))
-                         top-k (f2 (get-in s [:top-model :recall])) (f2 (get-in s [:top-hist :recall]))
-                         (f3 (:mc-se s)) (f3 (:brier-mc s)))))
-      (println)
-      (println "Per period:")
-      (doseq [r results] (println " " (summary-line r))))))
+(defn report-text
+  "The report of `results`, pooled by `aggregate` (from the results' rows, or
+  a scored file's). A result's :summary, if it has one, is its line."
+  ([results] (report-text results (aggregate results)))
+  ([results agg]
+   (let [{:keys [periods totals escalation]} agg
+         level-name name
+         by-kind (fn [m] (sort-by (fn [[[l ch]]] [(.indexOf ^java.util.List kind-order l) (name ch)]) m))]
+     (with-out-str
+       (println "Backtest over" (count periods) "periods:" (first periods) "-" (last periods))
+       (println)
+       (println "Totals: mean |log error| of the forecast mean (model, persistence, mean of last 3),")
+       (println "skill against persistence, CRPS in log space (model, own history as a sample), 80% coverage")
+       (doseq [[[l ch] s] (by-kind totals)]
+         (println (format "  %-9s %-16s n=%5.0f  err %s %s %s  skill %s  crps %s %s  cover80 %s"
+                          (level-name l) (name ch) (:n s) (f3 (:err-model s)) (f3 (:err-persist s))
+                          (f3 (:err-clim s)) (pct (skill (:err-model s) (:err-persist s)))
+                          (f3 (:crps-model s)) (f3 (:crps-hist s)) (f2 (:coverage80 s)))))
+       (println)
+       (println (str "Escalation (>= " escalation-ratio "x the last period), by the stratum of the node's history."))
+       (println "Brier skill against climatology (raw model, calibrated, own history); ROC AUC and average")
+       (println (str "precision (model / history); precision and recall in the top " top-k " per period (model / history);"))
+       (println "and the Monte Carlo standard error of the model's probabilities (mc), with what that noise adds to its Brier score")
+       (doseq [l [:country :actor :province :subregion]
+               ch escalation-channels
+               st (cons :all strata)
+               :let [s (escalation [l ch st])]
+               :when s]
+         (println (format "  %-9s %-16s %-6s n=%6d pos=%5d rate %.3f  BSS %s %s %s  auc %s/%s  ap %s/%s  P@%d %s/%s  R@%d %s/%s  mc %s (+%s)"
+                          (level-name l) (name ch) (name st) (:n s) (:positives s) (:rate s)
+                          (pct (skill (:brier-model s) (:brier-clim s)))
+                          (pct (skill (:brier-cal s) (:brier-clim s)))
+                          (pct (skill (:brier-hist s) (:brier-clim s)))
+                          (f3 (:auc-model s)) (f3 (:auc-hist s)) (f3 (:ap-model s)) (f3 (:ap-hist s))
+                          top-k (f2 (get-in s [:top-model :precision])) (f2 (get-in s [:top-hist :precision]))
+                          top-k (f2 (get-in s [:top-model :recall])) (f2 (get-in s [:top-hist :recall]))
+                          (f3 (:mc-se s)) (f3 (:brier-mc s)))))
+       (println)
+       (println "Per period:")
+       (doseq [r results] (println " " (or (:summary r) (summary-line r))))))))
 
-(defn write-report! [dir results]
-  (spit (str dir "/periods.edn")
-        (with-out-str (pp/pprint (mapv #(dissoc % :rows :scored :outcomes) results))))
-  (spit (str dir "/scored.edn") (with-out-str (pp/pprint (vec (mapcat :scored results)))))
-  (let [text (report-text results)]
+(defn slim
+  "A scored result without its rows, for keeping over a whole run: what the
+  report needs once its scored rows are on disk."
+  [r]
+  (-> (dissoc r :rows :scored :outcomes)
+      (assoc :summary (summary-line r))))
+
+(defn write-report!
+  "Writes periods.edn and report.txt for `results`, whose scored rows are in
+  `scored-path`; prints the report."
+  [dir results scored-path]
+  (with-open [w (io/writer (str dir "/periods.edn"))]
+    (.write w "[\n")
+    (doseq [r results] (.write w (pr-str (dissoc r :rows :scored :outcomes :summary))) (.write w "\n"))
+    (.write w "]\n"))
+  (let [text (report-text results (aggregate results scored-path))]
     (spit (str dir "/report.txt") text)
     (println text)))
 
