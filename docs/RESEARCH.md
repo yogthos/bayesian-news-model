@@ -163,3 +163,25 @@ A strong, sign-stable financialization → deindustrialization edge learned from
 - **Science and patents:** the OpenAlex snapshot; USPTO Open Data Portal patents (formerly PatentsView, key required since March 2026); KPSS patent values; the Kelly et al. breakthrough index.
 - **Markets:** FRED and Stooq.
 - **Literature priors:** Garg–Fetzer claim graphs.
+
+## Forecasting counts over a hierarchy
+
+A second review, also October 2026, after the first backtests showed forecast means far above persistence. It asks what the literature on multiscale Bayesian count models says about the model as built.
+
+- **Our Hawkes model is a linear count autoregression.** A discrete-time Hawkes process is an INAR(∞) / linear INGARCH model (Kirchner 2016 SPA), so the INGARCH results on stationarity and multi-step forecasts apply (Fokianos, Rahbek & Tjøstheim 2009 JASA; Liboschik, Fokianos & Fried 2017 JSS). The log-linear form (Fokianos & Tjøstheim 2011) allows mean reversion and inhibition and does not explode.
+- **Branching ratios are biased toward one.** A baseline that moves but is modelled as constant is absorbed into excitation (Filimonov & Sornette 2015 QF; Omi, Hirata & Aihara 2017 PRE). Our toy checks agree: i.i.d. Poisson noise gets a branching ratio near 0.95. The remedy is a baseline that moves, a discounted local level, with excitation as excursions around it.
+- **Parameter uncertainty enters convexly.** The k-step mean contains Σ nʲ, so averaging over posterior draws of n near a cap gives E[1/(1−n)] far above 1/(1−E[n]). Draws must respect stationarity (truncate the posterior), or the mean is dominated by the few that explode.
+- **Conjugate dynamic count models fit the online setting.** The Poisson–gamma discount model (Smith & Miller 1986 JRSS-B; Harvey & Fernandes 1989 JBES; West, Harrison & Migon 1985 JASA) has a closed-form negative binomial predictive with exact zeros, forgetting by discounting, and a flat forecast function: calibrated persistence. Berry & West 2020 (JBES) add a Bernoulli zero/non-zero part (DCMM) and share information across series through simulated aggregate factors (decouple/recouple; West 2020 AISM).
+- **Multiscale models run from the aggregate down.** Kolaczyk 1999 (JASA) and Fonseca & Ferreira 2017 (JASA) model a total and nested shares (Poisson–multinomial; a discounted Dirichlet over time), which is coherent by construction and lets noisy leaves borrow from an accurately forecast parent. Children help the parent through shares and leading indicators, not through their summed forecasts.
+- **Reconciliation.** Top-down with fixed proportions is biased. Bottom-up wastes the aggregate's signal. MinT (Wickramasuriya, Athanasopoulos & Hyndman 2019 JASA) beats both for points. For counts, reconciliation by conditioning bottom-level samples on the upper forecast (Corani et al.; Zambon, Azzimonti & Corani 2024, bottom-up importance sampling; R package `bayesRecon`) gives coherent, sharper distributions. It cannot fix biased base forecasts.
+- **Conflict benchmarks.** In the 2023/24 VIEWS challenge (Hegre et al. 2025 JPR), forecasts are samples scored by CRPS. Last value plus Poisson noise lost to all-zero, and the strongest benchmark was a unit's own last 12 months taken as an empirical distribution. Winners used negative binomial, hurdle and Tweedie likelihoods. Onsets remain the separate hard problem (Mueller & Rauh 2018 APSR, 2022 JEEA).
+- **Calibration.** Decent AUC with negative Brier skill is miscalibration with intact discrimination. Recalibrate probabilities isotonically (CORP: Dimitriadis, Gneiting & Jordan 2021 PNAS), check the predictive with non-randomised PIT for counts (Czado, Gneiting & Held 2009), and match the point forecast to the score: the median under absolute log error, the mean for level totals (Gneiting 2011 JASA).
+
+What this means for the model, in order:
+
+1. Truncate parameter draws to stationarity (done: `cap-factors!`).
+2. Draw whole events at the raw scale, negative binomial, with dispersion floored at Poisson in raw counts (done: bnm-enb.7).
+3. A discounted local-level baseline, with excitation as excursions around it and a prior that keeps n well below one.
+4. Parents from their own count model, children as discounted shares of it, or base forecasts at every node reconciled by conditioning.
+5. Isotonic recalibration per channel, kind and stratum; PIT and CRPS reported; the own-last-year empirical distribution as a benchmark.
+6. A separate onset (hurdle) model for quiet nodes.
