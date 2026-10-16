@@ -147,3 +147,30 @@
         (if (>= (inc i) n)
           (aget xs (dec n))
           (+ (* (- 1.0 f) (aget xs i)) (* f (aget xs (inc i)))))))))
+
+(defn solve-spd
+  "x with a x = b for a symmetric positive definite n × n matrix `a` (row
+  major), by Cholesky decomposition. Leaves `a` and `b` as they were."
+  ^doubles [^doubles a ^doubles b ^long n]
+  (let [l (double-array (* n n))
+        x (aclone b)]
+    (dotimes [i n]
+      (dotimes [j (inc i)]
+        (let [s (loop [k 0 s (aget a (+ (* i n) j))]
+                  (if (< k j) (recur (inc k) (- s (* (aget l (+ (* i n) k)) (aget l (+ (* j n) k))))) s))]
+          (aset l (+ (* i n) j)
+                (if (= i j)
+                  (Math/sqrt (Math/max s 1e-300))
+                  (/ s (aget l (+ (* j n) j))))))))
+    ;; forward: l y = b, then back: l' x = y
+    (dotimes [i n]
+      (aset x i (/ (loop [k 0 s (aget x i)]
+                     (if (< k i) (recur (inc k) (- s (* (aget l (+ (* i n) k)) (aget x k)))) s))
+                   (aget l (+ (* i n) i)))))
+    (loop [i (dec n)]
+      (when (>= i 0)
+        (aset x i (/ (loop [k (inc i) s (aget x i)]
+                       (if (< k n) (recur (inc k) (- s (* (aget l (+ (* k n) i)) (aget x k)))) s))
+                     (aget l (+ (* i n) i))))
+        (recur (dec i))))
+    x))

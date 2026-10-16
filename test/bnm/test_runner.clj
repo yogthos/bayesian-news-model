@@ -4,14 +4,16 @@
             [bnm.calibrate-test]
             [bnm.core-test]
             [bnm.model-test]
-            [bnm.store-test]))
+            [bnm.store-test]
+            [bnm.slow-test]))
 
 (def namespaces
   '[bnm.math-test
     bnm.model-test
     bnm.core-test
     bnm.calibrate-test
-    bnm.store-test])
+    bnm.store-test
+    bnm.slow-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
