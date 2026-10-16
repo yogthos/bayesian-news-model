@@ -21,6 +21,7 @@
             [bnm.model :as model]
             [bnm.series :as series]
             [bnm.store :as store]
+            [bnm.track :as track]
             [bnm.structure :as structure]
             [bnm.time :as t]
             [clojure.edn :as edn]
@@ -134,7 +135,15 @@
            pending nil          ; the forecast for this period, made at its start
            results []]
       (if (or (nil? b) (> (year-of b) to))
-        (do (store/write-file mdl (str dir "/model.edn"))
+        (do (store/write-file (cond-> mdl
+                                ;; quarters as live scoring cuts them: the model
+                                ;; ships the history and climatology it was
+                                ;; scored with, for a live model to carry on
+                                (= every (track/period-bins mdl))
+                                (assoc :track {:period period
+                                               :actual (into {} (for [[id a] actual] [id (vec a)]))
+                                               :hist hist :clim clim}))
+                              (str dir "/model.edn"))
             (ev/write-report! dir results)
             (doseq [r readers] (.close ^java.io.Reader (val r)))
             results)

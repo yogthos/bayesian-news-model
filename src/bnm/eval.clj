@@ -86,7 +86,7 @@
                     (fn [[pos n]] [(+ (or pos 0.0) (if escalated 1.0 0.0)) (+ (or n 0.0) 1.0)])))
           clim scored))
 
-(defn- history-rate
+(defn history-rate
   "How often `series` (oldest first) escalated from one period to the next,
   with two pseudo-periods at `prior`."
   [series horizon prior]

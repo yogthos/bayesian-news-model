@@ -3,9 +3,10 @@
 
   A model is stored as a few named parts of plain data and one row per node.
   The parts are :header (config, tracked units, exposures, calibration:
-  small), :volumes (event volumes per unit, which only restructuring reads)
-  and :pending (the events buffered for the open bin, which change with every
-  batch); a host keeps each as text (`->text`, `<-text`). A row is
+  small), :volumes (event volumes per unit, which only restructuring reads),
+  :pending (the events buffered for the open bin, which change with every
+  batch) and :track (the history and the record its live scoring keeps, see
+  `bnm.track`); a host keeps each as text (`->text`, `<-text`). A row is
 
     {:id \"UKR:GOV|UKR:OPP\" :level 0 :links \"{:parents [...] ...}\" :data <bytes>}
 
@@ -29,6 +30,7 @@
   first for tests, the second a single binary file for shipping a trained
   model."
   (:require [bnm.model :as model]
+            [bnm.track :as track]
             [clojure.edn :as edn]
             [clojure.java.io :as io]))
 
@@ -37,7 +39,7 @@
 (def format-version 3)
 
 (defprotocol ModelStore
-  (read-part [store part] "The stored value of `part` (:header, :volumes, :pending), or nil.")
+  (read-part [store part] "The stored value of `part` (:header, :volumes, :pending, :track), or nil.")
   (read-nodes [store ids] "The rows of the nodes with ids in `ids`, or of every node when nil.")
   (node-ids [store] "The ids of every stored node.")
   (write! [store parts rows deleted]
@@ -130,7 +132,7 @@
 
 (defn assemble
   "A working model from its parts and node rows."
-  [{:keys [header volumes pending]} node-rows]
+  [{:keys [header volumes pending track]} node-rows]
   (when-not (= format-version (:format header))
     (throw (ex-info "unknown model format" {:format (:format header)})))
   (let [linked (sort-by (comp :order second) (map (juxt identity row-links) node-rows))
@@ -146,6 +148,7 @@
      (merge mdl
             (select-keys header [:bin :exposure :stats :calibration])
             {:pending (or pending {})}
+            (when track {:track (track/<-part track)})
             (when volumes
               {:volumes {:epoch (:epoch volumes)
                          :units (java.util.HashMap. ^java.util.Map (:units volumes))}})))))
@@ -156,25 +159,30 @@
   (when-let [h (read-part store :header)]
     (let [mdl (assemble {:header h
                          :volumes (read-part store :volumes)
-                         :pending (read-part store :pending)}
+                         :pending (read-part store :pending)
+                         :track (read-part store :track)}
                         (read-nodes store nil))]
-      (assoc mdl :saved {:bin (:bin mdl) :ids (mapv :id (:nodes mdl))}))))
+      (assoc mdl :saved {:bin (:bin mdl) :ids (mapv :id (:nodes mdl)) :track (:track mdl)}))))
 
 (defn save-model!
   "Writes `mdl` to `store`. When it has learned since it was last saved to
   or loaded from the store (the model's :saved marks when), that is every
   part and every node, deleting nodes the structure has dropped; otherwise
-  only the buffered events. Returns the model, marked saved."
+  only the buffered events, and its track (see `bnm.track`) when a forecast
+  was registered since. Returns the model, marked saved."
   [store mdl]
   (let [ids (mapv :id (:nodes mdl))
         saved (:saved mdl)
         fresh? (and saved (= (:bin saved) (:bin mdl)) (= (:ids saved) ids))]
     (if fresh?
-      (write! store {:pending (:pending mdl {})} [] [])
-      (write! store {:header (header mdl) :volumes (volumes-part mdl) :pending (:pending mdl {})}
+      (write! store (cond-> {:pending (:pending mdl {})}
+                      (not (identical? (:track saved) (:track mdl))) (assoc :track (track/->part (:track mdl))))
+              [] [])
+      (write! store {:header (header mdl) :volumes (volumes-part mdl) :pending (:pending mdl {})
+                     :track (track/->part (:track mdl))}
               (rows mdl)
               (vec (remove (set ids) (node-ids store)))))
-    (assoc mdl :saved {:bin (:bin mdl) :ids ids})))
+    (assoc mdl :saved {:bin (:bin mdl) :ids ids :track (:track mdl)})))
 
 ;; --- one node at a time ---------------------------------------------------------------------
 

@@ -24,12 +24,30 @@ codes articles into events, feeds them to the model, and stores the model.
 (def m (bnm/save! store m))                       ; writes only what changed
 (bnm/risks (bnm/outlook m {:horizon 13}))         ; likeliest escalations next quarter
 (bnm/drivers store "UKR:OPP" :protest)            ; one node, read without loading the model
+
+;; scoring live, as the backtest scores: on the eve of a quarter, keep its
+;; outlook; once the quarter is over it is scored, and the outcomes
+;; recalibrate the model and teach it the climatology
+(when (bnm/period-eve? m)
+  (def m (bnm/register m (bnm/outlook m {:horizon 13}))))
+(bnm/record m)                                    ; Brier scores, by kind and channel
 ```
+
+### Scoring live
+
+The model keeps a track of how its forecasts turn out (`bnm.track`), in quarters (`:period-bins`, 13 by default):
+- the observed totals of the quarter in progress;
+- each node's last six quarters, which give its stratum and the baseline an escalation is measured from (the last quarter's total);
+- the climatology of escalation;
+- the outlook registered on each quarter's eve;
+- the scores of the last twelve quarters.
+
+When a quarter ends, its outlook is scored against what was observed. The outcomes recalibrate the probabilities (`:p-cal`), the climatology learns from them, and the quarter joins the history. An outlook row carries the benchmarks it is scored against: the climatology's probability (`:p-clim`) and the node's history's (`:p-hist`). `bnm.train` run with `--every 13` saves its history and climatology with the model, so a model shipped from training carries them into live use.
 
 ### Storage
 
 A model is a few named parts of plain data and one row per node, behind the `bnm.store/ModelStore` protocol: `read-part`, `read-nodes`, `node-ids` and `write!`. A host such as newsroom implements it over two tables:
-- **parts** — `:header`, `:volumes` and `:pending`, stored as text;
+- **parts** — `:header`, `:volumes`, `:pending` and `:track`, stored as text;
 - **nodes** — id, level, links as EDN text, and data as a blob.
 
 Each node's learned arrays are packed as little-endian doubles, about 6.6 KB per node. The model is kept in memory and saved after each batch of events. Before a weekly bin closes, a save writes only the buffered events; after one closes, it writes every node. A single node's drivers can be read straight from the store.
