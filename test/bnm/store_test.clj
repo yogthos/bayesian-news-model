@@ -25,7 +25,11 @@
         (store/write! s (update-vals parts (comp store/<-text store/->text)) rows deleted)))))
 
 (deftest round-trips-through-stores
-  (let [mdl (assoc (trained 60) :pending {61 {"toy" [["RUS" nil nil nil nil 5 3.0]]}})
+  (let [mdl (trained 60)
+        ;; restructured, so it has learned a pool of priors to store too
+        mdl (assoc (model/restructure mdl (:structure mdl))
+                   :pending {61 {"toy" [["RUS" nil nil nil nil 5 3.0]]}})
+        _ (is (seq (get-in mdl [:pool :shares])))
         path (str (System/getProperty "java.io.tmpdir") "/bnm-store-test.bin")
         _ (store/write-file mdl path)
         mem (store/memory-store)
@@ -68,9 +72,12 @@
   (let [mdl (trained 80)
         ;; rebuilt from what was observed: BLR and POL never appear in the data
         rebuilt (structure/build (series/volumes mdl) {:min-dyad-volume 0.0 :min-country-volume 0.0})
-        grown (model/restructure mdl rebuilt)]
+        grown (model/restructure mdl rebuilt)
+        unpooled (model/restructure (assoc-in mdl [:config :pooling] false) rebuilt)]
     (is (= #{"FRA" "RUS" "UKR"} (set (filter #(= 3 (count %)) (map :id (:nodes grown))))))
-    (is (= (vec (:mu (model/node mdl "UKR"))) (vec (:mu (model/node grown "UKR")))))
+    (is (= (vec (:mu (model/node mdl "UKR"))) (vec (:mu (model/node unpooled "UKR"))))
+        "without pooling, a node's prior on its baseline is unchanged, and so is mu")
+    (is (= (vec (:smu (model/node mdl "UKR"))) (vec (:smu (model/node grown "UKR")))))
     (testing "a connection both structures have keeps what it learned"
       ;; its alpha moves only with its prior, which is re-centred on the new
       ;; set of sources; its statistics carry over as they are

@@ -139,3 +139,25 @@
         [m-point v-point] (stats (assoc-in mdl [:config :param-uncertainty] false))]
     (is (> v-draw v-point) "drawing the parameters widens the forecast")
     (is (< (Math/abs (- 1.0 (/ m-draw m-point))) 0.2) "without moving its centre much")))
+
+(deftest pooled-priors-stay-centred
+  (let [mdl (reduce (fn [mdl [t bin]] (first (series/observe-bin! mdl t bin)))
+                    (series/with-routes (model/create (toy-structure)))
+                    (map-indexed vector (simulate-world 80 4)))
+        pool (model/learn-pool mdl)
+        fresh (model/create (:structure mdl) {} pool)
+        sc (* (model/scales (:config fresh)) model/C)]
+    (testing "the pool has learned shares for each kind of node it saw"
+      (is (contains? (:mu pool) :country))
+      (is (contains? (:shares pool) [:country :self]))
+      (is (every? #(<= 0.02 % 0.8) (get-in pool [:mu :country]))))
+    (testing "and its priors still predict exactly the typical rate"
+      (doseq [n (:nodes fresh)]
+        (java.util.Arrays/fill ^doubles (:ybar n) 3.0)
+        (java.util.Arrays/fill ^doubles (:h n) 3.0))
+      (model/refresh! fresh)
+      (let [hs (object-array (map :h (:nodes fresh)))]
+        (doseq [n (:nodes fresh)]
+          (let [out (double-array model/C)]
+            (#'model/own-rate! n hs out sc)
+            (is (every? #(< (Math/abs (- % 3.0)) 1e-9) out) (:id n))))))))

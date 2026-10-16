@@ -46,7 +46,8 @@
   `forecast` mutate or read it; `bnm.store` turns it into EDN for a database.
   The arithmetic lives in small functions over ^doubles parameters, which is
   what lets jolt compile it to unboxed flonum code."
-  (:require [bnm.math :as m]
+  (:require [bnm.geo :as geo]
+            [bnm.math :as m]
             [bnm.ontology :as ont]))
 
 (set! *unchecked-math* true)
@@ -74,6 +75,7 @@
    :max-branching 0.95 ; in a forecast, excitation explains at most this share
                        ; of a node's typical rate (see `stable-params`)
    :param-uncertainty true ; forecasts draw parameters from their posterior
+   :pooling true       ; priors learned across nodes of a kind (see learn-pool)
    :level-noise 0.0    ; in a forecast, the log-sd a node's level drifts by over
                        ; 52 bins beyond what its dynamics explain: shocks the
                        ; model has no way to see coming
@@ -157,9 +159,9 @@
                            (+ (* w sb) (aget ta (+ jsc q))))))))))
 
 (defn- refresh-mu!
-  [^doubles mu ^doubles smu ^doubles tmu ^doubles ybar ^double w ^double share]
+  [^doubles mu ^doubles smu ^doubles tmu ^doubles ybar ^double w ^doubles share]
   (dotimes [c C]
-    (aset mu c (/ (+ (* share (aget ybar c) w) (aget smu c)) (+ w (aget tmu c))))))
+    (aset mu c (/ (+ (* (aget share c) (aget ybar c) w) (aget smu c)) (+ w (aget tmu c))))))
 
 (defn- ratios!
   "r[c] = y[c] / own[c]: how much of what was expected came about."
@@ -233,7 +235,49 @@
       :parent [(:parent-same s) (:parent-cross s)]
       :neighbor [(:neighbor-same s) (:neighbor-cross s)])))
 
-(defn- new-node [n index cfg]
+(defn- default-share
+  "The hand-set prior share of an entry: source kind `kind`, time scale `s`,
+  target channel `c`, source channel `c2`."
+  ^double [cfg kind ^long s ^long c ^long c2]
+  (let [[same cross] (kind-shares cfg kind)]
+    (double (* (nth (:scale-split cfg) s) (if (= c c2) same cross)))))
+
+(defn- pooled
+  "The pool's value at `i` for group `k`, or nil."
+  [pool k ^long i]
+  (when-let [^doubles a (get-in pool [:shares k])] (aget a i)))
+
+(defn- fill-prior!
+  "Sets a node's prior: per target channel, its baseline's share (:mu-share)
+  and its sources' shares, taken from `pool` (learned across nodes of the
+  same kind, see `learn-pool`) or, failing that, from the config, then
+  centred so the baseline and every source together account for exactly
+  the node's typical rate, whatever its number of sources."
+  [node cfg pool]
+  (let [kind (geo/kind (:id node))
+        kinds (:kinds node)
+        k (count kinds)
+        S (scales cfg)
+        sc (* S C)
+        ^doubles prior (:prior node)
+        ^doubles mu-share (:mu-share node)]
+    (dotimes [c C]
+      (aset mu-share c (double (or (some-> (get-in pool [:mu kind]) (nth c))
+                                   (get-in cfg [:share :mu]))))
+      (dotimes [j k]
+        (let [src-kind (kinds j)]
+          (dotimes [s S]
+            (dotimes [c2 C]
+              (aset prior (+ (* c k sc) (* j sc) (* s C) c2)
+                    (double (or (pooled pool [kind src-kind] (+ (* c sc) (* s C) c2))
+                                (default-share cfg src-kind s c c2))))))))
+      (let [row (* c k sc)
+            total (loop [i 0 acc 0.0] (if (< i (* k sc)) (recur (inc i) (+ acc (aget prior (+ row i)))) acc))
+            f (/ (- 1.0 (aget mu-share c)) (Math/max 1e-12 total))]
+        (dotimes [i (* k sc)] (aset prior (+ row i) (* f (aget prior (+ row i)))))))
+    node))
+
+(defn- new-node [n index cfg pool]
   (let [srcs (vec (concat [[(:id n) :self]]
                           (map vector (:parents n) (repeat :parent))
                           (map vector (:neighbors n) (repeat :neighbor))))
@@ -241,52 +285,43 @@
         k (count srcs)
         S (scales cfg)
         sc (* S C)
-        split (:scale-split cfg)
         prior (double-array (* C k sc))]
-    (dotimes [c C]
-      (dotimes [j k]
-        (let [[same cross] (kind-shares cfg (second (srcs j)))]
-          (dotimes [s S]
-            (dotimes [c2 C]
-              (aset prior (+ (* c k sc) (* j sc) (* s C) c2)
-                    (double (* (nth split s) (if (= c c2) same cross))))))))
-      ;; centre the prior: the shares give the mix of sources, scaled so the
-      ;; baseline and every source together account for exactly the node's
-      ;; typical rate, whatever its number of sources
-      (let [row (* c k sc)
-            total (loop [i 0 acc 0.0] (if (< i (* k sc)) (recur (inc i) (+ acc (aget prior (+ row i)))) acc))
-            f (/ (- 1.0 (double (get-in cfg [:share :mu]))) (Math/max 1e-12 total))]
-        (dotimes [i (* k sc)] (aset prior (+ row i) (* f (aget prior (+ row i)))))))
-    {:id (:id n)
-     :level (:level n)
-     :sources (mapv first srcs)
-     :kinds (mapv second srcs)
-     :src (int-array (map (comp index first) srcs))
-     :children (int-array (keep index (:children n)))
-     :prior prior
-     :h (double-array sc) :last (double-array C) :ybar (double-array C)
-     :mu (double-array C) :smu (double-array C) :tmu (double-array C)
-     :alpha (double-array (* C k sc)) :sa (double-array (* C k sc)) :ta (double-array (* k sc))
-     :kappa (double-array C 1.0) :sk (double-array C) :tk (double-array C)
-     :loss-own (double-array C 1.0) :loss-ch (double-array C 1.0)
-     :disp (double-array C 1.0)
-     :lam (double-array C) :lam-own (double-array C) :lam-ch (double-array C)
-     :r (double-array C) :chsum (double-array C)}))
+    (fill-prior!
+     {:id (:id n)
+      :level (:level n)
+      :sources (mapv first srcs)
+      :kinds (mapv second srcs)
+      :src (int-array (map (comp index first) srcs))
+      :children (int-array (keep index (:children n)))
+      :prior prior
+      :mu-share (double-array C)
+      :h (double-array sc) :last (double-array C) :ybar (double-array C)
+      :mu (double-array C) :smu (double-array C) :tmu (double-array C)
+      :alpha (double-array (* C k sc)) :sa (double-array (* C k sc)) :ta (double-array (* k sc))
+      :kappa (double-array C 1.0) :sk (double-array C) :tk (double-array C)
+      :loss-own (double-array C 1.0) :loss-ch (double-array C 1.0)
+      :disp (double-array C 1.0)
+      :lam (double-array C) :lam-own (double-array C) :lam-ch (double-array C)
+      :r (double-array C) :chsum (double-array C)}
+     cfg pool)))
 
 (defn- merge-config [config]
   (merge-with (fn [a b] (if (map? a) (merge a b) b)) defaults config))
 
 (defn create
-  "A fresh model over `structure` (see `bnm.structure/build`)."
+  "A fresh model over `structure` (see `bnm.structure/build`), its priors
+  from `pool` (see `learn-pool`) where given."
   ([structure] (create structure {}))
-  ([structure config]
+  ([structure config] (create structure config nil))
+  ([structure config pool]
    (let [cfg (merge-config config)
          ids (mapv :id (:nodes structure))
          index (zipmap ids (range))]
      {:config cfg
       :structure structure
       :index index
-      :nodes (mapv #(new-node % index cfg) (:nodes structure))
+      :pool pool
+      :nodes (mapv #(new-node % index cfg pool) (:nodes structure))
       :bin nil
       :exposure {}
       :stats {:bins 0 :sq-log-err 0.0 :sq-log-err-base 0.0 :points 0.0}})))
@@ -329,7 +364,7 @@
   block of alpha. A shape is the evidence behind the estimate, prior and
   data, in the quasi-Poisson units of the node's dispersion (counts over
   dispersion), which makes it independent of how values are normalized."
-  ^doubles [node ^long sc ^double w ^double mu-share]
+  ^doubles [node ^long sc ^double w]
   (let [^ints src (:src node)
         k (alength src)
         ksc (* k sc)
@@ -338,11 +373,12 @@
         ^doubles ybar (:ybar node)
         ^doubles smu (:smu node)
         ^doubles disp (:disp node)
+        ^doubles mu-share (:mu-share node)
         out (double-array (+ C (* C k)))]
     (dotimes [c C]
       (let [yb (aget ybar c)
             d (Math/max 1.0 (aget disp c))]
-        (aset out c (/ (+ (* mu-share yb w) (aget smu c)) d))
+        (aset out c (/ (+ (* (aget mu-share c) yb w) (aget smu c)) d))
         (dotimes [j k]
           (let [base (+ (* c ksc) (* j sc))]
             (aset out (+ C (* c k) j)
@@ -403,8 +439,7 @@
   (let [cfg (:config model)
         nodes (:nodes model)
         sc (* (scales cfg) C)
-        w (double (:prior-weight cfg))
-        share (double (get-in cfg [:share :mu]))]
+        w (double (:prior-weight cfg))]
     (in-parallel!
      (count nodes) *workers*
      (fn [a b]
@@ -412,7 +447,7 @@
          (let [node (nodes i)
                ^ints src (:src node)
                k (alength src)]
-           (refresh-mu! (:mu node) (:smu node) (:tmu node) (:ybar node) w share)
+           (refresh-mu! (:mu node) (:smu node) (:tmu node) (:ybar node) w (:mu-share node))
            (dotimes [j k]
              (refresh-alpha! (:alpha node) (:sa node) (:ta node) (:prior node) (:ybar node)
                              (:ybar (nodes (aget src j))) (* k sc) (* j sc) sc w))))))
@@ -436,7 +471,6 @@
         hs (histories model)
         rho (double (:forget cfg))
         w (double (:prior-weight cfg))
-        mu-share (double (get-in cfg [:share :mu]))
         rb (double (:blend-forget cfg))
         eta (double (:disp-rate cfg))
         decays (double-array (:decays cfg))]
@@ -608,9 +642,8 @@
         stride (* horizon C)
         uncertain? (:param-uncertainty cfg true)
         shapes (when uncertain?
-                 (let [w (double (:prior-weight cfg))
-                       mu-share (double (get-in cfg [:share :mu]))]
-                   (object-array (map #(posterior-shapes % sc w mu-share) nodes))))
+                 (let [w (double (:prior-weight cfg))]
+                   (object-array (map #(posterior-shapes % sc w) nodes))))
         ;; per-bin step of the level walk, so its sd after 52 bins is :level-noise
         step (/ (double (:level-noise cfg)) (Math/sqrt 52.0))]
     (dotimes [i n]
@@ -703,9 +736,11 @@
 
 (defn standalone-node
   "A fresh node outside any model, for reading one stored node on its own:
-  `structure-node` as `bnm.structure/build` gives it, with exactly `sources`."
-  [cfg structure-node sources]
-  (new-node structure-node (zipmap sources (range)) (merge-config cfg)))
+  `structure-node` as `bnm.structure/build` gives it, with exactly
+  `sources`, its priors from `pool` where given."
+  ([cfg structure-node sources] (standalone-node cfg nil structure-node sources))
+  ([cfg pool structure-node sources]
+   (new-node structure-node (zipmap sources (range)) (merge-config cfg) pool)))
 
 (defn refresh-node!
   "`refresh!` for one standalone node, given its sources' running means in
@@ -715,7 +750,7 @@
         sc (* (scales cfg) C)
         k (count (:sources node))
         w (double (:prior-weight cfg))]
-    (refresh-mu! (:mu node) (:smu node) (:tmu node) (:ybar node) w (double (get-in cfg [:share :mu])))
+    (refresh-mu! (:mu node) (:smu node) (:tmu node) (:ybar node) w (:mu-share node))
     (dotimes [j k]
       (refresh-alpha! (:alpha node) (:sa node) (:ta node) (:prior node) (:ybar node)
                       (nth source-ybars j) (* k sc) (* j sc) sc w))
@@ -730,6 +765,85 @@
       {:model (/ sq-log-err points)
        :persistence (/ sq-log-err-base points)})))
 
+;; --- partial pooling --------------------------------------------------------------------
+
+(def ^:private pool-prior-weight
+  "Weight, in nodes' worth of evidence, of the hand-set shares in a pooled
+  share: a kind with little evidence keeps close to them."
+  1.0)
+
+(defn learn-pool
+  "The priors learned from every node's posterior (empirical Bayes): for
+  each kind of node and channel, the share of its typical rate its baseline
+  accounts for; for each kind of node, kind of source, time scale, target
+  and source channel, the share a source's entry accounts for. Each node
+  counts by how much of its estimate is data rather than prior, and the
+  hand-set shares count as `pool-prior-weight` of evidence. A node with
+  little evidence of its own then shrinks toward what nodes of its kind
+  show, rather than toward hand-set numbers. Plain data:
+  {:mu {kind [C shares]} :shares {[kind source-kind] double[C*S*C]}}."
+  [model]
+  (let [cfg (:config model)
+        nodes (:nodes model)
+        S (scales cfg)
+        sc (* S C)
+        w (double (:prior-weight cfg))
+        mu-acc (java.util.HashMap.)
+        sh-acc (java.util.HashMap.)
+        acc! (fn [^java.util.HashMap m k n]
+               (or (.get m k) (let [v [(double-array n) (double-array n)]] (.put m k v) v)))]
+    (doseq [node nodes]
+      (let [kind (geo/kind (:id node))
+            ^doubles ybar (:ybar node)
+            ^doubles mu (:mu node)
+            ^doubles tmu (:tmu node)
+            ^doubles alpha (:alpha node)
+            ^doubles ta (:ta node)
+            ^ints src (:src node)
+            k (alength src)
+            ksc (* k sc)
+            [^doubles msum ^doubles mwt] (acc! mu-acc kind C)]
+        (dotimes [c C]
+          (let [yb (aget ybar c)]
+            (when (> yb 1e-9)
+              (let [wt (/ (aget tmu c) (+ (aget tmu c) w))]
+                (aset msum c (+ (aget msum c) (* wt (/ (aget mu c) yb))))
+                (aset mwt c (+ (aget mwt c) wt)))
+              (let [floor (+ 1e-6 (* 0.1 yb))]
+                (dotimes [j k]
+                  (let [[^doubles ssum ^doubles swt] (acc! sh-acc [kind ((:kinds node) j)] (* C sc))
+                        ^doubles sybar (:ybar (nodes (aget src j)))]
+                    (dotimes [q sc]
+                      (let [i (+ (* c ksc) (* j sc) q)
+                            sb (Math/max (aget sybar (rem q C)) floor)
+                            t (aget ta (+ (* j sc) q))
+                            wt (/ t (+ t (* w sb)))
+                            g (+ (* c sc) q)]
+                        (aset ssum g (+ (aget ssum g) (* wt (/ (* (aget alpha i) sb) yb))))
+                        (aset swt g (+ (aget swt g) wt))))))))))))
+    (let [w0 pool-prior-weight
+          dflt-mu (double (get-in cfg [:share :mu]))]
+      {:mu (into {} (for [[kind [^doubles msum ^doubles mwt]] mu-acc]
+                      [kind (mapv (fn [c] (-> (/ (+ (aget msum c) (* w0 dflt-mu)) (+ (aget mwt c) w0))
+                                              (Math/max 0.02) (Math/min 0.8)))
+                                  (range C))]))
+       :shares (into {} (for [[[kind src-kind :as key] [^doubles ssum ^doubles swt]] sh-acc]
+                          [key (let [out (double-array (* C sc))]
+                                 (dotimes [c C]
+                                   (dotimes [q sc]
+                                     (let [g (+ (* c sc) q)
+                                           d (default-share cfg src-kind (quot q C) c (rem q C))]
+                                       (aset out g (/ (+ (aget ssum g) (* w0 d)) (+ (aget swt g) w0))))))
+                                 out)]))})))
+
+(defn pool->data
+  "The pool as plain data, for storing."
+  [pool]
+  (when pool (update pool :shares #(into {} (for [[k a] %] [k (vec a)])))))
+
+(defn data->pool [data]
+  (when data (update data :shares #(into {} (for [[k v] %] [k (double-array v)])))))
+
 ;; --- growing and reshaping ---------------------------------------------------------------
 
 (def ^:private carried
@@ -740,9 +854,11 @@
   nodes and connections the two share. New nodes start fresh; a connection
   that survives keeps its statistics, new ones start from the prior. Used as
   the world changes: dyads that become active get leaves of their own, and
-  neighbours are re-ranked."
+  neighbours are re-ranked. The priors are learned anew from what every node
+  has learned (see `learn-pool`) unless :pooling is false."
   [old structure]
-  (let [mdl (create structure (:config old))
+  (let [mdl (create structure (:config old)
+                    (if (:pooling (:config old) true) (learn-pool old) (:pool old)))
         sc (* (scales (:config old)) C)
         old-index (:index old)]
     (doseq [node (:nodes mdl)

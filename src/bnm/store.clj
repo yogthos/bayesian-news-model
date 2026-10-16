@@ -116,7 +116,8 @@
    :bin (:bin mdl)
    :exposure (:exposure mdl)
    :stats (:stats mdl)
-   :calibration (:calibration mdl)})
+   :calibration (:calibration mdl)
+   :pool (model/pool->data (:pool mdl))})
 
 (defn- volumes-part [mdl]
   (when-let [v (:volumes mdl)]
@@ -140,7 +141,7 @@
                    :nodes (vec (for [[row links] linked]
                                  (merge {:id (:id row) :level (:level row)}
                                         (select-keys links [:parents :neighbors :children]))))}
-        mdl (model/create structure (:config header))]
+        mdl (model/create structure (:config header) (model/data->pool (:pool header)))]
     (doseq [[[row links] node] (map vector linked (:nodes mdl))]
       (when-not (and (= (:sources links) (:sources node)) (decode-into! node (:data row)))
         (throw (ex-info "stored node does not fit the structure" {:id (:id row)}))))
@@ -186,9 +187,9 @@
 
 ;; --- one node at a time ---------------------------------------------------------------------
 
-(defn- standalone [cfg row]
+(defn- standalone [cfg pool row]
   (let [links (row-links row)
-        node (model/standalone-node cfg (merge {:id (:id row) :level (:level row)} links)
+        node (model/standalone-node cfg pool (merge {:id (:id row) :level (:level row)} links)
                                     (:sources links))]
     (when-not (decode-into! node (:data row))
       (throw (ex-info "stored node does not fit its links" {:id (:id row)})))
@@ -197,12 +198,14 @@
 (defn read-node
   "Node `id` read from `store` on its own, with its mu and alpha recomputed:
   for looking at one node without loading the model. nil when not stored."
-  ([store id] (read-node store (:config (read-part store :header)) id))
-  ([store cfg id]
+  ([store id] (read-node store (read-part store :header) id))
+  ([store header id]
    (when-let [row (first (read-nodes store [id]))]
-     (let [sources (:sources (row-links row))
-           ybars (into {} (for [r (read-nodes store sources)] [(:id r) (:ybar (standalone cfg r))]))
-           node (standalone cfg row)]
+     (let [cfg (:config header)
+           pool (model/data->pool (:pool header))
+           sources (:sources (row-links row))
+           ybars (into {} (for [r (read-nodes store sources)] [(:id r) (:ybar (standalone cfg pool r))]))
+           node (standalone cfg pool row)]
        (model/refresh-node! cfg node (mapv ybars sources))
        (assoc node :source-ybars ybars)))))
 
@@ -210,9 +213,9 @@
   "`bnm.model/node-connections` of node `id`, channel index `c`, read from
   `store`: the node's row and its sources' rows, not the whole model."
   [store id c]
-  (let [cfg (:config (read-part store :header))]
-    (when-let [node (read-node store cfg id)]
-      (model/node-connections cfg node (:source-ybars node) c))))
+  (let [header (read-part store :header)]
+    (when-let [node (read-node store header id)]
+      (model/node-connections (:config header) node (:source-ybars node) c))))
 
 ;; --- stores -----------------------------------------------------------------------------------
 
