@@ -10,3 +10,11 @@ target/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# local agent and issue-tracker files
+CLAUDE.md
+AGENTS.md
+.codex/
+.claude/
+.agents/
+.beads/
