@@ -88,3 +88,20 @@
     (testing "and knowing it beats both a random walk and food's own history, out of sample"
       (is (< (:full sk) (:own sk)) (pr-str sk))
       (is (< (:full sk) (:zero sk)) (pr-str sk)))))
+
+(deftest model-averaging-keeps-what-helps
+  ;; the averaged forecast is about as good as the better of the two models,
+  ;; whether the other domains help (oil drives food) or are noise (food alone)
+  (let [helps (slow/skill (run-world {:globals [["world" "energy/oil"]]} 600 3) "food/prices")]
+    (is (<= (:dma helps) (* 1.02 (min (:own helps) (:full helps)))) (pr-str helps))
+    (is (< (:dma helps) (:own helps)) (pr-str helps))
+    (testing "and where the outside inputs only add noise, it falls back on the series' own"
+      (let [mdl (reduce (fn [mdl t]
+                          (slow/step! mdl t [{:unit "world" :var "energy/oil" :period t
+                                              :value (Math/exp (Math/sin (* 0.37 t)))}
+                                             {:unit "C1" :var "economy/output" :period t
+                                              :value (Math/exp (* 0.01 t (+ 1.0 (* 0.3 (Math/sin (* 0.05 t))))))}]))
+                        (slow/create {:globals [["world" "energy/oil"]] :cross-shrink 0.001} vars)
+                        (range 600))
+            sk (slow/skill mdl "economy/output")]
+        (is (<= (:dma sk) (* 1.05 (min (:own sk) (:full sk)))) (pr-str sk))))))

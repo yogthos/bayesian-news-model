@@ -580,6 +580,31 @@ def openalex():
         var("technology/research_" + field, "log1p", "a", "OpenAlex", field + " works per million works")
 
 
+CHANNELS = ["verbal_coop", "material_coop", "verbal_conflict", "protest", "coercion", "violence"]
+
+
+def politics():
+    """The event model's channels per country and month, per thousand of all the
+    events the source reported that month (scripts/politics-monthly.py); a channel
+    with nothing in a month the country was covered is zero."""
+    path = os.path.join(RAW, "politics", "gdelt.tsv")
+    if not os.path.exists(path):
+        return
+    seen = defaultdict(dict)
+    totals = {}
+    for line in open(path):
+        unit, m, c, n, total = line.rstrip("\n").split("\t")
+        if unit in ISO3:
+            seen[(unit, m)][int(c)] = float(n)
+            totals[m] = float(total)
+    for (unit, m), chans in seen.items():
+        pend = month_end(int(m[:4]), int(m[5:7]))
+        for i, name in enumerate(CHANNELS):
+            emit(unit, "politics/" + name, "m", pend, 0, 1000.0 * chans.get(i, 0.0) / totals[m])
+    for name in CHANNELS:
+        var("politics/" + name, "log1p", "m", "GDELT via bnm bins", name.replace("_", " ") + " events per 1000 reported")
+
+
 # --- catalogues --------------------------------------------------------------------------------------
 
 def gw_names():
@@ -637,11 +662,41 @@ def esrb():
                 EVENTS.append(("banking_crisis", iso, r[2][:7] + "-01", "ESRB systemic crisis"))
 
 
+def mechanical(dedup):
+    """Events defined from the data, not chosen after the fact: a market crash when a
+    country's share prices fall 30% below their high of the 24 months before; a protest
+    or violence surge when the channel's share triples against its mean of the 36
+    months before (and is at least 1 per 1000 events). Each with 12 months' cool-off."""
+    series = defaultdict(list)
+    for (unit, name, pend), r in dedup.items():
+        if name in ("markets/share_prices", "politics/protest", "politics/violence"):
+            series[(unit, name)].append((pend, r[5]))
+    for (unit, name), xs in series.items():
+        xs.sort()
+        last = None
+        for i, (pend, v) in enumerate(xs):
+            m = int(pend[:4]) * 12 + int(pend[5:7])
+            if last is not None and m - last < 12:
+                continue
+            if name == "markets/share_prices":
+                prior = [x for _, x in xs[max(0, i - 24):i]]
+                hit = len(prior) >= 12 and v <= 0.7 * max(prior)
+                kind = "market_crash"
+            else:
+                prior = [x for _, x in xs[max(0, i - 36):i]]
+                base = sum(prior) / len(prior) if prior else 0
+                hit = len(prior) >= 24 and v >= 1.0 and v >= 3.0 * base
+                kind = name.split("/")[1] + "_surge"
+            if hit:
+                EVENTS.append((kind, unit, pend[:8] + "01", "%s at %.3g" % (name, v)))
+                last = m
+
+
 # --- run ------------------------------------------------------------------------------------------------
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    steps = [fred, worldbank, bis, oecd, owid, jodi, faostat, epu, climate, openalex, ucdp, esrb]
+    steps = [fred, worldbank, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb]
     for step in steps:
         n0, e0 = len(ROWS), len(EVENTS)
         step()
@@ -650,6 +705,9 @@ def main():
     dedup = {}
     for r in ROWS:
         dedup[(r[0], r[1], r[3])] = r
+    n0 = len(EVENTS)
+    mechanical(dedup)
+    print("mechanical %d events" % (len(EVENTS) - n0), file=sys.stderr)
     with open(os.path.join(OUT, "series.tsv"), "w") as f:
         for r in sorted(dedup.values()):
             f.write("%s\t%s\t%s\t%s\t%s\t%.10g\n" % r)

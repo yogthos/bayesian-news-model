@@ -40,6 +40,7 @@
   {:scales [3.0 12.0 36.0 120.0]
    :norm-scale 120.0   ; months over which features and changes are normalized
    :forget 0.995       ; per-month discount of the regressions' evidence
+   :dma-forget 0.995   ; per-change discount of the models' records in the average
    :prior-weight 20.0  ; prior strength, in observations
    :cross-shrink 4.0   ; how much more the prior shrinks cross-domain coefficients
    :stale 36           ; months after its last period a series stops counting
@@ -65,7 +66,8 @@
 (def ^:const YF (+ RY 1))  ; predictions made at the last value: full, own
 (def ^:const YO (+ RY 2))
 (def ^:const SNAP (+ RY 3)) ; 1 when a prediction is pending
-(def ^:const SLEN (+ RY 4))
+(def ^:const YD (+ RY 4))   ; the averaged prediction
+(def ^:const SLEN (+ RY 5))
 
 (defn- transform ^double [t ^double v]
   (case t
@@ -95,7 +97,9 @@
      :k k
      :full (mapv (fn [_] (regression k)) variables)
      :own (mapv (fn [_] (regression (inc F))) variables)
-     :skill (mapv (fn [_] (double-array 4)) variables)     ; n, sse zero, own, full
+     :skill (mapv (fn [_] (double-array 5)) variables)     ; n, sse zero, own, full, averaged
+     ;; per variable, each model's discounted log score and squared error, for the average
+     :dma (mapv (fn [_] (double-array [0.0 0.0 1.0 1.0])) variables)
      :series (java.util.ArrayList.)                        ; {:unit :var :vi :s state :x snapshot}
      :index (java.util.HashMap.)                           ; "unit\tvar" -> series
      :by-unit (java.util.HashMap.)                         ; unit -> ArrayList of series
@@ -296,11 +300,19 @@
             ^doubles sk ((:skill mdl) vi)
             forget (double (:forget cfg))]
         (System/arraycopy x 0 xo 0 (inc F))
-        (let [ef (- y (aget s YF)) eo (- y (aget s YO))]
+        (let [ef (- y (aget s YF)) eo (- y (aget s YO)) ed (- y (aget s YD))
+              ^doubles dm ((:dma mdl) vi)
+              a (double (:dma-forget cfg))]
           (aset sk 0 (inc (aget sk 0)))
           (aset sk 1 (+ (aget sk 1) (* y y)))
           (aset sk 2 (+ (aget sk 2) (* eo eo)))
-          (aset sk 3 (+ (aget sk 3) (* ef ef))))
+          (aset sk 3 (+ (aget sk 3) (* ef ef)))
+          (aset sk 4 (+ (aget sk 4) (* ed ed)))
+          ;; each model's record: a Gaussian log score at its own recent error
+          (aset dm 0 (+ (* a (aget dm 0)) (- (* -0.5 (/ (* eo eo) (aget dm 2))) (* 0.5 (Math/log (aget dm 2))))))
+          (aset dm 1 (+ (* a (aget dm 1)) (- (* -0.5 (/ (* ef ef) (aget dm 3))) (* 0.5 (Math/log (aget dm 3))))))
+          (aset dm 2 (+ (* a (aget dm 2)) (* (- 1.0 a) (Math/max 1e-4 (* eo eo)))))
+          (aset dm 3 (+ (* a (aget dm 3)) (* (- 1.0 a) (Math/max 1e-4 (* ef ef))))))
         (learn! ((:full mdl) vi) x y t forget)
         (learn! ((:own mdl) vi) xo y t forget)))
     ;; the change scale learns from every change
@@ -322,6 +334,11 @@
         own ((:own mdl) vi)]
     (aset s YF (dot (beta! cfg full t) x (:k mdl)))
     (aset s YO (dot (beta! cfg own t) x (inc F)))
+    ;; the two, weighted by their records (dynamic model averaging)
+    (let [^doubles dm ((:dma mdl) vi)
+          d (- (aget dm 1) (aget dm 0))
+          wf (/ 1.0 (+ 1.0 (Math/exp (- (Math/max -50.0 (Math/min 50.0 d))))))]
+      (aset s YD (+ (* wf (aget s YF)) (* (- 1.0 wf) (aget s YO)))))
     (aset s SNAP 1.0)))
 
 (defn step!
@@ -366,14 +383,19 @@
 
 (defn skill
   "Out-of-sample mean squared error of a variable's scaled changes predicted
-  as no change (:zero), from the series' own history (:own), and with the
-  other domains and the globals (:full), over :n changes."
+  as no change (:zero), from the series' own history (:own), with the other
+  domains and the globals (:full), and by the two averaged by their records
+  (:dma, Raftery, Karny & Ettler 2010), over :n changes; and the weight the
+  average now gives the full model (:w-full)."
   [mdl v]
   (when-let [vi ((:var-index mdl) v)]
     (let [^doubles sk ((:skill mdl) vi)
           n (aget sk 0)]
       (when (pos? n)
-        {:n (long n) :zero (/ (aget sk 1) n) :own (/ (aget sk 2) n) :full (/ (aget sk 3) n)}))))
+        {:n (long n) :zero (/ (aget sk 1) n) :own (/ (aget sk 2) n) :full (/ (aget sk 3) n)
+         :dma (/ (aget sk 4) n)
+         :w-full (let [^doubles dm ((:dma mdl) vi)]
+                   (/ 1.0 (+ 1.0 (Math/exp (- (Math/max -50.0 (Math/min 50.0 (- (aget dm 1) (aget dm 0)))))))))}))))
 
 (defn- input-names
   "What each input of the full regression is."
@@ -393,3 +415,26 @@
       (->> (map (fn [nm b] (assoc nm :beta b)) (input-names mdl) beta)
            (remove #(#{:intercept :own} (:source %)))
            (sort-by #(- (Math/abs (double (:beta %)))))))))
+
+(defn unit-inputs
+  "What the slow layer says about `unit` in month `t`, for the hazard layer:
+  per domain the mean gap, slope and acceleration of its fresh series and
+  whether it has any, then the globals' features. Labelled by `input-labels`."
+  ^doubles [mdl unit ^long t]
+  (let [[^doubles sums ^doubles counts] (unit-summary mdl unit t)
+        g (global-features mdl t)
+        nd (count (:domains mdl))
+        out (double-array (+ (* nd (inc SF)) (alength g)))]
+    (dotimes [d nd]
+      (let [c (aget counts d)]
+        (dotimes [q SF]
+          (aset out (+ (* d (inc SF)) q) (if (pos? c) (/ (aget sums (+ (* d SF) q)) c) 0.0)))
+        (aset out (+ (* d (inc SF)) SF) (if (pos? c) 1.0 0.0))))
+    (System/arraycopy g 0 out (* nd (inc SF)) (alength g))
+    out))
+
+(defn input-labels
+  "{:domain :feature} or {:global [unit var] :feature} for each of `unit-inputs`."
+  [mdl]
+  (vec (concat (for [d (:domains mdl) q [:gap-120 :trend-12-36 :accel :present]] {:domain d :feature q})
+               (for [g (get-in mdl [:config :globals]) q [:gap-120 :trend-12-36 :accel]] {:global g :feature q}))))
