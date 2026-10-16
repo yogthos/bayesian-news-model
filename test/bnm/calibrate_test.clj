@@ -26,10 +26,12 @@
         k (cal/spread-factor s [:country :violence :active])]
     (is (< 1.8 k 2.2) k)
     (is (= 1.0 (cal/spread-factor s [:actor :violence :active])) "an unseen key keeps the spread")
-    (testing "widening keeps the median and scales the log spread"
+    (testing "widening scales the log spread and keeps the mean"
       (let [xs (double-array [0.0 (Math/expm1 2.9) (Math/expm1 3.0) (Math/expm1 3.1) (Math/expm1 3.2)])
-            w (cal/widen 2.0 xs)]
-        (is (< (Math/abs (- (aget w 2) (aget xs 2))) 1e-9))
-        (is (< (Math/abs (- (Math/log1p (aget w 3)) 3.2)) 1e-9))
-        (is (< (Math/abs (- (Math/log1p (aget w 1)) 2.8)) 1e-9))
+            w (cal/widen 2.0 xs)
+            mean #(/ (areduce ^doubles % i t 0.0 (+ t (aget ^doubles % i))) 5.0)
+            gap #(- (Math/log1p (aget ^doubles % 3)) (Math/log1p (aget ^doubles % 2)))]
+        (is (< (Math/abs (- (mean w) (mean xs))) 1e-9))
+        (is (> (gap w) (* 1.5 (gap xs))))
+        (is (apply <= (vec w)) "still sorted")
         (is (= 0.0 (aget w 0)) "never below zero")))))

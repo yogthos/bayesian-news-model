@@ -101,12 +101,19 @@
 
 (defn widen
   "The sorted sample `xs` (a double array) with its log1p spread around its
-  median scaled by `k`, as a new sorted array, floored at zero."
+  median scaled by `k`, then rescaled to the mean it had, as a new sorted
+  array, floored at zero: wider by shocks that are as likely to lower a
+  total as to raise it, which leaves its expected value where it was."
   ^doubles [k ^doubles xs]
   (let [n (alength xs)
         out (double-array n)]
     (when (pos? n)
       (let [m (Math/log1p (max 0.0 (m/quantile xs 0.5)))]
         (dotimes [i n]
-          (aset out i (max 0.0 (Math/expm1 (+ m (* k (- (Math/log1p (max 0.0 (aget xs i))) m)))))))))
+          (aset out i (max 0.0 (Math/expm1 (+ m (* k (- (Math/log1p (max 0.0 (aget xs i))) m)))))))
+        (let [before (areduce xs i t 0.0 (+ t (aget xs i)))
+              after (areduce out i t 0.0 (+ t (aget out i)))]
+          (when (pos? after)
+            (let [f (/ before after)]
+              (dotimes [i n] (aset out i (* f (aget out i)))))))))
     out))

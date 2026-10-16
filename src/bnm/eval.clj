@@ -170,6 +170,7 @@
 (defn- total-scores [rs]
   {:n (count rs)
    :err-model (mean (map #(log-err (:mean %) (:actual %)) rs))
+   :err-median (mean (map #(log-err (:q50 %) (:actual %)) rs))
    :err-persist (mean (map #(log-err (:last %) (:actual %)) rs))
    :err-clim (mean (map #(log-err (:clim3 %) (:actual %)) rs))
    :crps-model (mean (map :crps rs))
@@ -324,7 +325,7 @@
   (into (sorted-map)
         (for [key (distinct (mapcat (comp keys :totals) results))
               :let [xs (keep #(get-in % [:totals key]) results)]]
-          [key (into {} (for [f [:n :err-model :err-persist :err-clim :crps-model
+          [key (into {} (for [f [:n :err-model :err-median :err-persist :err-clim :crps-model
                                  :crps-hist :coverage80]
                               :let [vs (keep f xs)]
                               :when (seq vs)]
@@ -394,11 +395,13 @@
        (println "Backtest over" (count periods) "periods:" (first periods) "-" (last periods))
        (println)
        (println "Totals: mean |log error| of the forecast mean (model, persistence, mean of last 3),")
-       (println "skill against persistence, CRPS in log space (model, own history as a sample), 80% coverage")
+       (println "skill against persistence; the same of the forecast median; CRPS in log space (model,")
+       (println "own history as a sample), 80% coverage")
        (doseq [[[l ch] s] (by-kind totals)]
-         (println (format "  %-9s %-16s n=%5.0f  err %s %s %s  skill %s  crps %s %s  cover80 %s"
+         (println (format "  %-9s %-16s n=%5.0f  err %s %s %s  skill %s  median %s %s  crps %s %s  cover80 %s"
                           (level-name l) (name ch) (:n s) (f3 (:err-model s)) (f3 (:err-persist s))
                           (f3 (:err-clim s)) (pct (skill (:err-model s) (:err-persist s)))
+                          (f3 (:err-median s)) (pct (skill (:err-median s) (:err-persist s)))
                           (f3 (:crps-model s)) (f3 (:crps-hist s)) (f2 (:coverage80 s)))))
        (println)
        (println (str "Escalation (>= " escalation-ratio "x the last period), by the stratum of the node's history."))
