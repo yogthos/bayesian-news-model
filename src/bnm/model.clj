@@ -209,14 +209,17 @@
 (defn- track!
   [^doubles y ^doubles chy ^doubles ybar ^doubles disp ^doubles lam ^doubles own
    ^doubles lch ^doubles lo ^doubles lc ^doubles kappa ^doubles sk ^doubles tk
-   ^double rho ^double rb ^double eta ^double w has-children?]
+   ^double rho ^double rb ^double eta ^double w ^double u has-children?]
   (dotimes [c C]
     (let [yc (aget y c)
           l (Math/max 1e-6 (aget lam c))
           ly (Math/log1p yc)
           dev (- yc l)]
       (aset ybar c (+ (* rho (aget ybar c)) (* (- 1.0 rho) yc)))
-      (aset disp c (Math/max 1.0 (+ (* (- 1.0 eta) (aget disp c)) (* eta (/ (* dev dev) (+ l 1.0))))))
+      ;; quasi-Poisson: variance over mean, in normalized units; at least u,
+      ;; which is Poisson in raw counts
+      (aset disp c (Math/max u (+ (* (- 1.0 eta) (aget disp c))
+                                  (* eta (/ (* dev dev) (Math/max u l))))))
       (when has-children?
         (let [eo (- ly (Math/log1p (aget own c)))
               ec (- ly (Math/log1p (aget lch c)))]
@@ -300,7 +303,7 @@
       :alpha (double-array (* C k sc)) :sa (double-array (* C k sc)) :ta (double-array (* k sc))
       :kappa (double-array C 1.0) :sk (double-array C) :tk (double-array C)
       :loss-own (double-array C 1.0) :loss-ch (double-array C 1.0)
-      :disp (double-array C 1.0)
+      :disp (double-array C)
       :lam (double-array C) :lam-own (double-array C) :lam-ch (double-array C)
       :r (double-array C) :chsum (double-array C)}
      cfg pool)))
@@ -327,6 +330,13 @@
       :stats {:bins 0 :sq-log-err 0.0 :sq-log-err-base 0.0 :points 0.0}})))
 
 ;; --- prediction -------------------------------------------------------------------------
+
+(defn unit
+  "What one raw event is worth in the model's normalized values: `:scale`
+  over the sources' exposures (see `bnm.series`), or 1 before any."
+  ^double [model]
+  (let [e (reduce + 0.0 (vals (:exposure model)))]
+    (if (pos? e) (/ (double (get-in model [:config :scale])) e) 1.0)))
 
 (defn- own-rate!
   "Writes into `out` the node's own-level rate from histories `hs` (an object
@@ -364,7 +374,7 @@
   block of alpha. A shape is the evidence behind the estimate, prior and
   data, in the quasi-Poisson units of the node's dispersion (counts over
   dispersion), which makes it independent of how values are normalized."
-  ^doubles [node ^long sc ^double w]
+  ^doubles [node ^long sc ^double w ^double u]
   (let [^ints src (:src node)
         k (alength src)
         ksc (* k sc)
@@ -377,7 +387,7 @@
         out (double-array (+ C (* C k)))]
     (dotimes [c C]
       (let [yb (aget ybar c)
-            d (Math/max 1.0 (aget disp c))]
+            d (Math/max u (aget disp c))]
         (aset out c (/ (+ (* (aget mu-share c) yb w) (aget smu c)) d))
         (dotimes [j k]
           (let [base (+ (* c ksc) (* j sc))]
@@ -396,6 +406,49 @@
   (dotimes [i (alength shapes)]
     (let [a (aget shapes i)]
       (aset out i (if (< a 1e-9) 1.0 (m/gamma! rng a (/ 1.0 a)))))))
+
+(defn- block-shares
+  "Per channel and source, the share of the node's typical rate that
+  source's block of alpha accounts for at its typical rates, laid out like
+  the alpha factors of `posterior-shapes` (c*k + j): what a drawn factor
+  adds to the node's branching ratio."
+  ^doubles [node src-ybars ^long sc]
+  (let [k (count (:sources node))
+        ^doubles alpha (:alpha node)
+        ^doubles ybar (:ybar node)
+        out (double-array (* C k))]
+    (dotimes [c C]
+      (dotimes [j k]
+        (let [^doubles sy (nth src-ybars j)
+              base (+ (* c k sc) (* j sc))]
+          (aset out (+ (* c k) j)
+                (/ (loop [q 0 acc 0.0]
+                     (if (< q sc)
+                       (recur (inc q) (+ acc (* (aget alpha (+ base q)) (aget sy (rem q C)))))
+                       acc))
+                   (Math/max 1e-9 (aget ybar c)))))))
+    out))
+
+(defn- cap-factors!
+  "Scales a node's drawn alpha factors down, per channel, so the branching
+  ratio they give is at most `cap`, and moves what they lose, at typical
+  rates, into its drawn baseline: the projection `stable-params` makes of
+  the estimates, made of each draw. Without it a draw past one explodes and
+  the forecast mean is dominated by the few that do; without the move into
+  the baseline, capping only ever lowers the rate, and the draws drag the
+  forecast down."
+  [^doubles f ^doubles bs ^doubles mu ^doubles ybar ^long k ^double cap]
+  (dotimes [c C]
+    (let [n (loop [j 0 acc 0.0]
+              (if (< j k)
+                (recur (inc j) (+ acc (* (aget f (+ C (* c k) j)) (aget bs (+ (* c k) j)))))
+                acc))]
+      (when (> n cap)
+        (let [s (/ cap n)]
+          (dotimes [j k]
+            (let [i (+ C (* c k) j)]
+              (aset f i (* s (aget f i)))))
+          (aset f c (+ (aget f c) (/ (* (- n cap) (aget ybar c)) (Math/max 1e-12 (aget mu c))))))))))
 
 (defn- children-sum!
   "out[c] = sum over children of (values child)[c]"
@@ -473,6 +526,7 @@
         w (double (:prior-weight cfg))
         rb (double (:blend-forget cfg))
         eta (double (:disp-rate cfg))
+        u (unit model)
         decays (double-array (:decays cfg))]
     (predict! model hs)
     (let [[se seb]
@@ -505,7 +559,7 @@
                (when has-children? (children-sum! chy ch ys))
                (track! y chy (:ybar node) (:disp node) (:lam node) (:lam-own node) (:lam-ch node)
                        (:loss-own node) (:loss-ch node) (:kappa node) (:sk node) (:tk node)
-                       rho rb eta w has-children?))))))
+                       rho rb eta w u has-children?))))))
       (dotimes [i n]
         (let [node (nodes i)]
           (push-history! (:h node) (aget ys i) decays)
@@ -534,11 +588,13 @@
   drawn values."
   [^doubles g ^doubles y ^doubles own ^doubles level ^double half-var ^doubles disp
    ^doubles chsum ^doubles kappa ^doubles lo ^doubles lc ^doubles ybar
-   ^double max-growth leaf?]
+   ^double max-growth ^double u leaf?]
   (dotimes [c C]
     (let [rate (Math/min (* (Math/max 0.0 (aget own c)) (Math/exp (- (aget level c) half-var)))
                          (* max-growth (+ 1.0 (aget ybar c))))
-          d (m/overdispersed! g rate (aget disp c))]
+          ;; whole events: a negative binomial count at the raw scale, whose
+          ;; variance is the node's dispersion in raw units times its mean
+          d (* u (m/neg-binomial! g (/ rate u) (/ (Math/max u (aget disp c)) u)))]
       (aset y c
             (if leaf?
               d
@@ -642,9 +698,15 @@
         totals (object-array n)
         stride (* horizon C)
         uncertain? (:param-uncertainty cfg true)
+        u (unit model)
         shapes (when uncertain?
                  (let [w (double (:prior-weight cfg))]
-                   (object-array (map #(posterior-shapes % sc w) nodes))))
+                   (object-array (map #(posterior-shapes % sc w u) nodes))))
+        cap (double (:max-branching cfg))
+        bshares (when uncertain?
+                  (object-array (map (fn [node]
+                                       (block-shares node (mapv #(:ybar (nodes %)) (:src node)) sc))
+                                     nodes)))
         ;; per-bin step of the level walk, so its sd after 52 bins is :level-noise
         step (/ (double (:level-noise cfg)) (Math/sqrt 52.0))]
     (dotimes [i n]
@@ -665,7 +727,11 @@
                        (object-array (map #(double-array (alength ^doubles %)) shapes)))]
          (doseq [s (range from to)]
            (when uncertain?
-             (dotimes [i n] (draw-factors! g (aget factors i) (aget shapes i))))
+             (dotimes [i n]
+               (draw-factors! g (aget factors i) (aget shapes i))
+               (let [node (nodes i)]
+                 (cap-factors! (aget factors i) (aget bshares i) (:mu node) (:ybar node)
+                               (alength ^ints (:src node)) cap))))
            (let [hs (object-array (map #(aclone ^doubles (:h %)) nodes))
                  ys (object-array (repeatedly n #(double-array C)))
                  levels (object-array (repeatedly n #(double-array C)))]
@@ -683,7 +749,7 @@
                      (when (pos? step) (drift! g (aget levels i) step))
                      (draw-node! g (aget ys i) own (aget levels i) half-var (:disp node) chsum
                                  (:kappa node) (:loss-own node) (:loss-ch node) (:ybar node)
-                                 max-growth leaf?))))
+                                 max-growth u leaf?))))
                (dotimes [i n]
                  (add-total! (aget totals i) (* s C) (aget ys i))
                  (when-let [p (and paths (aget paths i))]
@@ -864,6 +930,10 @@
                     (if (:pooling (:config old) true) (learn-pool old) (:pool old)))
         sc (* (scales (:config old)) C)
         old-index (:index old)]
+    ;; a new node's dispersion starts at Poisson
+    (doseq [node (:nodes mdl)
+            :when (not (old-index (:id node)))]
+      (java.util.Arrays/fill ^doubles (:disp node) (unit old)))
     (doseq [node (:nodes mdl)
             :let [prev (some->> (old-index (:id node)) ((:nodes old)))]
             :when prev]

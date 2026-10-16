@@ -125,7 +125,9 @@
           (is (every? #(< (Math/abs (- % 2.5)) 1e-9) out) (:id n)))))))
 
 (deftest forecasts-carry-parameter-uncertainty
-  (let [mdl (series/with-routes (model/create (toy-structure)))
+  ;; the toy's nodes all estimate branching past 0.95, and at the cap the
+  ;; posterior has mass only below the estimate; above it, draws widen
+  (let [mdl (series/with-routes (model/create (toy-structure) {:max-branching 2.0}))
         mdl (reduce (fn [mdl [t bin]] (first (series/observe-bin! mdl t bin)))
                     mdl (map-indexed vector (simulate-world 60 3)))
         i ((:index mdl) "UKR")
@@ -161,3 +163,56 @@
           (let [out (double-array model/C)]
             (#'model/own-rate! n hs out sc)
             (is (every? #(< (Math/abs (- % 3.0)) 1e-9) out) (:id n))))))))
+
+(deftest parameter-draws-do-not-inflate-the-mean
+  ;; drawn branching ratios past one explode: the stationarity imposed on the
+  ;; estimates holds for every draw, so the draws widen the forecast without
+  ;; lifting its mean, even where evidence is thin
+  (let [mdl (series/with-routes (model/create (toy-structure)))
+        mdl (reduce (fn [mdl [t bin]] (first (series/observe-bin! mdl t bin)))
+                    mdl (map-indexed vector (simulate-world 20 9)))
+        sims 400
+        total (fn [m]
+                (let [fc (model/forecast m {:horizon 52 :sims sims :seed 3})]
+                  (reduce + (for [i (range (count (:ids fc))) s (range sims) c (range model/C)]
+                              (model/total fc i s c)))))
+        drawn (total mdl)
+        point (total (assoc-in mdl [:config :param-uncertainty] false))]
+    (is (< (/ drawn point) 1.1) [drawn point])))
+
+(defn- sparse-world
+  "Weekly records: BLR protests a Poisson(0.3) count a week, against a steady
+  background that sets the source's exposure."
+  [weeks seed]
+  (let [g (m/rng seed)]
+    (vec (for [_ (range weeks)]
+           {"toy" [["BLR" nil nil nil nil protest (double (m/poisson! g 0.3))]
+                   ["FRA" nil nil nil nil 0 (double (m/poisson! g 500.0))]]}))))
+
+(deftest counts-are-drawn-at-their-own-scale
+  ;; a sparse series is Poisson in raw counts: its dispersion is learned as
+  ;; such, and its forecast has quiet weeks as often as the data does
+  (let [s (-> (structure/volumes)
+              (structure/tally "BLR" nil 300.0)
+              (structure/tally "FRA" nil 400.0)
+              (structure/build {:min-dyad-volume 100.0}))
+        mdl (reduce (fn [mdl [t bin]] (first (series/observe-bin! mdl t bin)))
+                    (series/with-routes (model/create s))
+                    (map-indexed vector (sparse-world 300 5)))
+        u (model/unit mdl)
+        i ((:index mdl) "BLR:*")
+        node (model/node mdl "BLR:*")
+        sims 200 horizon 13
+        fc (model/forecast mdl {:horizon horizon :sims sims :seed 2 :paths? true})
+        p (aget ^objects (:paths fc) i)
+        weeks (for [s (range sims) t (range horizon)]
+                (aget ^doubles p (+ (* s horizon model/C) (* t model/C) protest)))
+        zeros (/ (count (filter zero? weeks)) (double (count weeks)))]
+    (testing "one raw event is worth the unit"
+      (is (< (Math/abs (- (/ 1.0 u) (/ 500.3 1000.0))) 0.05)))
+    (testing "dispersion in raw counts is about Poisson"
+      (is (< 0.6 (/ (aget ^doubles (:disp node) protest) u) 1.8)))
+    (testing "quiet weeks come out about as often as Poisson(0.3) gives them"
+      (is (< 0.6 zeros 0.85) zeros))
+    (testing "and every week is a whole number of events"
+      (is (every? #(< (Math/abs (- (/ % u) (Math/rint (/ % u)))) 1e-6) weeks)))))

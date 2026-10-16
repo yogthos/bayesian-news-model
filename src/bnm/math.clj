@@ -125,6 +125,16 @@
     (let [d (Math/max 1e-6 disp)]
       (gamma! g (/ mean d) d))))
 
+(defn neg-binomial!
+  "A count with mean `mean` and variance `phi` × mean: Poisson for phi at
+  most one, else a Poisson whose rate is Gamma with shape mean/(phi-1)."
+  ^double [^doubles g ^double mean ^double phi]
+  (cond
+    (<= mean 0.0) 0.0
+    (<= phi (+ 1.0 1e-9)) (double (poisson! g mean))
+    :else (let [r (/ mean (- phi 1.0))]
+            (double (poisson! g (gamma! g r (/ mean r)))))))
+
 (defn quantile
   "The q-quantile of the sorted double array `xs` (linear interpolation)."
   ^double [xs ^double q]
