@@ -155,6 +155,7 @@
         :high (nth xs (int (* 0.9 (dec sims))))
         :stratum stratum
         :p-escalate p
+        :sims sims
         :p-cal (cal/calibrate (:calibration m) [ch stratum] p)
         :p-clim p-clim
         :p-hist p-hist

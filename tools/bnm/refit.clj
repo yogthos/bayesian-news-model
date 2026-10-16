@@ -32,7 +32,7 @@
 (defn -main [run overrides & [sims]]
   (let [dir (str "data/runs/" run)
         overrides (edn/read-string overrides)
-        sims (parse-long (or sims "30"))
+        sims (parse-long (or sims "100"))
         every (:every (edn/read-string (slurp (str dir "/args.edn"))))
         labels (->> (.listFiles (io/file dir))
                     (keep #(second (re-matches #"origin-(\d+)\.edn" (.getName %))))

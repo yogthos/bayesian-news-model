@@ -32,9 +32,11 @@
   separate training phase: feeding bins is training, and a model keeps tuning
   itself as long as it is fed.
 
-  Priors are scale-free: a source's prior says what share of a node's typical
-  rate it accounts for, so the same prior works for a quiet dyad and the
-  world.
+  Priors are scale-free and centred: the baseline's prior is a fixed share
+  of the node's typical rate, and the sources share the rest in proportion
+  to the shares for their kind, so a node's prior mean rate is its typical
+  rate whatever its number of sources, and the same prior works for a quiet
+  dyad and the world.
 
   Values are normalized counts: events per `scale` events the source reported
   in a typical bin (see `bnm.series`), so sources of very different volume, and
@@ -57,8 +59,9 @@
    :decays [0.6 0.97]  ; history kernels, fast and slow: h <- d*h + (1-d)*y
    :forget 0.99        ; per-bin discount of sufficient statistics (~2 years)
    :prior-weight 8.0   ; prior strength, in bins of evidence
-   ;; prior share of a node's mean rate each component accounts for, split
-   ;; over the time scales by :scale-split
+   ;; prior share of a node's mean rate: :mu for the baseline; the rest is
+   ;; split among the sources in proportion to these weights (see new-node),
+   ;; and over the time scales by :scale-split
    :share {:mu 0.2
            :self-same 0.6 :self-cross 0.01
            :parent-same 0.05 :parent-cross 0.002
@@ -70,6 +73,7 @@
                        ; node's typical rate plus one
    :max-branching 0.95 ; in a forecast, excitation explains at most this share
                        ; of a node's typical rate (see `stable-params`)
+   :param-uncertainty true ; forecasts draw parameters from their posterior
    :level-noise 0.0    ; in a forecast, the log-sd a node's level drifts by over
                        ; 52 bins beyond what its dynamics explain: shocks the
                        ; model has no way to see coming
@@ -245,7 +249,14 @@
           (dotimes [s S]
             (dotimes [c2 C]
               (aset prior (+ (* c k sc) (* j sc) (* s C) c2)
-                    (double (* (nth split s) (if (= c c2) same cross)))))))))
+                    (double (* (nth split s) (if (= c c2) same cross))))))))
+      ;; centre the prior: the shares give the mix of sources, scaled so the
+      ;; baseline and every source together account for exactly the node's
+      ;; typical rate, whatever its number of sources
+      (let [row (* c k sc)
+            total (loop [i 0 acc 0.0] (if (< i (* k sc)) (recur (inc i) (+ acc (aget prior (+ row i)))) acc))
+            f (/ (- 1.0 (double (get-in cfg [:share :mu]))) (Math/max 1e-12 total))]
+        (dotimes [i (* k sc)] (aset prior (+ row i) (* f (aget prior (+ row i)))))))
     {:id (:id n)
      :level (:level n)
      :sources (mapv first srcs)
@@ -293,6 +304,62 @@
     (dotimes [j k]
       (accum-rate! out (:alpha node) (aget hs (aget src j)) ksc (* j sc) sc))
     out))
+
+(defn- own-rate-drawn!
+  "`own-rate!` under drawn parameters: mu[c] scaled by g[c], and source j's
+  block of alpha for channel c by g[C + c*k + j]."
+  [node ^objects hs ^doubles out ^long sc ^doubles g]
+  (let [^ints src (:src node)
+        ^doubles mu (:mu node)
+        ^doubles alpha (:alpha node)
+        k (alength src)
+        ksc (* k sc)]
+    (dotimes [c C] (aset out c (* (aget mu c) (aget g c))))
+    (dotimes [j k]
+      (let [^doubles h (aget hs (aget src j))]
+        (dotimes [c C]
+          (aset out c (+ (aget out c)
+                         (* (aget g (+ C (* c k) j))
+                            (dot-off alpha (+ (* c ksc) (* j sc)) h sc)))))))
+    out))
+
+(defn- posterior-shapes
+  "Effective Gamma shapes of a node's posterior, for drawing its parameters
+  in a forecast: per channel for mu, then per channel and source for each
+  block of alpha. A shape is the evidence behind the estimate, prior and
+  data, in the quasi-Poisson units of the node's dispersion (counts over
+  dispersion), which makes it independent of how values are normalized."
+  ^doubles [node ^long sc ^double w ^double mu-share]
+  (let [^ints src (:src node)
+        k (alength src)
+        ksc (* k sc)
+        ^doubles prior (:prior node)
+        ^doubles sa (:sa node)
+        ^doubles ybar (:ybar node)
+        ^doubles smu (:smu node)
+        ^doubles disp (:disp node)
+        out (double-array (+ C (* C k)))]
+    (dotimes [c C]
+      (let [yb (aget ybar c)
+            d (Math/max 1.0 (aget disp c))]
+        (aset out c (/ (+ (* mu-share yb w) (aget smu c)) d))
+        (dotimes [j k]
+          (let [base (+ (* c ksc) (* j sc))]
+            (aset out (+ C (* c k) j)
+                  (/ (loop [q 0 acc 0.0]
+                       (if (< q sc)
+                         (recur (inc q) (+ acc (* (aget prior (+ base q)) yb w) (aget sa (+ base q))))
+                         acc))
+                     d))))))
+    out))
+
+(defn- draw-factors!
+  "Fills `out` with mean-one Gamma draws of `shapes`: each parameter's
+  posterior relative to its estimate. No evidence at all leaves it as is."
+  [^doubles rng ^doubles out ^doubles shapes]
+  (dotimes [i (alength shapes)]
+    (let [a (aget shapes i)]
+      (aset out i (if (< a 1e-9) 1.0 (m/gamma! rng a (/ 1.0 a)))))))
 
 (defn- children-sum!
   "out[c] = sum over children of (values child)[c]"
@@ -522,7 +589,12 @@
   also keeps every bin, as :paths of sims × horizon × channels values laid out
   [sim][bin][channel] (read with `path-sum`), which takes horizon times the
   memory. Parents are drawn from their children, so the higher levels are
-  built from the lower ones."
+  built from the lower ones.
+
+  Each simulation draws the model's parameters from their posterior (see
+  `posterior-shapes`) before it runs, so the spread of the forecast carries
+  what the model doesn't know about itself as well as the world's noise;
+  :param-uncertainty false in the config keeps the point estimates."
   [model {:keys [horizon sims seed paths?] :or {horizon 52 sims 50 seed 1}}]
   (let [model (stable-params model)
         cfg (:config model)
@@ -534,6 +606,11 @@
         paths (when paths? (object-array n))
         totals (object-array n)
         stride (* horizon C)
+        uncertain? (:param-uncertainty cfg true)
+        shapes (when uncertain?
+                 (let [w (double (:prior-weight cfg))
+                       mu-share (double (get-in cfg [:share :mu]))]
+                   (object-array (map #(posterior-shapes % sc w mu-share) nodes))))
         ;; per-bin step of the level walk, so its sd after 52 bins is :level-noise
         step (/ (double (:level-noise cfg)) (Math/sqrt 52.0))]
     (dotimes [i n]
@@ -548,8 +625,12 @@
              to (quot (* (inc chunk) sims) forecast-chunks)
              g (m/rng (+ (* 7919 (long seed)) chunk))
              own (double-array C)
-             chsum (double-array C)]
+             chsum (double-array C)
+             factors (when uncertain?
+                       (object-array (map #(double-array (alength ^doubles %)) shapes)))]
          (doseq [s (range from to)]
+           (when uncertain?
+             (dotimes [i n] (draw-factors! g (aget factors i) (aget shapes i))))
            (let [hs (object-array (map #(aclone ^doubles (:h %)) nodes))
                  ys (object-array (repeatedly n #(double-array C)))
                  levels (object-array (repeatedly n #(double-array C)))]
@@ -560,7 +641,9 @@
                    (let [node (nodes i)
                          ^ints ch (:children node)
                          leaf? (zero? (alength ch))]
-                     (own-rate! node hs own sc)
+                     (if uncertain?
+                       (own-rate-drawn! node hs own sc (aget factors i))
+                       (own-rate! node hs own sc))
                      (when-not leaf? (children-sum! chsum ch ys))
                      (when (pos? step) (drift! g (aget levels i) step))
                      (draw-node! g (aget ys i) own (aget levels i) half-var (:disp node) chsum

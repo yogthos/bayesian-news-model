@@ -69,8 +69,8 @@ The model is described in [DESIGN.md](DESIGN.md) and in `bnm.model`'s docstring.
   Each event counts once for every node it touches. The busiest units get nodes of their own: by default 2,500 dyads, 1,500 actors, 1,500 pairs and 1,500 provinces.
 - **Connections.** Every node's expected activity in six channels is driven by its own past, its parents' past and its strongest same-level neighbours' past, at two time scales. This is a multivariate Hawkes process. The six channels are verbal cooperation, material cooperation, verbal conflict, protest, coercion and violence. The learned excitation weights are the "what drives what" graph.
 - **Recursion.** A parent predicts both from its own dynamics and from the sum of its children's predictions. It blends the two by recent accuracy, so forecasts are built up from the leaves.
-- **Online learning.** Online EM with forgetting runs under scale-free Gamma priors. Every bin fed in is training, so the model keeps refining itself.
-- **Forecasts.** Forecasts are Monte Carlo simulations. Excitation is projected below criticality first, so a forecast cannot explode.
+- **Online learning.** Online EM with forgetting runs under scale-free Gamma priors, so every bin fed in is training and the model keeps refining itself. The priors are centred: before any evidence, a node's prior predicts exactly its typical rate. A fixed share of that comes from its baseline, and the sources share the rest by kind. A test checks this as a prior predictive check. Strictly, this is approximate, empirical Bayes: conjugate Gamma posteriors, estimated by EM and scaled by each node's observed mean.
+- **Forecasts.** Forecasts are Monte Carlo simulations. Each simulation first draws the parameters from their posteriors, so forecast intervals carry the model's uncertainty about itself as well as the world's noise. Excitation is projected below criticality first, so a forecast cannot explode. Backtests use 100 simulations and report the Monte Carlo error of their probabilities.
 
 ## Data and backtesting
 

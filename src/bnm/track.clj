@@ -76,7 +76,7 @@
                              (for [[id rs] (group-by :node rows)]
                                [id (into {}
                                          (for [r rs :when (some #{(:channel r)} eval/escalation-channels)]
-                                           [(:channel r) (select-keys r [:p-escalate :p-cal :p-hist :p-clim
+                                           [(:channel r) (select-keys r [:p-escalate :sims :p-cal :p-hist :p-clim
                                                                          :stratum :last])]))]))})
       m)))
 

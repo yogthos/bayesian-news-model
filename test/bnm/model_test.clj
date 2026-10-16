@@ -100,3 +100,42 @@
     (testing "totals are the paths summed"
       (doseq [s (range 5) c (range model/C)]
         (is (< (Math/abs (- (model/total a i s c) (model/path-sum a i s c 0 8))) 1e-9))))))
+
+(deftest prior-predicts-the-typical-rate
+  ;; a prior predictive check: with no evidence yet and every node at its
+  ;; typical rate, the prior alone predicts exactly that rate, whatever a
+  ;; node's number of sources
+  (let [s (-> (structure/volumes)
+              (structure/tally "UKR" "GOV" "UKR" "OPP" "UKR.12" 300.0)
+              (structure/tally "UKR" "GOV" "RUS" "MIL" nil 400.0)
+              (structure/tally "UKR" nil "POL" nil nil 300.0)
+              (structure/tally "RUS" nil "BLR" nil nil 300.0)
+              (structure/build {:min-dyad-volume 100.0 :min-actor-volume 100.0
+                                :min-pair-volume 100.0 :min-province-volume 100.0}))
+        m (model/create s)
+        sc (* (model/scales (:config m)) model/C)]
+    (doseq [n (:nodes m)]
+      (java.util.Arrays/fill ^doubles (:ybar n) 2.5)
+      (java.util.Arrays/fill ^doubles (:h n) 2.5))
+    (model/refresh! m)
+    (let [hs (object-array (map :h (:nodes m)))]
+      (doseq [n (:nodes m)]
+        (let [out (double-array model/C)]
+          (#'model/own-rate! n hs out sc)
+          (is (every? #(< (Math/abs (- % 2.5)) 1e-9) out) (:id n)))))))
+
+(deftest forecasts-carry-parameter-uncertainty
+  (let [mdl (series/with-routes (model/create (toy-structure)))
+        mdl (reduce (fn [mdl [t bin]] (first (series/observe-bin! mdl t bin)))
+                    mdl (map-indexed vector (simulate-world 60 3)))
+        i ((:index mdl) "UKR")
+        c violence
+        stats (fn [m]
+                (let [fc (model/forecast m {:horizon 13 :sims 400 :seed 5})
+                      xs (map #(model/total fc i % c) (range 400))
+                      mean (/ (reduce + xs) 400.0)]
+                  [mean (/ (reduce + (map #(let [d (- % mean)] (* d d)) xs)) 400.0)]))
+        [m-draw v-draw] (stats mdl)
+        [m-point v-point] (stats (assoc-in mdl [:config :param-uncertainty] false))]
+    (is (> v-draw v-point) "drawing the parameters widens the forecast")
+    (is (< (Math/abs (- 1.0 (/ m-draw m-point))) 0.2) "without moving its centre much")))

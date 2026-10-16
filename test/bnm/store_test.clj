@@ -71,7 +71,12 @@
         grown (model/restructure mdl rebuilt)]
     (is (= #{"FRA" "RUS" "UKR"} (set (filter #(= 3 (count %)) (map :id (:nodes grown))))))
     (is (= (vec (:mu (model/node mdl "UKR"))) (vec (:mu (model/node grown "UKR")))))
-    (testing "a connection both structures have keeps its weight"
-      (let [self (fn [m] (first (filter #(= "UKR" (:source %)) (model/connections m "UKR" mt/violence))))]
-        (is (= (select-keys (self mdl) [:scale :channel :alpha])
-               (select-keys (self grown) [:scale :channel :alpha])))))))
+    (testing "a connection both structures have keeps what it learned"
+      ;; its alpha moves only with its prior, which is re-centred on the new
+      ;; set of sources; its statistics carry over as they are
+      (let [a (model/node mdl "UKR") b (model/node grown "UKR")
+            sc (* (model/scales (:config mdl)) model/C)
+            block (fn [nd arr] (vec (take sc (get nd arr))))]
+        (is (= "UKR" (first (:sources a)) (first (:sources b))))
+        (is (= (block a :ta) (block b :ta)))
+        (is (= (block a :sa) (block b :sa)))))))

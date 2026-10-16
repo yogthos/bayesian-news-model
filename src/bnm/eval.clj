@@ -158,6 +158,7 @@
        :crps (crps (log-sorted xs) (Math/log1p a))
        :crps-hist (crps (log-sorted series) (Math/log1p a))
        :p-escalate p
+       :sims n
        :p-cal (cal/calibrate (:calibration fc) [ch st] p)
        :p-clim pc
        :p-hist (history-rate series h pc)
@@ -204,7 +205,7 @@
      :outcomes (vec (outcomes rs))
      :scored (vec (for [r rs :when (and (scored-kinds (:level r)) (escalation-row? r))]
                     (-> (select-keys r [:id :level :channel :stratum :last :actual
-                                        :p-escalate :p-cal :p-hist :p-clim :escalated])
+                                        :p-escalate :sims :p-cal :p-hist :p-clim :escalated])
                         (assoc :period period))))
      :totals (into (sorted-map)
                    (for [[k g] (group-by (juxt :level :channel) rs)]
@@ -271,7 +272,13 @@
      :ap-model (avg-precision (map :p-escalate g) ys)
      :ap-hist (avg-precision (map :p-hist g) ys)
      :top-model (top g :p-escalate top-k)
-     :top-hist (top g :p-hist top-k)}))
+     :top-hist (top g :p-hist top-k)
+     ;; Monte Carlo error: a probability from n simulations has variance
+     ;; p(1-p)/n, which is also what it adds to the expected Brier score
+     :mc-se (mean (for [r g :when (:sims r)]
+                    (Math/sqrt (/ (* (:p-escalate r) (- 1.0 (:p-escalate r))) (:sims r)))))
+     :brier-mc (mean (for [r g :when (:sims r)]
+                       (/ (* (:p-escalate r) (- 1.0 (:p-escalate r))) (:sims r))))}))
 
 (defn aggregate
   "Scores over several periods' results: totals averaged over periods,
@@ -345,20 +352,22 @@
       (println)
       (println (str "Escalation (>= " escalation-ratio "x the last period), by the stratum of the node's history."))
       (println "Brier skill against climatology (raw model, calibrated, own history); ROC AUC and average")
-      (println (str "precision (model / history); precision and recall in the top " top-k " per period (model / history)"))
+      (println (str "precision (model / history); precision and recall in the top " top-k " per period (model / history);"))
+      (println "and the Monte Carlo standard error of the model's probabilities (mc), with what that noise adds to its Brier score")
       (doseq [l [:country :actor :province :subregion]
               ch escalation-channels
               st (cons :all strata)
               :let [s (escalation [l ch st])]
               :when s]
-        (println (format "  %-9s %-16s %-6s n=%6d pos=%5d rate %.3f  BSS %s %s %s  auc %s/%s  ap %s/%s  P@%d %s/%s  R@%d %s/%s"
+        (println (format "  %-9s %-16s %-6s n=%6d pos=%5d rate %.3f  BSS %s %s %s  auc %s/%s  ap %s/%s  P@%d %s/%s  R@%d %s/%s  mc %s (+%s)"
                          (level-name l) (name ch) (name st) (:n s) (:positives s) (:rate s)
                          (pct (skill (:brier-model s) (:brier-clim s)))
                          (pct (skill (:brier-cal s) (:brier-clim s)))
                          (pct (skill (:brier-hist s) (:brier-clim s)))
                          (f3 (:auc-model s)) (f3 (:auc-hist s)) (f3 (:ap-model s)) (f3 (:ap-hist s))
                          top-k (f2 (get-in s [:top-model :precision])) (f2 (get-in s [:top-hist :precision]))
-                         top-k (f2 (get-in s [:top-model :recall])) (f2 (get-in s [:top-hist :recall])))))
+                         top-k (f2 (get-in s [:top-model :recall])) (f2 (get-in s [:top-hist :recall]))
+                         (f3 (:mc-se s)) (f3 (:brier-mc s)))))
       (println)
       (println "Per period:")
       (doseq [r results] (println " " (summary-line r))))))

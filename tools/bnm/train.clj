@@ -87,7 +87,7 @@
 
 (defn run
   [{:keys [sources eval-from eval-to sims from config to save-origins every] run-name :name
-    :or {sims "30" from "1979"}}]
+    :or {sims "100" from "1979"}}]
   (let [sources (str/split sources #",")
         eval-from (parse-long eval-from)
         eval-to (if eval-to (parse-long eval-to) 9999)
