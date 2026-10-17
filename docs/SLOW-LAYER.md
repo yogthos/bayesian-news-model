@@ -140,3 +140,31 @@ value before its `available` date.
    crisis, the euro crisis, the Arab uprisings, 2014, COVID's supply shock,
    the 2021-22 energy and food price shock, and 2022 all in the held-out
    period.
+
+## Results (onsets, held out from 2008; `data/runs/events-2`, `named-2`)
+
+Hazards are refit every year on the outcomes known by then. Each model's
+prior is chosen on 2000-2007. "Hard" onsets are those in countries with no
+onset of the kind in the previous ten years.
+
+| kind, 1-4 quarters | history | named | pool | hard: history | hard: named | hard: pool |
+|---|---|---|---|---|---|---|
+| conflict onset | 0.883 | 0.894 | 0.896 | 0.838 | 0.881 | 0.883 |
+| war onset | 0.826 | 0.870 | 0.880 | 0.700 | 0.794 | 0.816 |
+| protest surge | 0.830 | 0.880 | 0.877 | 0.704 | 0.818 | 0.811 |
+| violence surge | 0.799 | 0.799 | 0.805 | 0.767 | 0.772 | 0.779 |
+
+(AUC; the pool's Brier skill is positive for every kind.)
+
+- **Named inputs beat domain averages.** The literature's named stocks
+  (`bnm.named`) beat history, most of all on hard onsets. The per-domain
+  averages ("all") overfit and lose to history.
+- **The pool is safest.** A linear pool of the models, refit on their
+  resolved forecasts, is the best model or close to it everywhere. The
+  log-linear stack is unstable on small catalogues.
+- **The event model's state did not help.** Its forecast growth and excess
+  escalation per channel added nothing to ranking, and only a little to
+  calibration for violence.
+- **Financial catalogues are too small to judge.** Banking crises (ESRB) and
+  market crashes have 38 and about 200 held-out positives, concentrated in
+  three or four global episodes. docs/TRADING.md tests market risk properly.

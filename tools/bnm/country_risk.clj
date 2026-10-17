@@ -61,6 +61,7 @@
         variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
         units (sort (distinct (for [[u v] (keys db) :when (= v "markets/share_prices")] u)))
+        ;; log prices: load-series applies the variable's transform
         price (fn [u m] (some-> (db [u "markets/share_prices"]) (sk/value (inc m) {:stale 2})))
         qs (sort (distinct (map #(nth % 2) (keys pr))))
         signal (fn [mdl u q] (any-onset (pr [mdl u q])))
@@ -69,11 +70,11 @@
                               p0 (price u (+ m 1)) p1 (price u (+ m 4))
                               s (signal model u q) s-prev (signal model u (- q 4))
                               h (signal "history" u q)
-                              mom (when-let [a (price u m)] (when-let [b (price u (- m 12))] (Math/log (/ a b))))
+                              mom (when-let [a (price u m)] (when-let [b (price u (- m 12))] (- a b)))
                               fall (when p0 (let [ps (keep #(price u (+ m 1 %)) (range 1 13))]
-                                              (when (= 12 (count ps)) (boolean (some #(<= % (* 0.8 p0)) ps)))))]
+                                              (when (= 12 (count ps)) (boolean (some #(<= % (+ p0 (Math/log 0.8))) ps)))))]
                         :when (and p0 p1 s)]
-                    {:q q :unit u :ret (Math/log (/ p1 p0)) :level s :change (when s-prev (- s s-prev))
+                    {:q q :unit u :ret (- p1 p0) :level s :change (when s-prev (- s s-prev))
                      :history h :momentum mom :fall fall}))
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))

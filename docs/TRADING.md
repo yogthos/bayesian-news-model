@@ -159,7 +159,50 @@ This agrees with the literature. Predictable index drawdown risk is mostly
 priced: trend rules capture what is left of the timing, and volatility
 management captures what is left of the risk.
 
-The remaining hope for a trading edge is where the model sees something
-markets may price slowly. In particular, political and conflict risk by
-country, which the onset hazards rank with AUC 0.88-0.90. That test (country
-returns against changes in predicted unrest) is next.
+## Political risk and country returns (`bnm.country-risk`, `data/runs/events-2`)
+
+Changes in country risk ratings have predicted country returns (Erb, Harvey &
+Viskanta 1996; Bekaert et al. 2014). The onset hazards rank political onsets
+well (held-out AUC 0.84-0.90), so the test asks whether markets price that
+slowly.
+
+**The test**
+- The signal is each country's out-of-sample probability of any political
+  onset within a year: conflict or war onset, protest or violence surge.
+  Both its level and its change over the year are tested.
+- It is scored against the next quarter's return on the country's share price
+  index, over 47 OECD markets. The returns are local currency monthly
+  averages, so the quarter after the signal's is used.
+- Twelve-month momentum is the control. It is a known cross-country signal
+  (Asness, Moskowitz & Pedersen 2013).
+
+| signal, 2008 on | rank IC | t | long-short a year |
+|---|---|---|---|
+| risk level | 0.00 | 0.0 | -0.9% |
+| risk change | -0.03 | -1.2 | -1.1% |
+| history model | 0.00 | 0.1 | -1.5% |
+| 12-month momentum | 0.06 | 1.7 | +3.6% |
+
+Over 2000-2026, momentum has an IC of 0.094 (t 3.4), which shows the test
+finds what the literature does.
+
+Political risk predicts nothing about these markets' returns. Two readings
+are possible:
+- markets price it already;
+- these markets, mostly stable democracies, see too little of it.
+
+Testing frontier markets, where political onsets happen, would need dollar
+returns on their indices. No free source was found.
+
+## Summary for a trader
+
+**What the model gives**
+- Calibrated probabilities of political onsets by country. Held-out AUC is
+  0.84-0.90, and 0.79-0.88 on onsets in countries quiet for ten years.
+- A calibrated measure of index drawdown risk, with held-out AUC about 0.70,
+  three to five times as many falls in its top fifth as in its bottom three,
+  and a reading every month (the "now" line of each report).
+
+**What the evidence does not support**
+- Using either one as a timing or selection signal that beats the simple
+  rules (trend-following, momentum) after costs.
