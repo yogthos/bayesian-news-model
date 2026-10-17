@@ -8,7 +8,8 @@
             [bnm.slow-test]
             [bnm.stocks-test]
             [bnm.trade-test]
-            [bnm.hazard-test]))
+            [bnm.hazard-test]
+            [bnm.polecon-test]))
 
 (def namespaces
   '[bnm.math-test
@@ -19,7 +20,8 @@
     bnm.slow-test
     bnm.stocks-test
     bnm.trade-test
-    bnm.hazard-test])
+    bnm.hazard-test
+    bnm.polecon-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]

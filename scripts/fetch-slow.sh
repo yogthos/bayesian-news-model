@@ -172,7 +172,11 @@ fetch_market() {
   # Shiller's CAPE to the current month (his own file stops in 2023 in the mirror)
   get "https://www.multpl.com/shiller-pe/table/by-month" "$d/cape.html"
   get "https://www.federalreserve.gov/econres/notes/feds-notes/ebp_csv.csv" "$d/ebp.csv"
-  for s in BAA AAA GS10 TB3MS CPIAUCNS UNRATE INDPRO PAYEMS; do
+  # political economy (docs/REGIMES.md): BEA annual compensation, national income,
+  # corporate profits, net nonresidential fixed assets, investment and GDP; the
+  # nonfarm labour share; capacity utilization
+  for s in BAA AAA GS10 TB3MS CPIAUCNS UNRATE INDPRO PAYEMS \
+           A033RC1A027NBEA A032RC1A027NBEA A051RC1A027NBEA K1NTOTL1ES000 PNFIA GDPA PRS85006173 TCU; do
     get "https://fred.stlouisfed.org/graph/fredgraph.csv?id=$s" "$d/$s.csv"
   done
 }

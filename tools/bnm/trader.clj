@@ -26,6 +26,7 @@
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
             [bnm.trade :as tr]
+            [bnm.us-polecon :as upc]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -123,6 +124,15 @@
          (when (and cape sma) (if (neg? sma) cape 0.0))
          (when cape 1.0) (when e 1.0) (when v 1.0) (when nf 1.0) (when c3 1.0)]))))
 
+(def all-input-names (into input-names upc/names))
+
+(defn all-inputs
+  "The base inputs followed by the political economy ones (bnm.us-polecon)."
+  [fr w data db wc]
+  (let [base (build-inputs fr w data db wc)
+        pe (upc/inputs db)]
+    (fn [t] (let [b (base t)] (into b (pe t {:term (b 0) :inflation (b 2) :tightening (b 4)}))))))
+
 (defn- vectorize ^doubles [xs] (double-array (cons 1.0 (map #(if % (double %) 0.0) xs))))
 
 (def stable-inputs
@@ -136,8 +146,8 @@
   [:cape :mom12 :sma10 :vol6 :vol-ratio :drawdown12 :cape-x-drawdown :cape-x-decel :cape-x-below-sma
    :cape-present])
 
-(defn- select-inputs [names]
-  (let [idx (into {} (map-indexed (fn [i n] [n i]) input-names))
+(defn select-inputs [names]
+  (let [idx (into {} (map-indexed (fn [i n] [n i]) all-input-names))
         is (mapv idx names)]
     (fn [xs] (mapv #(nth xs %) is))))
 
@@ -204,12 +214,11 @@
 
 (defn- fmt [x] (if x (format "%.3f" (double x)) "  -  "))
 
-(defn run [{:keys [name inputs method]}]
-  (let [run-name (or name "trader")
-        out-dir (str "data/runs/" run-name)
-        _ (io/make-parents (str out-dir "/x"))
-        fr (read-french)
-        {:keys [start mkt rf]} fr
+(defn setup
+  "The US market data and the inputs by month: {:fr :w :months :raw-inputs}."
+  []
+  (let [fr (read-french)
+        {:keys [start mkt]} fr
         w (tr/wealth mkt)
         data {:gs10 (read-csv-col "GS10.csv" 1) :tb3 (read-csv-col "TB3MS.csv" 1)
               :baa (read-csv-col "BAA.csv" 1) :aaa (read-csv-col "AAA.csv" 1)
@@ -221,10 +230,17 @@
         db (nm/load-series "data/slow/series.tsv" variables)
         units (distinct (map first (keys db)))
         months (range (+ start 36) (+ start (count mkt)))
-        wc (nm/world-credit db units months)
+        wc (nm/world-credit db units months)]
+    {:fr fr :w w :months months :raw-inputs (all-inputs fr w data db wc)}))
+
+(defn run [{:keys [name inputs method]}]
+  (let [run-name (or name "trader")
+        out-dir (str "data/runs/" run-name)
+        _ (io/make-parents (str out-dir "/x"))
+        {:keys [fr w months raw-inputs]} (setup)
+        {:keys [start mkt rf]} fr
         chosen (if inputs (mapv keyword (str/split inputs #",")) stable-inputs)
         pick (select-inputs chosen)
-        raw-inputs (build-inputs fr w data db wc)
         combo? (= method "combo")
         combo-names (vec (remove #(str/ends-with? (clojure.core/name %) "-present") chosen))
         pick-combo (select-inputs combo-names)
