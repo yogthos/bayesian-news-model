@@ -842,3 +842,21 @@ totals:
 Escalation AUC dips slightly (violence 0.758 to 0.753, protest 0.831 to
 0.822). The totals gain and the identifiable branching ratio outweigh it,
 so the change is kept.
+
+## Skewed spread recalibration (bnm-enb.14)
+
+**The test.** The 2008-09 PIT showed a slightly high median and a thin
+upper tail. Two recalibrations were tried against the symmetric widening
+(country totals, 2008-09):
+
+| version | CRPS (coercion, protest, violence) | 80% coverage |
+|---|---|---|
+| symmetric (`data/runs/level-1`) | 0.112, 0.076, 0.125 | 0.76-0.83 |
+| each side by its own factor and a median shift (`data/runs/pit-skew`, old baseline) | 0.118, 0.080, 0.129 (old baseline 0.114, 0.076, 0.125) | 0.71-0.74 |
+| each side by its own factor, mean kept (`data/runs/sides-1`) | 0.112, 0.075, 0.126 | 0.73-0.76 |
+
+**Result**
+- Neither beats the symmetric widening, which stays the default
+  (`:spread-mode :symmetric`).
+- The thin upper tail looks like it needs heavier-tailed count draws in the
+  model itself, not a stretch applied after them.
