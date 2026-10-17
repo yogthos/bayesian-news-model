@@ -59,11 +59,18 @@
   {:bin-days 7
    :decays [0.6 0.97]  ; history kernels, fast and slow: h <- d*h + (1-d)*y
    :forget 0.99        ; per-bin discount of sufficient statistics (~2 years)
+   :level-discount 0.95 ; per-bin discount of the baseline's statistics (~20 bins):
+                        ; the baseline is a local level (West & Harrison's
+                        ; discount), excitation the excursions around it
    :prior-weight 8.0   ; prior strength, in bins of evidence
    ;; prior share of a node's mean rate: :mu for the baseline; the rest is
    ;; split among the sources in proportion to these weights (see new-node),
    ;; and over the time scales by :scale-split
-   :share {:mu 0.2
+   ;; the baseline takes most of the prior: with no clustering in the data the
+   ;; slow kernel and the baseline cannot be told apart, and the split then
+   ;; follows the prior; excitation has to be earned by bursts the fast kernel
+   ;; sees (Filimonov & Sornette 2015; docs/RESEARCH.md)
+   :share {:mu 0.8
            :self-same 0.6 :self-cross 0.01
            :parent-same 0.05 :parent-cross 0.002
            :neighbor-same 0.03 :neighbor-cross 0.001}
@@ -159,9 +166,24 @@
                            (+ (* w sb) (aget ta (+ jsc q))))))))))
 
 (defn- refresh-mu!
-  [^doubles mu ^doubles smu ^doubles tmu ^doubles ybar ^double w ^doubles share]
+  "The M step for mu: the posterior mean under a Gamma prior centred on the
+  baseline's share of `level`, the node's local level (its fast history),
+  so that a baseline whose statistics forget quickly is not pulled back to a
+  long-run mean after the level moves."
+  [^doubles mu ^doubles smu ^doubles tmu ^doubles level ^double w ^doubles share]
   (dotimes [c C]
-    (aset mu c (/ (+ (* (aget share c) (aget ybar c) w) (aget smu c)) (+ w (aget tmu c))))))
+    (aset mu c (/ (+ (* (aget share c) (aget level c) w) (aget smu c)) (+ w (aget tmu c))))))
+
+(defn- local-level
+  "The node's fast history, per channel: its local level. (The slow history
+  remembers a level for most of a year after it moves, and pulls the
+  baseline back with it.)"
+  ^doubles [node ^long S]
+  (let [out (double-array C)
+        ^doubles h (:h node)
+        off 0]
+    (dotimes [c C] (aset out c (aget h (+ off c))))
+    out))
 
 (defn- ratios!
   "r[c] = y[c] / own[c]: how much of what was expected came about."
@@ -500,7 +522,7 @@
          (let [node (nodes i)
                ^ints src (:src node)
                k (alength src)]
-           (refresh-mu! (:mu node) (:smu node) (:tmu node) (:ybar node) w (:mu-share node))
+           (refresh-mu! (:mu node) (:smu node) (:tmu node) (local-level node (scales cfg)) w (:mu-share node))
            (dotimes [j k]
              (refresh-alpha! (:alpha node) (:sa node) (:ta node) (:prior node) (:ybar node)
                              (:ybar (nodes (aget src j))) (* k sc) (* j sc) sc w))))))
@@ -523,6 +545,7 @@
               (dotimes [i n] (when (nil? (aget ys i)) (aset ys i zeros))))
         hs (histories model)
         rho (double (:forget cfg))
+        level-rho (double (or (:level-discount cfg) (:forget cfg)))
         w (double (:prior-weight cfg))
         rb (double (:blend-forget cfg))
         eta (double (:disp-rate cfg))
@@ -552,7 +575,7 @@
                    ^ints ch (:children node)
                    has-children? (pos? (alength ch))]
                (ratios! (:r node) y (:lam-own node))
-               (learn-baseline! (:mu node) (:smu node) (:tmu node) (:r node) rho)
+               (learn-baseline! (:mu node) (:smu node) (:tmu node) (:r node) level-rho)
                (dotimes [j k]
                  (learn-source! (:alpha node) (:sa node) (:ta node) (aget hs (aget src j)) (:r node)
                                 (* k sc) (* j sc) sc rho))
@@ -819,7 +842,7 @@
         sc (* (scales cfg) C)
         k (count (:sources node))
         w (double (:prior-weight cfg))]
-    (refresh-mu! (:mu node) (:smu node) (:tmu node) (:ybar node) w (:mu-share node))
+    (refresh-mu! (:mu node) (:smu node) (:tmu node) (local-level node (scales cfg)) w (:mu-share node))
     (dotimes [j k]
       (refresh-alpha! (:alpha node) (:sa node) (:ta node) (:prior node) (:ybar node)
                       (nth source-ybars j) (* k sc) (* j sc) sc w))

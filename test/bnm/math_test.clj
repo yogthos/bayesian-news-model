@@ -27,3 +27,8 @@
   (doseq [d ["19700101" "19790101" "20000229" "20231007" "21001231"]]
     (is (= d (t/date-str (t/day d)))))
   (is (= 19637 (t/day "20231007"))))
+
+(deftest normal-quantiles
+  (is (< (Math/abs (bnm.math/normal-quantile 0.5)) 1e-9))
+  (is (< (Math/abs (- 1.2815515655446004 (bnm.math/normal-quantile 0.9))) 1e-6))
+  (is (< (Math/abs (+ 2.3263478740408408 (bnm.math/normal-quantile 0.01))) 1e-6)))

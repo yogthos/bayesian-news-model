@@ -233,3 +233,23 @@
         fc (model/forecast mdl {:horizon 13 :sims sims :seed 4})
         mean (/ (reduce + (map #(model/total fc i % protest) (range sims))) sims)]
     (is (< 0.85 (/ mean (* 13 20.0 u)) 1.15) (/ mean (* 13 20.0 u)))))
+
+(deftest iid-counts-are-mostly-baseline
+  ;; Poisson counts with no clustering at all: the level must be the baseline's,
+  ;; not excitation's (Filimonov & Sornette 2015: a slow kernel otherwise
+  ;; absorbs the level and the branching ratio comes out near one)
+  (let [g (m/rng 11)
+        week (fn [] {"toy" [["FRA" nil nil nil nil protest (double (m/poisson! g 40.0))]
+                            ["RUS" nil nil nil nil 0 (double (m/poisson! g 500.0))]]})
+        mdl (reduce (fn [mdl [t bin]] (first (series/observe-bin! mdl t bin)))
+                    (series/with-routes (model/create (toy-structure)))
+                    (map-indexed vector (repeatedly 200 week)))
+        i ((:index mdl) "FRA:*")
+        node ((:nodes mdl) i)
+        k (count (:sources node))
+        sc (* (model/scales (:config mdl)) model/C)
+        out (double-array model/C)]
+    (#'model/excitation-shares! out (:alpha node)
+                                (object-array (map #(:ybar ((:nodes mdl) (aget ^ints (:src node) %))) (range k)))
+                                (:ybar node) k sc)
+    (is (< (aget out protest) 0.5) (aget out protest))))

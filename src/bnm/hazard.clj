@@ -218,3 +218,42 @@
 
 (defn brier [ps ys]
   (/ (reduce + (map (fn [p y] (let [d (- (double p) (if y 1.0 0.0))] (* d d))) ps ys)) (double (count ps))))
+
+(defn usefulness
+  "Sarlin's (2013) relative usefulness of probabilities ps for outcomes ys,
+  for a policymaker who weighs missed events by mu and false alarms by
+  1 - mu: the share of the loss of ignoring the forecast (always or never
+  acting, whichever is cheaper) that the best threshold saves. 1 is a
+  perfect forecast, 0 one worth nothing."
+  [ps ys mu]
+  (let [n (count ys)
+        pos (count (filter true? ys))
+        neg (- n pos)
+        p1 (/ pos (double n)) p2 (- 1.0 p1)
+        pairs (map vector ps ys)
+        loss (fn [thr]
+               (let [alarm (filter #(>= (first %) thr) pairs)
+                     tp (count (filter #(true? (second %)) alarm))
+                     fp (- (count alarm) tp)
+                     t1 (if (pos? pos) (/ (- pos tp) (double pos)) 0.0)
+                     t2 (if (pos? neg) (/ fp (double neg)) 0.0)]
+                 (+ (* mu p1 t1) (* (- 1.0 mu) p2 t2))))
+        best (apply min (loss Double/POSITIVE_INFINITY) (map loss (distinct ps)))
+        ignore (min (* mu p1) (* (- 1.0 mu) p2))]
+    (if (pos? ignore) (/ (- ignore best) ignore) 0.0)))
+
+(defn block-bootstrap-auc
+  "A 90% interval for the pooled AUC of rows [period p y], resampling whole
+  periods with replacement `reps` times (seeded), so that the correlation
+  within a period is kept."
+  [rows reps seed]
+  (let [blocks (vec (vals (group-by first rows)))
+        k (count blocks)
+        g (m/rng seed)
+        aucs (sort (for [_ (range reps)
+                         :let [rs (mapcat (fn [_] (blocks (min (dec k) (long (* k (m/next-double! g)))))) (range k))
+                               ys (map #(nth % 2) rs)]
+                         :when (and (some true? ys) (some false? ys))]
+                     (auc (map second rs) ys)))
+        at (fn [q] (nth aucs (min (dec (count aucs)) (long (* q (count aucs))))))]
+    [(at 0.05) (at 0.95)]))

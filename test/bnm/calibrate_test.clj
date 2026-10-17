@@ -73,3 +73,26 @@
       (is (< (f 0.95) 0.9))
       (is (> (f 0.05) 0.1))
       (is (< (f 0.3) (f 0.31))))))
+
+(deftest skewed-spread
+  ;; log errors: below the median as the spread says, above it three times as large,
+  ;; and two outcomes in three below the median
+  (let [sd 0.2 z1 1.2815515655446004
+        rows (for [i (range 600)]
+               (let [e (case (mod i 3) 0 (* 3.0 sd) 1 (- sd) 2 (- (* 0.5 sd)))]
+                 {:level :country :channel :violence :stratum :active
+                  :q10 (Math/expm1 (- 3.0 (* z1 sd))) :q50 (Math/expm1 3.0)
+                  :q90 (Math/expm1 (+ 3.0 (* z1 sd))) :actual (Math/expm1 (+ 3.0 e))}))
+        s (cal/learn-spread {} rows)
+        {:keys [lo hi shift]} (cal/spread-factors s [:country :violence :active])]
+    (testing "the upper side widens more than the lower"
+      (is (> hi (* 2.0 lo)) [lo hi]))
+    (testing "more outcomes below the median than above shift it down"
+      (is (neg? shift)))
+    (testing "an unseen key keeps the forecast"
+      (is (= {:lo 1.0 :hi 1.0 :shift 0.0} (cal/spread-factors s [:actor :violence :active]))))
+    (testing "skewed widening stretches each side by its own factor around the shifted median"
+      (let [xs (double-array (map #(Math/expm1 %) [2.0 3.0 4.0]))
+            out (cal/widen-skewed {:lo 1.0 :hi 2.0 :shift 0.0} xs)]
+        (is (< (Math/abs (- (Math/log1p (aget out 0)) 2.0)) 1e-9))
+        (is (< (Math/abs (- (Math/log1p (aget out 2)) 5.0)) 1e-9))))))

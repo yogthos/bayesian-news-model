@@ -125,22 +125,51 @@
       (min (second spread-limits) (max (first spread-limits) k)))
     1.0))
 
+(defn spread-factors
+  "The skewed recalibration for `key` under `spread`: {:lo :hi :shift}, the
+  widening below and above the median and the shift of the median, in log1p
+  units. Each side's factor makes that side's squared log errors match the
+  simulations' variance (for a calibrated forecast, half the outcomes fall
+  each side, with mean square the variance); the shift moves the median to
+  where the share of outcomes below it is a half. Keys learned before the
+  sides were tracked get the symmetric factor and no shift."
+  [spread key]
+  (if-let [{:keys [e2-up v-up n-up e2-lo v-lo n-lo v n]} (get spread key)]
+    (if (nil? n-up)
+      (let [k (spread-factor spread key)] {:lo k :hi k :shift 0.0})
+      (let [vbar (/ v (max n 1e-9))
+            half (* 0.5 spread-shrink vbar)
+            side (fn [e2 vv] (min (second spread-limits)
+                                  (max (first spread-limits) (Math/sqrt (/ (+ e2 half) (max 1e-12 (+ vv half)))))))
+            klo (side e2-lo v-lo) khi (side e2-up v-up)
+            below (/ (+ n-lo (* 0.5 spread-shrink)) (+ n spread-shrink))
+            z (m/normal-quantile (min 0.99 (max 0.01 below)))]
+        {:lo klo :hi khi
+         :shift (* -1.0 z (Math/sqrt vbar) (if (pos? z) klo khi))}))
+    {:lo 1.0 :hi 1.0 :shift 0.0}))
+
 (defn learn-spread
   "`spread` updated with resolved forecasts: rows with :level, :channel,
   :stratum, :q10, :q50, :q90 and :actual, their quantiles as forecast, after
-  widening by `spread` as it stands. Rows whose range is empty say nothing
-  about their spread and are skipped."
+  the recalibration `spread` as it stands. The errors are taken against the
+  simulations' own median, and kept by side. Rows whose range is empty say
+  nothing about their spread and are skipped."
   [spread rows]
   (let [decayed (into {} (for [[k s] spread] [k (update-vals s #(* forget %))]))]
     (reduce (fn [acc {:keys [level channel stratum q10 q50 q90 actual]}]
               (let [lo (Math/log1p (max 0.0 q10)) hi (Math/log1p (max 0.0 q90))]
                 (if (> hi lo)
                   (let [key [level channel stratum]
-                        f (spread-factor spread key)
-                        sd (/ (- hi lo) (* 2.0 z90 f))
-                        e (- (Math/log1p (max 0.0 actual)) (Math/log1p (max 0.0 q50)))]
-                    (update acc key (fn [s] (merge-with + (or s {:e2 0.0 :v 0.0 :n 0.0})
-                                                        {:e2 (* e e) :v (* sd sd) :n 1.0}))))
+                        {klo :lo khi :hi shift :shift} (spread-factors spread key)
+                        sd (/ (- hi lo) (* z90 (+ klo khi)))
+                        e (- (Math/log1p (max 0.0 actual)) (- (Math/log1p (max 0.0 q50)) shift))
+                        up? (pos? e)]
+                    (update acc key (fn [s] (merge-with + (merge {:e2 0.0 :v 0.0 :n 0.0 :e2-up 0.0 :v-up 0.0 :n-up 0.0
+                                                                  :e2-lo 0.0 :v-lo 0.0 :n-lo 0.0} s)
+                                                        {:e2 (* e e) :v (* sd sd) :n 1.0}
+                                                        (if up?
+                                                          {:e2-up (* e e) :v-up (* sd sd) :n-up 1.0}
+                                                          {:e2-lo (* e e) :v-lo (* sd sd) :n-lo 1.0})))))
                   acc)))
             decayed rows)))
 
@@ -161,6 +190,21 @@
           (when (pos? after)
             (let [f (/ before after)]
               (dotimes [i n] (aset out i (* f (aget out i)))))))))
+    out))
+
+(defn widen-skewed
+  "The sorted sample `xs` (a double array) recalibrated by `spread-factors`:
+  in log1p units, each side of the median stretched by its own factor and
+  the median moved by the shift, as a new sorted array floored at zero. The
+  mean moves with it: the shift and the skew are what the errors asked for."
+  ^doubles [{:keys [lo hi shift]} ^doubles xs]
+  (let [n (alength xs)
+        out (double-array n)]
+    (when (pos? n)
+      (let [m (Math/log1p (max 0.0 (m/quantile xs 0.5)))]
+        (dotimes [i n]
+          (let [d (- (Math/log1p (max 0.0 (aget xs i))) m)]
+            (aset out i (max 0.0 (Math/expm1 (+ m shift (* (if (pos? d) hi lo) d)))))))))
     out))
 
 (defn isotonic-map

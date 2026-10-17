@@ -80,3 +80,18 @@
             ll (fn [ps] (reduce + (map (fn [p y] (Math/log (if y p (- 1.0 p)))) ps ys)))]
         (is (> (ll ps) (ll (map :who rows))))
         (is (> (ll ps) (ll (map :when rows))))))))
+
+(deftest policy-usefulness
+  ;; Sarlin (2013): the share of the loss of ignoring the forecast that it saves
+  (let [ys [true true false false false false false false false false]]
+    (testing "a perfect forecast saves all of it"
+      (is (< (Math/abs (- 1.0 (hz/usefulness [0.9 0.8 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1] ys 0.5))) 1e-12)))
+    (testing "a constant forecast saves none"
+      (is (< (Math/abs (hz/usefulness (repeat 10 0.3) ys 0.5)) 1e-12)))))
+
+(deftest bootstrap-intervals
+  (let [rows (for [yr (range 20) i (range 10)] [yr (if (< i 3) (+ 0.5 (* 0.01 i)) (* 0.01 i)) (< i 3)])
+        [lo hi] (hz/block-bootstrap-auc rows 200 7)]
+    (testing "resamples whole periods, and the interval holds the estimate"
+      (is (<= lo (hz/auc (map second rows) (map #(nth % 2) rows)) hi))
+      (is (<= 0.0 lo hi 1.0)))))
