@@ -765,3 +765,30 @@ here does. The probability before it was 0.03-0.28 and falling.
 | 2007-09 | partly | the panel crisis model ranks the 2008 wave countries; the US equity hazard only with the credit gap, at 0.11-0.15 |
 | 2020 | no | exogenous |
 | 2022 | yes (0.66-0.96) | flow displacement: inflation, rates and oil turning together |
+
+### Other approaches tested
+
+**Nonlinearity** (`scripts/nonlinear-check.py`, bnm-t5b.15.2). Gradient-
+boosted trees (scikit-learn 1.9.1) against a logit on the same inputs, both
+refit yearly:
+
+| inputs | logit, tune / held out | boosted trees, tune / held out |
+|---|---|---|
+| base | 0.66 / 0.73 | 0.52 / 0.57 |
+| base + regime + oil + small falls | 0.63 / 0.78 | 0.42 / 0.54 |
+| + invariants | 0.66 / 0.76 | 0.48 / 0.63 |
+
+The logit wins everywhere, as Beutel, List & von Schweinitz found for
+banking crises. With a few dozen episodes the trees fit noise.
+
+**LPPLS bubble confidence** (`scripts/lppls-confidence.py`, the `lppls`
+package 0.6.24). Nested monthly windows of 24-120 months, each ending at
+the month scored.
+- Where it fired: 1987 (0.17), 1999-2000 (to 0.50), mid-2007 (0.12),
+  January 2022 (0.12), and August 2026 (0.29).
+- It fires in 23% of months.
+- Era AUC: stable before 1990 (0.58, 0.71, 0.55), 0.46 held out.
+- In the hazard it raises the tuning years (0.72 to 0.77) and lowers the
+  held-out ones (0.83 to 0.80, Brier skill -0.22). Not adopted.
+
+Its record is mostly retrospective, as the literature search found.

@@ -24,7 +24,7 @@
 (def candidates
   (-> [:term :inflation :tightening :default]
       (into (remove #{:polecon-present} upc/names))
-      (into [:hmm-plain :hmm-tvtp :small-scale :oil-stretch :oil12 :gpr-stretch :gpr12])
+      (into [:hmm-plain :hmm-tvtp :small-scale :lppls-bubble :lppls-antibubble :oil-stretch :oil12 :gpr-stretch :gpr12])
       (into (remove #{:loops-present} bnm.us-loops/names))
       (into (remove #{:us-invariants-present} bnm.us-invariants/names))))
 

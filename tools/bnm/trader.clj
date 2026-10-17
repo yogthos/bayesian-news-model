@@ -133,7 +133,7 @@
   Markov switching with fixed transitions, and with transitions driven by
   displacement; and the risk of a large fall as learned from small ones
   (bnm.scales, data/runs/scales-1/transfer.tsv)."
-  [:hmm-plain :hmm-tvtp :small-scale])
+  [:hmm-plain :hmm-tvtp :small-scale :lppls-bubble :lppls-antibubble])
 
 (def all-input-names (-> input-names (into upc/names) (into regime-names) (into ush/names) (into ul/names) (into uinv/names)))
 
@@ -145,6 +145,16 @@
       (into {} (for [line (rest (str/split-lines (slurp f)))
                      :let [[m a b] (str/split line #"\t" -1)]]
                  [(parse-long m) [(some-> a not-empty parse-double) (some-> b not-empty parse-double)]]))
+      {})))
+
+(defn read-lppls
+  "{month [positive negative]} LPPLS bubble confidence from
+  scripts/lppls-confidence.py (data/runs/trader-inputs/lppls.tsv), or {}."
+  []
+  (let [f (io/file "data/runs/trader-inputs/lppls.tsv")]
+    (if (.exists f)
+      (into {} (for [line (rest (str/split-lines (slurp f))) :let [[m a b] (str/split line #"\t")]]
+                 [(parse-long m) [(parse-double a) (parse-double b)]]))
       {})))
 
 (defn read-transfer
@@ -164,6 +174,7 @@
         pe (upc/inputs db)
         regimes (read-regimes)
         transfer (read-transfer)
+        lppls (read-lppls)
         shocks (ush/inputs)
         {:keys [start mkt]} fr
         loops (ul/inputs (into {} (for [i (range 1 (count w))] [(+ start (dec i)) (Math/log (w i))])))
@@ -173,6 +184,7 @@
                   (into (get regimes t [nil nil]))
                   ;; the month's last week is known at its end
                   (conj (transfer t))
+                  (into (get lppls t [nil nil]))
                   (into (shocks t))
                   (into (loops t))
                   (into (invariants t)))))))
