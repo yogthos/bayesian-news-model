@@ -241,3 +241,28 @@ What remains to test:
 - a dyadic interstate test of uneven development;
 - a Markov-switching version that infers the regime instead of assuming it
   from the wage share (bnm-t5b.5).
+
+## Out of sample: the UK (`scripts/uk-regime.py`)
+
+The terms above were chosen on US data after seeing its era table. The
+same fixed forms, applied to the Bank of England's "A millennium of
+macroeconomic data", score as follows against a 20% fall in UK share
+prices within 12 months:
+
+| term | 1919-49 | 1950-79 | 1980-2016 | expected from the US |
+|---|---|---|---|---|
+| tightening × wage share | 0.43 | 0.28 | 0.42 | above 0.5 |
+| unemployment change × wage share | 0.83 | 0.58 | 0.55 | below 0.5 (the US used payroll growth) |
+| credit growth × low wage share | 0.46 | 0.75 | 0.33 | above 0.5 |
+
+**The hand-written regime terms do not replicate.** The UK points the
+other way or flips. The US held-out gain from them (0.69 to 0.79) was the
+hindsight the section above warned of.
+
+Regimes written in by hand fix one country's concrete expression. That is
+why the model now uses only inputs that do not name a channel:
+- regimes discovered from the data (scripts/regime-hmm.py);
+- displacement against each dimension's own history (bnm.us-invariants);
+- dynamics learned on small falls (bnm.scales).
+
+All of these are set out in docs/INVARIANTS.md.
