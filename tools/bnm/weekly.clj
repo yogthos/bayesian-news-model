@@ -102,7 +102,7 @@
         offsets (vec (reductions + 0 (map #(count (:days %)) wk)))
         all-days (vec (map second daily))
         daily-before (fn [k] (subvec all-days (max 0 (- (offsets (inc k)) 260)) (offsets (inc k))))
-        pe10 (us/read-csv-col "shiller.csv" 9 :zero-missing true)
+        pe10 (us/read-cape)
         year-of (fn [k] (quot (:month (wk k)) 12))
         raw (mapv #(inputs wk w daily-before pe10 %) (range n))
         targets {"20% within 52w" [52 0.2] "20% within 26w" [26 0.2] "20% within 13w" [13 0.2] "10% within 13w" [13 0.1]}
@@ -165,6 +165,12 @@
           (line "40-week unless low risk" (strat ks (veto tau-veto)))
           (say (str "      Sharpe by threshold: model " (str/join " " (for [t taus] (format "%.2f" (:sharpe (strat ks (ex-model t))))))
                     "; veto " (str/join " " (for [t low-taus] (format "%.2f" (:sharpe (strat ks (veto t)))))))))
+        (let [[k-now p-now] (last preds)
+              held (map second (in-yrs 1990 2100))
+              m (:month (wk k-now))]
+          (say (format "  now (week to %04d-%02d): P = %.3f, above %.0f%% of held-out weeks; base rate %.3f"
+                       (quot m 12) (inc (rem m 12)) p-now
+                       (* 100 (/ (count (filter #(< % p-now) held)) (double (count held)))) base)))
         (say "  calibration, held out: mean predicted vs observed by fifth")
         (let [ps (vec (sort-by second (in-yrs 1990 2100))) m (count ps)]
           (doseq [qi (range 5) :let [c (subvec ps (quot (* qi m) 5) (quot (* (inc qi) m) 5))]]

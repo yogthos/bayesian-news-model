@@ -263,7 +263,7 @@
 
 (defn- f3 [x] (if x (format "%.3f" (double x)) "  -  "))
 
-(defn run [{:keys [name from rows kinds models events]}]
+(defn run [{:keys [name from rows kinds models] event-run :events}]
   (let [run-name (or name "onsets")
         from (parse-long (or from "1985"))
         score-from (first tune-years)
@@ -288,7 +288,7 @@
                    [pn* pf] (nm/political db)
                    [_ fv] (nm/vectorize fn* :financial)
                    [_ pv] (nm/vectorize pn* :political)]
-               (let [es (if events (nm/load-event-state events) {})]
+               (let [es (if event-run (nm/load-event-state event-run) {})]
                  (mapv (fn [{:keys [unit q] :as r}]
                          (let [t (+ 2 (* 3 q))]
                            (assoc r :named {:financial (fv (ff unit t)) :political (pv (pf unit t))}

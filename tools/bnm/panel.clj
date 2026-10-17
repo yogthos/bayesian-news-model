@@ -124,7 +124,7 @@
                           [u (let [ms (sort (keys ret))]
                                (into {(dec (first ms)) 1.0}
                                      (map vector ms (rest (reductions (fn [w m] (* w (+ 1.0 (ret m)))) 1.0 ms)))))]))
-        us-data {:pe10 (us/read-csv-col "shiller.csv" 9 :zero-missing true)
+        us-data {:pe10 (us/read-cape)
                  :gz (us/read-csv-col "ebp.csv" 1)}
         variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)

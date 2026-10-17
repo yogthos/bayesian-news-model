@@ -169,6 +169,8 @@ fetch_market() {
   get "$ff/F-F_International_Countries.zip" "$d/intl_countries.zip"
   (cd "$d" && unzip -o -q ff_factors.zip && unzip -o -q ff_daily.zip && mkdir -p intl && unzip -o -q intl_countries.zip -d intl)
   get "https://raw.githubusercontent.com/datasets/s-and-p-500/main/data/data.csv" "$d/shiller.csv"
+  # Shiller's CAPE to the current month (his own file stops in 2023 in the mirror)
+  get "https://www.multpl.com/shiller-pe/table/by-month" "$d/cape.html"
   get "https://www.federalreserve.gov/econres/notes/feds-notes/ebp_csv.csv" "$d/ebp.csv"
   for s in BAA AAA GS10 TB3MS CPIAUCNS UNRATE INDPRO PAYEMS; do
     get "https://fred.stlouisfed.org/graph/fredgraph.csv?id=$s" "$d/$s.csv"

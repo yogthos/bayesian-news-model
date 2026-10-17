@@ -89,7 +89,7 @@ Two other findings constrain the hazard:
 
 ## What the tests found
 
-### Monthly US, 20% within 12 months (`data/runs/trader-6`)
+### Monthly US, 20% within 12 months (`data/runs/trader-7`)
 
 **Discrimination and calibration**
 - Held-out AUC is 0.70 (0.69 from 2000), Brier skill is positive, and the
@@ -105,14 +105,15 @@ Two other findings constrain the hazard:
 | buy and hold | 11.3% | 0.61 | 50% |
 | 10-month average | 10.1% | 0.69 | 18% |
 | model alone | 9.9% | 0.58 | 43% |
-| 10-month average unless the model says risk is low | 10.5% | 0.72 | 18% |
+| 10-month average unless the model says risk is low | 10.1% | 0.69 | 18% |
 
 The veto keeps the trend rule but stays invested when the hazard is below
-its base rate. It helps at every veto threshold tried (Sharpe 0.69-0.72),
-but did nothing on the tuning years. A gain of 0.03 in Sharpe over 36 years
-is not statistically distinguishable from none.
+its base rate. An earlier run showed it at 0.72, but that came from CAPE
+being missing after mid-2023 in the Shiller mirror. With CAPE carried to the
+current month (multpl.com's table of Shiller's series, identical where both
+have a month), the veto matches the trend rule at every threshold.
 
-### Weekly US (`data/runs/weekly-1`)
+### Weekly US (`data/runs/weekly-2`)
 
 **Discrimination**
 - Held-out AUC is 0.69-0.72.
@@ -121,7 +122,7 @@ is not statistically distinguishable from none.
 
 **Trading, held out**
 - Nothing beats buy and hold materially: Sharpe 0.54 holding, 0.55 for the
-  40-week average, 0.57-0.60 for the veto, and 0.58 for volatility
+  40-week average, 0.55-0.56 for the veto, and 0.58 for volatility
   management.
 - On the tuning years the veto improved the 40-week rule from 0.70 to 0.75.
 

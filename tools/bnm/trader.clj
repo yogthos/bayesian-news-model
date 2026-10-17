@@ -44,6 +44,19 @@
                    :when (and v (not (and zero-missing (zero? v))))]
                [(month-of-date (first cells)) v]))))
 
+(defn read-cape
+  "Shiller's CAPE by month: his data (shiller.csv, to mid 2023) under
+  multpl.com's monthly table of it (cape.html), which carries it to now and
+  matches it where both have a month."
+  []
+  (let [months {"Jan" 0 "Feb" 1 "Mar" 2 "Apr" 3 "May" 4 "Jun" 5 "Jul" 6 "Aug" 7 "Sep" 8 "Oct" 9 "Nov" 10 "Dec" 11}
+        f (io/file (str dir "cape.html"))
+        recent (when (.exists f)
+                 (into {} (for [[_ mon d y v] (re-seq #"<td>(\w+) (\d+), (\d+)</td>\s*<td[^>]*>\s*(?:&#x2002;)?\s*([0-9.]+)" (slurp f))
+                                :when (= d "1")]
+                            [(+ (* 12 (parse-long y)) (months mon)) (parse-double v)])))]
+    (merge (read-csv-col "shiller.csv" 9 :zero-missing true) recent)))
+
 (defn read-french
   "Monthly US market and bill returns: {:start month :mkt [..] :rf [..]}."
   []
@@ -201,7 +214,7 @@
         data {:gs10 (read-csv-col "GS10.csv" 1) :tb3 (read-csv-col "TB3MS.csv" 1)
               :baa (read-csv-col "BAA.csv" 1) :aaa (read-csv-col "AAA.csv" 1)
               :cpi (read-csv-col "CPIAUCNS.csv" 1)
-              :pe10 (read-csv-col "shiller.csv" 9 :zero-missing true)
+              :pe10 (read-cape)
               :longrate (read-csv-col "shiller.csv" 5 :zero-missing true)
               :ebp (read-csv-col "ebp.csv" 2) :gz (read-csv-col "ebp.csv" 1)}
         variables (st/read-variables "data/slow/variables.tsv")
@@ -296,6 +309,14 @@
                       (str/join " " (for [tau taus] (format "%.2f" (:sharpe (strat ts (ex-model tau))))))
                       "; with 10-month "
                       (str/join " " (for [tau taus] (format "%.2f" (:sharpe (strat ts (fn [t] (min ((ex-model tau) t) (sma t))))))))))))
+        (let [[t-now p-now] (last preds)
+              held (map second (in-years preds 1990 2100))
+              pct (/ (count (filter #(< % p-now) held)) (double (count held)))]
+          (say (format "  now (%s): P = %.3f, above %.0f%% of held-out months; base rate %.3f; calibrated bucket observed %s"
+                       (st/month-str t-now) p-now (* 100 pct) (base 1940 2100)
+                       (let [ps (sort-by second (filter #(some? (nth % 2)) (in-years preds 1990 2100)))
+                             near (filter #(< (Math/abs (- (second %) p-now)) 0.05) ps)]
+                         (if (seq near) (format "%.2f (n=%d)" (/ (count (filter #(true? (nth % 2)) near)) (double (count near))) (count near)) "-")))))
         (say "  calibration, held out: mean predicted vs observed by fifth")
         (let [ps (sort-by second (filter #(some? (nth % 2)) (in-years preds 1990 2100)))
               n (count ps)]
