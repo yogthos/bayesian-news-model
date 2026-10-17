@@ -205,3 +205,37 @@ carried by the cross-domain coefficients.
 `(scenario mdl {:unit "EGY" :shocks [["world" "energy/oil_brent" 0.3]] :months 12})`
 gives how Egypt's series respond over a year to a 35% rise in oil. In the
 test world, where oil's trend drives food prices, the food-price path rises.
+
+## Coups and banking crises worldwide (`data/runs/newcats-1`)
+
+**New catalogues**
+- 861 realized and attempted coups (Cline Center v2.2.2).
+- 172 banking crises: ESRB dates, plus Laeven & Valencia 2026 starts
+  elsewhere (Table A1 of IMF WP/26/94, transcribed in
+  scripts/curated/).
+
+AUC with 90% year-block intervals, and Sarlin usefulness at policy weights
+0.9 and 0.95:
+
+| kind, era | history | named | pool | U(0.95), pool |
+|---|---|---|---|---|
+| coup, 2008- | 0.791 [0.766, 0.815] | 0.787 [0.751, 0.818] | **0.807** [0.784, 0.828] | 0.12 |
+| coup, hard | 0.760 [0.708, 0.804] | 0.764 [0.708, 0.809] | **0.793** [0.758, 0.824] | 0.03 |
+| banking crisis, 2008- | 0.722 [0.646, 0.805] | 0.696 [0.614, 0.765] | 0.724 [0.653, 0.799] | 0.20 |
+| banking crisis, hard | 0.733 [0.663, 0.813] | 0.694 [0.582, 0.771] | 0.732 [0.662, 0.806] | 0.22 |
+
+**Coups.** They are as predictable as conflict onsets were. The named
+political inputs add to history in the tuning years (0.86 against 0.83)
+but not after 2008. The pool is best.
+
+**Banking crises.**
+- Worldwide, the country's own history carries the signal, and the named
+  financial inputs do worse; in the tuning years they invert (0.37).
+- BIS credit and house price data cover about forty countries, while most
+  of Laeven and Valencia's crises are in economies outside them. The named
+  inputs are missing exactly where the crises are.
+- The cross-country credit result (bnm.macrohistory) holds for advanced
+  economies. It cannot be tested where the data does not exist.
+- These are the first onset kinds with real policy value: Sarlin
+  usefulness of 0.12-0.22 for a policymaker weighing missed events at
+  0.95.
