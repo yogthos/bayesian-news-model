@@ -211,6 +211,35 @@
             (aset out i (max 0.0 (Math/expm1 (+ m shift (* (if (pos? d) hi lo) d)))))))))
     out))
 
+(defn widen-sides
+  "The sorted sample `xs` with each side of its median stretched in log1p
+  units by its own factor from `spread-factors` (no shift of the median),
+  then rescaled to the mean it had, as `widen` does: the upper tail can be
+  widened more than the lower without moving the forecast's expected value."
+  ^doubles [{:keys [lo hi]} ^doubles xs]
+  (let [n (alength xs)
+        out (double-array n)]
+    (when (pos? n)
+      (let [m (Math/log1p (max 0.0 (m/quantile xs 0.5)))]
+        (dotimes [i n]
+          (let [d (- (Math/log1p (max 0.0 (aget xs i))) m)]
+            (aset out i (max 0.0 (Math/expm1 (+ m (* (if (pos? d) hi lo) d)))))))
+        (let [before (areduce xs i t 0.0 (+ t (aget xs i)))
+              after (areduce out i t 0.0 (+ t (aget out i)))]
+          (when (pos? after)
+            (let [f (/ before after)]
+              (dotimes [i n] (aset out i (* f (aget out i)))))))))
+    out))
+
+(defn widen-by
+  "The forecast sample recalibrated by `spread` for `key`, as `mode` says:
+  :sides stretches each side by its own factor (`widen-sides`); otherwise
+  one factor for both (`widen`)."
+  ^doubles [mode spread key ^doubles xs]
+  (if (= mode :sides)
+    (widen-sides (spread-factors spread key) xs)
+    (widen (spread-factor spread key) xs)))
+
 (defn isotonic-map
   "Recalibration learned from past forecasts ps and their outcomes ys: the
   isotonic fit of outcome on forecast (CORP), as a step function of a new

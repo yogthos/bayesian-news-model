@@ -86,6 +86,8 @@
    :level-noise 0.0    ; in a forecast, the log-sd a node's level drifts by over
                        ; 52 bins beyond what its dynamics explain: shocks the
                        ; model has no way to see coming
+   :spread-mode :symmetric ; how forecasts are recalibrated: :symmetric, or :sides
+                        ; (each side of the median by its own factor, bnm.calibrate)
    :scale 1000.0})
 
 (defn scales ^long [cfg] (count (:decays cfg)))

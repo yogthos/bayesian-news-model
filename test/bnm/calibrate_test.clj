@@ -96,3 +96,10 @@
             out (cal/widen-skewed {:lo 1.0 :hi 2.0 :shift 0.0} xs)]
         (is (< (Math/abs (- (Math/log1p (aget out 0)) 2.0)) 1e-9))
         (is (< (Math/abs (- (Math/log1p (aget out 2)) 5.0)) 1e-9))))))
+
+(deftest sides-widen-and-keep-the-mean
+  (let [xs (double-array (map #(Math/expm1 %) [2.0 2.5 3.0 3.5 4.0]))
+        out (cal/widen-sides {:lo 1.0 :hi 2.0} xs)
+        sum #(areduce ^doubles % i t 0.0 (+ t (aget ^doubles % i)))]
+    (is (< (Math/abs (- (sum xs) (sum out))) 1e-6) "the mean is kept")
+    (is (> (/ (aget out 4) (aget out 2)) (/ (aget xs 4) (aget xs 2))) "the upper side is stretched")))

@@ -237,7 +237,8 @@
                               (assoc fc :period lbl :levels (mapv :level (:nodes mdl))
                                      :checked (when keep (set (map (comp :id (:nodes mdl)) keep)))
                                      :calibration (:calibration mdl)
-                                     :spread (:spread mdl))))]
+                                     :spread (:spread mdl)
+                                     :spread-mode (get-in mdl [:config :spread-mode]))))]
               (println "period" (label-of start) "done;" (count (:nodes mdl)) "nodes;"
                        (quot (- (System/currentTimeMillis) started) 1000) "s"
                        (model/skill mdl))
