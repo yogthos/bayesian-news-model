@@ -27,6 +27,7 @@
             [bnm.stocks :as sk]
             [bnm.trade :as tr]
             [bnm.us-polecon :as upc]
+            [bnm.us-shocks :as ush]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -130,7 +131,7 @@
   displacement."
   [:hmm-plain :hmm-tvtp])
 
-(def all-input-names (-> input-names (into upc/names) (into regime-names)))
+(def all-input-names (-> input-names (into upc/names) (into regime-names) (into ush/names)))
 
 (defn read-regimes
   "{month [plain tvtp]} from data/runs/trader-inputs/regimes.tsv, or {}."
@@ -148,10 +149,12 @@
   [fr w data db wc]
   (let [base (build-inputs fr w data db wc)
         pe (upc/inputs db)
-        regimes (read-regimes)]
+        regimes (read-regimes)
+        shocks (ush/inputs)]
     (fn [t] (let [b (base t)]
               (-> b (into (pe t {:term (b 0) :inflation (b 2) :tightening (b 4)}))
-                  (into (get regimes t [nil nil])))))))
+                  (into (get regimes t [nil nil]))
+                  (into (shocks t)))))))
 
 (defn- vectorize ^doubles [xs] (double-array (cons 1.0 (map #(if % (double %) 0.0) xs))))
 

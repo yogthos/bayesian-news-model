@@ -423,3 +423,92 @@ The 10-month rule's Sharpe is 0.69.
   timing inverts.
 - Added to the best crisis model, within-year AUC goes from 0.68 to 0.69,
   and pooled is unchanged at 0.58.
+
+## Step 6: the US shock dimensions the audit found missing (`bnm.us-shocks`)
+
+**Inputs**
+- Oil: WTI, FRED from 1946, deflated by CPI.
+- Geopolitical risk: Caldara & Iacoviello's historical index, from 1900.
+- Each enters as its stretch against its own previous ten years and as its
+  change over twelve months, read a month late.
+
+**Left out**
+- Margin debt: there is no free series before FINRA's from 1997.
+- The trade-weighted dollar: it starts in 1973, and the major-currency index
+  ended in 2019.
+
+**Era AUC** (`data/runs/regime-6`):
+
+| input | 1930-49 | 1950-69 | 1970-89 | 1990- |
+|---|---|---|---|---|
+| oil, 12-month change | - | 0.82 | 0.82 | 0.71 |
+| oil stretch | - | 0.42 | 0.49 | 0.76 |
+| geopolitical risk, 12-month change | 0.54 | 0.61 | 0.50 | 0.53 |
+| geopolitical risk stretch | 0.52 | 0.66 | 0.33 | 0.49 |
+| discovered regime | - | 0.32 | 0.60 | 0.65 |
+
+Only the oil change is stable before 1990. The audit that named these
+dimensions includes the held-out crashes (1990, 2022). With all four shock
+inputs the hazard reached held-out AUC 0.81 and Sharpe 0.81, but the
+geopolitical and oil-stretch terms flip between eras, so that result
+carries hindsight. It is reported, not used.
+
+**The disciplined set:** the stable base, the discovered regime and the oil
+change (20% within 12 months, tuned 1950-89):
+
+| inputs | tune | held out 1990- | 2000- | Brier skill held out |
+|---|---|---|---|---|
+| base | 0.64 | 0.69 | 0.68 | 0.01 |
+| base + oil change | 0.67 | 0.76 | 0.74 | 0.04 |
+| base + discovered regime | 0.72 | 0.76 | 0.77 | 0.02 |
+| **base + regime + oil change** | **0.79** | **0.77** | **0.81** | **0.04** (0.20 from 2000) |
+
+**Trading, held out 1990 on** (10-month rule: Sharpe 0.69, maximum
+drawdown 18%):
+
+| strategy | Sharpe by sizing or threshold | beats the rule |
+|---|---|---|
+| hedge by probability (k = 1.5, 2, 3, 4, 6) | 0.70, 0.71, 0.72, 0.75, 0.73 | 5 of 5 |
+| the rule unless risk is low | 0.69, 0.69, 0.69, 0.71, 0.74 | 2 of 5, never worse |
+| model alone (1-4 × base) | 0.48, 0.67, 0.78, 0.61, 0.65, 0.72, 0.72 | 3 of 7 |
+
+The hedge sized by probability, at the sizing chosen on 1950-89, has
+Sharpe 0.70 and a maximum drawdown of 13%. It is the first result that
+beats the trend rule at every setting. Its inputs are:
+- a discovered regime;
+- the stable base;
+- the one shock input stable before 1990.
+
+**Still wrong**
+- The top fifth is overconfident (0.37 predicted, 0.27 observed), so the
+  probabilities need recalibration before they are read as levels.
+- 2007 is still missed (0.07-0.10).
+- The warning before 2022 rose to 0.45.
+
+Reading for August 2026: P(20% fall within 12 months) = 0.155, above 69% of
+held-out months, against a base rate of 0.08. Held-out months in that
+bucket saw falls 7% of the time.
+
+## Where this leaves the epic
+
+| step | result |
+|---|---|
+| 1 crisis process | world intensity improves JST crisis timing from 1950 (0.48 to 0.58) but misses 2008 |
+| 2 stabilizing loops | fails: proxies change meaning, openness and gold invert in real time |
+| 3 synchrony | fails in the hazard; low synchrony before crises in every era |
+| 4 discovered regimes | works: US held-out 0.69 to 0.76, with nothing chosen on held-out years |
+| 5 trigger | era-stable, marginal gain |
+| 6 US shocks | the oil change is stable and helps; geopolitical risk does not |
+
+**What generalizes**
+- Inputs that rank units within a period: credit, displacement, trigger.
+- Regimes inferred from the data's own dynamics, not written in.
+- Shock flows that were stable before the test period.
+
+**What does not**
+- Anything that moves only with time and is learned from a handful of
+  regime switches.
+
+The open item is the one that problem points to: learning crisis dynamics
+on the many small events and rescaling them to the large ones
+(bnm-t5b.16.11), and recalibration (bnm-enb.12).

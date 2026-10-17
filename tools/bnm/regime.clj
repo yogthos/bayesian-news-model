@@ -20,8 +20,9 @@
 (def eras [["1930-49" 1930 1949] ["1950-69" 1950 1969] ["1970-89" 1970 1989] ["1990-" 1990 2100]])
 
 (def candidates
-  (into [:term :inflation :tightening :default]
-        (remove #{:polecon-present} upc/names)))
+  (-> [:term :inflation :tightening :default]
+      (into (remove #{:polecon-present} upc/names))
+      (into [:hmm-plain :hmm-tvtp :oil-stretch :oil12 :gpr-stretch :gpr12])))
 
 (def profit-squeeze
   "A tight labour market matters through labour's share (Weisskopf 1979;
