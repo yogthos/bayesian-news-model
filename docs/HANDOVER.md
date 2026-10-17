@@ -1,5 +1,55 @@
 # Handover
 
+## State as of 2026-10-17 (branch `forecast-calibration`)
+
+The sections below this one are the 2026-10-16 handover; most of their
+"next" items are done. Where things stand now:
+
+**Crash and crisis hazards** (docs/TRADING.md, docs/INVARIANTS.md)
+- The US drawdown hazard of record (`bnm.trader`, run `data/runs/record`)
+  uses:
+  - the stable base (valuation, trend, volatility);
+  - a Markov-switching bear regime discovered from returns
+    (scripts/regime-hmm.py, statsmodels);
+  - the 12-month oil change;
+  - dynamics learned on small falls (`bnm.scales`);
+  - dimension-free displacement over fifteen US dimensions
+    (`bnm.us-invariants`).
+- Its held-out AUC is about 0.83. It is recalibrated yearly by a logistic
+  fit.
+- No regime is written by hand. The wage-share terms (`bnm.us-polecon`)
+  were a failed test: hindsight in the US, no replication in the UK.
+- Catches 2000 and 2022. 2007 is flagged only by the panel crisis model
+  (`bnm.macrohistory`) and by the BIS credit gap, which fails the pre-1990
+  rule. 2020 is exogenous.
+- Cross-country invariants: `bnm.macrohistory` (JST, 1870-2020) and
+  `bnm.waves` (Reinhart-Rogoff, 1800-2016).
+
+**Event model** (docs/INVARIANTS.md, final sections)
+- The baseline is a discounted local level (`:level-discount`, 0.8 prior
+  share).
+- Country forecasts are their children summed (`:bottom-up`).
+- Calibration is monotone (pool-adjacent violators).
+- Reports show non-randomized PIT histograms.
+- On 2008-09, 80% coverage is 0.78-0.85 and the PIT is near flat
+  (`data/runs/final-1`).
+
+**Onset hazards** (docs/SLOW-LAYER.md): year-block bootstrap intervals and
+Sarlin usefulness in the report (`data/runs/harness-1`).
+
+**Slow layer**: scenarios (`bnm.slow/scenario`) roll a shock through the
+learned cross-domain regressions.
+
+**Open**
+- bnm-t5b.9, the corpus gaps. Coups (Cline Center, Powell-Thyne),
+  Laeven-Valencia 2026 (IMF) and disasters (EM-DAT, ReliefWeb) refuse
+  scripted downloads. Put the files in `data/raw/slow/{coups,lv,disasters}`
+  by hand.
+- bnm-enb.4/.5, partial pooling and prior sensitivity. Being re-run at HEAD
+  on 1993-99 (`s2-*` runs, `data/runs/sensitivity.txt`).
+
+## The 2026-10-16 handover
+
 State of the work as of 2026-10-16, and what remains, for picking it up on
 another machine. README.md describes the library; docs/RESEARCH.md the
 literature behind the plans below.
