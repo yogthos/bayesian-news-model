@@ -10,17 +10,24 @@
   1-4 and 5-8. Rows where an onset of that kind is under way (one in the last
   four quarters) are left out: continuing is not anticipating.
 
-  Five pooled logistic hazards are compared, each refit every year on the
+  Pooled logistic hazards are compared, each refit every year on the
   outcomes known by then and scored on the next year, out of sample:
     base      the rate so far
     history   the country's past onsets (how many, how recent)
     politics  history and the event channels
+    local     history and every domain of the country, no global drivers
     domains   history, every other domain and the global drivers
     all       everything
 
-    jolt -A:tools -M -m bnm.onsets [--name onsets] [--from 1985] [--score-from 2000]
+  Each model's prior precision is chosen from a grid by its log score on
+  2000-2007; 2008 on is held out and scored with the chosen prior.
+  Catalogues are scored only as far as data/slow/coverage.tsv says they have
+  looked, so the last rows are not all positives.
 
-  Writes data/runs/<name>/onsets.txt."
+    jolt -A:tools -M -m bnm.onsets [--name onsets] [--from 1985] [--rows <run>]
+
+  Writes data/runs/<name>/onsets.txt and the recorded rows, rows.tsv, which
+  --rows reads back instead of running the slow layer."
   (:require [bnm.hazard :as hz]
             [bnm.slow :as slow]
             [bnm.slow-train :as st]
@@ -43,6 +50,28 @@
               (let [[kind unit date] (str/split line #"\t" -1)]
                 (update-in acc [kind unit] (fnil conj (sorted-set)) (quot (st/month-of date) 3))))
             {} (line-seq r))))
+
+(defn read-coverage
+  "kind -> last quarter its catalogue covers."
+  [path]
+  (into {} (for [line (str/split-lines (slurp path))
+                 :let [[kind month] (str/split line #"\t")]]
+             [kind (quot (st/month-of month) 3)])))
+
+(defn- write-rows [path rows labels]
+  (with-open [w (io/writer path)]
+    (.write w (pr-str labels)) (.write w "\n")
+    (doseq [{:keys [unit q ^doubles x]} rows]
+      (.write w (str unit "\t" q "\t" (str/join "\t" (seq x)) "\n")))))
+
+(defn- read-rows [path]
+  (with-open [r (io/reader path)]
+    (let [[head & lines] (line-seq r)]
+      [(mapv (fn [line]
+               (let [[unit q & xs] (str/split line #"\t")]
+                 {:unit unit :q (parse-long q) :x (double-array (map parse-double xs))}))
+             lines)
+       (read-string head)])))
 
 (defn- record-rows
   "Runs the slow layer and keeps each country's inputs at each quarter end
@@ -82,14 +111,22 @@
   (let [n (count labels)
         idx (fn [pred] (keep-indexed (fn [i l] (when (pred l) (+ 3 i))) labels))
         politics (idx #(= "politics" (:domain %)))
+        local (idx :domain)
         others (idx #(and (:feature %) (not= "politics" (:domain %))))]
     {:base [0]
      :history [0 1 2]
      :politics (vec (concat [0 1 2] politics))
+     :local (vec (concat [0 1 2] local))
      :domains (vec (concat [0 1 2] others))
      :all (vec (concat [0 1 2] (range 3 (+ 3 n))))}))
 
-(def model-order [:base :history :politics :domains :all])
+(def model-order [:base :history :politics :local :domains :all])
+
+(def priors
+  "Prior precisions tried, on the scale of each input's standard deviation."
+  [1.0 10.0 100.0 1000.0])
+
+(def tune-years [2000 2007])
 
 (defn- pick ^doubles [^doubles full idx]
   (let [out (double-array (count idx))]
@@ -101,8 +138,21 @@
   [unit q]
   (< (mod (hash [unit q]) 100) 15))
 
+(defn- log-score
+  "Mean log probability of the outcomes."
+  [preds]
+  (when (seq preds)
+    (/ (reduce + (for [[_ p y] preds
+                       :let [p (Math/min (Math/max (double p) 1e-6) (- 1.0 1e-6))]]
+                   (Math/log (if y p (- 1.0 p)))))
+       (double (count preds)))))
+
+(defn- in-years [preds lo hi] (filter #(<= lo (quot (first %) 4) hi) preds))
+
 (defn evaluate-kind
-  "Out-of-sample predictions for one kind and window: {model [[q p y unit]]}."
+  "Out-of-sample predictions for one kind and window: a function of the
+  feature sets giving {model {:prior p :preds [[q p y unit]]}}, the prior
+  chosen per model by log score over `tune-years`."
   [rows onsets-by-unit units window score-from last-q]
   (let [labels-q (fn [{:keys [unit q]}] (label (get onsets-by-unit unit (sorted-set)) q window))
         usable (filterv (fn [{:keys [unit q]}]
@@ -119,34 +169,40 @@
                        usable)
         years (range (quot (apply min (map :q prepared)) 4) (inc (quot last-q 4)))]
     (fn [sets]
-      (reduce
-       (fn [out model]
-         (let [idx (sets model)
-               k (count idx)]
-           (loop [[yr & more] (filter #(>= % (+ 10 (quot (:q (first prepared)) 4))) years)
-                  beta nil
-                  preds []]
-             (if-not yr
-               (assoc out model preds)
-               (let [q0 (* 4 yr)
-                     known (filter #(<= (+ (:q %) (second window)) q0) prepared)
-                     train (for [{:keys [unit q y full]} known
-                                 :when (or y (keep-negative? unit q))]
-                             {:x (pick full idx) :y y
-                              :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))})
-                     beta (if (some :y train)
-                            (hz/fit train k {:prior 2.0 :start beta})
-                            beta)
-                     scored (for [{:keys [unit q y full]} prepared
-                                  :when (and beta (= (quot q 4) yr) (>= yr score-from))]
-                              [q (hz/predict beta (pick full idx)) y unit])]
-                 (recur more beta (into preds scored)))))))
-       {} model-order))))
+      (let [run-model
+            (fn [idx prior]
+              (let [k (count idx)]
+                (loop [[yr & more] (filter #(>= % (+ 10 (quot (:q (first prepared)) 4))) years)
+                       beta nil
+                       preds []]
+                  (if-not yr
+                    preds
+                    (let [q0 (* 4 yr)
+                          known (filter #(<= (+ (:q %) (second window)) q0) prepared)
+                          train (for [{:keys [unit q y full]} known
+                                      :when (or y (keep-negative? unit q))]
+                                  {:x (pick full idx) :y y
+                                   :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))})
+                          beta (if (some :y train)
+                                 (hz/fit train k {:prior prior :start beta})
+                                 beta)
+                          scored (for [{:keys [unit q y full]} prepared
+                                       :when (and beta (= (quot q 4) yr) (>= yr score-from))]
+                                   [q (hz/predict beta (pick full idx)) y unit])]
+                      (recur more beta (into preds scored)))))))]
+        (into {}
+              (for [model model-order
+                    :let [idx (sets model)
+                          runs (for [p (if (= model :base) [1.0] priors)]
+                                 {:prior p :preds (run-model idx p)})
+                          [lo hi] tune-years]]
+                [model (apply max-key #(or (log-score (in-years (:preds %) lo hi)) -1e9) (reverse runs))]))))))
 
 (defn- scores [preds base]
   (let [ps (map second preds) ys (map #(nth % 2) preds)]
     {:n (count preds) :pos (count (filter true? ys))
-     :auc (hz/auc ps ys) :ap (hz/avg-precision ps ys)
+     :auc (hz/auc ps ys) :auq (hz/auc-within (map (fn [[q p y]] [q p y]) preds))
+     :ap (hz/avg-precision ps ys)
      :r10 (hz/recall-at-budget (map (fn [[q p y]] [q p y]) preds) 0.10)
      :bss (when (seq base)
             (let [bb (hz/brier (map second base) (map #(nth % 2) base))]
@@ -154,16 +210,22 @@
 
 (defn- f3 [x] (if x (format "%.3f" (double x)) "  -  "))
 
-(defn run [{:keys [name from score-from]}]
+(defn run [{:keys [name from rows]}]
   (let [run-name (or name "onsets")
         from (parse-long (or from "1985"))
-        score-from (parse-long (or score-from "2000"))
+        score-from (first tune-years)
         dir (str "data/runs/" run-name)
-        variables (st/read-variables "data/slow/variables.tsv")
-        by-month (st/read-observations "data/slow/series.tsv" 1950 2026)
+        _ (io/make-parents (str dir "/x"))
         events (read-events "data/slow/events.tsv")
-        [rows mdl] (record-rows {:globals st/default-globals} variables by-month from)
-        labels (slow/input-labels mdl)
+        coverage-q (read-coverage "data/slow/coverage.tsv")
+        [rows labels] (if rows
+                        (read-rows (str "data/runs/" rows "/rows.tsv"))
+                        (let [variables (st/read-variables "data/slow/variables.tsv")
+                              by-month (st/read-observations "data/slow/series.tsv" 1950 2026)
+                              [rows mdl] (record-rows {:globals st/default-globals} variables by-month from)
+                              labels (slow/input-labels mdl)]
+                          (write-rows (str dir "/rows.tsv") rows labels)
+                          [rows labels]))
         sets (feature-sets labels)
         all-units (set (map :unit rows))
         market-units (set (for [{:keys [unit ^doubles x]} rows
@@ -176,30 +238,33 @@
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
         case-preds (atom {})]
     (println (count rows) "country-quarters recorded")
-    (say "Onsets, out of sample from" score-from "- AUROC, average precision, recall in the top 10% of each quarter,")
-    (say "Brier skill against the base rate. Models: base, history, politics, domains (all other domains")
-    (say "and global drivers), all.")
+    (say "Onsets, out of sample. Priors chosen on" (str/join "-" tune-years) "(tune); 2008 on is held out.")
+    (say "AUROC pooled and within quarters (auq), average precision, recall in the top 10% of each quarter,")
+    (say "Brier skill against the base rate. Models: base, history, politics, local (every domain of the")
+    (say "country), domains (all but politics, and global drivers), all.")
     (doseq [kind (sort (keys events))
             [wname window] (sort windows)]
       (let [onsets (get events kind)
             units (get coverage kind all-units)
-            last-q (apply max (mapcat seq (vals onsets)))
-            preds ((evaluate-kind rows onsets units window score-from last-q) sets)
+            last-q (coverage-q kind)
+            runs ((evaluate-kind rows onsets units window score-from last-q) sets)
+            preds (update-vals runs :preds)
             base (:base preds)]
         (swap! case-preds assoc [kind wname] preds)
         (say)
-        (say (format "%s %s" kind (clojure.core/name wname)))
-        (doseq [[era lo hi] [["all" 0 9999] ["<2015" 0 2014] [">=2015" 2015 9999]]]
-          (let [in-era (fn [ps] (filter #(<= lo (quot (first %) 4) hi) ps))]
+        (say (format "%s %s (to %s)  priors: %s" kind (clojure.core/name wname) (st/month-str (+ 2 (* 3 last-q)))
+                     (str/join " " (for [m (rest model-order)] (str (clojure.core/name m) "=" (long (:prior (runs m))))))))
+        (doseq [[era lo hi] [["tune" 2000 2007] ["2008+" 2008 9999] ["08-14" 2008 2014] ["2015+" 2015 9999]]]
+          (let [in-era (fn [ps] (in-years ps lo hi))]
             (doseq [model model-order
                     :let [s (scores (in-era (preds model)) (in-era base))]
                     :when (pos? (:n s))]
-              (say (format "  %-6s %-9s n=%6d pos=%4d  auc %s  ap %s  r@10%% %s  bss %s"
-                           era (clojure.core/name model) (:n s) (:pos s) (f3 (:auc s)) (f3 (:ap s))
+              (say (format "  %-5s %-9s n=%6d pos=%4d  auc %s  auq %s  ap %s  r@10%% %s  bss %s"
+                           era (clojure.core/name model) (:n s) (:pos s) (f3 (:auc s)) (f3 (:auq s)) (f3 (:ap s))
                            (f3 (:r10 s)) (f3 (:bss s)))))))))
     (say)
     (say "Cases: probability of onset within 1-4 quarters at each of the 8 quarters before, and rank among")
-    (say "countries that quarter (history / domains / all)")
+    (say "countries that quarter (history / local / all)")
     (doseq [[kind unit date] cases
             :let [q (quot (st/month-of (str date "-01")) 3)
                   preds (get @case-preds [kind :w1])]
@@ -207,12 +272,11 @@
       (say (str "  " kind " " unit " " date))
       (doseq [q0 (range (- q 8) q)]
         (say (str "    " (st/month-str (+ 2 (* 3 q0))) "  "
-                  (str/join "  " (for [model [:history :domains :all]
+                  (str/join "  " (for [model [:history :local :all]
                                        :let [in-q (filter #(= q0 (first %)) (preds model))
                                              mine (first (filter #(= unit (nth % 3)) in-q))
                                              rank (when mine (inc (count (filter #(> (second %) (second mine)) in-q))))]]
                                    (if mine (format "%.3f #%d/%d" (second mine) rank (count in-q)) "  -  ")))))))
-    (io/make-parents (str dir "/x"))
     (spit (str dir "/onsets.txt") (str out))))
 
 (defn -main [& args]

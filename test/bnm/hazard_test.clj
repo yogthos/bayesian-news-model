@@ -27,6 +27,13 @@
     (is (= 1.0 (hz/auc good ys)))
     (is (= 0.5 (hz/auc flat ys)))
     (is (= 1.0 (hz/avg-precision good ys)))
+    (testing "AUC within periods ignores how rates move between them"
+      ;; period 1 has the higher scores and most positives, but within each
+      ;; period the ranking is reversed
+      (let [rows [[0 0.1 true] [0 0.2 false] [1 0.8 true] [1 0.9 false] [1 0.85 true]]]
+        (is (> (hz/auc (map second rows) (map #(nth % 2) rows)) 0.3))
+        (is (= 0.0 (hz/auc-within rows))))
+      (is (nil? (hz/auc-within [[0 0.3 true] [1 0.2 false]])) "no period has both outcomes"))
     (testing "recall when flagging the top quarter of each period"
       (is (= 1.0 (hz/recall-at-budget (map vector (repeat 0) good ys) 0.25)))
       (is (= 0.0 (hz/recall-at-budget (map vector (repeat 0) (reverse good) ys) 0.25))))))

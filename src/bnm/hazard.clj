@@ -115,6 +115,19 @@
                            (recur j (+ acc (* r pos))))))]
         (/ (- rank-sum (/ (* n-pos (inc n-pos)) 2.0)) (* n-pos n-neg))))))
 
+(defn auc-within
+  "AUC within each period, averaged with weights by positives, so it scores
+  ranking across units only, not how rates move between periods: `rows` are
+  [period score label]. nil when no period has both outcomes."
+  [rows]
+  (let [per (for [[_ g] (group-by first rows)
+                  :let [a (auc (map second g) (map #(nth % 2) g))]
+                  :when a]
+              [a (count (filter #(nth % 2) g))])
+        w (reduce + (map second per))]
+    (when (pos? w)
+      (/ (reduce + (map (fn [[a n]] (* a n)) per)) (double w)))))
+
 (defn avg-precision
   "Area under the precision-recall curve, or nil without positives."
   [scores labels]

@@ -4,6 +4,7 @@
   data/slow/series.tsv     unit variable freq period_end available value
   data/slow/variables.tsv  variable domain transform freq source description
   data/slow/events.tsv     kind unit date detail     (catalogues for the onset evaluation)
+  data/slow/coverage.tsv   kind last_month          (how far each catalogue has looked)
 
 unit is an ISO3 country code or "world". period_end is the last day of the
 period a value covers; available is when it would have been known (period end
@@ -91,6 +92,7 @@ def period_end(freq, label):
 VARS = {}
 ROWS = []
 EVENTS = []
+COVERAGE = {}  # kind -> last month (YYYY-MM) its catalogue covers
 
 
 def var(name, transform, freq, source, desc):
@@ -627,6 +629,8 @@ def ucdp():
     with z.open(z.namelist()[0]) as f:
         rows = list(csv.DictReader(io.TextIOWrapper(f, encoding="utf-8")))
     episodes, wars = set(), set()
+    last = "%s-12" % max(r["year"] for r in rows)
+    COVERAGE["conflict_onset"] = COVERAGE["war_onset"] = last
     for r in rows:
         locs = [gw.get(g.strip()) for g in r["gwno_loc"].split(",")]
         names = [iso3_of_name(n) for n in r["location"].split(",")]
@@ -651,14 +655,21 @@ def esrb():
     path = os.path.join(RAW, "esrb", "crises.xlsx")
     if not os.path.exists(path):
         return
-    for sheet, rows in xlsx(path).items():
+    sheets = xlsx(path)
+    # the latest date the database records anywhere is as far as it has looked
+    COVERAGE["banking_crisis"] = max(c[:7] for rows in sheets.values() for r in rows[2:]
+                                     for c in (r or [])[2:5] if c and re.match(r"\d{4}-\d{2}", c))
+    for sheet, rows in sheets.items():
         if not sheet.lower().startswith("systemic"):
             continue
         for r in rows[2:]:
-            if not r or not r[0] or len(r) < 6:
+            if not r or not r[0] or len(r) < 7:
                 continue
             iso = ISO2.get(r[0].strip().upper().replace("UK", "GB").replace("EL", "GR"))
-            if r[5] == "1" and r[2] and re.match(r"\d{4}-\d{2}", r[2]):
+            # COVID-19 is recorded as a systemic crisis everywhere, flagged as an
+            # exogenous shock: not the culmination of a financial build-up
+            exogenous = (r[6] or "").strip().lower().startswith("exogenous")
+            if r[5] == "1" and not exogenous and r[2] and re.match(r"\d{4}-\d{2}", r[2]):
                 EVENTS.append(("banking_crisis", iso, r[2][:7] + "-01", "ESRB systemic crisis"))
 
 
@@ -671,6 +682,11 @@ def mechanical(dedup):
     for (unit, name, pend), r in dedup.items():
         if name in ("markets/share_prices", "politics/protest", "politics/violence"):
             series[(unit, name)].append((pend, r[5]))
+    kinds = {"markets/share_prices": "market_crash", "politics/protest": "protest_surge",
+             "politics/violence": "violence_surge"}
+    for (unit, name), xs in series.items():
+        k = kinds[name]
+        COVERAGE[k] = max(COVERAGE.get(k, ""), max(p for p, _ in xs)[:7])
     for (unit, name), xs in series.items():
         xs.sort()
         last = None
@@ -719,6 +735,9 @@ def main():
     with open(os.path.join(OUT, "events.tsv"), "w") as f:
         for e in sorted(set(x for x in EVENTS if x[1])):
             f.write("\t".join(e) + "\n")
+    with open(os.path.join(OUT, "coverage.tsv"), "w") as f:
+        for k in sorted(COVERAGE):
+            f.write("%s\t%s\n" % (k, COVERAGE[k]))
     print("%d values, %d variables, %d events" % (len(dedup), len({r[1] for r in dedup.values()}), len(EVENTS)),
           file=sys.stderr)
 
