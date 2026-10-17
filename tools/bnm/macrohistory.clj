@@ -27,6 +27,7 @@
 
     jolt -A:tools -M -m bnm.macrohistory [--name macro-1]"
   (:require [bnm.hazard :as hz]
+            [bnm.paths]
             [bnm.invariants :as iv]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -457,8 +458,10 @@
     (let [dir (str "data/runs/" name)]
       (io/make-parents (str dir "/x"))
       ;; the crisis hazard by year, for the US monthly model (bnm.us-invariants)
-      (spit (str dir "/crisis-betas.tsv")
-            (str/join (for [[yr b] (crisis-betas rows)] (str yr "\t" (str/join "\t" b) "\n"))))
+      (let [betas (str/join (for [[yr b] (crisis-betas rows)] (str yr "\t" (str/join "\t" b) "\n")))]
+        (spit (str dir "/crisis-betas.tsv") betas)
+        (io/make-parents bnm.paths/crisis-betas)
+        (spit bnm.paths/crisis-betas betas))
       (spit (str dir "/macrohistory.txt") (str out)))))
 
 (defn -main [& args]

@@ -181,9 +181,10 @@
   chosen per model by log score over `tune-years`."
   [rows onsets-by-unit units window score-from last-q models fam]
   (let [labels-q (fn [{:keys [unit q]}] (label (get onsets-by-unit unit (sorted-set)) q window))
+        ;; rows past the catalogue's coverage are predicted too, with no label:
+        ;; they are the live forecasts (bnm.readings), never fit or scored
         usable (filterv (fn [{:keys [unit q]}]
                           (and (units unit)
-                               (<= (+ q (second window)) last-q)
                                (not (ongoing? (get onsets-by-unit unit (sorted-set)) q))))
                         rows)
         prepared (mapv (fn [{:keys [unit q ^doubles x] :as r}]
@@ -195,9 +196,9 @@
                            (System/arraycopy x 0 full 3 (alength x))
                            (System/arraycopy nx 0 full (+ 3 (alength x)) (alength nx))
                            (System/arraycopy ev 0 full (+ 3 (alength x) (alength nx)) (alength ev))
-                           (assoc r :full full :y (labels-q r))))
+                           (assoc r :full full :y (when (<= (+ q (second window)) last-q) (labels-q r)))))
                        usable)
-        years (range (quot (apply min (map :q prepared)) 4) (inc (quot last-q 4)))]
+        years (range (quot (apply min (map :q prepared)) 4) (inc (quot (apply max (map :q prepared)) 4)))]
     (fn [sets]
       (let [run-model
             (fn [idx prior]
@@ -210,7 +211,7 @@
                     (let [q0 (* 4 yr)
                           known (filter #(<= (+ (:q %) (second window)) q0) prepared)
                           train (for [{:keys [unit q y full]} known
-                                      :when (or y (keep-negative? unit q))]
+                                      :when (and (some? y) (or y (keep-negative? unit q)))]
                                   {:x (pick full idx) :y y
                                    :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))})
                           beta (if (some :y train)
@@ -246,7 +247,7 @@
       (if-not yr
         (assoc runs :pool {:preds pool} :stack {:preds stack})
         (let [q0 (* 4 yr)
-              known (filterv #(<= (+ (:q %) (second window)) q0) rows)
+              known (filterv #(and (some? (:y %)) (<= (+ (:q %) (second window)) q0)) rows)
               this (filter #(= yr (quot (:q %) 4)) rows)]
           (if (< (count (filter :y known)) 10)
             (recur more pool stack)
@@ -351,7 +352,7 @@
                      (str/join " " (for [m (rest models)] (str (clojure.core/name m) "=" (long (:prior (runs m))))))))
         (doseq [[era lo hi hard] [["tune" 2000 2007] ["2008+" 2008 9999] ["08-14" 2008 2014] ["2015+" 2015 9999]
                                   ["hard" 2008 9999 true]]]
-          (let [in-era (fn [ps] (cond->> (in-years ps lo hi)
+          (let [in-era (fn [ps] (cond->> (filter #(some? (nth % 2)) (in-years ps lo hi))
                                   hard (filter (fn [[q _ _ unit]] (hard-row? (get onsets unit (sorted-set)) q)))))]
             (doseq [model shown
                     :let [s (scores (in-era (preds model)) (in-era base))]

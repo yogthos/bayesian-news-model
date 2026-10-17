@@ -24,6 +24,7 @@
                           same US stretches: what US history alone cannot teach,
                           since no US equity crash before 1990 came from credit"
   (:require [bnm.invariants :as iv]
+            [bnm.paths]
             [bnm.polecon :as pe]
             [bnm.stocks :as sk]
             [bnm.us-polecon :as upc]
@@ -36,8 +37,8 @@
 (defn read-betas
   "{year [b0 b-credit b-mortgages b-house b-norm]}: the banking-crisis hazard
   fitted on the Macrohistory panel by year (bnm.macrohistory, crisis-betas.tsv)."
-  [run]
-  (let [f (io/file (str "data/runs/" run "/crisis-betas.tsv"))]
+  []
+  (let [f (io/file bnm.paths/crisis-betas)]
     (if (.exists f)
       (into (sorted-map) (for [line (str/split-lines (slurp f)) :let [[y & bs] (str/split line #"\t")]]
                            [(parse-long y) (mapv parse-double bs)]))
@@ -83,7 +84,7 @@
                     vecs)
         at (fn [xs i w n] (when (>= i w) (iv/stretch (subvec xs (- i w) (inc i)) w w n)))
         agg (fn [zs] (iv/aggregate zs {:threshold 1.5 :min-n 5}))
-        betas (read-betas "macro-15")
+        betas (read-betas)
         credit-gap (slow "finance/credit_gap")]
     (fn [t]
       (let [i (- (dec t) m0)

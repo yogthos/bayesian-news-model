@@ -5,7 +5,8 @@
   every input in bnm.trader/all-input-names (blank when missing).
 
     jolt -A:tools -M -m bnm.trader-export [--name trader-inputs]"
-  (:require [bnm.trader :as td]
+  (:require [bnm.paths]
+            [bnm.trader :as td]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -14,7 +15,7 @@
         name (or name "trader-inputs")
         {:keys [fr months raw-inputs]} (td/setup)
         {:keys [start mkt rf]} fr
-        f (str "data/runs/" name "/inputs.tsv")]
+        f (if (= name "trader-inputs") bnm.paths/trader-inputs (str "data/runs/" name "/inputs.tsv"))]
     (io/make-parents f)
     (with-open [w (io/writer f)]
       (.write w (str (str/join "\t" (concat ["month" "mkt" "rf"] (map clojure.core/name td/all-input-names))) "\n"))

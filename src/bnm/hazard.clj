@@ -257,3 +257,25 @@
                      (auc (map second rs) ys)))
         at (fn [q] (nth aucs (min (dec (count aucs)) (long (* q (count aucs))))))]
     [(at 0.05) (at 0.95)]))
+
+(defn cusum
+  "A risk-adjusted Bernoulli CUSUM (Steiner, Cook, Farewell & Treasure 2000)
+  watching forecasts ps against outcomes ys, in order, for a drift of the
+  odds by `ratio` (above 1: events more frequent than forecast; below 1:
+  less): S <- max(0, S + log-likelihood ratio of the outcome). Sequential, so
+  it watches calibration continuously without the false alarms of repeated
+  tests. {:max the largest S, :last S now, :signal the index where S first
+  crossed h (default 4.0), or nil}. When outcomes overlap (each event inside
+  `overlap` successive forecast windows), each increment counts 1/overlap,
+  so the evidence is counted about once."
+  [ps ys ratio & {:keys [h overlap] :or {h 4.0 overlap 1}}]
+  (let [lr (Math/log ratio)
+        k (/ 1.0 (double overlap))]
+    (loop [[p & ps] ps [y & ys] ys i 0 s 0.0 mx 0.0 sig nil]
+      (if (nil? p)
+        {:max mx :last s :signal sig}
+        (let [p (min (max (double p) 1e-6) (- 1.0 1e-6))
+              ;; log of P(y | odds x ratio) / P(y | p)
+              w (* k (- (if (true? y) lr 0.0) (Math/log (+ 1.0 (* p (- ratio 1.0))))))
+              s (max 0.0 (+ s w))]
+          (recur ps ys (inc i) s (max mx s) (or sig (when (> s h) i))))))))

@@ -20,6 +20,7 @@
 
     jolt -A:tools -M -m bnm.scales [--name scales-1]"
   (:require [bnm.hazard :as hz]
+            [bnm.paths]
             [bnm.trade :as tr]
             [bnm.trader :as us]
             [bnm.weekly :as wk]
@@ -110,6 +111,8 @@
           dir (str "data/runs/" name)]
       (io/make-parents (str dir "/x"))
       (spit (str dir "/transfer.tsv") (str/join (for [[m v] by-month] (str m "\t" v "\n"))))
+      (io/make-parents bnm.paths/small-fall-transfer)
+      (spit bnm.paths/small-fall-transfer (str/join (for [[m v] by-month] (str m "\t" v "\n"))))
       (spit (str dir "/scales.txt") (str out)))))
 
 (defn -main [& args]

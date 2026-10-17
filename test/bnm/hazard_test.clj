@@ -95,3 +95,24 @@
     (testing "resamples whole periods, and the interval holds the estimate"
       (is (<= lo (hz/auc (map second rows) (map #(nth % 2) rows)) hi))
       (is (<= 0.0 lo hi 1.0)))))
+
+(deftest calibration-cusum
+  ;; risk-adjusted Bernoulli CUSUM (Steiner et al. 2000): accumulates the log
+  ;; likelihood ratio of the outcomes under odds scaled by `ratio` against the
+  ;; forecasts as given, reset at zero
+  (let [ps (repeat 400 0.1)]
+    (testing "calibrated forecasts stay quiet"
+      (let [ys (map #(zero? (mod % 10)) (range 400))]
+        (is (< (:max (hz/cusum ps ys 2.0)) 4.0))
+        (is (< (:max (hz/cusum ps ys 0.5)) 4.0))))
+    (testing "events twice as frequent as forecast raise the upward chart"
+      (let [ys (map #(zero? (mod % 5)) (range 400))
+            up (hz/cusum ps ys 2.0)]
+        (is (> (:max up) 4.0))
+        (is (some? (:signal up)) "and it says when")))
+    (testing "events half as frequent raise the downward chart"
+      (let [ys (map #(zero? (mod % 20)) (range 400))]
+        (is (> (:max (hz/cusum ps ys 0.5)) 4.0))))
+    (testing "overlapping windows count each increment once over the overlap"
+      (let [ys (map #(zero? (mod % 5)) (range 400))]
+        (is (< (Math/abs (- (:max (hz/cusum ps ys 2.0 :overlap 4)) (/ (:max (hz/cusum ps ys 2.0)) 4.0))) 1e-9))))))

@@ -29,6 +29,7 @@
             [bnm.trade :as tr]
             [bnm.us-polecon :as upc]
             [bnm.us-shocks :as ush]
+            [bnm.paths :as paths]
             [bnm.us-loops :as ul]
             [bnm.us-invariants :as uinv]
             [clojure.java.io :as io]
@@ -140,7 +141,7 @@
 (defn read-regimes
   "{month [plain tvtp]} from data/runs/trader-inputs/regimes.tsv, or {}."
   []
-  (let [f (io/file "data/runs/trader-inputs/regimes.tsv")]
+  (let [f (io/file paths/regimes)]
     (if (.exists f)
       (into {} (for [line (rest (str/split-lines (slurp f)))
                      :let [[m a b] (str/split line #"\t" -1)]]
@@ -151,7 +152,7 @@
   "{month [positive negative]} LPPLS bubble confidence from
   scripts/lppls-confidence.py (data/runs/trader-inputs/lppls.tsv), or {}."
   []
-  (let [f (io/file "data/runs/trader-inputs/lppls.tsv")]
+  (let [f (io/file paths/lppls)]
     (if (.exists f)
       (into {} (for [line (rest (str/split-lines (slurp f))) :let [[m a b] (str/split line #"\t")]]
                  [(parse-long m) [(parse-double a) (parse-double b)]]))
@@ -160,7 +161,7 @@
 (defn read-transfer
   "{month logit} from bnm.scales' transfer.tsv, or {}."
   []
-  (let [f (io/file "data/runs/scales-1/transfer.tsv")]
+  (let [f (io/file paths/small-fall-transfer)]
     (if (.exists f)
       (into {} (for [line (str/split-lines (slurp f)) :let [[m v] (str/split line #"\t")]]
                  [(parse-long m) (parse-double v)]))
@@ -201,6 +202,15 @@
   1930-1949, 1950-1969 and 1970-1989."
   [:cape :mom12 :sma10 :vol6 :vol-ratio :drawdown12 :cape-x-drawdown :cape-x-decel :cape-x-below-sma
    :cape-present])
+
+(def record-inputs
+  "The model of record (docs/INVARIANTS.md): the stable base, the bear regime
+  discovered by Markov switching, the 12-month oil change, the risk learned
+  on small falls, and the dimension-free displacement of fifteen US
+  dimensions. No input names a regime; each was stable before 1990 or was
+  learned from the data's own dynamics."
+  (into stable-inputs [:hmm-plain :oil12 :shocks-present :small-scale
+                       :us-norm :us-breadth :us-resonance :us-flow-norm :us-stock-x-flow :us-invariants-present]))
 
 (defn select-inputs [names]
   (let [idx (into {} (map-indexed (fn [i n] [n i]) all-input-names))
@@ -295,7 +305,7 @@
         _ (io/make-parents (str out-dir "/x"))
         {:keys [fr w months raw-inputs]} (setup)
         {:keys [start mkt rf]} fr
-        chosen (if inputs (mapv keyword (str/split inputs #",")) stable-inputs)
+        chosen (if inputs (mapv keyword (str/split inputs #",")) record-inputs)
         pick (select-inputs chosen)
         combo? (= method "combo")
         combo-names (vec (remove #(str/ends-with? (clojure.core/name %) "-present") chosen))
@@ -422,7 +432,21 @@
                                     :let [chunk (subvec (vec ps) (quot (* qi n) 5) (quot (* (inc qi) n) 5))]]
                                 (format "%.3f/%.3f" (/ (reduce + (map second chunk)) (count chunk))
                                         (/ (count (filter #(true? (nth % 2)) chunk)) (double (count chunk)))))))
-          (say (format "    now: %.3f" (double (second (last recal))))))
+          (say (format "    now: %.3f" (double (second (last recal)))))
+          ;; the current reading for the readings pipeline, with the calibration monitor:
+          ;; CUSUM charts over the last ten years of resolved recalibrated forecasts
+          (let [[t-now p-now] (last preds)
+                recent (filter #(and (some? (nth % 2)) (>= (first %) (- t-now 120))) recal)
+                ps (map second recent) ys (map #(true? (nth % 2)) recent)
+                up (hz/cusum ps ys 2.0 :overlap h) down (hz/cusum ps ys 0.5 :overlap h)
+                held (map second (filter #(>= (quot (first %) 12) 1990) preds))]
+            (io/make-parents (str paths/derived "x"))
+            (spit (str paths/derived "trader-now-" (str/replace label #"[^0-9a-z]+" "-") ".edn")
+                  (pr-str {:target label :month (st/month-str t-now) :p p-now
+                           :p-recal (second (last recal)) :base (base 1940 2100)
+                           :percentile (/ (count (filter #(< % p-now) held)) (double (max 1 (count held))))
+                           :cusum {:up (:max up) :up-now (:last up) :down (:max down) :down-now (:last down)
+                                   :h 4.0 :months (count recent)}}))))
         (say "  lead: probability over the 12 months before each held-out onset (first month the fall begins within h)")
         (let [onsets (for [[[t0 _ y0] [t1 _ y1]] (partition 2 1 (in-years preds 1989 2100))
                            :when (and (true? y1) (not (true? y0)))]
