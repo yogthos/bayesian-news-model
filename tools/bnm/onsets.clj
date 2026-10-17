@@ -263,6 +263,12 @@
      :auc (hz/auc ps ys) :auq (hz/auc-within (map (fn [[q p y]] [q p y]) preds))
      :ap (hz/avg-precision ps ys)
      :r10 (hz/recall-at-budget (map (fn [[q p y]] [q p y]) preds) 0.10)
+     ;; 90% interval resampling whole years; Sarlin's usefulness for a policymaker weighing
+     ;; missed onsets by 0.9 and by 0.95 (for events this rare, a balanced policymaker never acts)
+     :ci (when (and (some #(true? (nth % 2)) preds) (some #(false? (nth % 2)) preds))
+           (hz/block-bootstrap-auc (map (fn [[q p y]] [(quot q 4) p y]) preds) 200 1))
+     :u50 (when (some true? ys) (hz/usefulness ps ys 0.9))
+     :u80 (when (some true? ys) (hz/usefulness ps ys 0.95))
      :bss (when (seq base)
             (let [bb (hz/brier (map second base) (map #(nth % 2) base))]
               (when (pos? bb) (- 1.0 (/ (hz/brier ps ys) bb)))))}))
@@ -320,7 +326,9 @@
     (println (count rows) "country-quarters recorded")
     (say "Onsets, out of sample. Priors chosen on" (str/join "-" tune-years) "(tune); 2008 on is held out.")
     (say "AUROC pooled and within quarters (auq), average precision, recall in the top 10% of each quarter,")
-    (say "Brier skill against the base rate. Models: base, history, politics, local (every domain of the")
+    (say "Brier skill against the base rate; AUC's 90% interval resampling whole years; Sarlin's relative")
+    (say "usefulness for a policymaker weighing missed onsets by 0.9 and 0.95 (the share of the loss of")
+    (say "ignoring the forecast that it saves). Models: base, history, politics, local (every domain of the")
     (say "country), domains (all but politics, and global drivers), all (domain averages), named (the")
     (say "literature's stocks for the kind, bnm.named); pool and stack combine all but base.")
     (doseq [kind (if kinds (str/split kinds #",") (sort (keys events)))
@@ -348,9 +356,10 @@
             (doseq [model shown
                     :let [s (scores (in-era (preds model)) (in-era base))]
                     :when (pos? (:n s))]
-              (say (format "  %-5s %-9s n=%6d pos=%4d  auc %s  auq %s  ap %s  r@10%% %s  bss %s"
-                           era (clojure.core/name model) (:n s) (:pos s) (f3 (:auc s)) (f3 (:auq s)) (f3 (:ap s))
-                           (f3 (:r10 s)) (f3 (:bss s)))))))))
+              (say (format "  %-5s %-9s n=%6d pos=%4d  auc %s [%s %s]  auq %s  ap %s  r@10%% %s  bss %s  U(.9) %s U(.95) %s"
+                           era (clojure.core/name model) (:n s) (:pos s) (f3 (:auc s))
+                           (f3 (first (:ci s))) (f3 (second (:ci s))) (f3 (:auq s)) (f3 (:ap s))
+                           (f3 (:r10 s)) (f3 (:bss s)) (f3 (:u50 s)) (f3 (:u80 s)))))))))
     (say)
     (say "Cases: probability of onset within 1-4 quarters at each of the 8 quarters before, and rank among")
     (say "countries that quarter (history / all / stack)")

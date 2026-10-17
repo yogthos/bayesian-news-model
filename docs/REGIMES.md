@@ -266,3 +266,28 @@ why the model now uses only inputs that do not name a channel:
 - dynamics learned on small falls (bnm.scales).
 
 All of these are set out in docs/INVARIANTS.md.
+
+## Uneven development and interstate conflict (`scripts/interstate.py`)
+
+**Data.** Correlates of War national capabilities (NMC 6.0) and
+militarized interstate disputes (MID 5.0). The target is a dispute reaching
+the use of force.
+
+| input | 1870-1913 | 1919-38 | 1946-89 | 1990-2013 |
+|---|---|---|---|---|
+| **state initiates next year** | | | | |
+| capability share vs its own 20 years | 0.53 | 0.56 | 0.57 | 0.60 |
+| capability share growth, 10 years | 0.50 | 0.57 | 0.56 | 0.58 |
+| capability level | 0.66 | 0.69 | 0.69 | 0.76 |
+| **pair of the 8 strongest fights within 2 years** | | | | |
+| parity | 0.56 | 0.45 | 0.62 | - |
+| speed of the shift in their ratio | 0.38 | 0.53 | 0.40 | - |
+| weaker closing on stronger | 0.50 | 0.49 | 0.52 | - |
+
+**Monadic.** Uneven development in invariant form is stable but weak: a
+state whose strength is rising against its own past initiates force a
+little more often, in every era.
+
+**Dyadic.** The power-transition terms are not stable, as Kim & Morrow
+(1992) found, and the 2000s and 2010s have no forceful dispute between the
+strongest to test them on.
