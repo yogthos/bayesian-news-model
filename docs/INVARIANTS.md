@@ -882,3 +882,31 @@ their own tails) fixed what the skewed recalibrations did not.
 **Level noise** (`:level-noise` 0.15, `data/runs/noise-1`) adds little on
 top (violence CRPS 0.124, coercion 0.114, a flat PIT either way) and stays
 off.
+
+## Prior sensitivity and partial pooling (bnm-enb.4, .5; `data/runs/sensitivity.txt`)
+
+**The series.** Ten runs on 1993-99 at the current model:
+- pooling on and off;
+- prior weight 2, 8, 32;
+- baseline share 0.6, 0.8, 0.9;
+- level discount 0.9, 0.95, 0.98;
+- forgetting 0.98, 0.99, 0.995.
+
+**Escalation is robust.** Country violence average precision is 0.326-0.338,
+onset AP 0.144-0.161 and Brier skill 4-6% across every setting.
+
+**The driver graph is not.** Its top five drivers keep a Jaccard overlap
+of 0.86-0.93 with the default under the baseline share and level discount,
+but only 0.56-0.75 under pooling, prior weight and forgetting. So the
+cross-domain driver ranking should be read as uncertain.
+
+**Pooling trades ranking for totals, in both windows:**
+
+| | 1993-99 | 2008-09 |
+|---|---|---|
+| violence totals CRPS, pooled / not | 0.206 / 0.176 | 0.126 / 0.123 |
+| protest escalation, pooled / not | AP 0.295 / 0.264 | AUC 0.838 / 0.810 |
+| violence escalation AUC, pooled / not | | 0.754 / 0.742 |
+
+Pooling stays on, because ranking escalations is the model's main use.
+For forecasts of totals, `{:pooling false}` is better.
