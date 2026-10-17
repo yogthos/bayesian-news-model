@@ -13,6 +13,7 @@
   (:require [bnm.hazard :as hz]
             [bnm.paths :as paths]
             [bnm.slow-train :as st]
+            [bnm.weekly]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -112,6 +113,35 @@
           (say (format "  US banking crisis within 2 years (panel hazard on the credit gap), %s: %.3f"
                        (st/month-str (parse-long (first cells))) pc))
           (say (format "  20%% within 12m including the banking-crisis channel: %.3f" pm)))))
+    ;; the reaction layer: once a fall starts the hazards are slow, and the 200-day
+    ;; average and a volatility jump fire first (scripts/detection-lag.py)
+    (let [;; FRED's daily S&P 500 (to yesterday) when it is newer than French's returns
+          ;; (a month or more behind); price only, enough for averages and volatility
+          sp (let [f (io/file "data/raw/slow/market/SP500.csv")]
+               (when (.exists f)
+                 (vec (keep (fn [line] (let [[d v] (str/split line #",")
+                                             x (some-> v str/trim not-empty parse-double)]
+                                         (when x [(str/replace d "-" "") x])))
+                            (rest (str/split-lines (slurp f)))))))
+          french (bnm.weekly/read-daily)
+          use-sp? (and (seq sp) (> (compare (first (peek sp)) (first (peek french))) 0))
+          [daily w] (if use-sp?
+                      [(mapv (fn [[[_ a] [d b]]] [d (- (/ b a) 1.0)]) (partition 2 1 sp)) (mapv second (rest sp))]
+                      (let [rs (mapv second french)]
+                        [french (subvec (vec (reductions * 1.0 (map #(+ 1.0 %) rs))) 1)]))
+          rets (mapv second daily)
+          n (count w)
+          sd (fn [xs] (let [m (/ (reduce + xs) (count xs))]
+                        (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) xs)) (count xs)))))
+          last-day (first (peek daily))
+          sma200 (/ (reduce + (subvec w (- n 200))) 200.0)
+          vr (/ (sd (subvec rets (- n 21))) (sd (subvec rets (- n 252))))
+          hi (apply max (subvec w (- n 252)))
+          dd (- 1.0 (/ (peek w) hi))]
+      (say (format "  Reaction layer, %s-%s-%s: market %s its 200-day average (%+.1f%%); 21-day volatility %.2f times its year; %.1f%% below its 52-week high%s"
+                   (subs last-day 0 4) (subs last-day 4 6) (subs last-day 6 8)
+                   (if (< (peek w) sma200) "BELOW" "above") (* 100 (- (/ (peek w) sma200) 1.0)) vr (* 100 dd)
+                   (if (or (< (peek w) sma200) (> vr 1.8)) " -- a fall may be under way" ""))))
     (say)
     (if (.exists (io/file onsets))
       (do (say (str "Onsets: the countries likeliest to see one within a year (" model " model), latest quarter."))

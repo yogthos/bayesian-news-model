@@ -52,6 +52,7 @@
        (mapv (fn [ds]
                (let [[d] (last ds)]
                  {:month (+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 4 6))))
+                  :last-day d
                   :mkt (dec (reduce * (map #(+ 1.0 (second %)) ds)))
                   :rf (dec (reduce * (map #(+ 1.0 (nth % 2)) ds)))
                   :days (mapv second ds)})))))
@@ -165,6 +166,9 @@
           (line "40-week unless low risk" (strat ks (veto tau-veto)))
           (say (str "      Sharpe by threshold: model " (str/join " " (for [t taus] (format "%.2f" (:sharpe (strat ks (ex-model t))))))
                     "; veto " (str/join " " (for [t low-taus] (format "%.2f" (:sharpe (strat ks (veto t)))))))))
+        ;; the weekly probabilities, dated by each week's last day, for scripts/detection-lag.py
+        (spit (str out-dir "/preds-" (str/replace tname #"[^0-9a-z]+" "-") ".tsv")
+              (str/join (for [[k p y] preds] (str (:last-day (wk k)) "\t" p "\t" (if (nil? y) "" (if y 1 0)) "\n"))))
         (let [[k-now p-now] (last preds)
               held (map second (in-yrs 1990 2100))
               m (:month (wk k-now))]

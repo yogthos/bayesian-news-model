@@ -175,7 +175,7 @@ fetch_market() {
   # political economy (docs/REGIMES.md): BEA annual compensation, national income,
   # corporate profits, net nonresidential fixed assets, investment and GDP; the
   # nonfarm labour share; capacity utilization
-  for s in BAA AAA GS10 TB3MS CPIAUCNS UNRATE INDPRO PAYEMS \
+  for s in SP500 BAA AAA GS10 TB3MS CPIAUCNS UNRATE INDPRO PAYEMS \
            A033RC1A027NBEA A032RC1A027NBEA A051RC1A027NBEA K1NTOTL1ES000 PNFIA GDPA PRS85006173 TCU; do
     get "https://fred.stlouisfed.org/graph/fredgraph.csv?id=$s" "$d/$s.csv"
   done
