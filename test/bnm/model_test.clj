@@ -267,3 +267,23 @@
     (doseq [s (range 20) c (range model/C)]
       (is (< (Math/abs (- (model/total fc i s c) (reduce + (map #(model/total fc % s c) kids)))) 1e-9))
       (is (< (Math/abs (- (model/total fc i s c) (model/path-sum fc i s c 0 8))) 1e-9)))))
+
+(deftest kappa-scales-children-up-to-the-parent
+  ;; an actor's children are only its pairs within the country, here a tenth
+  ;; of its events: kappa must learn that tenth whatever the node's volume,
+  ;; not stay near one, or the blend pulls the actor's forecast down
+  (let [s (-> (structure/volumes)
+              (structure/tally "UKR" "GOV" "UKR" "OPP" nil 300.0)
+              (structure/tally "UKR" "GOV" "RUS" "MIL" nil 3000.0)
+              (structure/tally "USA" nil nil nil nil 5000000.0)
+              (structure/build {:min-dyad-volume 100.0 :min-actor-volume 100.0 :min-pair-volume 100.0}))
+        g (m/rng 3)
+        week (fn [] {"toy" [["UKR" "GOV" "UKR" "OPP" nil violence (double (m/poisson! g 4.0))]
+                            ["UKR" "GOV" "RUS" "MIL" nil violence (double (m/poisson! g 36.0))]
+                            ["USA" nil nil nil nil 0 (double (m/poisson! g 500000.0))]]})
+        mdl (reduce (fn [mdl [t bin]] (first (series/observe-bin! mdl t bin)))
+                    (series/with-routes (model/create s))
+                    (map-indexed vector (repeatedly 200 week)))
+        node (model/node mdl "UKR:GOV")]
+    (is (= 1 (count (:children node))))
+    (is (< 7.0 (aget ^doubles (:kappa node) violence) 13.0) (aget ^doubles (:kappa node) violence))))

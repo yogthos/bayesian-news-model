@@ -256,7 +256,9 @@
           (aset lc c (+ (* rb (aget lc c)) (* ec ec))))
         (aset sk c (+ (* rho (aget sk c)) yc))
         (aset tk c (+ (* rho (aget tk c)) (aget chy c)))
-        (aset kappa c (/ (+ w (aget sk c)) (+ w (aget tk c))))))))
+        ;; the prior's w pseudo-events at ratio one are raw events (u each):
+        ;; in normalized units a small node's sums never outweighed it
+        (aset kappa c (/ (+ (* w u) (aget sk c)) (+ (* w u) (aget tk c))))))))
 
 ;; --- nodes ------------------------------------------------------------------------------
 
