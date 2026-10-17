@@ -114,6 +114,28 @@
         s2 (areduce xs i s 0.0 (+ s (* (aget xs i) (- (* 2 i) n -1))))]
     (- (/ s1 n) (/ s2 (* n (double n))))))
 
+(defn pit-bounds
+  "[F(a-) F(a)]: the predictive cdf just below and at the outcome a, from
+  the sorted sample xs. For counts the PIT is an interval, not a point; its
+  non-randomized histogram spreads each outcome uniformly over it (Czado,
+  Gneiting & Held 2009)."
+  [^doubles xs a]
+  (let [n (alength xs)
+        below (areduce xs i c 0 (if (< (aget xs i) a) (inc c) c))
+        at (areduce xs i c 0 (if (<= (aget xs i) a) (inc c) c))]
+    [(/ below (double n)) (/ at (double n))]))
+
+(defn pit-histogram
+  "The non-randomized PIT histogram over `bins` equal bins: the mean over
+  outcomes of the mass each [lo hi] puts in each bin. Flat when the
+  forecasts are calibrated; a U when they are too narrow; a hump when too
+  wide."
+  [bounds bins]
+  (let [cdf (fn [[lo hi] u] (cond (>= u hi) 1.0 (<= u lo) 0.0 :else (/ (- u lo) (- hi lo))))
+        n (count bounds)]
+    (for [j (range 1 (inc bins))]
+      (/ (reduce + (map #(- (cdf % (/ j (double bins))) (cdf % (/ (dec j) (double bins)))) bounds)) n))))
+
 (defn- log-sorted [xs]
   (let [arr (double-array (map #(Math/log1p (max 0.0 %)) xs))]
     (java.util.Arrays/sort arr)
@@ -157,6 +179,7 @@
        :mean (/ (areduce xs k s 0.0 (+ s (aget xs k))) n)
        :q10 (m/quantile xs 0.1) :q50 (m/quantile xs 0.5) :q90 (m/quantile xs 0.9)
        :crps (crps (log-sorted xs) (Math/log1p a))
+       :pit (let [ys (aclone xs)] (java.util.Arrays/sort ys) (pit-bounds ys a))
        :crps-hist (crps (log-sorted series) (Math/log1p a))
        :p-escalate p
        :sims n
@@ -175,7 +198,8 @@
    :err-clim (mean (map #(log-err (:clim3 %) (:actual %)) rs))
    :crps-model (mean (map :crps rs))
    :crps-hist (mean (map :crps-hist rs))
-   :coverage80 (mean (map #(if (<= (:q10 %) (:actual %) (:q90 %)) 1.0 0.0) rs))})
+   :coverage80 (mean (map #(if (<= (:q10 %) (:actual %) (:q90 %)) 1.0 0.0) rs))
+   :pit (let [bs (keep :pit rs)] (when (seq bs) (vec (pit-histogram bs 10))))})
 
 (defn- escalation-row? [r]
   (some #{(:channel r)} escalation-channels))
@@ -325,11 +349,13 @@
   (into (sorted-map)
         (for [key (distinct (mapcat (comp keys :totals) results))
               :let [xs (keep #(get-in % [:totals key]) results)]]
-          [key (into {} (for [f [:n :err-model :err-median :err-persist :err-clim :crps-model
-                                 :crps-hist :coverage80]
-                              :let [vs (keep f xs)]
-                              :when (seq vs)]
-                          [f (mean vs)]))])))
+          [key (merge (into {} (for [f [:n :err-model :err-median :err-persist :err-clim :crps-model
+                                        :crps-hist :coverage80]
+                                     :let [vs (keep f xs)]
+                                     :when (seq vs)]
+                                 [f (mean vs)]))
+                      (let [ps (keep :pit xs)]
+                        (when (seq ps) {:pit (apply mapv (fn [& v] (mean v)) ps)})))])))
 
 (defn aggregate
   "Scores over several periods' results: totals averaged over periods,
@@ -396,13 +422,16 @@
        (println)
        (println "Totals: mean |log error| of the forecast mean (model, persistence, mean of last 3),")
        (println "skill against persistence; the same of the forecast median; CRPS in log space (model,")
-       (println "own history as a sample), 80% coverage")
+       (println "own history as a sample), 80% coverage; the non-randomized PIT histogram in tenths, times")
+       (println "ten (all 1.0 when calibrated; high ends when the ranges are too narrow, a hump when too wide)")
        (doseq [[[l ch] s] (by-kind totals)]
          (println (format "  %-9s %-16s n=%5.0f  err %s %s %s  skill %s  median %s %s  crps %s %s  cover80 %s"
                           (level-name l) (name ch) (:n s) (f3 (:err-model s)) (f3 (:err-persist s))
                           (f3 (:err-clim s)) (pct (skill (:err-model s) (:err-persist s)))
                           (f3 (:err-median s)) (pct (skill (:err-median s) (:err-persist s)))
-                          (f3 (:crps-model s)) (f3 (:crps-hist s)) (f2 (:coverage80 s)))))
+                          (f3 (:crps-model s)) (f3 (:crps-hist s)) (f2 (:coverage80 s))))
+         (when-let [h (:pit s)]
+           (println (format "  %-9s %-16s pit %s" "" "" (str/join " " (map #(format "%.1f" (* 10.0 %)) h))))))
        (println)
        (println (str "Escalation (>= " escalation-ratio "x the last period), by the stratum of the node's history."))
        (println "Brier skill against climatology (raw model, calibrated, own history); ROC AUC and average")

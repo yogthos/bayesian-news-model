@@ -613,3 +613,40 @@ bond rates, default spread, real oil, the market):
 - The hedge sized by probability: 0.64, 0.69, 0.72, 0.76 and 0.76 across
   sizings, against 0.69 for the 10-month rule. The sizing chosen on
   1950-89 is the worst one.
+
+## Recalibration (bnm-enb.12)
+
+**Event model** (`bnm.calibrate`). The binned calibrator now pools adjacent
+violators across bins (`isotonic`, ported from scikit-learn), so a higher
+forecast is never calibrated lower: the CORP fit (Dimitriadis, Gneiting &
+Jordan 2021). The stored format is unchanged.
+
+Replayed over v3-q (`data/runs/v3-q-iso` against `data/runs/v3-q`), the
+calibrated Brier skill improves in every country stratum, by 0.1 to 0.8
+points. Examples:
+- violence, all: +3.9% to +4.0%;
+- protest, low: +6.2% to +6.4%;
+- coercion, active: +1.5% to +1.8%.
+
+**PIT.** Each row now carries the non-randomized PIT interval of its
+outcome (`pit-bounds`; Czado, Gneiting & Held 2009). The report prints the
+PIT histogram in tenths per level and channel (`pit-histogram`). The
+own-history CRPS benchmark (VIEWS-style, the last six periods as the
+empirical distribution) was already reported beside the model's.
+
+**Drawdown hazard** (`bnm.trader`). Each January the forecasts already
+resolved are fitted, and the fit maps the year's forecasts:
+
+| recalibration, held out 1990- | Brier skill | AUC | top fifth predicted / observed |
+|---|---|---|---|
+| none | 0.050 | 0.808 | 0.41 / 0.29 |
+| isotonic | 0.079 | 0.666 | |
+| logistic on the logit (Cox 1958) | **0.112** | 0.786 | 0.20 / 0.28 |
+
+The isotonic fit's flat steps tie forecasts and cost the ranking, the
+plateau problem the calibration literature warns of for rare events. The
+logistic fit is strictly monotone and keeps most of it, so it is the one
+used.
+
+Reading for August 2026, recalibrated: P(20% fall within 12 months) =
+0.107, against a base rate of 0.08 (raw 0.189).

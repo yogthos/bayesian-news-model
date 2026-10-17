@@ -21,7 +21,8 @@
 
   Reads data/raw/slow/market/ (scripts/fetch-slow.sh market); writes
   data/runs/<name>/trader.txt."
-  (:require [bnm.hazard :as hz]
+  (:require [bnm.calibrate :as cal]
+            [bnm.hazard :as hz]
             [bnm.named :as nm]
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
@@ -380,6 +381,30 @@
                   :let [chunk (subvec (vec ps) (quot (* qi n) 5) (quot (* (inc qi) n) 5))]]
             (say (format "    %.3f  %.3f  (n=%d)" (/ (reduce + (map second chunk)) (count chunk))
                          (/ (count (filter #(true? (nth % 2)) chunk)) (double (count chunk))) (count chunk)))))
+        ;; recalibrated in real time: each January, a logistic fit of outcome on the forecast's logit
+        ;; over the forecasts already resolved (bnm.calibrate/logistic-map), applied to the year's;
+        ;; the isotonic fit improved the levels but its flat steps cost the ranking (AUC 0.81 to 0.67)
+        (let [years (range 1950 (inc (quot (first (last preds)) 12)))
+              recal (vec (mapcat (fn [yr]
+                                   (let [known (filter #(and (some? (nth % 2)) (< (+ (first %) h) (* 12 yr))) preds)
+                                         f (cal/logistic-map (map second known) (map #(true? (nth % 2)) known))]
+                                     (for [[t p y u] preds :when (= yr (quot t 12))] [t (f p) y u])))
+                                 years))
+              held (filter #(some? (nth % 2)) (in-years recal 1990 2100))
+              ys (map #(nth % 2) held)
+              b (base 1940 1989)
+              ps (sort-by second held)
+              n (count ps)]
+          (say (format "  recalibrated (logistic on resolved forecasts, refit yearly), held out: bss %.3f (raw %.3f), auc %.3f"
+                       (- 1.0 (/ (hz/brier (map second held) ys) (hz/brier (repeat (count held) b) ys)))
+                       (- 1.0 (/ (hz/brier (map #(p-at (first %) 0.0) held) ys) (hz/brier (repeat (count held) b) ys)))
+                       (hz/auc (map second held) ys)))
+          (say "    by fifth, mean predicted vs observed:"
+               (str/join "  " (for [qi (range 5)
+                                    :let [chunk (subvec (vec ps) (quot (* qi n) 5) (quot (* (inc qi) n) 5))]]
+                                (format "%.3f/%.3f" (/ (reduce + (map second chunk)) (count chunk))
+                                        (/ (count (filter #(true? (nth % 2)) chunk)) (double (count chunk)))))))
+          (say (format "    now: %.3f" (double (second (last recal))))))
         (say "  lead: probability over the 12 months before each held-out onset (first month the fall begins within h)")
         (let [onsets (for [[[t0 _ y0] [t1 _ y1]] (partition 2 1 (in-years preds 1989 2100))
                            :when (and (true? y1) (not (true? y0)))]
