@@ -39,3 +39,16 @@
       (is (close? (+ (Math/exp -1.0) (* 0.5 (Math/exp -0.5)) 2.0) (iv/kernel events 2010 10.0 {:through 2010}))))
     (testing "nothing before the first event"
       (is (zero? (iv/kernel events 1999 10.0 {:through 1999}))))))
+
+(deftest synchrony-of-changes
+  (testing "correlation of paired values"
+    (is (close? 1.0 (iv/correlation [1.0 2.0 3.0] [2.0 4.0 6.0])))
+    (is (close? -1.0 (iv/correlation [1.0 2.0 3.0] [3.0 2.0 1.0])))
+    (is (nil? (iv/correlation [1.0 1.0 1.0] [1.0 2.0 3.0])) "flat"))
+  (testing "mean absolute correlation of the series' changes over a window ending at i"
+    (let [a [0.0 1.0 3.0 6.0 10.0 15.0]       ; changes 1 2 3 4 5
+          b [0.0 2.0 6.0 12.0 20.0 30.0]      ; changes 2 4 6 8 10: r = 1 with a
+          c [0.0 5.0 9.0 12.0 14.0 15.0]]     ; changes 5 4 3 2 1: r = -1 with a
+      (is (close? 1.0 (iv/synchrony [a b c] 5 5 3)))
+      (is (nil? (iv/synchrony [a b c] 5 5 6)) "too few changes")
+      (is (nil? (iv/synchrony [a] 5 5 3)) "needs two series"))))

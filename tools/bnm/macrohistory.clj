@@ -67,7 +67,7 @@
 
 (def invariant-names
   [:max-displacement :breadth :norm :variability :world-norm :world-crises :small-falls :present
-   :norm-short :norm-long :resonance :since-crisis :since-world-wave :wave-fresh])
+   :norm-short :norm-long :resonance :since-crisis :since-world-wave :wave-fresh :synchrony :world-correlation :flow-max :flow-norm :stock-x-flow])
 
 (defn- with-derived
   "Adds :real-equity (log real price index from capital gains) and
@@ -123,9 +123,23 @@
                             [c (let [series (into {} (for [[k f] dimensions] [k (mapv f rows)]))]
                                  (mapv (fn [i] (keep #(iv/stretch (series %) i window n) (map first dimensions)))
                                        (range (count rows))))])))
+        ;; the flows: each dimension's one-year change against its own past changes
+        flow-z (into {} (for [[c rows] by-c]
+                          [c (let [series (into {} (for [[k f] dimensions]
+                                                     [k (let [xs (mapv f rows)]
+                                                          (mapv (fn [i] (let [a (get xs (dec i)) b (get xs i)] (when (and a b) (- b a))))
+                                                                (range (count xs))))]))]
+                               (mapv (fn [i] (keep #(iv/stretch (series %) i 10 6) (map first dimensions)))
+                                     (range (count rows))))]))
         short-z (scaled 5 4)
         long-z (scaled 20 12)
         growth (into {} (for [[c rows] by-c] [c (mapv #(lg (:rgdpbarro %)) rows)]))
+        dim-series (into {} (for [[c rows] by-c] [c (mapv (fn [[_ f]] (mapv f rows)) dimensions)]))
+        ;; the world's mean real equity change by year, to measure each country's synchrony with it
+        eq-change (fn [rows i] (let [a (:real-equity (get rows (dec i))) b (:real-equity (get rows i))] (when (and a b) (- b a))))
+        world-eq (into {} (for [[yr cs] (group-by first (for [[_ rows] by-c i (range 1 (count rows)) :let [d (eq-change rows i)] :when d]
+                                                         [(:year (rows i)) d]))]
+                            [yr (/ (reduce + (map second cs)) (count cs))]))
         agg (fn [c i] (iv/aggregate (vals ((stretches c) i)) {:threshold 1.5 :min-n 5}))
         crisis? (fn [c yr] (some #(and (= yr (:year %)) (= 1.0 (:crisisJST %))) (by-c c)))
         years (sort (distinct (map :year data)))
@@ -169,6 +183,16 @@
                         :present (if a 1.0 0.0)
                         :since-crisis (some-> since-own (+ 1.0) Math/log) :since-world-wave (some-> since-world (+ 1.0) Math/log)
                         :wave-fresh (some-> since-world (<= 1) (if 1.0 0.0))
+                        :flow-max (:max (iv/aggregate ((flow-z c) i) {:threshold 2.0 :min-n 5}))
+                        :flow-norm (:norm (iv/aggregate ((flow-z c) i) {:threshold 2.0 :min-n 5}))
+                        ;; a stretched stock with a turning flow
+                        :stock-x-flow (when-let [f (:norm (iv/aggregate ((flow-z c) i) {:threshold 2.0 :min-n 5}))]
+                                        (some-> (:norm a) (* f)))
+                        :synchrony (iv/synchrony (dim-series c) i 10 6)
+                        :world-correlation (let [pairs (keep (fn [j] (when-let [d (eq-change rows j)]
+                                                                       (when-let [w (world-eq (:year (rows j)))] [d w])))
+                                                             (range (max 1 (- i 9)) (inc i)))]
+                                             (when (>= (count pairs) 6) (iv/correlation (map first pairs) (map second pairs))))
                         :norm-short (:norm (iv/aggregate ((short-z c) i) {:threshold 1.5 :min-n 5}))
                         :norm-long (:norm (iv/aggregate ((long-z c) i) {:threshold 1.5 :min-n 5}))
                         ;; displaced at every scale at once (resonance)
@@ -191,6 +215,20 @@
                          :gold (get-in regimes [[c yr] :gold])}
             :wave (let [n (count (filter (fn [c'] (some #(crisis? c' %) [(inc yr) (+ yr 2)])) (keys by-c)))] (>= n 3))
             :crisis crisis-ahead :fall fall-ahead}))))
+
+(defn demean-by-year
+  "Rows with each of `names` replaced by its deviation from that year's mean
+  across countries: the part that says which country, apart from the part
+  that moves with time (Simpson's paradox: pooled over eras, the time part
+  can reverse a relation that holds within every era). Known in real time,
+  since a year's values for all countries are known at its end."
+  [rows names]
+  (let [means (into {} (for [[yr rs] (group-by :year rows)]
+                         [yr (into {} (for [nm names :let [vs (keep #(get-in % nm) rs)] :when (seq vs)]
+                                        [nm (/ (reduce + vs) (count vs))]))]))]
+    (mapv (fn [r] (reduce (fn [r nm] (if-let [v (get-in r nm)] (assoc-in r nm (- v (get-in means [(:year r) nm]))) r))
+                          r names))
+          rows)))
 
 (defn- era-of [yr] (first (keep (fn [[n lo hi]] (when (<= lo yr hi) n)) eras)))
 
@@ -321,14 +359,26 @@
                                  ["world intensity" [[:process :world-intensity]]]
                                  ["scales+intensity" (conj scales [:process :world-intensity])]
                                  ["scales+intensity+stab" (into (conj scales [:process :world-intensity]) stabilizer)]
+                                 ["trigger" [[:invariant :flow-max] [:invariant :flow-norm] [:invariant :stock-x-flow]]]
+                                 ["scales+intensity+trigger" (into (conj scales [:process :world-intensity]) [[:invariant :flow-norm] [:invariant :stock-x-flow]])]
+                                 ["scales+trigger" (into scales [[:invariant :flow-norm] [:invariant :stock-x-flow]])]
+                                 ["synchrony" [[:invariant :synchrony] [:invariant :world-correlation]]]
+                                 ["scales+intensity+sync" (into (conj scales [:process :world-intensity]) [[:invariant :synchrony] [:invariant :world-correlation]])]
                                  ["regime: openness, gold" regime]
                                  ["scales+intensity+regime" (into (conj scales [:process :world-intensity]) regime)]
                                  ["process+stabilizer" (into process stabilizer)]
                                  ["scales+process" (into scales process)] ["scales+stabilizer" (into scales stabilizer)]
                                  ["scales+process+stab" (into scales (into process stabilizer))]]]
-        (let [res (prequential rows target names 10.0 1.0 :from 1900)]
-          (say (format "  %-6s %-22s %s   from 1950 %s  within %s  timing %s" label set-label
-                       (str/join " " (map #(fmt (res (first %))) (rest eras))) (fmt (:post res)) (fmt (:within res)) (fmt (:timing res)))))))
+        (let [res (prequential rows target names 10.0 1.0 :from 1900)
+              ;; the same inputs within years (deviations from the year's mean across countries),
+              ;; with the world intensity, raw, as the only input that says when
+              timeless (remove #{[:process :world-intensity]} names)
+              res-w (prequential (demean-by-year rows timeless) target (conj (vec timeless) [:process :world-intensity]) 10.0 1.0 :from 1900)]
+          (say (format "  %-6s %-22s %s   from 1950 %s  within %s  timing %s   [within years + intensity] %s  from 1950 %s  within %s  timing %s"
+                       label set-label
+                       (str/join " " (map #(fmt (res (first %))) (rest eras))) (fmt (:post res)) (fmt (:within res)) (fmt (:timing res))
+                       (str/join " " (map #(fmt (res-w (first %))) (rest eras))) (fmt (:post res-w)) (fmt (:within res-w)) (fmt (:timing res-w))))
+)))
     (let [dir (str "data/runs/" name)]
       (io/make-parents (str dir "/x"))
       (spit (str dir "/macrohistory.txt") (str out)))))

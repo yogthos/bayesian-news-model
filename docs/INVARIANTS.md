@@ -349,3 +349,77 @@ about a dozen in two centuries, not by the number of dimensions. Learning
 when needs more episodes. The many small events at shorter timescales can
 supply them, if the dynamics are similar across scales: learn the shape
 there and rescale it to the large ones.
+
+## Step 3: synchrony
+
+**Inputs**
+- Across dimensions: the mean absolute correlation of the dimensions'
+  changes over ten years, a simple form of Kritzman's absorption ratio and
+  of the CISS weighting.
+- Across countries: the country's correlation with the world.
+
+**Results** (`data/runs/macro-11`)
+- **Direction.** Low synchrony across dimensions comes before crises in
+  every era (AUC 0.16-0.45 for high synchrony). The dimensions decouple
+  first, the opposite of the CISS premise.
+- **In a model it fails.** Pooled over eras the relation reverses
+  (Simpson's paradox: eras with more synchrony also had more crises), and
+  the hazard gains nothing. Pooled AUC is 0.54 with synchrony against 0.58
+  without.
+- **Removing each year's cross-country mean from the inputs doesn't fix
+  it.** It makes things worse: within-year ranking falls from 0.67 to 0.59
+  (`data/runs/macro-12`). The raw stretches carry timing, because credit
+  booms are global.
+
+## Step 4: discovered regimes (scripts/regime-hmm.py)
+
+**Model**
+- A two-state Markov-switching model of US monthly returns, mean and
+  variance switching (Hamilton 1989), from statsmodels' `MarkovRegression`
+  (statsmodels 0.15.0).
+- Refit each January on the months before it, and filtered forward with
+  those parameters.
+- The bear regime is the high-variance state of each fit.
+- A second version drives the transitions by displacement (valuation,
+  drawdown, volatility ratio, momentum) through `exog_tvtp` (Filardo 1994).
+
+The filtered probability enters the drawdown hazard (`bnm.trader`, 20%
+within 12 months, tuned 1950-89):
+
+| inputs | tune | held out 1990- | 2000- | top fifth predicted / observed | hedge by probability, Sharpe |
+|---|---|---|---|---|---|
+| base | 0.64 | 0.69 | 0.68 | 0.24 / 0.24 | 0.65 |
+| base + discovered regime | 0.72 | **0.76** | 0.77 | 0.30 / 0.28 | **0.71** |
+| base + regime, transitions driven by displacement | 0.69 | 0.66 | 0.72 | | |
+| base + hand-written regime terms (hindsight) | 0.71 | 0.79 | 0.80 | 0.31 / 0.24 | 0.70 |
+| base + discovered + hand-written | 0.72 | 0.80 | 0.82 | 0.27 / 0.24 | 0.74 |
+
+The 10-month rule's Sharpe is 0.69.
+
+**What the regime gives**
+- The discovered regime improves both the tuning and the held-out years. It
+  comes close to the hand-written terms with nothing chosen on the held-out
+  years.
+- The hedge sized by its probability beats the trend rule at three of five
+  sizings.
+- Displacement-driven transitions overfit: Brier skill held out is -0.22.
+
+**What it doesn't**
+- The lower fifths are overestimated: 0.08-0.17 predicted against 0.02-0.07
+  observed.
+- 2007 is still missed (0.09-0.13).
+
+## Step 5: the trigger as an invariant
+
+**Inputs**
+- Each dimension's one-year change, scored against its own past changes.
+- The largest change, and the root mean square change.
+- The stock's displacement times the flow's.
+
+**Results** (`data/runs/macro-13`)
+- All three are era-stable (5/5 for crises; stock times flow 5/5 for falls
+  as well). Crises: 0.61, 0.53, 0.94, 0.65 and 0.64; falls 0.54 to 0.69.
+- On its own the trigger ranks countries within a year well (0.65), but its
+  timing inverts.
+- Added to the best crisis model, within-year AUC goes from 0.68 to 0.69,
+  and pooled is unchanged at 0.58.

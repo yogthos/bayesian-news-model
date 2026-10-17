@@ -124,14 +124,34 @@
          (when (and cape sma) (if (neg? sma) cape 0.0))
          (when cape 1.0) (when e 1.0) (when v 1.0) (when nf 1.0) (when c3 1.0)]))))
 
-(def all-input-names (into input-names upc/names))
+(def regime-names
+  "The bear regime's filtered probability from scripts/regime-hmm.py:
+  Markov switching with fixed transitions, and with transitions driven by
+  displacement."
+  [:hmm-plain :hmm-tvtp])
+
+(def all-input-names (-> input-names (into upc/names) (into regime-names)))
+
+(defn read-regimes
+  "{month [plain tvtp]} from data/runs/trader-inputs/regimes.tsv, or {}."
+  []
+  (let [f (io/file "data/runs/trader-inputs/regimes.tsv")]
+    (if (.exists f)
+      (into {} (for [line (rest (str/split-lines (slurp f)))
+                     :let [[m a b] (str/split line #"\t" -1)]]
+                 [(parse-long m) [(some-> a not-empty parse-double) (some-> b not-empty parse-double)]]))
+      {})))
 
 (defn all-inputs
-  "The base inputs followed by the political economy ones (bnm.us-polecon)."
+  "The base inputs followed by the political economy ones (bnm.us-polecon)
+  and the discovered regimes."
   [fr w data db wc]
   (let [base (build-inputs fr w data db wc)
-        pe (upc/inputs db)]
-    (fn [t] (let [b (base t)] (into b (pe t {:term (b 0) :inflation (b 2) :tightening (b 4)}))))))
+        pe (upc/inputs db)
+        regimes (read-regimes)]
+    (fn [t] (let [b (base t)]
+              (-> b (into (pe t {:term (b 0) :inflation (b 2) :tightening (b 4)}))
+                  (into (get regimes t [nil nil])))))))
 
 (defn- vectorize ^doubles [xs] (double-array (cons 1.0 (map #(if % (double %) 0.0) xs))))
 

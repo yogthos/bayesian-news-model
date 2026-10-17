@@ -55,3 +55,29 @@
   [events t tau {:keys [through]}]
   (reduce-kv (fn [acc s w] (if (<= s through) (+ acc (* w (Math/exp (/ (- s t) tau)))) acc))
              0.0 events))
+
+(defn correlation
+  "Pearson correlation of paired values; nil when either is flat."
+  [xs ys]
+  (let [n (count xs) mx (mean xs) my (mean ys)
+        sxy (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
+        sxx (reduce + (map #(let [d (- % mx)] (* d d)) xs))
+        syy (reduce + (map #(let [d (- % my)] (* d d)) ys))]
+    (when (and (> n 1) (> sxx 1e-12) (> syy 1e-12)) (/ sxy (Math/sqrt (* sxx syy))))))
+
+(defn synchrony
+  "How much the series move together: the mean absolute correlation of
+  their changes over the `window` steps ending at i, over the pairs with at
+  least n changes in common (Kritzman et al.'s absorption ratio in simple
+  form; China's CISS weights stress by the same co-movement)."
+  [series i window n]
+  (let [changes (fn [xs] (into {} (keep (fn [j] (let [a (get xs (dec j)) b (get xs j)] (when (and a b) [j (- b a)])))
+                                        (range (max 1 (inc (- i window))) (inc i)))))
+        cs (filterv #(>= (count %) n) (map changes series))
+        rs (for [p (range (count cs)) q (range (inc p) (count cs))
+                 :let [js (filter (cs q) (keys (cs p)))]
+                 :when (>= (count js) n)
+                 :let [r (correlation (map (cs p) js) (map (cs q) js))]
+                 :when r]
+             (Math/abs (double r)))]
+    (when (seq rs) (mean rs))))
