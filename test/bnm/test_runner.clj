@@ -7,6 +7,7 @@
             [bnm.store-test]
             [bnm.slow-test]
             [bnm.stocks-test]
+            [bnm.trade-test]
             [bnm.hazard-test]))
 
 (def namespaces
@@ -17,6 +18,7 @@
     bnm.store-test
     bnm.slow-test
     bnm.stocks-test
+    bnm.trade-test
     bnm.hazard-test])
 
 (defn -main [& _]

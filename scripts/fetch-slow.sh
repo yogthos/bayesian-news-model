@@ -6,7 +6,7 @@
 # Idempotent: existing files are skipped, so it can be re-run to resume;
 # FORCE=1 refetches.
 #
-#   scripts/fetch-slow.sh [fred|worldbank|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|all]
+#   scripts/fetch-slow.sh [fred|worldbank|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -159,7 +159,23 @@ fetch_esrb() {
   get "https://www.esrb.europa.eu/pub/fcdb/esrb.fcdb20220120.en.xlsx" "$RAW/esrb/crises.xlsx"
 }
 
-ALL=(fred worldbank bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb)
+# --- the trader's tests (docs/TRADING.md): US market returns since 1926, daily and
+# monthly, 21 developed markets since 1975 (Ken French); Shiller's CAPE; the GZ
+# spread and excess bond premium; long FRED series for spreads, bills, rates, CPI
+fetch_market() {
+  local d="$RAW/market" ff="https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
+  get "$ff/F-F_Research_Data_Factors_CSV.zip" "$d/ff_factors.zip"
+  get "$ff/F-F_Research_Data_Factors_daily_CSV.zip" "$d/ff_daily.zip"
+  get "$ff/F-F_International_Countries.zip" "$d/intl_countries.zip"
+  (cd "$d" && unzip -o -q ff_factors.zip && unzip -o -q ff_daily.zip && mkdir -p intl && unzip -o -q intl_countries.zip -d intl)
+  get "https://raw.githubusercontent.com/datasets/s-and-p-500/main/data/data.csv" "$d/shiller.csv"
+  get "https://www.federalreserve.gov/econres/notes/feds-notes/ebp_csv.csv" "$d/ebp.csv"
+  for s in BAA AAA GS10 TB3MS CPIAUCNS UNRATE INDPRO PAYEMS; do
+    get "https://fred.stlouisfed.org/graph/fredgraph.csv?id=$s" "$d/$s.csv"
+  done
+}
+
+ALL=(fred worldbank bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
 case "${1:-all}" in
   all) for s in "${ALL[@]}"; do "fetch_$s"; done ;;
   *) "fetch_$1" ;;

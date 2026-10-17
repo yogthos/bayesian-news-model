@@ -28,8 +28,9 @@
                                    [--kinds a,b] [--models base,history,...]
                                    [--events <training run with rows/, for the event model's state>]
 
-  Writes data/runs/<name>/onsets.txt and the recorded rows, rows.tsv, which
-  --rows reads back instead of running the slow layer."
+  Writes data/runs/<name>/onsets.txt, the out-of-sample predictions,
+  preds.tsv (kind window model quarter unit p outcome), and the recorded
+  rows, rows.tsv, which --rows reads back instead of running the slow layer."
   (:require [bnm.hazard :as hz]
             [bnm.named :as nm]
             [bnm.slow :as slow]
@@ -302,7 +303,8 @@
                   "market_crash" market-units}
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
-        case-preds (atom {})]
+        case-preds (atom {})
+        preds-out (io/writer (str dir "/preds.tsv"))]
     (println (count rows) "country-quarters recorded")
     (say "Onsets, out of sample. Priors chosen on" (str/join "-" tune-years) "(tune); 2008 on is held out.")
     (say "AUROC pooled and within quarters (auq), average precision, recall in the top 10% of each quarter,")
@@ -321,6 +323,9 @@
             preds (update-vals runs :preds)
             base (:base preds)]
         (swap! case-preds assoc [kind wname] preds)
+        (doseq [[model ps] preds, [q p y unit] ps]
+          (.write preds-out (str kind "\t" (clojure.core/name wname) "\t" (clojure.core/name model) "\t" q "\t" unit "\t" p "\t" y "\n")))
+        (.flush preds-out)
         (say)
         (say (format "%s %s (to %s)  priors: %s" kind (clojure.core/name wname) (st/month-str (+ 2 (* 3 last-q)))
                      (str/join " " (for [m (rest models)] (str (clojure.core/name m) "=" (long (:prior (runs m))))))))
@@ -349,6 +354,7 @@
                                              mine (first (filter #(= unit (nth % 3)) in-q))
                                              rank (when mine (inc (count (filter #(> (second %) (second mine)) in-q))))]]
                                    (if mine (format "%.3f #%d/%d" (second mine) rank (count in-q)) "  -  ")))))))
+    (.close preds-out)
     (spit (str dir "/onsets.txt") (str out))))
 
 (defn -main [& args]
