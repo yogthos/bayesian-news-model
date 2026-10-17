@@ -816,3 +816,29 @@ For each country with tracked children:
   toward it, and resampling a hundred draws loses their spread.
 - A country's forecast is now its children summed (`:bottom-up #{:country}`
   in bnm.model), so the two levels agree by construction.
+
+## The event model's baseline (bnm-enb.10)
+
+**The change**
+- The baseline's statistics now forget in about 20 bins (`:level-discount`
+  0.95; West & Harrison's discount).
+- Its prior takes 80% of a node's rate, centred on the node's fast history.
+
+**Why.** With no clustering, the slow kernel and the baseline cannot be
+told apart, and the old prior (20% baseline) let excitation absorb the
+level. On iid Poisson counts the branching ratio was 0.97; it is now under
+0.5, and forecasts still hold a new level (`model_test`).
+
+On 2008-09 (`data/runs/level-1` against `data/runs/pit-check`), country
+totals:
+
+| channel | skill vs persistence, before / after | CRPS before / after | 80% coverage before / after |
+|---|---|---|---|
+| coercion | +4.6% / +7.2% | 0.114 / 0.112 | 0.74 / 0.77 |
+| protest | +8.7% / +8.7% | 0.076 / 0.076 | 0.82 / 0.83 |
+| verbal conflict | +1.5% / +5.0% | 0.129 / 0.127 | 0.76 / 0.78 |
+| violence | +2.3% / +1.9% | 0.125 / 0.125 | 0.74 / 0.76 |
+
+Escalation AUC dips slightly (violence 0.758 to 0.753, protest 0.831 to
+0.822). The totals gain and the identifiable branching ratio outweigh it,
+so the change is kept.
