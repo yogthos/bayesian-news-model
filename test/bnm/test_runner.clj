@@ -6,6 +6,7 @@
             [bnm.model-test]
             [bnm.store-test]
             [bnm.slow-test]
+            [bnm.stocks-test]
             [bnm.hazard-test]))
 
 (def namespaces
@@ -15,6 +16,7 @@
     bnm.calibrate-test
     bnm.store-test
     bnm.slow-test
+    bnm.stocks-test
     bnm.hazard-test])
 
 (defn -main [& _]

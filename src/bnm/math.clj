@@ -152,8 +152,8 @@
   "x with a x = b for a symmetric positive definite n × n matrix `a` (row
   major), by Cholesky decomposition. Leaves `a` and `b` as they were."
   ^doubles [^doubles a ^doubles b ^long n]
-  (let [l (double-array (* n n))
-        x (aclone b)]
+  (let [^doubles l (double-array (* n n))
+        ^doubles x (aclone b)]
     (dotimes [i n]
       (dotimes [j (inc i)]
         (let [s (loop [k 0 s (aget a (+ (* i n) j))]

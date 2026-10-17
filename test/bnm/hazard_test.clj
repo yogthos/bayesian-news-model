@@ -56,3 +56,27 @@
     (is (> (hz/auc ps (map :y rows)) 0.9))
     (is (< (Math/abs (- (hz/predict cold (:x (rows 0))) (hz/predict warm (:x (rows 0))))) 1e-3)
         "a bad start ends where a cold one does")))
+
+(deftest combines-forecasters
+  ;; one forecaster knows which unit (a fixed risk), another knows when (a
+  ;; common shock); onsets need both
+  (let [g (m/rng 7)
+        rows (vec (for [t (range 200) u (range 20)]
+                    (let [risky (< u 4) shock (zero? (rem t 5))
+                          p (m/expit (+ -5.0 (if risky 2.5 0.0) (if shock 2.5 0.0)))]
+                      {:who (m/expit (+ -4.0 (if risky 2.0 0.0)))
+                       :when (m/expit (+ -4.0 (if shock 2.0 0.0)))
+                       :noise (m/next-double! g)
+                       :y (< (m/next-double! g) p)})))
+        ys (map :y rows)
+        ws (repeat (count rows) 1.0)]
+    (testing "a linear pool puts its weight on forecasters that help"
+      (let [w (hz/pool-weights (map (juxt :who :noise) rows) ys ws)]
+        (is (> (first w) 0.8) (vec w))
+        (is (< (Math/abs (- 1.0 (reduce + w))) 1e-9))))
+    (testing "a log-linear stack beats each forecaster when they know different things"
+      (let [st (hz/fit-stack (map (juxt :who :when) rows) ys ws {:prior 1.0})
+            ps (map #(hz/predict-stack st [(:who %) (:when %)]) rows)
+            ll (fn [ps] (reduce + (map (fn [p y] (Math/log (if y p (- 1.0 p)))) ps ys)))]
+        (is (> (ll ps) (ll (map :who rows))))
+        (is (> (ll ps) (ll (map :when rows))))))))

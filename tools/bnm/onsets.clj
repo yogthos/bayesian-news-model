@@ -25,10 +25,13 @@
   looked, so the last rows are not all positives.
 
     jolt -A:tools -M -m bnm.onsets [--name onsets] [--from 1985] [--rows <run>]
+                                   [--kinds a,b] [--models base,history,...]
+                                   [--events <training run with rows/, for the event model's state>]
 
   Writes data/runs/<name>/onsets.txt and the recorded rows, rows.tsv, which
   --rows reads back instead of running the slow layer."
   (:require [bnm.hazard :as hz]
+            [bnm.named :as nm]
             [bnm.slow :as slow]
             [bnm.slow-train :as st]
             [clojure.java.io :as io]
@@ -102,12 +105,19 @@
 (defn- label [onsets q [a b]]
   (boolean (seq (subseq onsets >= (+ q a) <= (+ q b)))))
 
+(defn hard-row?
+  "No onset of the kind in the ten years up to q: the hard cases, where the
+  country's history says nothing (Mueller & Rauh)."
+  [onsets q]
+  (empty? (subseq onsets >= (- q 40) <= q)))
+
 (defn- ongoing? [onsets q]
   (boolean (seq (subseq onsets >= (- q 3) <= q))))
 
 (defn- feature-sets
-  "Indices into a row's full input vector [1 hist hist inputs...] for each model."
-  [labels]
+  "Indices into a row's full input vector [1 hist hist inputs... named...]
+  for each model, given `m` named inputs."
+  [labels m]
   (let [n (count labels)
         idx (fn [pred] (keep-indexed (fn [i l] (when (pred l) (+ 3 i))) labels))
         politics (idx #(= "politics" (:domain %)))
@@ -118,13 +128,22 @@
      :politics (vec (concat [0 1 2] politics))
      :local (vec (concat [0 1 2] local))
      :domains (vec (concat [0 1 2] others))
-     :all (vec (concat [0 1 2] (range 3 (+ 3 n))))}))
+     :all (vec (concat [0 1 2] (range 3 (+ 3 n))))
+     :named (vec (concat [0 1 2] (range (+ 3 n) (+ 3 n m))))
+     :named+politics (vec (concat [0 1 2] politics (range (+ 3 n) (+ 3 n m))))
+     :event (vec (concat [0 1 2] (range (+ 3 n m) (+ 3 n m (count nm/event-labels)))))
+     :named+event (vec (concat [0 1 2] (range (+ 3 n) (+ 3 n m (count nm/event-labels)))))}))
 
 (def model-order [:base :history :politics :local :domains :all])
 
+(def combined
+  "Combinations of the fitted models, refit each year on the forecasts whose
+  outcomes are known by then: a linear pool and a log-linear stack."
+  [:pool :stack])
+
 (def priors
   "Prior precisions tried, on the scale of each input's standard deviation."
-  [1.0 10.0 100.0 1000.0])
+  [10.0 100.0 1000.0])
 
 (def tune-years [2000 2007])
 
@@ -153,7 +172,7 @@
   "Out-of-sample predictions for one kind and window: a function of the
   feature sets giving {model {:prior p :preds [[q p y unit]]}}, the prior
   chosen per model by log score over `tune-years`."
-  [rows onsets-by-unit units window score-from last-q]
+  [rows onsets-by-unit units window score-from last-q models fam]
   (let [labels-q (fn [{:keys [unit q]}] (label (get onsets-by-unit unit (sorted-set)) q window))
         usable (filterv (fn [{:keys [unit q]}]
                           (and (units unit)
@@ -162,9 +181,13 @@
                         rows)
         prepared (mapv (fn [{:keys [unit q ^doubles x] :as r}]
                          (let [[h1 h2] (history-features (get onsets-by-unit unit (sorted-set)) q)
-                               full (double-array (+ 3 (alength x)))]
+                               ^doubles nx (get-in r [:named fam])
+                               ^doubles ev (or (:event r) (double-array (count nm/event-labels)))
+                               full (double-array (+ 3 (alength x) (alength nx) (alength ev)))]
                            (aset full 0 1.0) (aset full 1 h1) (aset full 2 h2)
                            (System/arraycopy x 0 full 3 (alength x))
+                           (System/arraycopy nx 0 full (+ 3 (alength x)) (alength nx))
+                           (System/arraycopy ev 0 full (+ 3 (alength x) (alength nx)) (alength ev))
                            (assoc r :full full :y (labels-q r))))
                        usable)
         years (range (quot (apply min (map :q prepared)) 4) (inc (quot last-q 4)))]
@@ -191,12 +214,41 @@
                                    [q (hz/predict beta (pick full idx)) y unit])]
                       (recur more beta (into preds scored)))))))]
         (into {}
-              (for [model model-order
+              (for [model models
                     :let [idx (sets model)
                           runs (for [p (if (= model :base) [1.0] priors)]
                                  {:prior p :preds (run-model idx p)})
                           [lo hi] tune-years]]
                 [model (apply max-key #(or (log-score (in-years (:preds %) lo hi)) -1e9) (reverse runs))]))))))
+
+(defn combine
+  "Adds :pool and :stack to `runs`, combining every model but :base. Each
+  year's combination is fit on the earlier forecasts whose outcomes were
+  known by the year's start, discounted like the hazards, and scored on the
+  year."
+  [runs window]
+  (let [members (vec (remove #{:base} (sort (keys runs))))
+        by-key (into {} (for [m members, [q p y unit] (:preds (runs m))] [[m unit q] p]))
+        keys* (sort-by second (distinct (for [[q _ y unit] (:preds (runs (first members)))] [unit q y])))
+        rows (vec (for [[unit q y] keys*
+                        :let [ps (mapv #(by-key [% unit q]) members)]
+                        :when (every? some? ps)]
+                    {:unit unit :q q :y y :ps ps}))
+        years (sort (distinct (map #(quot (:q %) 4) rows)))]
+    (loop [[yr & more] years pool [] stack []]
+      (if-not yr
+        (assoc runs :pool {:preds pool} :stack {:preds stack})
+        (let [q0 (* 4 yr)
+              known (filterv #(<= (+ (:q %) (second window)) q0) rows)
+              this (filter #(= yr (quot (:q %) 4)) rows)]
+          (if (< (count (filter :y known)) 10)
+            (recur more pool stack)
+            (let [ws (map #(Math/pow 0.95 (/ (- q0 (:q %)) 4.0)) known)
+                  w (hz/pool-weights (map :ps known) (map :y known) ws)
+                  beta (hz/fit-stack (map :ps known) (map :y known) ws {:prior 10.0})]
+              (recur more
+                     (into pool (for [{:keys [unit q y ps]} this] [q (hz/pool w ps) y unit]))
+                     (into stack (for [{:keys [unit q y ps]} this] [q (hz/predict-stack beta ps) y unit]))))))))))
 
 (defn- scores [preds base]
   (let [ps (map second preds) ys (map #(nth % 2) preds)]
@@ -210,7 +262,7 @@
 
 (defn- f3 [x] (if x (format "%.3f" (double x)) "  -  "))
 
-(defn run [{:keys [name from rows]}]
+(defn run [{:keys [name from rows kinds models events]}]
   (let [run-name (or name "onsets")
         from (parse-long (or from "1985"))
         score-from (first tune-years)
@@ -218,16 +270,30 @@
         _ (io/make-parents (str dir "/x"))
         events (read-events "data/slow/events.tsv")
         coverage-q (read-coverage "data/slow/coverage.tsv")
+        models (if models (mapv keyword (str/split models #",")) [:base :history :politics :all])
+        shown (into models combined)
+        variables (st/read-variables "data/slow/variables.tsv")
         [rows labels] (if rows
                         (read-rows (str "data/runs/" rows "/rows.tsv"))
-                        (let [variables (st/read-variables "data/slow/variables.tsv")
-                              by-month (st/read-observations "data/slow/series.tsv" 1950 2026)
+                        (let [by-month (st/read-observations "data/slow/series.tsv" 1950 2026)
                               [rows mdl] (record-rows {:globals st/default-globals} variables by-month from)
                               labels (slow/input-labels mdl)]
                           (write-rows (str dir "/rows.tsv") rows labels)
                           [rows labels]))
-        sets (feature-sets labels)
         all-units (set (map :unit rows))
+        rows (let [db (nm/load-series "data/slow/series.tsv" variables)
+                   wc (nm/world-credit db all-units (distinct (map #(+ 2 (* 3 (:q %))) rows)))
+                   [fn* ff] (nm/financial db wc)
+                   [pn* pf] (nm/political db)
+                   [_ fv] (nm/vectorize fn* :financial)
+                   [_ pv] (nm/vectorize pn* :political)]
+               (let [es (if events (nm/load-event-state events) {})]
+                 (mapv (fn [{:keys [unit q] :as r}]
+                         (let [t (+ 2 (* 3 q))]
+                           (assoc r :named {:financial (fv (ff unit t)) :political (pv (pf unit t))}
+                                    :event (es [unit q]))))
+                       rows)))
+        n-named (into {} (for [fam [:financial :political]] [fam (alength ^doubles (get-in (first rows) [:named fam]))]))
         market-units (set (for [{:keys [unit ^doubles x]} rows
                                 :let [i (first (keep-indexed #(when (and (= "markets" (:domain %2)) (= :present (:feature %2))) %1) labels))]
                                 :when (and i (pos? (aget x (long i))))]
@@ -241,22 +307,28 @@
     (say "Onsets, out of sample. Priors chosen on" (str/join "-" tune-years) "(tune); 2008 on is held out.")
     (say "AUROC pooled and within quarters (auq), average precision, recall in the top 10% of each quarter,")
     (say "Brier skill against the base rate. Models: base, history, politics, local (every domain of the")
-    (say "country), domains (all but politics, and global drivers), all.")
-    (doseq [kind (sort (keys events))
+    (say "country), domains (all but politics, and global drivers), all (domain averages), named (the")
+    (say "literature's stocks for the kind, bnm.named); pool and stack combine all but base.")
+    (doseq [kind (if kinds (str/split kinds #",") (sort (keys events)))
             [wname window] (sort windows)]
       (let [onsets (get events kind)
             units (get coverage kind all-units)
             last-q (coverage-q kind)
-            runs ((evaluate-kind rows onsets units window score-from last-q) sets)
+            fam (nm/family-of kind)
+            runs (combine ((evaluate-kind rows onsets units window score-from last-q models fam)
+                           (feature-sets labels (n-named fam)))
+                          window)
             preds (update-vals runs :preds)
             base (:base preds)]
         (swap! case-preds assoc [kind wname] preds)
         (say)
         (say (format "%s %s (to %s)  priors: %s" kind (clojure.core/name wname) (st/month-str (+ 2 (* 3 last-q)))
-                     (str/join " " (for [m (rest model-order)] (str (clojure.core/name m) "=" (long (:prior (runs m))))))))
-        (doseq [[era lo hi] [["tune" 2000 2007] ["2008+" 2008 9999] ["08-14" 2008 2014] ["2015+" 2015 9999]]]
-          (let [in-era (fn [ps] (in-years ps lo hi))]
-            (doseq [model model-order
+                     (str/join " " (for [m (rest models)] (str (clojure.core/name m) "=" (long (:prior (runs m))))))))
+        (doseq [[era lo hi hard] [["tune" 2000 2007] ["2008+" 2008 9999] ["08-14" 2008 2014] ["2015+" 2015 9999]
+                                  ["hard" 2008 9999 true]]]
+          (let [in-era (fn [ps] (cond->> (in-years ps lo hi)
+                                  hard (filter (fn [[q _ _ unit]] (hard-row? (get onsets unit (sorted-set)) q)))))]
+            (doseq [model shown
                     :let [s (scores (in-era (preds model)) (in-era base))]
                     :when (pos? (:n s))]
               (say (format "  %-5s %-9s n=%6d pos=%4d  auc %s  auq %s  ap %s  r@10%% %s  bss %s"
@@ -264,7 +336,7 @@
                            (f3 (:r10 s)) (f3 (:bss s)))))))))
     (say)
     (say "Cases: probability of onset within 1-4 quarters at each of the 8 quarters before, and rank among")
-    (say "countries that quarter (history / local / all)")
+    (say "countries that quarter (history / all / stack)")
     (doseq [[kind unit date] cases
             :let [q (quot (st/month-of (str date "-01")) 3)
                   preds (get @case-preds [kind :w1])]
@@ -272,7 +344,7 @@
       (say (str "  " kind " " unit " " date))
       (doseq [q0 (range (- q 8) q)]
         (say (str "    " (st/month-str (+ 2 (* 3 q0))) "  "
-                  (str/join "  " (for [model [:history :local :all]
+                  (str/join "  " (for [model [:history :all :stack]
                                        :let [in-q (filter #(= q0 (first %)) (preds model))
                                              mine (first (filter #(= unit (nth % 3)) in-q))
                                              rank (when mine (inc (count (filter #(> (second %) (second mine)) in-q))))]]

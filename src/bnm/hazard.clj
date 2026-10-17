@@ -23,58 +23,78 @@
   (let [rows (vec rows)
         n (count rows)
         prior (double prior)
-        ;; weighted mean and sd of each input
-        mean (double-array k) sd (double-array k 1.0)
-        wsum (reduce + (map #(double (:w %)) rows))
-        _ (doseq [{:keys [^doubles x w]} rows]
-            (dotimes [j k] (aset mean j (+ (aget mean j) (* (double w) (aget x j))))))
-        _ (dotimes [j k] (aset mean j (/ (aget mean j) (Math/max wsum 1e-12))))
-        _ (let [v (double-array k)]
-            (doseq [{:keys [^doubles x w]} rows]
-              (dotimes [j k] (let [d (- (aget x j) (aget mean j))] (aset v j (+ (aget v j) (* (double w) d d))))))
+        ;; the standardized inputs, row-major in one array
+        ^doubles z (double-array (* n k))
+        ^doubles ys (double-array n)
+        ^doubles ws (double-array n)
+        ^doubles mean (double-array k) ^doubles sd (double-array k 1.0)
+        _ (dotimes [r n]
+            (let [{:keys [^doubles x y w]} (rows r)]
+              (System/arraycopy x 0 z (* r k) k)
+              (aset ys r (if y 1.0 0.0))
+              (aset ws r (double w))))
+        wsum (Math/max 1e-12 (loop [r 0 acc 0.0] (if (< r n) (recur (inc r) (+ acc (aget ws r))) acc)))
+        _ (dotimes [r n]
+            (let [w (aget ws r) o (* r k)]
+              (dotimes [j k] (aset mean j (+ (aget mean j) (* w (aget z (+ o j))))))))
+        _ (dotimes [j k] (aset mean j (/ (aget mean j) wsum)))
+        _ (let [^doubles v (double-array k)]
+            (dotimes [r n]
+              (let [w (aget ws r) o (* r k)]
+                (dotimes [j k] (let [d (- (aget z (+ o j)) (aget mean j))] (aset v j (+ (aget v j) (* w d d)))))))
             (dotimes [j k]
-              (let [s (Math/sqrt (/ (aget v j) (Math/max wsum 1e-12)))]
+              (let [s (Math/sqrt (/ (aget v j) wsum))]
                 (aset sd j (if (> s 1e-9) s 1.0)))))
         _ (do (aset mean 0 0.0) (aset sd 0 1.0))
-        z (mapv (fn [{:keys [^doubles x y w]}]
-                  (let [zx (double-array k)]
-                    (aset zx 0 1.0)
-                    (loop [j 1] (when (< j k) (aset zx j (/ (- (aget x j) (aget mean j)) (aget sd j))) (recur (inc j))))
-                    [zx (if y 1.0 0.0) (double w)]))
-                rows)
+        _ (dotimes [r n]
+            (let [o (* r k)]
+              (aset z o 1.0)
+              (loop [j 1] (when (< j k) (aset z (+ o j) (/ (- (aget z (+ o j)) (aget mean j)) (aget sd j))) (recur (inc j))))))
         ;; the start, on the standardized scale
-        b (double-array k)
+        ^doubles b (double-array k)
         _ (when start
             (let [^doubles st start]
               (aset b 0 (+ (aget st 0) (loop [j 1 acc 0.0] (if (< j k) (recur (inc j) (+ acc (* (aget st j) (aget mean j)))) acc))))
               (loop [j 1] (when (< j k) (aset b j (* (aget st j) (aget sd j))) (recur (inc j))))))
-        pen (fn ^double [j] (if (zero? (long j)) 1e-4 prior))
+        ^doubles pen (double-array k prior)
+        _ (aset pen 0 1e-4)
+        eta (fn ^double [^doubles bb ^long r]
+              (let [o (* r k)]
+                (loop [i 0 acc 0.0] (if (< i k) (recur (inc i) (+ acc (* (aget bb i) (aget z (+ o i))))) acc))))
         objective (fn ^double [^doubles bb]
-                    (- (reduce + (for [[^doubles zx y w] z]
-                                   (let [e (loop [i 0 acc 0.0] (if (< i k) (recur (inc i) (+ acc (* (aget bb i) (aget zx i)))) acc))]
-                                     (* (double w) (- (* (double y) e) (softplus e))))))
-                       (* 0.5 (loop [j 0 acc 0.0] (if (< j k) (recur (inc j) (+ acc (* (pen j) (aget bb j) (aget bb j)))) acc)))))]
+                    (- (loop [r 0 acc 0.0]
+                         (if (< r n)
+                           (let [e (eta bb r)]
+                             (recur (inc r) (+ acc (* (aget ws r) (- (* (aget ys r) e) (softplus e))))))
+                           acc))
+                       (* 0.5 (loop [j 0 acc 0.0] (if (< j k) (recur (inc j) (+ acc (* (aget pen j) (aget bb j) (aget bb j)))) acc)))))]
     (loop [it 0 obj (objective b)]
       (when (< it iterations)
-        (let [h (double-array (* k k))
-              g (double-array k)]
-          (doseq [[^doubles zx y w] z]
-            (let [e (loop [i 0 acc 0.0] (if (< i k) (recur (inc i) (+ acc (* (aget b i) (aget zx i)))) acc))
-                  p (m/expit e)
-                  r (* (double w) (- (double y) p))
-                  s (* (double w) (Math/max 1e-9 (* p (- 1.0 p))))]
+        (let [^doubles h (double-array (* k k))
+              ^doubles g (double-array k)]
+          (dotimes [r n]
+            (let [o (* r k)
+                  p (m/expit (eta b r))
+                  w (aget ws r)
+                  rr (* w (- (aget ys r) p))
+                  s (* w (Math/max 1e-9 (* p (- 1.0 p))))]
               (dotimes [i k]
-                (let [xi (aget zx i)]
-                  (aset g i (+ (aget g i) (* r xi)))
-                  (dotimes [j k]
-                    (aset h (+ (* i k) j) (+ (aget h (+ (* i k) j)) (* s xi (aget zx j)))))))))
+                (let [sxi (* s (aget z (+ o i)))
+                      hi (* i k)]
+                  (aset g i (+ (aget g i) (* rr (aget z (+ o i)))))
+                  ;; upper triangle only
+                  (loop [j i]
+                    (when (< j k)
+                      (aset h (+ hi j) (+ (aget h (+ hi j)) (* sxi (aget z (+ o j)))))
+                      (recur (inc j))))))))
           (dotimes [i k]
-            (aset g i (- (aget g i) (* (pen i) (aget b i))))
-            (aset h (+ (* i k) i) (+ (aget h (+ (* i k) i)) (pen i))))
-          (let [step (m/solve-spd h g k)
+            (loop [j (inc i)] (when (< j k) (aset h (+ (* j k) i) (aget h (+ (* i k) j))) (recur (inc j))))
+            (aset g i (- (aget g i) (* (aget pen i) (aget b i))))
+            (aset h (+ (* i k) i) (+ (aget h (+ (* i k) i)) (aget pen i))))
+          (let [^doubles step (m/solve-spd h g k)
                 ;; halve the step until the objective improves
                 [nb nobj] (loop [t 1.0 tries 0]
-                            (let [cand (double-array k)]
+                            (let [^doubles cand (double-array k)]
                               (dotimes [i k] (aset cand i (+ (aget b i) (* t (aget step i)))))
                               (let [o (objective cand)]
                                 (if (or (> o obj) (>= tries 30))
@@ -86,13 +106,58 @@
             (when (and (> nobj obj) (> moved 1e-6))
               (recur (inc it) (Math/max obj nobj)))))))
     ;; back to the inputs' own scale
-    (let [beta (double-array k)]
+    (let [^doubles beta (double-array k)]
       (loop [j 1] (when (< j k) (aset beta j (/ (aget b j) (aget sd j))) (recur (inc j))))
       (aset beta 0 (- (aget b 0) (loop [j 1 acc 0.0] (if (< j k) (recur (inc j) (+ acc (* (aget beta j) (aget mean j)))) acc))))
       beta)))
 
 (defn predict ^double [^doubles beta ^doubles x]
   (m/expit (loop [i 0 acc 0.0] (if (< i (alength beta)) (recur (inc i) (+ acc (* (aget beta i) (aget x i)))) acc))))
+
+;; --- combining forecasters ------------------------------------------------------------------
+
+(defn pool-weights
+  "Weights of a linear pool of forecasters that maximize the weighted log
+  score: `ps` gives each row's probabilities, one per forecaster. EM over the
+  mixture weights, from equal ones."
+  ^doubles [ps ys ws & {:keys [iterations] :or {iterations 200}}]
+  (let [ps (vec ps) ys (vec ys) ws (vec ws)
+        m (count (first ps))
+        ^doubles w (double-array m (/ 1.0 m))]
+    (dotimes [_ iterations]
+      (let [^doubles acc (double-array m)
+            tot (loop [r 0 tot 0.0]
+                  (if (< r (count ps))
+                    (let [row (ps r) y (ys r) wr (double (ws r))
+                          lik (fn ^double [j] (let [p (double (nth row j))] (if y p (- 1.0 p))))
+                          mix (loop [j 0 s 0.0] (if (< j m) (recur (inc j) (+ s (* (aget w j) (lik j)))) s))]
+                      (when (> mix 0.0)
+                        (dotimes [j m] (aset acc j (+ (aget acc j) (/ (* wr (aget w j) (lik j)) mix)))))
+                      (recur (inc r) (+ tot wr)))
+                    tot))]
+        (dotimes [j m] (aset w j (/ (aget acc j) tot)))))
+    w))
+
+(defn pool ^double [^doubles w ps]
+  (loop [j 0 s 0.0 [p & more] (seq ps)]
+    (if p (recur (inc j) (+ s (* (aget w j) (double p))) more) s)))
+
+(defn- logit ^double [^double p]
+  (let [p (Math/min (Math/max p 1e-6) (- 1.0 1e-6))]
+    (Math/log (/ p (- 1.0 p)))))
+
+(defn- stack-x ^doubles [ps]
+  (double-array (cons 1.0 (map #(logit (double %)) ps))))
+
+(defn fit-stack
+  "A log-linear stack: a logistic regression on the forecasters' logits,
+  which can combine one that knows where with one that knows when."
+  ^doubles [ps ys ws opts]
+  (let [rows (map (fn [p y w] {:x (stack-x p) :y y :w w}) ps ys ws)]
+    (fit rows (inc (count (first ps))) opts)))
+
+(defn predict-stack ^double [^doubles beta ps]
+  (predict beta (stack-x ps)))
 
 ;; --- scores ------------------------------------------------------------------------------------
 
