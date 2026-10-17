@@ -52,9 +52,23 @@
                    :when (and x (re-matches #"\d{4}-\d{2}.*" d))]
                [(+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 5 7)))) x]))))
 
+(defn- read-vintages
+  "{vintage {month log value}} from a scripts/rtdsm.py CSV, or nil."
+  [path]
+  (let [f (io/file path)]
+    (when (.exists f)
+      (with-open [r (io/reader f)]
+        (reduce (fn [acc line]
+                  (let [[v m x] (str/split line #",")
+                        x (parse-double x)]
+                    (if (pos? x) (assoc-in acc [(parse-long v) (parse-long m)] (Math/log x)) acc)))
+                {} (rest (line-seq r)))))))
+
 (defn inputs
   "f of month t giving the values for `names`; db is bnm.named's series,
-  pe10 the CAPE by month."
+  pe10 the CAPE by month. With BNM_REALTIME=1 in the environment, payrolls
+  and production are read as they were published at each month (the
+  Philadelphia Fed's vintages), not as revised since (docs/OPERATIONS.md)."
   [db pe10]
   (let [dir "data/raw/slow/market/"
         rd #(read-monthly (str dir % ".csv"))
@@ -84,6 +98,19 @@
                     vecs)
         at (fn [xs i w n] (when (>= i w) (iv/stretch (subvec xs (- i w) (inc i)) w w n)))
         agg (fn [zs] (iv/aggregate zs {:threshold 1.5 :min-n 5}))
+        real-time? (= "1" (System/getenv "BNM_REALTIME"))
+        rt (when real-time?
+             {9 (read-vintages (str bnm.paths/derived "rt-production.csv"))
+              10 (read-vintages (str bnm.paths/derived "rt-payrolls.csv"))})
+        ;; a dimension's window as published in vintage v: [values] and [12-month changes]
+        rt-window (fn [d v i w]
+                    (when-let [vm (get-in rt [d v])]
+                      (let [ms (range (+ m0 (- i w)) (+ m0 i 1))]
+                        [(mapv vm ms) (mapv (fn [m] (when-let [a (vm m)] (some->> (vm (- m 12)) (- a)))) ms)])))
+        stretch-of (fn [d i w n flow?]
+                     (if-let [[lv ch] (and rt (rt d) (rt-window d (+ m0 i 1) i w))]
+                       (iv/stretch (if flow? ch lv) w w n)
+                       (at (if flow? (flows d) (vecs d)) i w n)))
         betas (read-betas)
         credit-gap (slow "finance/credit_gap")
         gaps (mapv credit-gap months)
@@ -97,10 +124,11 @@
                                (when (> sd 1e-9) (/ g sd))))))))]
     (fn [t]
       (let [i (- (dec t) m0)
-            mid (agg (map #(at % i 120 60) vecs))
-            short (agg (map #(at % i 60 36) vecs))
-            long (agg (map #(at % i 240 120) vecs))
-            flow (agg (map #(at % i 120 60) flows))
+            dims (range (count vecs))
+            mid (agg (map #(stretch-of % i 120 60 false) dims))
+            short (agg (map #(stretch-of % i 60 36 false) dims))
+            long (agg (map #(stretch-of % i 240 120 false) dims))
+            flow (agg (map #(stretch-of % i 120 60 true) dims))
             vals [(:norm mid) (:breadth mid) (:norm short) (:norm long)
                   (when (and short mid long) (min (:norm short) (:norm mid) (:norm long)))
                   (:norm flow)
