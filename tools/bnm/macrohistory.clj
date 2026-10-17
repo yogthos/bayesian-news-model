@@ -96,6 +96,16 @@
                  [(parse-long y) (parse-double p)]))
       {})))
 
+(defn read-credit-gap
+  "{[iso year] gap}: the one-sided HP credit-to-GDP gap of
+  scripts/jst-credit-gap.py, or {}."
+  []
+  (let [f (io/file (str bnm.paths/derived "jst-credit-gap.csv"))]
+    (if (.exists f)
+      (into {} (for [line (rest (str/split-lines (slurp f))) :let [[iso y g] (str/split line #",")]]
+                 [[iso (parse-long y)] (parse-double g)]))
+      {})))
+
 (defn read-regimes
   "{[iso year] {:capital-openness :gold}}: Chinn-Ito capital account openness
   (0 closed to 1 open, from 1970) and the Reinhart-Rogoff gold standard flag."
@@ -113,7 +123,7 @@
 (defn build
   "Country-years with :specific (stretches), the invariants and targets;
   `intensity` is the world crisis process's probability by year (bnm.waves)."
-  [data & [intensity regimes]]
+  [data & [intensity regimes gaps]]
   (let [by-c (update-vals (group-by :iso data) with-derived)
         stretches (into {} (for [[c rows] by-c]
                              [c (let [series (into {} (for [[k f] dimensions] [k (mapv f rows)]))]
@@ -185,7 +195,16 @@
                      fall-ahead (when-let [e (eq i)]
                                   (let [fs (keep eq [(inc i) (+ i 2)])]
                                     (when (= 2 (count fs)) (boolean (some #(<= (- % e) (Math/log 0.75)) fs)))))]]
-           {:iso c :year yr :specific ((stretches c) i) :specific-long ((long-specific c) i)
+           {:iso c :year yr :specific ((stretches c) i)
+            ;; the credit gap in units of its own past spread, so the panel's coefficient
+            ;; carries to a gap measured differently (the BIS's total credit for the US)
+            :specific-long (assoc ((long-specific c) i)
+                                  :credit-gap-z (when-let [g (get gaps [c yr])]
+                                                  (let [past (keep #(get gaps [c %]) (range 1870 yr))]
+                                                    (when (>= (count past) 10)
+                                                      (let [m (/ (reduce + past) (count past))
+                                                            sd (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) past)) (dec (count past))))]
+                                                        (when (> sd 1e-9) (/ g sd)))))))
             :invariant {:max-displacement (:max a) :breadth (:breadth a) :norm (:norm a)
                         :variability (iv/variance-ratio (growth c) i 5 20)
                         :world-norm (world-norm yr) :world-crises (world-crises yr) :small-falls small
@@ -341,10 +360,10 @@
                        (hz/auc (map first by-year) (map second by-year)))))))
 
 (def transfer-names
-  "The banking-crisis hazard carried to the US monthly model: credit,
-  mortgages and house prices stretched against their own twenty years, and
-  the displacement of the whole state."
-  [[:specific-long :credit] [:specific-long :mortgages] [:specific-long :house-prices] [:invariant :norm]])
+  "The banking-crisis hazard carried to the US monthly model: the credit gap
+  (one-sided HP trend, in units of its own past spread), the signal stable in
+  every era with crises, and the displacement of the whole state."
+  [[:specific-long :credit-gap-z] [:invariant :norm]])
 
 (defn crisis-betas
   "Per year, the banking-crisis hazard on `transfer-names` fitted over every
@@ -369,7 +388,7 @@
 
 (defn run [{:keys [name waves]}]
   (let [name (or name "macro")
-        rows (with-shifts (build (read-jst "data/raw/slow/jst/jst.csv") (read-intensity waves) (read-regimes)))
+        rows (with-shifts (build (read-jst "data/raw/slow/jst/jst.csv") (read-intensity waves) (read-regimes) (read-credit-gap)))
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
         fmt (fn [x] (if x (format "%.2f" (double x)) "  - "))
@@ -382,7 +401,7 @@
         (say)
         (say (format "%s: %d country-years, %d positive" label (count usable) (count (filter target usable))))
         (say (format "  %-18s %s   agree" "input" (str/join " " (map first eras))))
-        (doseq [[fam k] (concat specific invariant)]
+        (doseq [[fam k] (concat specific [[:specific-long :credit-gap-z]] invariant)]
           (let [aucs (era-auc rows target fam k)
                 known (keep identity aucs)
                 above (count (filter #(> % 0.5) known))]

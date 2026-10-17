@@ -48,6 +48,10 @@ uv run --no-project --with statsmodels==0.15.0 --with pandas python -I scripts/r
 step "risk learned on small falls"
 jolt -A:tools -M -m bnm.scales --name scales-live
 
+step "credit gap on the macrohistory panel (one-sided HP)"
+uv run --no-project --with pandas --with statsmodels==0.15.0 python -I scripts/jst-credit-gap.py \
+  data/raw/slow/jst/jst.csv data/derived/jst-credit-gap.csv
+
 step "crisis coefficients from the macrohistory panel"
 jolt -A:tools -M -m bnm.macrohistory --name macro-live --waves waves-1 > /dev/null
 

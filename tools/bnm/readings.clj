@@ -91,6 +91,27 @@
             c {:up {:max (:up cusum) :last (:up-now cusum)} :down {:max (:down cusum) :last (:down-now cusum)}}]
         (say (format "  %-16s %s  recalibrated %.3f (raw %.3f), base rate %.3f, above %.0f%% of months since 1990; %s"
                      target month (double p-recal) (double p) (double base) (* 100 percentile) (flag c)))))
+    ;; the banking-crisis channel: the panel's crisis hazard (credit gap, displacement)
+    ;; applied to the US, and the 12-month drawdown risk including it by total
+    ;; probability, k = 0.29 the excess chance of a 25% fall given a crisis, measured
+    ;; on the Macrohistory panel before 2000 (docs/OPERATIONS.md)
+    (let [f (io/file paths/trader-inputs)
+          rows (when (.exists f) (rest (str/split-lines (slurp f))))
+          header (when (.exists f) (str/split (first (str/split-lines (slurp f))) #"\t"))
+          ci (when header (.indexOf ^java.util.List header "crisis-transfer"))
+          last-row (when (and ci (>= ci 0))
+                     (last (filter #(not-empty (get (str/split % #"\t" -1) ci)) rows)))
+          now (io/file (str paths/derived "trader-now-20-within-12m.edn"))]
+      (when (and last-row (.exists now))
+        (let [cells (str/split last-row #"\t" -1)
+              lo (parse-double (get cells ci))
+              pc (/ 1.0 (+ 1.0 (Math/exp (- lo))))
+              {:keys [p-recal]} (edn/read-string (slurp now))
+              k 0.29
+              pm (- 1.0 (* (- 1.0 p-recal) (- 1.0 (* k pc))))]
+          (say (format "  US banking crisis within 2 years (panel hazard on the credit gap), %s: %.3f"
+                       (st/month-str (parse-long (first cells))) pc))
+          (say (format "  20%% within 12m including the banking-crisis channel: %.3f" pm)))))
     (say)
     (if (.exists (io/file onsets))
       (do (say (str "Onsets: the countries likeliest to see one within a year (" model " model), latest quarter."))

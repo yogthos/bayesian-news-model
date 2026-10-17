@@ -19,7 +19,7 @@
     us-stock-x-flow       a stretched stock with a turning flow
     crisis-transfer       the log odds of a banking crisis within two years,
                           from the hazard fitted on 18 countries since 1870
-                          (credit, mortgages and house prices stretched over twenty years, and
+                          (the credit gap in units of its past spread, and
                           the displacement of the whole state), applied to the
                           same US stretches: what US history alone cannot teach,
                           since no US equity crash before 1990 came from credit"
@@ -85,7 +85,16 @@
         at (fn [xs i w n] (when (>= i w) (iv/stretch (subvec xs (- i w) (inc i)) w w n)))
         agg (fn [zs] (iv/aggregate zs {:threshold 1.5 :min-n 5}))
         betas (read-betas)
-        credit-gap (slow "finance/credit_gap")]
+        credit-gap (slow "finance/credit_gap")
+        gaps (mapv credit-gap months)
+        ;; the gap over the standard deviation of its earlier values (40 months at least)
+        gap-z (memoize
+               (fn [i] (when-let [g (get gaps i)]
+                         (let [past (keep #(get gaps %) (range 0 i))]
+                           (when (>= (count past) 40)
+                             (let [m (/ (reduce + past) (count past))
+                                   sd (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) past)) (dec (count past))))]
+                               (when (> sd 1e-9) (/ g sd))))))))]
     (fn [t]
       (let [i (- (dec t) m0)
             mid (agg (map #(at % i 120 60) vecs))
@@ -98,10 +107,10 @@
                   (when (and mid flow) (* (:norm mid) (:norm flow)))]]
         (-> vals
             (conj (when (some some? vals) 1.0))
-            ;; credit (0), household credit for mortgages (1), house prices (2), with the
-            ;; panel's coefficients of the latest year known
+            ;; the BIS credit gap in units of its own past spread, and the displacement,
+            ;; with the panel's coefficients of the latest year known
             (conj (when-let [[_ b] (first (rsubseq betas <= (quot t 12)))]
-                    (let [zs [(at (vecs 0) i 240 144) (at (vecs 1) i 240 144) (at (vecs 2) i 240 144) (:norm mid)]]
+                    (let [zs [(gap-z i) (:norm mid)]]
                       (when (every? some? zs)
                         (reduce + (first b) (map * (rest b) zs))))))
             ;; the BIS credit-to-GDP gap: credit's stretch against a one-sided trend
