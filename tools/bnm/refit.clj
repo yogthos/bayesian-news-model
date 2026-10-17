@@ -7,7 +7,8 @@
 
   The override :no-spread true forecasts without the learned spread
   recalibration (bnm.calibrate), to see what it does."
-  (:require [bnm.eval :as ev]
+  (:require [bnm.calibrate :as cal]
+            [bnm.eval :as ev]
             [bnm.model :as model]
             [bnm.store :as store]
             [clojure.edn :as edn]
@@ -36,7 +37,10 @@
   (let [dir (str "data/runs/" run)
         overrides (edn/read-string overrides)
         no-spread? (:no-spread overrides)
-        overrides (dissoc overrides :no-spread)
+        ;; learn the spread from coverage, in order over the origins, as training would
+        coverage? (:coverage-learning overrides)
+        cov (atom {})
+        overrides (dissoc overrides :no-spread :coverage-learning)
         sims (parse-long (or sims "100"))
         every (:every (edn/read-string (slurp (str dir "/args.edn"))))
         labels (->> (.listFiles (io/file dir))
@@ -51,10 +55,13 @@
                              fc (assoc (model/forecast mdl {:horizon horizon :sims sims :seed (parse-long lbl)})
                                        :period lbl :levels (mapv :level (:nodes mdl))
                                        :calibration (:calibration mdl)
-                                       :spread (when-not no-spread? (:spread mdl)))
+                                       :spread (cond coverage? @cov no-spread? nil :else (:spread mdl))
+                                       :spread-mode (if coverage? :coverage (get-in mdl [:config :spread-mode])))
                              ctx (assoc (context (str dir "/context-" lbl ".edn"))
                                         :actual (recorded rows))
-                             r (dissoc (ev/score fc ctx) :rows)]
+                             full (ev/score fc ctx)
+                             _ (when coverage? (swap! cov cal/learn-coverage (:rows full)))
+                             r (dissoc full :rows)]
                          (println (ev/summary-line r))
                          r)))]
     (println (ev/report-text results))))

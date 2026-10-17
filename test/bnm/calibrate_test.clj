@@ -1,5 +1,6 @@
 (ns bnm.calibrate-test
   (:require [bnm.calibrate :as cal]
+            [bnm.model]
             [clojure.test :refer [deftest is testing]]))
 
 (deftest overconfidence-is-learned-away
@@ -119,3 +120,17 @@
     (testing "it compounds over periods toward the target"
       (let [s (reduce (fn [s _] (cal/learn-coverage s (rows 95 100))) {} (range 5))]
         (is (< (k s) (k (cal/learn-coverage {} (rows 95 100)))))))))
+
+(deftest the-mode-picks-the-learner-and-the-widening
+  (let [rows (for [i (range 100)]
+               {:level :country :channel :violence :stratum :active
+                :q10 10.0 :q50 20.0 :q90 30.0 :actual (if (< i 95) 20.0 100.0)})
+        key [:country :violence :active]
+        s (cal/learn-by :coverage {} rows)
+        xs (double-array [1.0 2.0 4.0 8.0 16.0])]
+    (is (< (cal/coverage-factor s key) 1.0) ":coverage learns from coverage")
+    (is (= (vec (cal/widen (cal/coverage-factor s key) xs)) (vec (cal/widen-by :coverage s key xs))))
+    (is (= 1.0 (cal/coverage-factor (cal/learn-by :symmetric {} rows) key)) ":symmetric does not")))
+
+(deftest coverage-is-the-default-mode
+  (is (= :coverage (:spread-mode bnm.model/defaults))))

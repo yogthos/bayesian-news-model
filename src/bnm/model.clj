@@ -88,8 +88,11 @@
                        ; model has no way to see coming
    :bottom-up #{:country} ; kinds whose forecast is their children's summed
                           ; (bnm.reconcile: lower CRPS than their own blend)
-   :spread-mode :symmetric ; how forecasts are recalibrated: :symmetric, or :sides
-                        ; (each side of the median by its own factor, bnm.calibrate)
+   :spread-mode :coverage ; how forecasts are recalibrated (bnm.calibrate):
+                          ; :coverage widens toward 80% of outcomes in the 80%
+                          ; range; :symmetric from the log errors, which feeds
+                          ; on itself and grew to 0.95 coverage over 2000-26
+                          ; (v4-q); :sides each side by its own factor
    :scale 1000.0})
 
 (defn scales ^long [cfg] (count (:decays cfg)))

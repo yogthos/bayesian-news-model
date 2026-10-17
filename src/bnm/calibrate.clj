@@ -231,14 +231,23 @@
               (dotimes [i n] (aset out i (* f (aget out i)))))))))
     out))
 
+(declare coverage-factor learn-coverage)
+
 (defn widen-by
   "The forecast sample recalibrated by `spread` for `key`, as `mode` says:
-  :sides stretches each side by its own factor (`widen-sides`); otherwise
-  one factor for both (`widen`)."
+  :coverage one factor learned from the 80% range's coverage
+  (`learn-coverage`); :sides each side by its own factor (`widen-sides`);
+  otherwise one factor learned from the log errors (`learn-spread`)."
   ^doubles [mode spread key ^doubles xs]
-  (if (= mode :sides)
-    (widen-sides (spread-factors spread key) xs)
+  (case mode
+    :coverage (widen (coverage-factor spread key) xs)
+    :sides (widen-sides (spread-factors spread key) xs)
     (widen (spread-factor spread key) xs)))
+
+(defn learn-by
+  "`spread` updated with resolved forecasts as `mode` learns."
+  [mode spread rows]
+  (if (= mode :coverage) (learn-coverage spread rows) (learn-spread spread rows)))
 
 (defn isotonic-map
   "Recalibration learned from past forecasts ps and their outcomes ys: the

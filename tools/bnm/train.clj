@@ -212,7 +212,7 @@
                   ;; the calibration and the climatology learn from the period just scored
                   mdl (cond-> mdl
                         scored (-> (update :calibration cal/learn (:outcomes scored))
-                                   (update :spread cal/learn-spread (:rows r))))
+                                   (update :spread #(cal/learn-by (get-in mdl [:config :spread-mode]) % (:rows r)))))
                   clim (cond-> clim scored (ev/learn-climate (:scored scored)))
                   hist (ev/add-history hist actual)
                   mdl (if (or (not every) (not= (year-of b) (year-of start)))
