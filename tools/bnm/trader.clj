@@ -30,6 +30,7 @@
             [bnm.us-polecon :as upc]
             [bnm.us-shocks :as ush]
             [bnm.us-loops :as ul]
+            [bnm.us-invariants :as uinv]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -134,7 +135,7 @@
   (bnm.scales, data/runs/scales-1/transfer.tsv)."
   [:hmm-plain :hmm-tvtp :small-scale])
 
-(def all-input-names (-> input-names (into upc/names) (into regime-names) (into ush/names) (into ul/names)))
+(def all-input-names (-> input-names (into upc/names) (into regime-names) (into ush/names) (into ul/names) (into uinv/names)))
 
 (defn read-regimes
   "{month [plain tvtp]} from data/runs/trader-inputs/regimes.tsv, or {}."
@@ -165,14 +166,16 @@
         transfer (read-transfer)
         shocks (ush/inputs)
         {:keys [start mkt]} fr
-        loops (ul/inputs (into {} (for [i (range 1 (count w))] [(+ start (dec i)) (Math/log (w i))])))]
+        loops (ul/inputs (into {} (for [i (range 1 (count w))] [(+ start (dec i)) (Math/log (w i))])))
+        invariants (uinv/inputs db (:pe10 data))]
     (fn [t] (let [b (base t)]
               (-> b (into (pe t {:term (b 0) :inflation (b 2) :tightening (b 4)}))
                   (into (get regimes t [nil nil]))
                   ;; the month's last week is known at its end
                   (conj (transfer t))
                   (into (shocks t))
-                  (into (loops t)))))))
+                  (into (loops t))
+                  (into (invariants t)))))))
 
 (defn- vectorize ^doubles [xs] (double-array (cons 1.0 (map #(if % (double %) 0.0) xs))))
 

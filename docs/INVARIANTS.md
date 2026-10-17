@@ -669,3 +669,99 @@ Country rows, PIT in tenths, times ten:
 The spread recalibration widens symmetrically in log space. A skewed
 widening (more upper tail) and a small downward shift of the median are
 what the histogram asks for.
+
+## The crashes still missed: 2007, 2020, 2022
+
+### What others do
+
+| approach | what it catches | evidence |
+|---|---|---|
+| logit early warning on credit, asset prices, external imbalances | banking crises | beats machine learning out of sample (Beutel, List & von Schweinitz 2019) |
+| BIS indicators: credit-to-GDP gap, debt service ratio, property price gap | banking crises; the gap at long horizons, the DSR at short | Borio & Lowe 2002; Drehmann & Juselius 2013; Aldasoro, Borio & Drehmann 2018 |
+| growth at risk | downside quantiles | financial conditions predict the downside; economic conditions only the median (Adrian, Boyarchenko & Giannone 2019) |
+| dynamic probit | bear markets | a lagged state beats static models and Markov switching |
+| LPPLS confidence | endogenous bubbles (1987, 2000, 2007) | ex ante in Demirer et al. 2019; no published record for 2020 or 2022 |
+| option-implied crash probabilities | crash risk priced now | from 1990 only, and they overstate risk in crises (Martin & Shi) |
+
+Nothing in this literature anticipates an exogenous shock like 2020.
+
+### The dimension-free invariants for the US (`bnm.us-invariants`)
+
+Fifteen monthly dimensions, each stretched against its own past: credit,
+household credit, house prices, CAPE, the default spread, the long and bill
+rates, inflation, unemployment, production, payrolls, real oil, the wage
+share, the profit rate and the investment share.
+
+| input | 1930-49 | 1950-69 | 1970-89 | 1990- |
+|---|---|---|---|---|
+| displacement (norm, 10 years) | 0.31 | 0.73 | 0.69 | 0.75 |
+| breadth | 0.35 | 0.62 | 0.64 | 0.80 |
+| resonance (5, 10, 20 years) | 0.41 | 0.77 | 0.78 | 0.73 |
+| flow displacement | 0.36 | 0.62 | 0.67 | 0.80 |
+| stock × flow | 0.28 | 0.66 | 0.73 | 0.81 |
+
+All of them are stable after the war and held out. 1930-49 differs, but
+most dimensions don't exist then.
+
+**Added to the US set** (base, discovered regime, oil change, small-fall
+transfer; `data/runs/inveeb0dd`):
+- Held-out AUC is 0.808 without them and 0.831 with them (0.853 from
+  2000).
+- The hedge sized by probability reaches Sharpe 0.68-0.82, against 0.69
+  for the 10-month rule: it beats the rule at four of five sizings.
+- **2022 is now caught:** the probability before it reads 0.66-0.96,
+  against 0.18-0.45 before.
+
+**The costs**
+- The tuning years fall (0.78 to 0.72).
+- Recalibrated Brier skill is 0.046 against 0.112.
+
+### 2007: why it is missed, and what flags it
+
+Before the October 2007 peak:
+- the equity inputs read calm (CAPE at the 50th held-out percentile, low
+  volatility, positive momentum);
+- US-wide displacement peaked in mid-2006 (resonance at the 97th
+  percentile) and then faded;
+- the specific channels were extreme: credit over three years at the 95th
+  percentile, house prices at the 99th.
+
+US equity history before 1990 has no credit-driven crash to learn the link
+from.
+
+**The panel crisis model.** Run in real time, the cross-country banking
+crisis hazard ranked the right countries:
+- Spain, Ireland and Denmark at the top in 2004-06; all had crises in 2008.
+- The US in the middle, with risk tripling from 0.03 (1996) to 0.09 (2006).
+
+**Carried to the US monthly hazard** as a transferred crisis score (credit,
+mortgages and house prices stretched over 20 years, plus displacement), it
+is strong alone (0.85 held out) but nearly flat before 2007. A boom nine
+years long is absorbed into a ten- or twenty-year baseline.
+
+**The BIS credit-to-GDP gap**, a stretch against a 20-30 year one-sided
+trend:
+- It rose from 4.2 (1999) to 11.6 (2007) and fell below -10 after 2011.
+- In the US hazard: held-out AUC **0.856** and raw Brier skill **0.144**,
+  the best yet. The hedge sized by probability reaches Sharpe 0.70-0.85.
+  The warning before 2007 rises to 0.11-0.15, against a base of 0.08.
+- It fails the pre-1990 rule: 0.36 in 1950-69 and 0.63 in 1970-89.
+  Credit booms went with equity booms under financial repression, and the
+  tuning AUC collapses to 0.58.
+- It rests on Borio & Lowe (2002), who proposed it from cross-country data
+  to 1999. That is before the crisis but not before 1990, so it is a
+  variant, not the model of record.
+
+### 2020
+
+The pandemic was exogenous. No approach above anticipates it, and no input
+here does. The probability before it was 0.03-0.28 and falling.
+
+### Summary
+
+| episode | caught? | by |
+|---|---|---|
+| 2000-02 | yes (0.6-0.9) | valuation, the turn of trend, displacement |
+| 2007-09 | partly | the panel crisis model ranks the 2008 wave countries; the US equity hazard only with the credit gap, at 0.11-0.15 |
+| 2020 | no | exogenous |
+| 2022 | yes (0.66-0.96) | flow displacement: inflation, rates and oil turning together |

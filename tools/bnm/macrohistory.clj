@@ -132,6 +132,13 @@
                                                                 (range (count xs))))]))]
                                (mapv (fn [i] (keep #(iv/stretch (series %) i 10 6) (map first dimensions)))
                                      (range (count rows))))]))
+        ;; the financial stocks against their own twenty years: financial cycles run 15-20 years
+        ;; (Borio; the BIS credit gap's long trend), so a ten-year baseline absorbs a long boom
+        long-specific (into {} (for [[c rows] by-c]
+                                 [c (let [series (into {} (for [[k f] dimensions] [k (mapv f rows)]))]
+                                      (mapv (fn [i] (into {} (for [k [:credit :mortgages :house-prices]]
+                                                               [k (iv/stretch (series k) i 20 12)])))
+                                            (range (count rows))))]))
         short-z (scaled 5 4)
         long-z (scaled 20 12)
         growth (into {} (for [[c rows] by-c] [c (mapv #(lg (:rgdpbarro %)) rows)]))
@@ -177,7 +184,7 @@
                      fall-ahead (when-let [e (eq i)]
                                   (let [fs (keep eq [(inc i) (+ i 2)])]
                                     (when (= 2 (count fs)) (boolean (some #(<= (- % e) (Math/log 0.75)) fs)))))]]
-           {:iso c :year yr :specific ((stretches c) i)
+           {:iso c :year yr :specific ((stretches c) i) :specific-long ((long-specific c) i)
             :invariant {:max-displacement (:max a) :breadth (:breadth a) :norm (:norm a)
                         :variability (iv/variance-ratio (growth c) i 5 20)
                         :world-norm (world-norm yr) :world-crises (world-crises yr) :small-falls small
@@ -332,6 +339,26 @@
                      (when (and (some second by-year) (some (complement second) by-year))
                        (hz/auc (map first by-year) (map second by-year)))))))
 
+(def transfer-names
+  "The banking-crisis hazard carried to the US monthly model: credit,
+  mortgages and house prices stretched against their own twenty years, and
+  the displacement of the whole state."
+  [[:specific-long :credit] [:specific-long :mortgages] [:specific-long :house-prices] [:invariant :norm]])
+
+(defn crisis-betas
+  "Per year, the banking-crisis hazard on `transfer-names` fitted over every
+  country on the outcomes known by then (year + 2 < the year): {year beta}."
+  [rows]
+  (let [rows (filterv #(some? (:crisis %)) rows)
+        k (inc (count transfer-names))]
+    (into (sorted-map)
+          (for [yr (range 1900 2028)
+                :let [train-rows (filter #(< (+ (:year %) 2) yr) rows)
+                      m (means train-rows transfer-names)
+                      train (for [r train-rows] {:x (vectorize r transfer-names m) :y (:crisis r) :w 1.0})]
+                :when (>= (count (filter :y train)) 10)]
+            [yr (vec (hz/fit train k {:prior 10.0}))]))))
+
 (defn- era-auc [rows target fam k]
   (for [[era lo hi] eras]
     (let [rs (filter #(and (<= lo (:year %) hi) (some? (target %)) (some? (get-in % [fam k]))) rows)]
@@ -429,6 +456,9 @@
 )))
     (let [dir (str "data/runs/" name)]
       (io/make-parents (str dir "/x"))
+      ;; the crisis hazard by year, for the US monthly model (bnm.us-invariants)
+      (spit (str dir "/crisis-betas.tsv")
+            (str/join (for [[yr b] (crisis-betas rows)] (str yr "\t" (str/join "\t" b) "\n"))))
       (spit (str dir "/macrohistory.txt") (str out)))))
 
 (defn -main [& args]

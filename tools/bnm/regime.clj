@@ -15,6 +15,7 @@
             [bnm.trader :as td]
             [bnm.us-polecon :as upc]
             [bnm.us-loops]
+            [bnm.us-invariants]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -24,7 +25,8 @@
   (-> [:term :inflation :tightening :default]
       (into (remove #{:polecon-present} upc/names))
       (into [:hmm-plain :hmm-tvtp :small-scale :oil-stretch :oil12 :gpr-stretch :gpr12])
-      (into (remove #{:loops-present} bnm.us-loops/names))))
+      (into (remove #{:loops-present} bnm.us-loops/names))
+      (into (remove #{:us-invariants-present} bnm.us-invariants/names))))
 
 (def profit-squeeze
   "A tight labour market matters through labour's share (Weisskopf 1979;
