@@ -54,8 +54,11 @@
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out s) (.append out "\n")))]
     (io/make-parents model-path)
     (store/write-file m model-path)
-    (say (format "Event model: learned bins %d to %d (data through %s); outlook for the next 13 weeks."
-                 (inc (long before)) (:bin m) as-of))
+    (say (str "Event model: "
+              (if (= before (:bin m))
+                (format "no new complete bins since %d" (:bin m))
+                (format "learned bins %d to %d" (inc (long before)) (:bin m)))
+              (format " (data through %s); outlook for the next 13 weeks." as-of)))
     (let [ol (core/outlook m {:horizon 13 :sims 100 :levels #{:country}})]
       (doseq [ch [:violence :protest :coercion :verbal-conflict]]
         (say)
