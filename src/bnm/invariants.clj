@@ -81,3 +81,14 @@
                  :when r]
              (Math/abs (double r)))]
     (when (seq rs) (mean rs))))
+
+(defn autocorrelation
+  "Lag-1 autocorrelation of xs over the `window` steps ending at i, from the
+  pairs where both values are known (at least n). Deviations that linger
+  mean a weak restoring force: critical slowing down (Scheffer et al. 2009;
+  Veraart et al. 2012), which needs no knowledge of which loop restores."
+  [xs i window n]
+  (let [pairs (keep (fn [j] (let [a (get xs (dec j)) b (get xs j)] (when (and a b) [a b])))
+                    (range (max 1 (inc (- i window))) (inc i)))]
+    (when (>= (count pairs) n)
+      (correlation (map first pairs) (map second pairs)))))

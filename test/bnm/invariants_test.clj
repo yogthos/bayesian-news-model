@@ -52,3 +52,12 @@
       (is (close? 1.0 (iv/synchrony [a b c] 5 5 3)))
       (is (nil? (iv/synchrony [a b c] 5 5 6)) "too few changes")
       (is (nil? (iv/synchrony [a] 5 5 3)) "needs two series"))))
+
+(deftest persistence-of-fluctuations
+  (testing "lag-1 autocorrelation over the window ending at i: high when deviations linger"
+    (let [slow [0.0 1.0 2.0 3.0 2.0 1.0 0.0 -1.0 -2.0 -1.0 0.0]
+          fast [1.0 -1.0 1.0 -1.0 1.0 -1.0 1.0 -1.0 1.0 -1.0 1.0]]
+      (is (> (iv/autocorrelation slow 10 10 6) 0.5))
+      (is (< (iv/autocorrelation fast 10 10 6) -0.9))
+      (is (nil? (iv/autocorrelation fast 10 3 6)) "too few pairs")
+      (is (nil? (iv/autocorrelation [1.0 nil 1.0 nil 1.0 nil 1.0] 6 6 3)) "pairs need both"))))

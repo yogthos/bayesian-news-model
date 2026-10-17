@@ -512,3 +512,104 @@ bucket saw falls 7% of the time.
 The open item is the one that problem points to: learning crisis dynamics
 on the many small events and rescaling them to the large ones
 (bnm-t5b.16.11), and recalibration (bnm-enb.12).
+
+## The gaps revisited: invariant forms of the loops and of synchrony
+
+**The research** points to one error behind both failures: they were
+measured as levels.
+- Kritzman et al. find that changes in the absorption ratio, not its level,
+  mark turning points.
+- The early-warning literature (Scheffer et al. 2009; Dakos et al. 2010;
+  Veraart et al. 2012) reads a weakening restoring force from rising
+  autocorrelation and rising spatial correlation, each against the system's
+  own past.
+- In those terms, the stabilizing loop is the restoring force, whatever
+  instrument provides it. Naming the instruments (capital controls, gold,
+  repression) was the overspecificity.
+
+**Annual (Macrohistory, `bnm.macrohistory/with-shifts`, `data/runs/macro-14`).**
+The inputs:
+- persistence, the mean lag-1 autocorrelation of the dimensions' stretches
+  over 15 years, and its rise against the previous ten;
+- the rise in synchrony across dimensions and with the world;
+- the rise in variability across all dimensions;
+- the opening of the capital account over five years;
+- the real rate's stretch.
+
+None is stable across the eras with crises. The persistence rise is the
+closest (0.52, 0.56, 0.65, 0.66). Added to the best crisis model, timing
+improves (0.66 to 0.74) and within-year ranking falls (0.68 to 0.59).
+Fifteen annual points per estimate is too few: the literature's caveat is
+that these signals need long, high-frequency records.
+
+(A scoring bug fixed along the way: era AUCs now need five positives.
+1950-72 has one crisis and no longer counts in the crisis tables; the
+invariants named above stay stable in every era with crises.)
+
+**Monthly (`bnm.us-loops`, `data/runs/regime-7`).** The inputs, over nine
+US monthly series (production, unemployment, payrolls, prices, bill and
+bond rates, default spread, real oil, the market):
+- the same coupling;
+- its shift (12 months against 60);
+- the persistence of short-run deviations, and its rise;
+- Kritzman's coupling across the 22 stock markets.
+
+| input | 1930-49 | 1950-69 | 1970-89 | 1990- |
+|---|---|---|---|---|
+| macro synchrony | 0.56 | 0.26 | 0.37 | 0.27 |
+| macro synchrony shift | 0.51 | 0.59 | 0.45 | 0.63 |
+| persistence rise (critical slowing down) | - | 0.64 | 0.65 | 0.40 |
+| market synchrony shift (Kritzman) | - | - | 0.41 | 0.66 |
+
+**What holds**
+- **Low synchrony comes before falls**, in both post-war eras and held out,
+  as it came before crises in every era of the Macrohistory data. Two
+  independent datasets agree: before a break, a system's dimensions
+  decouple. It reads as finance drifting from production and employment:
+  Borio's financial cycle running apart from the business cycle, fictitious
+  capital decoupling from real accumulation.
+- **Critical slowing down flips held out**, as Guttal et al. found for
+  stock markets. Crashes look like growing shocks hitting a stretched
+  system, not a restoring force failing.
+
+**In the US hazard decoupling adds nothing.** Held-out AUC is 0.767 against
+0.771: what it carries, the discovered regime and valuation already carry.
+
+## Small falls teach about big ones (`bnm.scales`, bnm-t5b.16.11)
+
+**Setup**
+- Three scales, each a fall of about 1.2 annual standard deviations scaled
+  by the square root of the horizon: 5% within 4 weeks, 10% within 13
+  weeks, 20% within 52 weeks.
+- Inputs are scale-free, with windows equal to the horizon and in
+  volatility units: momentum, drawdown, distance below the average,
+  deceleration and the volatility ratio.
+- One fit on 1930-89 per scale; scored on 1990 on.
+
+| fitted on / scored | 5% in 4 weeks | 10% in 13 weeks | 20% in 52 weeks |
+|---|---|---|---|
+| 5% in 4 weeks | 0.638 | **0.691** | **0.662** |
+| 10% in 13 weeks | 0.605 | 0.643 | 0.487 |
+| 20% in 52 weeks | 0.498 | 0.506 | 0.630 |
+| pooled over scales | 0.632 | 0.683 | 0.635 |
+
+**What it shows**
+- Fitted on small falls alone, the hazard ranks the held-out year-long
+  bear markets better than a hazard fitted on them.
+- The pattern before a fall is alike across scales once time is measured
+  in the fall's own horizon: the Omori and productivity laws across
+  magnitudes (Petersen et al. 2010).
+- This is evidence against treating large crashes as a different
+  population (Sornette's dragon kings), at least for ranking.
+- The reverse fails: big-fall dynamics, learned from few episodes, don't
+  transfer down.
+
+**In real time**
+- Refit each January on resolved small falls, scored with the large-scale
+  inputs.
+- The score is era-stable (0.66 and 0.54 before 1990, 0.65 after).
+- Added to the disciplined US set (`data/runs/scale8bf8eb`): held-out AUC
+  0.771 to **0.808** (0.835 from 2000), Brier skill 0.04 to 0.05.
+- The hedge sized by probability: 0.64, 0.69, 0.72, 0.76 and 0.76 across
+  sizings, against 0.69 for the 10-month rule. The sizing chosen on
+  1950-89 is the worst one.

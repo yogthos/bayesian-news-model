@@ -23,6 +23,7 @@
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
             [bnm.trade :as tr]
+            [bnm.french :as fr]
             [bnm.trader :as us]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -32,30 +33,6 @@
    "France" "FRA" "Germany" "DEU" "HongKong" "HKG" "Ireland" "IRL" "Italy" "ITA" "Japan" "JPN"
    "Nethrlnd" "NLD" "NewZland" "NZL" "Norway" "NOR" "Singapor" "SGP" "Spain" "ESP" "Sweden" "SWE"
    "Swtzrlnd" "CHE" "UK" "GBR"})
-
-(defn- section
-  "Lines after the first line matching `header`, up to the next blank."
-  [lines header]
-  (->> lines
-       (drop-while #(not (str/includes? % header)))
-       (drop 1)
-       (drop-while #(not (re-find #"^\s*\d{4}" %)))
-       (take-while #(re-find #"^\s*\d{4}" %))))
-
-(defn read-country
-  "{:ret {month dollar-return} :ratios {year {:ep :yld}}} from a French
-  country file."
-  [file]
-  (let [lines (str/split-lines (slurp file))
-        rets (into {} (for [l (section lines "Value-Weight Dollar Returns      All 4 Data Items Not Reqd")
-                            :let [[d m] (str/split (str/trim l) #"\s+")]
-                            :when (= 6 (count d))]
-                        [(+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 4 6))))
-                         (/ (parse-double m) 100.0)]))
-        ratios (into {} (for [l (section lines "Ratios x 100")
-                              :let [[y _ _ ep _ yld] (str/split (str/trim l) #"\s+")]]
-                          [(parse-long y) {:ep (/ (parse-double ep) 100.0) :yld (/ (parse-double yld) 100.0)}]))]
-    {:ret rets :ratios ratios}))
 
 (defn- ratio-at
   "The latest annual ratio usable at month t: year Y's from June of Y+1."
@@ -117,7 +94,7 @@
         us-ret (into {} (map-indexed (fn [i r] [(+ (:start fr) i) r]) (:mkt fr)))
         rf (into {} (map-indexed (fn [i r] [(+ (:start fr) i) r]) (:rf fr)))
         markets (assoc (into {} (for [[f iso] countries
-                                      :let [c (read-country (str us/dir "intl/" f ".Dat"))]]
+                                      :let [c (fr/read-country (str us/dir "intl/" f ".Dat"))]]
                                   [iso c]))
                        "USA" {:ret (into {} (filter #(>= (quot (key %) 12) 1975) us-ret)) :ratios {}})
         wealth (into {} (for [[u {:keys [ret]}] markets]

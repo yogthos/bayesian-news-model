@@ -28,6 +28,7 @@
             [bnm.trade :as tr]
             [bnm.us-polecon :as upc]
             [bnm.us-shocks :as ush]
+            [bnm.us-loops :as ul]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -128,10 +129,11 @@
 (def regime-names
   "The bear regime's filtered probability from scripts/regime-hmm.py:
   Markov switching with fixed transitions, and with transitions driven by
-  displacement."
-  [:hmm-plain :hmm-tvtp])
+  displacement; and the risk of a large fall as learned from small ones
+  (bnm.scales, data/runs/scales-1/transfer.tsv)."
+  [:hmm-plain :hmm-tvtp :small-scale])
 
-(def all-input-names (-> input-names (into upc/names) (into regime-names) (into ush/names)))
+(def all-input-names (-> input-names (into upc/names) (into regime-names) (into ush/names) (into ul/names)))
 
 (defn read-regimes
   "{month [plain tvtp]} from data/runs/trader-inputs/regimes.tsv, or {}."
@@ -143,6 +145,15 @@
                  [(parse-long m) [(some-> a not-empty parse-double) (some-> b not-empty parse-double)]]))
       {})))
 
+(defn read-transfer
+  "{month logit} from bnm.scales' transfer.tsv, or {}."
+  []
+  (let [f (io/file "data/runs/scales-1/transfer.tsv")]
+    (if (.exists f)
+      (into {} (for [line (str/split-lines (slurp f)) :let [[m v] (str/split line #"\t")]]
+                 [(parse-long m) (parse-double v)]))
+      {})))
+
 (defn all-inputs
   "The base inputs followed by the political economy ones (bnm.us-polecon)
   and the discovered regimes."
@@ -150,11 +161,17 @@
   (let [base (build-inputs fr w data db wc)
         pe (upc/inputs db)
         regimes (read-regimes)
-        shocks (ush/inputs)]
+        transfer (read-transfer)
+        shocks (ush/inputs)
+        {:keys [start mkt]} fr
+        loops (ul/inputs (into {} (for [i (range 1 (count w))] [(+ start (dec i)) (Math/log (w i))])))]
     (fn [t] (let [b (base t)]
               (-> b (into (pe t {:term (b 0) :inflation (b 2) :tightening (b 4)}))
                   (into (get regimes t [nil nil]))
-                  (into (shocks t)))))))
+                  ;; the month's last week is known at its end
+                  (conj (transfer t))
+                  (into (shocks t))
+                  (into (loops t)))))))
 
 (defn- vectorize ^doubles [xs] (double-array (cons 1.0 (map #(if % (double %) 0.0) xs))))
 

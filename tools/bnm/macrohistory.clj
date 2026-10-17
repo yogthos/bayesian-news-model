@@ -67,7 +67,8 @@
 
 (def invariant-names
   [:max-displacement :breadth :norm :variability :world-norm :world-crises :small-falls :present
-   :norm-short :norm-long :resonance :since-crisis :since-world-wave :wave-fresh :synchrony :world-correlation :flow-max :flow-norm :stock-x-flow])
+   :norm-short :norm-long :resonance :since-crisis :since-world-wave :wave-fresh :synchrony :world-correlation :flow-max :flow-norm :stock-x-flow
+   :persistence :persistence-rise :synchrony-rise :world-correlation-rise :variance-rise :opening :real-rate-stretch])
 
 (defn- with-derived
   "Adds :real-equity (log real price index from capital gains) and
@@ -188,6 +189,8 @@
                         ;; a stretched stock with a turning flow
                         :stock-x-flow (when-let [f (:norm (iv/aggregate ((flow-z c) i) {:threshold 2.0 :min-n 5}))]
                                         (some-> (:norm a) (* f)))
+                        :dim-variance (let [vs (keep #(iv/variance-ratio % i 5 20) (dim-series c))]
+                                        (when (>= (count vs) 5) (/ (reduce + vs) (count vs))))
                         :synchrony (iv/synchrony (dim-series c) i 10 6)
                         :world-correlation (let [pairs (keep (fn [j] (when-let [d (eq-change rows j)]
                                                                        (when-let [w (world-eq (:year (rows j)))] [d w])))
@@ -215,6 +218,47 @@
                          :gold (get-in regimes [[c yr] :gold])}
             :wave (let [n (count (filter (fn [c'] (some #(crisis? c' %) [(inc yr) (+ yr 2)])) (keys by-c)))] (>= n 3))
             :crisis crisis-ahead :fall fall-ahead}))))
+
+(defn with-shifts
+  "Adds the invariant forms of the stabilizing loops and of synchrony, each
+  measured against the country's own past rather than as a level (a level's
+  meaning changes between eras; a change from the country's baseline does
+  not): persistence, the mean lag-1 autocorrelation of the dimensions'
+  stretches over 15 years (a weak restoring force), and its rise against
+  the previous ten years (critical slowing down); the rise in synchrony
+  across dimensions (Kritzman et al.: changes in the absorption ratio, not
+  its level) and with the world (Dakos et al.: rising spatial correlation);
+  the rise in variability across all dimensions (Guttal et al.); the opening
+  of the capital account over five years, and the real rate's stretch."
+  [rows]
+  (let [by-c (group-by :iso rows)]
+    (vec (mapcat
+          (fn [[_ rs]]
+            (let [rs (vec (sort-by :year rs))
+                  n (count rs)
+                  col (fn [path] (mapv #(get-in % path) rs))
+                  dims (map first dimensions)
+                  zs (into {} (for [k dims] [k (col [:specific k])]))
+                  persistence (mapv (fn [i] (let [acs (keep #(iv/autocorrelation (zs %) i 15 10) dims)]
+                                              (when (>= (count acs) 5) (/ (reduce + acs) (count acs)))))
+                                    (range n))
+                  sync (col [:invariant :synchrony])
+                  wcorr (col [:invariant :world-correlation])
+                  openness (col [:stabilizer :capital-openness])
+                  real-rate (col [:stabilizer :real-rate])
+                  rise (fn [xs i] (iv/stretch xs i 10 6))]
+              (map-indexed
+               (fn [i r]
+                 (update r :invariant merge
+                         {:persistence (persistence i)
+                          :persistence-rise (rise persistence i)
+                          :synchrony-rise (rise sync i)
+                          :world-correlation-rise (rise wcorr i)
+                          :variance-rise (get-in r [:invariant :dim-variance])
+                          :opening (when-let [a (openness i)] (when-let [b (get openness (- i 5))] (- a b)))
+                          :real-rate-stretch (rise real-rate i)}))
+               rs)))
+          by-c))))
 
 (defn demean-by-year
   "Rows with each of `names` replaced by its deviation from that year's mean
@@ -291,12 +335,13 @@
 (defn- era-auc [rows target fam k]
   (for [[era lo hi] eras]
     (let [rs (filter #(and (<= lo (:year %) hi) (some? (target %)) (some? (get-in % [fam k]))) rows)]
-      (when (and (some target rs) (some (complement target) rs))
+      ;; an era with fewer than five positives says nothing (1950-72 has one crisis)
+      (when (and (>= (count (filter target rs)) 5) (some (complement target) rs))
         (hz/auc (map #(get-in % [fam k]) rs) (map target rs))))))
 
 (defn run [{:keys [name waves]}]
   (let [name (or name "macro")
-        rows (build (read-jst "data/raw/slow/jst/jst.csv") (read-intensity waves) (read-regimes))
+        rows (with-shifts (build (read-jst "data/raw/slow/jst/jst.csv") (read-intensity waves) (read-regimes)))
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
         fmt (fn [x] (if x (format "%.2f" (double x)) "  - "))
@@ -353,12 +398,15 @@
           process (into (mapv #(vector :process (keyword (str "world-k" %))) [1 3 10 30])
                         (mapv #(vector :process (keyword (str "own-k" %))) [3 10 30]))
           stabilizer (mapv #(vector :stabilizer %) [:real-rate :noncore :loans-to-deposits :peg :policy-room :public-debt-level])
-          regime [[:stabilizer :capital-openness] [:stabilizer :gold]]]
+          regime [[:stabilizer :capital-openness] [:stabilizer :gold]]
+          loops (mapv #(vector :invariant %) [:persistence-rise :synchrony-rise :world-correlation-rise :variance-rise :opening :real-rate-stretch])]
       (doseq [[label target] [["crisis" :crisis] ["fall" :fall]]
               [set-label names] [["credit+scales" scales] ["process" process] ["stabilizer" stabilizer]
                                  ["world intensity" [[:process :world-intensity]]]
                                  ["scales+intensity" (conj scales [:process :world-intensity])]
                                  ["scales+intensity+stab" (into (conj scales [:process :world-intensity]) stabilizer)]
+                                 ["loops+sync, invariant form" loops]
+                                 ["scales+intensity+loops" (into (conj scales [:process :world-intensity]) loops)]
                                  ["trigger" [[:invariant :flow-max] [:invariant :flow-norm] [:invariant :stock-x-flow]]]
                                  ["scales+intensity+trigger" (into (conj scales [:process :world-intensity]) [[:invariant :flow-norm] [:invariant :stock-x-flow]])]
                                  ["scales+trigger" (into scales [[:invariant :flow-norm] [:invariant :stock-x-flow]])]
