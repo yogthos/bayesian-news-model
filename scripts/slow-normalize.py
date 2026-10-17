@@ -262,6 +262,31 @@ def worldbank():
         var(name, tr, "a", "World Bank WDI " + code, desc)
 
 
+def pwt():
+    """Penn World Table 11 (data/raw/slow/pwt/pwt110.csv, from the .dta): labour's
+    share, the real internal rate of return on capital (a profit rate), the
+    investment share and capital per unit of output (docs/REGIMES.md). PWT
+    comes out years after the fact, so a year is taken as known two years on."""
+    path = os.path.join(RAW, "pwt", "pwt110.csv")
+    if not os.path.exists(path):
+        return
+    for r in csv.DictReader(open(path)):
+        iso = r["countrycode"]
+        if iso not in ISO3:
+            continue
+        pend = period_end("a", r["year"].split(".")[0])
+        emit(iso, "economy/labor_share", "a", pend, 24, num(r["labsh"]))
+        emit(iso, "economy/profit_rate", "a", pend, 24, num(r["irr"]))
+        emit(iso, "economy/investment_share", "a", pend, 24, num(r["csh_i"]))
+        y, k = num(r["rgdpna"]), num(r["rnna"])
+        if y and k:
+            emit(iso, "economy/capital_output", "a", pend, 24, k / y)
+    var("economy/labor_share", "id", "a", "Penn World Table 11.0 labsh", "Share of labour compensation in GDP")
+    var("economy/profit_rate", "id", "a", "Penn World Table 11.0 irr", "Real internal rate of return on capital")
+    var("economy/investment_share", "id", "a", "Penn World Table 11.0 csh_i", "Share of gross capital formation in GDP")
+    var("economy/capital_output", "log", "a", "Penn World Table 11.0 rnna/rgdpna", "Capital stock per unit of real GDP")
+
+
 def code(s):
     return (s or "").split(":")[0].strip()
 
@@ -712,7 +737,7 @@ def mechanical(dedup):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    steps = [fred, worldbank, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb]
+    steps = [fred, worldbank, pwt, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb]
     for step in steps:
         n0, e0 = len(ROWS), len(EVENTS)
         step()

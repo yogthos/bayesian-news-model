@@ -117,9 +117,13 @@
 
 (defn- feature-sets
   "Indices into a row's full input vector [1 hist hist inputs... named...]
-  for each model, given `m` named inputs."
-  [labels m]
+  for each model, given `m` named inputs of which the last `p` are the
+  political economy ones."
+  [labels m p]
   (let [n (count labels)
+        named (range (+ 3 n) (+ 3 n (- m p)))
+        polecon (range (+ 3 n (- m p)) (+ 3 n m))
+        event (range (+ 3 n m) (+ 3 n m (count nm/event-labels)))
         idx (fn [pred] (keep-indexed (fn [i l] (when (pred l) (+ 3 i))) labels))
         politics (idx #(= "politics" (:domain %)))
         local (idx :domain)
@@ -130,10 +134,12 @@
      :local (vec (concat [0 1 2] local))
      :domains (vec (concat [0 1 2] others))
      :all (vec (concat [0 1 2] (range 3 (+ 3 n))))
-     :named (vec (concat [0 1 2] (range (+ 3 n) (+ 3 n m))))
-     :named+politics (vec (concat [0 1 2] politics (range (+ 3 n) (+ 3 n m))))
-     :event (vec (concat [0 1 2] (range (+ 3 n m) (+ 3 n m (count nm/event-labels)))))
-     :named+event (vec (concat [0 1 2] (range (+ 3 n) (+ 3 n m (count nm/event-labels)))))}))
+     :named (vec (concat [0 1 2] named))
+     :named+politics (vec (concat [0 1 2] politics named))
+     :polecon (vec (concat [0 1 2] polecon))
+     :named+polecon (vec (concat [0 1 2] named polecon))
+     :event (vec (concat [0 1 2] event))
+     :named+event (vec (concat [0 1 2] named event))}))
 
 (def model-order [:base :history :politics :local :domains :all])
 
@@ -271,7 +277,8 @@
         _ (io/make-parents (str dir "/x"))
         events (read-events "data/slow/events.tsv")
         coverage-q (read-coverage "data/slow/coverage.tsv")
-        models (if models (mapv keyword (str/split models #",")) [:base :history :politics :all])
+        ;; base is always fitted: it is the reference for Brier skill
+        models (into [:base] (remove #{:base}) (if models (mapv keyword (str/split models #",")) [:history :politics :all]))
         shown (into models combined)
         variables (st/read-variables "data/slow/variables.tsv")
         [rows labels] (if rows
@@ -287,14 +294,19 @@
                    [fn* ff] (nm/financial db wc)
                    [pn* pf] (nm/political db)
                    [_ fv] (nm/vectorize fn* :financial)
-                   [_ pv] (nm/vectorize pn* :political)]
+                   [_ pv] (nm/vectorize pn* :political)
+                   [en* ef] (nm/political-economy db all-units (distinct (map #(+ 2 (* 3 (:q %))) rows)))
+                   [_ ev] (nm/vectorize en* :political-economy)
+                   both (fn [^doubles a ^doubles b] (double-array (concat a b)))]
                (let [es (if event-run (nm/load-event-state event-run) {})]
                  (mapv (fn [{:keys [unit q] :as r}]
                          (let [t (+ 2 (* 3 q))]
-                           (assoc r :named {:financial (fv (ff unit t)) :political (pv (pf unit t))}
+                           (assoc r :named (let [e (ev (ef unit t))]
+                                            {:financial (both (fv (ff unit t)) e) :political (both (pv (pf unit t)) e)})
                                     :event (es [unit q]))))
                        rows)))
         n-named (into {} (for [fam [:financial :political]] [fam (alength ^doubles (get-in (first rows) [:named fam]))]))
+        n-polecon (count (first (nm/vectorize nm/political-economy-names :political-economy)))
         market-units (set (for [{:keys [unit ^doubles x]} rows
                                 :let [i (first (keep-indexed #(when (and (= "markets" (:domain %2)) (= :present (:feature %2))) %1) labels))]
                                 :when (and i (pos? (aget x (long i))))]
@@ -318,7 +330,7 @@
             last-q (coverage-q kind)
             fam (nm/family-of kind)
             runs (combine ((evaluate-kind rows onsets units window score-from last-q models fam)
-                           (feature-sets labels (n-named fam)))
+                           (feature-sets labels (n-named fam) n-polecon))
                           window)
             preds (update-vals runs :preds)
             base (:base preds)]

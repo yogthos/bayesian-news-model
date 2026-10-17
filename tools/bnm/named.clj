@@ -34,7 +34,8 @@
     "energy/oil_brent" "energy/fuel_imports_share" "energy/fuel_exports_share"
     "economy/gdp_growth" "economy/inflation" "people/youth_unemployment" "people/population"
     "climate/temperature_anomaly" "climate/precipitation_anomaly"
-    "politics/protest" "politics/violence" "politics/coercion"})
+    "politics/protest" "politics/violence" "politics/coercion"
+    "economy/profit_rate" "economy/labor_share" "economy/gdp_per_capita" "energy/resource_rents_gdp"})
 
 (defn load-series
   "{[unit var] series} for `vars`, values transformed as data/slow/variables.tsv says."
@@ -115,11 +116,44 @@
           (g "politics/protest" t 3) (g "politics/protest" t 12) (g "politics/violence" t 3)
           (g "politics/violence" t 12) (g "politics/coercion" t 12)]))]))
 
+(def core
+  "The old industrial centres, whose capital's profitability the theory of
+  imperialism ties to pressure on resource-rich peripheries."
+  ["USA" "GBR" "FRA" "DEU" "JPN" "ITA" "CAN"])
+
+(defn- mean-of [xs] (when (seq xs) (/ (reduce + xs) (count xs))))
+
+(def political-economy-names
+  [:profit-rate :profit-rate3 :labor-share3 :uneven-growth :core-profit3 :rents-x-core-profit])
+
+(defn political-economy
+  "[names f] for the political economy inputs (docs/REGIMES.md), from the
+  Penn World Table: the country's profit rate (real return on capital) and
+  its change over three years, the change in labour's share (a squeeze on
+  profits, or on wages); growth over five years relative to the world's
+  (uneven development, Lenin); and the core's profit rate falling times the
+  country's resource rents (capital looking outward for raw materials)."
+  [db units months]
+  (let [names political-economy-names
+        world-growth (into {} (for [t months]
+                                [t (mean-of (keep #(some-> (db [% "economy/gdp_per_capita"]) (sk/change t 60 {:stale 30})) units))]))
+        core-profit (into {} (for [t months]
+                               [t (mean-of (keep #(some-> (db [% "economy/profit_rate"]) (sk/change t 36 {:stale 30})) core))]))]
+    [names
+     (fn [unit t]
+       (let [g (getter db unit)
+             growth (g "economy/gdp_per_capita" t 60)
+             cp (core-profit t)
+             rents (some-> (g "energy/resource_rents_gdp" t) (/ 100.0))]
+         [(g "economy/profit_rate" t) (g "economy/profit_rate" t 36) (g "economy/labor_share" t 36)
+          (minus growth (world-growth t)) cp (x* rents (some-> cp -))]))]))
+
 (def presence
   "Groups of inputs that share a source: one indicator each."
   {:financial [[:credit3 :hh-credit3 :credit-gap :dsr3] [:house3] [:equity3 :runup2 :equity-vol] [:curve]]
    :political [[:food-inflation] [:fragility] [:gdp-growth :inflation] [:youth-unemployment]
-               [:temperature :precipitation] [:protest3 :violence3]]})
+               [:temperature :precipitation] [:protest3 :violence3]]
+   :political-economy [[:profit-rate :profit-rate3 :labor-share3] [:uneven-growth] [:rents-x-core-profit]]})
 
 (defn vectorize
   "Inputs as doubles, missing as 0, then one presence indicator per group:

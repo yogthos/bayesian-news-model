@@ -6,7 +6,7 @@
 # Idempotent: existing files are skipped, so it can be re-run to resume;
 # FORCE=1 refetches.
 #
-#   scripts/fetch-slow.sh [fred|worldbank|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
+#   scripts/fetch-slow.sh [fred|worldbank|pwt|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -181,7 +181,14 @@ fetch_market() {
   done
 }
 
-ALL=(fred worldbank bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
+# --- Penn World Table 11 (docs/REGIMES.md): labour share, return on capital ---------------
+fetch_pwt() {
+  local d="$RAW/pwt"
+  get "https://dataverse.nl/api/access/datafile/554030" "$d/pwt110.dta"
+  uv run --no-project --with pandas python -I -c "import pandas as pd, sys; d = pd.read_stata(sys.argv[1]); d[['countrycode','year','rgdpna','rnna','labsh','csh_i','irr','pop']].to_csv(sys.argv[2], index=False)" "$d/pwt110.dta" "$d/pwt110.csv"
+}
+
+ALL=(fred worldbank pwt bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
 case "${1:-all}" in
   all) for s in "${ALL[@]}"; do "fetch_$s"; done ;;
   *) "fetch_$1" ;;
