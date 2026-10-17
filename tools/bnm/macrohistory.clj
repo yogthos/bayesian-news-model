@@ -85,9 +85,33 @@
               known? (and g infl)]
           (recur (inc i) eq' (conj out (assoc r :inflation infl :real-equity (when known? eq')))))))))
 
+(defn read-intensity
+  "{year probability} from bnm.waves' world-intensity.tsv, or {} without one."
+  [run]
+  (let [f (io/file (str "data/runs/" run "/world-intensity.tsv"))]
+    (if (and run (.exists f))
+      (into {} (for [line (str/split-lines (slurp f)) :let [[y p] (str/split line #"\t")]]
+                 [(parse-long y) (parse-double p)]))
+      {})))
+
+(defn read-regimes
+  "{[iso year] {:capital-openness :gold}}: Chinn-Ito capital account openness
+  (0 closed to 1 open, from 1970) and the Reinhart-Rogoff gold standard flag."
+  []
+  (let [rows (fn [path] (with-open [r (io/reader path)]
+                          (let [[h & ls] (line-seq r) cols (mapv keyword (str/split h #","))]
+                            (mapv #(zipmap cols (str/split % #"," -1)) ls))))
+        num (fn [v] (some-> v str/trim not-empty parse-double))
+        ka (for [m (rows "data/raw/slow/kaopen/kaopen.csv") :let [v (num (:ka_open m))] :when (and v (num (:year m)))]
+             [[(:ccode m) (long (num (:year m)))] {:capital-openness v}])
+        gold (for [m (rows "data/raw/slow/rr/onsets.csv") :let [v (num (:gold m))] :when v]
+               [[(:iso m) (parse-long (:year m))] {:gold v}])]
+    (reduce (fn [acc [k v]] (update acc k merge v)) {} (concat ka gold))))
+
 (defn build
-  "Country-years with :specific (stretches), the invariants and targets."
-  [data]
+  "Country-years with :specific (stretches), the invariants and targets;
+  `intensity` is the world crisis process's probability by year (bnm.waves)."
+  [data & [intensity regimes]]
   (let [by-c (update-vals (group-by :iso data) with-derived)
         stretches (into {} (for [[c rows] by-c]
                              [c (let [series (into {} (for [[k f] dimensions] [k (mapv f rows)]))]
@@ -110,6 +134,10 @@
                                                                   (when i (:norm (agg c i)))))
                                                  by-c)]
                                     (when (seq ns) (/ (reduce + ns) (count ns))))]))
+        ;; crisis starts: the world's as the share of countries, each country's own
+        world-starts (into {} (for [yr years :let [n (count (filter #(crisis? % yr) (keys by-c)))] :when (pos? n)]
+                                [yr (/ n (double (count by-c)))]))
+        own-starts (into {} (for [c (keys by-c)] [c (into {} (for [yr years :when (crisis? c yr)] [yr 1.0]))]))
         world-crises (into {} (for [yr years]
                                 [yr (/ (count (filter (fn [c] (or (crisis? c yr) (crisis? c (dec yr)))) (keys by-c)))
                                        (double (count by-c)))]))]
@@ -148,6 +176,20 @@
                                              (:norm a)
                                              (:norm (iv/aggregate ((long-z c) i) {:threshold 1.5 :min-n 5}))]]
                                      (when (every? some? ns) (apply min ns)))}
+            ;; the crisis process: kernels over past starts, known at the end of the year
+            :process (merge (into {} (for [tau [1 3 10 30]]
+                                       [(keyword (str "world-k" tau)) (iv/kernel world-starts yr (double tau) {:through yr})]))
+                            (into {} (for [tau [3 10 30]]
+                                       [(keyword (str "own-k" tau)) (iv/kernel (own-starts c) yr (double tau) {:through yr})]))
+                            {:world-intensity (some-> (get intensity yr) (as-> p (Math/log (/ p (- 1.0 p)))))})
+            ;; the stabilizing loops: financial repression (a negative real rate), how banks fund
+            ;; themselves, a peg, room to cut rates, public debt
+            :stabilizer {:real-rate (when (and (:stir r) (:inflation r)) (- (:stir r) (* 100.0 (:inflation r))))
+                         :noncore (:noncore r) :loans-to-deposits (:ltd r) :peg (:peg r)
+                         :policy-room (:stir r) :public-debt-level (:debtgdp r)
+                         :capital-openness (get-in regimes [[c yr] :capital-openness])
+                         :gold (get-in regimes [[c yr] :gold])}
+            :wave (let [n (count (filter (fn [c'] (some #(crisis? c' %) [(inc yr) (+ yr 2)])) (keys by-c)))] (>= n 3))
             :crisis crisis-ahead :fall fall-ahead}))))
 
 (defn- era-of [yr] (first (keep (fn [[n lo hi]] (when (<= lo yr hi) n)) eras)))
@@ -181,8 +223,8 @@
   after their year), with weights discounted by age, and predict the year:
   the regime enters only through what history teaches. AUC within each
   later era and pooled from 1950."
-  [rows target names prior discount]
-  (let [rows (filterv #(and (some? (target %)) (era-of (:year %))) rows)
+  [rows target names prior discount & {:keys [from] :or {from 1870}}]
+  (let [rows (filterv #(and (some? (target %)) (era-of (:year %)) (>= (:year %) from)) rows)
         k (inc (count names))
         years (range 1890 2021)
         preds (loop [[yr & more] years beta nil out []]
@@ -194,13 +236,19 @@
                                 {:x (vectorize r names m) :y (target r) :w (Math/pow discount (- yr (:year r)))})
                         beta (if (>= (count (filter :y train)) 10) (hz/fit train k {:prior prior :start beta}) beta)
                         scored (for [r rows :when (and beta (= yr (:year r)))]
-                                 [(:year r) (hz/predict beta (vectorize r names m)) (target r)])]
+                                 [(:year r) (hz/predict beta (vectorize r names m)) (target r) (:wave r)])]
                     (recur more beta (into out scored)))))
         auc (fn [ps] (when (and (some #(nth % 2) ps) (some #(not (nth % 2)) ps)) (hz/auc (map second ps) (map #(nth % 2) ps))))]
     (assoc (into {} (for [[era lo hi] eras] [era (auc (filter #(<= lo (first %) hi) preds))]))
            :post (auc (filter #(>= (first %) 1950) preds))
            ;; ranking countries within each year only, setting aside when the waves come
-           :within (hz/auc-within (filter #(>= (first %) 1950) preds)))))
+           :within (hz/auc-within (filter #(>= (first %) 1950) preds))
+           ;; when the waves come: the year's mean probability against three or more
+           ;; countries starting a crisis within two years
+           :timing (let [by-year (for [[yr ps] (group-by first (filter #(>= (first %) 1950) preds))]
+                                   [(/ (reduce + (map second ps)) (count ps)) (nth (first ps) 3)])]
+                     (when (and (some second by-year) (some (complement second) by-year))
+                       (hz/auc (map first by-year) (map second by-year)))))))
 
 (defn- era-auc [rows target fam k]
   (for [[era lo hi] eras]
@@ -208,9 +256,9 @@
       (when (and (some target rs) (some (complement target) rs))
         (hz/auc (map #(get-in % [fam k]) rs) (map target rs))))))
 
-(defn run [{:keys [name]}]
+(defn run [{:keys [name waves]}]
   (let [name (or name "macro")
-        rows (build (read-jst "data/raw/slow/jst/jst.csv"))
+        rows (build (read-jst "data/raw/slow/jst/jst.csv") (read-intensity waves) (read-regimes))
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
         fmt (fn [x] (if x (format "%.2f" (double x)) "  - "))
@@ -259,6 +307,28 @@
       (let [res (prequential rows target names 10.0 discount)]
         (say (format "  %-6s %-22s discount %.2f  %s   from 1950 %s  within years %s" label set-label discount
                      (str/join " " (map #(fmt (res (first %))) (rest eras))) (fmt (:post res)) (fmt (:within res))))))
+    (say)
+    (say "The crisis process and the stabilizing loops, real time, rows from 1900 (kernels need 30 years")
+    (say "of history). AUC by era, pooled from 1950, within years, and wave timing (the year's mean")
+    (say "probability against three or more countries starting a crisis within two years).")
+    (let [scales (into [[:specific :credit]] (into core [[:invariant :norm-short] [:invariant :norm-long] [:invariant :resonance]]))
+          process (into (mapv #(vector :process (keyword (str "world-k" %))) [1 3 10 30])
+                        (mapv #(vector :process (keyword (str "own-k" %))) [3 10 30]))
+          stabilizer (mapv #(vector :stabilizer %) [:real-rate :noncore :loans-to-deposits :peg :policy-room :public-debt-level])
+          regime [[:stabilizer :capital-openness] [:stabilizer :gold]]]
+      (doseq [[label target] [["crisis" :crisis] ["fall" :fall]]
+              [set-label names] [["credit+scales" scales] ["process" process] ["stabilizer" stabilizer]
+                                 ["world intensity" [[:process :world-intensity]]]
+                                 ["scales+intensity" (conj scales [:process :world-intensity])]
+                                 ["scales+intensity+stab" (into (conj scales [:process :world-intensity]) stabilizer)]
+                                 ["regime: openness, gold" regime]
+                                 ["scales+intensity+regime" (into (conj scales [:process :world-intensity]) regime)]
+                                 ["process+stabilizer" (into process stabilizer)]
+                                 ["scales+process" (into scales process)] ["scales+stabilizer" (into scales stabilizer)]
+                                 ["scales+process+stab" (into scales (into process stabilizer))]]]
+        (let [res (prequential rows target names 10.0 1.0 :from 1900)]
+          (say (format "  %-6s %-22s %s   from 1950 %s  within %s  timing %s" label set-label
+                       (str/join " " (map #(fmt (res (first %))) (rest eras))) (fmt (:post res)) (fmt (:within res)) (fmt (:timing res)))))))
     (let [dir (str "data/runs/" name)]
       (io/make-parents (str dir "/x"))
       (spit (str dir "/macrohistory.txt") (str out)))))

@@ -31,3 +31,11 @@
     (let [xs [0.0 1.0 0.0 1.0 0.0 1.0 0.0 3.0 0.0 3.0]]
       (is (pos? (iv/variance-ratio xs 9 4 9)))
       (is (nil? (iv/variance-ratio xs 3 4 9))))))
+
+(deftest kernels-over-past-events
+  (let [events {2000 1.0 2005 0.5 2010 2.0}]
+    (testing "sum of past weights decayed by exp(-age/tau), the year itself included"
+      (is (close? (+ (Math/exp -1.0) (* 0.5 (Math/exp -0.5))) (iv/kernel events 2010 10.0 {:through 2009})))
+      (is (close? (+ (Math/exp -1.0) (* 0.5 (Math/exp -0.5)) 2.0) (iv/kernel events 2010 10.0 {:through 2010}))))
+    (testing "nothing before the first event"
+      (is (zero? (iv/kernel events 1999 10.0 {:through 1999}))))))

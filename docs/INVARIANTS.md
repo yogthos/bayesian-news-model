@@ -255,3 +255,97 @@ did not come up in search. Their claims are not used here.
    - margin debt;
    - the dollar;
    - foreign markets.
+
+## Step 1: global waves as a self-exciting process (`bnm.waves`)
+
+Within JST the process cannot be learned in real time.
+- In-sample, over 1900-2020, a logistic hazard on world crisis kernels
+  learns a clear shape. The weights are +4.9 at 1 year (contagion), -2.0 at
+  3 (protection), +2.1 at 10 and -1.7 at 30. In-sample AUC is 0.70.
+- In real time it inverts (timing AUC 0.34). Before each wave it has seen
+  only one or two.
+
+**More waves.** The Reinhart-Rogoff chronology (HBS BFFS) gives 303
+banking crisis starts in 70 countries since 1800, with waves in:
+- 1814;
+- 1857;
+- 1890-93;
+- 1907;
+- 1914;
+- 1921-23;
+- 1929-34;
+- the 1980s-90s;
+- 2008.
+
+`bnm.waves` fits world kernels there, for banking crises and for currency,
+default and inflation crises, refit each year.
+
+Timing of waves (three or more starts within two years, `data/runs/waves-1`):
+
+| inputs | 1860-1913 | 1919-49 | 1950-79 | 1980-2014 | 1950-2014 |
+|---|---|---|---|---|---|
+| world banking kernels | 0.58 | 0.34 | 0.49 | 0.62 | 0.83 |
+| world, all crisis kinds | 0.53 | 0.60 | 0.43 | 0.54 | 0.68 |
+| all, with own history | 0.56 | 0.64 | 0.43 | 0.52 | 0.68 |
+
+Most of the 1950-2014 figure separates the quiet Bretton Woods decades from
+the crisis-heavy 1980s and 90s. Within eras the skill is weak, and inverted
+in 1919-49 for the banking kernels.
+
+**Fed to the Macrohistory hazards** as the world intensity, from the model
+fixed as output before the results (`data/runs/macro-10`, real time, rows
+from 1900):
+
+| crisis, inputs | 1919-38 | 1950-72 | 1973-99 | 2000-20 | from 1950 | within years | timing |
+|---|---|---|---|---|---|---|---|
+| credit + displacement at three scales | 0.57 | 0.78 | 0.63 | 0.65 | 0.48 | 0.67 | 0.46 |
+| + world intensity | 0.60 | 0.42 | 0.65 | 0.54 | **0.58** | 0.68 | **0.66** |
+| world intensity alone | 0.50 | 0.11 | 0.54 | 0.02 | 0.42 | 0.50 | 0.55 |
+
+The intensity improves timing from 1950. But it reads 2008 as low risk: it
+learned that risk persists after the 1980s-90s emerging-market waves, not
+that it builds in the calm.
+
+## Step 2: the stabilizing loops
+
+**Proxies from JST:**
+- the real rate (financial repression);
+- non-core bank funding;
+- loans to deposits;
+- a peg;
+- the short rate (room to cut);
+- public debt.
+
+**Direct measures:**
+- Chinn-Ito capital account openness (from 1970);
+- the Reinhart-Rogoff gold standard flag.
+
+| crisis, inputs | 1919-38 | 1950-72 | 1973-99 | 2000-20 | from 1950 | within | timing |
+|---|---|---|---|---|---|---|---|
+| JST stabilizer proxies | 0.64 | 0.52 | 0.64 | 0.31 | 0.46 | 0.43 | 0.46 |
+| openness, gold | 0.24 | 0.02 | 0.40 | 0.08 | 0.19 | 0.53 | 0.07 |
+| credit + scales + intensity + openness, gold | 0.57 | 0.34 | 0.69 | 0.32 | 0.48 | 0.63 | 0.50 |
+
+**This fails.** The proxies change meaning between eras. Negative real
+rates meant repression under capital controls in 1950-72 and cheap fuel for
+credit in the 2000s. Openness and gold, nearly the same across countries in
+any year, invert.
+
+## What steps 1 and 2 show
+
+Each input that moves with time but is nearly the same across countries
+inverts when fitted in real time:
+- crisis memory;
+- world kernels;
+- regime flags;
+- capital account openness.
+
+Each takes its sign from the one or two regime switches seen before the
+year it predicts. Inputs that rank countries within a year (credit,
+displacement) carry from era to era.
+
+**The timing of crises is limited by the number of global episodes**,
+about a dozen in two centuries, not by the number of dimensions. Learning
+when needs more episodes. The many small events at shorter timescales can
+supply them, if the dynamics are similar across scales: learn the shape
+there and rescale it to the large ones.

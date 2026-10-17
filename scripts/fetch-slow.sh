@@ -6,7 +6,7 @@
 # Idempotent: existing files are skipped, so it can be re-run to resume;
 # FORCE=1 refetches.
 #
-#   scripts/fetch-slow.sh [fred|worldbank|pwt|jst|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
+#   scripts/fetch-slow.sh [fred|worldbank|pwt|jst|crises|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -195,7 +195,16 @@ fetch_jst() {
   uv run --no-project --with pandas python -I -c "import pandas as pd, sys; pd.read_stata(sys.argv[1]).to_csv(sys.argv[2], index=False)" "$d/JSTdatasetR6.dta" "$d/jst.csv"
 }
 
-ALL=(fred worldbank pwt jst bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
+# --- Reinhart-Rogoff crisis chronology (HBS BFFS, 70 countries, 1800-2016) and Chinn-Ito
+# capital account openness (1970-), for the crisis process and the regime (docs/INVARIANTS.md)
+fetch_crises() {
+  get "https://www.hbs.edu/behavioral-finance-and-financial-stability/Documents/ChartData/MapCharts/20160923_global_crisis_data.xlsx" "$RAW/rr/global_crisis_data.xlsx"
+  uv run --no-project --with pandas --with openpyxl python -I scripts/rr-crises.py "$RAW/rr/global_crisis_data.xlsx" "$RAW/rr/onsets.csv"
+  get "https://web.pdx.edu/~ito/kaopen_2023.dta" "$RAW/kaopen/kaopen_2023.dta"
+  uv run --no-project --with pandas python -I -c "import pandas as pd, sys; pd.read_stata(sys.argv[1]).to_csv(sys.argv[2], index=False)" "$RAW/kaopen/kaopen_2023.dta" "$RAW/kaopen/kaopen.csv"
+}
+
+ALL=(fred worldbank pwt jst crises bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
 case "${1:-all}" in
   all) for s in "${ALL[@]}"; do "fetch_$s"; done ;;
   *) "fetch_$1" ;;

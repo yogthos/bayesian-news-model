@@ -46,3 +46,12 @@
       (when (and (>= (count s) 3) (>= (count l) 6))
         (let [vs (sd s) vl (sd l)]
           (when (and (> vs 1e-12) (> vl 1e-12)) (* 2.0 (Math/log (/ vs vl)))))))))
+
+(defn kernel
+  "Self-exciting memory of past events at time t: the sum of the weights of
+  events up to `through`, each decayed by exp(-age/tau). Several taus give
+  a kernel whose shape a hazard can learn: a short one for contagion while
+  a wave spreads, long ones for the memory that protects and then fades."
+  [events t tau {:keys [through]}]
+  (reduce-kv (fn [acc s w] (if (<= s through) (+ acc (* w (Math/exp (/ (- s t) tau)))) acc))
+             0.0 events))
