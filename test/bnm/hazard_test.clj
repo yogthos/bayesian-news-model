@@ -30,3 +30,22 @@
     (testing "recall when flagging the top quarter of each period"
       (is (= 1.0 (hz/recall-at-budget (map vector (repeat 0) good ys) 0.25)))
       (is (= 0.0 (hz/recall-at-budget (map vector (repeat 0) (reverse good) ys) 0.25))))))
+
+(deftest stays-finite-on-rare-separable-events
+  ;; few positives, many inputs on large scales, one that separates the
+  ;; positives: the fit must not run away, even from a bad start
+  (let [g (m/rng 4)
+        rows (vec (for [i (range 3000)]
+                    (let [y (< i 30)
+                          xs (concat [1.0 (if y 3.0 0.0)]
+                                     (for [_ (range 60)] (* 50.0 (m/normal! g))))]
+                      {:x (double-array xs) :y y :w (if y 1.0 6.7)})))
+        cold (hz/fit rows 62 {:prior 2.0})
+        ;; warm-started far from the answer, as a yearly refit can be
+        warm (hz/fit rows 62 {:prior 2.0 :start (double-array 62 3.0)})
+        ps (map #(hz/predict warm (:x %)) rows)]
+    (is (every? #(not (Double/isNaN %)) warm))
+    (is (every? #(<= 0.0 % 1.0) ps))
+    (is (> (hz/auc ps (map :y rows)) 0.9))
+    (is (< (Math/abs (- (hz/predict cold (:x (rows 0))) (hz/predict warm (:x (rows 0))))) 1e-3)
+        "a bad start ends where a cold one does")))

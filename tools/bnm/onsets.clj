@@ -123,22 +123,22 @@
        (fn [out model]
          (let [idx (sets model)
                k (count idx)]
-           (loop [[y & more] (filter #(>= % (+ 10 (quot (:q (first prepared)) 4))) years)
+           (loop [[yr & more] (filter #(>= % (+ 10 (quot (:q (first prepared)) 4))) years)
                   beta nil
                   preds []]
-             (if-not y
+             (if-not yr
                (assoc out model preds)
-               (let [q0 (* 4 y)
+               (let [q0 (* 4 yr)
                      known (filter #(<= (+ (:q %) (second window)) q0) prepared)
                      train (for [{:keys [unit q y full]} known
                                  :when (or y (keep-negative? unit q))]
                              {:x (pick full idx) :y y
                               :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))})
                      beta (if (some :y train)
-                            (hz/fit train k {:prior 2.0 :start beta :iterations (if beta 2 8)})
+                            (hz/fit train k {:prior 2.0 :start beta})
                             beta)
                      scored (for [{:keys [unit q y full]} prepared
-                                  :when (and beta (= (quot q 4) y) (>= (quot q 4) score-from))]
+                                  :when (and beta (= (quot q 4) yr) (>= yr score-from))]
                               [q (hz/predict beta (pick full idx)) y unit])]
                  (recur more beta (into preds scored)))))))
        {} model-order))))

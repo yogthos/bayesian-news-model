@@ -20,13 +20,13 @@ into `data/raw/slow/<source>/`.
 | debt and external | government and external debt, current account, FDI, remittances, reserves | WDI (a) |
 | energy | oil, gas and coal prices; production, consumption and stocks of oil and gas by country; energy mix, import dependence | FRED (m), JODI (m), OWID (a), WDI (a) |
 | food and agriculture | food, grain and fertilizer prices; food CPI by country; crop production and yields; undernourishment | FRED (m), FAOSTAT (m/a), WDI (a) |
-| trade, logistics, supply chains | supply chain pressure, freight, import and export prices, trade openness and structure | NY Fed GSCPI (m), FRED (m), WDI (a) |
+| trade, logistics, supply chains | freight, rail carloads, import and export prices, trade balance, openness and structure (the NY Fed's GSCPI is a legacy .xls, not read yet) | FRED (m), WDI (a) |
 | technology and science | research output by field (AI, semiconductors, batteries, solar, genome editing, vaccines, quantum, robotics), patents, R&D, internet and mobile, high-tech exports, semiconductor production | OpenAlex (a), WDI (a), FRED (m) |
 | climate | global temperature anomaly, ENSO, temperature and precipitation by country, emissions, disaster-affected population | GISTEMP (m), NOAA ONI (m), CRU TS via World Bank (m), OWID (a), WDI (a) |
 | people and state | population, age structure, urbanization, infant mortality, inequality, military spending, tax take | WDI (a) |
 | uncertainty | economic policy uncertainty, global and by country | Baker, Bloom & Davis (m) |
-| politics | the event model's channels, by country | this model (w) |
-| ground truth | conflict onsets, European financial crises (more to add: coups, banking crises, protest waves) | UCDP (a), ESRB (q) |
+| politics | the event channels per country, per 1000 events reported that month (`scripts/politics-monthly.py`) | GDELT bins (m) |
+| ground truth | conflict and war onsets, European systemic crises; and, defined from the data, market crashes (30% below the 24-month high) and protest and violence surges (three times the 36-month mean) | UCDP (a), ESRB (q), the normalizer |
 
 **Limitations.**
 - Most macro data are revised, and free real-time vintages exist only for some
@@ -40,7 +40,9 @@ into `data/raw/slow/<source>/`.
 
 ## Normalized form
 
-`scripts/slow-normalize.py` turns the raw files into one long table,
+`scripts/politics-monthly.py` first sums the weekly event bins into monthly
+counts per country. `scripts/slow-normalize.py` then turns the raw files into
+one long table,
 `data/slow/series.tsv`:
 
     unit  variable  freq  period_end  available  value
@@ -53,8 +55,10 @@ into `data/raw/slow/<source>/`.
   lag. Daily and market data: 0. Monthly: 1 month. Quarterly: 3 months
   (BIS: 4). Annual: 6 months (WDI and OWID: 9).
 
-A variable's transform (log for positive levels, identity for rates, shares,
-gaps and anomalies) is in `resources/slow-variables.edn`, with its domain.
+Each variable's domain and transform (log for positive levels, identity for
+rates, shares, gaps and anomalies) are in `data/slow/variables.tsv`, written
+by the normalizer. Catalogue and mechanical events are in
+`data/slow/events.tsv`.
 
 ## Model
 
@@ -87,7 +91,14 @@ event model.
    The estimates are conjugate Normal-inverse-Gamma with discounting:
    recursive least squares with forgetting, as in West & Harrison. The prior
    pools across countries per variable, with a shrinkage that grows with
-   distance from the country's own lags (Minnesota). The coefficients are the
+   distance from the country's own lags (Minnesota).
+
+   A regression on the series' own features runs beside it. The two are
+   averaged by their discounted predictive records (dynamic model averaging:
+   Raftery, Kárný & Ettler 2010). Other domains get weight where they have
+   been helping that variable, and none where they haven't.
+
+   The full regression's coefficients are the
    influence graph across domains. They can be read like the event model's
    drivers ("what moves Egypt's food prices"), shown sparsified while the
    forecast uses all of them.
