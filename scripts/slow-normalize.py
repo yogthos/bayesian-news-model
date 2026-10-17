@@ -719,6 +719,79 @@ def esrb():
                 EVENTS.append(("banking_crisis", iso, r[2][:7] + "-01", "ESRB systemic crisis"))
 
 
+def coups():
+    """Cline Center Coup d'Etat Project v2.2.2 (data/raw/slow/coups/Coup-data-2.2.2.csv,
+    downloaded by hand: the Illinois Data Bank refuses scripts): realized and
+    attempted coups as onsets of the kind "coup"; conspiracies are left out."""
+    path = os.path.join(RAW, "coups", "Coup-data-2.2.2.csv")
+    if not os.path.exists(path):
+        return
+    rows = list(csv.DictReader(open(path, encoding="utf-8")))
+    last = None
+    for r in rows:
+        if r["event_type"] not in ("coup", "attempted coup"):
+            continue
+        iso = iso3_of_name(r["country"])
+        y, m = int(r["year"]), int(r["month"]) if r["month"].isdigit() and 1 <= int(r["month"]) <= 12 else 7
+        if iso:
+            EVENTS.append(("coup", iso, "%04d-%02d-01" % (y, m), "%s %s" % (r["event_type"], r["coup_id"])))
+        last = max(last or "", "%04d-%02d" % (y, m))
+    if last:
+        COVERAGE["coup"] = last
+
+
+def laeven_valencia():
+    """Laeven & Valencia (2026) systemic banking crises 1970-2025 (IMF WP/26/94,
+    Table A1 transcribed, scripts/lv-crises.py): start years as banking crises
+    from mid-year, borderline episodes left out. Where the ESRB already dates a
+    crisis for the country within two years, its monthly date stands."""
+    path = os.path.join(RAW, "lv", "lv2026.csv")
+    if not os.path.exists(path):
+        return
+    esrb_years = defaultdict(set)
+    for kind, u, d, _ in EVENTS:
+        if kind == "banking_crisis":
+            esrb_years[u].add(int(d[:4]))
+    for r in csv.DictReader(open(path)):
+        y = int(r["start"])
+        if r["borderline"] == "1" or any(abs(y - e) <= 2 for e in esrb_years[r["iso"]]):
+            continue
+        EVENTS.append(("banking_crisis", r["iso"], "%04d-07-01" % y, "Laeven-Valencia systemic crisis"))
+    COVERAGE["banking_crisis"] = max(COVERAGE.get("banking_crisis", ""), "2025-12")
+
+
+def disasters():
+    """EM-DAT natural disasters by country and year (2000-), from the country
+    profiles OCHA publishes on HDX (data/raw/slow/disasters/emdat-country-profiles.xlsx):
+    events, people affected and deaths summed over types, known three months
+    after the year."""
+    path = os.path.join(RAW, "disasters", "emdat-country-profiles.xlsx")
+    if not os.path.exists(path):
+        return
+    rows = next(iter(xlsx(path).values()))
+    header = rows[0]
+    col = {h: i for i, h in enumerate(header)}
+    tot = defaultdict(lambda: [0.0, 0.0, 0.0])
+    for r in rows[2:]:
+        if not r or len(r) <= col["Total Deaths"] or r[col["Disaster Group"]] != "Natural":
+            continue
+        y, iso = num(r[col["Year"]]), r[col["ISO"]]
+        if y is None or iso not in ISO3:
+            continue
+        t = tot[(iso, int(y))]
+        t[0] += num(r[col["Total Events"]]) or 0.0
+        t[1] += num(r[col["Total Affected"]]) or 0.0
+        t[2] += num(r[col["Total Deaths"]]) or 0.0
+    for (iso, y), (ev, aff, dead) in tot.items():
+        pend = period_end("a", str(y))
+        emit(iso, "climate/disaster_events", "a", pend, 3, ev)
+        emit(iso, "climate/disaster_affected", "a", pend, 3, aff)
+        emit(iso, "climate/disaster_deaths", "a", pend, 3, dead)
+    var("climate/disaster_events", "log1p", "a", "EM-DAT via HDX", "natural disasters recorded in the year")
+    var("climate/disaster_affected", "log1p", "a", "EM-DAT via HDX", "people affected by natural disasters")
+    var("climate/disaster_deaths", "log1p", "a", "EM-DAT via HDX", "deaths in natural disasters")
+
+
 def mechanical(dedup):
     """Events defined from the data, not chosen after the fact: a market crash when a
     country's share prices fall 30% below their high of the 24 months before; a protest
@@ -758,7 +831,7 @@ def mechanical(dedup):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    steps = [fred, worldbank, pwt, shocks, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb]
+    steps = [fred, worldbank, pwt, shocks, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb, laeven_valencia, coups, disasters]
     for step in steps:
         n0, e0 = len(ROWS), len(EVENTS)
         step()

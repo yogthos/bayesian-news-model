@@ -6,7 +6,7 @@
 # Idempotent: existing files are skipped, so it can be re-run to resume;
 # FORCE=1 refetches.
 #
-#   scripts/fetch-slow.sh [fred|worldbank|pwt|jst|crises|shocks|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
+#   scripts/fetch-slow.sh [fred|worldbank|pwt|jst|crises|shocks|events|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -213,7 +213,16 @@ fetch_shocks() {
   get "https://fred.stlouisfed.org/graph/fredgraph.csv?id=WTISPLC" "$RAW/market/WTISPLC.csv"
 }
 
-ALL=(fred worldbank pwt jst crises shocks bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
+# --- coups, Laeven-Valencia banking crises, natural disasters (docs/SLOW-LAYER.md) -----------
+# The Cline Center coup data (databank.illinois.edu, IDB-7095878) refuses scripts: download
+# "Coup Data 2.2.2.csv" by hand into $RAW/coups/Coup-data-2.2.2.csv. Laeven & Valencia's
+# Table A1 (IMF WP/26/94) is transcribed in scripts/curated/. EM-DAT country profiles come from HDX.
+fetch_events() {
+  python3 scripts/lv-crises.py scripts/curated/laeven-valencia-2026-table-a1.csv "$RAW/lv/lv2026.csv"
+  get "https://data.humdata.org/dataset/74163686-a029-4e27-8fbf-c5bfcd13f953/resource/c5ce40d6-07b1-4f36-955a-d6196436ff6b/download/emdat-country-profiles_2026_10_14.xlsx" "$RAW/disasters/emdat-country-profiles.xlsx"
+}
+
+ALL=(fred worldbank pwt jst crises shocks events bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
 case "${1:-all}" in
   all) for s in "${ALL[@]}"; do "fetch_$s"; done ;;
   *) "fetch_$1" ;;
