@@ -860,3 +860,25 @@ upper tail. Two recalibrations were tried against the symmetric widening
   (`:spread-mode :symmetric`).
 - The thin upper tail looks like it needs heavier-tailed count draws in the
   model itself, not a stretch applied after them.
+
+## The event model with everything adopted (`data/runs/final-1`)
+
+**What's in it:** the local-level baseline, bottom-up country forecasts,
+and the symmetric spread. Country totals 2008-09, against the run before
+these changes (`data/runs/pit-check`):
+
+| channel | 80% coverage | PIT top tenth | CRPS | skill vs persistence |
+|---|---|---|---|---|
+| coercion | 0.74 → 0.79 | 1.2 → 1.1 | 0.114 → 0.113 | +4.6% → +5.9% |
+| protest | 0.82 → 0.85 | 1.1 → 1.0 | 0.076 → 0.075 | +8.7% → +8.5% |
+| verbal conflict | 0.76 → 0.79 | 1.1 → 1.0 | 0.129 → 0.128 | +1.5% → +3.7% |
+| violence | 0.74 → 0.78 | 1.3 → 1.1 | 0.125 → 0.126 | +2.3% → +1.2% |
+
+Escalation AUC: protest 0.831 to 0.838, violence 0.758 to 0.754.
+
+**What fixed the tail.** Summing the children (whose draws already carry
+their own tails) fixed what the skewed recalibrations did not.
+
+**Level noise** (`:level-noise` 0.15, `data/runs/noise-1`) adds little on
+top (violence CRPS 0.124, coercion 0.114, a flat PIT either way) and stays
+off.
