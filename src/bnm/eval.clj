@@ -168,7 +168,7 @@
           :let [series (mapv #(aget ^doubles % c) past)
                 b (peek series)
                 st (stratum (reduce max series) h)
-                xs (cal/widen-skewed (cal/spread-factors (:spread fc) [level ch st]) (sample-totals fc i c))
+                xs (cal/widen (cal/spread-factor (:spread fc) [level ch st]) (sample-totals fc i c))
                 n (alength xs)
                 a (aget act c)
                 p (/ (count (filter #(escalated? % b h) xs)) (double n))

@@ -141,7 +141,7 @@
                  raw (double-array (for [s (range sims)] (model/total fc i s c)))
                  _ (java.util.Arrays/sort raw)
                  {:keys [last stratum p-clim p-hist]} (track/baseline tr id c horizon recent)
-                 xs (vec (cal/widen-skewed (cal/spread-factors (:spread m) [(geo/kind id) ch stratum]) raw))
+                 xs (vec (cal/widen (cal/spread-factor (:spread m) [(geo/kind id) ch stratum]) raw))
                  mean (/ (reduce + xs) sims)]
            :when (>= (max recent mean) min-rate)
            :let [p (/ (count (filter #(eval/escalated? % last horizon) xs)) (double sims))]]

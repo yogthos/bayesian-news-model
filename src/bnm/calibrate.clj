@@ -193,7 +193,11 @@
     out))
 
 (defn widen-skewed
-  "The sorted sample `xs` (a double array) recalibrated by `spread-factors`:
+  "Not used by forecasts: measured on 2008-09 (data/runs/pit-skew) it raised
+  CRPS and lowered coverage against the symmetric `widen`, the median shift
+  costing more than the skew gained (docs/INVARIANTS.md).
+
+  The sorted sample `xs` (a double array) recalibrated by `spread-factors`:
   in log1p units, each side of the median stretched by its own factor and
   the median moved by the shift, as a new sorted array floored at zero. The
   mean moves with it: the shift and the skew are what the errors asked for."
