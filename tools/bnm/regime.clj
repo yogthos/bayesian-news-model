@@ -31,7 +31,9 @@
 (def profit-squeeze
   "A tight labour market matters through labour's share (Weisskopf 1979;
   Goodwin 1967): tightening and payroll growth times the wage share's
-  deviation, and rising unemployment times the profit rate's."
+  deviation, and rising unemployment times the profit rate's. Hand-written
+  regime terms: they did not replicate on UK data (scripts/uk-regime.py) and
+  are not used by the model; kept to reproduce the failed test."
   [:tightening-x-wage :payrolls-x-wage :unemployment-x-profit :polecon-present])
 
 (defn- era-auc [rows k lo hi]

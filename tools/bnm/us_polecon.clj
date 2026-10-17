@@ -1,5 +1,11 @@
 (ns bnm.us-polecon
-  "US political economy inputs for the drawdown hazard (docs/REGIMES.md),
+  "A FAILED TEST, kept for the record: these regime terms are written by
+  hand, were chosen after seeing the US era table, and do not replicate on
+  UK data (scripts/uk-regime.py, docs/REGIMES.md). Regimes must emerge from
+  the data; the drawdown hazard uses none of these interaction terms (see
+  docs/INVARIANTS.md for the inputs it uses).
+
+  US political economy inputs for the drawdown hazard (docs/REGIMES.md),
   from BEA annual accounts on FRED (1929-) and monthly labour series:
 
     wage share     compensation of employees / national income
