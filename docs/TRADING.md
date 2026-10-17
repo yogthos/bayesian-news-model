@@ -206,3 +206,48 @@ returns on their indices. No free source was found.
 **What the evidence does not support**
 - Using either one as a timing or selection signal that beats the simple
   rules (trend-following, momentum) after costs.
+
+## Where onsets happen: emerging and frontier markets (`scripts/frontier-risk.py`)
+
+**Data.** The World Bank's S&P equity index returns: annual, in dollars,
+84 markets including frontier ones, 1990 on. The signal is each country's
+probability of any political onset at the year's last quarter; the target
+is the next year's return.
+
+| non-OECD markets, 2008 on | rank IC | t | best minus worst third | 20% falls: riskiest / safest third |
+|---|---|---|---|---|
+| political risk (pool) | -0.02 | -0.5 | -3.1%/yr | 0.15 / 0.09 |
+| political risk (history) | -0.03 | -0.6 | -2.0%/yr | 0.15 / 0.10 |
+| momentum | +0.04 | +0.7 | +0.3%/yr | |
+
+**What it shows**
+- Political risk does mark tail risk: the riskiest third falls 20% in a
+  year more often.
+- The riskiest third also earns slightly more, so the risk is priced (the
+  political risk premium of Bekaert et al.). No return predictability is
+  left to trade.
+
+## Protection (`scripts/protection-value.py`)
+
+**Setup.** From 1990, a one-month put 5% out of the money on the US market,
+priced by Black-Scholes at the month's VIX (and at VIX + 3 points for
+skew), bought by fixed rules on the drawdown hazard's probability (20%
+within 12 months).
+
+| rule (no skew premium) | annual | Sharpe | max drawdown | premium paid / payoff |
+|---|---|---|---|---|
+| never | 11.3% | 0.61 | 50% | - |
+| always | 8.1% | 0.46 | 46% | 249% / 128% |
+| model above 1.5 × base | 11.1% | 0.62 | 45% | 69% / 57% |
+| model above 2 × base | 11.0% | 0.60 | 47% | 39% / 28% |
+| VIX below its running median | 10.5% | 0.57 | 50% | 49% / 19% |
+
+**What it shows**
+- Puts carry the variance risk premium: hedging always costs three points
+  a year.
+- Model-timed puts nearly pay for themselves and cut the maximum drawdown a
+  little. With the skew premium they lose slightly.
+- The model's high-risk months are when protection is already dear: the
+  risk is priced.
+- Cutting exposure on the model's probability (the hedge by probability,
+  Sharpe 0.68-0.82 held out) is worth more than buying options with it.

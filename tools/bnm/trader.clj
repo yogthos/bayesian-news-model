@@ -357,6 +357,9 @@
                              (fn [t] (- 1.0 (min 1.0 (max 0.0 (/ (- (p-at t 0.0) b) (* (- k 1.0) b))))))))
             ks [1.5 2.0 3.0 4.0 6.0]
             k-scaled (apply max-key #(:sharpe (strat tune-ts (scaled %))) ks)]
+        ;; the out-of-sample probabilities by month, for scripts outside Jolt (protection-value.py)
+        (spit (str out-dir "/preds-" (str/replace label #"[^0-9a-z]+" "-") ".tsv")
+              (str/join (for [[t p y] preds] (str t "\t" p "\t" (if (nil? y) "" (if y 1 0)) "\n"))))
         (say)
         (say (format "%s  (prior %.0f, discount %.2f, threshold %.2f, with the 10-month rule %.2f)"
                      label (:prior best) (:discount best) tau tau-both))
