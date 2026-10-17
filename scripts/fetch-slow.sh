@@ -6,7 +6,7 @@
 # Idempotent: existing files are skipped, so it can be re-run to resume;
 # FORCE=1 refetches.
 #
-#   scripts/fetch-slow.sh [fred|worldbank|pwt|jst|crises|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
+#   scripts/fetch-slow.sh [fred|worldbank|pwt|jst|crises|shocks|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -204,7 +204,16 @@ fetch_crises() {
   uv run --no-project --with pandas python -I -c "import pandas as pd, sys; pd.read_stata(sys.argv[1]).to_csv(sys.argv[2], index=False)" "$RAW/kaopen/kaopen_2023.dta" "$RAW/kaopen/kaopen.csv"
 }
 
-ALL=(fred worldbank pwt jst crises bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
+# --- world shock series: NY Fed GSCPI and Caldara-Iacoviello geopolitical risk (both .xls) ---
+fetch_shocks() {
+  get "https://www.newyorkfed.org/medialibrary/research/interactives/gscpi/downloads/gscpi_data.xlsx" "$RAW/gscpi/gscpi_data.xlsx"
+  uv run --no-project --with pandas --with xlrd python -I -c "import pandas as pd, sys; d = pd.read_excel(sys.argv[1], sheet_name='GSCPI Monthly Data', engine='xlrd')[['Date','GSCPI']].dropna(); d['Date'] = pd.to_datetime(d.Date, format='%d-%b-%Y').dt.strftime('%Y-%m-%d'); d.to_csv(sys.argv[2], index=False)" "$RAW/gscpi/gscpi_data.xlsx" "$RAW/gscpi/gscpi.csv"
+  get "https://www.matteoiacoviello.com/gpr_files/data_gpr_export.xls" "$RAW/gpr/data_gpr_export.xls"
+  uv run --no-project --with pandas --with xlrd python -I -c "import pandas as pd, sys; pd.read_excel(sys.argv[1])[['month','GPRH','GPRHT','GPRHA']].to_csv(sys.argv[2], index=False)" "$RAW/gpr/data_gpr_export.xls" "$RAW/gpr/gpr.csv"
+  get "https://fred.stlouisfed.org/graph/fredgraph.csv?id=WTISPLC" "$RAW/market/WTISPLC.csv"
+}
+
+ALL=(fred worldbank pwt jst crises shocks bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
 case "${1:-all}" in
   all) for s in "${ALL[@]}"; do "fetch_$s"; done ;;
   *) "fetch_$1" ;;

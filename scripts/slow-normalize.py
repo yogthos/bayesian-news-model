@@ -509,6 +509,27 @@ def xlsx(path):
     return out
 
 
+def shocks():
+    """World shock series (docs/INVARIANTS.md): the NY Fed's Global Supply Chain
+    Pressure Index (monthly, 1998-) and Caldara & Iacoviello's historical
+    geopolitical risk index (monthly, 1900-), from the CSVs fetch-slow.sh
+    converts them to."""
+    for path, name, col, tr, src, desc in [
+            (os.path.join(RAW, "gscpi", "gscpi.csv"), "trade/supply_pressure", "GSCPI", "id",
+             "NY Fed GSCPI", "global supply chain pressure, standard deviations from average"),
+            (os.path.join(RAW, "gpr", "gpr.csv"), "politics/geopolitical_risk", "GPRH", "log",
+             "Caldara & Iacoviello GPRH", "historical geopolitical risk index (newspapers, 1900-)")]:
+        if not os.path.exists(path):
+            continue
+        for r in csv.DictReader(open(path)):
+            d = r.get("Date") or r.get("month")
+            if not d or num(r.get(col)) is None:
+                continue
+            y, m = int(d[:4]), int(d[5:7])
+            emit("world", name, "m", month_end(y, m), 1, num(r[col]))
+        var(name, tr, "m", src, desc)
+
+
 def epu():
     path = os.path.join(RAW, "epu", "countries.xlsx")
     if not os.path.exists(path):
@@ -737,7 +758,7 @@ def mechanical(dedup):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    steps = [fred, worldbank, pwt, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb]
+    steps = [fred, worldbank, pwt, shocks, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb]
     for step in steps:
         n0, e0 = len(ROWS), len(EVENTS)
         step()
