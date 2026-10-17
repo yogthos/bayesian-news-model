@@ -650,3 +650,22 @@ used.
 
 Reading for August 2026, recalibrated: P(20% fall within 12 months) =
 0.107, against a base rate of 0.08 (raw 0.189).
+
+**PIT check** (`data/runs/pit-check`, 2008-09).
+
+Country rows, PIT in tenths, times ten:
+
+| channel | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| violence | 1.1 | 1.0 | 1.1 | 1.0 | 1.0 | 0.9 | 0.9 | 0.8 | 0.6 | 1.3 |
+| protest | 0.9 | 1.1 | 1.3 | 1.2 | 1.1 | 1.0 | 0.9 | 0.7 | 0.6 | 1.1 |
+
+**Reading**
+- Outcomes fall too often in the lower half and too rarely in tenths 8-9:
+  the central forecast is slightly high.
+- The top tenth has excess mass: the upper tail is too thin.
+- 80% coverage is 0.74-0.82.
+
+The spread recalibration widens symmetrically in log space. A skewed
+widening (more upper tail) and a small downward shift of the median are
+what the histogram asks for.
