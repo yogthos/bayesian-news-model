@@ -281,3 +281,36 @@
         (if (or (>= it 50) (< (+ (Math/abs da) (Math/abs db)) 1e-9))
           (fn [p] (/ 1.0 (+ 1.0 (Math/exp (- (+ a (* b (logit p))))))))
           (recur (+ a da) (+ b db) (inc it)))))))
+
+;; --- spread from coverage ------------------------------------------------------------------
+;; Learning the factor from log errors around the median feeds back: mean-
+;; preserving widening moves the median, which inflates the errors, which
+;; widen further (v4-q: coverage of the 80% range climbed to 0.96). Learning
+;; it from coverage instead aims straight at calibration: each period's
+;; resolved forecasts, as forecast, cover a share c of outcomes with their
+;; 80% range; the factor moves by z(0.9)/z((1+c)/2), damped, so it settles
+;; where the range covers 80%.
+
+(def coverage-shrink
+  "Pseudo-forecasts at the target coverage each period's evidence is shrunk with."
+  20.0)
+
+(defn coverage-factor
+  "The widening factor for `key` under `cov` (learned by `learn-coverage`)."
+  [cov key]
+  (get-in cov [key :k] 1.0))
+
+(defn learn-coverage
+  "`cov` updated with a period's resolved forecasts (rows with :level,
+  :channel, :stratum, :q10, :q90 and :actual, the quantiles as forecast)."
+  [cov rows]
+  (reduce (fn [cov [key rs]]
+            (let [n (count rs)
+                  inside (count (filter (fn [{:keys [q10 q90 actual]}] (<= q10 actual q90)) rs))
+                  c (/ (+ inside (* 0.8 coverage-shrink)) (+ n coverage-shrink))
+                  c (min 0.99 (max 0.2 c))
+                  step (Math/sqrt (/ 1.2815515655446004 (m/normal-quantile (/ (+ 1.0 c) 2.0))))
+                  k (* (coverage-factor cov key) step)]
+              (assoc-in cov [key :k] (min (second spread-limits) (max (first spread-limits) k)))))
+          cov
+          (group-by (juxt :level :channel :stratum) (filter #(> (:q90 %) (:q10 %)) rows))))

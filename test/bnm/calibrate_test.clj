@@ -103,3 +103,19 @@
         sum #(areduce ^doubles % i t 0.0 (+ t (aget ^doubles % i)))]
     (is (< (Math/abs (- (sum xs) (sum out))) 1e-6) "the mean is kept")
     (is (> (/ (aget out 4) (aget out 2)) (/ (aget xs 4) (aget xs 2))) "the upper side is stretched")))
+
+(deftest spread-learned-from-coverage
+  ;; the factor moves the 80% range toward covering 80% of outcomes, whatever
+  ;; the errors around the median: too wide shrinks, too narrow widens
+  (let [rows (fn [inside n]
+               (for [i (range n)]
+                 {:level :country :channel :violence :stratum :active
+                  :q10 10.0 :q50 20.0 :q90 30.0 :actual (if (< i inside) 20.0 100.0)}))
+        k #(cal/coverage-factor % [:country :violence :active])]
+    (is (= 1.0 (k {})) "an unseen key keeps the forecast")
+    (is (< (k (cal/learn-coverage {} (rows 95 100))) 1.0) "95% covered: narrower")
+    (is (> (k (cal/learn-coverage {} (rows 60 100))) 1.0) "60% covered: wider")
+    (is (< (Math/abs (- 1.0 (k (cal/learn-coverage {} (rows 80 100))))) 0.02) "80% covered: about the same")
+    (testing "it compounds over periods toward the target"
+      (let [s (reduce (fn [s _] (cal/learn-coverage s (rows 95 100))) {} (range 5))]
+        (is (< (k s) (k (cal/learn-coverage {} (rows 95 100)))))))))
