@@ -18,3 +18,5 @@ AGENTS.md
 .claude/
 .agents/
 .beads/
+
+__pycache__/
