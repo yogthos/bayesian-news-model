@@ -185,3 +185,51 @@ What this means for the model, in order:
 4. Parents from their own count model, children as discounted shares of it, or base forecasts at every node reconciled by conditioning.
 5. Isotonic recalibration per channel, kind and stratum; PIT and CRPS reported; the own-last-year empirical distribution as a benchmark.
 6. A separate onset (hurdle) model for quiet nodes.
+
+## Onset hazards: what the literature says to try next
+
+The first onset evaluation (docs/SLOW-LAYER.md) found that a country's own
+history ranks political onsets best (AUC 0.80-0.89), and that adding every
+domain's mean gap, slope and acceleration overfits: probabilities collapse
+to zero, and Brier skill drops below the base rate. The domains do help
+for market crashes and banking crises. The literature agrees on why, and on
+what to do.
+
+- **Specific stocks, not domain averages.** Crises follow particular
+  build-ups:
+  - credit growth together with asset price growth over three years: the
+    "R-zone" raises a three-year crisis probability from about 7% to about
+    40% (Greenwood, Hanson, Shleifer & Sørensen, JF 2022);
+  - credit growth and the yield curve slope, domestic and global, are the
+    strongest predictors over 1870-2016 (Bluwstein et al., JIE 2023);
+  - for crashes, a price run-up over two years, with volatility, turnover
+    and issuance (Greenwood, Shleifer & You, JFE 2019).
+
+  A mean over a domain's series washes these out. The hazard should get a
+  short, named list of inputs per kind of event, and their interactions.
+- **Global factors act through exposure.** Credit growth in the rest of the
+  world, and a low VIX (complacency), raise a country's crisis risk beyond
+  its own credit, more so in open economies (Cesa-Bianchi, Eguren Martin &
+  Thwaites 2017; Bańbuła & Pietrzak). Global drivers are the same for every
+  country in a quarter. As plain inputs they only move the yearly rate,
+  which is how they overfit. They belong in interactions with exposure
+  (openness, import dependence, debt in dollars).
+- **Thresholds and interactions.** Tree ensembles beat logit out of sample,
+  both for crisis warnings (Bluwstein et al.) and for civil war onset
+  (Muchlinski et al., Political Analysis 2016), because risk is
+  non-linear. Food prices matter above a threshold, and mostly in fragile
+  states (NECSI; Anglia Ruskin). The Bayesian equivalents are explicit
+  threshold and interaction terms, or BART.
+- **History gives location; timing needs fast signals.** Structural factors
+  tell where conflict happens but add little to when (Mueller & Rauh, APSR
+  2018). New onsets in peaceful countries, the "hard problem", need fast
+  signals from news. Mueller & Rauh use topic shares; ours is the event
+  model's state. These hard onsets need to be scored separately, because
+  the history model scores well while missing exactly the cases that matter.
+- **Combine by out-of-sample record.** ViEWS weights its constituent models
+  by out-of-sample performance, and the ensemble beats the average member.
+  Weighting hazards by their discounted log scores, as the slow layer's
+  model averaging already does, cannot fall far below the best member.
+- **Shrinkage.** Ridge is stable when many inputs have small effects, but
+  is poorly calibrated on sparse events. The prior should be chosen by log
+  score on a tuning window, and calibration checked on held-out data.
