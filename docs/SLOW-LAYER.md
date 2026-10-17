@@ -191,3 +191,17 @@ AUC with 90% intervals from resampling whole years, from 2008 on:
 - Molchan diagrams carry the same information as the ROC curve here.
 - Matched controls are what the within-quarter AUC (auq) measures:
   countries in the same quarter as their controls.
+
+## Scenarios (`bnm.slow/scenario`)
+
+**What it does.** A shock to any series (in its transformed units) is
+rolled forward month by month through the learned regressions, on a copy of
+the series' state. Each series moves by its full regression's predicted
+change, and global series move with them. The result is the shocked path
+minus the unshocked one, per series of the unit: an impulse response
+carried by the cross-domain coefficients.
+
+**Example:**
+`(scenario mdl {:unit "EGY" :shocks [["world" "energy/oil_brent" 0.3]] :months 12})`
+gives how Egypt's series respond over a year to a 35% rise in oil. In the
+test world, where oil's trend drives food prices, the food-price path rises.

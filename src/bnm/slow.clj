@@ -438,3 +438,69 @@
   [mdl]
   (vec (concat (for [d (:domains mdl) q [:gap-120 :trend-12-36 :accel :present]] {:domain d :feature q})
                (for [g (get-in mdl [:config :globals]) q [:gap-120 :trend-12-36 :accel]] {:global g :feature q}))))
+
+;; --- scenarios --------------------------------------------------------------------------------
+
+(defn- shadow
+  "A copy of the model whose series states can be advanced without touching
+  the model's own (the regressions are shared and only read)."
+  [mdl]
+  (let [series (java.util.ArrayList.)
+        index (java.util.HashMap.)
+        by-unit (java.util.HashMap.)]
+    (doseq [sr (:series mdl)]
+      (let [c (assoc sr :s (aclone ^doubles (:s sr)) :x (aclone ^doubles (:x sr)))]
+        (.add series c)
+        (.put index (skey (:unit c) (:var c)) c)
+        (.add ^java.util.ArrayList (or (.get by-unit (:unit c))
+                                       (let [l (java.util.ArrayList.)] (.put by-unit (:unit c) l) l))
+              c)))
+    (assoc mdl :series series :index index :by-unit by-unit)))
+
+(defn- roll
+  "Advances the unit's series and the globals month by month, each by its full
+  regression's predicted change, after adding `shocks` ([unit var delta] in
+  transformed units) in the first month: {var [values]} for the unit."
+  [mdl unit shocks months]
+  (let [sh (shadow mdl)
+        cfg (:config sh)
+        t0 (long (or (:month sh) 0))
+        rolled (concat (seq (.get ^java.util.HashMap (:by-unit sh) unit))
+                       (keep (fn [[u v]] (.get ^java.util.HashMap (:index sh) (skey u v))) (:globals cfg)))
+        rolled (filterv #(>= (aget ^doubles (:s %) N) 3.0) (distinct rolled))
+        out (atom {})]
+    (dotimes [m months]
+      (let [t (+ t0 m 1)
+            gfeats (global-features sh (dec t))
+            summaries (java.util.HashMap.)
+            ;; every series' predicted change, from the state at the month's start
+            changes (mapv (fn [sr]
+                            (let [u (:unit sr)
+                                  summary (or (.get summaries u) (let [x (unit-summary sh u (dec t))] (.put summaries u x) x))
+                                  x (fill-x! sh sr summary gfeats (dec t))
+                                  y (dot (beta! cfg ((:full sh) (long (:vi sr))) t0) x (:k sh))]
+                              (* y (Math/sqrt (aget ^doubles (:s sr) RY)))))
+                          rolled)]
+        (doseq [[sr dz] (map vector rolled changes)
+                :let [^doubles s (:s sr)
+                      shock (if (zero? m)
+                              (reduce + (for [[u v d] shocks :when (and (= u (:unit sr)) (= v (:var sr)))] d))
+                              0.0)
+                      z (+ (aget s Z) dz shock)]]
+          (update-series! cfg s z (inc (long (aget s P))))
+          (when (= unit (:unit sr))
+            (swap! out update (:var sr) (fnil conj []) z)))))
+    @out))
+
+(defn scenario
+  "What a shock does: the unit's series rolled `months` ahead through the
+  learned regressions with `shocks` ([unit var delta], delta in the
+  variable's transformed units, applied in the first month) minus the same
+  roll without them, as {var [differences by month]}. The cross-domain
+  coefficients are what carry a shock from one domain to another; the model
+  itself is not changed."
+  [mdl {:keys [unit shocks months] :or {months 12}}]
+  (let [base (roll mdl unit [] months)
+        hit (roll mdl unit shocks months)]
+    (into {} (for [[v zs] hit :let [bs (base v)] :when bs]
+               [v (mapv - zs bs)]))))

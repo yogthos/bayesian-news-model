@@ -105,3 +105,15 @@
                         (range 600))
             sk (slow/skill mdl "economy/output")]
         (is (<= (:dma sk) (* 1.05 (min (:own sk) (:full sk)))) (pr-str sk))))))
+
+(deftest scenarios-propagate-a-shock-through-the-drivers
+  ;; oil's trend drives food prices: a sustained rise in oil, rolled forward
+  ;; through the learned regressions, raises a country's food prices
+  (let [mdl (run-world {:globals [["world" "energy/oil"]]} 600 3)
+        resp (slow/scenario mdl {:unit "C1" :shocks [["world" "energy/oil" 0.3]] :months 12})
+        food (get resp "food/prices")]
+    (is (= 12 (count food)))
+    (is (pos? (last food)) (pr-str food))
+    (testing "the model itself is untouched"
+      (let [again (slow/scenario mdl {:unit "C1" :shocks [["world" "energy/oil" 0.3]] :months 12})]
+        (is (= food (get again "food/prices")))))))
