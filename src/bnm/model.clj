@@ -86,6 +86,8 @@
    :level-noise 0.0    ; in a forecast, the log-sd a node's level drifts by over
                        ; 52 bins beyond what its dynamics explain: shocks the
                        ; model has no way to see coming
+   :bottom-up #{:country} ; kinds whose forecast is their children's summed
+                          ; (bnm.reconcile: lower CRPS than their own blend)
    :spread-mode :symmetric ; how forecasts are recalibrated: :symmetric, or :sides
                         ; (each side of the median by its own factor, bnm.calibrate)
    :scale 1000.0})
@@ -780,6 +782,24 @@
                  (when-let [p (and paths (aget paths i))]
                    (record-path! p (+ (* s stride) (* t C)) (aget ys i)))
                  (push-history! (aget hs i) (aget ys i) decays))))))))
+    ;; coherent bottom-up: a node of a kind in :bottom-up forecasts the sum of its
+    ;; children's simulated totals (and paths), which beat its own blend
+    (let [kinds (set (:bottom-up cfg))]
+      (doseq [i (range n)
+              :let [node (nodes i)
+                    ^ints ch (:children node)]
+              :when (and (kinds (geo/kind (:id node))) (pos? (alength ch)))]
+        (let [^doubles t (aget totals i)]
+          (java.util.Arrays/fill t 0.0)
+          (dotimes [j (alength ch)]
+            (let [^doubles tc (aget totals (aget ch j))]
+              (dotimes [x (alength t)] (aset t x (+ (aget t x) (aget tc x)))))))
+        (when-let [^doubles p (and paths (aget paths i)
+                                   (every? #(aget paths %) (seq ch)) (aget paths i))]
+          (java.util.Arrays/fill p 0.0)
+          (dotimes [j (alength ch)]
+            (let [^doubles pc (aget paths (aget ch j))]
+              (dotimes [x (alength p)] (aset p x (+ (aget p x) (aget pc x)))))))))
     (cond-> {:ids (mapv :id nodes) :horizon horizon :sims sims :totals totals}
       paths (assoc :paths paths))))
 

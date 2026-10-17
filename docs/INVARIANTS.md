@@ -792,3 +792,27 @@ the month scored.
   held-out ones (0.83 to 0.80, Brier skill -0.22). Not adopted.
 
 Its record is mostly retrospective, as the literature search found.
+
+## The event model's hierarchy (bnm-enb.11, `bnm.reconcile`)
+
+**Setup.** Saved origins of v3-q, 2008-12 (ten periods, 100 simulations).
+For each country with tracked children:
+- the country's own forecast (its blend of own rate and children);
+- the sum of its children's totals in the same simulation;
+- bottom-up importance sampling (BUIS: the children's draws reweighted by
+  the country's forecast density at their sum; Zambon, Azzimonti & Corani
+  2024).
+
+| CRPS (log1p) | base | bottom-up | BUIS |
+|---|---|---|---|
+| coercion | 0.1257 | **0.1232** | 0.1294 |
+| protest | 0.0782 | **0.0768** | 0.0801 |
+| verbal conflict | 0.1382 | **0.1354** | 0.1426 |
+| violence | 0.1373 | **0.1337** | 0.1406 |
+
+**Result**
+- The children summed beat the country's own forecast in every channel.
+- BUIS is worse at both levels: conditioning on the weaker forecast pulls
+  toward it, and resampling a hundred draws loses their spread.
+- A country's forecast is now its children summed (`:bottom-up #{:country}`
+  in bnm.model), so the two levels agree by construction.

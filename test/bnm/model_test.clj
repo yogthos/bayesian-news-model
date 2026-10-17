@@ -253,3 +253,17 @@
                                 (object-array (map #(:ybar ((:nodes mdl) (aget ^ints (:src node) %))) (range k)))
                                 (:ybar node) k sc)
     (is (< (aget out protest) 0.5) (aget out protest))))
+
+(deftest country-forecasts-are-their-children-summed
+  ;; coherent bottom-up: a country's simulated total is the sum of its
+  ;; children's in the same simulation (bnm.reconcile: lower CRPS than the
+  ;; country's own blend in every channel)
+  (let [mdl (reduce (fn [mdl [t bin]] (first (series/observe-bin! mdl t bin)))
+                    (series/with-routes (model/create (toy-structure)))
+                    (map-indexed vector (simulate-world 30 5)))
+        fc (model/forecast mdl {:horizon 8 :sims 20 :seed 3 :paths? true})
+        i ((:index mdl) "UKR")
+        kids (vec (:children ((:nodes mdl) i)))]
+    (doseq [s (range 20) c (range model/C)]
+      (is (< (Math/abs (- (model/total fc i s c) (reduce + (map #(model/total fc % s c) kids)))) 1e-9))
+      (is (< (Math/abs (- (model/total fc i s c) (model/path-sum fc i s c 0 8))) 1e-9)))))
