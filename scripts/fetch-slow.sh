@@ -6,7 +6,7 @@
 # Idempotent: existing files are skipped, so it can be re-run to resume;
 # FORCE=1 refetches.
 #
-#   scripts/fetch-slow.sh [fred|worldbank|pwt|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
+#   scripts/fetch-slow.sh [fred|worldbank|pwt|jst|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -188,7 +188,14 @@ fetch_pwt() {
   uv run --no-project --with pandas python -I -c "import pandas as pd, sys; d = pd.read_stata(sys.argv[1]); d[['countrycode','year','rgdpna','rnna','labsh','csh_i','irr','pop']].to_csv(sys.argv[2], index=False)" "$d/pwt110.dta" "$d/pwt110.csv"
 }
 
-ALL=(fred worldbank pwt bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
+# --- Jordà-Schularick-Taylor Macrohistory R6 (docs/INVARIANTS.md): 18 countries, 1870-2020 ---
+fetch_jst() {
+  local d="$RAW/jst"
+  get "https://www.macrohistory.net/app/download/9834512469/JSTdatasetR6.dta?t=1763503850" "$d/JSTdatasetR6.dta"
+  uv run --no-project --with pandas python -I -c "import pandas as pd, sys; pd.read_stata(sys.argv[1]).to_csv(sys.argv[2], index=False)" "$d/JSTdatasetR6.dta" "$d/jst.csv"
+}
+
+ALL=(fred worldbank pwt jst bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
 case "${1:-all}" in
   all) for s in "${ALL[@]}"; do "fetch_$s"; done ;;
   *) "fetch_$1" ;;
