@@ -168,3 +168,26 @@ onset of the kind in the previous ten years.
 - **Financial catalogues are too small to judge.** Banking crises (ESRB) and
   market crashes have 38 and about 200 held-out positives, concentrated in
   three or four global episodes. docs/TRADING.md tests market risk properly.
+
+## Uncertainty and policy value of the onset hazards (`data/runs/harness-1`)
+
+AUC with 90% intervals from resampling whole years, from 2008 on:
+
+| kind | history | named | pool | hard: history | hard: named | hard: pool |
+|---|---|---|---|---|---|---|
+| conflict onset | 0.883 [0.864, 0.900] | 0.894 [0.876, 0.908] | 0.898 [0.882, 0.913] | 0.838 [0.795, 0.894] | 0.881 [0.854, 0.913] | 0.887 [0.862, 0.917] |
+| war onset | 0.826 [0.782, 0.893] | 0.870 [0.837, 0.910] | 0.880 [0.849, 0.919] | 0.700 [0.623, 0.833] | 0.794 [0.743, 0.880] | 0.814 [0.760, 0.890] |
+| protest surge | 0.830 [0.768, 0.909] | 0.880 [0.840, 0.926] | 0.885 [0.847, 0.935] | 0.704 [0.624, 0.822] | 0.818 [0.770, 0.880] | 0.829 [0.793, 0.896] |
+| violence surge | 0.799 [0.781, 0.820] | 0.799 [0.774, 0.825] | 0.805 [0.784, 0.828] | 0.767 [0.724, 0.806] | 0.772 [0.730, 0.818] | 0.782 [0.748, 0.819] |
+
+**What the intervals show**
+- With about 17 years to resample, the gains of the named inputs over
+  history on hard onsets are consistent in direction, but their intervals
+  overlap. The ranking itself is solid: every lower bound is above 0.62.
+- Sarlin's relative usefulness is near zero at policy weights up to 0.8
+  (at most 0.09). With events this rare, acting on any threshold rarely
+  beats ignoring the forecast unless missed onsets are weighted far more
+  heavily. The report now prints usefulness at weights 0.9 and 0.95.
+- Molchan diagrams carry the same information as the ROC curve here.
+- Matched controls are what the within-quarter AUC (auq) measures:
+  countries in the same quarter as their controls.
