@@ -64,13 +64,27 @@
       (restructure m)
       m)))
 
+(declare outlook register period-eve?)
+
+(defn- forecast-on-eve
+  "On a period's eve, the model keeping its outlook for the period to score
+  when it is over (`bnm.track`), so live use goes on recalibrating it as
+  training did; otherwise the model as it was."
+  [m]
+  (if (period-eve? m)
+    (register m (outlook m {:horizon (track/period-bins m)
+                            :sims (get-in m [:config :register-sims] 100)
+                            :seed (:bin m)}))
+    m))
+
 (defn- advance
-  "Learns every complete bin before `b`, empty ones included."
+  "Learns every complete bin before `b`, empty ones included, forecasting
+  each period on its eve as it passes it."
   [m b]
   (let [start (if (:bin m)
                 (inc (:bin m))
                 (or (some-> (:pending m) keys seq (->> (apply min))) b))]
-    (reduce learn-bin m (range start b))))
+    (reduce (fn [m bin] (forecast-on-eve (learn-bin m bin))) m (range start b))))
 
 (defn add-events
   "Adds a batch of normalized events from `source`. Returns the model."

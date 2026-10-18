@@ -130,6 +130,11 @@ whether one is under way.
 - A surging node can be forecast at several times its last quarter (Yemen
   and Saudi Arabia, October 2026). Over 2000-26 such forecasts (3x or more)
   came true with a log bias of +0.05, so they are not runaway excitation.
+- In use it keeps learning. Every weekly bin updates its parameters
+  (online EM with forgetting). On each quarter's eve it forecasts the
+  quarter, and when the quarter ends it scores that forecast. The scores
+  recalibrate the escalation probabilities, re-learn the ranges, and add to
+  the climatology and the live record printed with the outlook.
 - After a retrain, delete `data/derived/event-model.edn` so the pipeline
   starts from the new run.
 

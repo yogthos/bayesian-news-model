@@ -2,8 +2,10 @@
   "The event model brought up to date and read: the latest saved model (the
   derived one if the pipeline has run before, else a training run's final
   model, which carries the live scoring state in :track) learns every
-  complete weekly bin after its last one from data/bins/<source>.tsv, is
-  saved back to data/derived/event-model.edn, and its outlook for the next
+  complete weekly bin after its last one from data/bins/<source>.tsv
+  (forecasting each quarter on its eve as it passes it, and scoring that
+  forecast when the quarter ends, which recalibrates its probabilities and
+  ranges), is saved back to data/derived/event-model.edn, and its outlook for the next
   quarter gives the likeliest escalations per channel, by calibrated
   probability, with the climatology and own history beside them.
 
@@ -69,4 +71,14 @@
                        (double (or (:p-clim r) 0.0)) (double (or (:p-hist r) 0.0))
                        (double (or (:expected r) 0.0)) (double (or (:low r) 0.0)) (double (or (:high r) 0.0))
                        (double (or (:last r) 0.0)))))))
+    (let [rec (core/record m)]
+      (say)
+      (if (empty? rec)
+        (say "Live record: no period forecast and scored since training yet (each quarter's is made on its eve).")
+        (do (say "Live record (escalation Brier scores, calibrated / climatology / own history; lower is better):")
+            (doseq [[[kind ch] r] rec :when (= kind :country)]
+              (say (format "  %-16s %d forecasts over %d periods, %d escalations: %.4f / %.4f / %.4f"
+                           (name ch) (:n r) (:periods r) (:positives r)
+                           (double (or (:brier-cal r) 0.0)) (double (or (:brier-clim r) 0.0))
+                           (double (or (:brier-hist r) 0.0))))))))
     (spit outlook-path (str out))))

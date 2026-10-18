@@ -58,16 +58,11 @@
   (let [events (daily-events 7)
         cfg {:period-bins 4 :structure-opts {:min-dyad-volume 5.0 :min-country-volume 5.0}}
         st (bnm.store/memory-store)
-        [mdl registered]
-        (reduce (fn [[mdl n] day]
-                  (let [mdl (bnm/add-events mdl "newsroom" day)]
-                    (if (bnm/period-eve? mdl)
-                      [(bnm/register mdl (bnm/outlook mdl {:horizon 4 :sims 10 :levels #{:country :subregion}})) (inc n)]
-                      [mdl n])))
-                [(bnm/create cfg) 0]
-                (partition-by :date events))]
-    (testing "an outlook is registered on each period's eve"
-      (is (< 5 registered)))
+        mdl (reduce (fn [mdl day] (bnm/add-events mdl "newsroom" day))
+                    (bnm/create cfg) (partition-by :date events))]
+    (testing "an outlook is registered on each period's eve, by the model itself"
+      (is (not (bnm/period-eve? mdl)))
+      (is (< 5 (:periods (get (bnm/record mdl) [:country :violence]) 0))))
     (testing "an outlook that doesn't cover a period exactly isn't"
       (let [o (bnm/outlook mdl {:horizon 3 :sims 5})]
         (is (identical? (:track mdl) (:track (bnm/register mdl o))))))
@@ -98,3 +93,15 @@
         (let [marked (assoc-in saved [:track :forecasts 999] {:rows {}})]
           (bnm/save! st marked)
           (is (contains? (get-in (bnm/load st) [:track :forecasts]) 999)))))))
+
+(deftest catching-up-in-bulk-still-scores-each-period
+  ;; a model brought up to date many bins at once (the pipeline's catch-up)
+  ;; must forecast on each period's eve as it passes it and score those
+  ;; forecasts, or its calibration and ranges never learn from live use
+  (let [events (daily-events 7)
+        cfg {:period-bins 4 :structure-opts {:min-dyad-volume 5.0 :min-country-volume 5.0}}
+        warm (bnm/add-events (bnm/create cfg) "newsroom" (take-while #(neg? (compare (:date %) "20200301")) events))
+        mdl (bnm/add-events warm "newsroom" (drop-while #(neg? (compare (:date %) "20200301")) events))]
+    (is (seq (:calibration mdl)) "the outcomes recalibrated it")
+    (is (seq (:spread mdl)) "and taught it how wide its ranges should be")
+    (is (< 5 (:periods (get (bnm/record mdl) [:country :violence]) 0)))))
