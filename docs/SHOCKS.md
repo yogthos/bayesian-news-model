@@ -142,3 +142,21 @@ stratum, held out from 2008:
 - The event-code mix stocks and shifts as direct covariates lift protest
   surges in quiet countries (AUC 0.55 to 0.60, recall at 10% 0.14 to 0.17,
   log score gain above zero), and hurt violence.
+
+**The event-code mix (step 1)** (`bnm.onsets --groups mix`, scored by
+`bnm.anticipation`). Against the country's own onset history, on the hard
+cases (no onset of the kind in ten years), counting gains whose 90%
+interval over years excludes zero, of 72 (recall at 5% and 10% and
+usefulness, six kinds, two eras); about 4 are expected by chance:
+
+| combination, hard cases | next year | quarters 2-4 | year after |
+|---|---|---|---|
+| with the mix | 16 gains, 2 losses | 12, 2 | 14, 0 |
+| the same run without the mix members | 6, 4 | 10, 2 | 10, 4 |
+
+Gains on hard cases a year ahead: conflict onsets 2015-26 (recall at 5%
++0.12 to +0.14), protest surges 2003-14 (+0.13 to +0.16), coups 2015-26
+(+0.14 to +0.16), violence surges 2003-14 (recall at 10% +0.08); matched
+concordance 0.65-0.80. Not in both eras for any kind, and banking crises
+lose (history stays their model of record). The mix models are now the
+onsets of record (`scripts/readings.sh --onsets`).

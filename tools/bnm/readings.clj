@@ -48,13 +48,15 @@
   "{kind {:q latest quarter :model :top [[unit p] ...] :cusum ...}} from an
   onsets run's preds.tsv, window w1. The model is `model` when given, else
   per kind the one with the best log score over `tune-years`
-  (bnm.hazard/pick-model): the stack, the log-linear combination refit each
-  year, lost to the country's own history for banking crises there and after."
+  (bnm.hazard/pick-model), never a placebo: the stack, the log-linear
+  combination refit each year, lost to the country's own history for banking
+  crises there and after."
   [path n model]
   (let [rows (with-open [r (io/reader path)]
                (into [] (keep (fn [line]
                                 (let [[kind win m q unit p y] (str/split line #"\t")]
-                                  (when (and (= win "w1") (not= m "base") (or (nil? model) (= m model)))
+                                  (when (and (= win "w1") (not= m "base") (not (str/ends-with? m "-placebo"))
+                                             (or (nil? model) (= m model)))
                                     [kind m (parse-long q) unit (parse-double p) y]))))
                      (line-seq r)))]
     (into {} (for [[kind by-kind] (group-by first rows)

@@ -38,9 +38,12 @@ months behind its usual lag means its source has stopped updating.
   against one-year volatility, and the drawdown from the 52-week high, from
   FRED's daily S&P 500 (to the day before).
 
-**Onsets** (`bnm.onsets`, stack model): the countries likeliest to see a
-conflict onset, war onset, protest or violence surge, coup or banking
-crisis within a year, from the latest quarter.
+**Onsets** (`bnm.onsets`): the countries likeliest to see a conflict
+onset, war onset, protest or violence surge, coup or banking crisis within
+a year, from the latest quarter. Per kind the model with the best log score
+on 2000-07; the members are own history, the literature's named stocks and
+the event-code mix (what kinds of events are reported, docs/SHOCKS.md),
+which is what lifts the hard cases.
 
 **Event model** (`bnm.live`): the latest saved model learns every complete
 weekly bin since its last, and its outlook gives the likeliest country
