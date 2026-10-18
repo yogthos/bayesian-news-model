@@ -216,3 +216,67 @@ within each quarter, on hard cases (no onset in ten years):
 - Protest and violence surges: nothing beyond the placebo. Coups were not
   tried, as the literature found no coup contagion.
 So learned ties carry real signal for conflict onsets in quiet countries.
+
+**Before the review (October 2026), now void.** Regime (V-Dem) gained on
+hard cases in 2003-14 only; exchange-rate regimes on coups only; commodity
+terms of trade and UN-vote ties nothing. These ran on the labels the review
+below found biased, and are rerun.
+
+## Review of the onset pipeline (October 2026)
+
+Fixed, each a bias in what the scores measured:
+- **Rows just before an onset.** A row whose window opens after an onset
+  (the lead window, quarters 2-4, with an onset next quarter) was scored a
+  negative: the model that saw it coming lost. Such rows are now not at risk
+  (`bnm.onset/at-risk?`).
+- **Banking crises** were scored only over countries that have one in the
+  catalogue (118, 73 with exactly one), so every hard row was a future
+  crisis country. Now every country.
+- **Onsets known only to the year** were dated 1 July (wars, Laeven-Valencia)
+  or 31 December (UCDP, precision 5 or worse), so rows after the real onset
+  could count as before it, and a model reacting to the onset scored as
+  anticipating. Now 1 January.
+- **Priors** were chosen on 2000-07, inside the scored era 2003-14. Now each
+  year's prior is chosen on the years before it.
+- **Incomplete quarters.** A catalogue covering through October counted the
+  fourth quarter as observed. Now only complete quarters.
+- **Zero share prices** (Brazil 1980-88) were logged to -28 and made eight
+  crashes; non-positive values of logged series are now gaps.
+- **Zeros standing in for time.** World food prices (from 1991), the VIX (from
+  1990), high-tech exports (from 2007) and the PWT core profit rate (to its
+  last year) were zero outside their span under a presence flag that said
+  present. Each now has its own flag.
+- **Placebos** shuffled the presence flags with the values, so a group's gain
+  over its placebo could be who has data. Placebos now shuffle only among
+  rows with the same sources present, and groups with gaps (mix, ties) carry
+  a presence column.
+Not fixed: V-Dem, the IRR regimes and the IMF terms-of-trade weights are one
+vintage, revised with hindsight; WDI's annual series often appear later
+than the lag assumed. The groups' extra 12-24 month lags soften this.
+
+## Next directions (literature, October 2026)
+
+- Rich structural data still miss new outbreaks (Bazzi et al., REStat 2022);
+  news composition is the one replicated edge on hard onsets (Mueller &
+  Rauh, JEEA 2022), as the mix found here. Process beats structure at short
+  horizons (Blair & Sambanis, JCR 2020).
+- Regime type matters non-linearly (factional partial democracy, Goldstone
+  et al., AJPS 2010), which linear terms cannot learn: shallow boosted trees
+  as one more stacked member, refit yearly with the same placebo test, would
+  learn regime x economy interactions without hand-written terms. Trees win
+  when inputs are rich and lose otherwise (Muchlinski et al. 2016 against
+  Wang 2019; for banking, Bluwstein et al., JIE 2023, against Beutel et al.,
+  Bundesbank 2018).
+- Long calm, not rising variance, predicts banking crises (Danielsson,
+  Valenzuela & Zer, RFS 2018); critical slowing down is inconsistent out of
+  sample. Jumps in the mean and variance of attention series forecast
+  protest (Timoneda & Wibbels, PA 2022). Candidate features: quarters since a
+  spike, a low trailing coefficient of variation, breaks in mix shares.
+- Banking: the debt service ratio one to two years ahead (Drehmann &
+  Juselius, IJF 2014), credit with asset-price growth (Greenwood et al., JF
+  2022), and the rest of the world's credit growth (Cesa-Bianchi et al.).
+- Learned networks beat fixed contiguity (Dorff, Gallop & Minhas, ISQ 2022),
+  as GDELT ties beat UN votes here; coups do not diffuse (Miller et al., JCR
+  2018).
+- Evaluation: Sarlin usefulness and recall at a budget are standard;
+  TADDA rewards timid forecasts (Bracher et al., 2023) and is not used.
