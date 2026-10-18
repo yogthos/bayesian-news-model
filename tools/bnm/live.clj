@@ -26,7 +26,12 @@
   (let [derived (io/file model-path)
         src (if (.exists derived) model-path (str "data/runs/" from-run "/model.edn"))]
     (println "model from" src)
-    [src (-> (store/read-file src) (update :pending #(or % {})) series/with-routes)]))
+    [src (-> (store/read-file src)
+             (update :pending #(or % {}))
+             ;; rebuild the structure yearly, as training did (bnm.train), not
+             ;; every few bins as a model grown from nothing does
+             (update-in [:config :restructure-every] #(or % 52))
+             series/with-routes)]))
 
 (defn catch-up
   "`m` with every complete bin after its last learned from `source`'s bins

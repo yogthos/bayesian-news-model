@@ -18,7 +18,7 @@ or writes lives in `data/derived/` (`tools/bnm/paths.clj`).
 | `scripts/readings.sh` | daily or weekly | the reaction layer is daily; the event model learns each closed weekly bin |
 | `scripts/readings.sh --fetch` | weekly | most slow sources are monthly or quarterly |
 | `scripts/readings.sh --fetch --onsets` | monthly | onset rows are quarterly and take hours to rebuild |
-| a full event-model retrain (`bnm.train`, as v6-q) | yearly, or when the monitor flags it | the model learns online, but structure and priors are set at training |
+| a full event-model retrain (`bnm.train`, as v6-q) | only when the model's learning code or config changes | new data needs none: the live model is training continued (below) |
 | the coup file (Cline Center) | when a new version is out | the Illinois Data Bank refuses scripts |
 
 ## What the report says
@@ -135,6 +135,12 @@ whether one is under way.
   quarter, and when the quarter ends it scores that forecast. The scores
   recalibrate the escalation probabilities, re-learn the ranges, and add to
   the climatology and the live record printed with the outlook.
+- The tracked nodes are rebuilt yearly from recent volumes, keeping what
+  each node learned, and the priors are re-pooled, as in training. So the
+  history never has to be relearned. A retrain is needed only when the code
+  that learns changes, since the learned state was made by the old code.
+  When the monitor flags drift, the quarterly scoring is already
+  recalibrating; a retrain helps only if the drift outlasts that.
 - After a retrain, delete `data/derived/event-model.edn` so the pipeline
   starts from the new run.
 
