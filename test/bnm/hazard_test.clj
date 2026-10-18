@@ -250,3 +250,13 @@
     (is (<= (:lo fast) (:diff fast) (:hi fast)))
     (is (< (Math/abs (- (:lo fast) (:lo slow))) 0.05) "about the same interval")
     (is (= {:diff 0.0 :lo 0.0 :hi 0.0} (hz/paired-recall-gain (mapv (fn [[q a _ y]] [q a a y]) rows) 0.1 50 1)))))
+
+(deftest hedge-weights-follow-each-members-record
+  (let [ps [[0.9 0.5] [0.9 0.5] [0.1 0.5] [0.1 0.5]]
+        ys [true true false false]
+        w (hz/hedge-weights ps ys [1.0 1.0 1.0 1.0] 1.0)]
+    (is (< (Math/abs (- 1.0 (+ (aget w 0) (aget w 1)))) 1e-9))
+    (is (> (aget w 0) 0.7) "the sharper member, right every time")
+    (is (= [0.5 0.5] (vec (hz/hedge-weights ps ys [1.0 1.0 1.0 1.0] 0.0))) "no learning: equal")
+    (testing "per onset: twice the rows with the same record give the same weights"
+      (is (< (Math/abs (- (aget w 0) (aget (hz/hedge-weights (into ps ps) (into ys ys) (repeat 8 1.0) 1.0) 0))) 1e-9)))))

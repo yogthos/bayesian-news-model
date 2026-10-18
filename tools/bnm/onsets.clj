@@ -44,6 +44,9 @@
                                    [--kinds a,b] [--models base,history,...] [--groups mix,ties]
                                    [--events <training run with rows/, for the event model's state>]
 
+  A model named gbt-<inputs> is boosted trees (bnm.trees) on the inputs of
+  <inputs>, its rounds chosen each year like the priors.
+
   Writes data/runs/<name>/onsets.txt, the out-of-sample predictions,
   preds.tsv (kind window model quarter unit p outcome), and the recorded
   rows, rows.tsv, which --rows reads back instead of running the slow layer."
@@ -55,6 +58,7 @@
             [bnm.slow :as slow]
             [bnm.slow-train :as st]
             [bnm.ties :as ties]
+            [bnm.trees :as trees]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -217,14 +221,23 @@
 
 (def combined
   "Combinations of the fitted models, refit each year on the forecasts whose
-  outcomes are known by then: a linear pool and a log-linear stack."
-  [:pool :stack])
+  outcomes are known by then: a linear pool and a log-linear stack, and
+  members weighted by their own recent record (hz/hedge-weights, a
+  three-year half-life)."
+  [:pool :stack :hedge])
+
+(def hedge-discount 0.8)
 
 (def priors
   "Prior precisions tried, on the scale of each input's standard deviation."
   [10.0 100.0 1000.0])
 
 (def tune-years [2000 2007])
+
+(def tree-rounds
+  "Boosting rounds tried for the trees (gbt-<inputs> models), chosen each
+  year like the priors."
+  [25 50 100])
 
 (defn- pick ^doubles [^doubles full idx]
   (let [out (double-array (count idx))]
@@ -294,15 +307,42 @@
                           scored (for [{:keys [unit q y full]} prepared
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
                                    [q (hz/predict beta (pick full idx)) y unit])]
-                      (recur more beta (into preds scored)))))))]
+                      (recur more beta (into preds scored)))))))
+            ;; boosted trees (bnm.trees), one fit a year at the most rounds:
+            ;; fewer rounds are its first trees, so each count is a run
+            run-trees
+            (fn [idx]
+              (loop [[yr & more] (filter #(>= % (+ 10 (quot (:q (first prepared)) 4))) years)
+                     model nil
+                     preds (zipmap tree-rounds (repeat []))]
+                (if-not yr
+                  (vec (for [r tree-rounds] {:prior (double r) :preds (preds r)}))
+                  (let [q0 (* 4 yr)
+                        train (vec (for [{:keys [unit q y full]} prepared
+                                         :when (and (<= (+ q (second window)) q0) (some? y) (or y (keep-negative? unit q)))]
+                                     {:x (pick full idx) :y y
+                                      :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))}))
+                        model (if (some :y train) (trees/fit train {:rounds (apply max tree-rounds)}) model)
+                        this (when model (filterv #(and (= (quot (:q %) 4) yr) (>= yr score-from)) prepared))
+                        cut (fn [r] (update model :trees #(subvec % 0 (min r (count %)))))]
+                    (recur more model
+                           (reduce (fn [acc r]
+                                     (let [m (cut r)]
+                                       (update acc r into (for [{:keys [unit q y full]} this]
+                                                            [q (trees/predict m (pick full idx)) y unit]))))
+                                   preds tree-rounds))))))]
         (into {}
               (for [model models
-                    :let [idx (sets model)
-                          runs (vec (for [p (if (= model :base) [1.0] priors)]
-                                      {:prior p :preds (run-model idx p)}))]]
-                ;; each year's prior chosen on the years before it, so no
-                ;; scored year has picked its own prior
-                [model (o/choose-by-year runs log-score window (or (first (filter #(= 100.0 (:prior %)) runs)) (first runs)))]))))))
+                    :let [tree? (str/starts-with? (name model) "gbt-")
+                          idx (sets (if tree? (keyword (subs (name model) 4)) model))
+                          runs (if tree?
+                                 (run-trees idx)
+                                 (vec (for [p (if (= model :base) [1.0] priors)]
+                                        {:prior p :preds (run-model idx p)})))
+                          default (if tree? 50.0 100.0)]]
+                ;; each year's prior (or rounds) chosen on the years before
+                ;; it, so no scored year has picked its own
+                [model (o/choose-by-year runs log-score window (or (first (filter #(= default (:prior %)) runs)) (first runs)))]))))))
 
 (defn combine
   "Adds :pool and :stack to `runs`, combining every model but :base and the
@@ -311,7 +351,7 @@
   known by the year's start, discounted like the hazards, and scored on the
   year."
   [runs window]
-  (let [members (vec (remove #(or (= :base %) (str/ends-with? (name %) "-placebo")) (sort (keys runs))))
+  (let [members (vec (remove #(or (#{:base :pool :stack :hedge} %) (str/ends-with? (name %) "-placebo")) (sort (keys runs))))
         by-key (into {} (for [m members, [q p y unit] (:preds (runs m))] [[m unit q] p]))
         keys* (sort-by second (distinct (for [[q _ y unit] (:preds (runs (first members)))] [unit q y])))
         rows (vec (for [[unit q y] keys*
@@ -319,20 +359,23 @@
                         :when (every? some? ps)]
                     {:unit unit :q q :y y :ps ps}))
         years (sort (distinct (map #(quot (:q %) 4) rows)))]
-    (loop [[yr & more] years pool [] stack []]
+    (loop [[yr & more] years pool [] stack [] hedge []]
       (if-not yr
-        (assoc runs :pool {:preds pool} :stack {:preds stack})
+        (assoc runs :pool {:preds pool} :stack {:preds stack} :hedge {:preds hedge})
         (let [q0 (* 4 yr)
               known (filterv #(and (some? (:y %)) (<= (+ (:q %) (second window)) q0)) rows)
               this (filter #(= yr (quot (:q %) 4)) rows)]
           (if (< (count (filter :y known)) 10)
-            (recur more pool stack)
+            (recur more pool stack hedge)
             (let [ws (map #(Math/pow 0.95 (/ (- q0 (:q %)) 4.0)) known)
                   w (hz/pool-weights (map :ps known) (map :y known) ws)
-                  beta (hz/fit-stack (map :ps known) (map :y known) ws {:prior 10.0})]
+                  beta (hz/fit-stack (map :ps known) (map :y known) ws {:prior 10.0})
+                  h (hz/hedge-weights (map :ps known) (map :y known)
+                                      (map #(Math/pow hedge-discount (/ (- q0 (:q %)) 4.0)) known) 1.0)]
               (recur more
                      (into pool (for [{:keys [unit q y ps]} this] [q (hz/pool w ps) y unit]))
-                     (into stack (for [{:keys [unit q y ps]} this] [q (hz/predict-stack beta ps) y unit]))))))))))
+                     (into stack (for [{:keys [unit q y ps]} this] [q (hz/predict-stack beta ps) y unit]))
+                     (into hedge (for [{:keys [unit q y ps]} this] [q (hz/pool h ps) y unit]))))))))))
 
 (defn- scores [preds base]
   (let [ps (map second preds) ys (map #(nth % 2) preds)]

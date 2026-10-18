@@ -26,7 +26,7 @@
                           (reduce (fn [a line]
                                     (let [[kind w m q unit p y] (str/split line #"\t")]
                                       (if (or (= m "base") (str/ends-with? m "-placebo") (drop? m)
-                                              (#{"pool" "stack"} m) (seen [[kind w] m]))
+                                              (#{"pool" "stack" "hedge"} m) (seen [[kind w] m]))
                                         a
                                         (update-in a [[kind w] m] (fnil conj [])
                                                    [(parse-long q) (parse-double p)
@@ -36,9 +36,11 @@
           {} runs))
 
 (defn- pooled
-  "The pool's predictions over `members` of `models`."
-  [models members window]
-  (:preds (:pool (on/combine (into {} (for [m members] [(keyword m) {:preds (models m)}])) window))))
+  "The pool's predictions over `members` of `models` (or the combination
+  `which`, :pool :stack or :hedge)."
+  ([models members window] (pooled models members window :pool))
+  ([models members window which]
+   (:preds (which (on/combine (into {} (for [m members] [(keyword m) {:preds (models m)}])) window)))))
 
 (defn -main [& args]
   (let [{:keys [runs out drop]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
@@ -56,7 +58,8 @@
                              (.write w (str kind "\t" wname "\t" label "\t" q "\t" unit "\t" p "\t" (str y) "\n"))))]]
         (println kind wname (count members) "members:" (str/join " " members))
         (doseq [m members] (emit m (models m)))
-        (emit "pool" (pooled models members window))
+        (let [all (on/combine (into {} (for [m members] [(keyword m) {:preds (models m)}])) window)]
+          (doseq [c on/combined] (emit (name c) (:preds (all c)))))
         (when (every? models record) (emit "pool-record" (pooled models record window)))
         (doseq [m members]
           (emit (str "pool-minus-" m) (pooled models (remove #{m} members) window)))

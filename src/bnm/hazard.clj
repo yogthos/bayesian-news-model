@@ -138,6 +138,26 @@
         (dotimes [j m] (aset w j (/ (aget acc j) tot)))))
     w))
 
+(defn hedge-weights
+  "Exponential weights of forecasters by their own record (Hedge; the online
+  expert weighting of Fouliard, Howell, Rey & Stavrakeva for crisis
+  forecasts): each weight proportional to exp(eta x its weighted log score
+  per weighted outcome), so a forecaster a nat per onset ahead of another
+  gets e^eta times its weight, however many rows there are."
+  ^doubles [ps ys ws eta]
+  (let [m (count (first ps))
+        ls (double-array m)
+        pos (reduce + (map (fn [y w] (if y (double w) 0.0)) ys ws))]
+    (doseq [[row y w] (map vector ps ys ws)
+            j (range m)
+            :let [p (min (max (double (nth row j)) 1e-6) (- 1.0 1e-6))]]
+      (aset ls j (+ (aget ls j) (* (double w) (Math/log (if y p (- 1.0 p)))))))
+    (let [scale (/ (double eta) (max pos 1.0))
+          top (apply max (seq ls))
+          e (double-array (map #(Math/exp (* scale (- % top))) ls))
+          tot (reduce + (seq e))]
+      (double-array (map #(/ % tot) e)))))
+
 (defn pool ^double [^doubles w ps]
   (loop [j 0 s 0.0 [p & more] (seq ps)]
     (if p (recur (inc j) (+ s (* (aget w j) (double p))) more) s)))
