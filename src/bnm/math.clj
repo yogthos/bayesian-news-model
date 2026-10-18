@@ -195,3 +195,13 @@
                          (- (/ (poly c q) (+ (* (poly d q) q) 1.0))))
       :else (let [q (- p 0.5) r (* q q)]
               (/ (* (poly a r) q) (+ (* (poly b r) r) 1.0))))))
+
+(defn normal-cdf
+  "The standard normal cdf at x: Abramowitz & Stegun 7.1.26 for erf,
+  absolute error below 1.5e-7."
+  ^double [^double x]
+  (let [z (/ (Math/abs x) (Math/sqrt 2.0))
+        t (/ 1.0 (+ 1.0 (* 0.3275911 z)))
+        poly (* t (+ 0.254829592 (* t (+ -0.284496736 (* t (+ 1.421413741 (* t (+ -1.453152027 (* t 1.061405429)))))))))
+        erf (- 1.0 (* poly (Math/exp (- (* z z)))))]
+    (if (neg? x) (* 0.5 (- 1.0 erf)) (* 0.5 (+ 1.0 erf)))))

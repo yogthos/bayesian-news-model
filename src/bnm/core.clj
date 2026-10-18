@@ -144,7 +144,7 @@
                  xs (vec (cal/widen-by (get-in m [:config :spread-mode]) (:spread m) [(geo/kind id) ch stratum] raw))
                  mean (/ (reduce + xs) sims)]
            :when (>= (max recent mean) min-rate)
-           :let [p (/ (count (filter #(eval/escalated? % last horizon) xs)) (double sims))]]
+           :let [p (eval/escalation-p (double-array xs) last horizon)]]
        {:node id
         :name (label id)
         :kind (geo/kind id)

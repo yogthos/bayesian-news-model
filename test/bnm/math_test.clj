@@ -32,3 +32,7 @@
   (is (< (Math/abs (bnm.math/normal-quantile 0.5)) 1e-9))
   (is (< (Math/abs (- 1.2815515655446004 (bnm.math/normal-quantile 0.9))) 1e-6))
   (is (< (Math/abs (+ 2.3263478740408408 (bnm.math/normal-quantile 0.01))) 1e-6)))
+
+(deftest normal-cdf-inverts-the-quantile
+  (doseq [p [0.001 0.05 0.3 0.5 0.8 0.99]]
+    (is (< (Math/abs (- p (bnm.math/normal-cdf (bnm.math/normal-quantile p)))) 1e-6) p)))

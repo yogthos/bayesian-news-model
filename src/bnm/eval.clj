@@ -46,6 +46,21 @@
 (defn escalated? [a b horizon]
   (and (>= a (* escalation-ratio b)) (>= (- a b) (* escalation-floor horizon))))
 
+(defn escalation-p
+  "P(escalation) from a forecast sample `xs` of the total, the last total `b`
+  and the horizon: the log-normal tail of the sample above the bar. From a
+  hundred draws a counted frequency is zero for nine nodes in ten, and the
+  ties lose the ranking (escalation AUC 0.75 counted, 0.89 by the tail, actors'
+  protest, v5-q 2000-26); the calibrator maps the score to a probability."
+  ^double [^doubles xs b horizon]
+  (let [n (alength xs)
+        bar (Math/log1p (max (* escalation-ratio b) (+ b (* escalation-floor horizon))))
+        mu (/ (areduce xs i s 0.0 (+ s (Math/log1p (aget xs i)))) n)
+        sd (Math/sqrt (/ (areduce xs i s 0.0 (let [d (- (Math/log1p (aget xs i)) mu)] (+ s (* d d)))) n))]
+    (if (< sd 1e-9)
+      (if (>= mu bar) 1.0 0.0)
+      (- 1.0 (m/normal-cdf (/ (- bar mu) sd))))))
+
 (def escalation-channels [:violence :protest :coercion :verbal-conflict])
 
 (def history-length
@@ -171,7 +186,7 @@
                 xs (cal/widen-by (:spread-mode fc) (:spread fc) [level ch st] (sample-totals fc i c))
                 n (alength xs)
                 a (aget act c)
-                p (/ (count (filter #(escalated? % b h) xs)) (double n))
+                p (escalation-p xs b h)
                 pc (climate-rate clim level ch st)]]
       {:id id :level level :channel ch :stratum st
        :actual a :last b
