@@ -19,13 +19,20 @@
     domains   history, every other domain and the global drivers
     all       everything
 
+  Input groups (--groups, default mix) add a model each, the group with
+  history, and one with the named inputs too: mix (the event-code mix,
+  bnm.mix), ties (partners and cross-pressure, bnm.ties), event (the event
+  model's view, with --events). Every group also runs as a placebo,
+  <group>-placebo, its values shuffled across countries within each quarter:
+  a group whose gain the placebo matches carries nothing about the country.
+
   Each model's prior precision is chosen from a grid by its log score on
   2000-2007; 2008 on is held out and scored with the chosen prior.
   Catalogues are scored only as far as data/slow/coverage.tsv says they have
   looked, so the last rows are not all positives.
 
     jolt -A:tools -M -m bnm.onsets [--name onsets] [--from 1985] [--rows <run>]
-                                   [--kinds a,b] [--models base,history,...]
+                                   [--kinds a,b] [--models base,history,...] [--groups mix,ties]
                                    [--events <training run with rows/, for the event model's state>]
 
   Writes data/runs/<name>/onsets.txt, the out-of-sample predictions,
@@ -36,6 +43,7 @@
             [bnm.named :as nm]
             [bnm.slow :as slow]
             [bnm.slow-train :as st]
+            [bnm.ties :as ties]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -44,9 +52,29 @@
 (def windows {:w1 [1 4] :lead [2 4] :w2 [5 8]})
 
 (def mix-path
-  "The event-code mix per country and quarter (scripts/event-mix.sh), read
-  when present for the :mix models."
+  "The event-code mix per country and quarter (scripts/event-mix.sh)."
   "data/slow/event-mix.tsv")
+
+(def dyads-path
+  "Events between countries per quarter (scripts/event-dyads.sh)."
+  "data/slow/event-dyads.tsv")
+
+(def group-loaders
+  "Input groups by name: [width loader], the loader giving {[unit quarter]
+  double[]}."
+  {"mix" [(count mix/labels) #(nm/load-event-mix mix-path)]
+   "ties" [(count ties/labels) #(nm/load-ties dyads-path mix-path)]})
+
+(defn load-groups
+  "[[name width {[unit quarter] double[]}] ...] for `names`, each followed by
+  its placebo; the event model's view first when `event-run` is given."
+  [names event-run]
+  (vec (concat (when event-run [["event" (count nm/event-labels) (nm/load-event-state event-run)]])
+               (for [g names
+                     :let [[width load] (or (group-loaders g) (throw (ex-info (str "unknown group " g) {})))
+                           xs (load)]
+                     entry [[g width xs] [(str g "-placebo") width (ties/placebo xs 1)]]]
+                 entry))))
 
 (def cases
   "Named cases, shown quarter by quarter before their onset. Illustration only:
@@ -124,20 +152,21 @@
   (boolean (seq (subseq onsets >= (- q 3) <= q))))
 
 (defn- feature-sets
-  "Indices into a row's full input vector [1 hist hist inputs... named...]
-  for each model, given `m` named inputs of which the last `p` are the
-  political economy ones."
-  [labels m p]
+  "Indices into a row's full input vector [1 hist hist inputs... named...
+  groups...] for each model, given `m` named inputs of which the last `p`
+  are the political economy ones, and the input `groups` ([name width _])."
+  [labels m p groups]
   (let [n (count labels)
         named (range (+ 3 n) (+ 3 n (- m p)))
         polecon (range (+ 3 n (- m p)) (+ 3 n m))
-        event (range (+ 3 n m) (+ 3 n m (count nm/event-labels)))
-        mixed (let [from (+ 3 n m (count nm/event-labels))] (range from (+ from (count mix/labels))))
+        spans (second (reduce (fn [[from acc] [g width]] [(+ from width) (conj acc [g (range from (+ from width))])])
+                              [(+ 3 n m) []] groups))
         idx (fn [pred] (keep-indexed (fn [i l] (when (pred l) (+ 3 i))) labels))
         politics (idx #(= "politics" (:domain %)))
         local (idx :domain)
         others (idx #(and (:feature %) (not= "politics" (:domain %))))]
-    {:base [0]
+    (merge
+     {:base [0]
      :history [0 1 2]
      :politics (vec (concat [0 1 2] politics))
      :local (vec (concat [0 1 2] local))
@@ -146,11 +175,11 @@
      :named (vec (concat [0 1 2] named))
      :named+politics (vec (concat [0 1 2] politics named))
      :polecon (vec (concat [0 1 2] polecon))
-     :named+polecon (vec (concat [0 1 2] named polecon))
-     :event (vec (concat [0 1 2] event))
-     :named+event (vec (concat [0 1 2] named event))
-     :mix (vec (concat [0 1 2] mixed))
-     :named+mix (vec (concat [0 1 2] named mixed))}))
+     :named+polecon (vec (concat [0 1 2] named polecon))}
+    (into {} (for [[g span] spans
+                   entry [[(keyword g) (vec (concat [0 1 2] span))]
+                          [(keyword (str "named+" g)) (vec (concat [0 1 2] named span))]]]
+               entry)))))
 
 (def model-order [:base :history :politics :local :domains :all])
 
@@ -190,7 +219,7 @@
   "Out-of-sample predictions for one kind and window: a function of the
   feature sets giving {model {:prior p :preds [[q p y unit]]}}, the prior
   chosen per model by log score over `tune-years`."
-  [rows onsets-by-unit units window score-from last-q models fam]
+  [rows onsets-by-unit units window score-from last-q models fam groups]
   (let [labels-q (fn [{:keys [unit q]}] (label (get onsets-by-unit unit (sorted-set)) q window))
         ;; rows past the catalogue's coverage are predicted too, with no label:
         ;; they are the live forecasts (bnm.readings), never fit or scored
@@ -201,14 +230,14 @@
         prepared (mapv (fn [{:keys [unit q ^doubles x] :as r}]
                          (let [[h1 h2] (history-features (get onsets-by-unit unit (sorted-set)) q)
                                ^doubles nx (get-in r [:named fam])
-                               ^doubles ev (or (:event r) (double-array (count nm/event-labels)))
-                               ^doubles mx (or (:mix r) (double-array (count mix/labels)))
-                               full (double-array (+ 3 (alength x) (alength nx) (alength ev) (alength mx)))]
+                               ;; a group's inputs, zeros where it has none for the row
+                               gs (mapv (fn [[_ width xs]] (or (get xs [unit q]) (double-array width))) groups)
+                               full (double-array (+ 3 (alength x) (alength nx) (reduce + (map second groups))))]
                            (aset full 0 1.0) (aset full 1 h1) (aset full 2 h2)
                            (System/arraycopy x 0 full 3 (alength x))
                            (System/arraycopy nx 0 full (+ 3 (alength x)) (alength nx))
-                           (System/arraycopy ev 0 full (+ 3 (alength x) (alength nx)) (alength ev))
-                           (System/arraycopy mx 0 full (+ 3 (alength x) (alength nx) (alength ev)) (alength mx))
+                           (reduce (fn [off ^doubles g] (System/arraycopy g 0 full off (alength g)) (+ off (alength g)))
+                                   (+ 3 (alength x) (alength nx)) gs)
                            (assoc r :full full :y (when (<= (+ q (second window)) last-q) (labels-q r)))))
                        usable)
         years (range (quot (apply min (map :q prepared)) 4) (inc (quot (apply max (map :q prepared)) 4)))]
@@ -243,12 +272,13 @@
                 [model (apply max-key #(or (log-score (in-years (:preds %) lo hi)) -1e9) (reverse runs))]))))))
 
 (defn combine
-  "Adds :pool and :stack to `runs`, combining every model but :base. Each
+  "Adds :pool and :stack to `runs`, combining every model but :base and the
+  placebos. Each
   year's combination is fit on the earlier forecasts whose outcomes were
   known by the year's start, discounted like the hazards, and scored on the
   year."
   [runs window]
-  (let [members (vec (remove #{:base} (sort (keys runs))))
+  (let [members (vec (remove #(or (= :base %) (str/ends-with? (name %) "-placebo")) (sort (keys runs))))
         by-key (into {} (for [m members, [q p y unit] (:preds (runs m))] [[m unit q] p]))
         keys* (sort-by second (distinct (for [[q _ y unit] (:preds (runs (first members)))] [unit q y])))
         rows (vec (for [[unit q y] keys*
@@ -289,7 +319,7 @@
 
 (defn- f3 [x] (if x (format "%.3f" (double x)) "  -  "))
 
-(defn run [{:keys [name from rows kinds models] event-run :events}]
+(defn run [{:keys [name from rows kinds models groups] event-run :events}]
   (let [run-name (or name "onsets")
         from (parse-long (or from "1985"))
         score-from (first tune-years)
@@ -318,15 +348,12 @@
                    [en* ef] (nm/political-economy db all-units (distinct (map #(+ 2 (* 3 (:q %))) rows)))
                    [_ ev] (nm/vectorize en* :political-economy)
                    both (fn [^doubles a ^doubles b] (double-array (concat a b)))]
-               (let [es (if event-run (nm/load-event-state event-run) {})
-                     mixes (if (.exists (io/file mix-path)) (nm/load-event-mix mix-path) {})]
-                 (mapv (fn [{:keys [unit q] :as r}]
-                         (let [t (+ 2 (* 3 q))]
-                           (assoc r :named (let [e (ev (ef unit t))]
-                                            {:financial (both (fv (ff unit t)) e) :political (both (pv (pf unit t)) e)})
-                                    :event (es [unit q])
-                                    :mix (mixes [unit q]))))
-                       rows)))
+               (mapv (fn [{:keys [unit q] :as r}]
+                       (let [t (+ 2 (* 3 q))]
+                         (assoc r :named (let [e (ev (ef unit t))]
+                                          {:financial (both (fv (ff unit t)) e) :political (both (pv (pf unit t)) e)}))))
+                     rows))
+        groups (load-groups (if groups (str/split groups #",") ["mix"]) event-run)
         n-named (into {} (for [fam [:financial :political]] [fam (alength ^doubles (get-in (first rows) [:named fam]))]))
         n-polecon (count (first (nm/vectorize nm/political-economy-names :political-economy)))
         market-units (set (for [{:keys [unit ^doubles x]} rows
@@ -353,8 +380,8 @@
             units (get coverage kind all-units)
             last-q (coverage-q kind)
             fam (nm/family-of kind)
-            runs (combine ((evaluate-kind rows onsets units window score-from last-q models fam)
-                           (feature-sets labels (n-named fam) n-polecon))
+            runs (combine ((evaluate-kind rows onsets units window score-from last-q models fam groups)
+                           (feature-sets labels (n-named fam) n-polecon groups))
                           window)
             preds (update-vals runs :preds)
             base (:base preds)]

@@ -233,3 +233,20 @@
     (is (< (Math/abs (- (/ 1.25 2.0) (hz/recall-at-budget rows 0.2))) 1e-12))
     (is (= (hz/recall-at-budget rows 0.2) (hz/recall-at-budget (reverse rows) 0.2))
         "the order of the rows does not matter")))
+
+(deftest recall-gain-from-per-period-parts
+  ;; recall at a budget is hits over positives summed by period, so the
+  ;; bootstrap resamples per-year sums instead of rescoring every row
+  (let [g (m/rng 21)
+        rows (vec (for [q (range 40 80) i (range 50)]
+                    (let [a (m/normal! g) y (< (m/next-double! g) (m/expit (+ -3.0 (* 1.5 a))))]
+                      [q (m/expit a) (m/expit (+ a (m/normal! g))) y])))
+        parts (hz/recall-parts (map (fn [[q a _ y]] [q a y]) rows) 0.1)
+        r (hz/recall-at-budget (map (fn [[q a _ y]] [q a y]) rows) 0.1)
+        fast (hz/paired-recall-gain rows 0.1 200 1)
+        slow (hz/paired-gain rows #(hz/recall-at-budget % 0.1) 200 1)]
+    (is (< (Math/abs (- r (/ (reduce + (map first (vals parts))) (reduce + (map second (vals parts)))))) 1e-12))
+    (is (< (Math/abs (- (:diff fast) (:diff slow))) 1e-12) "the same gain")
+    (is (<= (:lo fast) (:diff fast) (:hi fast)))
+    (is (< (Math/abs (- (:lo fast) (:lo slow))) 0.05) "about the same interval")
+    (is (= {:diff 0.0 :lo 0.0 :hi 0.0} (hz/paired-recall-gain (mapv (fn [[q a _ y]] [q a a y]) rows) 0.1 50 1)))))

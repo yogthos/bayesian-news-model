@@ -21,7 +21,9 @@
 
   Missing values are 0, with an indicator per source so the hazard can tell
   absent from neutral."
-  (:require [bnm.mix :as mix]
+  (:require [bnm.geo :as geo]
+            [bnm.mix :as mix]
+            [bnm.ties :as ties]
             [bnm.stocks :as sk]
             [clojure.java.io :as io]
             [clojure.string :as str]
@@ -207,6 +209,34 @@
             [[unit q] xs]))))
 
 ;; --- the event-code mix ------------------------------------------------------------------------
+
+(defn load-event-counts
+  "scripts/event-mix.sh's table as {[unit quarter] {type count}}."
+  [path]
+  (with-open [r (io/reader path)]
+    (reduce (fn [acc line]
+              (let [[unit q t n] (str/split line #"\t")]
+                (assoc-in acc [[unit (parse-long q)] t] (parse-double n))))
+            {} (line-seq r))))
+
+(defn load-event-dyads
+  "scripts/event-dyads.sh's table as {quarter {[a b] {:coop :conflict}}},
+  countries only."
+  [path]
+  (with-open [r (io/reader path)]
+    (reduce (fn [acc line]
+              (let [[a b q k n] (str/split line #"\t")]
+                (if (and (geo/country? a) (geo/country? b))
+                  (assoc-in acc [(parse-long q) [a b] (keyword k)] (parse-double n))
+                  acc)))
+            {} (line-seq r))))
+
+(defn load-ties
+  "Tie features per country and quarter (bnm.ties), partners near when they
+  share a subregion: {[unit quarter] double[]}, a quarter's known at its end."
+  [dyads-path mix-path]
+  (ties/features (load-event-dyads dyads-path) (load-event-counts mix-path)
+                 (fn [a b] (= (geo/parents a) (geo/parents b)))))
 
 (defn load-event-mix
   "The event-code mix of each country at each quarter (bnm.mix) from

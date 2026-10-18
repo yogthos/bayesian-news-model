@@ -205,24 +205,51 @@
             (recur more (inc i) hits acc))
           (/ acc n-pos))))))
 
+(defn recall-parts
+  "{period [hits positives]} at the top `budget` fraction of each period's
+  rows ([period score label]) by score; rows tied at the cutoff share the
+  slots left, so the order they come in does not matter."
+  [rows budget]
+  (into {} (for [[q g] (group-by first rows)
+                 :let [k (long (Math/ceil (* budget (count g))))]]
+             [q [(loop [[[_ tied] & more] (sort-by #(- (double (key %))) (group-by #(double (second %)) g))
+                        left k acc 0.0]
+                   (if (or (nil? tied) (<= left 0))
+                     acc
+                     (let [n (count tied) hits (count (filter #(nth % 2) tied))
+                           t (min n left)]
+                       (recur more (- left t) (+ acc (* hits (/ t (double n))))))))
+                 (count (filter #(nth % 2) g))]])))
+
 (defn recall-at-budget
   "Of the positives, the share among the top `budget` fraction of rows by
   score in their period: `rows` are [period score label]. Rows tied at the
-  cutoff share the slots left, so the order they come in does not matter."
+  cutoff share the slots left (`recall-parts`)."
   [rows budget]
-  (let [pos (count (filter #(nth % 2) rows))]
+  (let [parts (vals (recall-parts rows budget))
+        pos (reduce + (map second parts))]
     (when (pos? pos)
-      (/ (reduce + (for [[_ g] (group-by first rows)
-                         :let [k (long (Math/ceil (* budget (count g))))]]
-                     ;; through the tie groups by score, highest first
-                     (loop [[[_ tied] & more] (sort-by #(- (double (key %))) (group-by #(double (second %)) g))
-                            left k acc 0.0]
-                       (if (or (nil? tied) (<= left 0))
-                         acc
-                         (let [n (count tied) hits (count (filter #(nth % 2) tied))
-                               t (min n left)]
-                           (recur more (- left t) (+ acc (* hits (/ t (double n))))))))))
-         (double pos)))))
+      (/ (reduce + (map first parts)) (double pos)))))
+
+(defn paired-recall-gain
+  "`paired-gain` for recall at `budget` on rows [period p-model p-bench
+  outcome], from per-period hits, so each resample sums years instead of
+  rescoring rows."
+  [rows budget reps seed]
+  (let [pa (recall-parts (map (fn [[q a _ y]] [q a y]) rows) budget)
+        pb (recall-parts (map (fn [[q _ b y]] [q b y]) rows) budget)
+        ;; per year: [model hits, bench hits, positives]
+        blocks (vec (for [[_ qs] (group-by #(quot % 4) (keys pa))]
+                      (reduce (fn [[x y z] q] [(+ x (first (pa q))) (+ y (first (pb q))) (+ z (second (pa q)))])
+                              [0.0 0.0 0.0] qs)))
+        score (fn [bs] (let [[x y z] (reduce #(mapv + %1 %2) [0.0 0.0 0.0] bs)]
+                         (if (pos? z) (/ (- x y) z) 0.0)))
+        k (count blocks)
+        g (m/rng seed)
+        diffs (vec (sort (for [_ (range reps)]
+                           (score (map (fn [_] (blocks (min (dec k) (long (* k (m/next-double! g)))))) (range k))))))
+        at (fn [q] (nth diffs (min (dec (count diffs)) (long (* q (count diffs))))))]
+    {:diff (score blocks) :lo (at 0.05) :hi (at 0.95)}))
 
 (defn brier [ps ys]
   (/ (reduce + (map (fn [p y] (let [d (- (double p) (if y 1.0 0.0))] (* d d))) ps ys)) (double (count ps))))

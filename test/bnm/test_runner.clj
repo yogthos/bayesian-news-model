@@ -13,7 +13,8 @@
             [bnm.invariants-test]
             [bnm.pit-test]
             [bnm.mix-test]
-            [bnm.eval-test]))
+            [bnm.eval-test]
+            [bnm.ties-test]))
 
 (def namespaces
   '[bnm.math-test
@@ -29,7 +30,8 @@
     bnm.invariants-test
     bnm.pit-test
     bnm.mix-test
-    bnm.eval-test])
+    bnm.eval-test
+    bnm.ties-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
