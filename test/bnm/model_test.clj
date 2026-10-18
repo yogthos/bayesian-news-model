@@ -315,4 +315,10 @@
            (+ 0.2 (upper plain)))
         "the quiet node's upper tail lengthens")
     (is (= plain (quantiles (assoc-in mdl [:config :shock] {:sd 0.6 :volume 1e-12}) "UKR:GOV"))
-        "a shock faded to nothing changes nothing")))
+        "a shock faded to nothing changes nothing")
+    (is (= plain (quantiles (-> mdl
+                                (assoc-in [:config :shock] {:sd 0.6 :volume 50.0})
+                                (assoc :spread (into {} (for [k [:actor :pair :rest :country :subregion :region :world]]
+                                                         [[:shock k :violence] {:sd 0.0}]))))
+                            "UKR:GOV"))
+        "a learned sd for each kind and channel overrides the configured one")))

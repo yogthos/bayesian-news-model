@@ -46,7 +46,8 @@
   `forecast` mutate or read it; `bnm.store` turns it into EDN for a database.
   The arithmetic lives in small functions over ^doubles parameters, which is
   what lets jolt compile it to unboxed flonum code."
-  (:require [bnm.geo :as geo]
+  (:require [bnm.calibrate :as cal]
+            [bnm.geo :as geo]
             [bnm.math :as m]
             [bnm.ontology :as ont]))
 
@@ -763,11 +764,15 @@
                                      nodes)))
         ;; per-bin step of the level walk, so its sd after 52 bins is :level-noise
         step (/ (double (:level-noise cfg)) (Math/sqrt 52.0))
-        ;; per node and channel, the log-sd of its persistent shock
+        ;; per node and channel, the log-sd of its persistent shock: its level
+        ;; and channel's, as learned from the tails (bnm.calibrate/learn-shock),
+        ;; faded by the node's volume
         shock-sds (when-let [{:keys [sd volume]} (:shock cfg)]
                     (object-array (map (fn [node]
                                          (let [^doubles yb (:ybar node) out (double-array C)]
-                                           (dotimes [c C] (aset out c (shock-sd (double sd) (double volume) (/ (aget yb c) u))))
+                                           (dotimes [c C]
+                                             (let [s (cal/shock-scale (:spread model) (geo/kind (:id node)) (ont/channels c) sd)]
+                                               (aset out c (shock-sd (double s) (double volume) (/ (aget yb c) u)))))
                                            out))
                                        nodes)))]
     (dotimes [i n]
