@@ -46,7 +46,7 @@
     "state/government_effectiveness" "energy/oil_rents_gdp" "energy/mineral_rents_gdp"
     "people/tertiary_enrolment" "people/urban_share" "people/gini"
     "regime/electoral_democracy" "regime/liberal_democracy" "regime/civil_society"
-    "regime/physical_integrity" "regime/corruption"})
+    "regime/physical_integrity" "regime/corruption" "trade/commodity_tot"})
 
 (defn load-series
   "{[unit var] series} for `vars`, values transformed as data/slow/variables.tsv says."
@@ -285,6 +285,26 @@
           (minus (g "regime/electoral_democracy" t) (g "regime/liberal_democracy" t))
           (g "regime/civil_society" t) (g "regime/physical_integrity" t) (g "regime/corruption" t)]))]))
 
+(def tot-names [:tot12 :tot3 :tot12-fall :tot-vol :tot-vol-x-primary])
+
+(defn terms-of-trade
+  "[names f] from the IMF's commodity terms of trade by country (fixed
+  weights, net exports to GDP): its change over 12 and 3 months, the fall
+  alone (downturns raise civil-war risk, Brückner & Ciccone 2010), and its
+  volatility over 12 months, alone and times the primary share of output
+  (agriculture and rents): commodity volatility, not credit, predicts
+  banking crises where the primary sector is large (Eberhardt & Presbitero
+  2021)."
+  [db _units _months]
+  [tot-names
+   (fn [unit t]
+     (let [g (getter db unit)
+           tot12 (g "trade/commodity_tot" t 12)
+           vol (some-> (db [unit "trade/commodity_tot"]) (sk/volatility t 12 {:stale 6}))
+           primary (let [a (g "economy/agriculture_share" (- t 24)) r (g "energy/resource_rents_gdp" (- t 24))]
+                     (when (or a r) (/ (+ (or a 0.0) (or r 0.0)) 100.0)))]
+       [tot12 (g "trade/commodity_tot" t 3) (some-> tot12 (Math/min 0.0)) vol (x* vol primary)]))])
+
 (def presence
   "Groups of inputs that share a source: one indicator each."
   {:financial [[:credit3 :hh-credit3 :credit-gap :dsr3] [:house3] [:equity3 :runup2 :equity-vol] [:curve]]
@@ -295,7 +315,8 @@
    :institutions [[:effectiveness] [:oil-rents-x-weak :mineral-rents-x-weak]]
    :youth [[:tertiary :tertiary5] [:youth-unemployment-x-urban]]
    :nonlinear [[:log-income] [:gini]]
-   :regime [[:democracy :liberal-gap :civil-society :physical-integrity :corruption]]})
+   :regime [[:democracy :liberal-gap :civil-society :physical-integrity :corruption]]
+   :terms-of-trade [[:tot12 :tot3 :tot-vol]]})
 
 (defn vectorize
   "Inputs as doubles, missing as 0, then one presence indicator per group:

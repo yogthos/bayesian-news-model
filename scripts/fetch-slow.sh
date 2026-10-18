@@ -6,7 +6,7 @@
 # Idempotent: existing files are skipped, so it can be re-run to resume;
 # FORCE=1 refetches.
 #
-#   scripts/fetch-slow.sh [fred|worldbank|vdem|pwt|jst|crises|shocks|events|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
+#   scripts/fetch-slow.sh [fred|worldbank|vdem|imf|pwt|jst|crises|shocks|events|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -82,6 +82,11 @@ fetch_worldbank() {
 # --- regimes (V-Dem country-year core, yearly, published each March) ------------------------
 fetch_vdem() {
   get "https://v-dem.net/media/datasets/V-Dem-CY-Core-v16_csv.zip" "$RAW/vdem/V-Dem-CY-Core-v16_csv.zip"
+}
+
+# --- commodity terms of trade by country (IMF, Gruss & Kebhaj; via DBnomics), monthly from 1980
+fetch_imf() {
+  get 'https://api.db.nomics.world/v22/series/IMF/PCTOT?limit=1000&offset=0&observations=1&dimensions=%7B%22FREQ%22%3A%5B%22M%22%5D%2C%22INDICATOR%22%3A%5B%22xm_gdp%22%5D%2C%22TYPE%22%3A%5B%22R_FW_IX%22%5D%7D' "$RAW/imf/ctot.json"
 }
 
 # --- credit cycle, property, debt service, policy rates (BIS, quarterly/monthly) -----------
@@ -231,7 +236,7 @@ fetch_events() {
   get "https://data.humdata.org/dataset/74163686-a029-4e27-8fbf-c5bfcd13f953/resource/c5ce40d6-07b1-4f36-955a-d6196436ff6b/download/emdat-country-profiles_2026_10_14.xlsx" "$RAW/disasters/emdat-country-profiles.xlsx"
 }
 
-ALL=(fred worldbank vdem pwt jst crises shocks events bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
+ALL=(fred worldbank vdem imf pwt jst crises shocks events bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
 case "${1:-all}" in
   all) for s in "${ALL[@]}"; do "fetch_$s"; done ;;
   *) "fetch_$1" ;;

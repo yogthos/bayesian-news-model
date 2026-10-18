@@ -297,6 +297,24 @@ def vdem():
         var(name, "id", "a", "V-Dem v16 " + col, desc)
 
 
+def imf_ctot():
+    """IMF commodity terms of trade by country (Gruss & Kebhaj, WP 19/21), via
+    DBnomics (data/raw/slow/imf/ctot.json): the monthly net export price index
+    of commodities, weighted by net exports to GDP with fixed weights, so a
+    world price change reaches each country through its own commodity trade.
+    Known two months on."""
+    path = os.path.join(RAW, "imf", "ctot.json")
+    if not os.path.exists(path):
+        return
+    for s in json.load(open(path))["series"]["docs"]:
+        iso = ISO2.get(s["series_code"].split(".")[1])
+        for p, v in zip(s["period"], s["value"]):
+            if v not in (None, "NA") and v > 0:
+                emit(iso, "trade/commodity_tot", "m", period_end("m", p), 2, v)
+    var("trade/commodity_tot", "log", "m", "IMF PCTOT xm_gdp R_FW_IX (DBnomics)",
+        "commodity terms of trade, net exports to GDP, fixed weights")
+
+
 def pwt():
     """Penn World Table 11 (data/raw/slow/pwt/pwt110.csv, from the .dta): labour's
     share, the real internal rate of return on capital (a profit rate), the
@@ -866,7 +884,7 @@ def mechanical(dedup):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    steps = [fred, worldbank, vdem, pwt, shocks, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb, laeven_valencia, coups, disasters]
+    steps = [fred, worldbank, vdem, imf_ctot, pwt, shocks, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb, laeven_valencia, coups, disasters]
     for step in steps:
         n0, e0 = len(ROWS), len(EVENTS)
         step()
