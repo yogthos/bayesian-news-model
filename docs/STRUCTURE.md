@@ -108,26 +108,97 @@ a primary source or abstract.
   crossed with the geography. A quiet country then borrows from similar
   countries that have had onsets, which is what the hard cases need.
 
+## Cross-reference: Chinese and Soviet/Russian research
+
+**Already covered here.** The naive benchmark (next year as this year)
+beat every published instability index (Korotayev, Medvedev, Zinkina,
+Comparative Sociology 2022), as VIEWS found: our bar is own history and
+persistence. Their break at 2011 falls between our scoring eras
+(2003-14, 2015-26), and the onset stack refits yearly on discounted
+outcomes. Spillover between dyads sharing an actor (MILSTM, ACM SAC 2020)
+is in the event model: a dyad's neighbours are the dyads sharing one of
+its countries.
+
+**Gaps.**
+- Non-linear effects: unarmed revolution follows an inverted U in income,
+  armed revolution falls with it; inequality and regime type are inverted
+  U too (Ustyuzhanin, Fain & Korotayev 2025-26). Our hazards are linear
+  in their inputs.
+- Interactions by place and outcome: low cereal yields matter only in
+  Africa, low state effectiveness predicts armed destabilization only in
+  Asia; non-violent destabilization goes with long incumbent tenure and
+  middling democracy (Korotayev, Vostok 2024). Easily seized gold and oil
+  raise risk where institutions are weak; resource abundance hurts only
+  with weak institutions (Polterovich, Popov & Tonis 2007).
+- The educated-youth mechanism: youth bulges raise non-violent protest only
+  with income, urbanization and education controlled; Egypt's was fast
+  growth in higher education with educated unemployed youth in the capital
+  (Korotayev & Zinkina 2022).
+- Alignment asymmetry: China's country-risk rating (CASS CROIC, yearly,
+  57-114 countries, unvalidated) makes relations with and dependence on a
+  patron a pillar of its own. Structural power as centrality in trade and
+  value-chain networks (Wang Jinbo 2023); weaponized interdependence.
+- Expert-coded dyad relations: Tsinghua's monthly scores of China's
+  relations with the great powers from 1950 (Yan Xuetong et al. 2010;
+  forecasts three months ahead reported over 70% accurate, test not
+  described). A low-noise check on GDELT-learned ties, not a predictor.
+- Rival groupings to test learned categories against: MGIMO's Political
+  Atlas (five indices over 192 countries), the Afrasian instability zone,
+  world-system zones, hub-centred neighbourhoods.
+- Not taken up: Soviet situational analysis, global models and balance-of-
+  forces scoring (never evaluated), long waves (descriptive; the forecasts
+  checked missed), log-periodic bubble timing (gold 2011 called months
+  early), mass-incident warning systems (tiny samples), composite risk
+  indices (unvalidated). Turchin's 2010 decade forecast of Western
+  instability held, graded by its authors.
+
+None of the Chinese or Russian indices has a published out-of-sample
+test; their value is as ideas and data.
+
 ## Plan
 
-Each test is scored as the epic requires, on the hard cases and quiet
-countries, against a placebo, and is dropped if it fails.
+One harness for all of it: inputs added to the onset rows by group, scored
+by `bnm.anticipation` (both eras, hard cases, lead window, budgets, matched
+controls) and stacked onto the event model by `bnm.coupling` (quiet-base
+surges). Every group also runs against a placebo (its values permuted
+across countries within a year), and is dropped if it does not beat it.
+Inputs are lagged as published (WDI two years for revisions).
 
-1. **Ties, no new data.** Each country's partners weighted by trailing-year
-   GDELT dyad counts (lagged), less contiguous and same-subregion ones,
-   row-normalised; the weighted lagged surge intensity of its partners into
-   the onset hazards and the coupling, beside the geographic lags. Placebo:
-   degree-preserving permuted ties. If the real ties do not beat the
-   placebo, stop. Then UNGA agreement and trade shares as alternative
-   weights, and power weighting as an ablation.
+1. **Ties, learned from the data.** Each country's partners weighted by
+   lagged trailing-year GDELT dyad volume, later UN-vote agreement and
+   trade shares (IMF DOTS), contiguous and same-subregion partners apart
+   from the rest. Inputs: partners' weighted surge and conflict intensity;
+   cross-pressure, the weighted conflict between a country's own partners
+   (sum of w_i w_j times the i-j conflict intensity), which is how tension
+   between patrons reaches a client without naming any patron; and the
+   asymmetry of its dependence across its top partners. Power weighting
+   (partner GDP share) as an ablation. Placebo: degree-preserving permuted
+   ties.
 2. **Structure times shocks.** Lagged sector shares (agriculture,
-   manufacturing, services, fuel, food, metal exports) as their own inputs,
-   and commodity terms-of-trade change times exposure split by type (food
-   and agriculture, fuel, metals), world food price times food dependence,
-   with strong shrinkage.
-3. **Categories as a pooling level**, if 2 helps: soft memberships from a
-   mixture on lagged structure vectors, refit each year, with the hazard
-   coefficients partially pooled within category.
-4. **Blocs in the event model**, if 1 helps: a low-rank, community-
+   manufacturing, services, mining) as their own inputs; commodity terms-of-
+   trade change (IMF, Gruss & Kebhaj) by type: food and agriculture, fuel,
+   metals; world food price times food-import dependence times cereal yield;
+   resource rents times state effectiveness times the price change; for
+   banking crises, commodity volatility times a fixed peg times primary
+   share. Strong shrinkage.
+3. **Non-linear terms.** Splines in income, regime and inequality, read
+   separately for protest (unarmed) and violence (armed).
+4. **The educated-youth mechanism.** Tertiary enrolment growth times youth
+   unemployment times urban share, for protest.
+5. **Categories as a pooling level**, if 2-4 help: soft memberships from a
+   mixture on lagged structure vectors, refit yearly; hazard coefficients
+   pooled within category beside the geography. Scored against pooling by
+   geography and by the expert and hub groupings.
+6. **Blocs and waves in the event model**, if 1 helps: low-rank community-
    structured cross-excitation beside the geographic hierarchy, memberships
-   refit weekly from trailing dyad counts, warm-started.
+   refit weekly from trailing dyad counts; a global wave intensity at the
+   root.
+7. **Structural centrality**, last: whether shocks in central economies
+   (trade and finance network centrality) raise partners' banking-crisis
+   and drawdown hazards.
+
+Data to fetch: IMF commodity terms of trade, IMF DOTS, UNGA votes
+(Voeten), WDI tertiary enrolment, urban share, cereal yield, food imports,
+WGI government effectiveness (from 1996 only), exchange-rate regime
+(Ilzetzki, Reinhart & Rogoff). Already in hand: GDELT dyads, sector shares,
+export shares, resource rents, youth unemployment, V-Dem politics.
