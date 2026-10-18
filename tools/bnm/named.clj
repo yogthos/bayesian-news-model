@@ -151,12 +151,50 @@
          [(g "economy/profit_rate" t) (g "economy/profit_rate" t 36) (g "economy/labor_share" t 36)
           (minus growth (world-growth t)) cp (x* rents (some-> cp -))]))]))
 
+(def structure-names
+  [:agriculture :manufacturing :services :fuel-exports :food-exports :metal-exports :hightech-exports
+   :food12-x-agriculture :food12-x-food-exports :metals12-x-metal-exports :oil12-x-rents
+   :oil12-x-manufacturing :food12-x-imports-x-low-yield])
+
+(defn structure
+  "[names f] for economic structure and the shocks that reach a country
+  through it (docs/STRUCTURE.md, plan step 2): the shares of agriculture,
+  manufacturing and services in output and of fuel, food, metals and high
+  tech in exports, and world price changes over 12 months times the
+  exposure each passes through, split by commodity type because their signs
+  differ (Blair, Christensen & Rudkin 2021). Exposures are read two years
+  back, fixed before the shock and past WDI's revisions (Ciccone 2018)."
+  [db units months]
+  (let [names structure-names
+        lag 24
+        median-yield (into {} (for [t months]
+                                [t (let [ys (sort (keep #(some-> (db [% "food/cereal_yield"]) (sk/value (- t lag) {:stale 30})) units))]
+                                     (when (seq ys) (nth ys (quot (count ys) 2))))]))]
+    [names
+     (fn [unit t]
+       (let [g (getter db unit)
+             w (getter db "world")
+             share #(some-> (g % (- t lag)) (/ 100.0))
+             food12 (w "food/price_index" t 12)
+             oil12 (w "energy/oil_brent" t 12)
+             metals12 (mean-of (keep #(w % t 12) ["commodities/copper" "commodities/aluminium" "commodities/nickel"]))
+             agri (share "economy/agriculture_share") manuf (share "economy/manufacturing_share")
+             metal-x (share "trade/metal_exports_share") food-x (share "food/exports_share")
+             rents (share "energy/resource_rents_gdp")
+             low-yield (when-let [y (g "food/cereal_yield" (- t lag))]
+                         (when-let [m (median-yield t)] (when (pos? y) (Math/log (/ m y)))))]
+         [agri manuf (share "economy/services_share") (share "energy/fuel_exports_share") food-x metal-x
+          (share "technology/hightech_exports_share")
+          (x* food12 agri) (x* food12 food-x) (x* metals12 metal-x) (x* oil12 rents) (x* oil12 manuf)
+          (x* (x* food12 (share "food/imports_share")) low-yield)]))]))
+
 (def presence
   "Groups of inputs that share a source: one indicator each."
   {:financial [[:credit3 :hh-credit3 :credit-gap :dsr3] [:house3] [:equity3 :runup2 :equity-vol] [:curve]]
    :political [[:food-inflation] [:fragility] [:gdp-growth :inflation] [:youth-unemployment]
                [:temperature :precipitation] [:protest3 :violence3]]
-   :political-economy [[:profit-rate :profit-rate3 :labor-share3] [:uneven-growth] [:rents-x-core-profit]]})
+   :political-economy [[:profit-rate :profit-rate3 :labor-share3] [:uneven-growth] [:rents-x-core-profit]]
+   :structure [[:agriculture :manufacturing :services] [:fuel-exports :food-exports :metal-exports :hightech-exports]]})
 
 (defn vectorize
   "Inputs as doubles, missing as 0, then one presence indicator per group:

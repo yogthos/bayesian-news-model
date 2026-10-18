@@ -22,7 +22,9 @@
   Input groups (--groups, default mix) add a model each, the group with
   history, and one with the named inputs too: mix (the event-code mix,
   bnm.mix), ties (partners and cross-pressure, bnm.ties), event (the event
-  model's view, with --events). Every group also runs as a placebo,
+  model's view, with --events), structure (sector and export shares and the
+  world price shocks reaching a country through them, bnm.named/structure).
+  Every group also runs as a placebo,
   <group>-placebo, its values shuffled across countries within each quarter:
   a group whose gain the placebo matches carries nothing about the country.
 
@@ -60,19 +62,26 @@
   "data/slow/event-dyads.tsv")
 
 (def group-loaders
-  "Input groups by name: [width loader], the loader giving {[unit quarter]
-  double[]}."
-  {"mix" [(count mix/labels) #(nm/load-event-mix mix-path)]
-   "ties" [(count ties/labels) #(nm/load-ties dyads-path mix-path)]})
+  "Input groups by name: [width loader], the loader taking {:db :units :rows}
+  (the slow series, the countries, the onset rows) and giving {[unit
+  quarter] double[]}."
+  {"mix" [(count mix/labels) (fn [_] (nm/load-event-mix mix-path))]
+   "ties" [(count ties/labels) (fn [_] (nm/load-ties dyads-path mix-path))]
+   "structure" [(+ (count nm/structure-names) (count (:structure nm/presence)))
+                (fn [{:keys [db units rows]}]
+                  (let [months (distinct (map #(+ 2 (* 3 (:q %))) rows))
+                        [names f] (nm/structure db units months)
+                        [_ vf] (nm/vectorize names :structure)]
+                    (into {} (for [{:keys [unit q]} rows] [[unit q] (vf (f unit (+ 2 (* 3 q))))]))))]})
 
 (defn load-groups
   "[[name width {[unit quarter] double[]}] ...] for `names`, each followed by
   its placebo; the event model's view first when `event-run` is given."
-  [names event-run]
+  [names event-run ctx]
   (vec (concat (when event-run [["event" (count nm/event-labels) (nm/load-event-state event-run)]])
                (for [g names
                      :let [[width load] (or (group-loaders g) (throw (ex-info (str "unknown group " g) {})))
-                           xs (load)]
+                           xs (load ctx)]
                      entry [[g width xs] [(str g "-placebo") width (ties/placebo xs 1)]]]
                  entry))))
 
@@ -339,8 +348,8 @@
                           (write-rows (str dir "/rows.tsv") rows labels)
                           [rows labels]))
         all-units (set (map :unit rows))
-        rows (let [db (nm/load-series "data/slow/series.tsv" variables)
-                   wc (nm/world-credit db all-units (distinct (map #(+ 2 (* 3 (:q %))) rows)))
+        db (nm/load-series "data/slow/series.tsv" variables)
+        rows (let [wc (nm/world-credit db all-units (distinct (map #(+ 2 (* 3 (:q %))) rows)))
                    [fn* ff] (nm/financial db wc)
                    [pn* pf] (nm/political db)
                    [_ fv] (nm/vectorize fn* :financial)
@@ -353,7 +362,7 @@
                          (assoc r :named (let [e (ev (ef unit t))]
                                           {:financial (both (fv (ff unit t)) e) :political (both (pv (pf unit t)) e)}))))
                      rows))
-        groups (load-groups (if groups (str/split groups #",") ["mix"]) event-run)
+        groups (load-groups (if groups (str/split groups #",") ["mix"]) event-run {:db db :units all-units :rows rows})
         n-named (into {} (for [fam [:financial :political]] [fam (alength ^doubles (get-in (first rows) [:named fam]))]))
         n-polecon (count (first (nm/vectorize nm/political-economy-names :political-economy)))
         market-units (set (for [{:keys [unit ^doubles x]} rows
