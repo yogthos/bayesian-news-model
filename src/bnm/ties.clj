@@ -71,10 +71,14 @@
   ({quarter {[a b] {:coop :conflict}}}, pairs sorted), `counts` ({[unit
   quarter] {type count}}, the event-code mix's counts) and `near?`, a
   predicate on two countries. A country without partners that year has
-  none."
-  [dyads counts near?]
-  (let [qs (sort (keys dyads))
-        state (memoize (fn [q] {:w (partner-weights dyads q top-k) :share (conflict-shares dyads q)}))]
+  none. :weights-of, a function of the quarter giving {country {partner
+  weight}}, weights partners another way (UN voting agreement); the conflict
+  between them still comes from the events."
+  ([dyads counts near?] (features dyads counts near? {}))
+  ([dyads counts near? {:keys [weights-of]}]
+   (let [qs (sort (keys dyads))
+        state (memoize (fn [q] {:w (if weights-of (weights-of q) (partner-weights dyads q top-k))
+                                :share (conflict-shares dyads q)}))]
     (into {}
           (for [q qs
                 :let [{:keys [w share]} (state q)
@@ -93,7 +97,7 @@
                                     (weighted true "protest-did") (weighted true "assault-did")
                                     cp (- cp cp0)
                                     (reduce + (map #(* % %) (vals wu)))
-                                    oc (- oc oc0)])])))))
+                                    oc (- oc oc0)])]))))))
 
 (defn placebo
   "`xs` ({[unit quarter] x}) with each quarter's values shuffled among its

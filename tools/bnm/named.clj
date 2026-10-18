@@ -398,6 +398,56 @@
   (ties/features (load-event-dyads dyads-path) (load-event-counts mix-path)
                  (fn [a b] (= (geo/parents a) (geo/parents b)))))
 
+(def cow-overrides
+  "Correlates of War codes whose names bnm.geo does not resolve, for states
+  that exist now."
+  {"56" "LCA" "57" "VCT" "58" "ATG" "60" "KNA" "210" "NLD" "260" "DEU" "678" "YEM" "987" "FSM"})
+
+(defn load-cow-codes
+  "{cow-code iso3} from the Correlates of War state list."
+  [path]
+  (into {} (for [line (rest (str/split (slurp path) #"\r\n?|\n"))
+                 :let [[_ c n] (str/split line #",")
+                       iso (or (cow-overrides c) (geo/resolve-name n))]
+                 :when iso]
+             [c iso])))
+
+(defn load-un-agreement
+  "{year {[a b] agreement}} (pairs sorted, ISO3) from Voeten's UN General
+  Assembly agreement scores (Harvard Dataverse doi:10.7910/DVN/LEJUQZ, CC0)."
+  [path codes-path]
+  (let [iso (load-cow-codes codes-path)]
+    (with-open [r (io/reader path)]
+      (reduce (fn [acc line]
+                (let [f (mapv #(str/replace % "\"" "") (str/split line #","))
+                      a (iso (f 2)) b (iso (f 3)) agree (parse-double (f 4)) year (parse-long (f 5))]
+                  (if (and a b agree year (not= a b))
+                    (assoc-in acc [year (if (neg? (compare a b)) [a b] [b a])] agree)
+                    acc)))
+              {} (rest (line-seq r))))))
+
+(defn un-weights
+  "A function of the quarter giving {country {partner weight}}: each
+  country's `k` partners that voted most like it in the UN General Assembly
+  the year before, weighted by agreement."
+  [agreement k]
+  (memoize
+   (fn [q]
+     (let [year (dec (quot q 4))
+           by (reduce-kv (fn [acc [a b] v] (-> acc (assoc-in [a b] v) (assoc-in [b a] v))) {} (get agreement year {}))]
+       (into {} (for [[c ps] by
+                      :let [top (take k (sort-by (comp - val) ps))
+                            total (reduce + (map val top))]
+                      :when (pos? total)]
+                  [c (into {} (for [[p v] top] [p (/ v total)]))]))))))
+
+(defn load-ties-un
+  "Tie features (bnm.ties) with partners weighted by UN voting agreement."
+  [dyads-path mix-path un-path codes-path]
+  (ties/features (load-event-dyads dyads-path) (load-event-counts mix-path)
+                 (fn [a b] (= (geo/parents a) (geo/parents b)))
+                 {:weights-of (un-weights (load-un-agreement un-path codes-path) ties/top-k)}))
+
 (defn load-event-mix
   "The event-code mix of each country at each quarter (bnm.mix) from
   scripts/event-mix.sh's table (country, quarter, type, count): {[unit

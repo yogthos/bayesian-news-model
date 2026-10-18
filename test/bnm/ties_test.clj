@@ -55,3 +55,14 @@
     (is (= p (ties/placebo xs 7)) "seeded")
     (let [ys (into {} (for [i (range 50)] [[(str i) 1] [(double i)]]))]
       (is (not= ys (ties/placebo ys 7)) "it moves values"))))
+
+(deftest partners-can-be-weighted-another-way
+  ;; weights from elsewhere (UN voting agreement): A's only partner is C,
+  ;; though A has no events with C, so C's surge reaches A
+  (let [dyads (into {} (for [q (range 4 10)] [q {["A" "B"] {:coop 4.0} ["B" "C"] {:coop 1.0}}]))
+        counts (into {} (for [q (range 4 10) u ["A" "B" "C"]]
+                          [[u q] {"assault-did" (if (and (= u "C") (= q 9)) 100.0 10.0)}]))
+        fs (ties/features dyads counts (constantly false) {:weights-of (fn [_] {"A" {"C" 1.0}})})
+        at #(aget ^doubles (fs ["A" 9]) (.indexOf ^java.util.List ties/labels %))]
+    (is (> (at :far-violence) 1.0))
+    (is (nil? (fs ["B" 9])) "only countries with weights")))

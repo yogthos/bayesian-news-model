@@ -84,6 +84,8 @@
   quarter] double[]}."
   {"mix" [(count mix/labels) (fn [_] (nm/load-event-mix mix-path))]
    "ties" [(count ties/labels) (fn [_] (nm/load-ties dyads-path mix-path))]
+   "ties-un" [(count ties/labels) (fn [_] (nm/load-ties-un dyads-path mix-path "data/raw/slow/unga/AgreementScores.csv"
+                                                          "data/raw/slow/unga/COW-country-codes.csv"))]
    "structure" (named-group nm/structure nm/structure-names :structure)
    "institutions" (named-group nm/institutions nm/institutions-names :institutions)
    "youth" (named-group nm/youth nm/youth-names :youth)
