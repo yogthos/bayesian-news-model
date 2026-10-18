@@ -328,13 +328,20 @@
         (x* vol (x* peg primary))]))])
 
 (def presence
-  "Groups of inputs that share a source: one indicator each."
-  {:financial [[:credit3 :hh-credit3 :credit-gap :dsr3] [:house3] [:equity3 :runup2 :equity-vol] [:curve]]
+  "Groups of inputs that share a source: one indicator each. A source that
+  starts or stops at a date (world prices, the VIX, the Penn World Table's
+  core) has its own, or its zeros would stand in for the period."
+  {:financial [[:credit3 :hh-credit3 :credit-gap :dsr3] [:house3] [:equity3 :runup2 :equity-vol] [:curve]
+               [:vix :vix-x-credit3]]
    :political [[:food-inflation] [:fragility] [:gdp-growth :inflation] [:youth-unemployment]
-               [:temperature :precipitation] [:protest3 :violence3]]
-   :political-economy [[:profit-rate :profit-rate3 :labor-share3] [:uneven-growth] [:rents-x-core-profit]]
-   :structure [[:agriculture :manufacturing :services] [:fuel-exports :food-exports :metal-exports :hightech-exports]]
-   :institutions [[:effectiveness] [:oil-rents-x-weak :mineral-rents-x-weak]]
+               [:temperature :precipitation] [:protest3 :violence3]
+               [:world-food12 :food12-x-imports :food12-x-fragility] [:oil12-x-imports :oil12-x-exports]]
+   :political-economy [[:profit-rate :profit-rate3 :labor-share3] [:uneven-growth] [:rents-x-core-profit] [:core-profit3]]
+   :structure [[:agriculture :manufacturing :services] [:fuel-exports :food-exports :metal-exports] [:hightech-exports]
+               [:food12-x-agriculture :food12-x-food-exports :food12-x-imports-x-low-yield]
+               [:metals12-x-metal-exports] [:oil12-x-rents :oil12-x-manufacturing]]
+   :institutions [[:effectiveness] [:oil-rents-x-weak :mineral-rents-x-weak]
+                  [:oil12-x-oil-rents-x-weak] [:metals12-x-mineral-rents-x-weak]]
    :youth [[:tertiary :tertiary5] [:youth-unemployment-x-urban]]
    :nonlinear [[:log-income] [:gini]]
    :regime [[:democracy :liberal-gap :civil-society :physical-integrity :corruption]]
@@ -452,11 +459,12 @@
 (defn un-weights
   "A function of the quarter giving {country {partner weight}}: each
   country's `k` partners that voted most like it in the UN General Assembly
-  the year before, weighted by agreement."
+  the year before, weighted by agreement; past the data's last year, its
+  last year's."
   [agreement k]
   (memoize
    (fn [q]
-     (let [year (dec (quot q 4))
+     (let [year (min (dec (quot q 4)) (apply max (keys agreement)))
            by (reduce-kv (fn [acc [a b] v] (-> acc (assoc-in [a b] v) (assoc-in [b a] v))) {} (get agreement year {}))]
        (into {} (for [[c ps] by
                       :let [top (take k (sort-by (comp - val) ps))

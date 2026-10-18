@@ -34,8 +34,9 @@
   <group>-placebo, its values shuffled across countries within each quarter:
   a group whose gain the placebo matches carries nothing about the country.
 
-  Each model's prior precision is chosen from a grid by its log score on
-  2000-2007; 2008 on is held out and scored with the chosen prior.
+  Each model's prior precision is chosen from a grid each year by its log
+  score on the forecasts resolved before the year (bnm.onset/choose-by-year),
+  scored from 2000; 2008 on is held out.
   Catalogues are scored only as far as data/slow/coverage.tsv says they have
   looked, so the last rows are not all positives.
 
@@ -49,6 +50,7 @@
   (:require [bnm.hazard :as hz]
             [bnm.mix :as mix]
             [bnm.named :as nm]
+            [bnm.onset :as o]
             [bnm.slow :as slow]
             [bnm.slow-train :as st]
             [bnm.ties :as ties]
@@ -70,14 +72,18 @@
 (defn- named-group
   "[width loader] for a group built like the named inputs: `build` of (db
   units months) gives [names f], f of (unit month) the raw values, which
-  `vectorize` turns into doubles with the family's presence indicators."
+  `vectorize` turns into doubles with the family's presence indicators.
+  The third element, the presence indicators of a row, keeps its placebo
+  among the rows with the same sources present."
   [build names family]
-  [(+ (count names) (count (get nm/presence family)))
-   (fn [{:keys [db units rows]}]
-     (let [months (distinct (map #(+ 2 (* 3 (:q %))) rows))
-           [names f] (build db units months)
-           [_ vf] (nm/vectorize names family)]
-       (into {} (for [{:keys [unit q]} rows] [[unit q] (vf (f unit (+ 2 (* 3 q))))]))))])
+  (let [p (count (get nm/presence family))]
+    [(+ (count names) p)
+     (fn [{:keys [db units rows]}]
+       (let [months (distinct (map #(+ 2 (* 3 (:q %))) rows))
+             [names f] (build db units months)
+             [_ vf] (nm/vectorize names family)]
+         (into {} (for [{:keys [unit q]} rows] [[unit q] (vf (f unit (+ 2 (* 3 q))))]))))
+     (fn [^doubles x] (vec (take-last p x)))]))
 
 (def group-loaders
   "Input groups by name: [width loader], the loader taking {:db :units :rows}
@@ -97,13 +103,16 @@
 
 (defn load-groups
   "[[name width {[unit quarter] double[]}] ...] for `names`, each followed by
-  its placebo; the event model's view first when `event-run` is given."
+  its placebo; the event model's view first when `event-run` is given. A
+  group without values for every row gets a presence column
+  (bnm.onset/with-presence), and the placebo shuffles values only among
+  rows with the same sources present, so it keeps who has data."
   [names event-run ctx]
   (vec (concat (when event-run [["event" (count nm/event-labels) (nm/load-event-state event-run)]])
                (for [g names
-                     :let [[width load] (or (group-loaders g) (throw (ex-info (str "unknown group " g) {})))
-                           xs (load ctx)]
-                     entry [[g width xs] [(str g "-placebo") width (ties/placebo xs 1)]]]
+                     :let [[width load stratum] (or (group-loaders g) (throw (ex-info (str "unknown group " g) {})))
+                           [width xs] (o/with-presence width (load ctx) (:rows ctx))]
+                     entry [[g width xs] [(str g "-placebo") width (ties/placebo xs 1 (or stratum (constantly nil)))]]]
                  entry))))
 
 (def cases
@@ -126,7 +135,7 @@
   [path]
   (into {} (for [line (str/split-lines (slurp path))
                  :let [[kind month] (str/split line #"\t")]]
-             [kind (quot (st/month-of month) 3)])))
+             [kind (o/last-complete-quarter (st/month-of month))])))
 
 (defn- write-rows [path rows labels]
   (with-open [w (io/writer path)]
@@ -169,17 +178,7 @@
         n (count past)]
     [(Math/log1p n) (if (pos? n) (Math/exp (- (/ (- q (long (last past))) 20.0))) 0.0)]))
 
-(defn- label [onsets q [a b]]
-  (boolean (seq (subseq onsets >= (+ q a) <= (+ q b)))))
-
-(defn hard-row?
-  "No onset of the kind in the ten years up to q: the hard cases, where the
-  country's history says nothing (Mueller & Rauh)."
-  [onsets q]
-  (empty? (subseq onsets >= (- q 40) <= q)))
-
-(defn- ongoing? [onsets q]
-  (boolean (seq (subseq onsets >= (- q 3) <= q))))
+(def hard-row? o/hard-row?)
 
 (defn- feature-sets
   "Indices into a row's full input vector [1 hist hist inputs... named...
@@ -248,14 +247,14 @@
 (defn evaluate-kind
   "Out-of-sample predictions for one kind and window: a function of the
   feature sets giving {model {:prior p :preds [[q p y unit]]}}, the prior
-  chosen per model by log score over `tune-years`."
+  chosen per model and year by log score on the years before."
   [rows onsets-by-unit units window score-from last-q models fam groups]
-  (let [labels-q (fn [{:keys [unit q]}] (label (get onsets-by-unit unit (sorted-set)) q window))
+  (let [labels-q (fn [{:keys [unit q]}] (o/label (get onsets-by-unit unit (sorted-set)) q window))
         ;; rows past the catalogue's coverage are predicted too, with no label:
         ;; they are the live forecasts (bnm.readings), never fit or scored
         usable (filterv (fn [{:keys [unit q]}]
                           (and (units unit)
-                               (not (ongoing? (get onsets-by-unit unit (sorted-set)) q))))
+                               (o/at-risk? (get onsets-by-unit unit (sorted-set)) q window)))
                         rows)
         prepared (mapv (fn [{:keys [unit q ^doubles x] :as r}]
                          (let [[h1 h2] (history-features (get onsets-by-unit unit (sorted-set)) q)
@@ -296,10 +295,11 @@
         (into {}
               (for [model models
                     :let [idx (sets model)
-                          runs (for [p (if (= model :base) [1.0] priors)]
-                                 {:prior p :preds (run-model idx p)})
-                          [lo hi] tune-years]]
-                [model (apply max-key #(or (log-score (in-years (:preds %) lo hi)) -1e9) (reverse runs))]))))))
+                          runs (vec (for [p (if (= model :base) [1.0] priors)]
+                                      {:prior p :preds (run-model idx p)}))]]
+                ;; each year's prior chosen on the years before it, so no
+                ;; scored year has picked its own prior
+                [model (o/choose-by-year runs log-score window (or (first (filter #(= 100.0 (:prior %)) runs)) (first runs)))]))))))
 
 (defn combine
   "Adds :pool and :stack to `runs`, combining every model but :base and the
@@ -390,14 +390,15 @@
                                 :let [i (first (keep-indexed #(when (and (= "markets" (:domain %2)) (= :present (:feature %2))) %1) labels))]
                                 :when (and i (pos? (aget x (long i))))]
                             unit))
-        coverage {"banking_crisis" (set (keys (get events "banking_crisis")))
-                  "market_crash" market-units}
+        ;; banking crises are catalogued for every country (Laeven & Valencia,
+        ;; the ESRB); share-price crashes only where there are share prices
+        coverage {"market_crash" market-units}
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
         case-preds (atom {})
         preds-out (io/writer (str dir "/preds.tsv"))]
     (println (count rows) "country-quarters recorded")
-    (say "Onsets, out of sample. Priors chosen on" (str/join "-" tune-years) "(tune); 2008 on is held out.")
+    (say "Onsets, out of sample. Priors chosen each year on the years before; tune" (str/join "-" tune-years) "; 2008 on is held out.")
     (say "AUROC pooled and within quarters (auq), average precision, recall in the top 10% of each quarter,")
     (say "Brier skill against the base rate; AUC's 90% interval resampling whole years; Sarlin's relative")
     (say "usefulness for a policymaker weighing missed onsets by 0.9 and 0.95 (the share of the loss of")
@@ -420,7 +421,7 @@
           (.write preds-out (str kind "\t" (clojure.core/name wname) "\t" (clojure.core/name model) "\t" q "\t" unit "\t" p "\t" y "\n")))
         (.flush preds-out)
         (say)
-        (say (format "%s %s (to %s)  priors: %s" kind (clojure.core/name wname) (st/month-str (+ 2 (* 3 last-q)))
+        (say (format "%s %s (to %s)  last priors: %s" kind (clojure.core/name wname) (st/month-str (+ 2 (* 3 last-q)))
                      (str/join " " (for [m (rest models)] (str (clojure.core/name m) "=" (long (:prior (runs m))))))))
         (doseq [[era lo hi hard] [["tune" 2000 2007] ["2008+" 2008 9999] ["08-14" 2008 2014] ["2015+" 2015 9999]
                                   ["hard" 2008 9999 true]]]

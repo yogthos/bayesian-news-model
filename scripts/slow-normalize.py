@@ -806,7 +806,10 @@ def ucdp():
         names = [iso3_of_name(n) for n in r["location"].split(",")]
         units = {u for u in locs + names if u}
         for u in units:
-            episodes.add((u, r["start_date2"], r["conflict_id"], r["type_of_conflict"]))
+            # known only to the year or worse (start_prec2 5+, dated 31 December):
+            # dated 1 January, so no row after the onset is labelled as before it
+            d = r["start_date2"] if int(r["start_prec2"]) < 5 else r["start_date2"][:4] + "-01-01"
+            episodes.add((u, d, r["conflict_id"], r["type_of_conflict"]))
             if r["intensity_level"] == "2":
                 wars.add((u, r["year"], r["conflict_id"]))
     for u, d, cid, t in episodes:
@@ -818,7 +821,7 @@ def ucdp():
     for (u, cid), ys in seen.items():
         for y in sorted(ys):
             if y - 1 not in ys:
-                EVENTS.append(("war_onset", u, "%d-07-01" % y, "conflict %s reaches 1000 deaths" % cid))
+                EVENTS.append(("war_onset", u, "%d-01-01" % y, "conflict %s reaches 1000 deaths" % cid))
 
 
 def esrb():
@@ -880,7 +883,7 @@ def laeven_valencia():
         y = int(r["start"])
         if r["borderline"] == "1" or any(abs(y - e) <= 2 for e in esrb_years[r["iso"]]):
             continue
-        EVENTS.append(("banking_crisis", r["iso"], "%04d-07-01" % y, "Laeven-Valencia systemic crisis"))
+        EVENTS.append(("banking_crisis", r["iso"], "%04d-01-01" % y, "Laeven-Valencia systemic crisis"))
     COVERAGE["banking_crisis"] = max(COVERAGE.get("banking_crisis", ""), "2025-12")
 
 
@@ -964,6 +967,12 @@ def main():
     dedup = {}
     for r in ROWS:
         dedup[(r[0], r[1], r[3])] = r
+    # a logged variable at or below zero is a gap, not a value (Brazil's share
+    # prices are 0 for 1980-88): it would be logged to -28 and read as a crash
+    bad = [k for k, r in dedup.items() if r[5] <= 0 and VARS.get(r[1], (None, None))[1] == "log"]
+    for k in bad:
+        del dedup[k]
+    print("dropped %d non-positive values of logged variables" % len(bad), file=sys.stderr)
     n0 = len(EVENTS)
     mechanical(dedup)
     print("mechanical %d events" % (len(EVENTS) - n0), file=sys.stderr)

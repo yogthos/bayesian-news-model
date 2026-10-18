@@ -56,6 +56,14 @@
     (let [ys (into {} (for [i (range 50)] [[(str i) 1] [(double i)]]))]
       (is (not= ys (ties/placebo ys 7)) "it moves values"))))
 
+(deftest placebo-keeps-each-row-in-its-stratum
+  ;; the last value is a presence flag: values move only among rows with the same flag
+  (let [xs (into {} (for [i (range 40)] [[(str i) 1] [(double i) (if (even? i) 1.0 0.0)]]))
+        p (ties/placebo xs 3 peek)]
+    (is (every? (fn [[k v]] (= (peek v) (peek (xs k)))) p))
+    (is (not= xs p))
+    (is (= (set (vals xs)) (set (vals p))))))
+
 (deftest partners-can-be-weighted-another-way
   ;; weights from elsewhere (UN voting agreement): A's only partner is C,
   ;; though A has no events with C, so C's surge reaches A

@@ -101,10 +101,14 @@
 
 (defn placebo
   "`xs` ({[unit quarter] x}) with each quarter's values shuffled among its
-  units, seeded."
-  [xs seed]
-  (into {} (mapcat (fn [[q entries]]
-                     (let [g (m/rng (+ (* 7919 (long seed)) (long q)))
+  units, seeded; with `stratum`, only among the units whose values give the
+  same (stratum x), such as which of a group's sources are present, so the
+  placebo keeps who has data and shuffles only what the data say."
+  ([xs seed] (placebo xs seed (constantly nil)))
+  ([xs seed stratum]
+  (into {} (mapcat (fn [[_ entries]]
+                     (let [q (second (key (first entries)))
+                           g (m/rng (+ (* 7919 (long seed)) (long q) (* 104729 (hash (stratum (val (first entries)))))))
                            vs (object-array (map val entries))]
                        (loop [i (dec (alength vs))]
                          (when (pos? i)
@@ -113,4 +117,4 @@
                              (aset vs i (aget vs j)) (aset vs j t)
                              (recur (dec i)))))
                        (map (fn [[k _] v] [k v]) entries vs)))
-                   (group-by (comp second key) xs))))
+                   (group-by (fn [[[_ q] x]] [q (stratum x)]) xs)))))
