@@ -161,6 +161,9 @@ whether one is under way.
   changes forecasts only, so a model trained without it takes it on load.
   Learning its size per kind from the tails measured worse (the shock moves
   the median, and the size chased it), so it is fixed.
+  Replayed live from January 2023 with it on, country Brier held or
+  improved (violence 0.0423 against 0.0424) and the 80% range covered
+  0.81-0.82 as the widening learned without it relearned.
 - The escalation probability is the tail, above 1.5 times the last
   quarter, of a log-normal fitted to the forecast sample, then calibrated.
   From 100 draws a counted share is zero for most nodes, and the ties lose
