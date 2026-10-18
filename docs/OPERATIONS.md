@@ -134,6 +134,10 @@ whether one is under way.
   (`bnm.calibrate/learn-coverage`). Learning it from the size of the errors
   instead fed on itself: widening moved the median, errors grew, and v4-q's
   coverage climbed to 0.95.
+- Below the country level outcomes still fall above the range more often
+  than below it (13-14% against 6-7%). A factor per side (`:coverage-sides`)
+  evens the tails but drags the median down and scores worse, so it is not
+  used. At the country level the tails are even.
 - The escalation probability is the tail, above 1.5 times the last
   quarter, of a log-normal fitted to the forecast sample, then calibrated.
   From 100 draws a counted share is zero for most nodes, and the ties lose
@@ -152,6 +156,10 @@ whether one is under way.
   that learns changes, since the learned state was made by the old code.
   When the monitor flags drift, the quarterly scoring is already
   recalibrating; a retrain helps only if the drift outlasts that.
+- `bnm.shadow` replays the live path from a saved origin and sets its live
+  record beside the backtest's. From January 2023 they agree: 2,880 country
+  forecasts per channel over 12 quarters, coverage 0.80 both, calibrated
+  Brier 0.042 live against 0.045 (violence).
 - After a retrain, delete `data/derived/event-model.edn` so the pipeline
   starts from the new run.
 

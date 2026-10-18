@@ -330,10 +330,13 @@
           cov
           (group-by (juxt :level :channel :stratum) (filter #(> (:q90 %) (:q10 %)) rows))))
 
-;; One factor centres nothing: below the country the outcomes fell above the
-;; range twice as often as below it (v6-q: 13-14% above q90, 6-7% below q10)
-;; while the range covered 80%. Each side gets its own factor, moved by the
-;; same damped step until its own tail holds 10%.
+;; Not the default: below the country the outcomes fell above the range twice
+;; as often as below it (v6-q: 13-14% above q90, 6-7% below q10) while it
+;; covered 80%, so each side gets its own factor, moved by the same damped
+;; step until its own tail holds 10%. Refit over v6-q's origins it evened the
+;; outer tenths, but keeping the mean while stretching the upper side pulled
+;; the median down (PIT 0.5-0.7 below it, 1.5 above), and CRPS and median
+;; skill fell at every level (actor violence median skill +11.9% to +2.0%).
 
 (defn side-factors
   "{:lo :hi} the widening below and above the median for `key` under `cov`
