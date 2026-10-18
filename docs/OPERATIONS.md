@@ -117,6 +117,19 @@ both say so.
 - Held out it lifts AUC from 0.831 to 0.836, and the probability before
   2007 from 0.06-0.16 to 0.09-0.18: flagged, weakly. The US gap was large
   before 2007 but not unusual against its own past.
+- **Credit-financed booms** (Greenwood, Hanson, Shleifer & Sørensen 2022)
+  now enter the panel hazard: three-year credit growth with real equity or
+  house-price growth, each against the country's own past (the boom zone:
+  credit in its top fifth, an asset in its top third; and their
+  interaction), so the panel's coefficients carry to US series in other
+  units. Real time on the panel the crisis AUC over 2000-20 rose from 0.69
+  to 0.75, from 1950 from 0.52 to 0.62, and the timing of crisis waves from
+  0.58 to 0.76 (`bnm.macrohistory`, the boom section).
+- The US crisis probability is now 0.14 in mid-2004 to mid-2007 against
+  0.08 in 2003 (before: flat at 0.09-0.10), and 0.12 in 2000. It leads the
+  2008 fall by two to three years, so on the 12-month drawdown target it
+  scores no better (AUC 0.837 against 0.839): the lead is the point, and it
+  is read on the crisis channel's two-year horizon.
 
 **Exogenous shocks (2020)** (`scripts/detection-lag.py`). No model
 anticipates them. Measured across every US bear market since 1990, from

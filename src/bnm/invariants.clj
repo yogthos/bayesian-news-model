@@ -92,3 +92,21 @@
                     (range (max 1 (inc (- i window))) (inc i)))]
     (when (>= (count pairs) n)
       (correlation (map first pairs) (map second pairs)))))
+
+(defn boom
+  "A credit-financed asset boom (Greenwood, Hanson, Shleifer & Sorensen, JF
+  2022: credit and asset growth together give about a 40% chance of a crisis
+  within three years against 7%; either alone forecasts modestly), judged
+  against the growth the panel had seen before: {:zone 1.0 when credit growth
+  is in the top fifth of `past-credit` and asset growth in the top third of
+  `past-asset`, else 0.0; :interaction the product of their standardized
+  excesses above the past means, zero when either is below}. nil with fewer
+  than 30 past values of either."
+  [credit asset past-credit past-asset]
+  (when (and credit asset (>= (count past-credit) 30) (>= (count past-asset) 30))
+    (let [q (fn [xs p] (let [v (vec (sort xs))] (v (min (dec (count v)) (long (* p (count v)))))))
+          z (fn [x xs] (let [n (count xs) mu (/ (reduce + xs) n)
+                             sd (Math/sqrt (/ (reduce + (map #(* (- % mu) (- % mu)) xs)) (dec n)))]
+                         (if (> sd 1e-12) (/ (- x mu) sd) 0.0)))]
+      {:zone (if (and (>= credit (q past-credit 0.8)) (>= asset (q past-asset (/ 2.0 3.0)))) 1.0 0.0)
+       :interaction (* (max 0.0 (z credit past-credit)) (max 0.0 (z asset past-asset)))})))
