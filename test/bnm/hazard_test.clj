@@ -169,3 +169,21 @@
     (is (> (hz/matched-concordance rows 3) 0.95) "it knows which of the alike will tip")
     (is (< (Math/abs (- 0.5 (hz/matched-concordance (map #(assoc % :p-model (:p-bench %)) rows) 3))) 0.1)
         "the benchmark against its own matches is a coin")))
+
+(deftest usefulness-matches-every-threshold-tried
+  ;; the sweep gives what trying each threshold against every row gives
+  (let [g (bnm.math/rng 11)
+        ps (vec (repeatedly 500 #(Math/floor (* 50 (bnm.math/next-double! g)))))
+        ys (mapv #(< (bnm.math/next-double! g) (/ % 100.0)) ps)
+        brute (fn [ps ys mu]
+                (let [n (count ys) pos (count (filter true? ys)) neg (- n pos)
+                      p1 (/ pos (double n)) p2 (- 1.0 p1)
+                      loss (fn [thr] (let [alarm (filter #(>= (first %) thr) (map vector ps ys))
+                                           tp (count (filter #(true? (second %)) alarm))
+                                           fp (- (count alarm) tp)]
+                                       (+ (* mu p1 (/ (- pos tp) (double pos))) (* (- 1.0 mu) p2 (/ fp (double neg))))))
+                      best (apply min (loss Double/POSITIVE_INFINITY) (map loss (distinct ps)))
+                      ignore (min (* mu p1) (* (- 1.0 mu) p2))]
+                  (/ (- ignore best) ignore)))]
+    (doseq [mu [0.5 0.9 0.95]]
+      (is (< (Math/abs (- (brute ps ys mu) (hz/usefulness ps ys mu))) 1e-12)))))

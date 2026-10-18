@@ -83,6 +83,10 @@
                        ; of a node's typical rate (see `stable-params`)
    :param-uncertainty true ; forecasts draw parameters from their posterior
    :pooling true       ; priors learned across nodes of a kind (see learn-pool)
+   :shock nil          ; in a forecast, {:sd :volume}: one log-normal multiplier
+                       ; per path, node and channel, held over the horizon, its
+                       ; log-sd :sd for a node far quieter than :volume raw events
+                       ; a bin and fading for busier ones (see `shock-sd`)
    :level-noise 0.0    ; in a forecast, the log-sd a node's level drifts by over
                        ; 52 bins beyond what its dynamics explain: shocks the
                        ; model has no way to see coming
@@ -703,6 +707,24 @@
 (defn- add-total! [^doubles p ^long off ^doubles y]
   (dotimes [c C] (aset p (+ off c) (+ (aget p (+ off c)) (aget y c)))))
 
+(defn shock-sd
+  "The log-sd of a node's persistent forecast shock: `s` for a node far
+  quieter than `v0` raw events a bin, fading as sqrt(v0 / (v0 + raw)) for
+  busier ones. Gamma mixing (the local level, the negative binomial draws)
+  makes a sparse node's log total left-skewed, its upper tail too short; a
+  log-normal shock is symmetric in log space, so it lengthens that tail where
+  series are sparse and leaves busy ones alone (Berry & West 2020's random
+  effect, held over the horizon, with a variance pooled by volume)."
+  ^double [^double s ^double v0 ^double raw]
+  (* s (Math/sqrt (/ v0 (+ v0 (Math/max 0.0 raw))))))
+
+(defn- draw-shocks!
+  "Fills `out` (channels) with mean-one log-normal multipliers of log-sds `sds`."
+  [g ^doubles out ^doubles sds]
+  (dotimes [c C]
+    (let [sd (aget sds c)]
+      (aset out c (if (pos? sd) (Math/exp (- (* sd (m/normal! g)) (* 0.5 sd sd))) 1.0)))))
+
 (defn forecast
   "Simulates `horizon` bins ahead `sims` times from the model's current state,
   without changing it. Returns {:ids [...] :horizon h :sims s :totals t} where
@@ -740,7 +762,14 @@
                                        (block-shares node (mapv #(:ybar (nodes %)) (:src node)) sc))
                                      nodes)))
         ;; per-bin step of the level walk, so its sd after 52 bins is :level-noise
-        step (/ (double (:level-noise cfg)) (Math/sqrt 52.0))]
+        step (/ (double (:level-noise cfg)) (Math/sqrt 52.0))
+        ;; per node and channel, the log-sd of its persistent shock
+        shock-sds (when-let [{:keys [sd volume]} (:shock cfg)]
+                    (object-array (map (fn [node]
+                                         (let [^doubles yb (:ybar node) out (double-array C)]
+                                           (dotimes [c C] (aset out c (shock-sd (double sd) (double volume) (/ (aget yb c) u))))
+                                           out))
+                                       nodes)))]
     (dotimes [i n]
       (aset totals i (double-array (* sims C)))
       (when (or paths? (and keep-paths (contains? keep-paths i)))
@@ -753,6 +782,9 @@
        (let [from (quot (* chunk sims) forecast-chunks)
              to (quot (* (inc chunk) sims) forecast-chunks)
              g (m/rng (+ (* 7919 (long seed)) chunk))
+             ;; the shocks on a stream of their own, so the rest of a forecast is
+             ;; the same with or without them
+             gs (m/rng (+ (* 7919 (long seed)) chunk 104729))
              own (double-array C)
              chsum (double-array C)
              factors (when uncertain?
@@ -766,7 +798,12 @@
                                (alength ^ints (:src node)) cap))))
            (let [hs (object-array (map #(aclone ^doubles (:h %)) nodes))
                  ys (object-array (repeatedly n #(double-array C)))
-                 levels (object-array (repeatedly n #(double-array C)))]
+                 levels (object-array (repeatedly n #(double-array C)))
+                 shocks (when shock-sds
+                          (let [a (object-array n)]
+                            (dotimes [i n]
+                              (aset a i (doto (double-array C) (#(draw-shocks! gs % (aget shock-sds i))))))
+                            a))]
              (dotimes [t horizon]
                ;; the walk's variance after t+1 steps; exp(level - var/2) has mean one
                (let [half-var (* 0.5 step step (inc t))]
@@ -777,6 +814,9 @@
                      (if uncertain?
                        (own-rate-drawn! node hs own sc (aget factors i))
                        (own-rate! node hs own sc))
+                     (when shocks
+                       (let [^doubles sk (aget shocks i)]
+                         (dotimes [c C] (aset own c (* (aget own c) (aget sk c))))))
                      (when-not leaf? (children-sum! chsum ch ys))
                      (when (pos? step) (drift! g (aget levels i) step))
                      (draw-node! g (aget ys i) own (aget levels i) half-var (:disp node) chsum

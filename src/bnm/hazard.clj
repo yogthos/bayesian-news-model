@@ -224,21 +224,25 @@
   for a policymaker who weighs missed events by mu and false alarms by
   1 - mu: the share of the loss of ignoring the forecast (always or never
   acting, whichever is cheaper) that the best threshold saves. 1 is a
-  perfect forecast, 0 one worth nothing."
+  perfect forecast, 0 one worth nothing. Every threshold is tried in one
+  sweep down the sorted forecasts."
   [ps ys mu]
   (let [n (count ys)
         pos (count (filter true? ys))
         neg (- n pos)
         p1 (/ pos (double n)) p2 (- 1.0 p1)
-        pairs (map vector ps ys)
-        loss (fn [thr]
-               (let [alarm (filter #(>= (first %) thr) pairs)
-                     tp (count (filter #(true? (second %)) alarm))
-                     fp (- (count alarm) tp)
-                     t1 (if (pos? pos) (/ (- pos tp) (double pos)) 0.0)
-                     t2 (if (pos? neg) (/ fp (double neg)) 0.0)]
-                 (+ (* mu p1 t1) (* (- 1.0 mu) p2 t2))))
-        best (apply min (loss Double/POSITIVE_INFINITY) (map loss (distinct ps)))
+        loss (fn [tp fp]
+               (+ (* mu p1 (if (pos? pos) (/ (- pos tp) (double pos)) 0.0))
+                  (* (- 1.0 mu) p2 (if (pos? neg) (/ fp (double neg)) 0.0))))
+        ;; alarms at threshold p are all forecasts >= p: walk the groups of
+        ;; equal forecasts from the highest down
+        groups (partition-by first (sort-by #(- (double (first %))) (map vector ps ys)))
+        best (loop [[g & more] groups tp 0 fp 0 best (loss 0 0)]
+               (if-not g
+                 best
+                 (let [t (count (filter #(true? (second %)) g))
+                       tp (+ tp t) fp (+ fp (- (count g) t))]
+                   (recur more tp fp (min best (loss tp fp))))))
         ignore (min (* mu p1) (* (- 1.0 mu) p2))]
     (if (pos? ignore) (/ (- ignore best) ignore) 0.0)))
 

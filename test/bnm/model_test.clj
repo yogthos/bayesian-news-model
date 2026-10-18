@@ -287,3 +287,32 @@
         node (model/node mdl "UKR:GOV")]
     (is (= 1 (count (:children node))))
     (is (< 7.0 (aget ^doubles (:kappa node) violence) 13.0) (aget ^doubles (:kappa node) violence))))
+
+(deftest a-persistent-shock-lengthens-quiet-nodes-upper-tails
+  ;; one log-normal multiplier per path and node, held over the horizon, its
+  ;; log-sd near :shock-sd for a node far quieter than :shock-volume raw events
+  ;; a bin and fading for busier ones (a pooled variance trend)
+  (is (< (Math/abs (- 0.5 (model/shock-sd 0.5 10.0 0.01))) 0.01))
+  (is (< (model/shock-sd 0.5 10.0 10000.0) 0.02))
+  (let [s (-> (structure/volumes)
+              (structure/tally "UKR" "GOV" "UKR" "OPP" nil 300.0)
+              (structure/tally "USA" nil nil nil nil 5000000.0)
+              (structure/build {:min-dyad-volume 100.0 :min-actor-volume 100.0 :min-pair-volume 100.0}))
+        g (m/rng 5)
+        week (fn [] {"toy" [["UKR" "GOV" "UKR" "OPP" nil violence (double (m/poisson! g 2.0))]
+                            ["USA" nil nil nil nil violence (double (m/poisson! g 500000.0))]]})
+        mdl (reduce (fn [mdl [t bin]] (first (series/observe-bin! mdl t bin)))
+                    (series/with-routes (model/create s))
+                    (map-indexed vector (repeatedly 150 week)))
+        quantiles (fn [mdl id]
+                    (let [fc (model/forecast mdl {:horizon 13 :sims 400 :seed 9})
+                          i (.indexOf ^java.util.List (:ids fc) id)
+                          xs (double-array (sort (for [k (range 400)] (model/total fc i k violence))))]
+                      (mapv #(m/quantile xs %) [0.1 0.5 0.9])))
+        upper (fn [[_ q50 q90]] (Math/log (/ q90 q50)))
+        plain (quantiles mdl "UKR:GOV")]
+    (is (> (upper (quantiles (assoc-in mdl [:config :shock] {:sd 0.6 :volume 50.0}) "UKR:GOV"))
+           (+ 0.2 (upper plain)))
+        "the quiet node's upper tail lengthens")
+    (is (= plain (quantiles (assoc-in mdl [:config :shock] {:sd 0.6 :volume 1e-12}) "UKR:GOV"))
+        "a shock faded to nothing changes nothing")))
