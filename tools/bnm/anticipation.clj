@@ -8,7 +8,10 @@
   against the four non-onsets of its quarter that history rates closest: 0.5
   is knowing only what history knows).
 
-    jolt -A:tools -M -m bnm.anticipation [--run onsets-live] [--kinds a,b]
+    jolt -A:tools -M -m bnm.anticipation [--run onsets-live] [--kinds a,b] [--bench history]
+
+  --bench sets the model every other is scored against: a group's placebo
+  (ties-placebo) asks whether the group knows anything about the country.
 
   Reads data/runs/<run>/preds.tsv; writes anticipation.txt beside it."
   (:require [bnm.hazard :as hz]
@@ -18,7 +21,7 @@
 
 (def eras [["03-14" 2003 2014] ["15-26" 2015 2026]])
 
-(def bench "history")
+(def default-bench "history")
 
 (defn- read-preds
   "{[kind window] {model {[unit q] [p y]}}}, resolved rows only."
@@ -53,13 +56,14 @@
          :matched (hz/matched-concordance (map (fn [[q a b y]] {:period q :p-model a :p-bench b :y y}) rows) 4)}))))
 
 (defn -main [& args]
-  (let [{:keys [run kinds]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run kinds bench]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+        bench (or bench default-bench)
         dir (str "data/runs/" (or run "onsets-live"))
         kinds (when kinds (set (str/split kinds #",")))
         preds (read-preds (str dir "/preds.tsv") kinds)
         events (onsets/read-events "data/slow/events.tsv")
         gain (fn [{:keys [diff lo hi]}] (format "%s [%s %s]%s" (f3 diff) (f3 lo) (f3 hi) (if (pos? lo) "*" " ")))
-        header (str "Anticipation: each model against the country's own onset history (out of sample).\n"
+        header (str (format "Anticipation: each model against %s (out of sample).\n" bench)
                     "Recall in the top 5% and 10% of each quarter and Sarlin usefulness (mu 0.9), each with its gain over\n"
                     "history and the gain's 90% interval resampling years (* when it excludes zero); matched: the share\n"
                     "of onsets ranked above the four non-onsets of their quarter that history rates closest (0.5 = no more\n"
@@ -89,6 +93,7 @@
         _ (print header)
         _ (doseq [blk (doall blocks)]
             (let [s @blk] (print s) (flush) (.append out s)))
-        out (str out)]
+        out (str out)
+        file (if (= bench default-bench) "anticipation.txt" (str "anticipation-vs-" bench ".txt"))]
     (print out)
-    (spit (str dir "/anticipation.txt") out)))
+    (spit (str dir "/" file) out)))

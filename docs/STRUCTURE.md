@@ -202,3 +202,17 @@ Data to fetch: IMF commodity terms of trade, IMF DOTS, UNGA votes
 WGI government effectiveness (from 1996 only), exchange-rate regime
 (Ilzetzki, Reinhart & Rogoff). Already in hand: GDELT dyads, sector shares,
 export shares, resource rents, youth unemployment, V-Dem politics.
+
+## Results
+
+**Ties, step 1** (`bnm.onsets --groups ties`, then `bnm.anticipation
+--bench ties-placebo`). Against the same inputs shuffled across countries
+within each quarter, on hard cases (no onset in ten years):
+- Conflict onsets: recall in the top 10% a year ahead 0.68 against the
+  placebo's 0.54 (history 0.55); with the named inputs 0.67 against 0.60.
+  Gains with intervals over years above zero in both eras, at quarters 2-4
+  and in the year after; none below. In 2015-26 named plus ties gains +0.17
+  at 10% and +0.18 at 5% over its placebo, and usefulness +0.13.
+- Protest and violence surges: nothing beyond the placebo. Coups were not
+  tried, as the literature found no coup contagion.
+So learned ties carry real signal for conflict onsets in quiet countries.
