@@ -27,6 +27,7 @@
             [bnm.events :as ev]
             [bnm.eval :as eval]
             [bnm.geo :as geo]
+            [bnm.math :as math]
             [bnm.model :as model]
             [bnm.ontology :as ont]
             [bnm.series :as series]
@@ -72,9 +73,11 @@
   training did; otherwise the model as it was."
   [m]
   (if (period-eve? m)
+    ;; every node and channel, quiet ones too, as the backtest scores them
     (register m (outlook m {:horizon (track/period-bins m)
                             :sims (get-in m [:config :register-sims] 100)
-                            :seed (:bin m)}))
+                            :seed (:bin m)
+                            :min-rate 0.0}))
     m))
 
 (defn- advance
@@ -167,9 +170,11 @@
         :recent recent
         :last last
         :expected mean
-        :low (nth xs (int (* 0.1 (dec sims))))
-        :median (nth xs (quot sims 2))
-        :high (nth xs (int (* 0.9 (dec sims))))
+        ;; the quantiles as the backtest takes them (bnm.eval/rows), which
+        ;; the ranges' calibration learns from
+        :low (math/quantile (double-array xs) 0.1)
+        :median (math/quantile (double-array xs) 0.5)
+        :high (math/quantile (double-array xs) 0.9)
         :stratum stratum
         :p-escalate p
         :sims sims

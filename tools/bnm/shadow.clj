@@ -15,6 +15,8 @@
             [bnm.live :as live]
             [bnm.series :as series]
             [bnm.store :as store]
+            [bnm.time :as t]
+            [bnm.track :as track]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -30,7 +32,7 @@
               (update-in [:config :restructure-every] #(or % 52))
               (assoc :track {:actual {} :hist (:hist ctx) :clim (:clim ctx)})
               series/with-routes)
-        m (update m :track #'bnm.track/<-part)]
+        m (update m :track track/<-part)]
     (if (core/period-eve? m)
       (core/register m (core/outlook m {:horizon 13 :sims 100 :seed (:bin m)}))
       m)))
@@ -40,7 +42,7 @@
   and channel from scored.edn, ranges from rows/."
   [dir origin labels]
   (let [want (set labels)
-        scored (filter #(want (:period %)) (ev/read-scored (str dir "/scored.edn") ":country" nil))
+        scored (filter #(want (:period %)) (ev/read-scored (str dir "/scored.edn") :country nil))
         rows (for [lbl labels
                    :let [f (io/file dir "rows" (str lbl ".tsv"))]
                    :when (.exists f)
@@ -60,10 +62,11 @@
         dir (str "data/runs/" run)
         m (live/catch-up (start dir origin) (or source "gdelt"))
         rec (core/record m)
-        labels (->> (.listFiles (io/file dir "rows"))
-                    (keep #(second (re-matches #"(\d+)\.tsv" (.getName %))))
-                    (filter #(>= (compare % origin) 0))
-                    sort)
+        ;; the periods the live record holds (the last `record-length`), labelled
+        ;; as the backtest labels them, by their first bin's date
+        pb (track/period-bins m)
+        labels (sort (for [{:keys [period]} (get-in m [:track :record])]
+                       (t/date-str (* period pb (get-in m [:config :bin-days])))))
         bt (backtest dir origin labels)
         f2 #(format "%.4f" (double (or % 0.0)))
         out (with-out-str

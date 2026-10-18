@@ -55,7 +55,11 @@
                (map :source (bnm/drivers st "UKR" :verbal-conflict))))))))
 
 (deftest scores-its-forecasts-live-as-the-backtest-does
-  (let [events (daily-events 7)
+  (let [events (sort-by :date (concat (daily-events 7)
+                                      ;; a quiet country: an event every ten days
+                                      (for [d (range 0 365 10)]
+                                        {:date (t/date-str (+ (t/day "20200101") d)) :a1 "ISL" :a2 nil
+                                         :type :protest :mode :did :n 1})))
         cfg {:period-bins 4 :structure-opts {:min-dyad-volume 5.0 :min-country-volume 5.0}}
         st (bnm.store/memory-store)
         mdl (reduce (fn [mdl day] (bnm/add-events mdl "newsroom" day))
@@ -63,6 +67,16 @@
     (testing "an outlook is registered on each period's eve, by the model itself"
       (is (not (bnm/period-eve? mdl)))
       (is (< 5 (:periods (get (bnm/record mdl) [:country :violence]) 0))))
+    (testing "the registered forecast covers quiet channels too, as the backtest scores them"
+      (let [[_ {:keys [rows]}] (last (sort-by key (get-in mdl [:track :forecasts])))]
+        (is (contains? (set (keep #(when (= :country (bnm.geo/kind (:id %))) (:id %)) (:nodes mdl))) "ISL"))
+        (is (not-any? #(and (= "ISL" (:node %)) (= :violence (:channel %)))
+                      (bnm/outlook mdl {:horizon 4 :sims 10}))
+            "a reading skips Iceland's violence as too quiet")
+        (is (contains? (get rows "ISL") :violence))))
+    (testing "its ranges are the sample's quantiles, as the backtest takes them"
+      (let [r (first (bnm/outlook mdl {:horizon 4 :sims 10}))]
+        (is (<= (:low r) (:median r) (:high r)))))
     (testing "an outlook that doesn't cover a period exactly isn't"
       (let [o (bnm/outlook mdl {:horizon 3 :sims 5})]
         (is (identical? (:track mdl) (:track (bnm/register mdl o))))))
