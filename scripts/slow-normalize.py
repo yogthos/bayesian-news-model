@@ -244,6 +244,11 @@ WB = {
     "IP.JRN.ARTC.SC": ("technology/articles", "log1p", "scientific and technical articles"),
     "MS.MIL.XPND.GD.ZS": ("state/military_gdp", "id", "military expenditure, % GDP"),
     "GC.TAX.TOTL.GD.ZS": ("state/tax_gdp", "id", "tax revenue, % GDP"),
+    "MS.MIL.XPND.CD": ("state/military_usd", "log", "military expenditure, current US$"),
+    "NY.GDP.MINR.RT.ZS": ("energy/mineral_rents_gdp", "id", "mineral rents, % GDP"),
+    "NY.GDP.PETR.RT.ZS": ("energy/oil_rents_gdp", "id", "oil rents, % GDP"),
+    "SE.TER.ENRR": ("people/tertiary_enrolment", "id", "tertiary enrolment, % gross"),
+    "GOV_WGI_GE.EST": ("state/government_effectiveness", "id", "government effectiveness (WGI estimate)"),
 }
 
 

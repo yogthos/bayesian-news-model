@@ -67,7 +67,11 @@ WB_INDICATORS=(
   # technology and science
   IP.PAT.RESD IP.PAT.NRES GB.XPD.RSDV.GD.ZS IT.NET.USER.ZS IT.CEL.SETS.P2 IP.JRN.ARTC.SC
   # state
-  MS.MIL.XPND.GD.ZS GC.TAX.TOTL.GD.ZS
+  MS.MIL.XPND.GD.ZS GC.TAX.TOTL.GD.ZS MS.MIL.XPND.CD
+  # structure (docs/STRUCTURE.md): rents by kind, the educated young
+  NY.GDP.MINR.RT.ZS NY.GDP.PETR.RT.ZS SE.TER.ENRR
+  # Worldwide Governance Indicators: government effectiveness (from 1996; biennial to 2002)
+  GOV_WGI_GE.EST
 )
 fetch_worldbank() {
   for i in "${WB_INDICATORS[@]}"; do
