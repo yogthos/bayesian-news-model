@@ -207,13 +207,21 @@
 
 (defn recall-at-budget
   "Of the positives, the share among the top `budget` fraction of rows by
-  score in their period: `rows` are [period score label]."
+  score in their period: `rows` are [period score label]. Rows tied at the
+  cutoff share the slots left, so the order they come in does not matter."
   [rows budget]
   (let [pos (count (filter #(nth % 2) rows))]
     (when (pos? pos)
       (/ (reduce + (for [[_ g] (group-by first rows)
                          :let [k (long (Math/ceil (* budget (count g))))]]
-                     (count (filter #(nth % 2) (take k (sort-by #(- (double (second %))) g))))))
+                     ;; through the tie groups by score, highest first
+                     (loop [[[_ tied] & more] (sort-by #(- (double (key %))) (group-by #(double (second %)) g))
+                            left k acc 0.0]
+                       (if (or (nil? tied) (<= left 0))
+                         acc
+                         (let [n (count tied) hits (count (filter #(nth % 2) tied))
+                               t (min n left)]
+                           (recur more (- left t) (+ acc (* hits (/ t (double n))))))))))
          (double pos)))))
 
 (defn brier [ps ys]

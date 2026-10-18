@@ -223,3 +223,13 @@
     (let [ll (fn [rs] (/ (reduce + (for [[_ p y] rs] (Math/log (if y p (- 1.0 p))))) (double (count rs))))
           pooled (hz/stack-out-of-sample rows 80 {})]
       (is (> (ll out) (ll pooled)) "a stack per group beats one for all"))))
+
+(deftest recall-at-a-budget-shares-ties-at-the-cutoff
+  ;; ten rows in one period, a budget of 2: one clear top row, then four tied,
+  ;; one of them a positive; the second slot holds a quarter of the tie
+  (let [rows (concat [[1 0.9 true]]
+                     (for [y [true false false false]] [1 0.5 y])
+                     (for [_ (range 5)] [1 0.1 false]))]
+    (is (< (Math/abs (- (/ 1.25 2.0) (hz/recall-at-budget rows 0.2))) 1e-12))
+    (is (= (hz/recall-at-budget rows 0.2) (hz/recall-at-budget (reverse rows) 0.2))
+        "the order of the rows does not matter")))
