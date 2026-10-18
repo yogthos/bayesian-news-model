@@ -321,6 +321,26 @@
                     (- (ll (clip (sig (+ a (logit p)))) y) (ll (clip p) y)))]
         (/ (reduce + diffs) (double (count diffs)))))))
 
+(defn stack-out-of-sample
+  "Rows [quarter ps outcome], ps the forecasters' probabilities, forecast
+  out of sample by a stack (`fit-stack`): each year from quarter `from` on
+  by one fit on the rows known by its start (a row is known `overlap`
+  quarters on), discounted yearly by `discount`. Returns [quarter p outcome]
+  for those years, with whatever else each row carried after its outcome.
+  With :by, a function of a row, each group it makes gets its own stack."
+  [rows from {:keys [overlap discount prior by] :or {overlap 1 discount 1.0 prior 1.0}}]
+  (if by
+    (vec (mapcat #(stack-out-of-sample % from {:overlap overlap :discount discount :prior prior})
+                 (vals (group-by by rows))))
+    (vec (for [[yr this] (sort-by key (group-by #(quot (first %) 4) (filter #(>= (first %) from) rows)))
+               :let [q0 (* 4 yr)
+                     known (filter #(<= (+ (first %) overlap) q0) rows)
+                     beta (fit-stack (map second known) (map #(nth % 2) known)
+                                     (map #(Math/pow discount (/ (- q0 (first %)) 4.0)) known)
+                                     {:prior prior})]
+               [q ps y & more] this]
+           (into [q (predict-stack beta ps) y] more)))))
+
 (defn pick-model
   "The model whose forecasts, {model [[quarter p outcome] ...]}, have the best
   mean log score over the years lo-hi: chosen before the years held out, as

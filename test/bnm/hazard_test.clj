@@ -187,3 +187,39 @@
                   (/ (- ignore best) ignore)))]
     (doseq [mu [0.5 0.9 0.95]]
       (is (< (Math/abs (- (brute ps ys mu) (hz/usefulness ps ys mu))) 1e-12)))))
+
+(deftest a-stack-refit-each-year-out-of-sample
+  ;; rows [quarter [p1 p2] outcome]: each year from `from` on is forecast by
+  ;; a stack fit only on the rows known by its start, so a second forecaster
+  ;; that knows something the first does not raises the score held out
+  (let [g (m/rng 11)
+        rows (vec (for [q (range 40 120) _ (range 60)]
+                    (let [a (m/normal! g) b (m/normal! g)
+                          p (m/expit (+ -2.5 a b))]
+                      [q [(m/expit (+ -2.5 a)) (m/expit (+ -2.5 b))] (< (m/next-double! g) p)])))
+        ll (fn [rs] (/ (reduce + (for [[_ p y] rs] (Math/log (if y p (- 1.0 p))))) (double (count rs))))
+        both (hz/stack-out-of-sample rows 80 {})
+        first-only (hz/stack-out-of-sample (mapv (fn [[q ps y]] [q [(first ps)] y]) rows) 80 {})]
+    (is (= (count (filter #(>= (first %) 80) rows)) (count both)) "every row from `from` on, once")
+    (is (every? #(>= (first %) 80) both))
+    (is (> (ll both) (+ 0.02 (ll first-only))) "the second forecaster's information is used")
+    (testing "a year's stack sees nothing from that year"
+      (let [poisoned (mapv (fn [[q ps y]] (if (>= q 100) [q ps (not y)] [q ps y])) rows)
+            a (filter #(< (first %) 100) (hz/stack-out-of-sample rows 80 {}))
+            b (filter #(< (first %) 100) (hz/stack-out-of-sample poisoned 80 {}))]
+        (is (= (map second a) (map second b)))))))
+
+(deftest a-stack-per-group-carries-the-rows-along
+  ;; the second forecaster helps only in group :b; a stack per group finds it
+  (let [g (m/rng 12)
+        rows (vec (for [q (range 40 120) i (range 60)]
+                    (let [grp (if (even? i) :a :b) a (m/normal! g) b (m/normal! g)
+                          p (m/expit (+ -2.5 a (if (= grp :b) (* 2.0 b) 0.0)))]
+                      [q [(m/expit (+ -2.5 a)) (m/expit (+ -2.5 b))] (< (m/next-double! g) p) grp [q i]])))
+        out (hz/stack-out-of-sample rows 80 {:by #(nth % 3)})]
+    (is (= (set (map #(nth % 4) (filter #(>= (first %) 80) rows))) (set (map #(nth % 4) out)))
+        "every held-out row comes back once, with what it carried")
+    (is (= (count out) (count (set (map #(nth % 4) out)))))
+    (let [ll (fn [rs] (/ (reduce + (for [[_ p y] rs] (Math/log (if y p (- 1.0 p))))) (double (count rs))))
+          pooled (hz/stack-out-of-sample rows 80 {})]
+      (is (> (ll out) (ll pooled)) "a stack per group beats one for all"))))
