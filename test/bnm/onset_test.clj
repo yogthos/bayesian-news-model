@@ -57,3 +57,13 @@
     (is (= [0.9 0.1 0.9 0.6] (mapv second preds))
         "2000 takes the default; 2001 knows 2000, where a wins; 2002 and 2003 know 2001 too, where b wins more")
     (is (= 2.0 prior) "the choice of the last year")))
+
+(deftest histories-of-every-kind
+  (let [events {"coup" {"A" (sorted-set 90 100)} "protest_surge" {"A" (sorted-set 98)}}
+        x (o/histories events ["coup" "protest_surge" "war_onset"] "A" 100)]
+    (is (= 6 (alength ^doubles x)))
+    (is (< (Math/abs (- (Math/log 3.0) (aget ^doubles x 0))) 1e-9) "two coups up to q")
+    (is (< (Math/abs (- 1.0 (aget ^doubles x 1))) 1e-9) "the last this quarter")
+    (is (< (Math/abs (- (Math/exp -0.1) (aget ^doubles x 3))) 1e-9) "a protest surge two quarters back")
+    (is (= [0.0 0.0] (vec (drop 4 x))) "no war")
+    (is (= [0.0 0.0] (vec (take 2 (o/histories events ["coup"] "A" 89)))) "nothing from after q")))

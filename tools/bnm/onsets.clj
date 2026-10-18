@@ -47,7 +47,8 @@
   Writes data/runs/<name>/onsets.txt, the out-of-sample predictions,
   preds.tsv (kind window model quarter unit p outcome), and the recorded
   rows, rows.tsv, which --rows reads back instead of running the slow layer."
-  (:require [bnm.hazard :as hz]
+  (:require [bnm.calm :as calm]
+            [bnm.hazard :as hz]
             [bnm.mix :as mix]
             [bnm.named :as nm]
             [bnm.onset :as o]
@@ -85,6 +86,10 @@
          (into {} (for [{:keys [unit q]} rows] [[unit q] (vf (f unit (+ 2 (* 3 q))))]))))
      (fn [^doubles x] (vec (take-last p x)))]))
 
+(def history-kinds
+  "The catalogues whose histories feed every kind (the histories group)."
+  ["banking_crisis" "conflict_onset" "coup" "market_crash" "protest_surge" "violence_surge" "war_onset"])
+
 (def group-loaders
   "Input groups by name: [width loader], the loader taking {:db :units :rows}
   (the slow series, the countries, the onset rows) and giving {[unit
@@ -99,7 +104,12 @@
    "nonlinear" (named-group nm/nonlinear nm/nonlinear-names :nonlinear)
    "regime" (named-group nm/regime nm/regime-names :regime)
    "tot" (named-group nm/terms-of-trade nm/tot-names :terms-of-trade)
-   "fx" (named-group nm/fx nm/fx-names :fx)})
+   "fx" (named-group nm/fx nm/fx-names :fx)
+   "calm" [(count calm/labels) (fn [_] (nm/load-event-calm mix-path))]
+   "volcalm" (named-group nm/market-calm nm/market-calm-names :market-calm)
+   "histories" [(* 2 (count history-kinds))
+                (fn [{:keys [events rows]}]
+                  (into {} (for [{:keys [unit q]} rows] [[unit q] (o/histories events history-kinds unit q)])))]})
 
 (defn load-groups
   "[[name width {[unit quarter] double[]}] ...] for `names`, each followed by
@@ -170,13 +180,6 @@
                     (slow/create cfg variables) months)]
     [(vec rows) mdl]))
 
-(defn- history-features
-  "How many onsets of this kind the unit has had up to quarter q, log1p, and
-  how recent the last was (exp of minus years since over five)."
-  [onsets q]
-  (let [past (subseq onsets <= q)
-        n (count past)]
-    [(Math/log1p n) (if (pos? n) (Math/exp (- (/ (- q (long (last past))) 20.0))) 0.0)]))
 
 (def hard-row? o/hard-row?)
 
@@ -257,7 +260,7 @@
                                (o/at-risk? (get onsets-by-unit unit (sorted-set)) q window)))
                         rows)
         prepared (mapv (fn [{:keys [unit q ^doubles x] :as r}]
-                         (let [[h1 h2] (history-features (get onsets-by-unit unit (sorted-set)) q)
+                         (let [[h1 h2] (o/history-features (get onsets-by-unit unit (sorted-set)) q)
                                ^doubles nx (get-in r [:named fam])
                                ;; a group's inputs, zeros where it has none for the row
                                gs (mapv (fn [[_ width xs]] (or (get xs [unit q]) (double-array width))) groups)
@@ -383,7 +386,7 @@
                          (assoc r :named (let [e (ev (ef unit t))]
                                           {:financial (both (fv (ff unit t)) e) :political (both (pv (pf unit t)) e)}))))
                      rows))
-        groups (load-groups (if groups (str/split groups #",") ["mix"]) event-run {:db db :units all-units :rows rows})
+        groups (load-groups (if groups (str/split groups #",") ["mix"]) event-run {:db db :units all-units :rows rows :events events})
         n-named (into {} (for [fam [:financial :political]] [fam (alength ^doubles (get-in (first rows) [:named fam]))]))
         n-polecon (count (first (nm/vectorize nm/political-economy-names :political-economy)))
         market-units (set (for [{:keys [unit ^doubles x]} rows

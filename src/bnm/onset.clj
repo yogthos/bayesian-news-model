@@ -20,6 +20,21 @@
   [onsets q]
   (empty? (subseq onsets >= (- q 40) <= q)))
 
+(defn history-features
+  "How many onsets of a kind a unit has had up to quarter q, log1p, and how
+  recent the last was (exp of minus years since over five)."
+  [onsets q]
+  (let [past (subseq onsets <= q)
+        n (count past)]
+    [(Math/log1p n) (if (pos? n) (Math/exp (- (/ (- q (long (last past))) 20.0))) 0.0)]))
+
+(defn histories
+  "The unit's history of each of `kinds` (`history-features`) at q, from
+  `events` ({kind {unit onsets}}): what one kind of upheaval says of
+  another (Bazzi et al., REStat 2022: histories by type beat one total)."
+  ^doubles [events kinds unit q]
+  (double-array (mapcat #(history-features (get-in events [% unit] (sorted-set)) q) kinds)))
+
 (defn last-complete-quarter
   "The last quarter wholly covered by a catalogue that runs through `month`
   (12y + m - 1)."

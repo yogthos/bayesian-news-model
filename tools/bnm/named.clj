@@ -21,7 +21,8 @@
 
   Missing values are 0, with an indicator per source so the hazard can tell
   absent from neutral."
-  (:require [bnm.geo :as geo]
+  (:require [bnm.calm :as calm]
+            [bnm.geo :as geo]
             [bnm.mix :as mix]
             [bnm.ties :as ties]
             [bnm.stocks :as sk]
@@ -327,6 +328,26 @@
         (g "finance/anchor_gbp" t) (g "finance/anchor_cny" t) (g "finance/anchor_rub" t)
         (x* vol (x* peg primary))]))])
 
+(def market-calm-names [:vol-gap :vol-gap5])
+
+(defn market-calm
+  "[names f]: share-price volatility over the last year against its mean
+  over the five years before (log), and that gap averaged over the last five
+  years: calm, and calm that has lasted, which predicted banking crises
+  where the level of volatility did not (Danielsson, Valenzuela & Zer 2018)."
+  [db _units _months]
+  [market-calm-names
+   (fn [unit t]
+     (when-let [s (db [unit "markets/share_prices"])]
+       (let [vols (mapv #(sk/volatility s (- t (* 3 %)) 12 {:stale 6}) (range 40))
+             gap (fn [k] (let [v (vols k) before (keep vols (range (inc k) (+ k 21)))]
+                           (when (and v (pos? v) (>= (count before) 12))
+                             (let [m (/ (reduce + before) (count before))]
+                               (when (pos? m) (Math/log (/ v m)))))))
+             g0 (gap 0)
+             gs (keep gap (range 20))]
+         [g0 (when (and g0 (>= (count gs) 12)) (/ (reduce + gs) (count gs)))])))])
+
 (def presence
   "Groups of inputs that share a source: one indicator each. A source that
   starts or stops at a date (world prices, the VIX, the Penn World Table's
@@ -346,7 +367,8 @@
    :nonlinear [[:log-income] [:gini]]
    :regime [[:democracy :liberal-gap :civil-society :physical-integrity :corruption]]
    :terms-of-trade [[:tot12 :tot3 :tot-vol]]
-   :fx [[:peg :falling] [:anchor-usd :anchor-euro :anchor-gbp :anchor-cny :anchor-rub]]})
+   :fx [[:peg :falling] [:anchor-usd :anchor-euro :anchor-gbp :anchor-cny :anchor-rub]]
+   :market-calm [[:vol-gap :vol-gap5]]})
 
 (defn vectorize
   "Inputs as doubles, missing as 0, then one presence indicator per group:
@@ -478,6 +500,19 @@
   (ties/features (load-event-dyads dyads-path) (load-event-counts mix-path)
                  (fn [a b] (= (geo/parents a) (geo/parents b)))
                  {:weights-of (un-weights (load-un-agreement un-path codes-path) ties/top-k)}))
+
+(defn load-event-calm
+  "Long calm and breaks in each country's event stream (bnm.calm) from
+  scripts/event-mix.sh's table: {[unit quarter] double[]}."
+  [path]
+  (let [by-unit (with-open [r (io/reader path)]
+                  (reduce (fn [acc line]
+                            (let [[unit q t n] (str/split line #"\t")]
+                              (update-in acc [unit (parse-long q)] (fnil assoc {}) t (parse-double n))))
+                          {} (line-seq r)))]
+    (into {} (for [[unit qs] by-unit
+                   [q x] (calm/features (into (sorted-map) qs))]
+               [[unit q] x]))))
 
 (defn load-event-mix
   "The event-code mix of each country at each quarter (bnm.mix) from
