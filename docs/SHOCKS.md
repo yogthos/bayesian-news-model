@@ -110,3 +110,30 @@ anticipation, not a nowcast.
    and coverage against v6-q.
 5. **The 12-month empirical benchmark** in the event backtest, as the bar.
 6. Protest contagion over a learned affinity network, if 1-2 pass.
+
+## Results so far
+
+**The persistent shock (step 4).** Refit over v6-q's saved origins (even
+years 2000-26, coverage relearned), a fixed log-sd of 0.4 evened the PIT
+below the country: summed deviation of the tenths from flat fell from 1.73
+to 1.20 for dyads, 1.28 to 0.80 for pairs, 1.18 to 0.88 for actors, 1.38 to
+1.02 for provinces. CRPS was unchanged and country escalation AUC rose
+(violence 0.792 to 0.797, coercion 0.794 to 0.801). The country's upper tail
+became slightly too long, and 0.8 reversed the skew at every level. So each
+level and channel learns its own size from the tails
+(`bnm.calibrate/learn-shock`), starting from the configured one.
+
+**The fast layer fed by the slow one (step 2)** (`bnm.coupling`). Stacking
+the onset hazards onto the event model and own history, refit yearly per
+stratum, held out from 2008:
+- On escalation (1.5x the last quarter), quiet countries' AUC rose from
+  0.68-0.70 to 0.78-0.79 and the log score with it, but recall at a 10%
+  budget did not: the hazards sort the low end, not the alert list.
+- On surges from a quiet base (3x the trailing year, no escalation in it),
+  the target the epic is judged on, the event model ranks quiet countries
+  at AUC 0.55-0.61: the weak-signal gap. The conflict-onset hazard lifts
+  coercion surges (recall at 10% 0.19 to 0.22, log score and Brier gains
+  with intervals over years above zero); violence and protest gain nothing.
+- The event-code mix stocks and shifts as direct covariates lift protest
+  surges in quiet countries (AUC 0.55 to 0.60, recall at 10% 0.14 to 0.17,
+  log score gain above zero), and hurt violence.
