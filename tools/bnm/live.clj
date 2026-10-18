@@ -7,7 +7,7 @@
   quarter gives the likeliest escalations per channel, by calibrated
   probability, with the climatology and own history beside them.
 
-    jolt -A:tools -M -m bnm.live [--from-run v4-q] [--source gdelt] [--n 15]"
+    jolt -A:tools -M -m bnm.live [--from-run v6-q] [--source gdelt] [--n 15]"
   (:require [bnm.core :as core]
             [bnm.paths :as paths]
             [bnm.series :as series]
@@ -45,7 +45,7 @@
   (let [{:keys [from-run source n]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         source (or source "gdelt")
         n (parse-long (or n "15"))
-        [src m] (load-latest (or from-run "v4-q"))
+        [src m] (load-latest (or from-run "v6-q"))
         before (:bin m)
         m (catch-up m source)
         bin-days (get-in m [:config :bin-days])

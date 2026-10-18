@@ -18,7 +18,7 @@ or writes lives in `data/derived/` (`tools/bnm/paths.clj`).
 | `scripts/readings.sh` | daily or weekly | the reaction layer is daily; the event model learns each closed weekly bin |
 | `scripts/readings.sh --fetch` | weekly | most slow sources are monthly or quarterly |
 | `scripts/readings.sh --fetch --onsets` | monthly | onset rows are quarterly and take hours to rebuild |
-| a full event-model retrain (`bnm.train`, as v4-q) | yearly, or when the monitor flags it | the model learns online, but structure and priors are set at training |
+| a full event-model retrain (`bnm.train`, as v6-q) | yearly, or when the monitor flags it | the model learns online, but structure and priors are set at training |
 | the coup file (Cline Center) | when a new version is out | the Illinois Data Bank refuses scripts |
 
 ## What the report says
@@ -116,6 +116,22 @@ the peak:
 
 The hazards say what the risk is before a fall. The reaction layer says
 whether one is under way.
+
+**The event model's ranges and probabilities.**
+- The 80% range is widened or narrowed until 80% of outcomes fall in it,
+  learned per level, channel and stratum as forecasts resolve
+  (`bnm.calibrate/learn-coverage`). Learning it from the size of the errors
+  instead fed on itself: widening moved the median, errors grew, and v4-q's
+  coverage climbed to 0.95.
+- The escalation probability is the tail, above 1.5 times the last
+  quarter, of a log-normal fitted to the forecast sample, then calibrated.
+  From 100 draws a counted share is zero for most nodes, and the ties lose
+  the ranking.
+- A surging node can be forecast at several times its last quarter (Yemen
+  and Saudi Arabia, October 2026). Over 2000-26 such forecasts (3x or more)
+  came true with a log bias of +0.05, so they are not runaway excitation.
+- After a retrain, delete `data/derived/event-model.edn` so the pipeline
+  starts from the new run.
 
 ## Known limits
 
