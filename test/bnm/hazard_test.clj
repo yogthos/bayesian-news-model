@@ -116,3 +116,18 @@
     (testing "overlapping windows count each increment once over the overlap"
       (let [ys (map #(zero? (mod % 5)) (range 400))]
         (is (< (Math/abs (- (:max (hz/cusum ps ys 2.0 :overlap 4)) (/ (:max (hz/cusum ps ys 2.0)) 4.0))) 1e-9))))))
+
+(deftest recalibration-gain-says-whether-refitting-helps
+  ;; [quarter p outcome] rows; the gain is the mean log score, over quarters
+  ;; from `from`, of refitting an intercept on outcomes known each year minus
+  ;; that of the forecasts as given
+  (let [rows (fn [rate-of] (for [q (range 160) u (range 40)]
+                             [q 0.05 (< (mod (hash [q u]) 1000) (* 1000 (rate-of q)))]))]
+    (testing "a lasting shift is worth refitting for"
+      (is (pos? (hz/recalibration-gain (rows (constantly 0.15)) 120 {:overlap 4}))))
+    (testing "calibrated forecasts gain nothing"
+      (is (< (hz/recalibration-gain (rows (constantly 0.05)) 120 {:overlap 4}) 0.002)))
+    (testing "waves that come and go: refitting chases them and loses"
+      (is (neg? (hz/recalibration-gain (rows #(if (< (mod % 24) 4) 0.25 0.012)) 120 {:overlap 4}))))
+    (testing "nil without outcomes to score"
+      (is (nil? (hz/recalibration-gain (rows (constantly 0.05)) 500 {:overlap 4}))))))

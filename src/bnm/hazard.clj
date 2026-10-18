@@ -279,3 +279,40 @@
               w (* k (- (if (true? y) lr 0.0) (Math/log (+ 1.0 (* p (- ratio 1.0))))))
               s (max 0.0 (+ s w))]
           (recur ps ys (inc i) s (max mx s) (or sig (when (> s h) i))))))))
+
+(def recalibration-discount
+  "Yearly discount of the outcomes a drift check refits on: a half-life of
+  about three years, quick enough to follow a lasting shift."
+  0.8)
+
+(defn recalibration-gain
+  "Whether a drift is worth refitting for, out of sample: the mean log score,
+  over rows [quarter p outcome] with quarter >= `from`, of shifting each
+  year's forecasts by an intercept on the logit refit on the outcomes known
+  by the year's start (a row is known `overlap` quarters on), discounted
+  yearly, minus that of the forecasts as given. Positive when the shift has
+  lasted; negative when outcomes come in waves a refit only chases. nil
+  without outcomes to score."
+  [rows from {:keys [overlap discount] :or {overlap 1 discount recalibration-discount}}]
+  (let [clip #(min (max (double %) 1e-6) (- 1.0 1e-6))
+        logit #(let [p (clip %)] (Math/log (/ p (- 1.0 p))))
+        sig #(/ 1.0 (+ 1.0 (Math/exp (- %))))
+        ll (fn [p y] (Math/log (if y p (- 1.0 p))))
+        intercept (fn [known q0]
+                    ;; Newton on the weighted log likelihood, with a unit prior at 0
+                    (loop [a 0.0 it 0]
+                      (let [[g h] (reduce (fn [[g h] [q p y]]
+                                            (let [w (Math/pow discount (/ (- q0 q) 4.0))
+                                                  r (sig (+ a (logit p)))]
+                                              [(+ g (* w (- (if y 1.0 0.0) r))) (+ h (* w r (- 1.0 r)))]))
+                                          [(- a) 1.0] known)
+                            d (/ g h)]
+                        (if (or (> it 30) (< (Math/abs d) 1e-9)) (+ a d) (recur (+ a d) (inc it))))))
+        scored (filter #(>= (first %) from) rows)]
+    (when (seq scored)
+      (let [diffs (for [[yr this] (group-by #(quot (first %) 4) scored)
+                        :let [q0 (* 4 yr)
+                              a (intercept (filter #(<= (+ (first %) overlap) q0) rows) q0)]
+                        [_ p y] this]
+                    (- (ll (clip (sig (+ a (logit p)))) y) (ll (clip p) y)))]
+        (/ (reduce + diffs) (double (count diffs)))))))

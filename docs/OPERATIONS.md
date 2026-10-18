@@ -70,12 +70,23 @@ calibration of probability forecasts, arXiv 2510.25573).
 - The verdict uses the chart's current value; its ten-year maximum records
   past drift.
 
+**Whether a drift is worth refitting (`bnm.hazard/recalibration-gain`).**
+Rare events come in waves, so a quiet or busy stretch trips a chart without
+the forecasts being wrong for the long run. Beside a drift the report says
+whether shifting the forecasts by an intercept refit each year on recent
+outcomes (half-life about three years) would have scored better, out of
+sample, over the last ten years and over the whole record. Refit only when
+both say so.
+
 **On first run (October 2026)**
 - The US drawdown hazards were calibrated.
-- Violence surges were under-forecast (CUSUM 4.5).
-- Banking crises were over-forecast (6.1): crises have been rare since
-  2017.
-- These are the ones to refit first.
+- Violence surges were under-forecast (CUSUM 4.5), but refitting would not
+  have helped over ten years (log score −0.0003): a busy stretch.
+- Banking crises were over-forecast (6.1): none since 2020. Refitting would
+  have helped over ten years (+0.004) and lost over the record (−0.016),
+  where the quiet years before 2007 looked the same.
+- Neither was refit. The stack already refits yearly on discounted outcomes,
+  and no faster recalibration beat it on 2008-24 for any onset kind.
 
 **Real-time data.**
 - Forecast evaluation should use the data as published at each origin.

@@ -55,11 +55,15 @@
                (let [q (apply max (map second rs))
                      now (filter #(= q (second %)) rs)
                      resolved (sort-by second (filter #(and (#{"true" "false"} (nth % 4)) (>= (second %) (- q 40))) rs))
-                     ps (map #(nth % 3) resolved) ys (map #(= "true" (nth % 4)) resolved)]
+                     ps (map #(nth % 3) resolved) ys (map #(= "true" (nth % 4)) resolved)
+                     known (for [[_ q _ p y] rs :when (#{"true" "false"} y)] [q p (= "true" y)])]
                  [kind {:q q
                         :top (take n (sort-by #(- (nth % 3)) now))
                         :base (/ (count (filter true? ys)) (double (max 1 (count ys))))
-                        :cusum {:up (hz/cusum ps ys 2.0 :overlap 4) :down (hz/cusum ps ys 0.5 :overlap 4)}}])))))
+                        :cusum {:up (hz/cusum ps ys 2.0 :overlap 4) :down (hz/cusum ps ys 0.5 :overlap 4)
+                                :gain (hz/recalibration-gain known (- q 40) {:overlap 4})
+                                ;; over every year with five years of outcomes before it
+                                :gain-all (hz/recalibration-gain known (+ (apply min (map first known)) 20) {:overlap 4})}}])))))
 
 (defn- flag
   "The monitor's verdict now (the charts' current values against h = 4),
@@ -67,12 +71,24 @@
   crossed and came back down records a past drift, not a present one.
   Overlapping outcome windows make successive forecasts dependent, so the
   charts run hotter than the nominal false-alarm rate."
-  [{:keys [up down]}]
-  (let [now (cond (> (:last up) 4.0) "DRIFT now: events more frequent than forecast"
+  [{:keys [up down gain gain-all]}]
+  (let [drift? (or (> (:last up) 4.0) (> (:last down) 4.0))
+        now (cond (> (:last up) 4.0) "DRIFT now: events more frequent than forecast"
                   (> (:last down) 4.0) "DRIFT now: events less frequent than forecast"
-                  :else "calibrated now")]
-    (format "%s (CUSUM up %.1f, down %.1f; ten-year max %.1f, %.1f)"
-            now (double (:last up)) (double (:last down)) (double (:max up)) (double (:max down)))))
+                  :else "calibrated now")
+        ;; rare events come in waves: a quiet or busy stretch trips the chart
+        ;; without the forecasts being worse than a refit on it would be; a
+        ;; refit that helps in the stretch can still lose across the record
+        refit (when (and drift? gain gain-all)
+                (cond
+                  (not (pos? gain))
+                  (format "; refitting on recent outcomes would not have helped (log score %+.4f over ten years): a stretch, not a shift" gain)
+                  (pos? gain-all)
+                  (format "; refitting on recent outcomes would have helped (log score %+.4f over ten years, %+.4f over the record): refit" gain gain-all)
+                  :else
+                  (format "; refitting would have helped over ten years (%+.4f) but lost over the record (%+.4f), where quiet stretches ended in waves" gain gain-all)))]
+    (format "%s (CUSUM up %.1f, down %.1f; ten-year max %.1f, %.1f%s)"
+            now (double (:last up)) (double (:last down)) (double (:max up)) (double (:max down)) (or refit ""))))
 
 (defn -main [& args]
   (let [{:keys [onsets n model]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
