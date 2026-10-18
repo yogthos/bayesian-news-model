@@ -331,3 +331,35 @@
                        (double (count in))))))
         scored (keep (fn [[m rows]] (when-let [s (score rows)] [m s])) preds)]
     (when (seq scored) (key (apply max-key val (into {} scored))))))
+
+(defn paired-gain
+  "How much better a model scores than a benchmark on the same rows [period
+  p-model p-bench outcome] by `metric` (a function of rows [period p
+  outcome], higher better): {:diff :lo :hi}, the 90% interval resampling
+  whole years (four periods) `reps` times (seeded), which keeps the
+  correlation of countries within a year and of a year's quarters."
+  [rows metric reps seed]
+  (let [score (fn [rs] (- (or (metric (map (fn [[q a _ y]] [q a y]) rs)) 0.0)
+                          (or (metric (map (fn [[q _ b y]] [q b y]) rs)) 0.0)))
+        blocks (vec (vals (group-by #(quot (first %) 4) rows)))
+        k (count blocks)
+        g (m/rng seed)
+        diffs (vec (sort (for [_ (range reps)]
+                           (score (mapcat (fn [_] (blocks (min (dec k) (long (* k (m/next-double! g)))))) (range k))))))
+        at (fn [q] (nth diffs (min (dec (count diffs)) (long (* q (count diffs))))))]
+    {:diff (score rows) :lo (at 0.05) :hi (at 0.95)}))
+
+(defn matched-concordance
+  "Signal beyond a benchmark: each event (rows {:period :p-model :p-bench
+  :y}) is set against the `k` non-events of its period whose benchmark
+  probabilities are closest to its own, and the share of those pairs the
+  model ranks the event above is returned (ties count a half). A model that
+  knows only what the benchmark knows scores about 0.5. nil without events."
+  [rows k]
+  (let [pairs (for [[_ g] (group-by :period rows)
+                    :let [neg (filter (complement :y) g)]
+                    e (filter :y g)
+                    c (take k (sort-by #(Math/abs (- (double (:p-bench %)) (double (:p-bench e)))) neg))]
+                (let [a (double (:p-model e)) b (double (:p-model c))]
+                  (cond (> a b) 1.0 (= a b) 0.5 :else 0.0)))]
+    (when (seq pairs) (/ (reduce + pairs) (double (count pairs))))))

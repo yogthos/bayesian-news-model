@@ -32,13 +32,21 @@
   preds.tsv (kind window model quarter unit p outcome), and the recorded
   rows, rows.tsv, which --rows reads back instead of running the slow layer."
   (:require [bnm.hazard :as hz]
+            [bnm.mix :as mix]
             [bnm.named :as nm]
             [bnm.slow :as slow]
             [bnm.slow-train :as st]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
-(def windows {:w1 [1 4] :w2 [5 8]})
+;; w1 the next year; lead the year's last three quarters only, so a gain there
+;; is anticipation, not the nowcast of an onset already brewing; w2 the year after
+(def windows {:w1 [1 4] :lead [2 4] :w2 [5 8]})
+
+(def mix-path
+  "The event-code mix per country and quarter (scripts/event-mix.sh), read
+  when present for the :mix models."
+  "data/slow/event-mix.tsv")
 
 (def cases
   "Named cases, shown quarter by quarter before their onset. Illustration only:
@@ -124,6 +132,7 @@
         named (range (+ 3 n) (+ 3 n (- m p)))
         polecon (range (+ 3 n (- m p)) (+ 3 n m))
         event (range (+ 3 n m) (+ 3 n m (count nm/event-labels)))
+        mixed (let [from (+ 3 n m (count nm/event-labels))] (range from (+ from (count mix/labels))))
         idx (fn [pred] (keep-indexed (fn [i l] (when (pred l) (+ 3 i))) labels))
         politics (idx #(= "politics" (:domain %)))
         local (idx :domain)
@@ -139,7 +148,9 @@
      :polecon (vec (concat [0 1 2] polecon))
      :named+polecon (vec (concat [0 1 2] named polecon))
      :event (vec (concat [0 1 2] event))
-     :named+event (vec (concat [0 1 2] named event))}))
+     :named+event (vec (concat [0 1 2] named event))
+     :mix (vec (concat [0 1 2] mixed))
+     :named+mix (vec (concat [0 1 2] named mixed))}))
 
 (def model-order [:base :history :politics :local :domains :all])
 
@@ -191,11 +202,13 @@
                          (let [[h1 h2] (history-features (get onsets-by-unit unit (sorted-set)) q)
                                ^doubles nx (get-in r [:named fam])
                                ^doubles ev (or (:event r) (double-array (count nm/event-labels)))
-                               full (double-array (+ 3 (alength x) (alength nx) (alength ev)))]
+                               ^doubles mx (or (:mix r) (double-array (count mix/labels)))
+                               full (double-array (+ 3 (alength x) (alength nx) (alength ev) (alength mx)))]
                            (aset full 0 1.0) (aset full 1 h1) (aset full 2 h2)
                            (System/arraycopy x 0 full 3 (alength x))
                            (System/arraycopy nx 0 full (+ 3 (alength x)) (alength nx))
                            (System/arraycopy ev 0 full (+ 3 (alength x) (alength nx)) (alength ev))
+                           (System/arraycopy mx 0 full (+ 3 (alength x) (alength nx) (alength ev)) (alength mx))
                            (assoc r :full full :y (when (<= (+ q (second window)) last-q) (labels-q r)))))
                        usable)
         years (range (quot (apply min (map :q prepared)) 4) (inc (quot (apply max (map :q prepared)) 4)))]
@@ -305,12 +318,14 @@
                    [en* ef] (nm/political-economy db all-units (distinct (map #(+ 2 (* 3 (:q %))) rows)))
                    [_ ev] (nm/vectorize en* :political-economy)
                    both (fn [^doubles a ^doubles b] (double-array (concat a b)))]
-               (let [es (if event-run (nm/load-event-state event-run) {})]
+               (let [es (if event-run (nm/load-event-state event-run) {})
+                     mixes (if (.exists (io/file mix-path)) (nm/load-event-mix mix-path) {})]
                  (mapv (fn [{:keys [unit q] :as r}]
                          (let [t (+ 2 (* 3 q))]
                            (assoc r :named (let [e (ev (ef unit t))]
                                             {:financial (both (fv (ff unit t)) e) :political (both (pv (pf unit t)) e)})
-                                    :event (es [unit q]))))
+                                    :event (es [unit q])
+                                    :mix (mixes [unit q]))))
                        rows)))
         n-named (into {} (for [fam [:financial :political]] [fam (alength ^doubles (get-in (first rows) [:named fam]))]))
         n-polecon (count (first (nm/vectorize nm/political-economy-names :political-economy)))

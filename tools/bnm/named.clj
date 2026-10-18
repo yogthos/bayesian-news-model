@@ -21,7 +21,8 @@
 
   Missing values are 0, with an indicator per source so the hazard can tell
   absent from neutral."
-  (:require [bnm.stocks :as sk]
+  (:require [bnm.mix :as mix]
+            [bnm.stocks :as sk]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [bnm.slow-train :as st]))
@@ -204,3 +205,19 @@
                                           acc)))
                                     {} (line-seq r)))]
             [[unit q] xs]))))
+
+;; --- the event-code mix ------------------------------------------------------------------------
+
+(defn load-event-mix
+  "The event-code mix of each country at each quarter (bnm.mix) from
+  scripts/event-mix.sh's table (country, quarter, type, count): {[unit
+  quarter] double[]}, a quarter's row known at its end."
+  [path]
+  (let [by-unit (with-open [r (io/reader path)]
+                  (reduce (fn [acc line]
+                            (let [[unit q t n] (str/split line #"\t")]
+                              (update-in acc [unit (parse-long q)] (fnil assoc {}) t (parse-double n))))
+                          {} (line-seq r)))]
+    (into {} (for [[unit qs] by-unit
+                   [q x] (mix/features (into (sorted-map) qs))]
+               [[unit q] x]))))

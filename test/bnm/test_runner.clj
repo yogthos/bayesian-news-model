@@ -11,7 +11,8 @@
             [bnm.hazard-test]
             [bnm.polecon-test]
             [bnm.invariants-test]
-            [bnm.pit-test]))
+            [bnm.pit-test]
+            [bnm.mix-test]))
 
 (def namespaces
   '[bnm.math-test
@@ -25,7 +26,8 @@
     bnm.hazard-test
     bnm.polecon-test
     bnm.invariants-test
-    bnm.pit-test])
+    bnm.pit-test
+    bnm.mix-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]

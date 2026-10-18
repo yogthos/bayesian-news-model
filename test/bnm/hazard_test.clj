@@ -141,3 +141,31 @@
     (is (= :good (hz/pick-model {:good good :bad bad} 0 9)))
     (is (= :bad (hz/pick-model {:good good :bad bad} 10 39)) "later years favour the other")
     (is (nil? (hz/pick-model {:good good} 50 60)) "nil without rows in the years")))
+
+(deftest paired-gain-over-a-benchmark
+  ;; rows [period p-model p-bench outcome]: the metric's difference, with a
+  ;; 90% interval resampling whole years (4 periods each)
+  (let [g (bnm.math/rng 3)
+        rows (vec (for [q (range 120) _ (range 30)
+                        :let [y (< (bnm.math/next-double! g) 0.05)
+                              noise (bnm.math/next-double! g)]]
+                    [q (if y (+ 0.3 (* 0.1 noise)) (* 0.3 noise)) (* 0.4 (bnm.math/next-double! g)) y]))
+        auc-of (fn [rs] (hz/auc (map second rs) (map #(nth % 2) rs)))
+        {:keys [diff lo hi]} (hz/paired-gain rows auc-of 200 1)]
+    (is (> diff 0.3) "the model separates, the benchmark is noise")
+    (is (< 0.0 lo diff hi))
+    (testing "a model against itself gains nothing"
+      (let [same (mapv (fn [[q p _ y]] [q p p y]) rows)
+            {:keys [diff lo hi]} (hz/paired-gain same auc-of 50 1)]
+        (is (= 0.0 diff lo hi))))))
+
+(deftest matched-controls-measure-signal-beyond-the-benchmark
+  ;; each event against the k non-events of its period the benchmark rates
+  ;; closest: the share of pairs the model orders right (ties a half)
+  (let [rows (for [q (range 40) u (range 50)
+                   :let [hist (/ (mod u 10) 10.0)
+                         y (and (= 0 (mod (+ q u) 7)) (> hist 0.4))]]
+               {:period q :p-bench hist :p-model (if y 0.95 hist) :y y})]
+    (is (> (hz/matched-concordance rows 3) 0.95) "it knows which of the alike will tip")
+    (is (< (Math/abs (- 0.5 (hz/matched-concordance (map #(assoc % :p-model (:p-bench %)) rows) 3))) 0.1)
+        "the benchmark against its own matches is a coin")))
