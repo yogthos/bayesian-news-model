@@ -102,7 +102,13 @@
   {:period period
    :escalation (into (sorted-map)
                      (for [[k g] (group-by (juxt :level :channel) rows)]
-                       [k (eval/escalation-scores g)]))})
+                       [k (eval/escalation-scores g)]))
+   ;; where outcomes fell against the 80% ranges
+   :ranges (into (sorted-map)
+                 (for [[k g] (group-by (juxt :level :channel) (filter :high rows))]
+                   [k {:n (count g)
+                       :below (count (filter #(< (:actual %) (:low %)) g))
+                       :above (count (filter #(> (:actual %) (:high %)) g))}]))})
 
 (defn- close
   "The model with its period closed: its forecast scored, the calibration
@@ -162,7 +168,8 @@
 (defn record
   "How the model's forecasts have scored live, by kind and channel, pooled
   over the periods in the record: `bnm.eval/escalation-scores` of each, from
-  the periods' summaries (a mean weighted by each period's count)."
+  the periods' summaries (a mean weighted by each period's count), and the
+  shares of outcomes inside the 80% ranges (:cover80), below and above."
   [m]
   (let [periods (get-in m [:track :record])]
     (into (sorted-map)
@@ -170,9 +177,16 @@
                 :let [xs (keep #(get-in % [:escalation k]) periods)
                       n (reduce + (map :n xs))]
                 :when (pos? n)]
-            [k (into {:n n :periods (count xs) :positives (reduce + (map :positives xs))}
+            [k (merge
+                (into {:n n :periods (count xs) :positives (reduce + (map :positives xs))}
                      (for [f [:brier-model :brier-cal :brier-hist :brier-clim]
                            :let [ws (keep #(when (f %) [(:n %) (f %)]) xs)
                                  wn (reduce + (map first ws))]
                            :when (pos? wn)]
-                       [f (/ (reduce + (map #(* (first %) (second %)) ws)) wn)]))]))))
+                       [f (/ (reduce + (map #(* (first %) (second %)) ws)) wn)]))
+                     (let [rs (keep #(get-in % [:ranges k]) periods)
+                           rn (reduce + (map :n rs))]
+                       (when (pos? rn)
+                         (let [below (/ (reduce + (map :below rs)) (double rn))
+                               above (/ (reduce + (map :above rs)) (double rn))]
+                           {:cover80 (- 1.0 below above) :below below :above above}))))]))))

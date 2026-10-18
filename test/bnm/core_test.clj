@@ -75,7 +75,10 @@
       (let [r (get (bnm/record mdl) [:country :violence])]
         (is (pos? (:n r)))
         (is (number? (:brier-cal r)))
-        (is (number? (:brier-clim r)))))
+        (is (number? (:brier-clim r)))
+        (testing "with how often the ranges held the outcome, and which side missed"
+          (is (every? #(<= 0.0 (% r) 1.0) [:cover80 :below :above]))
+          (is (< (Math/abs (- 1.0 (+ (:cover80 r) (:below r) (:above r)))) 1e-9)))))
     (testing "an outlook measures escalation from the last period, with its benchmarks"
       (let [r (first (filter #(and (= "UKR" (:node %)) (= :violence (:channel %)))
                              (bnm/outlook mdl {:horizon 4 :sims 10})))]

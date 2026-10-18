@@ -80,10 +80,12 @@
       (say)
       (if (empty? rec)
         (say "Live record: no period forecast and scored since training yet (each quarter's is made on its eve).")
-        (do (say "Live record (escalation Brier scores, calibrated / climatology / own history; lower is better):")
+        (do (say "Live record (escalation Brier scores, calibrated / climatology / own history, lower is better;")
+            (say "share of outcomes in the 80% range, below it, above it):")
             (doseq [[[kind ch] r] rec :when (= kind :country)]
-              (say (format "  %-16s %d forecasts over %d periods, %d escalations: %.4f / %.4f / %.4f"
+              (say (format "  %-16s %d forecasts over %d periods, %d escalations: %.4f / %.4f / %.4f   range %.2f (%.2f below, %.2f above)"
                            (name ch) (:n r) (:periods r) (:positives r)
                            (double (or (:brier-cal r) 0.0)) (double (or (:brier-clim r) 0.0))
-                           (double (or (:brier-hist r) 0.0))))))))
+                           (double (or (:brier-hist r) 0.0))
+                           (double (or (:cover80 r) 0.0)) (double (or (:below r) 0.0)) (double (or (:above r) 0.0))))))))
     (spit outlook-path (str out))))
