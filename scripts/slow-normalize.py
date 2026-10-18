@@ -315,6 +315,77 @@ def imf_ctot():
         "commodity terms of trade, net exports to GDP, fixed weights")
 
 
+IRR_NAMES = {
+    "Azerbaijan Rep. of": "AZE", "Bahrain Kingdom of": "BHR", "Bosnia & Herzegovina": "BIH",
+    "Central African Rep.": "CAF", "China, PR": "CHN", "Congo Dem. Rep. of": "COD", "Congo Rep. of": "COG",
+    'Cote D"Ivoire': "CIV", "Czech Rep.": "CZE", "Guinea Bissau": "GNB", "Kyrgyz Rep.": "KGZ",
+    "Lao Dem. Rep.": "LAO", "Liechtesntein": "LIE", "Macedonia FYR": "MKD", "Netherlands": "NLD",
+    "PNG": "PNG", "Sao Tome & Principe": "STP", "Serbia, Rep. of": "SRB", "Slovak Republic": "SVK",
+    "St Vincent & Grenadines": "VCT", "St. Kitts and Nevis": "KNA", "St. Lucia": "LCA",
+    "Syrian Arab Rep.": "SYR", "The Bahamas": "BHS", "Trinidad Tobago": "TTO", "UAE": "ARE",
+    "West Bank and Gaza": "PSE", "Yemen Rep. of": "YEM",
+}
+
+IRR_ANCHORS = {"usd": {"USD"}, "euro": {"EUR", "DEM", "FRF"}, "gbp": {"GBP"}, "cny": {"CNY"}, "rub": {"RUB"}}
+
+
+def irr():
+    """Exchange-rate regimes and anchor currencies (Ilzetzki, Reinhart & Rogoff;
+    data/raw/slow/irr), yearly from 1946 (December's, as regimes change rarely). The coarse code (1 hard peg, 2
+    crawling peg or narrow band, 3 managed float, 4 free float, 5 freely
+    falling, 6 dual market with missing data), a peg indicator (1-2), freely
+    falling, and which currency the country anchors to, one indicator per
+    anchor: the euro bloc counts the mark and the franc before 1999. The
+    classification is de facto and revised after the fact, so a year is taken
+    as known a year on."""
+    era = os.path.join(RAW, "irr", "ERA_Classification_Monthly_1940-2025.xlsx")
+    anchor = os.path.join(RAW, "irr", "Anchor_monthly_1946-2025.xlsx")
+    month = re.compile(r"^(\d{4})M(\d{1,2})$")
+    if os.path.exists(anchor):
+        rows = xlsx(anchor)["Master"]
+        isos = next(r for r in rows if r and r[0] == "ISO3 Code")
+        for r in rows:
+            m = r and month.match(str(r[0]).strip())
+            if not m or int(m.group(2)) != 12:
+                continue
+            pend = period_end("a", m.group(1))
+            for iso, cur in zip(isos[1:], r[1:]):
+                if iso in ISO3 and cur not in (None, "n.a.", "None"):
+                    for k, curs in IRR_ANCHORS.items():
+                        emit(iso, "finance/anchor_" + k, "a", pend, 12, 1.0 if str(cur).strip() in curs else 0.0)
+        for k in IRR_ANCHORS:
+            var("finance/anchor_" + k, "id", "a", "Ilzetzki, Reinhart & Rogoff anchor currency",
+                "anchors its currency to " + k)
+    if os.path.exists(era):
+        rows = xlsx(era)["Coarse"]
+        hdr = [i for i, r in enumerate(rows) if r and len(r) > 1 and str(r[1]).strip() == "Country"][0]
+        width = max(len(rows[hdr]), len(rows[hdr + 1]))
+        cell = lambda r, i: str(r[i]).strip() if i < len(r) and r[i] not in (None, "None") else ""
+        names = [(cell(rows[hdr], i) + " " + cell(rows[hdr + 1], i)).strip() for i in range(width)]
+        isos = [IRR_NAMES.get(n) or iso3_of_name(n) if n else None for n in names]
+        for r in rows[hdr + 2:]:
+            m = r and len(r) > 1 and month.match(str(r[1]).strip())
+            if not m or int(m.group(2)) != 12:
+                continue
+            pend = period_end("a", m.group(1))
+            for i in range(2, min(len(r), width)):
+                try:
+                    c = int(float(r[i]))
+                except (TypeError, ValueError):
+                    continue
+                if isos[i] in ISO3:
+                    emit(isos[i], "finance/fx_regime", "a", pend, 12, c)
+                    emit(isos[i], "finance/fx_peg", "a", pend, 12, 1.0 if c <= 2 else 0.0)
+                    emit(isos[i], "finance/fx_falling", "a", pend, 12, 1.0 if c == 5 else 0.0)
+        var("finance/fx_regime", "id", "a", "Ilzetzki, Reinhart & Rogoff coarse classification",
+            "exchange-rate regime, coarse code 1 (hard peg) to 6")
+        var("finance/fx_peg", "id", "a", "Ilzetzki, Reinhart & Rogoff coarse classification", "pegged (coarse 1-2)")
+        var("finance/fx_falling", "id", "a", "Ilzetzki, Reinhart & Rogoff coarse classification", "freely falling (coarse 5)")
+        unmatched = sorted(n for n, iso in zip(names[2:], isos[2:]) if n and iso not in ISO3)
+        if unmatched:
+            print("irr: unmatched names", unmatched, file=sys.stderr)
+
+
 def pwt():
     """Penn World Table 11 (data/raw/slow/pwt/pwt110.csv, from the .dta): labour's
     share, the real internal rate of return on capital (a profit rate), the
@@ -884,7 +955,7 @@ def mechanical(dedup):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    steps = [fred, worldbank, vdem, imf_ctot, pwt, shocks, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb, laeven_valencia, coups, disasters]
+    steps = [fred, worldbank, vdem, imf_ctot, irr, pwt, shocks, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb, laeven_valencia, coups, disasters]
     for step in steps:
         n0, e0 = len(ROWS), len(EVENTS)
         step()

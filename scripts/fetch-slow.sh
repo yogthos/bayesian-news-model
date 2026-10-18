@@ -6,7 +6,7 @@
 # Idempotent: existing files are skipped, so it can be re-run to resume;
 # FORCE=1 refetches.
 #
-#   scripts/fetch-slow.sh [fred|worldbank|vdem|imf|pwt|jst|crises|shocks|events|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
+#   scripts/fetch-slow.sh [fred|worldbank|vdem|imf|irr|pwt|jst|crises|shocks|events|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -87,6 +87,14 @@ fetch_vdem() {
 # --- commodity terms of trade by country (IMF, Gruss & Kebhaj; via DBnomics), monthly from 1980
 fetch_imf() {
   get 'https://api.db.nomics.world/v22/series/IMF/PCTOT?limit=1000&offset=0&observations=1&dimensions=%7B%22FREQ%22%3A%5B%22M%22%5D%2C%22INDICATOR%22%3A%5B%22xm_gdp%22%5D%2C%22TYPE%22%3A%5B%22R_FW_IX%22%5D%7D' "$RAW/imf/ctot.json"
+}
+
+# --- exchange-rate regimes and anchor currencies (Ilzetzki, Reinhart & Rogoff), monthly from 1940
+fetch_irr() {
+  get "https://www.ilzetzki.com/_files/ugd/b3763a_3ca6759e41694e34a7c8d2be1f03f6d2.xlsx?dn=ERA_Classification_Monthly_1940-2025.xlsx" \
+    "$RAW/irr/ERA_Classification_Monthly_1940-2025.xlsx"
+  get "https://www.ilzetzki.com/_files/ugd/b3763a_4c0cbdb614a54dbda4ce87db5e20a0ee.xlsx?dn=Anchor_monthly_1946-2025.xlsx" \
+    "$RAW/irr/Anchor_monthly_1946-2025.xlsx"
 }
 
 # --- credit cycle, property, debt service, policy rates (BIS, quarterly/monthly) -----------
@@ -236,7 +244,7 @@ fetch_events() {
   get "https://data.humdata.org/dataset/74163686-a029-4e27-8fbf-c5bfcd13f953/resource/c5ce40d6-07b1-4f36-955a-d6196436ff6b/download/emdat-country-profiles_2026_10_14.xlsx" "$RAW/disasters/emdat-country-profiles.xlsx"
 }
 
-ALL=(fred worldbank vdem imf pwt jst crises shocks events bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
+ALL=(fred worldbank vdem imf irr pwt jst crises shocks events bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
 case "${1:-all}" in
   all) for s in "${ALL[@]}"; do "fetch_$s"; done ;;
   *) "fetch_$1" ;;

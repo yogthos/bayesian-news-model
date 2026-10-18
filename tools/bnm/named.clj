@@ -46,7 +46,9 @@
     "state/government_effectiveness" "energy/oil_rents_gdp" "energy/mineral_rents_gdp"
     "people/tertiary_enrolment" "people/urban_share" "people/gini"
     "regime/electoral_democracy" "regime/liberal_democracy" "regime/civil_society"
-    "regime/physical_integrity" "regime/corruption" "trade/commodity_tot"})
+    "regime/physical_integrity" "regime/corruption" "trade/commodity_tot"
+    "finance/fx_peg" "finance/fx_falling" "finance/anchor_usd" "finance/anchor_euro"
+    "finance/anchor_gbp" "finance/anchor_cny" "finance/anchor_rub"})
 
 (defn load-series
   "{[unit var] series} for `vars`, values transformed as data/slow/variables.tsv says."
@@ -305,6 +307,26 @@
                      (when (or a r) (/ (+ (or a 0.0) (or r 0.0)) 100.0)))]
        [tot12 (g "trade/commodity_tot" t 3) (some-> tot12 (Math/min 0.0)) vol (x* vol primary)]))])
 
+(def fx-names [:peg :falling :anchor-usd :anchor-euro :anchor-gbp :anchor-cny :anchor-rub :tot-vol-x-peg-x-primary])
+
+(defn fx
+  "[names f] from the de facto exchange-rate regimes (Ilzetzki, Reinhart &
+  Rogoff): pegged, freely falling, the currency anchored to, and commodity
+  terms-of-trade volatility where the currency is pegged and the primary
+  sector large, where commodity volatility rather than credit predicts
+  banking crises (Eberhardt & Presbitero 2021)."
+  [db _units _months]
+  [fx-names
+   (fn [unit t]
+     (let [g (getter db unit)
+           peg (g "finance/fx_peg" t)
+           vol (some-> (db [unit "trade/commodity_tot"]) (sk/volatility t 12 {:stale 6}))
+           primary (let [a (g "economy/agriculture_share" (- t 24)) r (g "energy/resource_rents_gdp" (- t 24))]
+                     (when (or a r) (/ (+ (or a 0.0) (or r 0.0)) 100.0)))]
+       [peg (g "finance/fx_falling" t) (g "finance/anchor_usd" t) (g "finance/anchor_euro" t)
+        (g "finance/anchor_gbp" t) (g "finance/anchor_cny" t) (g "finance/anchor_rub" t)
+        (x* vol (x* peg primary))]))])
+
 (def presence
   "Groups of inputs that share a source: one indicator each."
   {:financial [[:credit3 :hh-credit3 :credit-gap :dsr3] [:house3] [:equity3 :runup2 :equity-vol] [:curve]]
@@ -316,7 +338,8 @@
    :youth [[:tertiary :tertiary5] [:youth-unemployment-x-urban]]
    :nonlinear [[:log-income] [:gini]]
    :regime [[:democracy :liberal-gap :civil-society :physical-integrity :corruption]]
-   :terms-of-trade [[:tot12 :tot3 :tot-vol]]})
+   :terms-of-trade [[:tot12 :tot3 :tot-vol]]
+   :fx [[:peg :falling] [:anchor-usd :anchor-euro :anchor-gbp :anchor-cny :anchor-rub]]})
 
 (defn vectorize
   "Inputs as doubles, missing as 0, then one presence indicator per group:

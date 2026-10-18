@@ -27,7 +27,8 @@
   effectiveness and rents where it is weak), youth (the educated young out
   of work in the cities), nonlinear (income and inequality as curves),
   regime (V-Dem democracy as a curve, civil society, integrity), tot (the
-  IMF's commodity terms of trade by country: change, falls, volatility); see
+  IMF's commodity terms of trade by country: change, falls, volatility), fx
+  (exchange-rate regime and anchor currency); see
   bnm.named.
   Every group also runs as a placebo,
   <group>-placebo, its values shuffled across countries within each quarter:
@@ -91,7 +92,8 @@
    "youth" (named-group nm/youth nm/youth-names :youth)
    "nonlinear" (named-group nm/nonlinear nm/nonlinear-names :nonlinear)
    "regime" (named-group nm/regime nm/regime-names :regime)
-   "tot" (named-group nm/terms-of-trade nm/tot-names :terms-of-trade)})
+   "tot" (named-group nm/terms-of-trade nm/tot-names :terms-of-trade)
+   "fx" (named-group nm/fx nm/fx-names :fx)})
 
 (defn load-groups
   "[[name width {[unit quarter] double[]}] ...] for `names`, each followed by
