@@ -44,7 +44,9 @@
     "trade/metal_exports_share" "food/exports_share" "technology/hightech_exports_share"
     "food/cereal_yield" "commodities/copper" "commodities/aluminium" "commodities/nickel"
     "state/government_effectiveness" "energy/oil_rents_gdp" "energy/mineral_rents_gdp"
-    "people/tertiary_enrolment" "people/urban_share" "people/gini"})
+    "people/tertiary_enrolment" "people/urban_share" "people/gini"
+    "regime/electoral_democracy" "regime/liberal_democracy" "regime/civil_society"
+    "regime/physical_integrity" "regime/corruption"})
 
 (defn load-series
   "{[unit var] series} for `vars`, values transformed as data/slow/variables.tsv says."
@@ -262,6 +264,27 @@
        (let [y (income unit t) gi (gini unit t)]
          [y (hinge y (first (ik t))) (hinge y (second (ik t))) (some-> gi (/ 100.0)) (some-> (hinge gi (first (gk t))) (/ 100.0))]))]))
 
+(def regime-names
+  [:democracy :democracy-above-median :middling :liberal-gap :civil-society :physical-integrity :corruption])
+
+(defn regime
+  "[names f] from V-Dem: electoral democracy, as a curve (a hinge at the
+  month's median across countries, and democracy times its distance from
+  full democracy, which peaks in the middle: non-violent destabilization
+  goes with middling democracy, Korotayev 2024), the gap between liberal and
+  electoral democracy (elections without constraints), civil society,
+  freedom from political violence and corruption."
+  [db units months]
+  (let [dem (fn [u t] (some-> (db [u "regime/electoral_democracy"]) (sk/value t {:stale 30})))
+        mk (quantiles-by-month units months dem [0.5])]
+    [regime-names
+     (fn [unit t]
+       (let [g (getter db unit)
+             d (dem unit t)]
+         [d (hinge d (first (mk t))) (when d (* d (- 1.0 d)))
+          (minus (g "regime/electoral_democracy" t) (g "regime/liberal_democracy" t))
+          (g "regime/civil_society" t) (g "regime/physical_integrity" t) (g "regime/corruption" t)]))]))
+
 (def presence
   "Groups of inputs that share a source: one indicator each."
   {:financial [[:credit3 :hh-credit3 :credit-gap :dsr3] [:house3] [:equity3 :runup2 :equity-vol] [:curve]]
@@ -271,7 +294,8 @@
    :structure [[:agriculture :manufacturing :services] [:fuel-exports :food-exports :metal-exports :hightech-exports]]
    :institutions [[:effectiveness] [:oil-rents-x-weak :mineral-rents-x-weak]]
    :youth [[:tertiary :tertiary5] [:youth-unemployment-x-urban]]
-   :nonlinear [[:log-income] [:gini]]})
+   :nonlinear [[:log-income] [:gini]]
+   :regime [[:democracy :liberal-gap :civil-society :physical-integrity :corruption]]})
 
 (defn vectorize
   "Inputs as doubles, missing as 0, then one presence indicator per group:

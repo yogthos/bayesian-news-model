@@ -6,7 +6,7 @@
 # Idempotent: existing files are skipped, so it can be re-run to resume;
 # FORCE=1 refetches.
 #
-#   scripts/fetch-slow.sh [fred|worldbank|pwt|jst|crises|shocks|events|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
+#   scripts/fetch-slow.sh [fred|worldbank|vdem|pwt|jst|crises|shocks|events|bis|oecd|owid|jodi|faostat|nyfed|epu|climate|openalex|ucdp|esrb|market|all]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -77,6 +77,11 @@ fetch_worldbank() {
   for i in "${WB_INDICATORS[@]}"; do
     get "https://api.worldbank.org/v2/country/all/indicator/$i?format=json&per_page=30000" "$RAW/worldbank/$i.json"
   done
+}
+
+# --- regimes (V-Dem country-year core, yearly, published each March) ------------------------
+fetch_vdem() {
+  get "https://v-dem.net/media/datasets/V-Dem-CY-Core-v16_csv.zip" "$RAW/vdem/V-Dem-CY-Core-v16_csv.zip"
 }
 
 # --- credit cycle, property, debt service, policy rates (BIS, quarterly/monthly) -----------
@@ -226,7 +231,7 @@ fetch_events() {
   get "https://data.humdata.org/dataset/74163686-a029-4e27-8fbf-c5bfcd13f953/resource/c5ce40d6-07b1-4f36-955a-d6196436ff6b/download/emdat-country-profiles_2026_10_14.xlsx" "$RAW/disasters/emdat-country-profiles.xlsx"
 }
 
-ALL=(fred worldbank pwt jst crises shocks events bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
+ALL=(fred worldbank vdem pwt jst crises shocks events bis oecd owid jodi faostat nyfed epu climate openalex ucdp esrb market)
 case "${1:-all}" in
   all) for s in "${ALL[@]}"; do "fetch_$s"; done ;;
   *) "fetch_$1" ;;

@@ -267,6 +267,36 @@ def worldbank():
         var(name, tr, "a", "World Bank WDI " + code, desc)
 
 
+VDEM = {
+    "v2x_polyarchy": ("regime/electoral_democracy", "electoral democracy index"),
+    "v2x_libdem": ("regime/liberal_democracy", "liberal democracy index"),
+    "v2xcs_ccsi": ("regime/civil_society", "core civil society index"),
+    "v2x_clphy": ("regime/physical_integrity", "physical violence index (freedom from)"),
+    "v2x_corr": ("regime/corruption", "political corruption index"),
+}
+
+
+def vdem():
+    """V-Dem country-year core (data/raw/slow/vdem/V-Dem-CY-Core-v16_csv.zip, CC
+    BY-SA 4.0). Each version is published in March for the year before, so a
+    year is known three months on. Later versions revise earlier years; this
+    is one vintage."""
+    path = os.path.join(RAW, "vdem", "V-Dem-CY-Core-v16_csv.zip")
+    if not os.path.exists(path):
+        return
+    with zipfile.ZipFile(path) as z:
+        with z.open("V-Dem-CY-Core-v16.csv") as f:
+            for r in csv.DictReader(io.TextIOWrapper(f, encoding="utf-8")):
+                iso = r["country_text_id"]
+                if iso not in ISO3 or int(r["year"]) < 1950:
+                    continue
+                for col, (name, _) in VDEM.items():
+                    if r.get(col):
+                        emit(iso, name, "a", period_end("a", r["year"]), 3, r[col])
+    for col, (name, desc) in VDEM.items():
+        var(name, "id", "a", "V-Dem v16 " + col, desc)
+
+
 def pwt():
     """Penn World Table 11 (data/raw/slow/pwt/pwt110.csv, from the .dta): labour's
     share, the real internal rate of return on capital (a profit rate), the
@@ -836,7 +866,7 @@ def mechanical(dedup):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    steps = [fred, worldbank, pwt, shocks, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb, laeven_valencia, coups, disasters]
+    steps = [fred, worldbank, vdem, pwt, shocks, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb, laeven_valencia, coups, disasters]
     for step in steps:
         n0, e0 = len(ROWS), len(EVENTS)
         step()

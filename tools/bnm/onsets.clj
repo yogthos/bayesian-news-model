@@ -25,7 +25,8 @@
   model's view, with --events), structure (sector and export shares and the
   world price shocks reaching a country through them), institutions (state
   effectiveness and rents where it is weak), youth (the educated young out
-  of work in the cities), nonlinear (income and inequality as curves); see
+  of work in the cities), nonlinear (income and inequality as curves),
+  regime (V-Dem democracy as a curve, civil society, integrity); see
   bnm.named.
   Every group also runs as a placebo,
   <group>-placebo, its values shuffled across countries within each quarter:
@@ -85,7 +86,8 @@
    "structure" (named-group nm/structure nm/structure-names :structure)
    "institutions" (named-group nm/institutions nm/institutions-names :institutions)
    "youth" (named-group nm/youth nm/youth-names :youth)
-   "nonlinear" (named-group nm/nonlinear nm/nonlinear-names :nonlinear)})
+   "nonlinear" (named-group nm/nonlinear nm/nonlinear-names :nonlinear)
+   "regime" (named-group nm/regime nm/regime-names :regime)})
 
 (defn load-groups
   "[[name width {[unit quarter] double[]}] ...] for `names`, each followed by
