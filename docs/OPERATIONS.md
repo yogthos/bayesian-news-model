@@ -151,6 +151,16 @@ whether one is under way.
   than below it (13-14% against 6-7%). A factor per side (`:coverage-sides`)
   evens the tails but drags the median down and scores worse, so it is not
   used. At the country level the tails are even.
+- The fix is in the forecast itself: each path carries one log-normal
+  shock per node and channel, held over the quarter, log-sd 0.4 for quiet
+  nodes and fading with volume (`bnm.model/shock-sd`). Gamma mixing leaves a
+  sparse node's log total left-skewed; the shock lengthens its upper tail.
+  Refit over v6-q's origins it evened the outer tenths below the country
+  (pairs: summed deviation of the PIT from flat 1.28 to 0.80) with CRPS
+  unchanged and country escalation AUC up (violence 0.792 to 0.797). It
+  changes forecasts only, so a model trained without it takes it on load.
+  Learning its size per kind from the tails measured worse (the shock moves
+  the median, and the size chased it), so it is fixed.
 - The escalation probability is the tail, above 1.5 times the last
   quarter, of a log-normal fitted to the forecast sample, then calibrated.
   From 100 draws a counted share is zero for most nodes, and the ties lose

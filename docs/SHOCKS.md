@@ -121,7 +121,12 @@ to 1.20 for dyads, 1.28 to 0.80 for pairs, 1.18 to 0.88 for actors, 1.38 to
 (violence 0.792 to 0.797, coercion 0.794 to 0.801). The country's upper tail
 became slightly too long, and 0.8 reversed the skew at every level. So each
 level and channel learns its own size from the tails
-(`bnm.calibrate/learn-shock`), starting from the configured one.
+(`bnm.calibrate/learn-shock`), starting from the configured one. That
+measured worse: from 0 or from 0.4, country CRPS rose (0.1033 fixed to
+0.1052 and 0.1122), subregion CRPS too, and escalation AUC fell back. The
+mean-one shock lowers the median, so uneven tails reflect location as much
+as shape and the learned size chased it (actors' lowest tenth fell to
+0.68). The default is the fixed 0.4; learning is kept behind `:learn`.
 
 **The fast layer fed by the slow one (step 2)** (`bnm.coupling`). Stacking
 the onset hazards onto the event model and own history, refit yearly per
