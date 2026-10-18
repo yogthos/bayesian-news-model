@@ -374,6 +374,17 @@
 ;; the 80% range more often than below it, shrinks while below outnumbers
 ;; above. Coverage is learned apart, by the width.
 
+(defn shock-learning
+  "The options `learn-by` learns the shock's size with under `config`: only
+  when :learn is set. Not the default: refit over v6-q's origins, learning it
+  from 0 or 0.4 raised country CRPS (0.1033 at a fixed 0.4 to 0.1052 and
+  0.1122) and lowered escalation AUC; the mean-one shock lowers the median,
+  so the tails look uneven for the location as much as the shape, and the
+  size chased it (actors' lowest tenth fell to 0.68)."
+  [config]
+  (when (get-in config [:shock :learn])
+    {:shock-sd (get-in config [:shock :sd])}))
+
 (def shock-rate
   "How far the shock's log-sd moves per unit of tail asymmetry in a period."
   0.5)

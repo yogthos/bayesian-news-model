@@ -84,10 +84,12 @@
                        ; of a node's typical rate (see `stable-params`)
    :param-uncertainty true ; forecasts draw parameters from their posterior
    :pooling true       ; priors learned across nodes of a kind (see learn-pool)
-   :shock nil          ; in a forecast, {:sd :volume}: one log-normal multiplier
+   :shock {:sd 0.4 :volume 20.0} ; in a forecast, one log-normal multiplier
                        ; per path, node and channel, held over the horizon, its
                        ; log-sd :sd for a node far quieter than :volume raw events
-                       ; a bin and fading for busier ones (see `shock-sd`)
+                       ; a bin and fading for busier ones (see `shock-sd`); with
+                       ; :learn true each kind and channel learns its own size
+                       ; (bnm.calibrate/learn-shock), which measured worse
    :level-noise 0.0    ; in a forecast, the log-sd a node's level drifts by over
                        ; 52 bins beyond what its dynamics explain: shocks the
                        ; model has no way to see coming
@@ -345,7 +347,7 @@
      cfg pool)))
 
 (defn- merge-config [config]
-  (merge-with (fn [a b] (if (map? a) (merge a b) b)) defaults config))
+  (merge-with (fn [a b] (if (and (map? a) (some? b)) (merge a b) b)) defaults config))
 
 (defn create
   "A fresh model over `structure` (see `bnm.structure/build`), its priors

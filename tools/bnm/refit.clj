@@ -65,7 +65,7 @@
                              ctx (assoc (context (str dir "/context-" lbl ".edn"))
                                         :actual (recorded rows))
                              full (ev/score fc ctx)
-                             _ (when coverage? (swap! cov #(cal/learn-by learn-mode % (:rows full) {:shock-sd (get-in mdl [:config :shock :sd])})))
+                             _ (when coverage? (swap! cov #(cal/learn-by learn-mode % (:rows full) (cal/shock-learning (:config mdl)))))
                              r (dissoc full :rows)]
                          (println (ev/summary-line r))
                          r)))]

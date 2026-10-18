@@ -310,7 +310,7 @@
                           xs (double-array (sort (for [k (range 400)] (model/total fc i k violence))))]
                       (mapv #(m/quantile xs %) [0.1 0.5 0.9])))
         upper (fn [[_ q50 q90]] (Math/log (/ q90 q50)))
-        plain (quantiles mdl "UKR:GOV")]
+        plain (quantiles (assoc-in mdl [:config :shock] nil) "UKR:GOV")]
     (is (> (upper (quantiles (assoc-in mdl [:config :shock] {:sd 0.6 :volume 50.0}) "UKR:GOV"))
            (+ 0.2 (upper plain)))
         "the quiet node's upper tail lengthens")
@@ -322,3 +322,10 @@
                                                          [[:shock k :violence] {:sd 0.0}]))))
                             "UKR:GOV"))
         "a learned sd for each kind and channel overrides the configured one")))
+
+(deftest a-config-can-turn-a-default-map-off
+  (let [s (structure/build (structure/tally (structure/volumes) "UKR" "GOV" "UKR" "OPP" nil 300.0)
+                           {:min-dyad-volume 100.0 :min-actor-volume 100.0 :min-pair-volume 100.0})]
+    (is (nil? (get-in (model/create s {:shock nil}) [:config :shock])))
+    (is (= 0.8 (get-in (model/create s {:shock {:sd 0.8}}) [:config :shock :sd])) "a map merges into the default")
+    (is (= 20.0 (get-in (model/create s {:shock {:sd 0.8}}) [:config :shock :volume])))))

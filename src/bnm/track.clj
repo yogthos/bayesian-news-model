@@ -123,7 +123,7 @@
     (-> m
         (cond-> (seq outcomes) (update :calibration #(cal/learn (or % {}) outcomes)))
         (cond-> (seq ranges) (update :spread #(cal/learn-by (get-in m [:config :spread-mode]) (or % {}) ranges
-                                                     {:shock-sd (get-in m [:config :shock :sd])})))
+                                                     (cal/shock-learning (:config m)))))
         (assoc :track {:hist (eval/add-history (or hist {}) actual)
                        :clim (cond-> (or clim {}) (seq scored) (eval/learn-climate scored))
                        :record (cond-> (vec record)

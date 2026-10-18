@@ -135,6 +135,13 @@
 (deftest coverage-is-the-default-mode
   (is (= :coverage (:spread-mode bnm.model/defaults))))
 
+(deftest the-shock-is-on-at-a-fixed-size-by-default
+  ;; v6-q refit: a fixed 0.4 evened the tails below the country; learning the
+  ;; size from the tails chased the median it moved, and scored worse
+  (is (= {:sd 0.4 :volume 20.0} (:shock bnm.model/defaults)))
+  (is (nil? (cal/shock-learning {:shock {:sd 0.4 :volume 20.0}})))
+  (is (= {:shock-sd 0.4} (cal/shock-learning {:shock {:sd 0.4 :volume 20.0 :learn true}}))))
+
 (deftest each-tail-learned-from-its-own-coverage
   (let [key [:dyad :violence :quiet]
         ;; 14% above the range, 6% below: the upper side widens, the lower narrows
