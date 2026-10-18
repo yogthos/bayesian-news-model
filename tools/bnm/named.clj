@@ -38,7 +38,13 @@
     "economy/gdp_growth" "economy/inflation" "people/youth_unemployment" "people/population"
     "climate/temperature_anomaly" "climate/precipitation_anomaly"
     "politics/protest" "politics/violence" "politics/coercion"
-    "economy/profit_rate" "economy/labor_share" "economy/gdp_per_capita" "energy/resource_rents_gdp"})
+    "economy/profit_rate" "economy/labor_share" "economy/gdp_per_capita" "energy/resource_rents_gdp"
+    ;; structure, institutions, youth, nonlinear (docs/STRUCTURE.md)
+    "economy/agriculture_share" "economy/manufacturing_share" "economy/services_share"
+    "trade/metal_exports_share" "food/exports_share" "technology/hightech_exports_share"
+    "food/cereal_yield" "commodities/copper" "commodities/aluminium" "commodities/nickel"
+    "state/government_effectiveness" "energy/oil_rents_gdp" "energy/mineral_rents_gdp"
+    "people/tertiary_enrolment" "people/urban_share" "people/gini"})
 
 (defn load-series
   "{[unit var] series} for `vars`, values transformed as data/slow/variables.tsv says."
@@ -181,12 +187,80 @@
              agri (share "economy/agriculture_share") manuf (share "economy/manufacturing_share")
              metal-x (share "trade/metal_exports_share") food-x (share "food/exports_share")
              rents (share "energy/resource_rents_gdp")
+             ;; yields are stored as logs: how far below the world's median
              low-yield (when-let [y (g "food/cereal_yield" (- t lag))]
-                         (when-let [m (median-yield t)] (when (pos? y) (Math/log (/ m y)))))]
+                         (when-let [m (median-yield t)] (- m y)))]
          [agri manuf (share "economy/services_share") (share "energy/fuel_exports_share") food-x metal-x
           (share "technology/hightech_exports_share")
           (x* food12 agri) (x* food12 food-x) (x* metals12 metal-x) (x* oil12 rents) (x* oil12 manuf)
           (x* (x* food12 (share "food/imports_share")) low-yield)]))]))
+
+(defn- quantiles-by-month
+  "{month [q...]} of `f` (unit, month -> value or nil) over `units` at the
+  probabilities `ps`: knots that move with the data, never fixed by hand."
+  [units months f ps]
+  (into {} (for [t months
+                 :let [xs (vec (sort (keep #(f % t) units)))]]
+             [t (when (>= (count xs) 10) (mapv #(xs (min (dec (count xs)) (long (* % (count xs))))) ps))])))
+
+(defn- hinge [x k] (when (and x k) (Math/max 0.0 (- (double x) (double k)))))
+
+(def institutions-names
+  [:effectiveness :oil-rents-x-weak :mineral-rents-x-weak :oil12-x-oil-rents-x-weak :metals12-x-mineral-rents-x-weak])
+
+(defn institutions
+  "[names f]: government effectiveness (WGI, from 1996) and resource rents
+  where the state is weak, alone and times the world price change of the
+  resource: easily seized oil and minerals raise risk only where
+  institutions are weak (Polterovich, Popov & Tonis 2007; Korotayev et al.)."
+  [db _units _months]
+  [institutions-names
+   (fn [unit t]
+     (let [g (getter db unit)
+           w (getter db "world")
+           ge (g "state/government_effectiveness" (- t 12))
+           weak (when ge (Math/max 0.0 (- (double ge))))
+           oil (some-> (g "energy/oil_rents_gdp" (- t 24)) (/ 100.0))
+           mineral (some-> (g "energy/mineral_rents_gdp" (- t 24)) (/ 100.0))
+           oil12 (w "energy/oil_brent" t 12)
+           metals12 (mean-of (keep #(w % t 12) ["commodities/copper" "commodities/aluminium" "commodities/nickel"]))]
+       [ge (x* oil weak) (x* mineral weak) (x* oil12 (x* oil weak)) (x* metals12 (x* mineral weak))]))])
+
+(def youth-names [:tertiary :tertiary5 :youth-unemployment-x-urban :educated-idle])
+
+(defn youth
+  "[names f]: the educated-youth mechanism (Korotayev & Zinkina 2022): fast
+  growth in tertiary enrolment with young people out of work in the cities;
+  tertiary enrolment, its five-year change, youth unemployment times the
+  urban share, and all three together."
+  [db _units _months]
+  [youth-names
+   (fn [unit t]
+     (let [g (getter db unit)
+           tert (some-> (g "people/tertiary_enrolment" (- t 24)) (/ 100.0))
+           tert5 (some-> (g "people/tertiary_enrolment" (- t 24) 60) (/ 100.0))
+           yu (some-> (g "people/youth_unemployment" (- t 12)) (/ 100.0))
+           urban (some-> (g "people/urban_share" (- t 12)) (/ 100.0))]
+       [tert tert5 (x* yu urban) (x* (some-> tert5 (Math/max 0.0)) (x* yu urban))]))])
+
+(def nonlinear-names [:log-income :income-above-low :income-above-high :gini :gini-above-median])
+
+(defn nonlinear
+  "[names f]: income and inequality as piecewise-linear curves, so a risk
+  can rise and then fall (unarmed revolution peaks at middle incomes,
+  Ustyuzhanin, Fain & Korotayev): log income per head with hinges at the
+  month's tertiles across countries, and the Gini index with a hinge at its
+  median."
+  [db units months]
+  ;; income per head is stored as its log (variables.tsv)
+  (let [income (fn [u t] (some-> (db [u "economy/gdp_per_capita"]) (sk/value (- t 12) {:stale 30})))
+        gini (fn [u t] (some-> (db [u "people/gini"]) (sk/value (- t 12) {:stale 60})))
+        ik (quantiles-by-month units months income [(/ 1.0 3.0) (/ 2.0 3.0)])
+        gk (quantiles-by-month units months gini [0.5])]
+    [nonlinear-names
+     (fn [unit t]
+       (let [y (income unit t) gi (gini unit t)]
+         [y (hinge y (first (ik t))) (hinge y (second (ik t))) (some-> gi (/ 100.0)) (some-> (hinge gi (first (gk t))) (/ 100.0))]))]))
 
 (def presence
   "Groups of inputs that share a source: one indicator each."
@@ -194,7 +268,10 @@
    :political [[:food-inflation] [:fragility] [:gdp-growth :inflation] [:youth-unemployment]
                [:temperature :precipitation] [:protest3 :violence3]]
    :political-economy [[:profit-rate :profit-rate3 :labor-share3] [:uneven-growth] [:rents-x-core-profit]]
-   :structure [[:agriculture :manufacturing :services] [:fuel-exports :food-exports :metal-exports :hightech-exports]]})
+   :structure [[:agriculture :manufacturing :services] [:fuel-exports :food-exports :metal-exports :hightech-exports]]
+   :institutions [[:effectiveness] [:oil-rents-x-weak :mineral-rents-x-weak]]
+   :youth [[:tertiary :tertiary5] [:youth-unemployment-x-urban]]
+   :nonlinear [[:log-income] [:gini]]})
 
 (defn vectorize
   "Inputs as doubles, missing as 0, then one presence indicator per group:

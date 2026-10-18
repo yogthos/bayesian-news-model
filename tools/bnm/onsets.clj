@@ -23,7 +23,10 @@
   history, and one with the named inputs too: mix (the event-code mix,
   bnm.mix), ties (partners and cross-pressure, bnm.ties), event (the event
   model's view, with --events), structure (sector and export shares and the
-  world price shocks reaching a country through them, bnm.named/structure).
+  world price shocks reaching a country through them), institutions (state
+  effectiveness and rents where it is weak), youth (the educated young out
+  of work in the cities), nonlinear (income and inequality as curves); see
+  bnm.named.
   Every group also runs as a placebo,
   <group>-placebo, its values shuffled across countries within each quarter:
   a group whose gain the placebo matches carries nothing about the country.
@@ -61,18 +64,28 @@
   "Events between countries per quarter (scripts/event-dyads.sh)."
   "data/slow/event-dyads.tsv")
 
+(defn- named-group
+  "[width loader] for a group built like the named inputs: `build` of (db
+  units months) gives [names f], f of (unit month) the raw values, which
+  `vectorize` turns into doubles with the family's presence indicators."
+  [build names family]
+  [(+ (count names) (count (get nm/presence family)))
+   (fn [{:keys [db units rows]}]
+     (let [months (distinct (map #(+ 2 (* 3 (:q %))) rows))
+           [names f] (build db units months)
+           [_ vf] (nm/vectorize names family)]
+       (into {} (for [{:keys [unit q]} rows] [[unit q] (vf (f unit (+ 2 (* 3 q))))]))))])
+
 (def group-loaders
   "Input groups by name: [width loader], the loader taking {:db :units :rows}
   (the slow series, the countries, the onset rows) and giving {[unit
   quarter] double[]}."
   {"mix" [(count mix/labels) (fn [_] (nm/load-event-mix mix-path))]
    "ties" [(count ties/labels) (fn [_] (nm/load-ties dyads-path mix-path))]
-   "structure" [(+ (count nm/structure-names) (count (:structure nm/presence)))
-                (fn [{:keys [db units rows]}]
-                  (let [months (distinct (map #(+ 2 (* 3 (:q %))) rows))
-                        [names f] (nm/structure db units months)
-                        [_ vf] (nm/vectorize names :structure)]
-                    (into {} (for [{:keys [unit q]} rows] [[unit q] (vf (f unit (+ 2 (* 3 q))))]))))]})
+   "structure" (named-group nm/structure nm/structure-names :structure)
+   "institutions" (named-group nm/institutions nm/institutions-names :institutions)
+   "youth" (named-group nm/youth nm/youth-names :youth)
+   "nonlinear" (named-group nm/nonlinear nm/nonlinear-names :nonlinear)})
 
 (defn load-groups
   "[[name width {[unit quarter] double[]}] ...] for `names`, each followed by
