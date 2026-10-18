@@ -39,25 +39,36 @@
 
 (def kinds ["conflict_onset" "war_onset" "protest_surge" "violence_surge" "coup" "banking_crisis"])
 
+(def tune-years
+  "The years each kind's model of record is chosen on, before the years held
+  out (bnm.onsets/tune-years)."
+  [2000 2007])
+
 (defn- onset-readings
-  "{kind {:q latest quarter :top [[unit p] ...] :cusum ...}} from an onsets run's
-  preds.tsv, window w1, for `model`: stack by default, the log-linear
-  combination refit each year on resolved outcomes, which recalibrates as it
-  combines."
+  "{kind {:q latest quarter :model :top [[unit p] ...] :cusum ...}} from an
+  onsets run's preds.tsv, window w1. The model is `model` when given, else
+  per kind the one with the best log score over `tune-years`
+  (bnm.hazard/pick-model): the stack, the log-linear combination refit each
+  year, lost to the country's own history for banking crises there and after."
   [path n model]
   (let [rows (with-open [r (io/reader path)]
                (into [] (keep (fn [line]
                                 (let [[kind win m q unit p y] (str/split line #"\t")]
-                                  (when (and (= win "w1") (= m model))
-                                    [kind (parse-long q) unit (parse-double p) y]))))
+                                  (when (and (= win "w1") (not= m "base") (or (nil? model) (= m model)))
+                                    [kind m (parse-long q) unit (parse-double p) y]))))
                      (line-seq r)))]
-    (into {} (for [[kind rs] (group-by first rows)]
+    (into {} (for [[kind by-kind] (group-by first rows)
+                   :let [by-model (group-by second by-kind)
+                         resolved-of (fn [rs] (for [[_ _ q _ p y] rs :when (#{"true" "false"} y)] [q p (= "true" y)]))
+                         chosen (or model (hz/pick-model (update-vals by-model resolved-of)
+                                                         (first tune-years) (second tune-years)))
+                         rs (mapv (fn [[k _ q u p y]] [k q u p y]) (get by-model chosen))]]
                (let [q (apply max (map second rs))
                      now (filter #(= q (second %)) rs)
                      resolved (sort-by second (filter #(and (#{"true" "false"} (nth % 4)) (>= (second %) (- q 40))) rs))
                      ps (map #(nth % 3) resolved) ys (map #(= "true" (nth % 4)) resolved)
                      known (for [[_ q _ p y] rs :when (#{"true" "false"} y)] [q p (= "true" y)])]
-                 [kind {:q q
+                 [kind {:q q :model chosen
                         :top (take n (sort-by #(- (nth % 3)) now))
                         :base (/ (count (filter true? ys)) (double (max 1 (count ys))))
                         :cusum {:up (hz/cusum ps ys 2.0 :overlap 4) :down (hz/cusum ps ys 0.5 :overlap 4)
@@ -92,7 +103,6 @@
 
 (defn -main [& args]
   (let [{:keys [onsets n model]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
-        model (or model "stack")
         onsets (or onsets (str paths/derived "onset-preds.tsv"))
         n (parse-long (or n "10"))
         out (StringBuilder.)
@@ -160,9 +170,10 @@
                    (if (or (< (peek w) sma200) (> vr 1.8)) " -- a fall may be under way" ""))))
     (say)
     (if (.exists (io/file onsets))
-      (do (say (str "Onsets: the countries likeliest to see one within a year (" model " model), latest quarter."))
-          (doseq [[kind {:keys [q top base cusum]}] (sort-by (comp #(.indexOf ^java.util.List kinds %) key) (onset-readings onsets n model))]
-            (say (format "  %s, from %s (base rate %.3f; %s):" kind (st/month-str (+ 2 (* 3 q))) base (flag cusum)))
+      (do (say (str "Onsets: the countries likeliest to see one within a year, latest quarter; per kind the model"
+                    " with the best log score over " (str/join "-" tune-years) (when model (str " (here " model ")")) "."))
+          (doseq [[kind {:keys [q model top base cusum]}] (sort-by (comp #(.indexOf ^java.util.List kinds %) key) (onset-readings onsets n model))]
+            (say (format "  %s, from %s (%s model; base rate %.3f; %s):" kind (st/month-str (+ 2 (* 3 q))) model base (flag cusum)))
             (say (str "    " (str/join ", " (for [[_ _ u p] top] (format "%s %.2f" u p)))))))
       (say "Onsets: no predictions at" onsets "(scripts/readings.sh --onsets makes them)."))
     (say)

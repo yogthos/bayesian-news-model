@@ -316,3 +316,18 @@
                         [_ p y] this]
                     (- (ll (clip (sig (+ a (logit p)))) y) (ll (clip p) y)))]
         (/ (reduce + diffs) (double (count diffs)))))))
+
+(defn pick-model
+  "The model whose forecasts, {model [[quarter p outcome] ...]}, have the best
+  mean log score over the years lo-hi: chosen before the years held out, as
+  the members' priors are. nil when none has rows there."
+  [preds lo hi]
+  (let [score (fn [rows]
+                (let [in (filter #(<= lo (quot (first %) 4) hi) rows)]
+                  (when (seq in)
+                    (/ (reduce + (for [[_ p y] in
+                                       :let [p (min (max (double p) 1e-6) (- 1.0 1e-6))]]
+                                   (Math/log (if y p (- 1.0 p)))))
+                       (double (count in))))))
+        scored (keep (fn [[m rows]] (when-let [s (score rows)] [m s])) preds)]
+    (when (seq scored) (key (apply max-key val (into {} scored))))))

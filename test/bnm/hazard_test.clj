@@ -131,3 +131,13 @@
       (is (neg? (hz/recalibration-gain (rows #(if (< (mod % 24) 4) 0.25 0.012)) 120 {:overlap 4}))))
     (testing "nil without outcomes to score"
       (is (nil? (hz/recalibration-gain (rows (constantly 0.05)) 500 {:overlap 4}))))))
+
+(deftest the-model-of-record-is-chosen-on-the-tuning-years
+  ;; {model [[quarter p outcome] ...]}: the best mean log score over the
+  ;; tuning years wins, whatever happens after them
+  (let [ys (fn [q] (zero? (mod q 10)))
+        good (for [q (range 0 160)] [q (if (ys q) 0.5 0.05) (ys q)])
+        bad (for [q (range 0 160)] [q (if (< q 40) 0.1 (if (ys q) 0.9 0.01)) (ys q)])]
+    (is (= :good (hz/pick-model {:good good :bad bad} 0 9)))
+    (is (= :bad (hz/pick-model {:good good :bad bad} 10 39)) "later years favour the other")
+    (is (nil? (hz/pick-model {:good good} 50 60)) "nil without rows in the years")))
