@@ -67,19 +67,22 @@
             (or (hz/matched-concordance (map (fn [[q a b y]] {:period q :p-model a :p-bench b :y y}) paired) 4) 0.5))))
 
 (defn -main [& args]
-  (let [{:keys [run onsets model]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run onsets model target]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         run (or run "v6-q") onsets (or onsets "onsets-live") model (or model "pool")
+        ;; escalation (1.5x the last quarter), or a surge from a quiet base (bnm.eval/with-surges)
+        surge? (= target "surge")
         dir (str "data/runs/" run)
         hazards (load-onsets (str "data/runs/" onsets "/preds.tsv") model (set (mapcat val inputs)))
         clip #(min (max (double %) 1e-4) (- 1.0 1e-4))
         from (* 4 held-out)
         results
         (for [[ch kinds] inputs
-              :let [rows (for [r (ev/read-scored (str dir "/scored.edn") :country ch)
+              :let [rows (for [r (cond-> (ev/read-scored (str dir "/scored.edn") :country ch) surge? ev/with-surges)
                                :let [q (origin-quarter (:period r))
                                      hs (map #(get hazards [% (:id r) q]) kinds)]
-                               :when (every? some? hs)]
-                           {:q q :id (:id r) :quiet? (= :quiet (:stratum r)) :y (boolean (:escalated r))
+                               :when (and (every? some? hs) (or (not surge?) (some? (:surge r))))]
+                           {:q q :id (:id r) :quiet? (= :quiet (:stratum r))
+                            :y (boolean (if surge? (:surge r) (:escalated r)))
                             :ps (list* (clip (:p-cal r)) (clip (:p-hist r)) (map clip hs))})
                     ;; [quarter ps outcome quiet? id]
                     stack-rows (mapv (juxt :q :ps :y :quiet? :id) rows)
@@ -97,14 +100,15 @@
                       (line "all" both alone) "\n"
                       (line "quiet" (quiet both) (quiet alone)) "\n"
                       (line "pooled" (quiet pooled) (quiet alone)) "\n")})
-        out (str (format "Coupling: %s's calibrated country escalation probability with the onset hazards (%s, %s, w1) known at each origin,\n"
+        out (str (when surge? "Target: a surge from a quiet base (3x the trailing year, no escalation in it).\n")
+                 (format "Coupling: %s's calibrated country escalation probability with the onset hazards (%s, %s, w1) known at each origin,\n"
                          run onsets model)
                  (format "a stack refit yearly per stratum, against a stack of the escalation probability and own history alone; held out from %d.\n" held-out)
                  "AUC and recall at a 10% budget recalibrated -> stacked; log score and Brier gain with 90% intervals over years (* above zero);\n"
                  "matched: the share of escalations ranked above the 4 non-escalations of their quarter closest on the event model.\n"
                  (str/join (map :text results)))]
     (print out)
-    (spit (str dir "/coupling-" onsets ".txt") out)
-    (spit (str dir "/coupling-" onsets ".edn")
+    (spit (str dir "/coupling-" onsets (when surge? "-surge") ".txt") out)
+    (spit (str dir "/coupling-" onsets (when surge? "-surge") ".edn")
           (pr-str {:onsets onsets :model model
                    :channels (into {} (for [{:keys [channel kinds beta]} results] [channel {:kinds kinds :beta beta}]))}))))
