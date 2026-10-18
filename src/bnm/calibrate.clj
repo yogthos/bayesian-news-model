@@ -231,23 +231,29 @@
               (dotimes [i n] (aset out i (* f (aget out i)))))))))
     out))
 
-(declare coverage-factor learn-coverage)
+(declare coverage-factor learn-coverage side-factors learn-coverage-sides)
 
 (defn widen-by
   "The forecast sample recalibrated by `spread` for `key`, as `mode` says:
   :coverage one factor learned from the 80% range's coverage
-  (`learn-coverage`); :sides each side by its own factor (`widen-sides`);
-  otherwise one factor learned from the log errors (`learn-spread`)."
+  (`learn-coverage`); :coverage-sides each side by its own factor, learned
+  from its own tail's coverage (`learn-coverage-sides`); :sides each side by
+  its own factor from the log errors (`widen-sides`); otherwise one factor
+  learned from the log errors (`learn-spread`)."
   ^doubles [mode spread key ^doubles xs]
   (case mode
     :coverage (widen (coverage-factor spread key) xs)
+    :coverage-sides (widen-sides (side-factors spread key) xs)
     :sides (widen-sides (spread-factors spread key) xs)
     (widen (spread-factor spread key) xs)))
 
 (defn learn-by
   "`spread` updated with resolved forecasts as `mode` learns."
   [mode spread rows]
-  (if (= mode :coverage) (learn-coverage spread rows) (learn-spread spread rows)))
+  (case mode
+    :coverage (learn-coverage spread rows)
+    :coverage-sides (learn-coverage-sides spread rows)
+    (learn-spread spread rows)))
 
 (defn isotonic-map
   "Recalibration learned from past forecasts ps and their outcomes ys: the
@@ -323,3 +329,32 @@
               (assoc-in cov [key :k] (min (second spread-limits) (max (first spread-limits) k)))))
           cov
           (group-by (juxt :level :channel :stratum) (filter #(> (:q90 %) (:q10 %)) rows))))
+
+;; One factor centres nothing: below the country the outcomes fell above the
+;; range twice as often as below it (v6-q: 13-14% above q90, 6-7% below q10)
+;; while the range covered 80%. Each side gets its own factor, moved by the
+;; same damped step until its own tail holds 10%.
+
+(defn side-factors
+  "{:lo :hi} the widening below and above the median for `key` under `cov`
+  (learned by `learn-coverage-sides`)."
+  [cov key]
+  {:lo (get-in cov [key :lo] 1.0) :hi (get-in cov [key :hi] 1.0)})
+
+(defn learn-coverage-sides
+  "`cov` updated with a period's resolved forecasts (rows with :level,
+  :channel, :stratum, :q10, :q90 and :actual, the quantiles as forecast):
+  each side's factor moves by z(0.9)/z(1-t), damped, t its tail's share."
+  [cov rows]
+  (let [step (fn [n out]
+               (let [t (min 0.4 (max 0.005 (/ (+ out (* 0.1 coverage-shrink)) (+ n coverage-shrink))))]
+                 (Math/sqrt (/ 1.2815515655446004 (m/normal-quantile (- 1.0 t))))))
+        clamp #(min (second spread-limits) (max (first spread-limits) %))]
+    (reduce (fn [cov [key rs]]
+              (let [n (count rs)
+                    below (count (filter #(< (:actual %) (:q10 %)) rs))
+                    above (count (filter #(> (:actual %) (:q90 %)) rs))
+                    {:keys [lo hi]} (side-factors cov key)]
+                (assoc cov key {:lo (clamp (* lo (step n below))) :hi (clamp (* hi (step n above)))})))
+            cov
+            (group-by (juxt :level :channel :stratum) (filter #(> (:q90 %) (:q10 %)) rows)))))

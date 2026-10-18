@@ -6,7 +6,8 @@
     jolt -A:tools -M -m bnm.refit v2 '{:max-branching 0.9}' [sims] [label-regex]
 
   The override :no-spread true forecasts without the learned spread
-  recalibration (bnm.calibrate), to see what it does."
+  recalibration (bnm.calibrate), to see what it does; :coverage-learning
+  true (or a mode, :coverage-sides) learns it afresh over the origins."
   (:require [bnm.calibrate :as cal]
             [bnm.eval :as ev]
             [bnm.model :as model]
@@ -37,8 +38,10 @@
   (let [dir (str "data/runs/" run)
         overrides (edn/read-string overrides)
         no-spread? (:no-spread overrides)
-        ;; learn the spread from coverage, in order over the origins, as training would
-        coverage? (:coverage-learning overrides)
+        ;; learn the spread from coverage, in order over the origins, as training
+        ;; would: true for :coverage, or the mode (:coverage-sides)
+        learn-mode (let [c (:coverage-learning overrides)] (if (true? c) :coverage c))
+        coverage? (some? learn-mode)
         cov (atom {})
         overrides (dissoc overrides :no-spread :coverage-learning)
         sims (parse-long (or sims "100"))
@@ -56,11 +59,11 @@
                                        :period lbl :levels (mapv :level (:nodes mdl))
                                        :calibration (:calibration mdl)
                                        :spread (cond coverage? @cov no-spread? nil :else (:spread mdl))
-                                       :spread-mode (if coverage? :coverage (get-in mdl [:config :spread-mode])))
+                                       :spread-mode (or learn-mode (get-in mdl [:config :spread-mode])))
                              ctx (assoc (context (str dir "/context-" lbl ".edn"))
                                         :actual (recorded rows))
                              full (ev/score fc ctx)
-                             _ (when coverage? (swap! cov cal/learn-coverage (:rows full)))
+                             _ (when coverage? (swap! cov #(cal/learn-by learn-mode % (:rows full))))
                              r (dissoc full :rows)]
                          (println (ev/summary-line r))
                          r)))]

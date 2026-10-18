@@ -134,3 +134,29 @@
 
 (deftest coverage-is-the-default-mode
   (is (= :coverage (:spread-mode bnm.model/defaults))))
+
+(deftest each-tail-learned-from-its-own-coverage
+  (let [key [:dyad :violence :quiet]
+        ;; 14% above the range, 6% below: the upper side widens, the lower narrows
+        rows (for [i (range 100)]
+               {:level :dyad :channel :violence :stratum :quiet :q10 10.0 :q50 20.0 :q90 30.0
+                :actual (cond (< i 6) 1.0 (< i 20) 100.0 :else 20.0)})
+        s (cal/learn-by :coverage-sides {} rows)
+        {:keys [lo hi]} (cal/side-factors s key)]
+    (is (> hi 1.0) "upper tail too thin: wider above")
+    (is (< lo 1.0) "lower tail too fat: narrower below")
+    (testing "10% each side leaves both about where they were"
+      (let [even (for [i (range 100)]
+                   {:level :dyad :channel :violence :stratum :quiet :q10 10.0 :q50 20.0 :q90 30.0
+                    :actual (cond (< i 10) 1.0 (< i 20) 100.0 :else 20.0)})
+            {:keys [lo hi]} (cal/side-factors (cal/learn-by :coverage-sides {} even) key)]
+        (is (< (Math/abs (- 1.0 lo)) 0.02))
+        (is (< (Math/abs (- 1.0 hi)) 0.02))))
+    (testing "widen-by stretches each side by its factor, keeping the mean"
+      (let [xs (double-array [1.0 2.0 4.0 8.0 16.0])
+            ys (cal/widen-by :coverage-sides s key xs)
+            mean #(/ (reduce + (seq %)) (alength ^doubles %))]
+        (is (= (vec (cal/widen-sides {:lo lo :hi hi} xs)) (vec ys)))
+        (is (< (Math/abs (- (mean xs) (mean ys))) 1e-9))))
+    (testing "unknown keys are left alone"
+      (is (= {:lo 1.0 :hi 1.0} (cal/side-factors {} key))))))
