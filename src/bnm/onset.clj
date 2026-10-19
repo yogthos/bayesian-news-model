@@ -84,6 +84,16 @@
                     (clojure.string/replace part #"-placebo$" "")))]
     (vec (remove used groups))))
 
+(defn aggregate
+  "Forecasts {[unit q] [p y]} for groups of units ({unit group}; a unit
+  without one is its own): the probability of an onset in any of them, if
+  independent, and whether one came."
+  [rows group-of]
+  (reduce-kv (fn [acc [unit q] [p y]]
+               (update acc [(get group-of unit unit) q]
+                       (fn [[p0 y0]] [(if p0 (- 1.0 (* (- 1.0 p0) (- 1.0 (double p)))) (double p)) (boolean (or y0 y))])))
+             {} rows))
+
 (defn event-sets
   "From events [kind unit quarter latest-quarter known-quarter]: {:onsets
   the earliest quarter each could be (labels), :spans every quarter each

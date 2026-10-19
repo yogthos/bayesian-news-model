@@ -9,12 +9,18 @@
   is knowing only what history knows).
 
     jolt -A:tools -M -m bnm.anticipation [--run onsets-live] [--kinds a,b] [--bench history]
+                                         [--level country|subregion|region]
 
   --bench sets the model every other is scored against: a group's placebo
   (ties-placebo) asks whether the group knows anything about the country.
+  --level scores forecasts for groups of countries, the chance of an onset
+  in any of them (bnm.onset/aggregate): methods for waves and contagion may
+  work for a region before they work for a country.
 
   Reads data/runs/<run>/preds.tsv; writes anticipation.txt beside it."
-  (:require [bnm.hazard :as hz]
+  (:require [bnm.geo :as geo]
+            [bnm.hazard :as hz]
+            [bnm.onset :as o]
             [bnm.onsets :as onsets]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -58,13 +64,29 @@
          :ass-bench (hz/area-skill (map (fn [[q a b y]] [q a y b]) rows))
          :matched (hz/matched-concordance (map (fn [[q a b y]] {:period q :p-model a :p-bench b :y y}) rows) 4)}))))
 
+(defn- group-map
+  "{unit group} at `level` (subregion or region, the M49 groups of
+  bnm.geo), nil at the country level."
+  [level units]
+  (case level
+    "country" nil
+    "subregion" (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u s]))
+    "region" (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u (first (geo/parents s))]))))
+
 (defn -main [& args]
-  (let [{:keys [run kinds bench]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run kinds bench level]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         bench (or bench default-bench)
+        level (or level "country")
         dir (str "data/runs/" (or run "onsets-live"))
         kinds (when kinds (set (str/split kinds #",")))
-        preds (read-preds (str dir "/preds.tsv") kinds)
-        events (onsets/read-events "data/slow/events.tsv")
+        group-of (group-map level (set (for [[_ by-model] (read-preds (str dir "/preds.tsv") kinds)
+                                              [_ rows] by-model [unit _] (keys rows)] unit)))
+        preds (cond->> (read-preds (str dir "/preds.tsv") kinds)
+                group-of (into {} (map (fn [[kw by-model]] [kw (update-vals by-model #(o/aggregate % group-of))]))))
+        events (cond->> (onsets/read-events "data/slow/events.tsv")
+                 group-of (into {} (map (fn [[kind by-unit]]
+                                          [kind (reduce-kv (fn [acc unit qs] (update acc (get group-of unit unit) (fnil into (sorted-set)) qs))
+                                                           {} by-unit)]))))
         gain (fn [{:keys [diff lo hi]}] (format "%s [%s %s]%s" (f3 diff) (f3 lo) (f3 hi) (if (pos? lo) "*" " ")))
         header (str (format "Anticipation: each model against %s (out of sample).\n" bench)
                     "Recall in the top 5% and 10% of each quarter and Sarlin usefulness (mu 0.9), each with its gain over\n"
@@ -100,6 +122,7 @@
         _ (doseq [blk (doall blocks)]
             (let [s @blk] (print s) (flush) (.append out s)))
         out (str out)
-        file (if (= bench default-bench) "anticipation.txt" (str "anticipation-vs-" bench ".txt"))]
+        file (str "anticipation" (when (not= bench default-bench) (str "-vs-" bench))
+                  (when group-of (str "-" level)) ".txt")]
     (print out)
     (spit (str dir "/" file) out)))

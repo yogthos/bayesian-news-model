@@ -113,3 +113,13 @@
   (is (empty? (o/unused-groups ["history" "named+leaders-placebo" "gbt-neighbours"] ["leaders" "neighbours"])))
   (is (empty? (o/unused-groups ["at-named+mix"] ["mix"])))
   (is (= ["mix"] (o/unused-groups ["mixed"] ["mix"])) "whole names only"))
+
+(deftest forecasts-for-groups-of-units
+  (let [rows {["MLI" 10] [0.1 false] ["NER" 10] [0.2 true] ["FRA" 10] [0.5 false] ["MLI" 11] [0.1 false]}
+        of {"MLI" "s/west" "NER" "s/west" "FRA" "s/europe"}
+        out (o/aggregate rows of)]
+    (is (< (Math/abs (- 0.28 (first (out ["s/west" 10])))) 1e-12) "any of them: 1 - 0.9 x 0.8")
+    (is (true? (second (out ["s/west" 10]))))
+    (is (= [0.5 false] (out ["s/europe" 10])))
+    (is (= [0.1 false] (out ["s/west" 11])))
+    (is (= 4 (count (o/aggregate (assoc rows ["XXX" 10] [0.3 false]) of))) "units without a group are their own")))
