@@ -448,3 +448,21 @@ Dirichlet-process country types (too few positives to identify), Bayesian
 predictive synthesis (too many parameters), Firth and King-Zeng
 corrections (they shift the intercept, not the ranks an alert budget
 uses).
+
+**Measured here: bin width.** The event model on weekly, 28-day and
+quarterly bins (scripts/rebin.sh sums weekly bins exactly; per-bin rates
+converted to the same half-lives in days), quarter-ahead forecasts scored
+2008-10, mean skill against persistence:
+
+| level | weekly | 28-day | quarterly |
+|---|---|---|---|
+| province | +6.8% | +4.2% | +2.6% |
+| country | +4.4% | +2.6% | +0.7% |
+| subregion | +11.5% | +7.6% | +0.4% |
+| region | +20.7% | +9.3% | +1.2% |
+| world | +20.3% | +6.2% | +2.5% |
+
+Weekly wins at every level, most for the aggregates; escalation AUC from
+quiet places is best weekly too (0.85-0.89 below the country). The skill
+is in excitation over weeks, so the event model keeps weekly bins and the
+onset models take its view as inputs rather than events summed by quarter.
