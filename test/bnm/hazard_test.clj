@@ -283,3 +283,21 @@
     (is (= "b" (hz/pick-model {"a" a "b" b} 2000 2003)) "on 8010 alone b is ahead")
     (is (= "a" (hz/pick-model {"a" a "c" c} 2000 2003)))
     (is (= "a" (hz/pick-model {"a" a "late" [[9000 0.99 true "A"]]} 2000 2003)) "no rows in the years: not a candidate")))
+
+(deftest converged-pool-weights
+  ;; two good forecasters and many noisy copies: plain EM from equal weights
+  ;; crawls; the accelerated fit reaches the maximum
+  (let [g (m/rng 31)
+        n 3000
+        truth (vec (for [_ (range n)] (- (m/normal! g) 3.0)))
+        ys (mapv #(< (m/next-double! g) (m/expit %)) truth)
+        ps (mapv (fn [z] (vec (concat [(m/expit z) (m/expit (+ z (* 0.3 (m/normal! g))))]
+                                      (for [_ (range 10)] (m/expit (+ -3.0 (* 0.2 (m/normal! g)))))))) truth)
+        ws (repeat n 1.0)
+        ll (fn [w] (reduce + (map (fn [row y] (let [p (hz/pool w row)] (Math/log (if y p (- 1.0 p))))) ps ys)))
+        slow (hz/pool-weights ps ys ws :iterations 20000)
+        fast (hz/pool-weights-ml ps ys ws)]
+    (is (< (Math/abs (- (ll fast) (ll slow))) 1e-3) "the same maximum")
+    (is (> (ll fast) (ll (hz/pool-weights ps ys ws)) ) "beyond 200 plain steps")
+    (is (< (Math/abs (- 1.0 (reduce + fast))) 1e-9))
+    (is (every? #(>= % 0.0) fast))))

@@ -252,8 +252,10 @@
   "Combinations of the fitted models, refit each year on the forecasts whose
   outcomes are known by then: a linear pool and a log-linear stack, and
   members weighted by their own recent record (hz/hedge-weights, a
-  three-year half-life)."
-  [:pool :stack :hedge])
+  three-year half-life). pool stops EM after a fixed number of steps from
+  equal weights, which shrinks toward them; mlpool is the same pool at the
+  maximum of its log score (hz/pool-weights-ml)."
+  [:pool :mlpool :stack :hedge])
 
 (def hedge-discount 0.8)
 
@@ -376,40 +378,45 @@
                 [model (o/choose-by-year runs log-score window (or (first (filter #(= default (:prior %)) runs)) (first runs)))]))))))
 
 (defn combine
-  "Adds :pool and :stack to `runs`, combining every model but :base and the
-  placebos. Each
-  year's combination is fit on the earlier forecasts whose outcomes were
-  known by the year's start, discounted like the hazards, and scored on the
-  year. `only`, a set of :pool :stack :hedge, skips the others (they are
-  given empty)."
+  "Adds the combinations (`combined`) to `runs`, combining every model but
+  :base and the placebos. Each year's combination is fit on the earlier
+  forecasts whose outcomes were known by the year's start, discounted like
+  the hazards, and scored on the year. `only`, a subset of `combined`, skips
+  the others (they are given empty)."
   ([runs window] (combine runs window (set combined)))
   ([runs window only]
-  (let [members (vec (remove #(or (#{:base :pool :stack :hedge} %) (str/ends-with? (name %) "-placebo")) (sort (keys runs))))
-        by-key (into {} (for [m members, [q p y unit] (:preds (runs m))] [[m unit q] p]))
-        keys* (sort-by second (distinct (for [[q _ y unit] (:preds (runs (first members)))] [unit q y])))
-        rows (vec (for [[unit q y] keys*
-                        :let [ps (mapv #(by-key [% unit q]) members)]
-                        :when (every? some? ps)]
-                    {:unit unit :q q :y y :ps ps}))
-        years (sort (distinct (map #(quot (:q %) 4) rows)))]
-    (loop [[yr & more] years pool [] stack [] hedge []]
-      (if-not yr
-        (assoc runs :pool {:preds pool} :stack {:preds stack} :hedge {:preds hedge})
-        (let [q0 (* 4 yr)
-              known (filterv #(and (some? (:y %)) (<= (+ (:q %) (second window)) q0)) rows)
-              this (filter #(= yr (quot (:q %) 4)) rows)]
-          (if (< (count (filter :y known)) 10)
-            (recur more pool stack hedge)
-            (let [ws (map #(Math/pow 0.95 (/ (- q0 (:q %)) 4.0)) known)
-                  w (when (only :pool) (hz/pool-weights (map :ps known) (map :y known) ws))
-                  beta (when (only :stack) (hz/fit-stack (map :ps known) (map :y known) ws {:prior 10.0}))
-                  h (when (only :hedge)
-                      (hz/hedge-weights (map :ps known) (map :y known)
-                                        (map #(Math/pow hedge-discount (/ (- q0 (:q %)) 4.0)) known) 1.0))]
-              (recur more
-                     (cond-> pool w (into (for [{:keys [unit q y ps]} this] [q (hz/pool w ps) y unit])))
-                     (cond-> stack beta (into (for [{:keys [unit q y ps]} this] [q (hz/predict-stack beta ps) y unit])))
-                     (cond-> hedge h (into (for [{:keys [unit q y ps]} this] [q (hz/pool h ps) y unit]))))))))))))
+   (let [members (vec (remove #(or (= :base %) ((set combined) %) (str/ends-with? (name %) "-placebo")) (sort (keys runs))))
+         by-key (into {} (for [m members, [q p y unit] (:preds (runs m))] [[m unit q] p]))
+         keys* (sort-by second (distinct (for [[q _ y unit] (:preds (runs (first members)))] [unit q y])))
+         rows (vec (for [[unit q y] keys*
+                         :let [ps (mapv #(by-key [% unit q]) members)]
+                         :when (every? some? ps)]
+                     {:unit unit :q q :y y :ps ps}))
+         years (sort (distinct (map #(quot (:q %) 4) rows)))
+         ;; each combination: from the known rows, their discounts and the
+         ;; year's start, a function of a row's member probabilities
+         fits {:pool (fn [ps ys ws _] (let [w (hz/pool-weights ps ys ws)] #(hz/pool w %)))
+               :mlpool (fn [ps ys ws _] (let [w (hz/pool-weights-ml ps ys ws)] #(hz/pool w %)))
+               :stack (fn [ps ys ws _] (let [b (hz/fit-stack ps ys ws {:prior 10.0})] #(hz/predict-stack b %)))
+               :hedge (fn [ps ys _ qs] (let [h (hz/hedge-weights ps ys (map #(Math/pow hedge-discount (/ % 4.0)) qs) 1.0)]
+                                         #(hz/pool h %)))}
+         out (loop [[yr & more] years out {}]
+               (if-not yr
+                 out
+                 (let [q0 (* 4 yr)
+                       known (filterv #(and (some? (:y %)) (<= (+ (:q %) (second window)) q0)) rows)
+                       this (filter #(= yr (quot (:q %) 4)) rows)]
+                   (if (< (count (filter :y known)) 10)
+                     (recur more out)
+                     (let [ps (map :ps known) ys (map :y known)
+                           ages (map #(- q0 (:q %)) known)
+                           ws (map #(Math/pow 0.95 (/ % 4.0)) ages)]
+                       (recur more
+                              (reduce (fn [out c]
+                                        (let [f ((fits c) ps ys ws ages)]
+                                          (update out c (fnil into []) (for [{:keys [unit q y ps]} this] [q (f ps) y unit]))))
+                                      out (filter only combined))))))))]
+     (merge runs (into {} (for [c combined] [c {:preds (get out c [])}]))))))
 
 (defn- scores [preds base]
   (let [ps (map second preds) ys (map #(nth % 2) preds)]

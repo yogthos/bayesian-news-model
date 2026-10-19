@@ -1,14 +1,14 @@
 (ns bnm.pools
   "Pools onset models fitted in separate runs on the same rows, and what each
-  member adds to the pool: the pool of every member, the pool without each
-  one (pool-minus-<member>), and the pool of record (history, named, mix,
+  member adds to the pool: the pools of every member, the converged pool
+  (mlpool) without each one (pool-minus-<member>), and the pool of record (history, named, mix,
   named+mix). Members are the non-placebo models of the runs; a model in
   several runs is the same fit (same rows, same inputs) and is read once.
   No model is refit, only the combinations (bnm.onsets/combine).
 
     jolt -A:tools -M -m bnm.pools --runs onsets-mixties,onsets-regime,... --out onsets-pooled [--drop ties-un,named+ties-un]
 
-  Writes data/runs/<out>/preds.tsv, scored by bnm.anticipation (--bench pool:
+  Writes data/runs/<out>/preds.tsv, scored by bnm.anticipation (--bench mlpool:
   a member whose removal loses recall carries something the rest don't)."
   (:require [bnm.onsets :as on]
             [clojure.java.io :as io]
@@ -26,7 +26,7 @@
                           (reduce (fn [a line]
                                     (let [[kind w m q unit p y] (str/split line #"\t")]
                                       (if (or (= m "base") (str/ends-with? m "-placebo") (drop? m)
-                                              (#{"pool" "stack" "hedge"} m) (seen [[kind w] m]))
+                                              ((set (map name on/combined)) m) (seen [[kind w] m]))
                                         a
                                         (update-in a [[kind w] m] (fnil conj [])
                                                    [(parse-long q) (parse-double p)
@@ -37,7 +37,7 @@
 
 (defn- pooled
   "The pool's predictions over `members` of `models` (or the combination
-  `which`, :pool :stack or :hedge)."
+  `which`, one of bnm.onsets/combined)."
   ([models members window] (pooled models members window :pool))
   ([models members window which]
    (:preds (which (on/combine (into {} (for [m members] [(keyword m) {:preds (models m)}])) window #{which})))))
@@ -61,9 +61,9 @@
         (let [all (on/combine (into {} (for [m members] [(keyword m) {:preds (models m)}])) window)]
           (doseq [c on/combined] (emit (name c) (:preds (all c)))))
         (when (every? models record) (emit "pool-record" (pooled models record window)))
-        ;; the pools without each member, eight at a time
+        ;; the converged pools without each member, eight at a time
         (doseq [batch (partition-all 8 members)
                 [m preds] (mapv (fn [[m f]] [m @f])
-                                (doall (for [m batch] [m (future (pooled models (remove #{m} members) window))])))]
+                                (doall (for [m batch] [m (future (pooled models (remove #{m} members) window :mlpool))])))]
           (emit (str "pool-minus-" m) preds))
         (.flush w)))))
