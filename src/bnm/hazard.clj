@@ -169,8 +169,10 @@
   "The weights of a linear pool that maximize the weighted log score, by EM
   accelerated with SQUAREM (Varadhan & Roland 2008): two EM steps give a
   direction, an extrapolated step along it is kept when it raises the
-  likelihood. Stops when a round gains less than `tol`."
-  ^doubles [ps ys ws & {:keys [tol max-rounds] :or {tol 1e-8 max-rounds 5000}}]
+  likelihood. Stops when a round gains less than `tol` of the log score
+  (1e-6 lands within a tenth of a nat of the maximum, a thousand times
+  sooner than 1e-8)."
+  ^doubles [ps ys ws & {:keys [tol max-rounds] :or {tol 1e-6 max-rounds 1000}}]
   (let [n (count ps) m (count (first ps))
         lik (likelihoods ps ys)
         ^doubles wr (double-array (map double ws))

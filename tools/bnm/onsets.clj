@@ -377,6 +377,8 @@
                 ;; it, so no scored year has picked its own
                 [model (o/choose-by-year runs log-score window (or (first (filter #(= default (:prior %)) runs)) (first runs)))]))))))
 
+(declare aligned combine-rows)
+
 (defn combine
   "Adds the combinations (`combined`) to `runs`, combining every model but
   :base and the placebos. Each year's combination is fit on the earlier
@@ -385,14 +387,27 @@
   the others (they are given empty)."
   ([runs window] (combine runs window (set combined)))
   ([runs window only]
-   (let [members (vec (remove #(or (= :base %) ((set combined) %) (str/ends-with? (name %) "-placebo")) (sort (keys runs))))
-         by-key (into {} (for [m members, [q p y unit] (:preds (runs m))] [[m unit q] p]))
-         keys* (sort-by second (distinct (for [[q _ y unit] (:preds (runs (first members)))] [unit q y])))
-         rows (vec (for [[unit q y] keys*
-                         :let [ps (mapv #(by-key [% unit q]) members)]
-                         :when (every? some? ps)]
-                     {:unit unit :q q :y y :ps ps}))
-         years (sort (distinct (map #(quot (:q %) 4) rows)))
+   (let [[_ rows] (aligned runs)]
+     (merge runs (combine-rows rows window only)))))
+
+(defn aligned
+  "[members rows] of `runs`: the members (all but :base, the combinations
+  and placebos) and, for each row every member forecast, {:unit :q :y :ps}
+  with :ps in member order."
+  [runs]
+  (let [members (vec (remove #(or (= :base %) ((set combined) %) (str/ends-with? (name %) "-placebo")) (sort (keys runs))))
+        by-key (into {} (for [m members, [q p y unit] (:preds (runs m))] [[m unit q] p]))
+        keys* (sort-by second (distinct (for [[q _ y unit] (:preds (runs (first members)))] [unit q y])))]
+    [members
+     (vec (for [[unit q y] keys*
+                :let [ps (mapv #(by-key [% unit q]) members)]
+                :when (every? some? ps)]
+            {:unit unit :q q :y y :ps ps}))]))
+
+(defn combine-rows
+  "`combine` on rows already `aligned`: {combination {:preds}}."
+  [rows window only]
+  (let [years (sort (distinct (map #(quot (:q %) 4) rows)))
          ;; each combination: from the known rows, their discounts and the
          ;; year's start, a function of a row's member probabilities
          fits {:pool (fn [ps ys ws _] (let [w (hz/pool-weights ps ys ws)] #(hz/pool w %)))
@@ -416,7 +431,7 @@
                                         (let [f ((fits c) ps ys ws ages)]
                                           (update out c (fnil into []) (for [{:keys [unit q y ps]} this] [q (f ps) y unit]))))
                                       out (filter only combined))))))))]
-     (merge runs (into {} (for [c combined] [c {:preds (get out c [])}]))))))
+     (into {} (for [c combined] [c {:preds (get out c [])}]))))
 
 (defn- scores [preds base]
   (let [ps (map second preds) ys (map #(nth % 2) preds)]

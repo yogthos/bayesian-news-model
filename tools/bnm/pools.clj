@@ -35,13 +35,6 @@
               (merge-with merge acc fresh)))
           {} runs))
 
-(defn- pooled
-  "The pool's predictions over `members` of `models` (or the combination
-  `which`, one of bnm.onsets/combined)."
-  ([models members window] (pooled models members window :pool))
-  ([models members window which]
-   (:preds (which (on/combine (into {} (for [m members] [(keyword m) {:preds (models m)}])) window #{which})))))
-
 (defn -main [& args]
   (let [{:keys [runs out drop]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         runs (str/split runs #",")
@@ -58,12 +51,18 @@
                              (.write w (str kind "\t" wname "\t" label "\t" q "\t" unit "\t" p "\t" (str y) "\n"))))]]
         (println kind wname (count members) "members:" (str/join " " members))
         (doseq [m members] (emit m (models m)))
-        (let [all (on/combine (into {} (for [m members] [(keyword m) {:preds (models m)}])) window)]
-          (doseq [c on/combined] (emit (name c) (:preds (all c)))))
-        (when (every? models record) (emit "pool-record" (pooled models record window)))
-        ;; the converged pools without each member, eight at a time
-        (doseq [batch (partition-all 8 members)
-                [m preds] (mapv (fn [[m f]] [m @f])
-                                (doall (for [m batch] [m (future (pooled models (remove #{m} members) window :mlpool))])))]
-          (emit (str "pool-minus-" m) preds))
+        ;; the members' forecasts aligned once; a sub-pool takes their columns
+        (let [[ms rows] (on/aligned (into {} (for [m members] [(keyword m) {:preds (models m)}])))
+              col (zipmap (map name ms) (range))
+              sub (fn [names] (let [ix (mapv col names)] (mapv (fn [r] (update r :ps #(mapv % ix))) rows)))
+              all (on/combine-rows rows window (set on/combined))]
+          (doseq [c on/combined] (emit (name c) (:preds (all c))))
+          (when (every? models record)
+            (emit "pool-record" (:preds (:pool (on/combine-rows (sub record) window #{:pool})))))
+          ;; the converged pools without each member, eight at a time
+          (doseq [batch (partition-all 8 members)
+                  [m preds] (mapv (fn [[m f]] [m @f])
+                                  (doall (for [m batch]
+                                           [m (future (:preds (:mlpool (on/combine-rows (sub (remove #{m} members)) window #{:mlpool}))))])))]
+            (emit (str "pool-minus-" m) preds)))
         (.flush w)))))
