@@ -346,7 +346,12 @@
                        usable)
         years (range (quot (apply min (map :q prepared)) 4) (inc (quot (apply max (map :q prepared)) 4)))]
     (fn [sets]
-      (let [run-model
+      (let [;; at-risk cuts depend on the inputs and the year, not the prior
+            cuts-for (memoize (fn [idx q0] (o/tail-cuts (for [{:keys [q full]} prepared
+                                                              :when (<= (+ q (second window)) q0)]
+                                                          (pick full idx))
+                                                        3 tail-share)))
+            run-model
             (fn [idx prior flags?]
               ;; flags?: inputs past the constant and history as at-risk
               ;; flags (o/tail-flags), their cuts from the rows known each year
@@ -359,7 +364,7 @@
                     (let [q0 (* 4 yr)
                           known (filter #(<= (+ (:q %) (second window)) q0) prepared)
                           xf (if flags?
-                               (let [cuts (o/tail-cuts (map #(pick (:full %) idx) known) 3 tail-share)]
+                               (let [cuts (cuts-for idx q0)]
                                  #(o/tail-flags (pick % idx) 3 cuts))
                                #(pick % idx))
                           train (for [{:keys [unit q y full]} known

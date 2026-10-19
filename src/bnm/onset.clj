@@ -56,9 +56,10 @@
   [xs keep q]
   (let [xs (vec xs) n (count xs) width (alength ^doubles (first xs))]
     (vec (for [j (range keep width)
-               :let [v (vec (sort (map #(aget ^doubles % (int j)) xs)))]]
-           [(v (max 0 (dec (int (Math/ceil (* q n))))))
-            (v (min (dec n) (int (Math/ceil (* (- 1.0 q) n)))))]))))
+               :let [v (double-array (map #(aget ^doubles % (int j)) xs))]]
+           (do (java.util.Arrays/sort v)
+               [(aget v (max 0 (dec (int (Math/ceil (* q n))))))
+                (aget v (min (dec n) (int (Math/ceil (* (- 1.0 q) n)))))])))))
 
 (defn tail-flags
   "x with its columns from `keep` on replaced by two flags each, above the
