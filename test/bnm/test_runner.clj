@@ -20,7 +20,8 @@
             [bnm.trees-test]
             [bnm.sync-test]
             [bnm.analog-test]
-            [bnm.changepoint-test]))
+            [bnm.changepoint-test]
+            [bnm.ingest-test]))
 
 (def namespaces
   '[bnm.math-test
@@ -43,7 +44,8 @@
     bnm.trees-test
     bnm.sync-test
     bnm.analog-test
-    bnm.changepoint-test])
+    bnm.changepoint-test
+    bnm.ingest-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
