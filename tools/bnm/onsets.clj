@@ -35,7 +35,8 @@
   region and world decayed at a season, a year and four years, so the fit
   can learn contagion and a refractory period), sync (each channel's
   network biomarker in the subregion and the world's one-factor share),
-  departure (a country's channels against their own past), leaders (V-Dem: the military in the executive,
+  departure (a country's channels against their own past), breaks (online
+  changepoints in each channel, bnm.changepoint), leaders (V-Dem: the military in the executive,
   the election cycle, how recently the regime type changed); see bnm.named
   and bnm.onset.
   Every group also runs as a placebo,
@@ -158,6 +159,7 @@
                 (into {} (for [{:keys [unit q]} rows] [[unit q] (o/waves index groups unit q wave-taus)]))))]
    "sync" [(count nm/sync-names) (fn [_] (nm/load-event-sync mix-path))]
    "departure" [(count nm/departure-names) (fn [_] (nm/load-event-departure mix-path))]
+   "breaks" [(count nm/break-names) (fn [_] (nm/load-event-breaks mix-path))]
    "histories" [(* 2 (count history-kinds))
                 (fn [{:keys [events rows]}]
                   (into {} (for [{:keys [unit q]} rows] [[unit q] (o/histories events history-kinds unit q)])))]})

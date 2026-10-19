@@ -22,6 +22,7 @@
   Missing values are 0, with an indicator per source so the hazard can tell
   absent from neutral."
   (:require [bnm.calm :as calm]
+            [bnm.changepoint :as cp]
             [bnm.geo :as geo]
             [bnm.mix :as mix]
             [bnm.ties :as ties]
@@ -602,6 +603,23 @@
                    :let [b (region (sub u) q) w (world q)]
                    :when (some some? (concat b w))]
                [[u q] (double-array (concat (map #(if % (Math/log1p %) 0.0) b) (map #(or % 0.0) w)))]))))
+
+(def break-names
+  (vec (for [[c _] calm/channels f ["break-recent" "run-length"]] (keyword (str c "-" f)))))
+
+(defn load-event-breaks
+  "Per country and quarter, per calm channel's log share: the chance its
+  level broke in the last two quarters and log1p of the expected run since
+  the last break (bnm.changepoint, a break expected every twenty quarters,
+  run spreads learned from a prior of 0.25): {[unit quarter] double[]}."
+  [path]
+  (let [series (channel-series path)]
+    (into {} (for [[u s] series
+                   :let [qs (sort (keys s))
+                         per (mapv (fn [j] (cp/run (mapv #(nth (s %) j) qs) {:hazard (/ 1.0 20) :recent 2 :prior-var 0.25}))
+                                   (range (count calm/channels)))]
+                   [i q] (map-indexed vector qs)]
+               [[u q] (double-array (mapcat (fn [out] (let [{:keys [recent run]} (out i)] [recent (Math/log1p run)])) per))]))))
 
 (def departure-names [:channel-corr-shift :channel-spread-shift])
 

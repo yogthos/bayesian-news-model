@@ -19,7 +19,8 @@
             [bnm.calm-test]
             [bnm.trees-test]
             [bnm.sync-test]
-            [bnm.analog-test]))
+            [bnm.analog-test]
+            [bnm.changepoint-test]))
 
 (def namespaces
   '[bnm.math-test
@@ -41,7 +42,8 @@
     bnm.calm-test
     bnm.trees-test
     bnm.sync-test
-    bnm.analog-test])
+    bnm.analog-test
+    bnm.changepoint-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]

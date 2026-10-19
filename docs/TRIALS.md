@@ -35,3 +35,4 @@ the count is the number of lines below.
 | 25 | median | 2026-10 | untrained median of members |
 | 26 | frail | 2026-10 | regional frailty on hedge (not adopted) |
 | 27 | knn (analogs) | 2026-10 | onset share among the 100 most similar resolved rows |
+| 28 | breaks | 2026-10 | online changepoints in each event channel |
