@@ -334,3 +334,42 @@ The limit is in the data as much as the models: rich data still miss new
 outbreaks (Bazzi et al. 2022), timing is near impossible (Cederman &
 Weidmann 2017), and realistic predictability ceilings sit close to
 achieved accuracy (Martin et al. 2016).
+
+## Which methods work at which scale (October 2026)
+
+- **Aggregation raises skill but changes the target.** ViEWS's AUPR is
+  markedly lower for grid cells than for countries (Hegre et al., JPR
+  2021). The event model here gains more on persistence the coarser the
+  node (country +6%, province +10%, region +15%, world +19%: noise
+  averages out), while its warnings of escalation from quiet places are
+  sharpest at provinces and actors (AUC 0.87 against 0.76 for
+  subregions): onsets are local and dilute when summed.
+- **Dynamics win short, structure catches up long.** Self-excitation
+  explains a third to a half of events and decays within weeks (Lewis,
+  Mohler et al. 2012); process substitutes for structure over short
+  windows (Blair & Sambanis 2020); in ViEWS structural models gain on
+  conflict history as the step grows, and step-specific training is
+  clearly better. No published crossover month; dynamics look to lead up
+  to about six months, structure to catch up by one to two years. The
+  onset models here are fit per window already.
+- **Onsets are harder than incidence at every scale**; text and process
+  signals add most on hard cases (Bazzi et al. 2022; Mueller, Rauh &
+  Seimon 2024).
+- **Contagion depends on the kind.** Mass protest and nonviolent campaigns
+  spread to neighbours with little global diffusion (Gleditsch & Rivera,
+  JCR 2017); coups do not spread robustly (Miller, Joseph & Ohl 2018).
+  Banking: foreign credit booms predict domestic crises beyond domestic
+  credit (Cesa-Bianchi et al.); the global cycle sets the level,
+  domestic credit picks the countries.
+- **Bin width changes what is found** (Shellman, PA 2004): weekly GDELT is
+  mostly zeros per class; no study compares forecast skill across bins.
+- **Regions: reconcile, don't choose.** Hierarchical reconciliation (MinT,
+  Wickramasuriya et al., JASA 2019) beats bottom-up and top-down alone.
+  For onsets, the excess of a region's observed onset rate over the
+  independence prediction 1 - prod(1 - p) measures synchrony: the wave
+  signal itself.
+
+So: trust self-excitation at provinces and actors over weeks to a quarter;
+at 2-4 quarters weight event and escalation inputs, at 5-8 structure;
+expect waves to help protest and violence surges and banking (through
+world credit), and treat coup contagion as a likely null.
