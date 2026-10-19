@@ -543,6 +543,35 @@
         at (fn [q] (nth diffs (min (dec (count diffs)) (long (* q (count diffs))))))]
     {:diff (score (double-array n 1.0)) :lo (at 0.05) :hi (at 0.95)}))
 
+(defn area-skill
+  "The area skill score of an error diagram (Molchan 1990; Zechar & Jordan
+  2008) for rows [period p outcome weight]: alarms are raised by rank
+  within each period (the alert budgets' order), the alarm volume is the
+  share of the weights covered, and the score is one minus the area under
+  the miss rate. 0.5 is a random order; with weights the benchmark's
+  probabilities, 0.5 is no better than the benchmark (Kossobokov's
+  reference-weighted volume). nil without onsets."
+  [rows]
+  (let [pos (count (filter #(nth % 2) rows))
+        total (reduce + (map #(double (nth % 3)) rows))]
+    (when (and (pos? pos) (pos? total))
+      (let [;; each row's place in its period, 0 the highest, ties sharing the mean
+            ranked (mapcat (fn [[_ g]]
+                             (let [n (count g)]
+                               (loop [[t & more] (partition-by second (sort-by #(- (double (second %))) g)) at 0 out []]
+                                 (if-not t
+                                   out
+                                   (let [k (count t) frac (/ (+ at (* 0.5 k)) n)]
+                                     (recur more (+ at k) (into out (map #(vector frac (nth % 2) (nth % 3)) t))))))))
+                           (group-by first rows))
+            area (loop [[t & more] (partition-by first (sort-by first ranked)) miss 1.0 area 0.0]
+                   (if-not t
+                     area
+                     (let [dt (/ (reduce + (map #(double (nth % 2)) t)) total)
+                           dm (/ (count (filter second t)) (double pos))]
+                       (recur more (- miss dm) (+ area (* dt (- miss (* 0.5 dm))))))))]
+        (- 1.0 area)))))
+
 (defn matched-concordance
   "Signal beyond a benchmark: each event (rows {:period :p-model :p-bench
   :y}) is set against the `k` non-events of its period whose benchmark

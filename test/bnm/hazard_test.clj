@@ -301,3 +301,18 @@
     (is (> (ll fast) (ll (hz/pool-weights ps ys ws)) ) "beyond 200 plain steps")
     (is (< (Math/abs (- 1.0 (reduce + fast))) 1e-9))
     (is (every? #(>= % 0.0) fast))))
+
+(deftest area-skill-of-error-diagrams
+  ;; rows [period p y w]: alarms by rank within the period, alarm volume as
+  ;; the share of w; 1 - area under the miss curve (Molchan; Zechar & Jordan)
+  (let [g (m/rng 41)
+        ref (vec (for [q (range 40) _ (range 100)] [q (m/expit (- (* 1.5 (m/normal! g)) 4.0))]))
+        ys (mapv (fn [[_ r]] (< (m/next-double! g) r)) ref)
+        rows (fn [score w] (mapv (fn [[q r] y] [q (score r) y (w r)]) ref ys))]
+    (testing "a random order scores about a half"
+      (is (< (Math/abs (- 0.5 (hz/area-skill (rows (fn [_] (m/next-double! g)) (constantly 1.0))))) 0.06)))
+    (testing "the reference itself is skilful by row count, but a half by its own mass"
+      (is (> (hz/area-skill (rows identity (constantly 1.0))) 0.75))
+      (is (< (Math/abs (- 0.5 (hz/area-skill (rows identity identity)))) 0.06)))
+    (testing "knowing the outcomes is near one"
+      (is (> (hz/area-skill (mapv (fn [[q r] y] [q (if y 1.0 0.0) y 1.0]) ref ys)) 0.95)))))

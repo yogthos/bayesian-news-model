@@ -52,6 +52,10 @@
          :r5 (r5 (map (fn [[q a _ y]] [q a y]) rows)) :r5-gain (hz/paired-recall-gain rows 0.05 200 1)
          :r10 (r10 (map (fn [[q a _ y]] [q a y]) rows)) :r10-gain (hz/paired-recall-gain rows 0.10 200 1)
          :u (u (map (fn [[q a _ y]] [q a y]) rows)) :u-gain (hz/paired-usefulness-gain rows 0.9 200 1)
+         ;; error diagrams: alarm volume by rows, and by the benchmark's
+         ;; probabilities (0.5 = no better than the benchmark)
+         :ass (hz/area-skill (map (fn [[q a _ y]] [q a y 1.0]) rows))
+         :ass-bench (hz/area-skill (map (fn [[q a b y]] [q a y b]) rows))
          :matched (hz/matched-concordance (map (fn [[q a b y]] {:period q :p-model a :p-bench b :y y}) rows) 4)}))))
 
 (defn -main [& args]
@@ -66,7 +70,9 @@
                     "Recall in the top 5% and 10% of each quarter and Sarlin usefulness (mu 0.9), each with its gain over\n"
                     "history and the gain's 90% interval resampling years (* when it excludes zero); matched: the share\n"
                     "of onsets ranked above the four non-onsets of their quarter that history rates closest (0.5 = no more\n"
-                    "than history). hard: no onset of the kind in the ten years before.\n")
+                    "than history); ass, the area skill of the error diagram (0.5 a random order), and ass/b with alarm\n"
+                    "volume counted in the benchmark's probabilities (0.5 = no better than the benchmark). hard: no\n"
+                    "onset of the kind in the ten years before.\n")
         ;; each block (kind, window, era, hard or all) on a thread of its own,
         ;; printed in order as they finish
         blocks (for [[[kind w] by-model] (sort-by key preds)
@@ -85,9 +91,10 @@
                                :when (not= m bench)
                                :let [s (line-for rows b in)]
                                :when s]
-                         (println (format "  %-8s n=%6d pos=%4d  r@5%% %.3f %s  r@10%% %.3f %s  U %.3f %s  matched %.2f"
+                         (println (format "  %-8s n=%6d pos=%4d  r@5%% %.3f %s  r@10%% %.3f %s  U %.3f %s  matched %.2f  ass %.3f ass/b %.3f"
                                           m (:n s) (:pos s) (double (:r5 s)) (gain (:r5-gain s)) (double (:r10 s)) (gain (:r10-gain s))
-                                          (double (:u s)) (gain (:u-gain s)) (double (or (:matched s) 0.5)))))))))
+                                          (double (:u s)) (gain (:u-gain s)) (double (or (:matched s) 0.5))
+                                          (double (:ass s)) (double (:ass-bench s)))))))))
         out (StringBuilder. header)
         _ (print header)
         _ (doseq [blk (doall blocks)]
