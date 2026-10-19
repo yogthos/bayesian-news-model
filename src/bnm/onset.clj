@@ -50,6 +50,31 @@
                       t (subseq (get-in events [k p] (sorted-set)) > (- q neighbourhood-window) <= q)]
                   (Math/exp (- (/ (- q t) 4.0)))))))))
 
+(defn tail-cuts
+  "[lo hi] for each column of `xs` (double arrays) from `keep` on: the q and
+  1-q quantiles of its values."
+  [xs keep q]
+  (let [xs (vec xs) n (count xs) width (alength ^doubles (first xs))]
+    (vec (for [j (range keep width)
+               :let [v (vec (sort (map #(aget ^doubles % (int j)) xs)))]]
+           [(v (max 0 (dec (int (Math/ceil (* q n))))))
+            (v (min (dec n) (int (Math/ceil (* (- 1.0 q) n)))))]))))
+
+(defn tail-flags
+  "x with its columns from `keep` on replaced by two flags each, above the
+  column's hi cut and below its lo cut (`tail-cuts`): the at-risk
+  transformation of Keilis-Borok's premonitory patterns, which outforecast
+  the raw values out of sample (Billakanti & Shin, Philadelphia Fed 2026).
+  Thresholds from the pooled rows let a country with a quiet past trip them."
+  ^doubles [^doubles x keep cuts]
+  (let [out (double-array (+ keep (* 2 (count cuts))))]
+    (System/arraycopy x 0 out 0 keep)
+    (doseq [[i [lo hi]] (map-indexed vector cuts)
+            :let [v (aget x (int (+ keep i)))]]
+      (aset out (+ keep (* 2 i)) (if (> v (double hi)) 1.0 0.0))
+      (aset out (+ keep (* 2 i) 1) (if (< v (double lo)) 1.0 0.0)))
+    out))
+
 (defn event-sets
   "From events [kind unit quarter latest-quarter known-quarter]: {:onsets
   the earliest quarter each could be (labels), :spans every quarter each

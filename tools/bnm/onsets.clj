@@ -49,7 +49,10 @@
                                    [--events <training run with rows/, for the event model's state>]
 
   A model named gbt-<inputs> is boosted trees (bnm.trees) on the inputs of
-  <inputs>, its rounds chosen each year like the priors.
+  <inputs>, its rounds chosen each year like the priors. One named
+  at-<inputs> is the logit on those inputs as at-risk flags: each above its
+  80th or below its 20th percentile over the rows known by the year
+  (bnm.onset/tail-flags).
 
   Writes data/runs/<name>/onsets.txt, the out-of-sample predictions,
   preds.tsv (kind window model quarter unit p outcome), and the recorded
@@ -265,6 +268,10 @@
 
 (def tune-years [2000 2007])
 
+(def tail-share
+  "The share of rows in each tail an at-<inputs> model flags."
+  0.2)
+
 (def tree-rounds
   "Boosting rounds tried for the trees (gbt-<inputs> models), chosen each
   year like the priors."
@@ -319,8 +326,10 @@
         years (range (quot (apply min (map :q prepared)) 4) (inc (quot (apply max (map :q prepared)) 4)))]
     (fn [sets]
       (let [run-model
-            (fn [idx prior]
-              (let [k (count idx)]
+            (fn [idx prior flags?]
+              ;; flags?: inputs past the constant and history as at-risk
+              ;; flags (o/tail-flags), their cuts from the rows known each year
+              (let [k (if flags? (+ 3 (* 2 (- (count idx) 3))) (count idx))]
                 (loop [[yr & more] (filter #(>= % (+ 10 (quot (:q (first prepared)) 4))) years)
                        beta nil
                        preds []]
@@ -328,16 +337,20 @@
                     preds
                     (let [q0 (* 4 yr)
                           known (filter #(<= (+ (:q %) (second window)) q0) prepared)
+                          xf (if flags?
+                               (let [cuts (o/tail-cuts (map #(pick (:full %) idx) known) 3 tail-share)]
+                                 #(o/tail-flags (pick % idx) 3 cuts))
+                               #(pick % idx))
                           train (for [{:keys [unit q y full]} known
                                       :when (and (some? y) (or y (keep-negative? unit q)))]
-                                  {:x (pick full idx) :y y
+                                  {:x (xf full) :y y
                                    :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))})
                           beta (if (some :y train)
                                  (hz/fit train k {:prior prior :start beta})
                                  beta)
                           scored (for [{:keys [unit q y full]} prepared
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
-                                   [q (hz/predict beta (pick full idx)) y unit])]
+                                   [q (hz/predict beta (xf full)) y unit])]
                       (recur more beta (into preds scored)))))))
             ;; boosted trees (bnm.trees), one fit a year at the most rounds:
             ;; fewer rounds are its first trees, so each count is a run
@@ -366,12 +379,16 @@
         (into {}
               (for [model models
                     :let [tree? (str/starts-with? (name model) "gbt-")
-                          idx (or (sets (if tree? (keyword (subs (name model) 4)) model))
+                          flags? (str/starts-with? (name model) "at-")
+                          inputs (cond tree? (keyword (subs (name model) 4))
+                                       flags? (keyword (subs (name model) 3))
+                                       :else model)
+                          idx (or (sets inputs)
                                   (throw (ex-info (str "no inputs for model " (name model)) {:model model})))
                           runs (if tree?
                                  (run-trees idx)
                                  (vec (for [p (if (= model :base) [1.0] priors)]
-                                        {:prior p :preds (run-model idx p)})))
+                                        {:prior p :preds (run-model idx p flags?)})))
                           default (if tree? 50.0 100.0)]]
                 ;; each year's prior (or rounds) chosen on the years before
                 ;; it, so no scored year has picked its own

@@ -95,3 +95,15 @@
     (is (zero? (first (o/neighbourhood events ["coup"] peers "NER" 99))) "nothing known yet")
     (is (< (Math/abs (- (second (o/neighbourhood events ["coup"] peers "MLI" 120)) (Math/log1p 1.0))) 1e-12)
         "NER's this quarter counts; BFA's, four years back, is past the window; MLI's own never counts")))
+
+(deftest at-risk-flags
+  ;; inputs past column `keep` become two flags: in the top or bottom tail of
+  ;; the training rows (Keilis-Borok; Billakanti & Shin 2026)
+  (let [xs (for [i (range 100)] (double-array [1.0 0.5 (double i) (if (< i 10) 1.0 0.0)]))
+        cuts (o/tail-cuts xs 2 0.2)]
+    (is (= 2 (count cuts)) "a pair of cuts per column past the kept ones")
+    (is (= [19.0 80.0] (mapv double (first cuts))) "the 20th and 80th percentiles")
+    (is (= [1.0 0.5 0.0 1.0 0.0 0.0] (vec (o/tail-flags (double-array [1.0 0.5 5.0 0.0]) 2 cuts))))
+    (is (= [1.0 0.5 1.0 0.0 0.0 0.0] (vec (o/tail-flags (double-array [1.0 0.5 95.0 0.0]) 2 cuts))))
+    (testing "a rare flag stays a flag: its top tail is its 1s"
+      (is (= [1.0 0.0] (subvec (vec (o/tail-flags (double-array [1.0 0.5 50.0 1.0]) 2 cuts)) 4))))))
