@@ -58,12 +58,14 @@
   <inputs>, its rounds chosen each year like the priors. One named
   at-<inputs> is the logit on those inputs as at-risk flags: each above its
   80th or below its 20th percentile over the rows known by the year
-  (bnm.onset/tail-flags).
+  (bnm.onset/tail-flags). One named knn-<inputs> is the analog forecast:
+  the onset share among the hundred most similar resolved rows (bnm.analog).
 
   Writes data/runs/<name>/onsets.txt, the out-of-sample predictions,
   preds.tsv (kind window model quarter unit p outcome), and the recorded
   rows, rows.tsv, which --rows reads back instead of running the slow layer."
-  (:require [bnm.calm :as calm]
+  (:require [bnm.analog :as analog]
+            [bnm.calm :as calm]
             [bnm.geo :as geo]
             [bnm.hazard :as hz]
             [bnm.mix :as mix]
@@ -301,6 +303,11 @@
   "The share of rows in each tail an at-<inputs> model flags."
   0.2)
 
+(def analog-opts
+  "Neighbours and shrinkage of the knn-<inputs> models, set in advance: more
+  neighbours than weather's twenty since onsets are rare."
+  {:k 100 :prior 10.0})
+
 (def tree-rounds
   "Boosting rounds tried for the trees (gbt-<inputs> models), chosen each
   year like the priors."
@@ -393,6 +400,23 @@
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
                                    [q (hz/predict beta (xf full)) y unit])]
                       (recur more beta (into preds scored)))))))
+            ;; analogs (bnm.analog): fit on the resolved rows each scored
+            ;; year, negatives thinned to a third of the usual sample
+            run-analog
+            (fn [idx]
+              (vec (mapcat
+                    (fn [yr]
+                      (let [q0 (* 4 yr)
+                            train (vec (for [{:keys [unit q y full]} prepared
+                                             :when (and (<= (o/resolves-at q window (or lag 0)) q0) (some? y)
+                                                        (or y (and (keep-negative? unit q) (zero? (mod (hash [q unit]) 3)))))]
+                                         {:x (pick full idx) :y y
+                                          :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 5.0)))}))]
+                        (when (some :y train)
+                          (let [mdl (analog/fit train analog-opts)]
+                            (for [{:keys [unit q y full]} prepared :when (= (quot q 4) yr)]
+                              [q (analog/predict mdl (pick full idx)) y unit])))))
+                    (filter #(>= % (max score-from (+ 10 (quot (:q (first prepared)) 4)))) years))))
             ;; boosted trees (bnm.trees), one fit a year at the most rounds:
             ;; fewer rounds are its first trees, so each count is a run
             run-trees
@@ -421,16 +445,20 @@
               (for [model models
                     :let [tree? (str/starts-with? (name model) "gbt-")
                           flags? (str/starts-with? (name model) "at-")
+                          knn? (str/starts-with? (name model) "knn-")
                           inputs (cond tree? (keyword (subs (name model) 4))
                                        flags? (keyword (subs (name model) 3))
+                                       knn? (keyword (subs (name model) 4))
                                        :else model)
                           idx (or (sets inputs)
                                   (throw (ex-info (str "no inputs for model " (name model)) {:model model})))
-                          runs (if tree?
-                                 (run-trees idx)
+                          runs (cond
+                                 tree? (run-trees idx)
+                                 knn? [{:prior (double (:k analog-opts)) :preds (run-analog idx)}]
+                                 :else
                                  (vec (for [p (if (= model :base) [1.0] priors)]
                                         {:prior p :preds (run-model idx p flags?)})))
-                          default (if tree? 50.0 100.0)]]
+                          default (cond tree? 50.0 knn? (double (:k analog-opts)) :else 100.0)]]
                 ;; each year's prior (or rounds) chosen on the years before
                 ;; it, so no scored year has picked its own
                 [model (o/choose-by-year runs log-score (lagged window (or lag 0)) (or (first (filter #(= default (:prior %)) runs)) (first runs)))]))))))

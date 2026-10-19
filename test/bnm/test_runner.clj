@@ -18,7 +18,8 @@
             [bnm.onset-test]
             [bnm.calm-test]
             [bnm.trees-test]
-            [bnm.sync-test]))
+            [bnm.sync-test]
+            [bnm.analog-test]))
 
 (def namespaces
   '[bnm.math-test
@@ -39,7 +40,8 @@
     bnm.onset-test
     bnm.calm-test
     bnm.trees-test
-    bnm.sync-test])
+    bnm.sync-test
+    bnm.analog-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
