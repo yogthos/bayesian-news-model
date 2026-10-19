@@ -250,6 +250,13 @@ Fixed, each a bias in what the scores measured:
   over its placebo could be who has data. Placebos now shuffle only among
   rows with the same sources present, and groups with gaps (mix, ties) carry
   a presence column.
+- **A second review** found that events known only to the year (wars,
+  Laeven-Valencia crises, UCDP onsets of year precision) entered other kinds'
+  histories from 1 January: a coup row early in a war year already saw the
+  war (coups 15% against 2.4% with such a war in the history). Events now
+  carry the latest date they could be and when they were known (a yearly
+  catalogue about six months after the year). Labels use the earliest date,
+  the at-risk rule the whole span, inputs the known date.
 Not fixed: V-Dem, the IRR regimes and the IMF terms-of-trade weights are one
 vintage, revised with hindsight; WDI's annual series often appear later
 than the lag assumed. The groups' extra 12-24 month lags soften this.
