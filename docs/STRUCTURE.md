@@ -287,3 +287,50 @@ than the lag assumed. The groups' extra 12-24 month lags soften this.
   2018).
 - Evaluation: Sarlin usefulness and recall at a budget are standard;
   TADDA rewards timid forecasts (Bracher et al., 2023) and is not used.
+
+## Dynamic-systems methods: Soviet, Chinese and recent (October 2026)
+
+None of these has a published prospective test on country-level onsets.
+What has worked prospectively on social or economic data, and fits the
+three open gaps (hard onsets, the timing of global waves, many weak
+signals):
+
+- **At-risk flags (Gelfand, Keilis-Borok, Kossobokov).** Each indicator
+  reduced to whether it sits in its own tail; a kernel of flags learned
+  from a handful of events. US recessions 1962-96 all caught with alarms
+  13.6% of the time (retrospective); the 2001 advance alarm came a month
+  late. Billakanti & Shin (Philadelphia Fed 2026) confirm it out of sample:
+  a ridge logit on frozen-quantile flags beat the continuous logit and
+  XGBoost (PR-AUC 0.40 against 0.17 and 0.35). Here: at-<inputs> models,
+  with cuts from the pooled rows so a quiet country can trip them.
+- **Error diagrams (Molchan; Zechar & Jordan 2008).** Miss rate against
+  alarm share, with an area skill score and binomial bounds, and alarm
+  volume weighted by a reference hazard (Kossobokov), so skill counts only
+  beyond the benchmark. The 5% and 10% budgets are two points on it.
+- **Wave timing.** Self-exciting processes scored prospectively (Mohler et
+  al., JASA 2015, crime; EMBERS, protest at days). For waves: regional and
+  global intensities from a multivariate Hawkes fit with a refractory
+  kernel, as hazard inputs; a regional dynamical network biomarker (Chen,
+  Aihara et al., Sci Rep 2012: variance and synchrony rising inside a
+  group of countries while its coupling to the rest falls); the share of
+  the first eigenvalue in cross-country unrest or returns. Duration in a
+  regional excited state (hidden semi-Markov, Qiao et al. 2017, 2020).
+- **A country's departure from its own calm structure** (single-sample
+  DNB): how far its cross-channel correlations and variances sit from its
+  calm baseline. Needs no onset history.
+- **Screening by agreement (Ivakhnenko's balance criterion).** Keep a term
+  only if fits on disjoint eras agree in sign and size.
+
+Not taken up: grey models (exponential fits to short series, no benchmark
+wins, axioms violated); Chen's short-series predictors (ALM, RDE, ARNN:
+low-noise physical systems only, authors call noise unsolved); reservoir
+computing, Koopman and SINDy (fail on short noisy data); deep-learning
+tipping-point classifiers (no social test, confounded by detrending);
+landscape-flux theory (needs long stationary data); synergetics and
+catastrophe theory (no backtests; log-periodic calls missed gold 2011 and
+oil 2016); network-resilience reduction (assumes mutualism).
+
+The limit is in the data as much as the models: rich data still miss new
+outbreaks (Bazzi et al. 2022), timing is near impossible (Cederman &
+Weidmann 2017), and realistic predictability ceilings sit close to
+achieved accuracy (Martin et al. 2016).
