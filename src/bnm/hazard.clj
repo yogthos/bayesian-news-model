@@ -316,8 +316,10 @@
 (defn paired-recall-gain
   "`paired-gain` for recall at `budget` on rows [period p-model p-bench
   outcome], from per-period hits, so each resample sums years instead of
-  rescoring rows."
-  [rows budget reps seed]
+  rescoring rows. The interval is 1 - alpha (0.9 by default; alpha over the
+  number of tests for a Bonferroni bound)."
+  ([rows budget reps seed] (paired-recall-gain rows budget reps seed 0.1))
+  ([rows budget reps seed alpha]
   (let [pa (recall-parts (map (fn [[q a _ y]] [q a y]) rows) budget)
         pb (recall-parts (map (fn [[q _ b y]] [q b y]) rows) budget)
         ;; per year: [model hits, bench hits, positives]
@@ -331,7 +333,7 @@
         diffs (vec (sort (for [_ (range reps)]
                            (score (map (fn [_] (blocks (min (dec k) (long (* k (m/next-double! g)))))) (range k))))))
         at (fn [q] (nth diffs (min (dec (count diffs)) (long (* q (count diffs))))))]
-    {:diff (score blocks) :lo (at 0.05) :hi (at 0.95)}))
+    {:diff (score blocks) :lo (at (/ alpha 2)) :hi (at (- 1.0 (/ alpha 2)))})))
 
 (defn brier [ps ys]
   (/ (reduce + (map (fn [p y] (let [d (- (double p) (if y 1.0 0.0))] (* d d))) ps ys)) (double (count ps))))

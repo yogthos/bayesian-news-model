@@ -316,3 +316,14 @@
       (is (< (Math/abs (- 0.5 (hz/area-skill (rows identity identity)))) 0.06)))
     (testing "knowing the outcomes is near one"
       (is (> (hz/area-skill (mapv (fn [[q r] y] [q (if y 1.0 0.0) y 1.0]) ref ys)) 0.95)))))
+
+(deftest recall-gain-intervals-widen-for-many-tests
+  (let [g (m/rng 23)
+        rows (vec (for [q (range 40 80) _ (range 50)]
+                    (let [a (m/normal! g) y (< (m/next-double! g) (m/expit (+ -3.0 (* 1.5 a))))]
+                      [q (m/expit a) (m/expit (+ a (m/normal! g))) y])))
+        one (hz/paired-recall-gain rows 0.1 2000 1)
+        many (hz/paired-recall-gain rows 0.1 2000 1 (/ 0.1 12))]
+    (is (= (:diff one) (:diff many)))
+    (is (< (:lo many) (:lo one)))
+    (is (> (:hi many) (:hi one)))))
