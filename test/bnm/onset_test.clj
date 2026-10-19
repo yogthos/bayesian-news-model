@@ -155,3 +155,22 @@
     (is (< (Math/abs (- 1.0 (:ratio (o/dispersion indep of)))) 0.1))
     (is (> (:ratio (o/dispersion waves of)) 5.0) "a whole group at once")
     (is (= 4000 (:groups (o/dispersion indep of))) "group-quarters")))
+
+(deftest regional-frailty
+  ;; a region whose onsets run above its forecasts lifts its members'
+  ;; hazards, from outcomes resolved by each row's quarter only
+  (let [g (m/rng 13)
+        units (for [r (range 10) c (range 8)] [(str "r" r "c" c) (str "r" r)])
+        of (into {} units)
+        hot? (fn [r q] (and (< r 3) (< 40 q 120)))
+        preds (vec (for [q (range 160) [u r] units
+                         :let [rate (if (hot? (parse-long (subs r 1)) q) 0.15 0.03)]]
+                     [q 0.03 (< (m/next-double! g) rate) u]))
+        adj (o/frailty preds of [1 4] {:discount 0.9 :prior 2.0})
+        ls (fn [ps] (reduce + (for [[_ p y] ps] (Math/log (if y p (- 1.0 p))))))]
+    (is (= (count preds) (count adj)))
+    (is (> (ls adj) (ls preds)) "better where regions run hot")
+    (let [at (fn [u q] (second (first (filter #(and (= u (nth % 3)) (= q (first %))) adj))))]
+      (is (> (at "r0c0" 100) 0.06) "a hot region's member lifted")
+      (is (< (Math/abs (- (at "r9c0" 100) 0.03)) 0.015) "a calm region's left near its forecast")
+      (is (= 0.03 (at "r0c0" 3)) "nothing resolved yet: unchanged"))))

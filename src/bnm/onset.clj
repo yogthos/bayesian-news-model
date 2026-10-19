@@ -149,6 +149,42 @@
         den (reduce + (map #(nth % 2) (vals cells)))]
     {:ratio (when (pos? den) (/ num den)) :groups (count cells)}))
 
+(defn frailty
+  "Forecasts `preds` ([q p y unit]) with a shared regional frailty (Duffie,
+  Eckner, Horel & Saita, JF 2009, for clustered defaults): each group's
+  hazards scaled by Z = (prior + O) / (prior + E), O the onsets and E the
+  hazards (-log(1-p)) of its rows resolved by q (outcome window `[_ b]`:
+  q' + b <= q), each discounted by `discount` per year of age. A region
+  running hot lifts its members, a calm one relaxes them; with no
+  clustering Z stays near 1. Rows without a label never count."
+  [preds group-of [_ b] {:keys [discount prior]}]
+  (let [by-q (group-by first preds)
+        ;; rows resolve at q + b: per quarter, the rows that resolve then
+        resolving (group-by #(+ (first %) b) (filter #(some? (nth % 2)) preds))
+        d (Math/pow discount 0.25)
+        haz #(- (Math/log (- 1.0 (min (double %) (- 1.0 1e-9)))))]
+    (if (empty? preds)
+      []
+      (loop [q (apply min (keys by-q)) acc {} out (transient [])]
+        (if (> q (apply max (keys by-q)))
+          (persistent! out)
+          ;; every quarter: age the record, add what resolves by then (all
+          ;; before the first quarter at the start), then adjust its rows
+          (let [acc (update-vals acc (fn [[o e]] [(* d o) (* d e)]))
+                new (if (empty? out)
+                      (mapcat val (filter #(<= (key %) q) resolving))
+                      (get resolving q []))
+                acc (reduce (fn [acc [_ p y unit]]
+                              (update acc (get group-of unit unit)
+                                      (fn [[o e]] [(+ (or o 0.0) (if y 1.0 0.0)) (+ (or e 0.0) (haz p))])))
+                            acc new)
+                out (reduce (fn [out [q0 p y unit]]
+                              (let [[o e] (get acc (get group-of unit unit))
+                                    z (if e (/ (+ prior o) (+ prior e)) 1.0)]
+                                (conj! out [q0 (if (== z 1.0) p (- 1.0 (Math/exp (- (* z (haz p)))))) y unit])))
+                            out (get by-q q []))]
+            (recur (inc q) acc out)))))))
+
 (defn event-sets
   "From events [kind unit quarter latest-quarter known-quarter]: {:onsets
   the earliest quarter each could be (labels), :spans every quarter each
