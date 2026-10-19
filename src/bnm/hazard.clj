@@ -381,13 +381,15 @@
          years (vec (distinct (map #(quot (first %) 4) rows)))
          ui (let [ix (zipmap units (range))] (int-array (map #(ix (nth % 4)) rows)))
          yi (let [ix (zipmap years (range))] (int-array (map #(ix (quot (first %) 4)) rows)))
+         ;; only onsets enter the gain: loop over them alone
+         pos-idx (int-array (filter #(aget ys %) (range n)))
+         npos (alength pos-idx)
          gain (fn [^doubles wu ^doubles wy]
-                (loop [i 0 num 0.0 pos 0.0]
-                  (if (< i n)
-                    (let [w (* (aget wu (aget ui i)) (aget wy (aget yi i)))]
-                      (if (aget ys i)
-                        (recur (inc i) (+ num (* w (- (aget ha i) (aget hb i)))) (+ pos w))
-                        (recur (inc i) num pos)))
+                (loop [k 0 num 0.0 pos 0.0]
+                  (if (< k npos)
+                    (let [i (aget pos-idx k)
+                          w (* (aget wu (aget ui i)) (aget wy (aget yi i)))]
+                      (recur (inc k) (+ num (* w (- (aget ha i) (aget hb i)))) (+ pos w)))
                     (if (pos? pos) (/ num pos) 0.0))))
          draw (fn [g k] (let [c (double-array k)]
                           (dotimes [_ k] (let [j (min (dec k) (long (* k (m/next-double! g))))] (aset c j (inc (aget c j)))))
