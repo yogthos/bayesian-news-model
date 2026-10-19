@@ -251,6 +251,19 @@
     (is (< (Math/abs (- (:lo fast) (:lo slow))) 0.05) "about the same interval")
     (is (= {:diff 0.0 :lo 0.0 :hi 0.0} (hz/paired-recall-gain (mapv (fn [[q a _ y]] [q a a y]) rows) 0.1 50 1)))))
 
+(deftest paired-usefulness-gain-matches-the-general-bootstrap
+  ;; resampled years become integer row weights over one sort, so the same
+  ;; draws give the same intervals as rescoring the resampled rows
+  (let [g (m/rng 22)
+        rows (vec (for [q (range 40 80) i (range 30)]
+                    (let [a (m/normal! g) y (< (m/next-double! g) (m/expit (+ -3.0 (* 1.5 a))))]
+                      [q (/ (Math/round (* 20 (m/expit a))) 20.0) (m/expit (+ a (m/normal! g))) y])))
+        u (fn [rs] (hz/usefulness (map second rs) (map #(nth % 2) rs) 0.9))
+        fast (hz/paired-usefulness-gain rows 0.9 100 1)
+        slow (hz/paired-gain rows u 100 1)]
+    (doseq [k [:diff :lo :hi]]
+      (is (< (Math/abs (- (k fast) (k slow))) 1e-9) (str k)))))
+
 (deftest hedge-weights-follow-each-members-record
   (let [ps [[0.9 0.5] [0.9 0.5] [0.1 0.5] [0.1 0.5]]
         ys [true true false false]

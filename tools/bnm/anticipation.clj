@@ -47,12 +47,11 @@
     (when (and (pos? pos) (< pos (count rows)))
       (let [r5 #(hz/recall-at-budget % 0.05)
             r10 #(hz/recall-at-budget % 0.10)
-            u (fn [rs] (hz/usefulness (map second rs) (map #(nth % 2) rs) 0.9))
-            g (fn [metric] (hz/paired-gain rows metric 200 1))]
+            u (fn [rs] (hz/usefulness (map second rs) (map #(nth % 2) rs) 0.9))]
         {:n (count rows) :pos pos
          :r5 (r5 (map (fn [[q a _ y]] [q a y]) rows)) :r5-gain (hz/paired-recall-gain rows 0.05 200 1)
          :r10 (r10 (map (fn [[q a _ y]] [q a y]) rows)) :r10-gain (hz/paired-recall-gain rows 0.10 200 1)
-         :u (u (map (fn [[q a _ y]] [q a y]) rows)) :u-gain (g u)
+         :u (u (map (fn [[q a _ y]] [q a y]) rows)) :u-gain (hz/paired-usefulness-gain rows 0.9 200 1)
          :matched (hz/matched-concordance (map (fn [[q a b y]] {:period q :p-model a :p-bench b :y y}) rows) 4)}))))
 
 (defn -main [& args]

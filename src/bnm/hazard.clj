@@ -434,6 +434,53 @@
         at (fn [q] (nth diffs (min (dec (count diffs)) (long (* q (count diffs))))))]
     {:diff (score rows) :lo (at 0.05) :hi (at 0.95)}))
 
+(defn paired-usefulness-gain
+  "`paired-gain` for `usefulness` at `mu`, with the same draws: a resample
+  is integer weights on the rows (how often each one's year was drawn),
+  swept down one sort per model instead of rescoring copied rows."
+  [rows mu reps seed]
+  (let [blocks (vec (vals (group-by #(quot (first %) 4) rows)))
+        rows (vec (apply concat blocks))
+        n (count rows)
+        bix (long-array (mapcat (fn [i b] (repeat (count b) i)) (range) blocks))
+        ys (boolean-array (map #(boolean (nth % 3)) rows))
+        sweep (fn [col]
+                (let [order (int-array (sort-by #(- (double (nth (rows %) col))) (range n)))
+                      ps (double-array (map #(double (nth (rows %) col)) order))]
+                  (fn [^doubles w]
+                    (let [[pos tot] (loop [i 0 pos 0.0 tot 0.0]
+                                      (if (< i n)
+                                        (recur (inc i) (if (aget ys i) (+ pos (aget w i)) pos) (+ tot (aget w i)))
+                                        [pos tot]))
+                          neg (- tot pos)
+                          p1 (/ pos tot) p2 (- 1.0 p1)
+                          loss (fn [tp fp]
+                                 (+ (* mu p1 (if (pos? pos) (/ (- pos tp) pos) 0.0))
+                                    (* (- 1.0 mu) p2 (if (pos? neg) (/ fp neg) 0.0))))
+                          best (loop [i 0 tp 0.0 fp 0.0 best (loss 0.0 0.0)]
+                                 (if (< i n)
+                                   (let [r (aget order i) wi (aget w r)
+                                         tp (if (aget ys r) (+ tp wi) tp)
+                                         fp (if (aget ys r) fp (+ fp wi))
+                                         ;; a threshold only between distinct forecasts
+                                         end? (or (= i (dec n)) (not= (aget ps i) (aget ps (inc i))))]
+                                     (recur (inc i) tp fp (if end? (min best (loss tp fp)) best)))
+                                   best))
+                          ignore (min (* mu p1) (* (- 1.0 mu) p2))]
+                      (if (pos? ignore) (/ (- ignore best) ignore) 0.0)))))
+        ua (sweep 1) ub (sweep 2)
+        score (fn [w] (- (double (ua w)) (double (ub w))))
+        k (count blocks)
+        g (m/rng seed)
+        diffs (vec (sort (for [_ (range reps)]
+                           (let [c (long-array k)]
+                             (dotimes [_ k]
+                               (let [b (min (dec k) (long (* k (m/next-double! g))))]
+                                 (aset c b (inc (aget c b)))))
+                             (score (double-array (map #(aget c (int %)) bix)))))))
+        at (fn [q] (nth diffs (min (dec (count diffs)) (long (* q (count diffs))))))]
+    {:diff (score (double-array n 1.0)) :lo (at 0.05) :hi (at 0.95)}))
+
 (defn matched-concordance
   "Signal beyond a benchmark: each event (rows {:period :p-model :p-bench
   :y}) is set against the `k` non-events of its period whose benchmark
