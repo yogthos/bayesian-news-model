@@ -402,3 +402,49 @@ worse (conflict at 5-8 quarters in 2015-22 loses 0.11). Outcomes resolve a
 year or more after the forecast, by which time a wave is mostly over; the
 wave kernels, which see onsets as soon as they are known, are the route to
 the same signal.
+
+## Methods from other fields (October 2026)
+
+Searched: weather and climate (data assimilation, ensembles, extremes),
+turbulence, statistical physics, epidemiology, seismology, ecology,
+reliability, change detection, and Bayesian practice in genomics,
+medicine, astronomy and particle physics. Nothing here has been tested on
+country onsets; what each field shows works:
+
+- **Nowcasting under reporting delay** (McGough et al. 2020; epinowcast):
+  recent outcomes are right-truncated, not negatives. Taken up: a row's
+  label resolves only once the kind's reporting lag has passed, which
+  closed a leak (fits had used onsets not yet published).
+- **Untrained median ensembles** won the epidemic forecast hubs over
+  trained weights (Cramer et al., PNAS 2022; Sherratt et al., eLife 2023).
+  Taken up as the median combination.
+- **Blind analysis and the look-elsewhere effect** (Klein & Roodman 2005;
+  Gross & Vitells 2010): the locked 2023 on and docs/TRIALS.md.
+- **Data assimilation** (ensemble Kalman filters: Shaman & Karspeck, PNAS
+  2012, flu peaks seven weeks ahead; a Hawkes state-parameter filter on
+  gang crime, Santitissadeekorn, Short & Lloyd): a gain that follows
+  uncertainty, covariance across the node hierarchy, drifting parameters,
+  and the value of each observing source (Kalnay et al. 2012). None in
+  conflict or crises.
+- **Analog ensembles** (Delle Monache et al. 2013): forecasts from what
+  followed the most similar past states; calibrated and robust to regime
+  shifts.
+- **Windows of opportunity** (Mariotti et al., BAMS 2020): skill comes in
+  states (El Nino, MJO); score and weight by the world's state.
+- **Online changepoint detection** (Adams & MacKay 2007): forgetting set by
+  the run-length posterior, and the chance of a break as an input.
+- **Shrinkage pooled across outcomes** (regularized horseshoe, Piironen &
+  Vehtari 2017; multi-outcome pooling in drug safety, DuMouchel).
+- **Imperfect detection** (occupancy models; Cook et al., PA 2017 for
+  protest): a burst of coverage is not a burst of events.
+- **Joint longitudinal-survival models** (Rizopoulos): a slow marker's
+  smoothed slope and area as hazard inputs.
+
+Set aside, no out-of-sample record: threshold and percolation cascades,
+opinion and Ising models, self-organized criticality, instantons and
+optimal precursors (they need equations of motion), rare-event splitting
+on our own simulator, EVT banking early warning, b-value traffic lights,
+Dirichlet-process country types (too few positives to identify), Bayesian
+predictive synthesis (too many parameters), Firth and King-Zeng
+corrections (they shift the intercept, not the ranks an alert budget
+uses).

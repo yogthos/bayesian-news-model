@@ -289,9 +289,8 @@ onsets.
     with a dated tag, and the live quarters after it are the clean test;
   - a gain must hold with each region left out (the lowest lower bound,
     `loro`), so one wave such as 2011 cannot carry it;
-  - recall intervals are Bonferroni-corrected for the groups and models
-    tried (`--tests 25`: seventeen input groups, two tree and flag
-    variants, four combinations, two spares);
+  - recall intervals are Bonferroni-corrected for the configurations
+    tried, counted in docs/TRIALS.md (`--tests` with its line count);
   - hyperparameters of new methods come from the literature, not the
     scored years. `scripts/scoreboard.py` applies all of it.
 

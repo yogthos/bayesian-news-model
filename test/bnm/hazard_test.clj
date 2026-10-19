@@ -327,3 +327,10 @@
     (is (= (:diff one) (:diff many)))
     (is (< (:lo many) (:lo one)))
     (is (> (:hi many) (:hi one)))))
+
+(deftest median-of-members
+  ;; the untrained combination that won the epidemic forecast hubs (Cramer
+  ;; et al. 2022; Sherratt et al. 2023): the median of the members' log odds
+  (is (< (Math/abs (- 0.2 (hz/median-pool [0.1 0.2 0.9]))) 1e-12))
+  (is (< (Math/abs (- (m/expit (* 0.5 (+ (m/logit 0.1) (m/logit 0.3)))) (hz/median-pool [0.1 0.3]))) 1e-12)
+      "an even count takes the mean of the middle two log odds"))

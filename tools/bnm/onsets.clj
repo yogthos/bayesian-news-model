@@ -280,8 +280,9 @@
   members weighted by their own recent record (hz/hedge-weights, a
   three-year half-life). pool stops EM after a fixed number of steps from
   equal weights, which shrinks toward them; mlpool is the same pool at the
-  maximum of its log score (hz/pool-weights-ml)."
-  [:pool :mlpool :stack :hedge])
+  maximum of its log score (hz/pool-weights-ml); median, untrained, the
+  members' median log odds (hz/median-pool)."
+  [:pool :mlpool :stack :hedge :median])
 
 (def hedge-discount 0.8)
 
@@ -465,6 +466,7 @@
          fits {:pool (fn [ps ys ws _] (let [w (hz/pool-weights ps ys ws)] #(hz/pool w %)))
                :mlpool (fn [ps ys ws _] (let [w (hz/pool-weights-ml ps ys ws)] #(hz/pool w %)))
                :stack (fn [ps ys ws _] (let [b (hz/fit-stack ps ys ws {:prior 10.0})] #(hz/predict-stack b %)))
+               :median (fn [_ _ _ _] hz/median-pool)
                :hedge (fn [ps ys _ qs] (let [h (hz/hedge-weights ps ys (map #(Math/pow hedge-discount (/ % 4.0)) qs) 1.0)]
                                          #(hz/pool h %)))}
          out (loop [[yr & more] years out {}]

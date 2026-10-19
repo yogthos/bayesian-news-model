@@ -220,6 +220,17 @@
           tot (reduce + (seq e))]
       (double-array (map #(/ % tot) e)))))
 
+(defn median-pool
+  "The members' median forecast, on the log-odds scale (an even count takes
+  the mean of the middle two): the untrained combination that matched or
+  beat trained weights in the epidemic forecast hubs (Cramer et al., PNAS
+  2022; Sherratt et al., eLife 2023), where weights fit on few outcomes
+  chase noise."
+  ^double [ps]
+  (let [ls (vec (sort (map #(m/logit (min (max (double %) 1e-9) (- 1.0 1e-9))) ps)))
+        n (count ls)]
+    (m/expit (if (odd? n) (ls (quot n 2)) (* 0.5 (+ (ls (dec (quot n 2))) (ls (quot n 2))))))))
+
 (defn pool ^double [^doubles w ps]
   (loop [j 0 s 0.0 [p & more] (seq ps)]
     (if p (recur (inc j) (+ s (* (aget w j) (double p))) more) s)))
