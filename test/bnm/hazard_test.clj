@@ -334,3 +334,18 @@
   (is (< (Math/abs (- 0.2 (hz/median-pool [0.1 0.2 0.9]))) 1e-12))
   (is (< (Math/abs (- (m/expit (* 0.5 (+ (m/logit 0.1) (m/logit 0.3)))) (hz/median-pool [0.1 0.3]))) 1e-12)
       "an even count takes the mean of the middle two log odds"))
+
+(deftest horseshoe-like-shrinkage
+  ;; one strong input among many weak ones: the adaptive penalty keeps the
+  ;; strong coefficient nearer its value and shrinks the rest at least as hard
+  (let [g (m/rng 37)
+        k 21
+        rows (vec (for [_ (range 3000)]
+                    (let [x (double-array (cons 1.0 (repeatedly (dec k) #(m/normal! g))))]
+                      {:x x :y (< (m/next-double! g) (m/expit (+ -3.0 (* 1.2 (aget x 1))))) :w 1.0})))
+        ridge (hz/fit rows k {:prior 100.0})
+        hs (hz/fit-shrunk rows k {:prior 100.0})
+        noise (fn [^doubles b] (reduce + (map #(Math/abs (aget b %)) (range 2 k))))]
+    (is (> (aget hs 1) (aget ridge 1)) "the signal is freed")
+    (is (< (Math/abs (- 1.2 (aget hs 1))) (Math/abs (- 1.2 (aget ridge 1)))))
+    (is (<= (noise hs) (* 1.05 (noise ridge))) "the noise no less shrunk")))

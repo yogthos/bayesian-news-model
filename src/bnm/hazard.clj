@@ -18,8 +18,9 @@
   the scale of their standard deviation in the rows, so the prior does not
   depend on units. Damped Newton steps, each halved until the penalized
   likelihood improves, until they are small or :iterations (default 25) have
-  run. :start gives coefficients to start from."
-  ^doubles [rows ^long k {:keys [prior start iterations] :or {prior 1.0 iterations 25}}]
+  run. :start gives coefficients to start from; :penalties, one multiplier
+  of :prior per coefficient (`fit-shrunk`)."
+  ^doubles [rows ^long k {:keys [prior start iterations penalties] :or {prior 1.0 iterations 25}}]
   (let [rows (vec rows)
         n (count rows)
         prior (double prior)
@@ -56,7 +57,9 @@
             (let [^doubles st start]
               (aset b 0 (+ (aget st 0) (loop [j 1 acc 0.0] (if (< j k) (recur (inc j) (+ acc (* (aget st j) (aget mean j)))) acc))))
               (loop [j 1] (when (< j k) (aset b j (* (aget st j) (aget sd j))) (recur (inc j))))))
-        ^doubles pen (double-array k prior)
+        ;; :penalties scales each coefficient's precision (on the
+        ;; standardized scale); the intercept stays nearly free
+        ^doubles pen (double-array (if penalties (map #(* prior (double %)) penalties) (repeat k prior)))
         _ (aset pen 0 1e-4)
         eta (fn ^double [^doubles bb ^long r]
               (let [o (* r k)]
@@ -110,6 +113,34 @@
       (loop [j 1] (when (< j k) (aset beta j (/ (aget b j) (aget sd j))) (recur (inc j))))
       (aset beta 0 (- (aget b 0) (loop [j 1 acc 0.0] (if (< j k) (recur (inc j) (+ acc (* (aget beta j) (aget mean j)))) acc))))
       beta)))
+
+(defn fit-shrunk
+  "`fit` with a horseshoe-like penalty in place of the ridge: the log
+  penalty log(b^2 + c), majorized by a ridge reweighted each round (Candes,
+  Wakin & Boyd 2008), each coefficient's precision scaled by
+  10c / (b^2 + c) with c the ridge's prior variance on the standardized
+  scale: ten times the ridge's shrinkage near zero, the ridge's own at
+  b^2 = 9c, less beyond, so small coefficients are shrunk harder and large
+  ones freed, as the
+  horseshoe does for many weak signals among a few strong ones (Carvalho,
+  Polson & Scott 2010). `rounds` reweightings (3)."
+  ^doubles [rows ^long k {:keys [prior rounds] :or {prior 1.0 rounds 3} :as opts}]
+  (let [rows (vec rows)
+        n (count rows)
+        ;; each input's spread in the rows, to read coefficients on the
+        ;; standardized scale the penalties act on
+        sd (vec (for [j (range k)]
+                  (let [vs (map #(aget ^doubles (:x %) j) rows)
+                        mu (/ (reduce + vs) n)
+                        s (Math/sqrt (/ (reduce + (map #(let [d (- % mu)] (* d d)) vs)) n))]
+                    (if (> s 1e-9) s 1.0))))
+        c (/ 1.0 (double prior))]
+    (loop [r 0 beta (fit rows k opts)]
+      (if (>= r rounds)
+        beta
+        (let [mult (vec (for [j (range k)]
+                          (if (zero? j) 1.0 (let [b (* (aget ^doubles beta j) (sd j))] (/ (* 10.0 c) (+ (* b b) c))))))]
+          (recur (inc r) (fit rows k (assoc opts :penalties mult :start beta))))))))
 
 (defn predict ^double [^doubles beta ^doubles x]
   (m/expit (loop [i 0 acc 0.0] (if (< i (alength beta)) (recur (inc i) (+ acc (* (aget beta i) (aget x i)))) acc))))
