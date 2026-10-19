@@ -392,3 +392,13 @@ The rise from the country column is the clustering the country forecasts
 miss: fivefold for banking (2008), moderate for violence and conflict,
 slight for protest, none for coups and wars (as Miller et al. found for
 coups). Wave inputs should help the first three and nothing else.
+
+**Regional frailty, tested and not adopted.** A shared Gamma frailty per
+region, from outcomes resolved by each quarter (bnm.onset/frailty,
+bnm.frail), against the same hedge without it on hard rows: banking at 2-4
+quarters in 2003-14 gains 0.09 recall at 10% (interval above zero), the
+2008 wave, but not with a region left out; elsewhere it is neutral or
+worse (conflict at 5-8 quarters in 2015-22 loses 0.11). Outcomes resolve a
+year or more after the forecast, by which time a wave is mostly over; the
+wave kernels, which see onsets as soon as they are known, are the route to
+the same signal.
