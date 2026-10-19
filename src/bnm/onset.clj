@@ -186,17 +186,28 @@
                             out (get by-q q []))]
             (recur (inc q) acc out)))))))
 
+(defn resolves-at
+  "The quarter a row's label is final: its window [_ b] closed, and the
+  kind's reporting `lag` passed so every onset that could fall in it is
+  published. Before then a fit that used the label would see onsets nobody
+  knew of (the right truncation that nowcasting corrects, McGough et al.
+  2020)."
+  [q [_ b] lag]
+  (+ q b lag))
+
 (defn event-sets
   "From events [kind unit quarter latest-quarter known-quarter]: {:onsets
   the earliest quarter each could be (labels), :spans every quarter each
   could be (whether a row is at risk), :known the quarter each became known
-  (inputs)}, each {kind {unit sorted-set}}."
+  (inputs)}, each {kind {unit sorted-set}}, and :lags {kind quarters}, the
+  longest any onset of the kind took to be known (`resolves-at`)."
   [events]
   (reduce (fn [acc [kind unit q latest known]]
             (-> acc
                 (update-in [:onsets kind unit] (fnil conj (sorted-set)) q)
                 (update-in [:spans kind unit] (fnil into (sorted-set)) (range q (inc latest)))
-                (update-in [:known kind unit] (fnil conj (sorted-set)) known)))
+                (update-in [:known kind unit] (fnil conj (sorted-set)) known)
+                (update-in [:lags kind] (fnil max 0) (- known q))))
           {} events))
 
 (defn last-complete-quarter

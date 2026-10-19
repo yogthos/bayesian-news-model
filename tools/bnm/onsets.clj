@@ -44,6 +44,8 @@
 
   Each model's prior precision is chosen from a grid each year by its log
   score on the forecasts resolved before the year (bnm.onset/choose-by-year),
+  a forecast resolving only once its window has closed and the kind's
+  reporting lag has passed (bnm.onset/resolves-at), as for every fit;
   scored from 2000; 2008 on is held out.
   Catalogues are scored only as far as data/slow/coverage.tsv says they have
   looked, so the last rows are not all positives.
@@ -319,11 +321,18 @@
 
 (defn- in-years [preds lo hi] (filter #(<= lo (quot (first %) 4) hi) preds))
 
+(defn lagged
+  "The window whose end is when a row's label is final: its own end plus the
+  kind's reporting lag (bnm.onset/resolves-at), for the checks of what was
+  resolved by a year's start (priors, rounds, combinations)."
+  [[a b] lag]
+  [a (+ b lag)])
+
 (defn evaluate-kind
   "Out-of-sample predictions for one kind and window: a function of the
   feature sets giving {model {:prior p :preds [[q p y unit]]}}, the prior
   chosen per model and year by log score on the years before."
-  [rows {onsets-by-unit :onsets spans :spans known :known} units window score-from last-q models fam groups]
+  [rows {onsets-by-unit :onsets spans :spans known :known lag :lags} units window score-from last-q models fam groups]
   (let [labels-q (fn [{:keys [unit q]}] (o/label (get onsets-by-unit unit (sorted-set)) q window))
         ;; rows past the catalogue's coverage are predicted too, with no label:
         ;; they are the live forecasts (bnm.readings), never fit or scored
@@ -362,7 +371,7 @@
                   (if-not yr
                     preds
                     (let [q0 (* 4 yr)
-                          known (filter #(<= (+ (:q %) (second window)) q0) prepared)
+                          known (filter #(<= (o/resolves-at (:q %) window (or lag 0)) q0) prepared)
                           xf (if flags?
                                (let [cuts (cuts-for idx q0)]
                                  #(o/tail-flags (pick % idx) 3 cuts))
@@ -390,7 +399,7 @@
                   (vec (for [r tree-rounds] {:prior (double r) :preds (preds r)}))
                   (let [q0 (* 4 yr)
                         train (vec (for [{:keys [unit q y full]} prepared
-                                         :when (and (<= (+ q (second window)) q0) (some? y) (or y (keep-negative? unit q)))]
+                                         :when (and (<= (o/resolves-at q window (or lag 0)) q0) (some? y) (or y (keep-negative? unit q)))]
                                      {:x (pick full idx) :y y
                                       :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))}))
                         model (if (some :y train) (trees/fit train {:rounds (apply max tree-rounds)}) model)
@@ -418,7 +427,7 @@
                           default (if tree? 50.0 100.0)]]
                 ;; each year's prior (or rounds) chosen on the years before
                 ;; it, so no scored year has picked its own
-                [model (o/choose-by-year runs log-score window (or (first (filter #(= default (:prior %)) runs)) (first runs)))]))))))
+                [model (o/choose-by-year runs log-score (lagged window (or lag 0)) (or (first (filter #(= default (:prior %)) runs)) (first runs)))]))))))
 
 (declare aligned combine-rows)
 
@@ -563,7 +572,7 @@
             fam (nm/family-of kind)
             runs (combine ((evaluate-kind rows (update-vals event-sets #(get % kind)) units window score-from last-q models fam groups)
                            (feature-sets labels (n-named fam) n-polecon groups))
-                          window)
+                          (lagged window (get-in event-sets [:lags kind] 0)))
             preds (update-vals runs :preds)
             base (:base preds)]
         (swap! case-preds assoc [kind wname] preds)

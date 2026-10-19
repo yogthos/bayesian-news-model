@@ -83,6 +83,15 @@
       (is (= [0.0 0.0] (vec (o/histories known ["war_onset"] "A" 8003))))
       (is (pos? (aget (o/histories known ["war_onset"] "A" 8005) 0))))))
 
+(deftest labels-are-final-only-once-their-onsets-are-published
+  ;; a kind's reporting lag is the longest it took any onset to be known;
+  ;; a row's label is final when its window has closed and that lag passed
+  (let [{:keys [lags]} (o/event-sets [["war_onset" "A" 8000 8003 8005] ["war_onset" "B" 8100 8103 8104]
+                                      ["coup" "A" 8010 8010 8010]])]
+    (is (= {"war_onset" 5 "coup" 0} lags))
+    (is (= 8009 (o/resolves-at 8000 [1 4] 5)) "window to 8004, then five quarters to publish")
+    (is (= 8004 (o/resolves-at 8000 [1 4] 0)))))
+
 (deftest onsets-among-neighbours
   ;; peers: {level {unit [other units]}}; each kind and level gives the
   ;; decayed count of the peers' onsets known by q, log1p

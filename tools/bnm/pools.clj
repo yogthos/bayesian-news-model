@@ -40,11 +40,12 @@
         runs (str/split runs #",")
         drop? (set (when drop (str/split drop #",")))
         by-kw (read-runs runs drop?)
+        lags (:lags (on/read-event-sets "data/slow/events.tsv"))
         dir (str "data/runs/" out)]
     (.mkdirs (io/file dir))
     (with-open [w (io/writer (str dir "/preds.tsv"))]
       (doseq [[[kind wname :as kw] models] (sort by-kw)
-              :let [window (on/windows (keyword wname))
+              :let [window (on/lagged (on/windows (keyword wname)) (get lags kind 0))
                     members (sort (keys models))
                     emit (fn [label preds]
                            (doseq [[q p y unit] preds]

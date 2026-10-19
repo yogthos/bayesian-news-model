@@ -30,6 +30,7 @@
                                        [(parse-long q) (parse-double p) (case y "true" true "false" false nil) unit])
                                acc)))
                          {} (line-seq r)))
+        lags (:lags (on/read-event-sets "data/slow/events.tsv"))
         region-of (:region (on/unit-groups (set (for [[_ rows] picked [_ _ _ u] rows] u))))]
     (.mkdirs (io/file dir))
     (with-open [w (io/writer (str dir "/preds.tsv"))]
@@ -37,5 +38,5 @@
         (doseq [line (line-seq r)] (.write w (str line "\n"))))
       (doseq [[[kind wname m] rows] (sort-by key picked)]
         (println kind wname m)
-        (doseq [[q p y unit] (o/frailty rows region-of (on/windows (keyword wname)) opts)]
+        (doseq [[q p y unit] (o/frailty rows region-of (on/lagged (on/windows (keyword wname)) (get lags kind 0)) opts)]
           (.write w (str kind "\t" wname "\t" "frail-" m "\t" q "\t" unit "\t" p "\t" (str y) "\n")))))))
