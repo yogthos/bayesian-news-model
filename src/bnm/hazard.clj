@@ -345,6 +345,58 @@
                        (recur more (- left t) (+ acc (* hits (/ t (double n))))))))
                  (count (filter #(nth % 2) g))]])))
 
+(defn alarm-shares
+  "Each row's share of an alarm at the top `budget` of its period by score
+  (rows [period score ...], in their order): 1 above the cutoff, 0 below,
+  and for rows tied at it the slots left over their number, as in
+  `recall-parts`."
+  [rows budget]
+  (let [rows (vec rows)
+        out (double-array (count rows))]
+    (doseq [[_ idx] (group-by #(first (rows %)) (range (count rows)))
+            :let [k (long (Math/ceil (* budget (count idx))))]]
+      (loop [[[_ tied] & more] (sort-by #(- (double (key %))) (group-by #(double (second (rows %))) idx))
+             left k]
+        (when (and tied (pos? left))
+          (let [n (count tied) t (min n left)]
+            (doseq [i tied] (aset out (int i) (/ t (double n))))
+            (recur more (- left t))))))
+    out))
+
+(defn paired-recall-gain-2way
+  "`paired-recall-gain` on rows [period p-model p-bench outcome unit], the
+  interval resampling units and years both (the pigeonhole bootstrap, Owen
+  2007): each row weighted by how often its unit and its year were drawn,
+  so a unit's overlapping windows and a year's shared shocks stay together.
+  Alarms are fixed by the full sample."
+  ([rows budget reps seed] (paired-recall-gain-2way rows budget reps seed 0.1))
+  ([rows budget reps seed alpha]
+   (let [rows (vec rows)
+         n (count rows)
+         ha (alarm-shares (map (fn [[q a]] [q a]) rows) budget)
+         hb (alarm-shares (map (fn [[q _ b]] [q b]) rows) budget)
+         ys (boolean-array (map #(boolean (nth % 3)) rows))
+         units (vec (distinct (map #(nth % 4) rows)))
+         years (vec (distinct (map #(quot (first %) 4) rows)))
+         ui (let [ix (zipmap units (range))] (int-array (map #(ix (nth % 4)) rows)))
+         yi (let [ix (zipmap years (range))] (int-array (map #(ix (quot (first %) 4)) rows)))
+         gain (fn [^doubles wu ^doubles wy]
+                (loop [i 0 num 0.0 pos 0.0]
+                  (if (< i n)
+                    (let [w (* (aget wu (aget ui i)) (aget wy (aget yi i)))]
+                      (if (aget ys i)
+                        (recur (inc i) (+ num (* w (- (aget ha i) (aget hb i)))) (+ pos w))
+                        (recur (inc i) num pos)))
+                    (if (pos? pos) (/ num pos) 0.0))))
+         draw (fn [g k] (let [c (double-array k)]
+                          (dotimes [_ k] (let [j (min (dec k) (long (* k (m/next-double! g))))] (aset c j (inc (aget c j)))))
+                          c))
+         g (m/rng seed)
+         diffs (vec (sort (for [_ (range reps)] (gain (draw g (count units)) (draw g (count years))))))
+         at (fn [q] (nth diffs (min (dec (count diffs)) (long (* q (count diffs))))))]
+     {:diff (gain (double-array (count units) 1.0) (double-array (count years) 1.0))
+      :lo (at (/ alpha 2)) :hi (at (- 1.0 (/ alpha 2)))})))
+
 (defn recall-at-budget
   "Of the positives, the share among the top `budget` fraction of rows by
   score in their period: `rows` are [period score label]. Rows tied at the

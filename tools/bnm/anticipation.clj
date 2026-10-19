@@ -60,11 +60,13 @@
   (let [keyed (vec (for [k keys
                          :let [[pa y] (model-rows k) [pb _] (bench-rows k)]
                          :when (and pa pb)]
-                     [(first k) [(second k) pa pb y]]))
+                     [(first k) [(second k) pa pb y (first k)]]))
         rows (mapv second keyed)
         pos (count (filter #(nth % 3) rows))
         reps (max 200 (long (Math/ceil (/ 10.0 (/ alpha 2)))))
-        gain (fn [rs budget] (hz/paired-recall-gain rs budget reps 1 alpha))]
+        ;; countries and years resampled both: a country's overlapping
+        ;; windows and a year's shared shocks are not independent draws
+        gain (fn [rs budget] (hz/paired-recall-gain-2way rs budget reps 1 alpha))]
     (when (and (pos? pos) (< pos (count rows)))
       (let [r5 #(hz/recall-at-budget % 0.05)
             r10 #(hz/recall-at-budget % 0.10)
@@ -128,7 +130,7 @@
         gain (fn [{:keys [diff lo hi]}] (format "%s [%s %s]%s" (f3 diff) (f3 lo) (f3 hi) (if (pos? lo) "*" " ")))
         header (str (format "Anticipation: each model against %s (out of sample).\n" bench)
                     "Recall in the top 5% and 10% of each quarter and Sarlin usefulness (mu 0.9), each with its gain over\n"
-                    "history and the gain's interval resampling years (* when it excludes zero); matched: the share\n"
+                    "history and the gain's interval resampling countries and years (* when it excludes zero); matched: the share\n"
                     "of onsets ranked above the four non-onsets of their quarter that history rates closest (0.5 = no more\n"
                     "than history); ass, the area skill of the error diagram (0.5 a random order), and ass/b with alarm\n"
                     "volume counted in the benchmark's probabilities (0.5 = no better than the benchmark); loro, the\n"

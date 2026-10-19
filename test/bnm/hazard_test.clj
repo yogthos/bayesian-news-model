@@ -349,3 +349,19 @@
     (is (> (aget hs 1) (aget ridge 1)) "the signal is freed")
     (is (< (Math/abs (- 1.2 (aget hs 1))) (Math/abs (- 1.2 (aget ridge 1)))))
     (is (<= (noise hs) (* 1.05 (noise ridge))) "the noise no less shrunk")))
+
+(deftest two-way-bootstrap
+  ;; units whose gain persists over time: resampling years alone treats
+  ;; their years as independent; resampling units and years both does not
+  (let [g (m/rng 43)
+        rows (vec (for [u (range 60) q (range 40 88)
+                        :let [good (< u 30) a (m/normal! g)
+                              y (< (m/next-double! g) (m/expit (+ -3.0 (* 1.5 a))))]]
+                    [q (m/expit (if good a (* 0.2 a))) (m/expit (* 0.6 a)) y (str "u" u)]))
+        year (hz/paired-recall-gain (mapv #(subvec % 0 4) rows) 0.1 400 1)
+        both (hz/paired-recall-gain-2way rows 0.1 400 1)]
+    (is (< (Math/abs (- (:diff year) (:diff both))) 1e-9) "the same gain")
+    (is (> (- (:hi both) (:lo both)) (- (:hi year) (:lo year))) "a wider interval")
+    (testing "a model equal to its bench gains nothing at any draw"
+      (is (= {:diff 0.0 :lo 0.0 :hi 0.0}
+             (hz/paired-recall-gain-2way (mapv (fn [[q a _ y u]] [q a a y u]) rows) 0.1 50 1))))))
