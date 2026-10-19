@@ -122,6 +122,7 @@
   (is (= ["leaders" "neighbours"] (o/unused-groups ["history" "named"] ["leaders" "neighbours"])))
   (is (empty? (o/unused-groups ["history" "named+leaders-placebo" "gbt-neighbours"] ["leaders" "neighbours"])))
   (is (empty? (o/unused-groups ["at-named+mix"] ["mix"])))
+  (is (empty? (o/unused-groups ["knn-named+mix" "hs-named+ties"] ["mix" "ties"])))
   (is (= ["mix"] (o/unused-groups ["mixed"] ["mix"])) "whole names only"))
 
 (deftest forecasts-for-groups-of-units

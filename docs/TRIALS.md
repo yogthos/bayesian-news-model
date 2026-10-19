@@ -36,3 +36,4 @@ the count is the number of lines below.
 | 26 | frail | 2026-10 | regional frailty on hedge (not adopted) |
 | 27 | knn (analogs) | 2026-10 | onset share among the 100 most similar resolved rows |
 | 28 | breaks | 2026-10 | online changepoints in each event channel |
+| 29 | hs (shrinkage) | 2026-10 | horseshoe-like reweighted ridge |

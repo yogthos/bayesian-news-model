@@ -64,7 +64,8 @@
   at-<inputs> is the logit on those inputs as at-risk flags: each above its
   80th or below its 20th percentile over the rows known by the year
   (bnm.onset/tail-flags). One named knn-<inputs> is the analog forecast:
-  the onset share among the hundred most similar resolved rows (bnm.analog).
+  the onset share among the hundred most similar resolved rows (bnm.analog);
+  hs-<inputs> the logit with horseshoe-like shrinkage (hz/fit-shrunk).
 
   Writes data/runs/<name>/onsets.txt, the out-of-sample predictions,
   preds.tsv (kind window model quarter unit p outcome), and the recorded
@@ -386,7 +387,7 @@
                                                           (pick full idx))
                                                         3 tail-share)))
             run-model
-            (fn [idx prior flags?]
+            (fn [idx prior flags? shrunk?]
               ;; flags?: inputs past the constant and history as at-risk
               ;; flags (o/tail-flags), their cuts from the rows known each year
               (let [k (if flags? (+ 3 (* 2 (- (count idx) 3))) (count idx))]
@@ -406,7 +407,9 @@
                                   {:x (xf full) :y y
                                    :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))})
                           beta (if (some :y train)
-                                 (hz/fit train k {:prior prior :start beta})
+                                 (if shrunk?
+                                   (hz/fit-shrunk train k {:prior prior :start beta})
+                                   (hz/fit train k {:prior prior :start beta}))
                                  beta)
                           scored (for [{:keys [unit q y full]} prepared
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
@@ -458,9 +461,11 @@
                     :let [tree? (str/starts-with? (name model) "gbt-")
                           flags? (str/starts-with? (name model) "at-")
                           knn? (str/starts-with? (name model) "knn-")
+                          shrunk? (str/starts-with? (name model) "hs-")
                           inputs (cond tree? (keyword (subs (name model) 4))
                                        flags? (keyword (subs (name model) 3))
                                        knn? (keyword (subs (name model) 4))
+                                       shrunk? (keyword (subs (name model) 3))
                                        :else model)
                           idx (or (sets inputs)
                                   (throw (ex-info (str "no inputs for model " (name model)) {:model model})))
@@ -469,7 +474,7 @@
                                  knn? [{:prior (double (:k analog-opts)) :preds (run-analog idx)}]
                                  :else
                                  (vec (for [p (if (= model :base) [1.0] priors)]
-                                        {:prior p :preds (run-model idx p flags?)})))
+                                        {:prior p :preds (run-model idx p flags? shrunk?)})))
                           default (cond tree? 50.0 knn? (double (:k analog-opts)) :else 100.0)]]
                 ;; each year's prior (or rounds) chosen on the years before
                 ;; it, so no scored year has picked its own
