@@ -94,6 +94,45 @@
                        (fn [[p0 y0]] [(if p0 (- 1.0 (* (- 1.0 p0) (- 1.0 (double p)))) (double p)) (boolean (or y0 y))])))
              {} rows))
 
+(defn wave-index
+  "Onsets of every kind in `kinds` per group at each level of `groups`
+  ({level {unit group}}) and in the world: {[level group] [[q unit] ...]}
+  sorted by quarter, from `events` ({kind {unit quarters}}), for `waves`."
+  [events kinds groups]
+  (let [all (for [k kinds [unit qs] (get events k) q qs] [q unit])]
+    (into {[:world :world] (vec (sort all))}
+          (for [[level of] groups
+                [g xs] (group-by (fn [[_ unit]] (of unit)) all)
+                :when g]
+            [[level g] (vec (sort xs))]))))
+
+(defn- upto
+  "How many of `xs` ([q ...] sorted by q) have q at or before `q`."
+  ^long [xs ^long q]
+  (loop [lo 0 hi (count xs)]
+    (if (< lo hi)
+      (let [mid (quot (+ lo hi) 2)]
+        (if (<= (long (first (xs mid))) q) (recur (inc mid) hi) (recur lo mid)))
+      lo)))
+
+(defn waves
+  "For each level of `groups` in key order and then the world, and each
+  decay rate in `taus` (quarters): the onsets of every kind among the
+  other units known by q, each weighted exp(-quarters ago / tau) within
+  three taus, log1p. A sum of exponentials can rise and then turn negative
+  in the fit: contagion, then a refractory period (a Hawkes kernel the
+  logit learns)."
+  ^doubles [index groups unit q taus]
+  (double-array
+   (for [key (concat (for [[level of] (sort-by key groups)] [level (of unit)]) [[:world :world]])
+         tau taus]
+     (let [xs (get index key [])]
+       (Math/log1p
+        (reduce + (for [[t u] (rseq (subvec xs 0 (upto xs q)))
+                        :while (< (- q t) (* 3 tau))
+                        :when (not= u unit)]
+                    (Math/exp (- (/ (- q t) tau))))))))))
+
 (defn event-sets
   "From events [kind unit quarter latest-quarter known-quarter]: {:onsets
   the earliest quarter each could be (labels), :spans every quarter each

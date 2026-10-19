@@ -26,6 +26,7 @@
             [bnm.mix :as mix]
             [bnm.ties :as ties]
             [bnm.stocks :as sk]
+            [bnm.sync :as sync]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [bnm.slow-train :as st]))
@@ -541,6 +542,81 @@
     (into {} (for [[unit qs] by-unit
                    [q x] (calm/features (into (sorted-map) qs))]
                [[unit q] x]))))
+
+(def sync-window "Quarters each correlation is taken over." 12)
+
+(defn- channel-series
+  "{unit {quarter [log share per calm channel]}}, every quarter from the
+  unit's first to its last, a quarter without events carrying the last."
+  [path]
+  (let [by-unit (with-open [r (io/reader path)]
+                  (reduce (fn [acc line]
+                            (let [[unit q t n] (str/split line #"\t")]
+                              (update-in acc [unit (parse-long q)] (fnil assoc {}) t (parse-double n))))
+                          {} (line-seq r)))]
+    (into {} (for [[unit qs] by-unit
+                   :let [q0 (apply min (keys qs)) q1 (apply max (keys qs))]]
+               [unit (loop [q q0 last nil out (transient {})]
+                       (if (> q q1)
+                         (persistent! out)
+                         (let [cs (get qs q)
+                               n (reduce + (vals cs))
+                               x (if (pos? (or n 0))
+                                   (mapv (fn [[_ t]] (Math/log (/ (+ 0.5 (get cs t 0.0)) (+ 1.0 n)))) calm/channels)
+                                   last)]
+                           (recur (inc q) x (if x (assoc! out q x) out)))))]))))
+
+(defn- window-of [series unit q j]
+  (let [s (series unit)]
+    (when s
+      (let [xs (keep #(some-> (s %) (nth j)) (range (- q (dec sync-window)) (inc q)))]
+        (when (= sync-window (count xs)) (vec xs))))))
+
+(def sync-names
+  (vec (concat (for [[c _] calm/channels] (keyword (str c "-biomarker")))
+               (for [[c _] calm/channels] (keyword (str c "-world-sync"))))))
+
+(defn load-event-sync
+  "Per country and quarter, per calm channel: the subregion's dynamical
+  network biomarker (bnm.sync/biomarker against forty fixed outsiders), log1p,
+  and the world's one-factor share (bnm.sync/first-share), over the last
+  `sync-window` quarters: {[unit quarter] double[]}."
+  [path]
+  (let [series (channel-series path)
+        units (sort (keys series))
+        sub (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u s]))
+        members (group-by sub units)
+        qs (sort (distinct (mapcat keys (vals series))))
+        nch (count calm/channels)
+        world (into {} (for [q qs]
+                         [q (mapv (fn [j] (sync/first-share (keep #(window-of series % q j) units))) (range nch))]))
+        region (memoize
+                (fn [s q]
+                  (let [outsiders (take 40 (sort-by hash (remove #(= s (sub %)) units)))]
+                    (mapv (fn [j]
+                            (sync/biomarker (keep #(window-of series % q j) (members s))
+                                            (keep #(window-of series % q j) outsiders)))
+                          (range nch)))))]
+    (into {} (for [u units :when (sub u)
+                   q (keys (series u))
+                   :let [b (region (sub u) q) w (world q)]
+                   :when (some some? (concat b w))]
+               [[u q] (double-array (concat (map #(if % (Math/log1p %) 0.0) b) (map #(or % 0.0) w)))]))))
+
+(def departure-names [:channel-corr-shift :channel-spread-shift])
+
+(defn load-event-departure
+  "Per country and quarter, how far its calm channels' correlations and
+  spreads over the last `sync-window` quarters sit from all its quarters
+  before (bnm.sync/departure): {[unit quarter] double[]}."
+  [path]
+  (let [series (channel-series path)]
+    (into {} (for [[u s] series
+                   :let [qs (sort (keys s))]
+                   [i q] (map-indexed vector qs)
+                   :let [d (sync/departure (mapv s (take (inc i) qs)) sync-window)]
+                   :when d]
+               [[u q] (double-array d)]))))
 
 (defn load-event-mix
   "The event-code mix of each country at each quarter (bnm.mix) from

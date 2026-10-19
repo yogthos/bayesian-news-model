@@ -31,7 +31,11 @@
   (exchange-rate regime and anchor currency), calm and volcalm (long calm and
   breaks in event streams and markets), histories (the country's past onsets
   of every kind), neighbours (onsets of every kind in its subregion and
-  region, recent and decayed), leaders (V-Dem: the military in the executive,
+  region, recent and decayed), waves (onsets of every kind in the subregion,
+  region and world decayed at a season, a year and four years, so the fit
+  can learn contagion and a refractory period), sync (each channel's
+  network biomarker in the subregion and the world's one-factor share),
+  departure (a country's channels against their own past), leaders (V-Dem: the military in the executive,
   the election cycle, how recently the regime type changed); see bnm.named
   and bnm.onset.
   Every group also runs as a placebo,
@@ -111,6 +115,16 @@
         by (fn [m] (let [g (group-by m (keys m))] (into {} (for [[u k] m] [u (vec (remove #{u} (g k)))]))))]
     {:region (by reg) :subregion (by sub)}))
 
+(defn unit-groups
+  "{:region {unit region} :subregion {unit subregion}} over `units`."
+  [units]
+  (let [sub (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u s]))]
+    {:region (into {} (for [[u s] sub] [u (first (geo/parents s))])) :subregion sub}))
+
+(def wave-taus
+  "Decay rates (quarters) of the wave kernels: a season, a year, four years."
+  [1.0 4.0 16.0])
+
 (def group-loaders
   "Input groups by name: [width loader], the loader taking {:db :units :rows}
   (the slow series, the countries, the onset rows) and giving {[unit
@@ -133,6 +147,13 @@
                  (fn [{:keys [events rows units]}]
                    (let [ps (peers units)]
                      (into {} (for [{:keys [unit q]} rows] [[unit q] (o/neighbourhood events history-kinds ps unit q)]))))]
+   "waves" [(* 3 (count wave-taus))
+            (fn [{:keys [events rows units]}]
+              (let [groups (unit-groups units)
+                    index (o/wave-index events history-kinds groups)]
+                (into {} (for [{:keys [unit q]} rows] [[unit q] (o/waves index groups unit q wave-taus)]))))]
+   "sync" [(count nm/sync-names) (fn [_] (nm/load-event-sync mix-path))]
+   "departure" [(count nm/departure-names) (fn [_] (nm/load-event-departure mix-path))]
    "histories" [(* 2 (count history-kinds))
                 (fn [{:keys [events rows]}]
                   (into {} (for [{:keys [unit q]} rows] [[unit q] (o/histories events history-kinds unit q)])))]})

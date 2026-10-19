@@ -123,3 +123,18 @@
     (is (= [0.5 false] (out ["s/europe" 10])))
     (is (= [0.1 false] (out ["s/west" 11])))
     (is (= 4 (count (o/aggregate (assoc rows ["XXX" 10] [0.3 false]) of))) "units without a group are their own")))
+
+(deftest wave-kernels
+  ;; onsets of any kind among the unit's groups (and the world), each decayed
+  ;; at several rates; a fit with a fast positive and a slow negative weight
+  ;; is excitation followed by a refractory period
+  (let [events {"coup" {"MLI" (sorted-set 100) "BFA" (sorted-set 104)} "protest_surge" {"NER" (sorted-set 96) "FRA" (sorted-set 104)}}
+        groups {:subregion {"MLI" "w" "BFA" "w" "NER" "w" "FRA" "e"}}
+        waves (o/wave-index events ["coup" "protest_surge"] groups)
+        x (vec (o/waves waves groups "NER" 104 [1.0 4.0]))]
+    (is (= 4 (count x)) "subregion and world, each at two rates")
+    (is (< (Math/abs (- (nth x 1) (Math/log1p (+ 1.0 (Math/exp -1.0))))) 1e-12)
+        "subregion at four quarters: BFA now, MLI a year back; NER's own never counts")
+    (is (< (Math/abs (- (nth x 3) (Math/log1p (+ 2.0 (Math/exp -1.0))))) 1e-12) "the world adds FRA")
+    (is (< (Math/abs (- (nth x 0) (Math/log1p 1.0))) 1e-12) "fast decay forgets MLI, past three taus")
+    (is (zero? (first (o/waves waves groups "NER" 99 [1.0 4.0]))) "nothing yet but its own")))
