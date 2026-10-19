@@ -373,3 +373,22 @@ So: trust self-excitation at provinces and actors over weeks to a quarter;
 at 2-4 quarters weight event and escalation inputs, at 5-8 structure;
 expect waves to help protest and violence surges and banking (through
 world credit), and treat coup contagion as a likely null.
+
+**Measured here: where onsets come in waves.** The dispersion of onsets
+within groups beyond the country forecasts (bnm.onset/dispersion: squared
+gaps between observed and expected group counts over the Poisson-binomial
+variance; 1 is independence), from the r3 hedge forecasts at 2-4 quarters:
+
+| kind | country | subregion | region |
+|---|---|---|---|
+| banking crises | 0.45 | 1.05 | 2.39 |
+| violence surges | 0.73 | 1.07 | 1.26 |
+| conflict onsets | 1.01 | 1.18 | 1.32 |
+| protest surges | 0.73 | 0.97 | 0.94 |
+| coups | 0.98 | 1.08 | 1.01 |
+| war onsets | 0.79 | 0.95 | 0.85 |
+
+The rise from the country column is the clustering the country forecasts
+miss: fivefold for banking (2008), moderate for violence and conflict,
+slight for protest, none for coups and wars (as Miller et al. found for
+coups). Wave inputs should help the first three and nothing else.
