@@ -37,3 +37,4 @@ the count is the number of lines below.
 | 27 | knn (analogs) | 2026-10 | onset share among the 100 most similar resolved rows |
 | 28 | breaks | 2026-10 | online changepoints in each event channel |
 | 29 | hs (shrinkage) | 2026-10 | horseshoe-like reweighted ridge |
+| 30 | mt (multi-task) | 2026-10 | other political kinds' rows, weighted, shared coefficients |

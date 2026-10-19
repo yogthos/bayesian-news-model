@@ -65,7 +65,10 @@
   80th or below its 20th percentile over the rows known by the year
   (bnm.onset/tail-flags). One named knn-<inputs> is the analog forecast:
   the onset share among the hundred most similar resolved rows (bnm.analog);
-  hs-<inputs> the logit with horseshoe-like shrinkage (hz/fit-shrunk).
+  hs-<inputs> the logit with horseshoe-like shrinkage (hz/fit-shrunk);
+  mt-<inputs> the logit fit on the kind's rows and the other political
+  kinds' rows, weighted by a share chosen each year, borrowing strength
+  across kinds.
 
   Writes data/runs/<name>/onsets.txt, the out-of-sample predictions,
   preds.tsv (kind window model quarter unit p outcome), and the recorded
@@ -324,6 +327,15 @@
   "The share of rows in each tail an at-<inputs> model flags."
   0.2)
 
+(def mt-weights
+  "Weights tried for the other kinds' rows in mt-<inputs> models, chosen
+  each year like the priors."
+  [0.1 0.3 1.0])
+
+(def political-kinds
+  "The kinds that share the political inputs, which mt- models pool."
+  #{"conflict_onset" "war_onset" "coup" "protest_surge" "violence_surge"})
+
 (def analog-opts
   "Neighbours and shrinkage of the knn-<inputs> models, set in advance: more
   neighbours than weather's twenty since onsets are rare."
@@ -366,7 +378,8 @@
   "Out-of-sample predictions for one kind and window: a function of the
   feature sets giving {model {:prior p :preds [[q p y unit]]}}, the prior
   chosen per model and year by log score on the years before."
-  [rows {onsets-by-unit :onsets spans :spans known :known lag :lags} units window score-from last-q models fam groups]
+  [rows {onsets-by-unit :onsets spans :spans known :known lag :lags} units window score-from last-q models fam groups
+   & [aux]]
   (let [labels-q (fn [{:keys [unit q]}] (o/label (get onsets-by-unit unit (sorted-set)) q window))
         ;; rows past the catalogue's coverage are predicted too, with no label:
         ;; they are the live forecasts (bnm.readings), never fit or scored
@@ -387,6 +400,18 @@
                                    (+ 3 (alength x) (alength nx)) gs)
                            (assoc r :full full :y (when (<= (+ q (second window)) last-q) (labels-q r)))))
                        usable)
+        ;; the other kinds' rows on the same inputs, each with its own kind's
+        ;; history and label, for the mt- models; only built when one is run
+        aux-prepared (delay
+                      (vec (for [{akind :kind {a-onsets :onsets a-spans :spans a-known :known a-lag :lags} :sets a-last :last-q} aux
+                                 {:keys [unit q ^doubles full]} prepared
+                                 :when (o/at-risk? (get a-spans unit (sorted-set)) q window)
+                                 :let [[h1 h2] (o/history-features (get a-known unit (sorted-set)) q)
+                                       f (aclone full)]]
+                             (do (aset f 1 h1) (aset f 2 h2)
+                                 {:unit unit :q q :full f :kind akind :lag (or a-lag 0)
+                                  :y (when (<= (+ q (second window)) a-last)
+                                       (o/label (get a-onsets unit (sorted-set)) q window))}))))
         years (range (quot (apply min (map :q prepared)) 4) (inc (quot (apply max (map :q prepared)) 4)))]
     (fn [sets]
       (let [;; at-risk cuts depend on the inputs and the year, not the prior
@@ -422,6 +447,36 @@
                           scored (for [{:keys [unit q y full]} prepared
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
                                    [q (hz/predict beta (xf full)) y unit])]
+                      (recur more beta (into preds scored)))))))
+            ;; multi-task (mt-): the kind's rows and the other kinds' rows
+            ;; weighted by lam, an extra column marking the others so the
+            ;; kind keeps its own intercept; the coefficients are shared, so
+            ;; lam pulls them toward what the kinds have in common
+            run-mt
+            (fn [idx lam]
+              (let [k (inc (count idx))
+                    x+ (fn [full other?] (let [x (pick full idx) out (double-array k)]
+                                           (System/arraycopy x 0 out 0 (alength x))
+                                           (aset out (dec k) (if other? 1.0 0.0))
+                                           out))]
+                (loop [[yr & more] (filter #(>= % (+ 10 (quot (:q (first prepared)) 4))) years)
+                       beta nil
+                       preds []]
+                  (if-not yr
+                    preds
+                    (let [q0 (* 4 yr)
+                          w (fn [q y] (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0))))
+                          own (for [{:keys [unit q y full]} prepared
+                                    :when (and (<= (o/resolves-at q window (or lag 0)) q0) (some? y) (or y (keep-negative? unit q)))]
+                                {:x (x+ full false) :y y :w (w q y)})
+                          others (for [{:keys [unit q y full] alag :lag} @aux-prepared
+                                       :when (and (<= (o/resolves-at q window alag) q0) (some? y) (or y (keep-negative? unit q)))]
+                                   {:x (x+ full true) :y y :w (* lam (w q y))})
+                          train (concat own others)
+                          beta (if (some :y own) (hz/fit train k {:prior 100.0 :start beta}) beta)
+                          scored (for [{:keys [unit q y full]} prepared
+                                       :when (and beta (= (quot q 4) yr) (>= yr score-from))]
+                                   [q (hz/predict beta (x+ full false)) y unit])]
                       (recur more beta (into preds scored)))))))
             ;; analogs (bnm.analog): fit on the resolved rows each scored
             ;; year, negatives thinned to a third of the usual sample
@@ -470,20 +525,23 @@
                           flags? (str/starts-with? (name model) "at-")
                           knn? (str/starts-with? (name model) "knn-")
                           shrunk? (str/starts-with? (name model) "hs-")
+                          mt? (str/starts-with? (name model) "mt-")
                           inputs (cond tree? (keyword (subs (name model) 4))
                                        flags? (keyword (subs (name model) 3))
                                        knn? (keyword (subs (name model) 4))
                                        shrunk? (keyword (subs (name model) 3))
+                                       mt? (keyword (subs (name model) 3))
                                        :else model)
                           idx (or (sets inputs)
                                   (throw (ex-info (str "no inputs for model " (name model)) {:model model})))
                           runs (cond
                                  tree? (run-trees idx)
                                  knn? [{:prior (double (:k analog-opts)) :preds (run-analog idx)}]
+                                 mt? (vec (for [lam mt-weights] {:prior lam :preds (run-mt idx lam)}))
                                  :else
                                  (vec (for [p (if (= model :base) [1.0] priors)]
                                         {:prior p :preds (run-model idx p flags? shrunk?)})))
-                          default (cond tree? 50.0 knn? (double (:k analog-opts)) :else 100.0)]]
+                          default (cond tree? 50.0 knn? (double (:k analog-opts)) mt? 0.3 :else 100.0)]]
                 ;; each year's prior (or rounds) chosen on the years before
                 ;; it, so no scored year has picked its own
                 [model (o/choose-by-year runs log-score (lagged window (or lag 0)) (or (first (filter #(= default (:prior %)) runs)) (first runs)))]))))))
@@ -634,7 +692,10 @@
             units (get coverage kind all-units)
             last-q (coverage-q kind)
             fam (nm/family-of kind)
-            runs (combine ((evaluate-kind rows (update-vals event-sets #(get % kind)) units window score-from last-q models fam groups)
+            aux (when (and (political-kinds kind) (some #(str/starts-with? (clojure.core/name %) "mt-") models))
+                  (for [k (sort political-kinds) :when (not= k kind)]
+                    {:kind k :sets (update-vals event-sets #(get % k)) :last-q (coverage-q k)}))
+            runs (combine ((evaluate-kind rows (update-vals event-sets #(get % kind)) units window score-from last-q models fam groups aux)
                            (feature-sets labels (n-named fam) n-polecon groups))
                           (lagged window (get-in event-sets [:lags kind] 0)))
             preds (update-vals runs :preds)
