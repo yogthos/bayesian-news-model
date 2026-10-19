@@ -35,6 +35,19 @@
   ^doubles [events kinds unit q]
   (double-array (mapcat #(history-features (get-in events [% unit] (sorted-set)) q) kinds)))
 
+(defn event-sets
+  "From events [kind unit quarter latest-quarter known-quarter]: {:onsets
+  the earliest quarter each could be (labels), :spans every quarter each
+  could be (whether a row is at risk), :known the quarter each became known
+  (inputs)}, each {kind {unit sorted-set}}."
+  [events]
+  (reduce (fn [acc [kind unit q latest known]]
+            (-> acc
+                (update-in [:onsets kind unit] (fnil conj (sorted-set)) q)
+                (update-in [:spans kind unit] (fnil into (sorted-set)) (range q (inc latest)))
+                (update-in [:known kind unit] (fnil conj (sorted-set)) known)))
+          {} events))
+
 (defn last-complete-quarter
   "The last quarter wholly covered by a catalogue that runs through `month`
   (12y + m - 1)."

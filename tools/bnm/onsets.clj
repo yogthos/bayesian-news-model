@@ -137,6 +137,16 @@
    ["violence_surge" "SYR" "2011-04"] ["violence_surge" "LBY" "2011-02"] ["market_crash" "USA" "2008-10"]
    ["market_crash" "DEU" "2001-07"] ["banking_crisis" "GBR" "2007-08"] ["banking_crisis" "GRC" "2010-05"]])
 
+(defn read-event-sets
+  "data/slow/events.tsv as bnm.onset/event-sets: each onset's earliest
+  quarter, every quarter it could be, and the quarter it became known."
+  [path]
+  (let [q #(quot (st/month-of %) 3)]
+    (with-open [r (io/reader path)]
+      (o/event-sets (for [line (line-seq r)
+                          :let [[kind unit date _ latest known] (str/split line #"\t" -1)]]
+                      [kind unit (q date) (q (or latest date)) (q (or known date))])))))
+
 (defn read-events [path]
   (with-open [r (io/reader path)]
     (reduce (fn [acc line]
@@ -264,16 +274,16 @@
   "Out-of-sample predictions for one kind and window: a function of the
   feature sets giving {model {:prior p :preds [[q p y unit]]}}, the prior
   chosen per model and year by log score on the years before."
-  [rows onsets-by-unit units window score-from last-q models fam groups]
+  [rows {onsets-by-unit :onsets spans :spans known :known} units window score-from last-q models fam groups]
   (let [labels-q (fn [{:keys [unit q]}] (o/label (get onsets-by-unit unit (sorted-set)) q window))
         ;; rows past the catalogue's coverage are predicted too, with no label:
         ;; they are the live forecasts (bnm.readings), never fit or scored
         usable (filterv (fn [{:keys [unit q]}]
                           (and (units unit)
-                               (o/at-risk? (get onsets-by-unit unit (sorted-set)) q window)))
+                               (o/at-risk? (get spans unit (sorted-set)) q window)))
                         rows)
         prepared (mapv (fn [{:keys [unit q ^doubles x] :as r}]
-                         (let [[h1 h2] (o/history-features (get onsets-by-unit unit (sorted-set)) q)
+                         (let [[h1 h2] (o/history-features (get known unit (sorted-set)) q)
                                ^doubles nx (get-in r [:named fam])
                                ;; a group's inputs, zeros where it has none for the row
                                gs (mapv (fn [[_ width xs]] (or (get xs [unit q]) (double-array width))) groups)
@@ -312,7 +322,8 @@
             ;; fewer rounds are its first trees, so each count is a run
             run-trees
             (fn [idx]
-              (loop [[yr & more] (filter #(>= % (+ 10 (quot (:q (first prepared)) 4))) years)
+              ;; not warm-started, so no fit is needed before the scored years
+              (loop [[yr & more] (filter #(>= % (max score-from (+ 10 (quot (:q (first prepared)) 4)))) years)
                      model nil
                      preds (zipmap tree-rounds (repeat []))]
                 (if-not yr
@@ -334,7 +345,8 @@
         (into {}
               (for [model models
                     :let [tree? (str/starts-with? (name model) "gbt-")
-                          idx (sets (if tree? (keyword (subs (name model) 4)) model))
+                          idx (or (sets (if tree? (keyword (subs (name model) 4)) model))
+                                  (throw (ex-info (str "no inputs for model " (name model)) {:model model})))
                           runs (if tree?
                                  (run-trees idx)
                                  (vec (for [p (if (= model :base) [1.0] priors)]
@@ -349,8 +361,10 @@
   placebos. Each
   year's combination is fit on the earlier forecasts whose outcomes were
   known by the year's start, discounted like the hazards, and scored on the
-  year."
-  [runs window]
+  year. `only`, a set of :pool :stack :hedge, skips the others (they are
+  given empty)."
+  ([runs window] (combine runs window (set combined)))
+  ([runs window only]
   (let [members (vec (remove #(or (#{:base :pool :stack :hedge} %) (str/ends-with? (name %) "-placebo")) (sort (keys runs))))
         by-key (into {} (for [m members, [q p y unit] (:preds (runs m))] [[m unit q] p]))
         keys* (sort-by second (distinct (for [[q _ y unit] (:preds (runs (first members)))] [unit q y])))
@@ -368,14 +382,15 @@
           (if (< (count (filter :y known)) 10)
             (recur more pool stack hedge)
             (let [ws (map #(Math/pow 0.95 (/ (- q0 (:q %)) 4.0)) known)
-                  w (hz/pool-weights (map :ps known) (map :y known) ws)
-                  beta (hz/fit-stack (map :ps known) (map :y known) ws {:prior 10.0})
-                  h (hz/hedge-weights (map :ps known) (map :y known)
-                                      (map #(Math/pow hedge-discount (/ (- q0 (:q %)) 4.0)) known) 1.0)]
+                  w (when (only :pool) (hz/pool-weights (map :ps known) (map :y known) ws))
+                  beta (when (only :stack) (hz/fit-stack (map :ps known) (map :y known) ws {:prior 10.0}))
+                  h (when (only :hedge)
+                      (hz/hedge-weights (map :ps known) (map :y known)
+                                        (map #(Math/pow hedge-discount (/ (- q0 (:q %)) 4.0)) known) 1.0))]
               (recur more
-                     (into pool (for [{:keys [unit q y ps]} this] [q (hz/pool w ps) y unit]))
-                     (into stack (for [{:keys [unit q y ps]} this] [q (hz/predict-stack beta ps) y unit]))
-                     (into hedge (for [{:keys [unit q y ps]} this] [q (hz/pool h ps) y unit]))))))))))
+                     (cond-> pool w (into (for [{:keys [unit q y ps]} this] [q (hz/pool w ps) y unit])))
+                     (cond-> stack beta (into (for [{:keys [unit q y ps]} this] [q (hz/predict-stack beta ps) y unit])))
+                     (cond-> hedge h (into (for [{:keys [unit q y ps]} this] [q (hz/pool h ps) y unit]))))))))))))
 
 (defn- scores [preds base]
   (let [ps (map second preds) ys (map #(nth % 2) preds)]
@@ -401,7 +416,8 @@
         score-from (first tune-years)
         dir (str "data/runs/" run-name)
         _ (io/make-parents (str dir "/x"))
-        events (read-events "data/slow/events.tsv")
+        event-sets (read-event-sets "data/slow/events.tsv")
+        events (:onsets event-sets)
         coverage-q (read-coverage "data/slow/coverage.tsv")
         ;; base is always fitted: it is the reference for Brier skill
         models (into [:base] (remove #{:base}) (if models (mapv keyword (str/split models #",")) [:history :politics :all]))
@@ -429,7 +445,7 @@
                          (assoc r :named (let [e (ev (ef unit t))]
                                           {:financial (both (fv (ff unit t)) e) :political (both (pv (pf unit t)) e)}))))
                      rows))
-        groups (load-groups (if groups (str/split groups #",") ["mix"]) event-run {:db db :units all-units :rows rows :events events})
+        groups (load-groups (if groups (str/split groups #",") ["mix"]) event-run {:db db :units all-units :rows rows :events (:known event-sets)})
         n-named (into {} (for [fam [:financial :political]] [fam (alength ^doubles (get-in (first rows) [:named fam]))]))
         n-polecon (count (first (nm/vectorize nm/political-economy-names :political-economy)))
         market-units (set (for [{:keys [unit ^doubles x]} rows
@@ -457,7 +473,7 @@
             units (get coverage kind all-units)
             last-q (coverage-q kind)
             fam (nm/family-of kind)
-            runs (combine ((evaluate-kind rows onsets units window score-from last-q models fam groups)
+            runs (combine ((evaluate-kind rows (update-vals event-sets #(get % kind)) units window score-from last-q models fam groups)
                            (feature-sets labels (n-named fam) n-polecon groups))
                           window)
             preds (update-vals runs :preds)

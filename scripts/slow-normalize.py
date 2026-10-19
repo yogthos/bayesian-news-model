@@ -93,6 +93,17 @@ VARS = {}
 ROWS = []
 EVENTS = []
 COVERAGE = {}  # kind -> last month (YYYY-MM) its catalogue covers
+# events known only to the year: (kind, unit, date) -> the year. Dated 1
+# January for labels; the onset may be as late as 31 December, and the
+# yearly catalogues (UCDP, Laeven-Valencia) publish a year about six months
+# after it ends, which is when it can enter a forecast's inputs
+YEAR_ONLY = {}
+
+
+def year_only(kind, unit, year, desc):
+    d = "%04d-01-01" % year
+    YEAR_ONLY[(kind, unit, d)] = year
+    EVENTS.append((kind, unit, d, desc))
 
 
 def var(name, transform, freq, source, desc):
@@ -806,14 +817,16 @@ def ucdp():
         names = [iso3_of_name(n) for n in r["location"].split(",")]
         units = {u for u in locs + names if u}
         for u in units:
-            # known only to the year or worse (start_prec2 5+, dated 31 December):
-            # dated 1 January, so no row after the onset is labelled as before it
-            d = r["start_date2"] if int(r["start_prec2"]) < 5 else r["start_date2"][:4] + "-01-01"
-            episodes.add((u, d, r["conflict_id"], r["type_of_conflict"]))
+            # known only to the year or worse (start_prec2 5+, dated 31 December)
+            exact = int(r["start_prec2"]) < 5
+            episodes.add((u, r["start_date2"] if exact else int(r["start_date2"][:4]), r["conflict_id"], r["type_of_conflict"]))
             if r["intensity_level"] == "2":
                 wars.add((u, r["year"], r["conflict_id"]))
     for u, d, cid, t in episodes:
-        EVENTS.append(("conflict_onset", u, d, "conflict %s type %s" % (cid, t)))
+        if isinstance(d, int):
+            year_only("conflict_onset", u, d, "conflict %s type %s" % (cid, t))
+        else:
+            EVENTS.append(("conflict_onset", u, d, "conflict %s type %s" % (cid, t)))
     # a war year is an escalation the first year a conflict reaches it in a run of years
     seen = defaultdict(set)
     for u, y, cid in wars:
@@ -821,7 +834,7 @@ def ucdp():
     for (u, cid), ys in seen.items():
         for y in sorted(ys):
             if y - 1 not in ys:
-                EVENTS.append(("war_onset", u, "%d-01-01" % y, "conflict %s reaches 1000 deaths" % cid))
+                year_only("war_onset", u, y, "conflict %s reaches 1000 deaths" % cid)
 
 
 def esrb():
@@ -883,7 +896,7 @@ def laeven_valencia():
         y = int(r["start"])
         if r["borderline"] == "1" or any(abs(y - e) <= 2 for e in esrb_years[r["iso"]]):
             continue
-        EVENTS.append(("banking_crisis", r["iso"], "%04d-01-01" % y, "Laeven-Valencia systemic crisis"))
+        year_only("banking_crisis", r["iso"], y, "Laeven-Valencia systemic crisis")
     COVERAGE["banking_crisis"] = max(COVERAGE.get("banking_crisis", ""), "2025-12")
 
 
@@ -940,12 +953,15 @@ def mechanical(dedup):
             m = int(pend[:4]) * 12 + int(pend[5:7])
             if last is not None and m - last < 12:
                 continue
+            # the months before, not the observations: a gap must not reach back years
+            def before(months):
+                return [x for p, x in xs[max(0, i - months):i] if m - (int(p[:4]) * 12 + int(p[5:7])) <= months]
             if name == "markets/share_prices":
-                prior = [x for _, x in xs[max(0, i - 24):i]]
+                prior = before(24)
                 hit = len(prior) >= 12 and v <= 0.7 * max(prior)
                 kind = "market_crash"
             else:
-                prior = [x for _, x in xs[max(0, i - 36):i]]
+                prior = before(36)
                 base = sum(prior) / len(prior) if prior else 0
                 hit = len(prior) >= 24 and v >= 1.0 and v >= 3.0 * base
                 kind = name.split("/")[1] + "_surge"
@@ -985,8 +1001,12 @@ def main():
             if name in used:
                 f.write("\t".join((name,) + VARS[name]) + "\n")
     with open(os.path.join(OUT, "events.tsv"), "w") as f:
+        # kind unit date description latest known: the onset's date, the latest
+        # it may have been, and when it was known
         for e in sorted(set(x for x in EVENTS if x[1])):
-            f.write("\t".join(e) + "\n")
+            y = YEAR_ONLY.get(e[:3])
+            latest, known = ("%04d-12-31" % y, "%04d-06-30" % (y + 1)) if y else (e[2], e[2])
+            f.write("\t".join(e + (latest, known)) + "\n")
     with open(os.path.join(OUT, "coverage.tsv"), "w") as f:
         for k in sorted(COVERAGE):
             f.write("%s\t%s\n" % (k, COVERAGE[k]))

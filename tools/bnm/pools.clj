@@ -40,7 +40,7 @@
   `which`, :pool :stack or :hedge)."
   ([models members window] (pooled models members window :pool))
   ([models members window which]
-   (:preds (which (on/combine (into {} (for [m members] [(keyword m) {:preds (models m)}])) window)))))
+   (:preds (which (on/combine (into {} (for [m members] [(keyword m) {:preds (models m)}])) window #{which})))))
 
 (defn -main [& args]
   (let [{:keys [runs out drop]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))

@@ -397,18 +397,24 @@
            (into [q (predict-stack beta ps) y] more)))))
 
 (defn pick-model
-  "The model whose forecasts, {model [[quarter p outcome] ...]}, have the best
-  mean log score over the years lo-hi: chosen before the years held out, as
-  the members' priors are. nil when none has rows there."
+  "The model whose forecasts, {model [[quarter p outcome unit] ...]}, have
+  the best mean log score over the years lo-hi, on the rows every model
+  with rows there shares (a combination that starts later is not scored on
+  other years than its members): chosen before the years held out, as the
+  members' priors are. nil when none has rows there."
   [preds lo hi]
-  (let [score (fn [rows]
-                (let [in (filter #(<= lo (quot (first %) 4) hi) rows)]
-                  (when (seq in)
-                    (/ (reduce + (for [[_ p y] in
-                                       :let [p (min (max (double p) 1e-6) (- 1.0 1e-6))]]
-                                   (Math/log (if y p (- 1.0 p)))))
-                       (double (count in))))))
-        scored (keep (fn [[m rows]] (when-let [s (score rows)] [m s])) preds)]
+  (let [in (into {} (for [[m rows] preds
+                          :let [rs (into {} (for [[q p y unit] rows :when (<= lo (quot q 4) hi)] [[q unit] [p y]]))]
+                          :when (seq rs)]
+                      [m rs]))
+        common (when (seq in) (reduce (fn [ks rs] (filter #(contains? rs %) ks)) (keys (val (first in))) (vals in)))
+        score (fn [rs]
+                (when (seq common)
+                  (/ (reduce + (for [k common
+                                     :let [[p y] (rs k) p (min (max (double p) 1e-6) (- 1.0 1e-6))]]
+                                 (Math/log (if y p (- 1.0 p)))))
+                     (double (count common)))))
+        scored (keep (fn [[m rs]] (when-let [s (score rs)] [m s])) in)]
     (when (seq scored) (key (apply max-key val (into {} scored))))))
 
 (defn paired-gain

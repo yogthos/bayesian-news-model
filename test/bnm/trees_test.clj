@@ -36,3 +36,18 @@
 (deftest deterministic
   (let [train (rows 300 5 (fn [a _ _ g] (< (m/next-double! g) (if (pos? a) 0.6 0.2))))]
     (is (= (trees/fit train {:rounds 10}) (trees/fit train {:rounds 10})))))
+
+(deftest rare-flags-and-few-valued-inputs-can-be-split
+  ;; a flag on in 5% of rows that carries the onsets
+  (let [g (m/rng 9)
+        train (vec (for [i (range 1000)
+                         :let [flag (if (< (mod i 100) 5) 1.0 0.0) level (double (mod i 3))]]
+                     {:x (double-array [1.0 flag level]) :y (< (m/next-double! g) (if (pos? flag) 0.6 0.02)) :w 1.0}))
+        model (trees/fit train {:rounds 20})]
+    (is (> (trees/predict model (double-array [1.0 1.0 0.0])) (* 5 (trees/predict model (double-array [1.0 0.0 0.0])))))
+    (is (= [0.5 1.5] (trees/cuts (map :x train) 2 16)) "every gap of a three-valued input")))
+
+(deftest missing-values-go-the-same-way-in-fitting-and-predicting
+  (let [train (vec (for [i (range 200)] {:x (double-array [1.0 (if (< i 100) Double/NaN (double i))]) :y (< i 100) :w 1.0}))
+        model (trees/fit train {:rounds 20})]
+    (is (> (trees/predict model (double-array [1.0 Double/NaN])) 0.8))))

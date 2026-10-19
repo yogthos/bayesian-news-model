@@ -260,3 +260,13 @@
     (is (= [0.5 0.5] (vec (hz/hedge-weights ps ys [1.0 1.0 1.0 1.0] 0.0))) "no learning: equal")
     (testing "per onset: twice the rows with the same record give the same weights"
       (is (< (Math/abs (- (aget w 0) (aget (hz/hedge-weights (into ps ps) (into ys ys) (repeat 8 1.0) 1.0) 0))) 1e-9)))))
+
+(deftest models-are-picked-on-the-rows-they-share
+  ;; b starts late, on easy rows, and would win on its own rows; on the
+  ;; rows both have, a is better
+  (let [a [[8000 0.1 false "A"] [8001 0.9 true "A"] [8010 0.6 true "A"]]
+        b [[8010 0.7 true "A"]]
+        c [[8000 0.5 false "A"] [8001 0.5 true "A"] [8010 0.65 true "A"]]]
+    (is (= "b" (hz/pick-model {"a" a "b" b} 2000 2003)) "on 8010 alone b is ahead")
+    (is (= "a" (hz/pick-model {"a" a "c" c} 2000 2003)))
+    (is (= "a" (hz/pick-model {"a" a "late" [[9000 0.99 true "A"]]} 2000 2003)) "no rows in the years: not a candidate")))

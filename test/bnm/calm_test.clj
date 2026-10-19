@@ -36,3 +36,10 @@
         fs (calm/features counts)]
     (is (some? (fs 17)))
     (is (= (vec (fs 16)) (vec (fs 17))))))
+
+(deftest time-since-a-spike-passes-in-quarters-without-events
+  (let [counts (-> (quiet 30) (assoc 15 {"protest-did" 60.0 "consult-did" 40.0}) (dissoc 17))
+        fs (calm/features counts)]
+    (is (< (at (fs 17) :protest-since-spike) (at (fs 16) :protest-since-spike)))
+    (is (< (Math/abs (- (at (fs 17) :protest-since-spike) (Math/exp (- (/ 2.0 8.0))))) 1e-9))
+    (is (= (at (fs 17) :protest-cv) (at (fs 16) :protest-cv)) "the rest carry over")))

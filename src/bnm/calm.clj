@@ -53,7 +53,7 @@
 (defn features
   "{quarter double[]} from {quarter {type count}} (sorted by quarter), from
   `window` quarters after the first on. A quarter without events keeps the
-  last values."
+  last values, but for the time since a spike."
   [counts]
   (when (seq counts)
     (let [q0 (key (first counts)) q1 (key (last counts))]
@@ -66,4 +66,10 @@
               (let [steps (mapv (fn [st [_ t]] (channel-step st q (get cs t 0.0) n)) states channels)
                     out (double-array (mapcat second steps))]
                 (recur (inc q) (mapv first steps) out (if (>= (- q q0) window) (assoc! acc q out) acc)))
-              (recur (inc q) states out (if (and out (>= (- q q0) window)) (assoc! acc q out) acc)))))))))
+              ;; no events: the last values, but time since a spike still passes
+              (let [out (when out
+                          (let [x (aclone ^doubles out)]
+                            (doseq [[i {:keys [spike]}] (map-indexed vector states) :when spike]
+                              (aset x (* 4 i) (Math/exp (- (/ (- q spike) 8.0)))))
+                            x))]
+                (recur (inc q) states out (if (and out (>= (- q q0) window)) (assoc! acc q out) acc))))))))))

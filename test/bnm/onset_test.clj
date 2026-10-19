@@ -67,3 +67,17 @@
     (is (< (Math/abs (- (Math/exp -0.1) (aget ^doubles x 3))) 1e-9) "a protest surge two quarters back")
     (is (= [0.0 0.0] (vec (drop 4 x))) "no war")
     (is (= [0.0 0.0] (vec (take 2 (o/histories events ["coup"] "A" 89)))) "nothing from after q")))
+
+(deftest events-carry-their-span-and-when-they-were-known
+  ;; a war known only to the year 2000 (quarters 8000-8003), published mid-2001
+  (let [{:keys [onsets spans known]} (o/event-sets [["war_onset" "A" 8000 8003 8005] ["coup" "A" 8010 8010 8010]])]
+    (is (= #{8000} (set (get-in onsets ["war_onset" "A"]))))
+    (is (= #{8000 8001 8002 8003} (set (get-in spans ["war_onset" "A"]))))
+    (is (= #{8005} (set (get-in known ["war_onset" "A"]))))
+    (is (= #{8010} (set (get-in known ["coup" "A"]))))
+    (testing "a row a year after the earliest date, but within a year of the latest, is not at risk"
+      (is (o/at-risk? (get-in onsets ["war_onset" "A"]) 8004 [1 4]))
+      (is (not (o/at-risk? (get-in spans ["war_onset" "A"]) 8004 [1 4]))))
+    (testing "another kind's history sees the war only once published"
+      (is (= [0.0 0.0] (vec (o/histories known ["war_onset"] "A" 8003))))
+      (is (pos? (aget (o/histories known ["war_onset"] "A" 8005) 0))))))

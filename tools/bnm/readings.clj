@@ -37,7 +37,7 @@
           (when (pos? (compare pend (or (.get acc k) ""))) (.put acc k pend)))))
     (into {} acc)))
 
-(def kinds ["conflict_onset" "war_onset" "protest_surge" "violence_surge" "coup" "banking_crisis"])
+(def kinds ["conflict_onset" "war_onset" "protest_surge" "violence_surge" "coup" "banking_crisis" "market_crash"])
 
 (def tune-years
   "The years each kind's model of record is chosen on, before the years held
@@ -56,12 +56,14 @@
                (into [] (keep (fn [line]
                                 (let [[kind win m q unit p y] (str/split line #"\t")]
                                   (when (and (= win "w1") (not= m "base") (not (str/ends-with? m "-placebo"))
+                                             ;; bnm.pools' diagnostics are not candidates
+                                             (not (str/starts-with? m "pool-"))
                                              (or (nil? model) (= m model)))
                                     [kind m (parse-long q) unit (parse-double p) y]))))
                      (line-seq r)))]
     (into {} (for [[kind by-kind] (group-by first rows)
                    :let [by-model (group-by second by-kind)
-                         resolved-of (fn [rs] (for [[_ _ q _ p y] rs :when (#{"true" "false"} y)] [q p (= "true" y)]))
+                         resolved-of (fn [rs] (for [[_ _ q u p y] rs :when (#{"true" "false"} y)] [q p (= "true" y) u]))
                          chosen (or model (hz/pick-model (update-vals by-model resolved-of)
                                                          (first tune-years) (second tune-years)))
                          rs (mapv (fn [[k _ q u p y]] [k q u p y]) (get by-model chosen))]]

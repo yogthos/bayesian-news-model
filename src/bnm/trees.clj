@@ -11,18 +11,25 @@
 
 (defn- sigmoid ^double [^double z] (/ 1.0 (+ 1.0 (Math/exp (- z)))))
 
-(defn- thresholds
-  "Up to bins-1 distinct cut points between the quantiles of column j."
+(defn cuts
+  "Cut points of column j: midway between each pair of neighbouring distinct
+  values when there are at most `bins` (a flag, however rare, gets its
+  cut), else midway above each of the bins-1 quantiles. Missing values
+  (NaN) are left out, and go left of every cut."
   [xs j bins]
-  (let [col (sort (map #(aget ^doubles % (int j)) xs))
-        n (count col)
-        v (vec col)]
-    (vec (distinct (for [k (range 1 bins)
-                         :let [i (min (dec n) (quot (* k n) bins))]
-                         :when (pos? i)
-                         :let [lo (v (dec i)) hi (v i)]
-                         :when (< lo hi)]
-                     (* 0.5 (+ lo hi)))))))
+  (let [v (vec (sort (remove #(Double/isNaN %) (map #(aget ^doubles % (int j)) xs))))
+        d (vec (dedupe v))
+        mid (fn [a b] (* 0.5 (+ (double a) (double b))))]
+    (if (<= (count d) bins)
+      (mapv mid d (rest d))
+      (let [n (count v)
+            ds (apply sorted-set d)
+            above (fn [x] (first (subseq ds > x)))]
+        (vec (distinct (for [k (range 1 bins)
+                             :let [x (v (min (dec n) (quot (* k n) bins)))
+                                   y (above x)]
+                             :when y]
+                         (mid x y))))))))
 
 (defn- bin-of ^long [cuts ^double x]
   ;; the number of cuts below x
@@ -80,7 +87,9 @@
 (defn- tree-value ^double [tree ^doubles x]
   (if-let [v (:leaf tree)]
     v
-    (recur (if (<= (aget x (int (:feature tree))) (double (:cut tree))) (:left tree) (:right tree)) x)))
+    (let [v (aget x (int (:feature tree)))]
+      ;; missing goes left, as in fitting (bin-of puts NaN below every cut)
+      (recur (if (or (Double/isNaN v) (<= v (double (:cut tree)))) (:left tree) (:right tree)) x))))
 
 (defn score ^double [{:keys [base trees]} ^doubles x]
   (reduce (fn [s t] (+ s (tree-value t x))) base trees))
@@ -95,7 +104,7 @@
         ys (double-array (map #(if (:y %) 1.0 0.0) rows))
         ws (double-array (map #(double (:w %)) rows))
         nf (alength ^doubles (first xs))
-        cuts (mapv #(thresholds xs % bins) (range nf))
+        cuts (mapv #(cuts xs % bins) (range nf))
         binned (object-array (for [j (range nf)]
                                (long-array (map #(bin-of (cuts j) (aget ^doubles % (int j))) xs))))
         wy (reduce + (map * ys ws)) wt (reduce + ws)
