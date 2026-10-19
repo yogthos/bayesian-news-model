@@ -10,7 +10,7 @@
 
     jolt -A:tools -M -m bnm.anticipation [--run onsets-live] [--kinds a,b] [--bench history]
                                          [--level country|subregion|region]
-                                         [--tests m] [--confirm true]
+                                         [--tests m] [--confirm true] [--split world]
 
   --bench sets the model every other is scored against: a group's placebo
   (ties-placebo) asks whether the group knows anything about the country.
@@ -18,7 +18,8 @@
   in any of them (bnm.onset/aggregate): methods for waves and contagion may
   work for a region before they work for a country. --tests m widens the
   recall intervals for m comparisons (Bonferroni). Eras are 2003-14 and
-  2015-22; 2023 on is locked for confirmation (--confirm true).
+  2015-22; 2023 on is locked for confirmation (--confirm true). --split
+  world scores calm and busy world quarters apart.
 
   Reads data/runs/<run>/preds.tsv; writes anticipation.txt beside it."
   (:require [bnm.geo :as geo]
@@ -94,7 +95,7 @@
     "region" (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u (first (geo/parents s))]))))
 
 (defn -main [& args]
-  (let [{:keys [run kinds bench level tests confirm]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run kinds bench level tests confirm split]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         ;; Bonferroni over the groups and models tried for the same cells
         alpha (/ 0.1 (double (or (some-> tests parse-long) 1)))
         eras (if (= confirm "true") confirmation eras)
@@ -112,6 +113,18 @@
                  group-of (into {} (map (fn [[kind by-unit]]
                                           [kind (reduce-kv (fn [acc unit qs] (update acc (get group-of unit unit) (fnil into (sorted-set)) qs))
                                                            {} by-unit)]))))
+        ;; --split world: each block for calm and busy world quarters, busy
+        ;; when more onsets of every kind were known worldwide over the
+        ;; last year than in the median quarter (weather's windows of
+        ;; opportunity: skill that comes with the state)
+        state-of (when (= split "world")
+                   (let [known (:known (onsets/read-event-sets "data/slow/events.tsv"))
+                         ts (sort (for [[_ by-unit] known [_ qs] by-unit t qs] t))
+                         count-at (fn [q] (- (count (take-while #(<= % q) ts)) (count (take-while #(<= % (- q 4)) ts))))
+                         qs (range (* 4 2000) (* 4 2027))
+                         counts (zipmap qs (map count-at qs))
+                         median (nth (sort (vals counts)) (quot (count counts) 2))]
+                     (fn [q] (if (> (get counts q 0) median) "busy" "calm"))))
         gain (fn [{:keys [diff lo hi]}] (format "%s [%s %s]%s" (f3 diff) (f3 lo) (f3 hi) (if (pos? lo) "*" " ")))
         header (str (format "Anticipation: each model against %s (out of sample).\n" bench)
                     "Recall in the top 5% and 10% of each quarter and Sarlin usefulness (mu 0.9), each with its gain over\n"
@@ -130,14 +143,16 @@
                      :let [b (get by-model bench)]
                      :when b
                      [era lo hi] eras
+                     state (if state-of ["calm" "busy"] [nil])
                      hard? [false true]]
                  (future
                    (let [in (filter (fn [[unit q]] (and (<= lo (quot q 4) hi)
+                                                        (or (nil? state) (= state (state-of q)))
                                                         (or (not hard?)
                                                             (onsets/hard-row? (get-in events [kind unit] (sorted-set)) q))))
                                     (keys b))]
                      (with-out-str
-                       (println (format "%s %s %s%s" kind w era (if hard? " hard" "")))
+                       (println (format "%s %s %s%s%s" kind w era (if state (str "/" state) "") (if hard? " hard" "")))
                        (doseq [[m rows] (sort-by key by-model)
                                :when (not= m bench)
                                :let [s (line-for rows b in alpha (when-not group-of region-of))]
@@ -155,6 +170,7 @@
         file (str "anticipation" (when (not= bench default-bench) (str "-vs-" bench))
                   (when group-of (str "-" level))
                   (when (= confirm "true") "-confirm")
-                  (when tests (str "-tests" tests)) ".txt")]
+                  (when tests (str "-tests" tests))
+                  (when split (str "-" split)) ".txt")]
     (print out)
     (spit (str dir "/" file) out)))
