@@ -54,6 +54,10 @@
     jolt -A:tools -M -m bnm.onsets [--name onsets] [--from 1985] [--rows <run>]
                                    [--kinds a,b] [--models base,history,...] [--groups mix,ties]
                                    [--events <training run with rows/, for the event model's state>]
+                                   [--delay n]
+
+  --delay n gives every input group's values from n quarters before each
+  row: a gain that survives the delay cannot be same-quarter leakage.
 
   A model named gbt-<inputs> is boosted trees (bnm.trees) on the inputs of
   <inputs>, its rounds chosen each year like the priors. One named
@@ -172,14 +176,20 @@
   rows with the same sources present, so it keeps who has data."
   [names event-run ctx]
   (vec (concat (when event-run
-                 (let [xs (nm/load-event-state event-run)]
+                 (let [xs (cond->> (nm/load-event-state event-run)
+                            (pos? (:delay ctx 0)) (into {} (map (fn [[[u q] x]] [[u (+ q (:delay ctx))] x]))))]
                    [["event" (count nm/event-labels) xs]
                     ;; shuffled among rows with the same presence (its last column)
                     ["event-placebo" (count nm/event-labels)
                      (ties/placebo xs 1 #(aget ^doubles % (dec (count nm/event-labels))))]]))
                (for [g names
                      :let [[width load stratum] (or (group-loaders g) (throw (ex-info (str "unknown group " g) {})))
-                           [width xs] (o/with-presence width (load ctx) (:rows ctx))]
+                           ;; --delay n: each row sees the group as it was n quarters
+                           ;; before, so a gain that survives is not same-quarter leakage
+                           delayed (if (pos? (:delay ctx 0))
+                                     (into {} (for [[[u q] x] (load ctx)] [[u (+ q (:delay ctx))] x]))
+                                     (load ctx))
+                           [width xs] (o/with-presence width delayed (:rows ctx))]
                      entry [[g width xs] [(str g "-placebo") width (ties/placebo xs 1 (or stratum (constantly nil)))]]]
                  entry))))
 
@@ -540,7 +550,7 @@
 
 (defn- f3 [x] (if x (format "%.3f" (double x)) "  -  "))
 
-(defn run [{:keys [name from rows kinds models groups] event-run :events}]
+(defn run [{:keys [name from rows kinds models groups delay] event-run :events}]
   (let [run-name (or name "onsets")
         from (parse-long (or from "1985"))
         score-from (first tune-years)
@@ -579,7 +589,8 @@
             (when-let [unused (seq (o/unused-groups models (str/split groups #",")))]
               (throw (ex-info (str "no model in --models uses group " (str/join ", " unused)
                                    " (name it: g, g-placebo, named+g, gbt-named+g, ...)") {:groups unused}))))
-        groups (load-groups (if groups (str/split groups #",") ["mix"]) event-run {:db db :units all-units :rows rows :events (:known event-sets)})
+        groups (load-groups (if groups (str/split groups #",") ["mix"]) event-run {:db db :units all-units :rows rows :events (:known event-sets)
+                                                                                      :delay (or (some-> delay parse-long) 0)})
         n-named (into {} (for [fam [:financial :political]] [fam (alength ^doubles (get-in (first rows) [:named fam]))]))
         n-polecon (count (first (nm/vectorize nm/political-economy-names :political-economy)))
         market-units (set (for [{:keys [unit ^doubles x]} rows
