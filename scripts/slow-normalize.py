@@ -284,6 +284,10 @@ VDEM = {
     "v2xcs_ccsi": ("regime/civil_society", "core civil society index"),
     "v2x_clphy": ("regime/physical_integrity", "physical violence index (freedom from)"),
     "v2x_corr": ("regime/corruption", "political corruption index"),
+    "v2x_ex_military": ("regime/military_executive", "military dimension of the executive index"),
+    "v2xel_elecparl": ("regime/election_legislative", "legislative or constituent assembly election held"),
+    "v2xel_elecpres": ("regime/election_presidential", "presidential election held"),
+    "v2x_regime": ("regime/regime_type", "regimes of the world: closed autocracy 0 to liberal democracy 3"),
 }
 
 

@@ -61,6 +61,9 @@
         (let [all (on/combine (into {} (for [m members] [(keyword m) {:preds (models m)}])) window)]
           (doseq [c on/combined] (emit (name c) (:preds (all c)))))
         (when (every? models record) (emit "pool-record" (pooled models record window)))
-        (doseq [m members]
-          (emit (str "pool-minus-" m) (pooled models (remove #{m} members) window)))
+        ;; the pools without each member, eight at a time
+        (doseq [batch (partition-all 8 members)
+                [m preds] (mapv (fn [[m f]] [m @f])
+                                (doall (for [m batch] [m (future (pooled models (remove #{m} members) window))])))]
+          (emit (str "pool-minus-" m) preds))
         (.flush w)))))

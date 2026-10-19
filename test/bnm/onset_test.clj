@@ -81,3 +81,17 @@
     (testing "another kind's history sees the war only once published"
       (is (= [0.0 0.0] (vec (o/histories known ["war_onset"] "A" 8003))))
       (is (pos? (aget (o/histories known ["war_onset"] "A" 8005) 0))))))
+
+(deftest onsets-among-neighbours
+  ;; peers: {level {unit [other units]}}; each kind and level gives the
+  ;; decayed count of the peers' onsets known by q, log1p
+  (let [events {"coup" {"MLI" (sorted-set 100) "BFA" (sorted-set 104) "NER" (sorted-set 120)}}
+        peers {:sub {"NER" ["MLI" "BFA"] "MLI" ["BFA" "NER"]} :reg {"NER" ["MLI" "BFA" "FRA"]}}
+        x (vec (o/neighbourhood events ["coup"] peers "NER" 104))]
+    (is (= 2 (count x)) "one per kind and level")
+    (is (< (Math/abs (- (first x) (Math/log1p (+ (Math/exp -1.0) 1.0)))) 1e-12)
+        "MLI four quarters back decays to e^-1, BFA this quarter counts 1")
+    (is (= (first x) (second x)) "the region sees the same onsets")
+    (is (zero? (first (o/neighbourhood events ["coup"] peers "NER" 99))) "nothing known yet")
+    (is (< (Math/abs (- (second (o/neighbourhood events ["coup"] peers "MLI" 120)) (Math/log1p 1.0))) 1e-12)
+        "NER's this quarter counts; BFA's, four years back, is past the window; MLI's own never counts")))

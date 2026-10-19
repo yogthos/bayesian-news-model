@@ -48,6 +48,8 @@
     "people/tertiary_enrolment" "people/urban_share" "people/gini"
     "regime/electoral_democracy" "regime/liberal_democracy" "regime/civil_society"
     "regime/physical_integrity" "regime/corruption" "trade/commodity_tot"
+    "regime/military_executive" "regime/election_legislative" "regime/election_presidential"
+    "regime/regime_type"
     "finance/fx_peg" "finance/fx_falling" "finance/anchor_usd" "finance/anchor_euro"
     "finance/anchor_gbp" "finance/anchor_cny" "finance/anchor_rub"})
 
@@ -288,6 +290,31 @@
           (minus (g "regime/electoral_democracy" t) (g "regime/liberal_democracy" t))
           (g "regime/civil_society" t) (g "regime/physical_integrity" t) (g "regime/corruption" t)]))]))
 
+(def leaders-names [:military-executive :since-election :election-due :since-regime-change])
+
+(defn leaders
+  "[names f] from V-Dem, as published by each month: the military's part in
+  the executive (coup-prone, Powell 2012), years since the last national
+  election over ten and the share of the country's own usual gap between
+  elections that has passed (contests near and past due), and how recently
+  the regime type changed, exp(-years/5) (0 if never): new regimes are the
+  unstable ones (Goldstone et al. 2010). The election cycle is each
+  country's own, from its past elections."
+  [db _units _months]
+  [leaders-names
+   (fn [unit t]
+     (let [g (getter db unit)
+           elections (sort (distinct (mapcat #(some-> (db [unit %]) (sk/periods-where t (fn [v] (> v 0.5))))
+                                             ["regime/election_legislative" "regime/election_presidential"])))
+           since (when (seq elections) (/ (- t (last elections)) 12.0))
+           gap (sk/median-gap elections)
+           change (some-> (db [unit "regime/regime_type"]) (sk/last-change t))
+           typed (some-> (db [unit "regime/regime_type"]) (sk/value t))]
+       [(g "regime/military_executive" t)
+        (some-> since (min 10.0) (/ 10.0))
+        (when (and since gap (pos? gap)) (min 2.0 (/ (* 12.0 since) gap)))
+        (when typed (if change (Math/exp (- (/ (- t change) 60.0))) 0.0))]))])
+
 (def tot-names [:tot12 :tot3 :tot12-fall :tot-vol :tot-vol-x-primary])
 
 (defn terms-of-trade
@@ -368,7 +395,8 @@
    :regime [[:democracy :liberal-gap :civil-society :physical-integrity :corruption]]
    :terms-of-trade [[:tot12 :tot3 :tot-vol]]
    :fx [[:peg :falling] [:anchor-usd :anchor-euro :anchor-gbp :anchor-cny :anchor-rub]]
-   :market-calm [[:vol-gap :vol-gap5]]})
+   :market-calm [[:vol-gap :vol-gap5]]
+   :leaders [[:military-executive :since-regime-change] [:since-election] [:election-due]]})
 
 (defn vectorize
   "Inputs as doubles, missing as 0, then one presence indicator per group:

@@ -35,6 +35,21 @@
   ^doubles [events kinds unit q]
   (double-array (mapcat #(history-features (get-in events [% unit] (sorted-set)) q) kinds)))
 
+(def neighbourhood-window "Quarters a neighbour's onset counts for." 12)
+
+(defn neighbourhood
+  "Per kind and per level of `peers` ({level {unit [other units]}}, e.g.
+  subregion and region, levels in key order), the peers' onsets known by q, each weighted
+  exp(-quarters ago / 4) within `neighbourhood-window`, log1p. Upheaval
+  next door, whatever its kind: how much it spreads is left to the fit."
+  ^doubles [events kinds peers unit q]
+  (double-array
+   (for [k kinds [_ by-unit] (sort-by key peers)]
+     (Math/log1p
+      (reduce + (for [p (get by-unit unit) :when (not= p unit)
+                      t (subseq (get-in events [k p] (sorted-set)) > (- q neighbourhood-window) <= q)]
+                  (Math/exp (- (/ (- q t) 4.0)))))))))
+
 (defn event-sets
   "From events [kind unit quarter latest-quarter known-quarter]: {:onsets
   the earliest quarter each could be (labels), :spans every quarter each

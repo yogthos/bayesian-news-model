@@ -28,8 +28,12 @@
   of work in the cities), nonlinear (income and inequality as curves),
   regime (V-Dem democracy as a curve, civil society, integrity), tot (the
   IMF's commodity terms of trade by country: change, falls, volatility), fx
-  (exchange-rate regime and anchor currency); see
-  bnm.named.
+  (exchange-rate regime and anchor currency), calm and volcalm (long calm and
+  breaks in event streams and markets), histories (the country's past onsets
+  of every kind), neighbours (onsets of every kind in its subregion and
+  region, recent and decayed), leaders (V-Dem: the military in the executive,
+  the election cycle, how recently the regime type changed); see bnm.named
+  and bnm.onset.
   Every group also runs as a placebo,
   <group>-placebo, its values shuffled across countries within each quarter:
   a group whose gain the placebo matches carries nothing about the country.
@@ -51,6 +55,7 @@
   preds.tsv (kind window model quarter unit p outcome), and the recorded
   rows, rows.tsv, which --rows reads back instead of running the slow layer."
   (:require [bnm.calm :as calm]
+            [bnm.geo :as geo]
             [bnm.hazard :as hz]
             [bnm.mix :as mix]
             [bnm.named :as nm]
@@ -94,6 +99,15 @@
   "The catalogues whose histories feed every kind (the histories group)."
   ["banking_crisis" "conflict_onset" "coup" "market_crash" "protest_surge" "violence_surge" "war_onset"])
 
+(defn peers
+  "{:region {unit [units]} :subregion {unit [units]}} over `units`, from the
+  geography's M49 subregions and regions."
+  [units]
+  (let [sub (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u s]))
+        reg (into {} (for [[u s] sub] [u (first (geo/parents s))]))
+        by (fn [m] (let [g (group-by m (keys m))] (into {} (for [[u k] m] [u (vec (remove #{u} (g k)))]))))]
+    {:region (by reg) :subregion (by sub)}))
+
 (def group-loaders
   "Input groups by name: [width loader], the loader taking {:db :units :rows}
   (the slow series, the countries, the onset rows) and giving {[unit
@@ -107,10 +121,15 @@
    "youth" (named-group nm/youth nm/youth-names :youth)
    "nonlinear" (named-group nm/nonlinear nm/nonlinear-names :nonlinear)
    "regime" (named-group nm/regime nm/regime-names :regime)
+   "leaders" (named-group nm/leaders nm/leaders-names :leaders)
    "tot" (named-group nm/terms-of-trade nm/tot-names :terms-of-trade)
    "fx" (named-group nm/fx nm/fx-names :fx)
    "calm" [(count calm/labels) (fn [_] (nm/load-event-calm mix-path))]
    "volcalm" (named-group nm/market-calm nm/market-calm-names :market-calm)
+   "neighbours" [(* 2 (count history-kinds))
+                 (fn [{:keys [events rows units]}]
+                   (let [ps (peers units)]
+                     (into {} (for [{:keys [unit q]} rows] [[unit q] (o/neighbourhood events history-kinds ps unit q)]))))]
    "histories" [(* 2 (count history-kinds))
                 (fn [{:keys [events rows]}]
                   (into {} (for [{:keys [unit q]} rows] [[unit q] (o/histories events history-kinds unit q)])))]})
