@@ -1,5 +1,6 @@
 (ns bnm.onset-test
-  (:require [bnm.onset :as o]
+  (:require [bnm.math :as m]
+            [bnm.onset :as o]
             [clojure.test :refer [deftest is testing]]))
 
 (def onsets (sorted-set 100))
@@ -138,3 +139,19 @@
     (is (< (Math/abs (- (nth x 3) (Math/log1p (+ 2.0 (Math/exp -1.0))))) 1e-12) "the world adds FRA")
     (is (< (Math/abs (- (nth x 0) (Math/log1p 1.0))) 1e-12) "fast decay forgets MLI, past three taus")
     (is (zero? (first (o/waves waves groups "NER" 99 [1.0 4.0]))) "nothing yet but its own")))
+
+(deftest regional-dispersion
+  ;; onsets drawn independently at the forecast rates disperse like their
+  ;; Poisson-binomial variance; onsets that come together in a group do not
+  (let [g (m/rng 11)
+        units (for [r (range 20) c (range 10)] [(str "r" r "c" c) (str "r" r)])
+        of (into {} units)
+        p 0.05
+        indep (into {} (for [q (range 200) [u _] units] [[u q] [p (< (m/next-double! g) p)]]))
+        waves (into {} (for [q (range 200) r (range 20)
+                             :let [hit (< (m/next-double! g) p)]
+                             c (range 10)]
+                         [[(str "r" r "c" c) q] [p hit]]))]
+    (is (< (Math/abs (- 1.0 (:ratio (o/dispersion indep of)))) 0.1))
+    (is (> (:ratio (o/dispersion waves of)) 5.0) "a whole group at once")
+    (is (= 4000 (:groups (o/dispersion indep of))) "group-quarters")))

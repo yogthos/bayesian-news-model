@@ -133,6 +133,22 @@
                         :when (not= u unit)]
                     (Math/exp (- (/ (- q t) tau))))))))))
 
+(defn dispersion
+  "How much onsets cluster within groups beyond independent forecasts:
+  over every group-quarter of `rows` ({[unit q] [p y]}, grouped by
+  `group-of`), the squared gap between the onsets that came and the sum of
+  their probabilities, over the Poisson-binomial variance sum p(1-p).
+  {:ratio :groups}: about 1 when the units' onsets are independent given
+  the forecasts, above when they come in waves."
+  [rows group-of]
+  (let [cells (reduce-kv (fn [acc [unit q] [p y]]
+                           (update acc [(get group-of unit unit) q]
+                                   (fn [[o e v]] [(+ (or o 0.0) (if y 1.0 0.0)) (+ (or e 0.0) p) (+ (or v 0.0) (* p (- 1.0 p)))])))
+                         {} rows)
+        num (reduce + (for [[o e _] (vals cells)] (let [d (- o e)] (* d d))))
+        den (reduce + (map #(nth % 2) (vals cells)))]
+    {:ratio (when (pos? den) (/ num den)) :groups (count cells)}))
+
 (defn event-sets
   "From events [kind unit quarter latest-quarter known-quarter]: {:onsets
   the earliest quarter each could be (labels), :spans every quarter each
