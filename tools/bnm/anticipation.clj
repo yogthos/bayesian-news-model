@@ -30,12 +30,15 @@
             [clojure.string :as str]))
 
 (def eras
-  "The eras adoption decisions are scored on. 2023 on is the confirmation
-  period, locked from October 2026: scored once, with --confirm, for the
-  record chosen on these."
+  "The eras adoption decisions are scored on: rows from these years whose
+  labels resolve before `lock` (window and reporting lag, bnm.onset/in-era?).
+  The rest are the confirmation period, locked from October 2026: scored
+  once, with --confirm, for the record chosen on these."
   [["03-14" 2003 2014] ["15-22" 2015 2022]])
 
 (def confirmation [["23-26" 2023 2026]])
+
+(def lock "The first year whose outcomes are held for confirmation." 2023)
 
 (def default-bench "history")
 
@@ -111,6 +114,7 @@
                                                  [_ rows] by-model [unit _] (keys rows)] unit)))
         preds (cond->> (read-preds (str dir "/preds.tsv") kinds)
                 group-of (into {} (map (fn [[kw by-model]] [kw (update-vals by-model #(o/aggregate % group-of))]))))
+        lags (:lags (onsets/read-event-sets "data/slow/events.tsv"))
         events (cond->> (onsets/read-events "data/slow/events.tsv")
                  group-of (into {} (map (fn [[kind by-unit]]
                                           [kind (reduce-kv (fn [acc unit qs] (update acc (get group-of unit unit) (fnil into (sorted-set)) qs))
@@ -148,7 +152,9 @@
                      state (if state-of ["calm" "busy"] [nil])
                      hard? [false true]]
                  (future
-                   (let [in (filter (fn [[unit q]] (and (<= lo (quot q 4) hi)
+                   (let [window (onsets/windows (keyword w))
+                         lag (get lags kind 0)
+                         in (filter (fn [[unit q]] (and (o/in-era? q window lag [lo hi] lock (= confirm "true"))
                                                         (or (nil? state) (= state (state-of q)))
                                                         (or (not hard?)
                                                             (onsets/hard-row? (get-in events [kind unit] (sorted-set)) q))))

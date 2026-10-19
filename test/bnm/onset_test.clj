@@ -184,3 +184,13 @@
       (is (> (at "r0c0" 100) 0.06) "a hot region's member lifted")
       (is (< (Math/abs (- (at "r9c0" 100) 0.03)) 0.015) "a calm region's left near its forecast")
       (is (= 0.03 (at "r0c0" 3)) "nothing resolved yet: unchanged"))))
+
+(deftest eras-split-by-when-labels-resolve
+  ;; decision eras score only rows whose labels resolve before the lock; the
+  ;; rest belong to the confirmation period, whatever year they forecast from
+  (let [lock 2023 q22 (+ (* 4 2022) 3)]
+    (is (o/in-era? (* 4 2020) [2 4] 0 [2015 2022] lock false))
+    (is (not (o/in-era? q22 [2 4] 0 [2015 2022] lock false)) "late 2022 resolves in 2023")
+    (is (o/in-era? q22 [2 4] 0 [2023 2026] lock true) "so it is confirmation")
+    (is (not (o/in-era? (- q22 4) [2 4] 5 [2015 2022] lock false)) "a lag pushes it past the lock too")
+    (is (not (o/in-era? (* 4 2010) [2 4] 0 [2023 2026] lock true)))))

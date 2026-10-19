@@ -196,6 +196,19 @@
   [q [_ b] lag]
   (+ q b lag))
 
+(defn in-era?
+  "Whether a row at q belongs to an era [from to] (years) given the year
+  `lock` from which outcomes are held for confirmation: a decision era
+  (confirm? false) takes rows from its years whose labels resolve before
+  the lock (`resolves-at`), the confirmation era every row up to its last
+  year whose label resolves at or after it. A row forecast in late 2022
+  whose window reaches 2023 is confirmation, not decision."
+  [q window lag [from to] lock confirm?]
+  (let [year (quot q 4) resolved (resolves-at q window lag)]
+    (if confirm?
+      (and (<= year to) (>= resolved (* 4 lock)))
+      (and (<= from year to) (< resolved (* 4 lock))))))
+
 (defn event-sets
   "From events [kind unit quarter latest-quarter known-quarter]: {:onsets
   the earliest quarter each could be (labels), :spans every quarter each
