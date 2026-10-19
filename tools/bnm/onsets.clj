@@ -503,6 +503,10 @@
                          (assoc r :named (let [e (ev (ef unit t))]
                                           {:financial (both (fv (ff unit t)) e) :political (both (pv (pf unit t)) e)}))))
                      rows))
+        _ (when groups
+            (when-let [unused (seq (o/unused-groups models (str/split groups #",")))]
+              (throw (ex-info (str "no model in --models uses group " (str/join ", " unused)
+                                   " (name it: g, g-placebo, named+g, gbt-named+g, ...)") {:groups unused}))))
         groups (load-groups (if groups (str/split groups #",") ["mix"]) event-run {:db db :units all-units :rows rows :events (:known event-sets)})
         n-named (into {} (for [fam [:financial :political]] [fam (alength ^doubles (get-in (first rows) [:named fam]))]))
         n-polecon (count (first (nm/vectorize nm/political-economy-names :political-economy)))

@@ -75,6 +75,15 @@
       (aset out (+ keep (* 2 i) 1) (if (< v (double lo)) 1.0 0.0)))
     out))
 
+(defn unused-groups
+  "The input groups that no model names: a model's inputs are its name
+  without a gbt- or at- prefix, split on +, each part without -placebo."
+  [models groups]
+  (let [used (set (for [m models
+                        part (clojure.string/split (clojure.string/replace (name m) #"^(gbt|at)-" "") #"\+")]
+                    (clojure.string/replace part #"-placebo$" "")))]
+    (vec (remove used groups))))
+
 (defn event-sets
   "From events [kind unit quarter latest-quarter known-quarter]: {:onsets
   the earliest quarter each could be (labels), :spans every quarter each

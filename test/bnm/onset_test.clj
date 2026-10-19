@@ -107,3 +107,9 @@
     (is (= [1.0 0.5 1.0 0.0 0.0 0.0] (vec (o/tail-flags (double-array [1.0 0.5 95.0 0.0]) 2 cuts))))
     (testing "a rare flag stays a flag: its top tail is its 1s"
       (is (= [1.0 0.0] (subvec (vec (o/tail-flags (double-array [1.0 0.5 50.0 1.0]) 2 cuts)) 4))))))
+
+(deftest groups-no-model-uses
+  (is (= ["leaders" "neighbours"] (o/unused-groups ["history" "named"] ["leaders" "neighbours"])))
+  (is (empty? (o/unused-groups ["history" "named+leaders-placebo" "gbt-neighbours"] ["leaders" "neighbours"])))
+  (is (empty? (o/unused-groups ["at-named+mix"] ["mix"])))
+  (is (= ["mix"] (o/unused-groups ["mixed"] ["mix"])) "whole names only"))

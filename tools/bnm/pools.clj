@@ -51,18 +51,15 @@
                              (.write w (str kind "\t" wname "\t" label "\t" q "\t" unit "\t" p "\t" (str y) "\n"))))]]
         (println kind wname (count members) "members:" (str/join " " members))
         (doseq [m members] (emit m (models m)))
-        ;; the members' forecasts aligned once; a sub-pool takes their columns
+        ;; the members' forecasts aligned once; a sub-pool takes their columns.
+        ;; Every combination and sub-pool of the window on a thread of its own
         (let [[ms rows] (on/aligned (into {} (for [m members] [(keyword m) {:preds (models m)}])))
               col (zipmap (map name ms) (range))
               sub (fn [names] (let [ix (mapv col names)] (mapv (fn [r] (update r :ps #(mapv % ix))) rows)))
-              all (on/combine-rows rows window (set on/combined))]
-          (doseq [c on/combined] (emit (name c) (:preds (all c))))
-          (when (every? models record)
-            (emit "pool-record" (:preds (:pool (on/combine-rows (sub record) window #{:pool})))))
-          ;; the converged pools without each member, eight at a time
-          (doseq [batch (partition-all 8 members)
-                  [m preds] (mapv (fn [[m f]] [m @f])
-                                  (doall (for [m batch]
-                                           [m (future (:preds (:mlpool (on/combine-rows (sub (remove #{m} members)) window #{:mlpool}))))])))]
-            (emit (str "pool-minus-" m) preds)))
+              fit (fn [rows c] (future (:preds (c (on/combine-rows rows window #{c})))))
+              jobs (doall (concat (for [c on/combined] [(name c) (fit rows c)])
+                                  (when (every? models record) [["pool-record" (fit (sub record) :pool)]])
+                                  ;; the converged pool without each member
+                                  (for [m members] [(str "pool-minus-" m) (fit (sub (remove #{m} members)) :mlpool)])))]
+          (doseq [[label f] jobs] (emit label @f)))
         (.flush w)))))
