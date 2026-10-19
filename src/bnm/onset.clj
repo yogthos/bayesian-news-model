@@ -52,14 +52,19 @@
 
 (defn tail-cuts
   "[lo hi] for each column of `xs` (double arrays) from `keep` on: the q and
-  1-q quantiles of its values."
+  1-q quantiles of its values; [:flag low] for a column of two values or
+  fewer, which `tail-flags` passes through as above its lower value."
   [xs keep q]
   (let [xs (vec xs) n (count xs) width (alength ^doubles (first xs))]
     (vec (for [j (range keep width)
                :let [v (double-array (map #(aget ^doubles % (int j)) xs))]]
            (do (java.util.Arrays/sort v)
-               [(aget v (max 0 (dec (int (Math/ceil (* q n))))))
-                (aget v (min (dec n) (int (Math/ceil (* (- 1.0 q) n)))))])))))
+               (let [lo (aget v 0) hi (aget v (dec n))]
+                 ;; two values or fewer: the input is a flag already
+                 (if (every? #(or (== % lo) (== % hi)) v)
+                   [:flag lo]
+                   [(aget v (max 0 (dec (int (Math/ceil (* q n))))))
+                    (aget v (min (dec n) (int (Math/ceil (* (- 1.0 q) n)))))])))))))
 
 (defn tail-flags
   "x with its columns from `keep` on replaced by two flags each, above the
@@ -72,8 +77,10 @@
     (System/arraycopy x 0 out 0 keep)
     (doseq [[i [lo hi]] (map-indexed vector cuts)
             :let [v (aget x (int (+ keep i)))]]
-      (aset out (+ keep (* 2 i)) (if (> v (double hi)) 1.0 0.0))
-      (aset out (+ keep (* 2 i) 1) (if (< v (double lo)) 1.0 0.0)))
+      (if (= :flag lo)
+        (aset out (+ keep (* 2 i)) (if (> v (double hi)) 1.0 0.0))
+        (do (aset out (+ keep (* 2 i)) (if (> v (double hi)) 1.0 0.0))
+            (aset out (+ keep (* 2 i) 1) (if (< v (double lo)) 1.0 0.0)))))
     out))
 
 (defn unused-groups

@@ -575,7 +575,9 @@
 
 (def sync-names
   (vec (concat (for [[c _] calm/channels] (keyword (str c "-biomarker")))
-               (for [[c _] calm/channels] (keyword (str c "-world-sync"))))))
+               (for [[c _] calm/channels] (keyword (str c "-world-sync")))
+               ;; a subregion or world without two full windows is missing, not calm
+               [:biomarker-present :world-sync-present])))
 
 (defn load-event-sync
   "Per country and quarter, per calm channel: the subregion's dynamical
@@ -602,7 +604,8 @@
                    q (keys (series u))
                    :let [b (region (sub u) q) w (world q)]
                    :when (some some? (concat b w))]
-               [[u q] (double-array (concat (map #(if % (Math/log1p %) 0.0) b) (map #(or % 0.0) w)))]))))
+               [[u q] (double-array (concat (map #(if % (Math/log1p %) 0.0) b) (map #(or % 0.0) w)
+                                            [(if (some some? b) 1.0 0.0) (if (some some? w) 1.0 0.0)]))]))))
 
 (def break-names
   (vec (for [[c _] calm/channels f ["break-recent" "run-length"]] (keyword (str c "-" f)))))

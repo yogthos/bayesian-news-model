@@ -162,7 +162,9 @@
               (let [groups (unit-groups units)
                     index (o/wave-index events history-kinds groups)]
                 (into {} (for [{:keys [unit q]} rows] [[unit q] (o/waves index groups unit q wave-taus)]))))]
-   "sync" [(count nm/sync-names) (fn [_] (nm/load-event-sync mix-path))]
+   "sync" [(count nm/sync-names) (fn [_] (nm/load-event-sync mix-path))
+           ;; the placebo keeps which parts are present
+           (fn [^doubles x] (vec (take-last 2 x)))]
    "departure" [(count nm/departure-names) (fn [_] (nm/load-event-departure mix-path))]
    "breaks" [(count nm/break-names) (fn [_] (nm/load-event-breaks mix-path))]
    "histories" [(* 2 (count history-kinds))
@@ -190,8 +192,14 @@
                            delayed (if (pos? (:delay ctx 0))
                                      (into {} (for [[[u q] x] (load ctx)] [[u (+ q (:delay ctx))] x]))
                                      (load ctx))
-                           [width xs] (o/with-presence width delayed (:rows ctx))]
-                     entry [[g width xs] [(str g "-placebo") width (ties/placebo xs 1 (or stratum (constantly nil)))]]]
+                           width0 width
+                           [width xs] (o/with-presence width delayed (:rows ctx))
+                           ;; strata read the group's own columns, not the
+                           ;; presence column with-presence may append
+                           strat (if stratum
+                                   (fn [^doubles x] (stratum (java.util.Arrays/copyOf x (int width0))))
+                                   (constantly nil))]
+                     entry [[g width xs] [(str g "-placebo") width (ties/placebo xs 1 strat)]]]
                  entry))))
 
 (def cases
@@ -496,16 +504,19 @@
 (defn aligned
   "[members rows] of `runs`: the members (all but :base, the combinations
   and placebos) and, for each row every member forecast, {:unit :q :y :ps}
-  with :ps in member order."
-  [runs]
-  (let [members (vec (remove #(or (= :base %) ((set combined) %) (str/ends-with? (name %) "-placebo")) (sort (keys runs))))
-        by-key (into {} (for [m members, [q p y unit] (:preds (runs m))] [[m unit q] p]))
-        keys* (sort-by second (distinct (for [[q _ y unit] (:preds (runs (first members)))] [unit q y])))]
-    [members
-     (vec (for [[unit q y] keys*
-                :let [ps (mapv #(by-key [% unit q]) members)]
-                :when (every? some? ps)]
-            {:unit unit :q q :y y :ps ps}))]))
+  with :ps in member order. With `partial?`, every row any member forecast,
+  missing forecasts nil (for sub-pools to take the rows their own members
+  share)."
+  ([runs] (aligned runs false))
+  ([runs partial?]
+   (let [members (vec (remove #(or (= :base %) ((set combined) %) (str/ends-with? (name %) "-placebo")) (sort (keys runs))))
+         by-key (into {} (for [m members, [q p y unit] (:preds (runs m))] [[m unit q] p]))
+         keys* (sort-by second (distinct (for [m members [q _ y unit] (:preds (runs m))] [unit q y])))]
+     [members
+      (vec (for [[unit q y] keys*
+                 :let [ps (mapv #(by-key [% unit q]) members)]
+                 :when (if partial? (some some? ps) (every? some? ps))]
+             {:unit unit :q q :y y :ps ps}))])))
 
 (defn combine-rows
   "`combine` on rows already `aligned`: {combination {:preds}}."

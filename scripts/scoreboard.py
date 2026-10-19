@@ -21,7 +21,10 @@ def read(path, model):
     out = {}; block = None
     for line in open(path):
         if not line.startswith(' '):
-            block = line.split(); continue
+            block = line.split()
+            if len(block) > 2 and '/' in block[2]:
+                sys.exit(f"{path}: blocks split by state ({block[2]}); score without --split for the scoreboard")
+            continue
         if not block or block[-1] != 'hard': continue
         m = line.split()
         if m[0] != model: continue

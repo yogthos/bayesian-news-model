@@ -127,12 +127,13 @@
   ^doubles [rows ^long k {:keys [prior rounds] :or {prior 1.0 rounds 3} :as opts}]
   (let [rows (vec rows)
         n (count rows)
-        ;; each input's spread in the rows, to read coefficients on the
-        ;; standardized scale the penalties act on
+        ;; each input's weighted spread in the rows, as `fit` standardizes,
+        ;; to read coefficients on the scale the penalties act on
+        wsum (max 1e-12 (reduce + (map #(double (:w %)) rows)))
         sd (vec (for [j (range k)]
-                  (let [vs (map #(aget ^doubles (:x %) j) rows)
-                        mu (/ (reduce + vs) n)
-                        s (Math/sqrt (/ (reduce + (map #(let [d (- % mu)] (* d d)) vs)) n))]
+                  (let [mu (/ (reduce + (map #(* (double (:w %)) (aget ^doubles (:x %) j)) rows)) wsum)
+                        s (Math/sqrt (/ (reduce + (map #(let [d (- (aget ^doubles (:x %) j) mu)] (* (double (:w %)) d d)) rows))
+                                        wsum))]
                     (if (> s 1e-9) s 1.0))))
         c (/ 1.0 (double prior))]
     (loop [r 0 beta (fit rows k opts)]

@@ -59,6 +59,7 @@ def main():
     ap.add_argument("--report")
     ap.add_argument("--onsets")
     ap.add_argument("--models", default="mlpool,pool,hedge,named")
+    ap.add_argument("--suffix", default="", help="e.g. -tests29 for files scored with --tests 29")
     a = ap.parse_args()
     models = a.models.split(",")
     if a.report:
@@ -71,8 +72,9 @@ def main():
                                         "%.2f / %.2f" % auc if auc else "-"))
         print()
     if a.onsets:
-        files = [("country", "anticipation.txt"), ("subregion", "anticipation-subregion.txt"),
-                 ("region", "anticipation-region.txt")]
+        x = a.suffix
+        files = [("country", "anticipation%s.txt" % x), ("subregion", "anticipation-subregion%s.txt" % x),
+                 ("region", "anticipation-region%s.txt" % x)]
         tables = {lv: onset_rows(os.path.join(a.onsets, f), models)
                   for lv, f in files if os.path.exists(os.path.join(a.onsets, f))}
         print("Onsets (%s), hard rows: recall in the top 10%% and its gain over history"

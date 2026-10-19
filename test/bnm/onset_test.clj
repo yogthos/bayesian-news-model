@@ -194,3 +194,11 @@
     (is (o/in-era? q22 [2 4] 0 [2023 2026] lock true) "so it is confirmation")
     (is (not (o/in-era? (- q22 4) [2 4] 5 [2015 2022] lock false)) "a lag pushes it past the lock too")
     (is (not (o/in-era? (* 4 2010) [2 4] 0 [2023 2026] lock true)))))
+
+(deftest two-valued-inputs-are-their-own-flag
+  ;; a 0/1 input that is 1 in 30% of rows has no 20% tails to cut; it passes
+  ;; through as its own flag instead of vanishing
+  (let [xs (for [i (range 100)] (double-array [1.0 0.5 (if (< i 30) 1.0 0.0)]))
+        cuts (o/tail-cuts xs 2 0.2)]
+    (is (= [1.0 0.0] (subvec (vec (o/tail-flags (double-array [1.0 0.5 1.0]) 2 cuts)) 2)))
+    (is (= [0.0 0.0] (subvec (vec (o/tail-flags (double-array [1.0 0.5 0.0]) 2 cuts)) 2)))))

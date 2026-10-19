@@ -54,11 +54,14 @@
         (doseq [m members] (emit m (models m)))
         ;; the members' forecasts aligned once; a sub-pool takes their columns.
         ;; Every combination and sub-pool of the window on a thread of its own
-        (let [[ms rows] (on/aligned (into {} (for [m members] [(keyword m) {:preds (models m)}])))
+        (let [[ms rows] (on/aligned (into {} (for [m members] [(keyword m) {:preds (models m)}])) true)
               col (zipmap (map name ms) (range))
-              sub (fn [names] (let [ix (mapv col names)] (mapv (fn [r] (update r :ps #(mapv % ix))) rows)))
+              ;; a sub-pool's rows: those all its own members forecast
+              sub (fn [names] (let [ix (mapv col names)]
+                                (into [] (keep (fn [r] (let [ps (mapv (:ps r) ix)] (when (every? some? ps) (assoc r :ps ps)))))
+                                      rows)))
               fit (fn [rows c] (future (:preds (c (on/combine-rows rows window #{c})))))
-              jobs (doall (concat (for [c on/combined] [(name c) (fit rows c)])
+              jobs (doall (concat (for [c on/combined] [(name c) (fit (sub members) c)])
                                   (when (every? models record) [["pool-record" (fit (sub record) :pool)]])
                                   ;; the converged pool without each member
                                   (for [m members] [(str "pool-minus-" m) (fit (sub (remove #{m} members)) :mlpool)])))]
