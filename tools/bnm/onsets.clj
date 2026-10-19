@@ -167,7 +167,12 @@
   (bnm.onset/with-presence), and the placebo shuffles values only among
   rows with the same sources present, so it keeps who has data."
   [names event-run ctx]
-  (vec (concat (when event-run [["event" (count nm/event-labels) (nm/load-event-state event-run)]])
+  (vec (concat (when event-run
+                 (let [xs (nm/load-event-state event-run)]
+                   [["event" (count nm/event-labels) xs]
+                    ;; shuffled among rows with the same presence (its last column)
+                    ["event-placebo" (count nm/event-labels)
+                     (ties/placebo xs 1 #(aget ^doubles % (dec (count nm/event-labels))))]]))
                (for [g names
                      :let [[width load stratum] (or (group-loaders g) (throw (ex-info (str "unknown group " g) {})))
                            [width xs] (o/with-presence width (load ctx) (:rows ctx))]
