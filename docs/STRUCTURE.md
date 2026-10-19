@@ -466,3 +466,21 @@ Weekly wins at every level, most for the aggregates; escalation AUC from
 quiet places is best weekly too (0.85-0.89 below the country). The skill
 is in excitation over weeks, so the event model keeps weekly bins and the
 onset models take its view as inputs rather than events summed by quarter.
+
+## Third review (October 2026)
+
+A review of the day's 31 commits confirmed the reporting lag reaches every
+fit, choice and combination; that every event-stream input at a quarter
+uses only quarters up to it; and the new statistics (SQUAREM pool, weighted
+usefulness bootstrap, pigeonhole bootstrap, area skill, changepoint
+recursion). It found, all fixed:
+- the decision eras scored late-2022 rows on 2023-24 onsets, inside the
+  confirmation lock; eras now take rows by when their label resolves;
+- at-risk flags dropped two-valued inputs common in more than a fifth of
+  rows (presence columns, pegs, anchors); they now pass through;
+- placebo strata read the presence column with-presence appends instead of
+  a group's first own indicator, for every partly covered named group;
+- fit-shrunk standardized without row weights; sub-pools lost rows any one
+  member missed; missing synchrony read as none; the scoreboard and
+  scale-map misread split and --tests files.
+Runs touched by the first three were restarted.
