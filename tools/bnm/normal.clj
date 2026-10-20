@@ -21,6 +21,7 @@
   (:require [bnm.fstats :as fs]
             [bnm.hazard :as hz]
             [bnm.math :as m]
+            [bnm.panel :as panel]
             [bnm.trade :as tr]
             [bnm.trader :as us]
             [bnm.vol :as vol]
@@ -158,9 +159,10 @@
 (def political-kinds ["conflict_onset" "war_onset" "protest_surge" "violence_surge"])
 
 (defn political-risk
-  "{q [world usa]}: at each quarter's end, the chance of any political onset
-  within four quarters by the onset model's named inputs (window w1), the mean
-  over countries and the US's, from an onset run's preds.tsv."
+  "{q [world usa {country p}]}: at each quarter's end, the chance of any
+  political onset within four quarters by the onset model's named inputs
+  (window w1), the mean over countries, the US's and each country's, from an
+  onset run's preds.tsv."
   [run]
   (let [by (with-open [r (io/reader (str "data/runs/" run "/preds.tsv"))]
              (reduce (fn [acc line]
@@ -174,7 +176,8 @@
     (into {} (for [[q units] by
                    :let [ps (keep (comp any val) units)]
                    :when (seq ps)]
-               [q [(/ (reduce + ps) (count ps)) (any (get units "USA"))]]))))
+               [q [(/ (reduce + ps) (count ps)) (any (get units "USA"))
+                   (into {} (for [[u m] units :let [p (any m)] :when p] [u p]))]]))))
 
 (defn- quarter-known
   "The last quarter complete by the end of month t."
@@ -253,6 +256,31 @@
                  :p (hazard k) :x (conj (raw k) (hazard k) pw pu)}))}))
 
 ;; --- scores ---------------------------------------------------------------------------------
+
+(def panel-signs
+  "Theory's signs for the panel inputs: valuation (earnings and dividend
+  yields high, the US CAPE low) and the trend raise the next return."
+  {:mom12 1 :sma10 1 :ep 1 :yield 1 :us-cape -1})
+
+(defn panel-setting
+  "The 21 developed markets and the US, monthly in dollars: per market
+  {:unit :ps}, with the pooled panel hazard (20% within 12 months) as each
+  row's :p. Realized variance is the squared monthly excess return: French's
+  country files are monthly."
+  [political]
+  (let [{:keys [markets rf rows names] :as data} (panel/setup {})
+        p-at (into {} (for [[t p _ u] (:preds (panel/hazard data "20% within 12m" 12))] [[u t] p]))
+        raw (into {} (for [{:keys [unit t raw]} rows] [[unit t] raw]))]
+    {:name "panel monthly" :periods 12 :har-lags [1 3 12] :tune [1980 2004] :from 1981
+     :inputs (into names [:hazard :political-world :political-own])
+     :markets (vec (for [u (sort (keys markets))
+                         :let [ret (get-in markets [u :ret])
+                               ts (filter #(and (raw [u %]) (ret %) (rf %)) (sort (keys ret)))
+                               ps (vec (for [t ts :let [[pw _ by] (get political (quarter-known t)) x (- (ret t) (rf t))]]
+                                         {:t t :year (quot t 12) :ret x :rf (rf t) :rv (* x x) :p (p-at [u t])
+                                          :x (conj (raw [u t]) (p-at [u t]) pw (get by u))}))]
+                         :when (> (count ps) 120)]
+                     {:unit u :ps ps}))}))
 
 (def eras [["1990-2007" 1990 2007] ["2008-2022" 2008 2022]])
 (def locked ["2023-" 2023 2100])
@@ -365,81 +393,175 @@
                   :stressed (some-> (:p (ps %)) (>= cut))))
           (range (dec (count ps)))))
 
-(defn run [{:keys [name political confirm]}]
+(defn- panel-obs
+  "Per market, the observations of periods whose next falls in [lo hi] and
+  `regime`: {:t :y :f :p}."
+  [markets fcs cut lo hi regime]
+  (for [[{:keys [ps]} fc] (map vector markets fcs)
+        i (era-idx ps fc cut lo hi regime)]
+    {:t (:t (ps i)) :y (:ret (ps (inc i))) :rv (:rv (ps (inc i))) :f (fc i)}))
+
+(defn score-panel
+  "The forecast tests pooled over markets: each loss differential averaged
+  over the markets in a month, then tested over months (Newey-West)."
+  [obs]
+  (let [by-month (vals (group-by :t obs))
+        monthly (fn [g] (mapv #(mean (map g %)) by-month))
+        lags (fs/nw-lags (count by-month))
+        one-sided (fn [xs] (let [{:keys [stat]} (fs/diebold-mariano xs (repeat (count xs) 0.0) lags)]
+                             {:stat stat :p (fs/phi-sf stat)}))
+        sq (fn [a] (* a a))
+        se (fn [k] #(sq (- (:y %) (get-in % [:f k]))))
+        cw (fn [k] #(let [{:keys [y f]} %] (- (sq (- y (:hm f))) (- (sq (- y (k f))) (sq (- (k f) (:hm f)))))))
+        r2 (fn [k] (- 1.0 (/ (reduce + (map (se k) obs)) (reduce + (map (se :hm) obs)))))
+        hit (fn [k] #(if (= (pos? (:y %)) (pos? (get-in % [:f k]))) 1.0 0.0))
+        pt (fn [k] (let [n (double (count obs))
+                         py (/ (count (filter #(pos? (:y %)) obs)) n)
+                         px (/ (count (filter #(pos? (get-in % [:f k])) obs)) n)
+                         expect (+ (* py px) (* (- 1 py) (- 1 px)))
+                         {:keys [stat]} (one-sided (mapv #(- % expect) (monthly (hit k))))]
+                     {:hit (mean (map (hit k) obs)) :stat stat :p (fs/phi-sf stat)}))
+        ql (fn [k] #(fs/qlike (max 1e-12 (:rv %)) (get-in % [:f k])))
+        dist (fn [mk vk] #(let [{:keys [y f]} %] [(mk f) (t-scale (vk f) (:nu f)) (:nu f) y]))
+        crps (fn [mk vk] #(apply fs/crps-t ((dist mk vk) %)))
+        logs (fn [mk vk] #(apply fs/log-t ((dist mk vk) %)))
+        pit #(let [[mu sc nu y] ((dist :combo :model-var) %)] (fs/t-cdf (/ (- y mu) sc) nu))
+        cover (fn [a] (let [ms (map #(let [u (pit %)] (if (or (< u (/ a 2)) (> u (- 1 (/ a 2)))) 1 0)) obs)]
+                        {:rate (mean ms) :kupiec (fs/kupiec (reduce + ms) (count obs) a) :chr {:p Double/NaN}}))]
+    {:n (count obs)
+     :r2 (r2 :combo) :r2-ridge (r2 :ridge)
+     :cw (one-sided (monthly (cw :combo))) :cw-ridge (one-sided (monthly (cw :ridge)))
+     :pt (pt :combo-raw) :pt-ridge (pt :ridge)
+     :qlike (into {} (for [k [:model-var :garch :har :ewma]] [k (mean (map (ql k) obs))]))
+     :dm-garch (fs/diebold-mariano (monthly (ql :model-var)) (monthly (ql :garch)) lags)
+     :dm-har (fs/diebold-mariano (monthly (ql :model-var)) (monthly (ql :har)) lags)
+     :crps {:model (mean (map (crps :combo :model-var) obs)) :garch-t (mean (map (crps :hm :garch-t) obs))
+            :gauss (mean (map #(fs/crps-normal (get-in % [:f :hm]) (Math/sqrt (get-in % [:f :garch])) (:y %)) obs))}
+     :dm-crps (fs/diebold-mariano (monthly (crps :combo :model-var)) (monthly (crps :hm :garch-t)) lags)
+     :log {:model (mean (map (logs :combo :model-var) obs)) :garch-t (mean (map (logs :hm :garch-t) obs))
+           :gauss (mean (map #(log-normal-density (get-in % [:f :hm]) (get-in % [:f :garch]) (:y %)) obs))}
+     :cover {0.2 (cover 0.2) 0.05 (cover 0.05)}
+     :berkowitz {:p Double/NaN}
+     :ce-gain Double/NaN}))
+
+(defn- say-scores [say era regime periods {:keys [n r2 r2-ridge cw cw-ridge pt pt-ridge qlike dm-garch dm-har crps dm-crps log cover berkowitz ce-gain]}]
+  (say (format "  %s %-8s n=%d" era (clojure.core/name regime) n))
+  (say (format "    returns   R2 %+.4f  CW %s | ridge R2 %+.4f  CW %s" r2 (pv cw) r2-ridge (pv cw-ridge)))
+  (say (format "    signs     hit %.3f  PT %s | ridge hit %.3f  PT %s" (:hit pt) (pv pt) (:hit pt-ridge) (pv pt-ridge)))
+  (say (format "    variance  QLIKE model %.4f  GARCH %.4f  HAR %.4f  EWMA %.4f | DM vs GARCH %s  vs HAR %s"
+               (:model-var qlike) (:garch qlike) (:har qlike) (:ewma qlike) (pv dm-garch) (pv dm-har)))
+  (say (format "    dist      CRPS model %.5f  GARCH-t %.5f  Gaussian %.5f  DM %s | log %.3f %.3f %.3f"
+               (:model crps) (:garch-t crps) (:gauss crps) (pv dm-crps) (:model log) (:garch-t log) (:gauss log)))
+  (say (format "    coverage  80%%: %.3f missed, Kupiec p %.3f, Christoffersen p %.3f | 95%%: %.3f, p %.3f, %.3f | Berkowitz p %.4f"
+               (get-in cover [0.2 :rate]) (get-in cover [0.2 :kupiec :p]) (get-in cover [0.2 :chr :p])
+               (get-in cover [0.05 :rate]) (get-in cover [0.05 :kupiec :p]) (get-in cover [0.05 :chr :p]) (:p berkowitz)))
+  (say (format "    value     certainty-equivalent gain over the historical mean %+.2f%% a year" (* 100 ce-gain periods))))
+
+(defn- series-row
+  "A strategy's per-period excess returns with its summary."
+  [setting era sname rs ex periods normal-flags rfs]
+  {:setting setting :era era :name sname :rs rs :periods periods :normal normal-flags
+   :bench? (str/starts-with? sname "bench: ")
+   :sr (annual-sharpe rs periods)
+   :invested (mean ex)
+   :bt (tr/backtest (mapv + rs rfs) rfs (repeat (count rs) 1.0) {:cost 0.0 :periods periods})})
+
+(defn- named-strats [strats]
+  (concat (dissoc strats :bench) (map (fn [[k v]] [(str "bench: " k) v]) (:bench strats))))
+
+(defn run [{:keys [name political confirm panel]}]
   (let [run-name (or name "normal")
         dir (str "data/runs/" run-name)
         _ (io/make-parents (str dir "/x"))
         pol (political-risk (or political "r6-mixties"))
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
-        eras (cond-> eras (= confirm "true") (conj locked))
-        settings (for [mk [monthly-setting weekly-setting]] (mk pol))
-        results
-        (vec (for [{:keys [name ps inputs periods tune] :as s} settings]
-               (let [fc (forecasts ps (assoc s :signs (mapv return-signs inputs)))
-                     cut (regime-cut ps tune)
-                     strats (strategies s fc)]
-                 (with-open [w (io/writer (str dir "/forecasts-" (str/replace (str/lower-case name) " " "-") ".tsv"))]
-                   (.write w "t\tyear\tret\trv\tp\thm\tcombo\tcombo_raw\tridge\tewma\tgarch\tgarch_t\thar\tmodel_var\tnu\n")
-                   (doseq [i (range (count ps)) :let [p (ps i) f (fc i)] :when f]
-                     (.write w (str/join "\t" (concat [(:t p) (:year p) (:ret p) (:rv p) (:p p)]
-                                                      (map f [:hm :combo :combo-raw :ridge :ewma :garch :garch-t :har :model-var :nu]))))
-                     (.write w "\n")))
-                 {:setting s :fc fc :cut cut :strats strats})))]
-    (say "Ordinary moves: out-of-sample forecasts of the next period's US market excess return, realized")
-    (say "variance and distribution, and strategies built on them (docs/TRADING.md, pre-registered).")
+        with-locked #(cond-> % (= confirm "true") (conj locked))
+        us (vec (for [mk [monthly-setting weekly-setting]
+                      :let [{:keys [ps inputs tune] :as s} (mk pol)
+                            fc (forecasts ps (assoc s :signs (mapv return-signs inputs)))]]
+                  (assoc s :fc fc :cut (regime-cut ps tune) :strats (strategies s fc) :eras (with-locked eras))))
+        pn (when (not= panel "false")
+             (let [{:keys [markets inputs tune] :as s} (panel-setting pol)
+                   signs (mapv panel-signs inputs)
+                   fcs (mapv #(forecasts (:ps %) (assoc s :signs signs)) markets)]
+               (assoc s :fcs fcs :cut (regime-cut (mapcat :ps markets) tune)
+                      :strats (mapv #(strategies (assoc s :ps (:ps %1)) %2) markets fcs)
+                      :eras (with-locked [["2005-2022" 2005 2022]]))))
+        ;; every strategy series, US per period and the panel as an equal-weight portfolio
+        rows (vec (concat
+                   (for [{:keys [name ps fc cut strats eras periods]} us
+                         [era lo hi] eras
+                         :let [idx (vec (era-idx ps fc cut lo hi :all))
+                               normal (set (era-idx ps fc cut lo hi :normal))
+                               rfs (mapv #(:rf (ps (inc %))) idx)]
+                         [sname ex-fn] (named-strats strats)
+                         :let [ex (mapv ex-fn idx)]]
+                     (series-row name era sname (strategy-returns ps idx ex) ex periods (mapv normal idx) rfs))
+                   (when pn
+                     (let [{:keys [name markets fcs cut strats eras periods]} pn]
+                       (for [[era lo hi] eras
+                             sname (map first (named-strats (first strats)))]
+                         (let [per (for [[{:keys [ps]} fc st] (map vector markets fcs strats)
+                                         :let [ex-fn (get (into {} (named-strats st)) sname)
+                                               idx (vec (era-idx ps fc cut lo hi :all))
+                                               ex (mapv ex-fn idx)]
+                                         [i r e] (map vector idx (strategy-returns ps idx ex) ex)]
+                                     {:t (:t (ps i)) :r r :e e :p (:p (ps i)) :rf (:rf (ps (inc i)))})
+                               months (sort-by key (group-by :t per))
+                               rs (mapv #(mean (map :r (val %))) months)
+                               ex (mapv #(mean (map :e (val %))) months)
+                               normal (mapv #(< (mean (keep :p (val %))) cut) months)
+                               rfs (mapv #(:rf (first (val %))) months)]
+                           (series-row name era sname rs ex periods normal rfs)))))))
+        trial-rows (remove :bench? rows)
+        var-sr (let [s (map #(/ (:sr %) (Math/sqrt (:periods %))) trial-rows) m (mean s)]
+                 (mean (map #(* (- % m) (- % m)) s)))]
+    (doseq [{:keys [name ps fc]} us]
+      (with-open [w (io/writer (str dir "/forecasts-" (str/replace (str/lower-case name) " " "-") ".tsv"))]
+        (.write w "t\tyear\tret\trv\tp\thm\tcombo\tcombo_raw\tridge\tewma\tgarch\tgarch_t\thar\tmodel_var\tnu\n")
+        (doseq [i (range (count ps)) :let [p (ps i) f (fc i)] :when f]
+          (.write w (str/join "\t" (concat [(:t p) (:year p) (:ret p) (:rv p) (:p p)]
+                                           (map f [:hm :combo :combo-raw :ridge :ewma :garch :garch-t :har :model-var :nu]))))
+          (.write w "\n"))))
+    (say "Ordinary moves: out-of-sample forecasts of the next period's excess return, realized variance")
+    (say "and distribution, and strategies built on them (docs/TRADING.md, pre-registered).")
     (say (format "Forecast tests significant at %.4f (0.05 over 18 tests); strategies deflated for %d trials." alpha-forecast trials))
-    (doseq [{{:keys [name ps periods]} :setting :keys [fc cut]} results]
+    (doseq [{:keys [name ps fc cut eras periods]} us]
       (say)
-      (say (format "%s: stressed when the drawdown hazard is at or above %.3f (80th percentile, 1950-1989)" name cut))
+      (say (format "%s: stressed when the drawdown hazard is at or above %.3f (80th percentile of the tuning years)" name cut))
       (doseq [[era lo hi] eras
               regime [:normal :stressed :all]
               :let [idx (vec (era-idx ps fc cut lo hi regime))]
               :when (> (count idx) 20)]
-        (let [{:keys [n r2 r2-ridge cw cw-ridge pt pt-ridge qlike dm-garch dm-har crps dm-crps log cover berkowitz ce-gain]}
-              (score-forecasts ps fc idx)]
-          (say (format "  %s %-8s n=%d" era (clojure.core/name regime) n))
-          (say (format "    returns   R2 %+.4f  CW %s | ridge R2 %+.4f  CW %s" r2 (pv cw) r2-ridge (pv cw-ridge)))
-          (say (format "    signs     hit %.3f  PT %s | ridge hit %.3f  PT %s" (:hit pt) (pv pt) (:hit pt-ridge) (pv pt-ridge)))
-          (say (format "    variance  QLIKE model %.4f  GARCH %.4f  HAR %.4f  EWMA %.4f | DM vs GARCH %s  vs HAR %s"
-                       (:model-var qlike) (:garch qlike) (:har qlike) (:ewma qlike) (pv dm-garch) (pv dm-har)))
-          (say (format "    dist      CRPS model %.5f  GARCH-t %.5f  Gaussian %.5f  DM %s | log %.3f %.3f %.3f"
-                       (:model crps) (:garch-t crps) (:gauss crps) (pv dm-crps) (:model log) (:garch-t log) (:gauss log)))
-          (say (format "    coverage  80%%: %.3f missed, Kupiec p %.3f, Christoffersen p %.3f | 95%%: %.3f, p %.3f, %.3f | Berkowitz p %.4f"
-                       (get-in cover [0.2 :rate]) (get-in cover [0.2 :kupiec :p]) (get-in cover [0.2 :chr :p])
-                       (get-in cover [0.05 :rate]) (get-in cover [0.05 :kupiec :p]) (get-in cover [0.05 :chr :p]) (:p berkowitz)))
-          (say (format "    value     certainty-equivalent gain over the historical mean %+.2f%% a year" (* 100 ce-gain periods))))))
-    ;; strategies: every series of every setting and era enters the spread of Sharpe ratios
-    (doseq [[era lo hi] eras]
-      (let [rows (vec (for [{{:keys [name ps periods]} :setting :keys [fc cut strats]} results
-                            :let [idx (vec (era-idx ps fc cut lo hi :all))
-                                  normal (set (era-idx ps fc cut lo hi :normal))]
-                            [sname ex-fn] (concat (dissoc strats :bench) (map (fn [[k v]] [(str "bench: " k) v]) (:bench strats)))]
-                        (let [rs (strategy-returns ps idx (mapv ex-fn idx))]
-                          {:setting name :periods periods :name sname :rs rs :idx idx :normal normal
-                           :bench? (str/starts-with? sname "bench: ")
-                           :sr (annual-sharpe rs periods)
-                           :bt (tr/backtest (mapv #(+ (:ret (ps (inc %))) (:rf (ps (inc %)))) idx)
-                                            (mapv #(:rf (ps (inc %))) idx) (mapv ex-fn idx) {:cost 0.001 :periods periods})})))
-            trial-rows (remove :bench? rows)
-            var-sr (let [s (map #(/ (:sr %) (Math/sqrt (:periods %))) trial-rows) m (mean s)]
-                     (mean (map #(* (- % m) (- % m)) s)))]
+        (say-scores say era regime periods (score-forecasts ps fc idx))))
+    (when pn
+      (let [{:keys [name markets fcs cut eras periods]} pn]
         (say)
-        (say (format "Strategies %s (excess Sharpe, net of 10bp; DSR against %d trials; SPA on quadratic utility):" era trials))
-        (doseq [[setting group] (group-by :setting rows)]
-          (let [benches (filter :bench? group)
-                best (apply max-key :sr benches)
-                spa-p (apply max (for [b benches]
-                                   (:p (fs/spa (for [r (remove :bench? group)] (mapv - (utility (:rs r)) (utility (:rs b))))
-                                               {:block (if (= 52 (:periods b)) 10 6) :reps 999 :seed 7}))))]
-            (say (format "  %s: SPA p %.3f against the benchmarks (largest over the four)" setting spa-p))
-            (doseq [{:keys [name sr bt rs idx normal bench? periods]} group]
-              (let [gain-normal (mean (keep identity (map (fn [i a b] (when (normal i) (- a b))) idx rs (:rs best))))]
-                (say (format "    %-34s sharpe %5.2f  annual %6.2f%%  maxdd %5.1f%%  invested %3.0f%%%s"
-                             name sr (* 100 (:annual bt)) (* 100 (:max-drawdown bt)) (* 100 (:invested bt))
-                             (if bench? ""
-                                 (format "  DSR %.3f  vs best benchmark in normal periods %+.2f%% a year"
-                                         (fs/deflated-sharpe rs trials var-sr) (* 100 gain-normal periods)))))))))))
+        (say (format "%s, %d markets: stressed when the pooled hazard is at or above %.3f; tests on monthly" name (count markets) cut))
+        (say "  cross-market means (Newey-West); Christoffersen, Berkowitz and the CE gain need one series: -")
+        (doseq [[era lo hi] eras
+                regime [:normal :stressed :all]
+                :let [obs (vec (panel-obs markets fcs cut lo hi regime))]
+                :when (> (count obs) 100)]
+          (say-scores say era regime periods (score-panel obs)))))
+    (doseq [[[setting era] group] (sort-by key (group-by (juxt :setting :era) rows))]
+      (let [benches (filter :bench? group)
+            best (apply max-key :sr benches)
+            periods (:periods (first group))
+            spa-p (apply max (for [b benches]
+                               (:p (fs/spa (for [r (remove :bench? group)] (mapv - (utility (:rs r)) (utility (:rs b))))
+                                           {:block (if (= 52 periods) 10 6) :reps 999 :seed 7}))))]
+        (say)
+        (say (format "Strategies, %s %s: excess Sharpe net of 10bp; DSR against %d trials; SPA p %.3f (largest over the benchmarks)"
+                     setting era trials spa-p))
+        (doseq [{:keys [name sr bt rs normal bench? invested]} group]
+          (let [gain-normal (mean (keep identity (map (fn [nf a b] (when nf (- a b))) normal rs (:rs best))))]
+            (say (format "    %-34s sharpe %5.2f  annual %6.2f%%  maxdd %5.1f%%  invested %3.0f%%%s"
+                         name sr (* 100 (:annual bt)) (* 100 (:max-drawdown bt)) (* 100 invested)
+                         (if bench? ""
+                             (format "  DSR %.3f  vs best benchmark in normal periods %+.2f%% a year"
+                                     (fs/deflated-sharpe rs trials var-sr) (* 100 gain-normal periods)))))))))
     (spit (str dir "/normal.txt") (str out))))
 
 (defn -main [& args]

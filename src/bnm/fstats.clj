@@ -47,7 +47,7 @@
   (let [p (gamma-p 0.5 (/ (* x x) 2.0))]
     (if (neg? x) (* 0.5 (- 1.0 p)) (* 0.5 (+ 1.0 p)))))
 
-(defn- phi-sf
+(defn phi-sf
   "1 - Φ(x), without cancellation in the upper tail."
   ^double [^double x]
   (if (pos? x)
