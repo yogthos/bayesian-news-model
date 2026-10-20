@@ -81,3 +81,14 @@
         edge [(noise) (mapv #(+ 0.25 %) (noise)) (noise)]]
     (is (> (:p (fs/spa null {:block 10 :reps 999 :seed 1})) 0.1))
     (is (< (:p (fs/spa edge {:block 10 :reps 999 :seed 1})) 0.01))))
+
+(deftest series-that-never-move
+  (testing "a strategy out of the market throughout has a zero Sharpe ratio and no evidence of skill"
+    (let [zs (repeat 50 0.0)]
+      (is (= 0.0 (:sr (fs/sharpe-stats zs))))
+      (is (< (fs/deflated-sharpe zs 24 0.01) 0.5))))
+  (testing "a model no different from the benchmark adds nothing to SPA"
+    (let [g (m/rng 3)
+          null (vec (repeatedly 200 #(m/normal! g)))]
+      (is (= 1.0 (:p (fs/spa [(repeat 200 0.0)] {:block 10 :reps 99 :seed 1}))))
+      (is (> (:p (fs/spa [(repeat 200 0.0) null] {:block 10 :reps 999 :seed 1})) 0.1)))))

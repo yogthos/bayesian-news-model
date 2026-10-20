@@ -255,16 +255,20 @@
 
 (defn sharpe-stats
   "Per-period Sharpe ratio of excess returns xs (sample sd), with their
-  skewness and kurtosis (population moments, so 3 for a normal)."
+  skewness and kurtosis (population moments, so 3 for a normal). A series
+  that never moves has a ratio of 0 when it is zero (out of the market) and
+  normal moments."
   [xs]
   (let [n (double (count xs))
-        mu (/ (reduce + xs) n)
-        mom (fn [k] (/ (reduce + (map #(Math/pow (- % mu) k) xs)) n))
+        mu (/ (double (reduce + xs)) n)
+        mom (fn [k] (/ (double (reduce + (map #(Math/pow (- % mu) k) xs))) n))
         m2 (mom 2)]
-    {:sr (/ mu (Math/sqrt (* m2 (/ n (- n 1.0)))))
-     :skew (/ (mom 3) (Math/pow m2 1.5))
-     :kurt (/ (mom 4) (* m2 m2))
-     :n (long n)}))
+    (if (> m2 (* 1e-14 mu mu))
+      {:sr (/ mu (Math/sqrt (* m2 (/ n (- n 1.0)))))
+       :skew (/ (mom 3) (Math/pow m2 1.5))
+       :kurt (/ (mom 4) (* m2 m2))
+       :n (long n)}
+      {:sr (if (zero? mu) 0.0 Double/NaN) :skew 0.0 :kurt 3.0 :n (long n)})))
 
 (defn- psr ^double [{:keys [sr skew kurt n]} ^double sr*]
   (phi (/ (* (- sr sr*) (Math/sqrt (- n 1.0)))
@@ -292,16 +296,9 @@
 
 ;; --- superior predictive ability ------------------------------------------------------------
 
-(defn spa
-  "Hansen's consistent test of superior predictive ability: `gains` holds,
-  per model, its per-period gain over the benchmark (positive is better).
-  H0: no model beats the benchmark. The stationary bootstrap (mean block
-  length :block) resamples periods; {:stat :p}."
-  [gains {:keys [block reps seed]}]
-  (let [k (count gains)
-        cols (mapv double-array gains)
-        n (alength ^doubles (first cols))
-        lags (nw-lags n)
+(defn- spa*
+  [cols n lags {:keys [block reps seed]}]
+  (let [k (count cols)
         means (mapv #(/ (areduce ^doubles % i s 0.0 (+ s (aget ^doubles % i))) n) cols)
         omegas (mapv #(Math/sqrt (long-run-variance (seq %) lags)) cols)
         stat (max 0.0 (apply max (map #(/ (* (Math/sqrt n) %1) %2) means omegas)))
@@ -322,3 +319,19 @@
                                        (/ (* (Math/sqrt n) (- mu* (centre c))) (omegas c)))))))
         exceed (count (filter #(>= % stat) (repeatedly reps boot)))]
     {:stat stat :p (/ (inc exceed) (double (inc reps)))}))
+
+(defn spa
+  "Hansen's consistent test of superior predictive ability: `gains` holds,
+  per model, its per-period gain over the benchmark (positive is better).
+  H0: no model beats the benchmark. The stationary bootstrap (mean block
+  length :block) resamples periods; {:stat :p}."
+  [gains opts]
+  (let [n (count (first gains))
+        lags (nw-lags n)
+        ;; a model whose gain never varies is the benchmark itself
+        cols (filterv #(> (long-run-variance (seq %) lags) 1e-24) (map double-array gains))
+        k (count cols)]
+    (if (zero? k)
+      {:stat 0.0 :p 1.0}
+      (spa* cols n lags opts))))
+
