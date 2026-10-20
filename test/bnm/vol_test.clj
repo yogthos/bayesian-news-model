@@ -25,6 +25,11 @@
                             [1.7735909197084216 1.7510894268818087 1.7293039202727205 1.7082116175587736 1.687790461339658])]
         (is (near? want h 1e-3))))))
 
+(deftest a-warm-start-reaches-the-same-optimum
+  (let [cold (vol/garch-fit r)
+        warm (vol/garch-fit r {:start cold})]
+    (is (near? (:llf cold) (:llf warm) 1e-9))))
+
 (deftest student-t-garch
   (let [fit (vol/garch-fit r {:dist :t})]
     (is (near? -1983.369192265125 (:llf fit) 1e-7))

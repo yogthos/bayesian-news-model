@@ -363,6 +363,26 @@ returns (Moreira & Muir 2017). So the likely outcome is a model that helps
 size risk and does not time returns; the test is built so that either answer
 is clear.
 
+**Details fixed before scoring** (`bnm.normal`, `bnm.fstats`, `bnm.vol`):
+- every model, the t's degrees of freedom included, is refit each January on
+  the years before it, so no forecast, tuning years included, sees later data;
+- the ridge's prior precision is 100 on standardized inputs, as the hazards';
+- the weekly inputs are the weekly crash test's, the hazard and political
+  risk, without the monthly slow-layer series;
+- political risk is the onset model's named-input chance of any political
+  onset within four quarters (run r6-mixties, after the reporting-lag fix),
+  the mean over countries and the US's, from the last complete quarter;
+- the sign restriction applies where theory gives a sign: valuation lowers
+  the next return, momentum and a price above its average raise it;
+- the direction test uses the unrestricted combination, since the
+  non-negative one never predicts a fall;
+- the certainty-equivalent gain gives both investors the GARCH variance, so
+  it measures the mean forecast alone;
+- Moreira & Muir's scale is set so their strategy has buy and hold's
+  volatility over the tuning years, exposure capped at 1.5 like the others;
+- the SPA test compares quadratic utility (risk aversion 3) per period, and
+  its p-value is the largest over the four benchmarks.
+
 **Ledger**, extended before anything new is scored:
 
 | # | configuration | note |

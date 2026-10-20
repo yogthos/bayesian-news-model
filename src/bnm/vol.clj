@@ -64,10 +64,11 @@
 
 (defn garch-fit
   "GARCH(1,1) on returns r (zero mean): {:omega :alpha :beta :llf}, with
-  :nu for {:dist :t}. Nelder-Mead from a few starting points, restarted from
-  its best until it stops improving."
+  :nu for {:dist :t}. Nelder-Mead from a few starting points, or from
+  `:start` (an earlier fit), restarted from its best until it stops
+  improving."
   ([r] (garch-fit r {}))
-  ([r {:keys [dist]}]
+  ([r {:keys [dist start]}]
    (let [ra (double-array r)
          bc (backcast r)
          v (/ (areduce ra i s 0.0 (+ s (* (aget ra i) (aget ra i)))) (alength ra))
@@ -75,10 +76,15 @@
          nll (fn [p] (let [{:keys [omega alpha beta nu]} (unpack p)
                            ll (loglik ra (variances ra omega alpha beta bc) nu)]
                        (if (Double/isNaN ll) 1e300 (- ll))))
-         start (fn [a b] (cond-> [(Math/log (* v (- 1.0 a b))) (m/logit (+ a b)) (m/logit (/ a (+ a b)))]
+         start-at (fn [a b] (cond-> [(Math/log (* v (- 1.0 a b))) (m/logit (+ a b)) (m/logit (/ a (+ a b)))]
                            t? (conj (Math/log (- 8.0 2.05)))))
-         best (apply min-key :f (for [[a b] [[0.05 0.9] [0.1 0.85] [0.1 0.88] [0.03 0.95]]]
-                                  (m/nelder-mead nll (start a b) {:tol 1e-12 :max-iter 4000})))
+         pack (fn [{:keys [omega alpha beta nu]}]
+                (cond-> [(Math/log omega) (m/logit (+ alpha beta)) (m/logit (/ alpha (+ alpha beta)))]
+                  t? (conj (Math/log (- (or nu 8.0) 2.05)))))
+         best (if start
+                (m/nelder-mead nll (pack start) {:tol 1e-12 :max-iter 4000})
+                (apply min-key :f (for [[a b] [[0.05 0.9] [0.1 0.85] [0.1 0.88] [0.03 0.95]]]
+                                    (m/nelder-mead nll (start-at a b) {:tol 1e-12 :max-iter 4000}))))
          best (loop [b best]
                 (let [b' (m/nelder-mead nll (:x b) {:tol 1e-14 :max-iter 4000})]
                   (if (< (- (:f b) (:f b')) 1e-10) b' (recur b'))))]
