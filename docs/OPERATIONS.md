@@ -63,7 +63,7 @@ threshold alerts don't control false alarms over continuous monitoring. A
 sequential CUSUM chart does (Steiner et al. 2000; Monitoring the
 calibration of probability forecasts, arXiv 2510.25573).
 
-**How the charts are built (`bnm.hazard/cusum`).**
+**How the charts are built (`augur.score/cusum`).**
 - One chart watches for events more frequent than forecast (odds × 2),
   the other for less frequent (odds × 0.5).
 - The threshold is h = 4.
@@ -73,7 +73,7 @@ calibration of probability forecasts, arXiv 2510.25573).
 - The verdict uses the chart's current value; its ten-year maximum records
   past drift.
 
-**Whether a drift is worth refitting (`bnm.hazard/recalibration-gain`).**
+**Whether a drift is worth refitting (`augur.score/recalibration-gain`).**
 Rare events come in waves, so a quiet or busy stretch trips a chart without
 the forecasts being wrong for the long run. Beside a drift the report says
 whether shifting the forecasts by an intercept refit each year on recent
