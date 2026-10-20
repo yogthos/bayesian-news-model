@@ -202,3 +202,19 @@
         cuts (o/tail-cuts xs 2 0.2)]
     (is (= [1.0 0.0] (subvec (vec (o/tail-flags (double-array [1.0 0.5 1.0]) 2 cuts)) 2)))
     (is (= [0.0 0.0] (subvec (vec (o/tail-flags (double-array [1.0 0.5 0.0]) 2 cuts)) 2)))))
+
+(deftest other-kinds-rows-follow-their-own-kind
+  ;; unit A: a war at q 100; a conflict at q 96 under way through it
+  (let [rows [{:unit "A" :q 98} {:unit "A" :q 60} {:unit "B" :q 98}]
+        aux [{:kind "war_onset" :last-q 120
+              :sets {:onsets {"A" (sorted-set 100)} :spans {"A" (sorted-set 100)}
+                     :known {"A" (sorted-set 100)} :lags 5}}]
+        out (o/other-kind-rows rows #{"A"} [1 4] aux (fn [r [h1 h2]] [(:q r) h1 h2]))]
+    (testing "rows where this kind is under way still count for the others"
+      (is (= #{[98 true] [60 false]} (set (map (juxt :q :y) out)))))
+    (testing "each row carries its kind's history, lag and label"
+      (is (every? #(= "war_onset" (:kind %)) out))
+      (is (every? #(= 5 (:lag %)) out))
+      (is (= [60 0.0 0.0] (:full (first (filter #(= 60 (:q %)) out))))))
+    (testing "only the units scored for this kind"
+      (is (not-any? #(= "B" (:unit %)) out)))))

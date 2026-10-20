@@ -387,31 +387,26 @@
                           (and (units unit)
                                (o/at-risk? (get spans unit (sorted-set)) q window)))
                         rows)
-        prepared (mapv (fn [{:keys [unit q ^doubles x] :as r}]
-                         (let [[h1 h2] (o/history-features (get known unit (sorted-set)) q)
-                               ^doubles nx (get-in r [:named fam])
-                               ;; a group's inputs, zeros where it has none for the row
-                               gs (mapv (fn [[_ width xs]] (or (get xs [unit q]) (double-array width))) groups)
-                               full (double-array (+ 3 (alength x) (alength nx) (reduce + (map second groups))))]
-                           (aset full 0 1.0) (aset full 1 h1) (aset full 2 h2)
-                           (System/arraycopy x 0 full 3 (alength x))
-                           (System/arraycopy nx 0 full (+ 3 (alength x)) (alength nx))
-                           (reduce (fn [off ^doubles g] (System/arraycopy g 0 full off (alength g)) (+ off (alength g)))
-                                   (+ 3 (alength x) (alength nx)) gs)
-                           (assoc r :full full :y (when (<= (+ q (second window)) last-q) (labels-q r)))))
+        ;; a row's inputs: the constant, the kind's history [h1 h2], the
+        ;; inputs, the named inputs and the groups'
+        full-of (fn [{:keys [unit q ^doubles x] :as r} [h1 h2]]
+                  (let [^doubles nx (get-in r [:named fam])
+                        ;; a group's inputs, zeros where it has none for the row
+                        gs (mapv (fn [[_ width xs]] (or (get xs [unit q]) (double-array width))) groups)
+                        full (double-array (+ 3 (alength x) (alength nx) (reduce + (map second groups))))]
+                    (aset full 0 1.0) (aset full 1 h1) (aset full 2 h2)
+                    (System/arraycopy x 0 full 3 (alength x))
+                    (System/arraycopy nx 0 full (+ 3 (alength x)) (alength nx))
+                    (reduce (fn [off ^doubles g] (System/arraycopy g 0 full off (alength g)) (+ off (alength g)))
+                            (+ 3 (alength x) (alength nx)) gs)
+                    full))
+        prepared (mapv (fn [{:keys [unit q] :as r}]
+                         (assoc r :full (full-of r (o/history-features (get known unit (sorted-set)) q))
+                                  :y (when (<= (+ q (second window)) last-q) (labels-q r))))
                        usable)
-        ;; the other kinds' rows on the same inputs, each with its own kind's
-        ;; history and label, for the mt- models; only built when one is run
-        aux-prepared (delay
-                      (vec (for [{akind :kind {a-onsets :onsets a-spans :spans a-known :known a-lag :lags} :sets a-last :last-q} aux
-                                 {:keys [unit q ^doubles full]} prepared
-                                 :when (o/at-risk? (get a-spans unit (sorted-set)) q window)
-                                 :let [[h1 h2] (o/history-features (get a-known unit (sorted-set)) q)
-                                       f (aclone full)]]
-                             (do (aset f 1 h1) (aset f 2 h2)
-                                 {:unit unit :q q :full f :kind akind :lag (or a-lag 0)
-                                  :y (when (<= (+ q (second window)) a-last)
-                                       (o/label (get a-onsets unit (sorted-set)) q window))}))))
+        ;; the other kinds' rows on the same inputs, for the mt- models; only
+        ;; built when one is run
+        aux-prepared (delay (vec (o/other-kind-rows rows units window aux full-of)))
         years (range (quot (apply min (map :q prepared)) 4) (inc (quot (apply max (map :q prepared)) 4)))]
     (fn [sets]
       (let [;; at-risk cuts depend on the inputs and the year, not the prior
@@ -424,7 +419,7 @@
               ;; flags?: inputs past the constant and history as at-risk
               ;; flags (o/tail-flags), their cuts from the rows known each year
               (let [k (if flags? (+ 3 (* 2 (- (count idx) 3))) (count idx))]
-                (loop [[yr & more] (filter #(>= % (+ 10 (quot (:q (first prepared)) 4))) years)
+                (loop [[yr & more] (filter #(>= % (+ 10 (first years))) years)
                        beta nil
                        preds []]
                   (if-not yr
@@ -459,7 +454,7 @@
                                            (System/arraycopy x 0 out 0 (alength x))
                                            (aset out (dec k) (if other? 1.0 0.0))
                                            out))]
-                (loop [[yr & more] (filter #(>= % (+ 10 (quot (:q (first prepared)) 4))) years)
+                (loop [[yr & more] (filter #(>= % (+ 10 (first years))) years)
                        beta nil
                        preds []]
                   (if-not yr
@@ -494,13 +489,13 @@
                           (let [mdl (analog/fit train analog-opts)]
                             (for [{:keys [unit q y full]} prepared :when (= (quot q 4) yr)]
                               [q (analog/predict mdl (pick full idx)) y unit])))))
-                    (filter #(>= % (max score-from (+ 10 (quot (:q (first prepared)) 4)))) years))))
+                    (filter #(>= % (max score-from (+ 10 (first years)))) years))))
             ;; boosted trees (bnm.trees), one fit a year at the most rounds:
             ;; fewer rounds are its first trees, so each count is a run
             run-trees
             (fn [idx]
               ;; not warm-started, so no fit is needed before the scored years
-              (loop [[yr & more] (filter #(>= % (max score-from (+ 10 (quot (:q (first prepared)) 4)))) years)
+              (loop [[yr & more] (filter #(>= % (max score-from (+ 10 (first years)))) years)
                      model nil
                      preds (zipmap tree-rounds (repeat []))]
                 (if-not yr

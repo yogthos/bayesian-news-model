@@ -28,6 +28,21 @@
         n (count past)]
     [(Math/log1p n) (if (pos? n) (Math/exp (- (/ (- q (long (last past))) 20.0))) 0.0)]))
 
+(defn other-kind-rows
+  "The rows of other kinds for a multi-task fit: for each of `aux`
+  ({:kind :sets {:onsets :spans :known :lags} :last-q}), every row of the
+  scored `units` at risk for that kind, whatever the kind being fit is
+  doing then, with `full-of` of the row and that kind's history features,
+  its lag and its label where the catalogue has resolved it."
+  [rows units window aux full-of]
+  (for [{akind :kind {a-onsets :onsets a-spans :spans a-known :known a-lag :lags} :sets a-last :last-q} aux
+        {:keys [unit q] :as r} rows
+        :when (and (units unit) (at-risk? (get a-spans unit (sorted-set)) q window))]
+    {:unit unit :q q :kind akind :lag (or a-lag 0)
+     :full (full-of r (history-features (get a-known unit (sorted-set)) q))
+     :y (when (<= (+ q (second window)) a-last)
+          (label (get a-onsets unit (sorted-set)) q window))}))
+
 (defn histories
   "The unit's history of each of `kinds` (`history-features`) at q, from
   `events` ({kind {unit onsets}}): what one kind of upheaval says of
