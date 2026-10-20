@@ -54,10 +54,12 @@
     jolt -A:tools -M -m bnm.onsets [--name onsets] [--from 1985] [--rows <run>]
                                    [--kinds a,b] [--models base,history,...] [--groups mix,ties]
                                    [--events <training run with rows/, for the event model's state>]
-                                   [--delay n]
+                                   [--delay n] [--threads n]
 
   --delay n gives every input group's values from n quarters before each
   row: a gain that survives the delay cannot be same-quarter leakage.
+  --threads n fits the models and priors of a kind on n threads (1); the
+  forecasts are the same.
 
   A model named gbt-<inputs> is boosted trees (bnm.trees) on the inputs of
   <inputs>, its rounds chosen each year like the priors. One named
@@ -412,12 +414,31 @@
   [[a b] lag]
   [a (+ b lag)])
 
+(defn in-parallel
+  "The results of `thunks`, in order, run on up to `n` threads at once: each
+  worker takes the next thunk not yet started."
+  [n thunks]
+  (let [ts (vec thunks)
+        out (object-array (count ts))
+        next-i (atom -1)
+        work (fn [] (loop []
+                      (let [i (swap! next-i inc)]
+                        (when (< i (count ts))
+                          (aset out i ((ts i)))
+                          (recur)))))]
+    (if (<= n 1)
+      (work)
+      (run! deref (doall (for [_ (range (min n (count ts)))] (future (work))))))
+    (vec out)))
+
 (defn evaluate-kind
   "Out-of-sample predictions for one kind and window: a function of the
   feature sets giving {model {:prior p :preds [[q p y unit]]}}, the prior
-  chosen per model and year by log score on the years before."
+  chosen per model and year by log score on the years before. The fits of
+  each model and prior are independent and run on up to `threads` threads
+  (1 when nil)."
   [rows {onsets-by-unit :onsets spans :spans known :known lag :lags} units window score-from last-q models fam groups
-   & [aux]]
+   & [aux threads]]
   (let [labels-q (fn [{:keys [unit q]}] (o/label (get onsets-by-unit unit (sorted-set)) q window))
         ;; rows past the catalogue's coverage are predicted too, with no label:
         ;; they are the live forecasts (bnm.readings), never fit or scored
@@ -553,34 +574,44 @@
                                        (update acc r into (for [{:keys [unit q y full]} this]
                                                             [q (trees/predict m (pick full idx)) y unit]))))
                                    preds tree-rounds))))))]
-        (into {}
-              (for [model models
-                    :let [tree? (str/starts-with? (name model) "gbt-")
-                          flags? (str/starts-with? (name model) "at-")
-                          knn? (str/starts-with? (name model) "knn-")
-                          shrunk? (str/starts-with? (name model) "hs-")
-                          mt? (str/starts-with? (name model) "mt-")
-                          hier? (str/starts-with? (name model) "hier-")
-                          inputs (cond tree? (keyword (subs (name model) 4))
-                                       flags? (keyword (subs (name model) 3))
-                                       knn? (keyword (subs (name model) 4))
-                                       shrunk? (keyword (subs (name model) 3))
-                                       mt? (keyword (subs (name model) 3))
-                                       hier? (keyword (subs (name model) 5))
-                                       :else model)
-                          idx (or (sets inputs)
-                                  (throw (ex-info (str "no inputs for model " (name model)) {:model model})))
-                          runs (cond
-                                 tree? (run-trees idx)
-                                 knn? [{:prior (double (:k analog-opts)) :preds (run-analog idx)}]
-                                 mt? (vec (for [lam mt-weights] {:prior lam :preds (run-mt idx lam)}))
-                                 :else
-                                 (vec (for [p (if (= model :base) [1.0] priors)]
-                                        {:prior p :preds (run-model idx p flags? shrunk? hier?)})))
-                          default (cond tree? 50.0 knn? (double (:k analog-opts)) mt? 0.3 :else 100.0)]]
-                ;; each year's prior (or rounds) chosen on the years before
-                ;; it, so no scored year has picked its own
-                [model (o/choose-by-year runs log-score (lagged window (or lag 0)) (or (first (filter #(= default (:prior %)) runs)) (first runs)))]))))))
+        (let [specs (for [model models
+                          :let [tree? (str/starts-with? (name model) "gbt-")
+                                flags? (str/starts-with? (name model) "at-")
+                                knn? (str/starts-with? (name model) "knn-")
+                                shrunk? (str/starts-with? (name model) "hs-")
+                                mt? (str/starts-with? (name model) "mt-")
+                                hier? (str/starts-with? (name model) "hier-")
+                                inputs (cond tree? (keyword (subs (name model) 4))
+                                             flags? (keyword (subs (name model) 3))
+                                             knn? (keyword (subs (name model) 4))
+                                             shrunk? (keyword (subs (name model) 3))
+                                             mt? (keyword (subs (name model) 3))
+                                             hier? (keyword (subs (name model) 5))
+                                             :else model)
+                                idx (or (sets inputs)
+                                        (throw (ex-info (str "no inputs for model " (name model)) {:model model})))]]
+                      ;; each model's runs as independent tasks, one per prior
+                      ;; (or rounds, or weight), each giving a vector of runs
+                      {:model model
+                       :default (cond tree? 50.0 knn? (double (:k analog-opts)) mt? 0.3 :else 100.0)
+                       :tasks (cond
+                                tree? [#(run-trees idx)]
+                                knn? [#(vector {:prior (double (:k analog-opts)) :preds (run-analog idx)})]
+                                mt? (vec (for [lam mt-weights] #(vector {:prior lam :preds (run-mt idx lam)})))
+                                :else (vec (for [p (if (= model :base) [1.0] priors)]
+                                             #(vector {:prior p :preds (run-model idx p flags? shrunk? hier?)}))))})
+              results (in-parallel (or threads 1) (mapcat :tasks specs))
+              by-model (loop [[spec & more] specs rs results acc {}]
+                         (if-not spec
+                           acc
+                           (let [n (count (:tasks spec))]
+                             (recur more (drop n rs) (assoc acc (:model spec) (vec (apply concat (take n rs))))))))]
+          (into {}
+                (for [{:keys [model default]} specs
+                      :let [runs (by-model model)]]
+                  ;; each year's prior (or rounds) chosen on the years before
+                  ;; it, so no scored year has picked its own
+                  [model (o/choose-by-year runs log-score (lagged window (or lag 0)) (or (first (filter #(= default (:prior %)) runs)) (first runs)))])))))))
 
 (declare aligned combine-rows)
 
@@ -660,7 +691,7 @@
 
 (defn- f3 [x] (if x (format "%.3f" (double x)) "  -  "))
 
-(defn run [{:keys [name from rows kinds models groups delay] event-run :events}]
+(defn run [{:keys [name from rows kinds models groups delay threads] event-run :events}]
   (let [run-name (or name "onsets")
         from (parse-long (or from "1985"))
         score-from (first tune-years)
@@ -731,7 +762,8 @@
             aux (when (and (political-kinds kind) (some #(str/starts-with? (clojure.core/name %) "mt-") models))
                   (for [k (sort political-kinds) :when (not= k kind)]
                     {:kind k :sets (update-vals event-sets #(get % k)) :last-q (coverage-q k)}))
-            runs (combine ((evaluate-kind rows (update-vals event-sets #(get % kind)) units window score-from last-q models fam groups aux)
+            runs (combine ((evaluate-kind rows (update-vals event-sets #(get % kind)) units window score-from last-q models fam groups aux
+                                          (some-> threads parse-long))
                            (feature-sets labels (n-named fam) n-polecon groups))
                           (lagged window (get-in event-sets [:lags kind] 0)))
             preds (update-vals runs :preds)

@@ -27,3 +27,11 @@
            (loss #(lgt/predict flat (:x %)))))
     (testing "the slope is still found"
       (is (< 0.6 (aget ^doubles beta 1) 1.0) (vec beta)))))
+
+(deftest parallel-fits-keep-their-order
+  (let [ran (atom 0)
+        thunks (for [i (range 23)] #(do (swap! ran inc) (* i i)))]
+    (is (= (mapv #(* % %) (range 23)) (on/in-parallel 4 thunks)))
+    (is (= 23 @ran) "each once")
+    (is (= (on/in-parallel 1 thunks) (on/in-parallel 8 thunks)))
+    (is (= [] (on/in-parallel 3 [])))))

@@ -25,8 +25,10 @@
 (def opts
   "Starting persistence and stationary sd of the world, region, subregion
   and country states, and the grids each year's search chooses them from
-  (by the states' one-step-ahead forecasts of the onsets known by the
-  year's start; size zero drops a level), warm from the year before. Set
+  (by the states' forecasts of the onsets known by the year's start, at
+  the horizon each window uses them: its middle seen from the last
+  complete quarter; size zero drops a level, which must earn Akaike's
+  price), warm from the year before. Set
   in advance, not tuned on scored years: half-lives from about a season
   to four years, sizes up to doubling or halving the rate."
   {:rho [0.8 0.8 0.8 0.8] :sd [0.0 0.0 0.0 0.0] :rhos [0.5 0.8 0.95] :sds [0.0 0.15 0.3 0.6] :passes 1 :penalty 2.0})
@@ -56,9 +58,11 @@
         units (set (for [[_ rows] picked [_ _ _ u] rows] u))
         tree (paths units)
         groups (on/unit-groups units)
-        ;; the states depend on the kind and model, not the window
-        fits (memoize (fn [kind m] (o/dynamic-fits (get picked [kind "w1" m]) (get-in sets [:onsets kind]) tree
-                                                   (get-in sets [:lags kind] 0) opts)))]
+        ;; the states for a kind, a model and the horizon of a window
+        fits (memoize (fn [kind m wname]
+                        (let [lag (get-in sets [:lags kind] 0)]
+                          (o/dynamic-fits (get picked [kind "w1" m]) (get-in sets [:onsets kind]) tree lag
+                                          (assoc opts :horizon (o/horizon (on/windows (keyword wname)) lag))))))]
     (.mkdirs (io/file dir))
     (with-open [w (io/writer (str dir "/preds.tsv"))]
       (with-open [r (io/reader src)]
@@ -67,7 +71,7 @@
               :let [w1 (get picked [kind "w1" m])]
               :when w1]
         (println kind wname m) (flush)
-        (doseq [[q p y unit] (o/dynamic-frailty rows (fits kind m) tree (on/windows (keyword wname)) (get-in sets [:lags kind] 0))]
+        (doseq [[q p y unit] (o/dynamic-frailty rows (fits kind m wname) tree (on/windows (keyword wname)) (get-in sets [:lags kind] 0))]
           (.write w (str kind "\t" wname "\t" "dyn-" m "\t" q "\t" unit "\t" p "\t" (str y) "\n")))
         (.flush w)))
     (doseq [level levels
@@ -77,7 +81,7 @@
                 :let [w1 (get picked [kind "w1" m])]
                 :when w1]
           (println level kind wname m) (flush)
-          (doseq [[q p y g] (o/dynamic-groups rows (fits kind m) tree group-of (on/windows (keyword wname))
+          (doseq [[q p y g] (o/dynamic-groups rows (fits kind m wname) tree group-of (on/windows (keyword wname))
                                               (get-in sets [:lags kind] 0) draw-opts)]
             (.write w (str kind "\t" wname "\t" "dyn-" m "\t" q "\t" g "\t" p "\t" (str y) "\n")))
           (.flush w))))))

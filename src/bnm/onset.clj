@@ -298,6 +298,12 @@
              [[unit (inc q)] [(if (contains? (get onsets unit #{}) (inc q)) 1.0 0.0)
                               (/ (- (Math/log (- 1.0 (min (double p) (- 1.0 1e-9))))) 4.0)]])))
 
+(defn horizon
+  "The quarters from a row's last complete quarter (q - lag) to the middle
+  of its window [a b]: how far ahead its states are used."
+  [[a b] lag]
+  (+ lag (long (Math/round (/ (+ a b) 2.0)))))
+
 (defn dynamic-fits
   "{year filtered-fit} for the years of the w1 forecasts `w1`: each year's
   levels' persistence and variance learned (augur.hier/states, warm from
@@ -305,7 +311,9 @@
   its start, t + `lag` <= 4 year, and the states then filtered through
   its last quarter's knowledge, so a row at q reads its states at q - lag,
   from the onsets (`onsets`, {unit sorted-set}) known by then. `paths`
-  {unit [world ... unit]}."
+  {unit [world ... unit]}. `opts` carries the :horizon to choose the
+  states for: a row's window seen from its last complete quarter
+  (`horizon`)."
   [w1 onsets paths lag opts]
   (let [obs (quarter-obs w1 onsets)
         t-first (when (seq obs) (apply min (map (comp second key) obs)))

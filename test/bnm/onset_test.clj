@@ -200,7 +200,12 @@
     {:units units :onsets onsets :preds preds
      :paths (into {} (for [[u r] units] [u ["world" r u]]))}))
 
-(def dyn-opts {:rho [0.8 0.8 0.8] :sd [0.2 0.2 0.2] :rhos [0.5 0.8 0.95] :sds [0.0 0.1 0.2 0.4 0.8] :passes 1 :penalty 2.0})
+(def dyn-opts {:rho [0.8 0.8 0.8] :sd [0.2 0.2 0.2] :rhos [0.5 0.8 0.95] :sds [0.0 0.1 0.2 0.4 0.8] :passes 1 :penalty 2.0 :horizon 1})
+
+(deftest states-serve-the-window-they-forecast
+  (is (= 3 (o/horizon [1 4] 0)))
+  (is (= 8 (o/horizon [1 4] 5)))
+  (is (= 12 (o/horizon [5 8] 5))))
 
 (deftest dynamic-frailty
   ;; the multilevel states lift a hot region's members from onsets known
