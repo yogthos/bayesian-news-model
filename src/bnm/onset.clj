@@ -2,7 +2,8 @@
   "Onset rows: their labels, which rows are at risk, the hard cases, how far
   a catalogue is complete, and the presence column of an input group that
   covers only some rows. Onsets are sorted sets of quarters; a window [a b]
-  asks for an onset in quarters q+a..q+b of the origin q.")
+  asks for an onset in quarters q+a..q+b of the origin q."
+  (:require [augur.hier :as h]))
 
 (defn label [onsets q [a b]]
   (boolean (seq (subseq onsets >= (+ q a) <= (+ q b)))))
@@ -100,11 +101,11 @@
 
 (defn unused-groups
   "The input groups that no model names: a model's inputs are its name
-  without a gbt-, at-, knn-, hs- or mt- prefix, split on +, each part without
+  without a gbt-, at-, knn-, hs-, mt- or hier- prefix, split on +, each part without
   -placebo."
   [models groups]
   (let [used (set (for [m models
-                        part (clojure.string/split (clojure.string/replace (name m) #"^(gbt|at|knn|hs|mt)-" "") #"\+")]
+                        part (clojure.string/split (clojure.string/replace (name m) #"^(gbt|at|knn|hs|mt|hier)-" "") #"\+")]
                     (clojure.string/replace part #"-placebo$" "")))]
     (vec (remove used groups))))
 
@@ -283,3 +284,81 @@
               pick (if (seq scored) (second (apply max-key first (reverse scored)))
                        (first (filter #(= (:prior %) (:prior default)) indexed)))]
           (recur more (:prior pick) (into preds (get (:years pick) yr))))))))
+
+;; --- multilevel dynamic frailty ----------------------------------------------
+
+(defn quarter-obs
+  "Onsets against what forecasts expected, per unit and quarter: from the
+  w1 forecasts `w1` ([q p y unit], a window of quarters 1-4), the quarter
+  q + 1 of each at-risk row expects a quarter of its window's hazard
+  -log(1 - p), and counts 1 if the unit's onsets (`onsets`, {unit
+  sorted-set}) include it. {[unit t] [count expected]}."
+  [w1 onsets]
+  (into {} (for [[q p _ unit] w1]
+             [[unit (inc q)] [(if (contains? (get onsets unit #{}) (inc q)) 1.0 0.0)
+                              (/ (- (Math/log (- 1.0 (min (double p) (- 1.0 1e-9))))) 4.0)]])))
+
+(defn dynamic-fits
+  "{year filtered-fit} for the years of the w1 forecasts `w1`: each year's
+  levels' persistence and variance learned (augur.hier/states, warm from
+  the year before; `opts` as it takes them) on the quarters complete by
+  its start, t + `lag` <= 4 year, and the states then filtered through
+  its last quarter's knowledge, so a row at q reads its states at q - lag,
+  from the onsets (`onsets`, {unit sorted-set}) known by then. `paths`
+  {unit [world ... unit]}."
+  [w1 onsets paths lag opts]
+  (let [obs (quarter-obs w1 onsets)
+        t-first (when (seq obs) (apply min (map (comp second key) obs)))
+        years (sort (distinct (map #(quot (first %) 4) w1)))]
+    (loop [[yr & more] years hyper (select-keys opts [:rho :sd]) out {}]
+      (if-not yr
+        out
+        (let [end (- (* 4 yr) lag)
+              known (into {} (filter #(<= (second (key %)) end) obs))]
+          (if (or (nil? t-first) (< end t-first) (empty? known))
+            (recur more hyper out)
+            (let [fit (h/states known paths [t-first end] (merge opts hyper))
+                  last-t (- (+ (* 4 yr) 3) lag)
+                  filt (h/refilter fit (into {} (filter #(<= (second (key %)) last-t) obs)) [t-first last-t])]
+              (recur more (select-keys fit [:rho :sd]) (assoc out yr filt)))))))))
+
+(defn dynamic-frailty
+  "Forecasts `preds` ([q p y unit], window [a b]) scaled by states shared
+  down the tree of `paths` ({unit [world region ... unit]}): every node a
+  latent AR(1) state on the log scale of the onsets that come against
+  those the w1 forecasts expected (`fits`, from `dynamic-fits`), its
+  evidence its units' onsets summed, its state scaling every unit under
+  it. A row at q reads the states filtered by q - `lag` (the onsets known
+  by then) and runs them forward over its window (augur.hier/multiplier):
+  a region running hot lifts its members for as long as its persistence
+  says, and far from any evidence the forecasts are left as they were.
+  Unchanged before there is any evidence."
+  [preds fits paths [a b] lag]
+  (do
+    (vec (for [[q p y unit :as row] preds
+               :let [fit (fits (quot q 4)) path (paths unit)]]
+           (if (and fit path)
+             [q (h/adjust (double p) (h/multiplier fit path (- q lag) [(+ a lag) (+ b lag)])) y unit]
+             row)))))
+
+(defn dynamic-groups
+  "Forecasts for groups of units (`group-of`, {unit group}), from members'
+  forecasts `preds` ([q p y unit], window [a b]) and the states `fits` of
+  `dynamic-fits`: the chance of an onset in any member, the states
+  drawn and run forward together (augur.hier/any-probability, `draw-opts`
+  {:draws :seed}), so members of a hot group rise together. [q p y group],
+  y whether any member had one (nil while one is unresolved and none did); groups with no state yet take the
+  independent chance."
+  [preds fits paths group-of [a b] lag draw-opts]
+  (do
+    (vec (for [[[g q] rows] (group-by (fn [[q _ _ unit]] [(group-of unit) q])
+                                      (filter #(group-of (nth % 3)) preds))
+               :let [fit (fits (quot q 4))
+                     ys (map #(nth % 2) rows)
+                     ;; unresolved while a member is, unless one already came
+                     y (cond (some true? ys) true (every? false? ys) false :else nil)
+                     ps (into {} (for [[_ p _ unit] rows] [unit p]))
+                     p (if fit
+                         (h/any-probability fit (select-keys paths (keys ps)) ps (- q lag) [(+ a lag) (+ b lag)] draw-opts)
+                         (- 1.0 (reduce * (map #(- 1.0 (double %)) (vals ps)))))]]
+           [q p y g]))))

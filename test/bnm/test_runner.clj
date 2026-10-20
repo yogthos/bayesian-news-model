@@ -15,6 +15,7 @@
             [bnm.eval-test]
             [bnm.ties-test]
             [bnm.onset-test]
+            [bnm.onsets-test]
             [bnm.calm-test]
             [bnm.sync-test]
             [bnm.ingest-test]
@@ -38,6 +39,7 @@
     bnm.eval-test
     bnm.ties-test
     bnm.onset-test
+    bnm.onsets-test
     bnm.calm-test
     bnm.sync-test
     bnm.ingest-test

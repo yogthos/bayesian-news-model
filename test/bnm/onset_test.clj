@@ -123,6 +123,7 @@
   (is (empty? (o/unused-groups ["history" "named+leaders-placebo" "gbt-neighbours"] ["leaders" "neighbours"])))
   (is (empty? (o/unused-groups ["at-named+mix"] ["mix"])))
   (is (empty? (o/unused-groups ["knn-named+mix" "hs-named+ties"] ["mix" "ties"])))
+  (is (empty? (o/unused-groups ["hier-named+mix"] ["mix"])))
   (is (= ["mix"] (o/unused-groups ["mixed"] ["mix"])) "whole names only"))
 
 (deftest forecasts-for-groups-of-units
@@ -184,6 +185,55 @@
       (is (> (at "r0c0" 100) 0.06) "a hot region's member lifted")
       (is (< (Math/abs (- (at "r9c0" 100) 0.03)) 0.015) "a calm region's left near its forecast")
       (is (= 0.03 (at "r0c0" 3)) "nothing resolved yet: unchanged"))))
+
+(defn- hot-world
+  "Units in ten regions, onsets drawn per quarter, three regions running
+  hot from quarter 40 to 120, every w1 forecast 0.03."
+  [seed]
+  (let [g (m/rng seed)
+        units (for [r (range 10) c (range 8)] [(str "r" r "c" c) (str "r" r)])
+        rate (fn [r t] (if (and (< (parse-long (subs r 1)) 3) (< 40 t 120)) 0.04 0.0076))
+        onsets (into {} (for [[u r] units]
+                          [u (into (sorted-set) (filter #(< (m/next-double! g) (rate r %)) (range 170)))]))
+        preds (vec (for [q (range 160) [u _] units]
+                     [q 0.03 (boolean (seq (subseq (onsets u) >= (inc q) <= (+ q 4)))) u]))]
+    {:units units :onsets onsets :preds preds
+     :paths (into {} (for [[u r] units] [u ["world" r u]]))}))
+
+(def dyn-opts {:rho [0.8 0.8 0.8] :sd [0.2 0.2 0.2] :rhos [0.5 0.8 0.95] :sds [0.0 0.1 0.2 0.4 0.8] :passes 1 :penalty 2.0})
+
+(deftest dynamic-frailty
+  ;; the multilevel states lift a hot region's members from onsets known
+  ;; by each row's quarter, and leave calm ones near their forecasts
+  (let [{:keys [onsets preds paths]} (hot-world 13)
+        adj (o/dynamic-frailty preds (o/dynamic-fits preds onsets paths 1 dyn-opts) paths [1 4] 1)
+        ls (fn [ps] (reduce + (for [[_ p y] ps] (Math/log (if y p (- 1.0 p))))))
+        at (fn [rows u q] (second (first (filter #(and (= u (nth % 3)) (= q (first %))) rows))))]
+    (is (= (count preds) (count adj)))
+    (is (> (ls adj) (ls preds)) "better where regions run hot")
+    (is (> (at adj "r0c0" 100) 0.05) "a hot region's member lifted")
+    (is (< (Math/abs (- (at adj "r9c0" 100) 0.03)) 0.012) "a calm region's left near its forecast")
+    (is (= 0.03 (at adj "r0c0" 2)) "nothing known yet: unchanged")
+    (testing "a row uses only the onsets known by its quarter"
+      (let [cut (update-vals onsets #(into (sorted-set) (filter (fn [t] (<= t 100)) %)))
+            ;; the forecasts' outcomes are not inputs: only the onsets are
+            adj2 (o/dynamic-frailty preds (o/dynamic-fits preds cut paths 1 dyn-opts) paths [1 4] 1)]
+        (doseq [u ["r0c0" "r5c3"] q [96 100 101]]
+          (is (== (at adj u q) (at adj2 u q)) [u q]))
+        (is (not= (at adj "r0c0" 110) (at adj2 "r0c0" 110)))))))
+
+(deftest group-forecasts-share-their-states
+  (let [{:keys [onsets preds paths]} (hot-world 13)
+        rows (o/dynamic-groups preds (o/dynamic-fits preds onsets paths 1 dyn-opts) paths
+                               {"r0c0" "r0" "r0c1" "r0" "r0c2" "r0" "r9c0" "r9" "r9c1" "r9"}
+                               [1 4] 1 {:draws 300 :seed 1})
+        at (fn [g q] (first (filter #(and (= g (nth % 3)) (= q (first %))) rows)))]
+    (is (seq rows))
+    (testing "a group's chance is of an onset among its members"
+      (let [[_ p y] (at "r0" 100)]
+        (is (< 0.0 p 1.0))
+        (is (= y (boolean (some #(nth % 2) (filter #(and (= 100 (first %)) (#{"r0c0" "r0c1" "r0c2"} (nth % 3))) preds)))))))
+    (is (> (second (at "r0" 100)) (second (at "r9" 100))) "the hot group above the calm one")))
 
 (deftest eras-split-by-when-labels-resolve
   ;; decision eras score only rows whose labels resolve before the lock; the

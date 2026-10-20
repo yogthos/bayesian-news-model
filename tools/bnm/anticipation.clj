@@ -15,8 +15,10 @@
   --bench sets the model every other is scored against: a group's placebo
   (ties-placebo) asks whether the group knows anything about the country.
   --level scores forecasts for groups of countries, the chance of an onset
-  in any of them (bnm.onset/aggregate): methods for waves and contagion may
-  work for a region before they work for a country. --tests m widens the
+  in any of them (bnm.onset/aggregate, as if independent), and the
+  forecasts made for the groups themselves in preds-<level>.tsv beside the
+  run's (bnm.dynamic, with states the members share): methods for waves
+  and contagion may work for a region before they work for a country. --tests m widens the
   recall intervals for m comparisons (Bonferroni). Eras are 2003-14 and
   2015-22; 2023 on is locked for confirmation (--confirm true). --split
   world scores calm and busy world quarters apart.
@@ -112,8 +114,12 @@
                                               [_ rows] by-model [unit _] (keys rows)] unit)))
         region-of (group-map "region" (set (for [[_ by-model] (read-preds (str dir "/preds.tsv") kinds)
                                                  [_ rows] by-model [unit _] (keys rows)] unit)))
+        group-file (io/file (str dir "/preds-" level ".tsv"))
         preds (cond->> (read-preds (str dir "/preds.tsv") kinds)
-                group-of (into {} (map (fn [[kw by-model]] [kw (update-vals by-model #(o/aggregate % group-of))]))))
+                group-of (into {} (map (fn [[kw by-model]] [kw (update-vals by-model #(o/aggregate % group-of))])))
+                ;; forecasts made for the groups themselves (bnm.dynamic --levels)
+                (and group-of (.exists group-file))
+                (merge-with merge (read-preds (str group-file) kinds)))
         lags (:lags (onsets/read-event-sets "data/slow/events.tsv"))
         events (cond->> (onsets/read-events "data/slow/events.tsv")
                  group-of (into {} (map (fn [[kind by-unit]]

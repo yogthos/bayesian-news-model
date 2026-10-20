@@ -68,12 +68,17 @@
   hs-<inputs> the logit with horseshoe-like shrinkage (lgt/fit-shrunk);
   mt-<inputs> the logit fit on the kind's rows and the other political
   kinds' rows, weighted by a share chosen each year, borrowing strength
-  across kinds.
+  across kinds; hier-<inputs> the logit with nested random intercepts for
+  region, subregion and country (augur.hier/intercepts), their variances
+  estimated each year, so a country with few onsets is pulled toward its
+  subregion and a subregion toward its region rather than all toward the
+  world (bnm.dynamic adds the dynamic states over the same tree).
 
   Writes data/runs/<name>/onsets.txt, the out-of-sample predictions,
   preds.tsv (kind window model quarter unit p outcome), and the recorded
   rows, rows.tsv, which --rows reads back instead of running the slow layer."
-  (:require [augur.logit :as lgt]
+  (:require [augur.hier :as hier]
+            [augur.logit :as lgt]
             [augur.pool :as pl]
             [augur.score :as sc]
             [augur.analog :as analog]
@@ -338,6 +343,37 @@
   "The kinds that share the political inputs, which mt- models pool."
   #{"conflict_onset" "war_onset" "coup" "protest_surge" "violence_surge"})
 
+(def hier-opts
+  "Starting variances of the region, subregion and country intercepts of
+  the hier-<inputs> models (each year's start is the year before's
+  estimate), the backfitting sweeps per fit, and the alternations between
+  the coefficients and the intercepts. Set in advance."
+  {:tau2 [0.25 0.25 0.25] :sweeps 8 :rounds 2})
+
+(defn hier-path
+  "[region subregion unit] for a country, from the M49 tree."
+  [unit]
+  (let [s (first (geo/parents unit))]
+    (if s [(first (geo/parents s)) s unit] [unit])))
+
+(defn- dot ^double [^doubles beta ^doubles x]
+  (loop [i 0 acc 0.0] (if (< i (alength beta)) (recur (inc i) (+ acc (* (aget beta i) (aget x i)))) acc)))
+
+(defn fit-hier
+  "Coefficients and nested intercepts for `train` ({:x :y :w :path}),
+  alternating: the coefficients with the intercepts as offsets, then the
+  intercepts with the coefficients' log odds as offsets. Warm from
+  `start` ({:beta :fx}). {:beta :fx}."
+  [train k prior {:keys [beta fx]} {:keys [tau2 sweeps rounds]}]
+  (let [train (vec train)]
+    (loop [r 0 beta beta fx fx]
+      (if (>= r rounds)
+        {:beta beta :fx fx}
+        (let [beta (lgt/fit (map #(assoc % :o (if fx (hier/effect fx (:path %)) 0.0)) train) k {:prior prior :start beta})
+              fx (hier/intercepts (map #(assoc % :o (dot beta (:x %))) train)
+                                  {:tau2 (or (:tau2 fx) tau2) :sweeps sweeps :start (:effects fx)})]
+          (recur (inc r) beta fx))))))
+
 (def analog-opts
   "Neighbours and shrinkage of the knn-<inputs> models, set in advance: more
   neighbours than weather's twenty since onsets are rare."
@@ -417,12 +453,13 @@
                                                           (pick full idx))
                                                         3 tail-share)))
             run-model
-            (fn [idx prior flags? shrunk?]
+            (fn [idx prior flags? shrunk? hier?]
               ;; flags?: inputs past the constant and history as at-risk
               ;; flags (o/tail-flags), their cuts from the rows known each year
               (let [k (if flags? (+ 3 (* 2 (- (count idx) 3))) (count idx))]
                 (loop [[yr & more] (filter #(>= % (+ 10 (first years))) years)
                        beta nil
+                       fx nil
                        preds []]
                   (if-not yr
                     preds
@@ -434,17 +471,17 @@
                                #(pick % idx))
                           train (for [{:keys [unit q y full]} known
                                       :when (and (some? y) (or y (keep-negative? unit q)))]
-                                  {:x (xf full) :y y
+                                  {:x (xf full) :y y :path (when hier? (hier-path unit))
                                    :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))})
-                          beta (if (some :y train)
-                                 (if shrunk?
-                                   (lgt/fit-shrunk train k {:prior prior :start beta})
-                                   (lgt/fit train k {:prior prior :start beta}))
-                                 beta)
+                          [beta fx] (cond
+                                      (not (some :y train)) [beta fx]
+                                      hier? (let [f (fit-hier train k prior {:beta beta :fx fx} hier-opts)] [(:beta f) (:fx f)])
+                                      shrunk? [(lgt/fit-shrunk train k {:prior prior :start beta}) fx]
+                                      :else [(lgt/fit train k {:prior prior :start beta}) fx])
                           scored (for [{:keys [unit q y full]} prepared
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
-                                   [q (lgt/predict beta (xf full)) y unit])]
-                      (recur more beta (into preds scored)))))))
+                                   [q (lgt/predict beta (xf full) (if fx (hier/effect fx (hier-path unit)) 0.0)) y unit])]
+                      (recur more beta fx (into preds scored)))))))
             ;; multi-task (mt-): the kind's rows and the other kinds' rows
             ;; weighted by lam, an extra column marking the others so the
             ;; kind keeps its own intercept; the coefficients are shared, so
@@ -523,11 +560,13 @@
                           knn? (str/starts-with? (name model) "knn-")
                           shrunk? (str/starts-with? (name model) "hs-")
                           mt? (str/starts-with? (name model) "mt-")
+                          hier? (str/starts-with? (name model) "hier-")
                           inputs (cond tree? (keyword (subs (name model) 4))
                                        flags? (keyword (subs (name model) 3))
                                        knn? (keyword (subs (name model) 4))
                                        shrunk? (keyword (subs (name model) 3))
                                        mt? (keyword (subs (name model) 3))
+                                       hier? (keyword (subs (name model) 5))
                                        :else model)
                           idx (or (sets inputs)
                                   (throw (ex-info (str "no inputs for model " (name model)) {:model model})))
@@ -537,7 +576,7 @@
                                  mt? (vec (for [lam mt-weights] {:prior lam :preds (run-mt idx lam)}))
                                  :else
                                  (vec (for [p (if (= model :base) [1.0] priors)]
-                                        {:prior p :preds (run-model idx p flags? shrunk?)})))
+                                        {:prior p :preds (run-model idx p flags? shrunk? hier?)})))
                           default (cond tree? 50.0 knn? (double (:k analog-opts)) mt? 0.3 :else 100.0)]]
                 ;; each year's prior (or rounds) chosen on the years before
                 ;; it, so no scored year has picked its own

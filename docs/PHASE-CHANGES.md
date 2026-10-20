@@ -301,3 +301,53 @@ asset-price stocks carry the signal. A model that anticipates 2008-type
 events needs L0. For political transitions, the realistic aim is hazard ramps
 from slow stocks plus fast conditional updating, judged on the full
 catalogue.
+
+## Pre-registered, October 2026: the onset model as a hierarchy over time
+
+Until now the onset hazards were one pooled logit across countries: the
+tree above a country entered only as inputs (onsets among neighbours, wave
+kernels) and as a regional frailty that scaled a region's hazards by its
+resolved record. Two changes make it a hierarchy of models over places and
+over time (bnm-969).
+
+- **Partial pooling over places (`hier-<inputs>`, trial 31).** The same
+  logit, with nested random intercepts for region, subregion and country
+  (`augur.hier/intercepts`). Each level's variance is estimated each year
+  from the rows resolved by then, so the data say how far a country stands
+  from its subregion and a subregion from its region. A country with few
+  onsets is pulled toward its neighbours' level rather than the world's.
+- **States that evolve (`dyn-<model>`, trial 32).** Every node of the tree
+  (world, region, subregion, country) carries a latent AR(1) state on the
+  log scale of the onsets that came against those the model expected
+  (`augur.hier/states`, `bnm.dynamic`). A node's evidence is the onsets of
+  every country under it, so local onsets move their subregion's state,
+  which moves its region's, and so on up. Its state scales the hazards of
+  every country under it, so a region running hot lifts its members. A
+  row reads the states filtered as of its quarter, less the kind's
+  reporting lag, and runs them forward over its window: how long a wave
+  persists, and when the system returns to normal, are each level's
+  persistence, chosen with its size each year by the states' own
+  one-step-ahead forecasts of the onsets known by then. A size of zero
+  drops a level. The grids (half-lives of a season to four years, sizes
+  up to a doubling of the rate) are set here, not tuned on scored years.
+  The chance of an onset anywhere in a subregion or region comes from the
+  shared states (`dynamic-groups`), not from multiplying independent
+  country forecasts.
+
+**Run.** The rows of r6 (`--rows onsets-3`), its kinds, and the same
+inputs, so each comparison is paired on identical rows: `history`,
+`named`, `named+mix` against `hier-history`, `hier-named`,
+`hier-named+mix`, with `hier-named+mix-placebo`. `bnm.dynamic` then adds
+`dyn-` versions of `named`, `named+mix`, `hier-named+mix` and, on
+r6-pooled, of `hedge` and `mlpool`.
+
+**Counts as a gain** under the amended rules above:
+- **hier:** `hier-X` against `X`, as bench, on the decision eras, with
+  intervals Bonferroni-corrected over 32 trials and holding with each
+  region left out.
+- **dyn:** `dyn-X` against `X`, at the country level and with `--level
+  subregion` and `--level region`. A gain only at the group levels counts
+  as a gain for waves, not for countries.
+
+If neither gains, the pooled logit stays and the result is written up as a
+negative one.
