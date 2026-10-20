@@ -38,9 +38,12 @@ months behind its usual lag means its source has stopped updating.
   against one-year volatility, and the drawdown from the 52-week high, from
   FRED's daily S&P 500 (to the day before).
 
-**Onsets** (`bnm.onsets`, stack model): the countries likeliest to see a
-conflict onset, war onset, protest or violence surge, coup or banking
-crisis within a year, from the latest quarter.
+**Onsets** (`bnm.onsets`): the countries likeliest to see a conflict
+onset, war onset, protest or violence surge, coup or banking crisis within
+a year, from the latest quarter. Per kind the model with the best log score
+on 2000-07; the members are own history, the literature's named stocks and
+the event-code mix (what kinds of events are reported, docs/SHOCKS.md),
+which is what lifts the hard cases.
 
 **Event model** (`bnm.live`): the latest saved model learns every complete
 weekly bin since its last, and its outlook gives the likeliest country
@@ -117,6 +120,19 @@ both say so.
 - Held out it lifts AUC from 0.831 to 0.836, and the probability before
   2007 from 0.06-0.16 to 0.09-0.18: flagged, weakly. The US gap was large
   before 2007 but not unusual against its own past.
+- **Credit-financed booms** (Greenwood, Hanson, Shleifer & Sørensen 2022)
+  now enter the panel hazard: three-year credit growth with real equity or
+  house-price growth, each against the country's own past (the boom zone:
+  credit in its top fifth, an asset in its top third; and their
+  interaction), so the panel's coefficients carry to US series in other
+  units. Real time on the panel the crisis AUC over 2000-20 rose from 0.69
+  to 0.75, from 1950 from 0.52 to 0.62, and the timing of crisis waves from
+  0.58 to 0.76 (`bnm.macrohistory`, the boom section).
+- The US crisis probability is now 0.14 in mid-2004 to mid-2007 against
+  0.08 in 2003 (before: flat at 0.09-0.10), and 0.12 in 2000. It leads the
+  2008 fall by two to three years, so on the 12-month drawdown target it
+  scores no better (AUC 0.837 against 0.839): the lead is the point, and it
+  is read on the crisis channel's two-year horizon.
 
 **Exogenous shocks (2020)** (`scripts/detection-lag.py`). No model
 anticipates them. Measured across every US bear market since 1990, from
@@ -138,6 +154,19 @@ whether one is under way.
   than below it (13-14% against 6-7%). A factor per side (`:coverage-sides`)
   evens the tails but drags the median down and scores worse, so it is not
   used. At the country level the tails are even.
+- The fix is in the forecast itself: each path carries one log-normal
+  shock per node and channel, held over the quarter, log-sd 0.4 for quiet
+  nodes and fading with volume (`bnm.model/shock-sd`). Gamma mixing leaves a
+  sparse node's log total left-skewed; the shock lengthens its upper tail.
+  Refit over v6-q's origins it evened the outer tenths below the country
+  (pairs: summed deviation of the PIT from flat 1.28 to 0.80) with CRPS
+  unchanged and country escalation AUC up (violence 0.792 to 0.797). It
+  changes forecasts only, so a model trained without it takes it on load.
+  Learning its size per kind from the tails measured worse (the shock moves
+  the median, and the size chased it), so it is fixed.
+  Replayed live from January 2023 with it on, country Brier held or
+  improved (violence 0.0423 against 0.0424) and the 80% range covered
+  0.81-0.82 as the widening learned without it relearned.
 - The escalation probability is the tail, above 1.5 times the last
   quarter, of a log-normal fitted to the forecast sample, then calibrated.
   From 100 draws a counted share is zero for most nodes, and the ties lose

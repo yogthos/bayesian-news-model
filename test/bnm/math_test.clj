@@ -36,3 +36,10 @@
 (deftest normal-cdf-inverts-the-quantile
   (doseq [p [0.001 0.05 0.3 0.5 0.8 0.99]]
     (is (< (Math/abs (- p (bnm.math/normal-cdf (bnm.math/normal-quantile p)))) 1e-6) p)))
+
+(deftest nelder-mead-finds-the-rosenbrock-valley-floor
+  (let [{:keys [x f]} (m/nelder-mead (fn [[a b]] (+ (Math/pow (- 1.0 a) 2) (* 100.0 (Math/pow (- b (* a a)) 2))))
+                                     [-1.2 1.0] {:tol 1e-14 :max-iter 5000})]
+    (is (< f 1e-10))
+    (is (< (Math/abs (- 1.0 (x 0))) 1e-4))
+    (is (< (Math/abs (- 1.0 (x 1))) 1e-4))))

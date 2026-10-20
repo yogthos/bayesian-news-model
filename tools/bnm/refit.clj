@@ -53,7 +53,9 @@
         results (vec (for [lbl labels
                            :let [rows (io/file dir "rows" (str lbl ".tsv"))]
                            :when (.exists rows)]
-                       (let [mdl (update (store/read-file (str dir "/origin-" lbl ".edn")) :config merge overrides)
+                       (let [mdl (cond-> (update (store/read-file (str dir "/origin-" lbl ".edn")) :config merge overrides)
+                                   ;; the shock's learned size is read from the spread
+                                   coverage? (assoc :spread @cov))
                              horizon (or every 52)
                              fc (assoc (model/forecast mdl {:horizon horizon :sims sims :seed (parse-long lbl)})
                                        :period lbl :levels (mapv :level (:nodes mdl))
@@ -63,7 +65,7 @@
                              ctx (assoc (context (str dir "/context-" lbl ".edn"))
                                         :actual (recorded rows))
                              full (ev/score fc ctx)
-                             _ (when coverage? (swap! cov #(cal/learn-by learn-mode % (:rows full))))
+                             _ (when coverage? (swap! cov #(cal/learn-by learn-mode % (:rows full) (cal/shock-learning (:config mdl)))))
                              r (dissoc full :rows)]
                          (println (ev/summary-line r))
                          r)))]

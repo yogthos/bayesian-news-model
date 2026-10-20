@@ -76,3 +76,31 @@
          (when (>= n 3)
            (let [mu (/ (reduce + ds) n)]
              (Math/sqrt (/ (reduce + (map #(let [d (- % mu)] (* d d)) ds)) n)))))))))
+
+(defn known
+  "[period value] of every value published by t, oldest first."
+  [{:keys [^longs available ^longs period ^doubles value]} ^long t]
+  (let [i (last-index available t (alength available))]
+    (mapv (fn [j] [(aget period j) (aget value j)]) (range (inc i)))))
+
+(defn periods-where
+  "Periods of the values published by t that satisfy `pred`."
+  [s t pred]
+  (vec (for [[p v] (known s t) :when (pred v)] p)))
+
+(defn median-gap
+  "The median gap between successive periods, nil with fewer than two."
+  [periods]
+  (let [gaps (vec (sort (map - (rest periods) periods)))
+        n (count gaps)]
+    (when (pos? n)
+      (if (odd? n)
+        (double (gaps (quot n 2)))
+        (* 0.5 (+ (gaps (dec (quot n 2))) (gaps (quot n 2))))))))
+
+(defn last-change
+  "The period of the latest value published by t that differs from the one
+  before it, nil if none."
+  [s t]
+  (some (fn [[[_ a] [p b]]] (when (not= a b) p))
+        (reverse (partition 2 1 (known s t)))))

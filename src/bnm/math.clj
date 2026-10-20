@@ -205,3 +205,32 @@
         poly (* t (+ 0.254829592 (* t (+ -0.284496736 (* t (+ 1.421413741 (* t (+ -1.453152027 (* t 1.061405429)))))))))
         erf (- 1.0 (* poly (Math/exp (- (* z z)))))]
     (if (neg? x) (* 0.5 (- 1.0 erf)) (* 0.5 (+ 1.0 erf)))))
+
+(defn nelder-mead
+  "Minimizes f over vectors from x0 by the Nelder-Mead simplex (standard
+  coefficients, initial steps 5% of each coordinate or 0.00025 at zero),
+  until the spread of f over the simplex is below :tol or :max-iter steps.
+  {:x :f}."
+  [f x0 {:keys [tol max-iter] :or {tol 1e-10 max-iter 2000}}]
+  (let [d (count x0)
+        x0 (mapv double x0)
+        pt (fn [x] [(f x) x])
+        simplex (vec (cons (pt x0) (for [i (range d)]
+                                    (pt (update x0 i #(if (zero? %) 0.00025 (* 1.05 %)))))))
+        lerp (fn [a b t] (mapv #(+ %1 (* t (- %2 %1))) a b))]
+    (loop [s (vec (sort-by first simplex)) it 0]
+      (let [[fb xb] (first s) [fw xw] (peek s)]
+        (if (or (>= it max-iter) (< (- fw fb) (* tol (+ (Math/abs fb) tol))))
+          {:x xb :f fb}
+          (let [c (mapv #(/ % d) (apply mapv + (map second (pop s))))
+                [fr xr :as r] (pt (lerp c xw -1.0))
+                f2 (first (s (- d 1)))
+                s' (cond
+                     (< fr fb) (let [[fe :as e] (pt (lerp c xw -2.0))] (conj (pop s) (if (< fe fr) e r)))
+                     (< fr f2) (conj (pop s) r)
+                     :else (let [[fc :as cc] (if (< fr fw) (pt (lerp c xw -0.5)) (pt (lerp c xw 0.5)))]
+                             (if (< fc (min fr fw))
+                               (conj (pop s) cc)
+                               ;; shrink toward the best
+                               (vec (cons (first s) (map (fn [[_ x]] (pt (lerp xb x 0.5))) (rest s)))))))]
+            (recur (vec (sort-by first s')) (inc it))))))))

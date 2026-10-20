@@ -231,7 +231,7 @@
               (dotimes [i n] (aset out i (* f (aget out i)))))))))
     out))
 
-(declare coverage-factor learn-coverage side-factors learn-coverage-sides)
+(declare coverage-factor learn-coverage side-factors learn-coverage-sides learn-shock)
 
 (defn widen-by
   "The forecast sample recalibrated by `spread` for `key`, as `mode` says:
@@ -248,12 +248,15 @@
     (widen (spread-factor spread key) xs)))
 
 (defn learn-by
-  "`spread` updated with resolved forecasts as `mode` learns."
-  [mode spread rows]
-  (case mode
-    :coverage (learn-coverage spread rows)
-    :coverage-sides (learn-coverage-sides spread rows)
-    (learn-spread spread rows)))
+  "`spread` updated with resolved forecasts as `mode` learns; with a
+  :shock-sd (the configured forecast shock), the shock's size as well."
+  ([mode spread rows] (learn-by mode spread rows nil))
+  ([mode spread rows {:keys [shock-sd]}]
+   (cond-> (case mode
+             :coverage (learn-coverage spread rows)
+             :coverage-sides (learn-coverage-sides spread rows)
+             (learn-spread spread rows))
+     shock-sd (learn-shock rows shock-sd))))
 
 (defn isotonic-map
   "Recalibration learned from past forecasts ps and their outcomes ys: the
@@ -361,3 +364,51 @@
                 (assoc cov key {:lo (clamp (* lo (step n below))) :hi (clamp (* hi (step n above)))})))
             cov
             (group-by (juxt :level :channel :stratum) (filter #(> (:q90 %) (:q10 %)) rows)))))
+
+;; --- the forecast shock's size from the tails --------------------------------------------
+;; The persistent shock (bnm.model/shock-sd) evens the tails below the country,
+;; where gamma mixing leaves the upper one short; one size for every level
+;; overshoots where series are busier (v6-q refit: a log-sd of 0.4 evened dyads
+;; and pairs and left the country's upper tail too long, 0.8 reversed the skew).
+;; So each level and channel learns its own: it grows while outcomes fall above
+;; the 80% range more often than below it, shrinks while below outnumbers
+;; above. Coverage is learned apart, by the width.
+
+(defn shock-learning
+  "The options `learn-by` learns the shock's size with under `config`: only
+  when :learn is set. Not the default: refit over v6-q's origins, learning it
+  from 0 or 0.4 raised country CRPS (0.1033 at a fixed 0.4 to 0.1052 and
+  0.1122) and lowered escalation AUC; the mean-one shock lowers the median,
+  so the tails look uneven for the location as much as the shape, and the
+  size chased it (actors' lowest tenth fell to 0.68)."
+  [config]
+  (when (get-in config [:shock :learn])
+    {:shock-sd (get-in config [:shock :sd])}))
+
+(def shock-rate
+  "How far the shock's log-sd moves per unit of tail asymmetry in a period."
+  0.5)
+
+(def shock-limit 1.5)
+
+(defn shock-scale
+  "The forecast shock's log-sd for `level` and `channel` under `spread`
+  (learned by `learn-shock`), `default` until it has learned."
+  [spread level channel default]
+  (get-in spread [[:shock level channel] :sd] default))
+
+(defn learn-shock
+  "`spread` updated with a period's resolved forecasts (rows with :level,
+  :channel, :q10, :q90 and :actual, the quantiles as forecast): each level
+  and channel's shock moves by the share above the range less the share
+  below, each shrunk toward 10%. `default` is where an unseen one starts."
+  [spread rows default]
+  (reduce (fn [spread [[level ch] rs]]
+            (let [n (count rs)
+                  share (fn [k] (/ (+ k (* 0.1 coverage-shrink)) (+ n coverage-shrink)))
+                  below (share (count (filter #(< (:actual %) (:q10 %)) rs)))
+                  above (share (count (filter #(> (:actual %) (:q90 %)) rs)))
+                  sd (+ (shock-scale spread level ch default) (* shock-rate (- above below)))]
+              (assoc spread [:shock level ch] {:sd (min shock-limit (max 0.0 sd))})))
+          spread
+          (group-by (juxt :level :channel) (filter #(> (:q90 %) (:q10 %)) rows))))

@@ -37,27 +37,42 @@
           (when (pos? (compare pend (or (.get acc k) ""))) (.put acc k pend)))))
     (into {} acc)))
 
-(def kinds ["conflict_onset" "war_onset" "protest_surge" "violence_surge" "coup" "banking_crisis"])
+(def kinds ["conflict_onset" "war_onset" "protest_surge" "violence_surge" "coup" "banking_crisis" "market_crash"])
+
+(def tune-years
+  "The years each kind's model of record is chosen on, before the years held
+  out (bnm.onsets/tune-years)."
+  [2000 2007])
 
 (defn- onset-readings
-  "{kind {:q latest quarter :top [[unit p] ...] :cusum ...}} from an onsets run's
-  preds.tsv, window w1, for `model`: stack by default, the log-linear
-  combination refit each year on resolved outcomes, which recalibrates as it
-  combines."
+  "{kind {:q latest quarter :model :top [[unit p] ...] :cusum ...}} from an
+  onsets run's preds.tsv, window w1. The model is `model` when given, else
+  per kind the one with the best log score over `tune-years`
+  (bnm.hazard/pick-model), never a placebo: the stack, the log-linear
+  combination refit each year, lost to the country's own history for banking
+  crises there and after."
   [path n model]
   (let [rows (with-open [r (io/reader path)]
                (into [] (keep (fn [line]
                                 (let [[kind win m q unit p y] (str/split line #"\t")]
-                                  (when (and (= win "w1") (= m model))
-                                    [kind (parse-long q) unit (parse-double p) y]))))
+                                  (when (and (= win "w1") (not= m "base") (not (str/ends-with? m "-placebo"))
+                                             ;; bnm.pools' diagnostics are not candidates
+                                             (not (str/starts-with? m "pool-"))
+                                             (or (nil? model) (= m model)))
+                                    [kind m (parse-long q) unit (parse-double p) y]))))
                      (line-seq r)))]
-    (into {} (for [[kind rs] (group-by first rows)]
+    (into {} (for [[kind by-kind] (group-by first rows)
+                   :let [by-model (group-by second by-kind)
+                         resolved-of (fn [rs] (for [[_ _ q u p y] rs :when (#{"true" "false"} y)] [q p (= "true" y) u]))
+                         chosen (or model (hz/pick-model (update-vals by-model resolved-of)
+                                                         (first tune-years) (second tune-years)))
+                         rs (mapv (fn [[k _ q u p y]] [k q u p y]) (get by-model chosen))]]
                (let [q (apply max (map second rs))
                      now (filter #(= q (second %)) rs)
                      resolved (sort-by second (filter #(and (#{"true" "false"} (nth % 4)) (>= (second %) (- q 40))) rs))
                      ps (map #(nth % 3) resolved) ys (map #(= "true" (nth % 4)) resolved)
                      known (for [[_ q _ p y] rs :when (#{"true" "false"} y)] [q p (= "true" y)])]
-                 [kind {:q q
+                 [kind {:q q :model chosen
                         :top (take n (sort-by #(- (nth % 3)) now))
                         :base (/ (count (filter true? ys)) (double (max 1 (count ys))))
                         :cusum {:up (hz/cusum ps ys 2.0 :overlap 4) :down (hz/cusum ps ys 0.5 :overlap 4)
@@ -92,7 +107,6 @@
 
 (defn -main [& args]
   (let [{:keys [onsets n model]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
-        model (or model "stack")
         onsets (or onsets (str paths/derived "onset-preds.tsv"))
         n (parse-long (or n "10"))
         out (StringBuilder.)
@@ -108,7 +122,7 @@
             c {:up {:max (:up cusum) :last (:up-now cusum)} :down {:max (:down cusum) :last (:down-now cusum)}}]
         (say (format "  %-16s %s  recalibrated %.3f (raw %.3f), base rate %.3f, above %.0f%% of months since 1990; %s"
                      target month (double p-recal) (double p) (double base) (* 100 percentile) (flag c)))))
-    ;; the banking-crisis channel: the panel's crisis hazard (credit gap, displacement)
+    ;; the banking-crisis channel: the panel's crisis hazard (credit gap, displacement, booms)
     ;; applied to the US, and the 12-month drawdown risk including it by total
     ;; probability, k = 0.29 the excess chance of a 25% fall given a crisis, measured
     ;; on the Macrohistory panel before 2000 (docs/OPERATIONS.md)
@@ -126,7 +140,7 @@
               {:keys [p-recal]} (edn/read-string (slurp now))
               k 0.29
               pm (- 1.0 (* (- 1.0 p-recal) (- 1.0 (* k pc))))]
-          (say (format "  US banking crisis within 2 years (panel hazard on the credit gap), %s: %.3f"
+          (say (format "  US banking crisis within 2 years (panel hazard on the credit gap and credit-financed booms), %s: %.3f"
                        (st/month-str (parse-long (first cells))) pc))
           (say (format "  20%% within 12m including the banking-crisis channel: %.3f" pm)))))
     ;; the reaction layer: once a fall starts the hazards are slow, and the 200-day
@@ -160,9 +174,10 @@
                    (if (or (< (peek w) sma200) (> vr 1.8)) " -- a fall may be under way" ""))))
     (say)
     (if (.exists (io/file onsets))
-      (do (say (str "Onsets: the countries likeliest to see one within a year (" model " model), latest quarter."))
-          (doseq [[kind {:keys [q top base cusum]}] (sort-by (comp #(.indexOf ^java.util.List kinds %) key) (onset-readings onsets n model))]
-            (say (format "  %s, from %s (base rate %.3f; %s):" kind (st/month-str (+ 2 (* 3 q))) base (flag cusum)))
+      (do (say (str "Onsets: the countries likeliest to see one within a year, latest quarter; per kind the model"
+                    " with the best log score over " (str/join "-" tune-years) (when model (str " (here " model ")")) "."))
+          (doseq [[kind {:keys [q model top base cusum]}] (sort-by (comp #(.indexOf ^java.util.List kinds %) key) (onset-readings onsets n model))]
+            (say (format "  %s, from %s (%s model; base rate %.3f; %s):" kind (st/month-str (+ 2 (* 3 q))) model base (flag cusum)))
             (say (str "    " (str/join ", " (for [[_ _ u p] top] (format "%s %.2f" u p)))))))
       (say "Onsets: no predictions at" onsets "(scripts/readings.sh --onsets makes them)."))
     (say)

@@ -135,6 +135,13 @@
 (deftest coverage-is-the-default-mode
   (is (= :coverage (:spread-mode bnm.model/defaults))))
 
+(deftest the-shock-is-on-at-a-fixed-size-by-default
+  ;; v6-q refit: a fixed 0.4 evened the tails below the country; learning the
+  ;; size from the tails chased the median it moved, and scored worse
+  (is (= {:sd 0.4 :volume 20.0} (:shock bnm.model/defaults)))
+  (is (nil? (cal/shock-learning {:shock {:sd 0.4 :volume 20.0}})))
+  (is (= {:shock-sd 0.4} (cal/shock-learning {:shock {:sd 0.4 :volume 20.0 :learn true}}))))
+
 (deftest each-tail-learned-from-its-own-coverage
   (let [key [:dyad :violence :quiet]
         ;; 14% above the range, 6% below: the upper side widens, the lower narrows
@@ -160,3 +167,27 @@
         (is (< (Math/abs (- (mean xs) (mean ys))) 1e-9))))
     (testing "unknown keys are left alone"
       (is (= {:lo 1.0 :hi 1.0} (cal/side-factors {} key))))))
+
+(deftest the-shock-learned-from-tail-asymmetry
+  ;; the forecast shock's log-sd per level and channel grows while outcomes
+  ;; fall above the range more often than below it, shrinks while below
+  ;; outnumbers above, and holds when the tails are even
+  (let [rows (fn [below above]
+               (for [i (range 100)]
+                 {:level :dyad :channel :violence :stratum :quiet :q10 10.0 :q50 20.0 :q90 30.0
+                  :actual (cond (< i below) 1.0 (< i (+ below above)) 100.0 :else 20.0)}))
+        s #(cal/shock-scale % :dyad :violence 0.4)]
+    (is (= 0.4 (s {})) "an unseen key starts at the configured sd")
+    (is (> (s (cal/learn-shock {} (rows 6 14) 0.4)) 0.4) "upper tail thin: a bigger shock")
+    (is (< (s (cal/learn-shock {} (rows 14 6) 0.4)) 0.4) "lower tail thin: a smaller one")
+    (is (< (Math/abs (- 0.4 (s (cal/learn-shock {} (rows 10 10) 0.4)))) 1e-9) "even: unchanged")
+    (is (= 0.4 (cal/shock-scale (cal/learn-shock {} (rows 6 14) 0.4) :country :violence 0.4))
+        "other levels are their own")
+    (testing "it never goes below zero"
+      (is (>= (s (reduce (fn [sp _] (cal/learn-shock sp (rows 40 0) 0.4)) {} (range 50))) 0.0)))
+    (testing "learn-by learns it only when the shock is on"
+      (is (= 0.4 (s (cal/learn-by :coverage {} (rows 6 14)))))
+      (is (> (s (cal/learn-by :coverage {} (rows 6 14) {:shock-sd 0.4})) 0.4))
+      (is (= (cal/coverage-factor (cal/learn-by :coverage {} (rows 6 14)) [:dyad :violence :quiet])
+             (cal/coverage-factor (cal/learn-by :coverage {} (rows 6 14) {:shock-sd 0.4}) [:dyad :violence :quiet]))
+          "the coverage factor is learned as before"))))

@@ -86,11 +86,11 @@
     (when (> (count (filter label-key rs)) 10)
       (hz/auc (map #(nth (:raw %) i) rs) (map label-key rs)))))
 
-(defn run [{:keys [name events]}]
-  (let [run-name (or name "panel")
-        out-dir (str "data/runs/" run-name)
-        _ (io/make-parents (str out-dir "/x"))
-        fr (us/read-french)
+(defn setup
+  "The markets, their wealth and the US bill rate by month, and a row of
+  inputs and labels per market and month."
+  [{:keys [events]}]
+  (let [fr (us/read-french)
         us-ret (into {} (map-indexed (fn [i r] [(+ (:start fr) i) r]) (:mkt fr)))
         rf (into {} (map-indexed (fn [i r] [(+ (:start fr) i) r]) (:rf fr)))
         markets (assoc (into {} (for [[f iso] countries
@@ -122,7 +122,37 @@
                               raw (market-inputs (wealth u) ret ratios u t us-data fr named-f ev)]
                         :when (and raw (ret (inc t)))]
                     {:unit u :t t :raw raw
-                     :labels (into {} (for [[k [h d]] targets] [k (label u t h d)]))}))
+                     :labels (into {} (for [[k [h d]] targets] [k (label u t h d)]))}))]
+    {:markets markets :wealth wealth :rf rf :months months :names names :targets targets :rows rows}))
+
+(defn hazard
+  "The pooled hazard for target `tname` (h months ahead): the inputs whose
+  sign agrees in 1978-1991 and 1992-2004, the prior and discount chosen on
+  1980-2004, and the out-of-sample predictions [[t p y unit]]."
+  [{:keys [rows names]} tname h]
+  (let [lk #(get-in % [:labels tname])
+        keep-idx (vec (for [i (range (count names))
+                            :let [a1 (auc-of (filter #(<= 1978 (quot (:t %) 12) 1991) rows) i lk)
+                                  a2 (auc-of (filter #(<= 1992 (quot (:t %) 12) 2004) rows) i lk)]
+                            :when (and a1 a2 (or (and (> a1 0.52) (> a2 0.52)) (and (< a1 0.48) (< a2 0.48))))]
+                        i))
+        prows (vec (for [r rows]
+                     {:unit (:unit r) :t (:t r) :y (lk r)
+                      :x (double-array (concat [1.0]
+                                               (for [i keep-idx] (if-let [v (nth (:raw r) i)] (double v) 0.0))
+                                               (for [i keep-idx] (if (nth (:raw r) i) 1.0 0.0))))}))
+        in-years (fn [ps lo hi] (filter #(<= lo (quot (first %) 12) hi) ps))
+        grid (for [prior [10.0 100.0] discount [1.0 0.99]]
+               (let [ps (us/predictions prows h prior discount 1980)]
+                 {:prior prior :discount discount :preds ps :ls (us/log-score (in-years ps 1980 2004))}))
+        best (apply max-key :ls grid)]
+    {:keep-idx keep-idx :best best :preds (:preds best)}))
+
+(defn run [{:keys [name events] :as opts}]
+  (let [run-name (or name "panel")
+        out-dir (str "data/runs/" run-name)
+        _ (io/make-parents (str out-dir "/x"))
+        {:keys [markets wealth rf months names targets rows]} (setup opts)
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
         in-years (fn [ps lo hi] (filter #(<= lo (quot (first %) 12) hi) ps))
@@ -156,22 +186,7 @@
     (say "1992-2004; prior, discount and threshold chosen on 1980-2004; 2005 on is held out. A dollar")
     (say "investor holds each market equally, switching each to US bills on its own signal, 10bp a switch.")
     (doseq [[tname [h _]] (sort targets)]
-      (let [lk #(get-in % [:labels tname])
-            keep-idx (vec (for [i (range (count names))
-                                :let [a1 (auc-of (filter #(<= 1978 (quot (:t %) 12) 1991) rows) i lk)
-                                      a2 (auc-of (filter #(<= 1992 (quot (:t %) 12) 2004) rows) i lk)]
-                                :when (and a1 a2 (or (and (> a1 0.52) (> a2 0.52)) (and (< a1 0.48) (< a2 0.48))))]
-                            i))
-            prows (vec (for [r rows]
-                         {:unit (:unit r) :t (:t r) :y (lk r)
-                          :x (double-array (concat [1.0]
-                                                   (for [i keep-idx] (if-let [v (nth (:raw r) i)] (double v) 0.0))
-                                                   (for [i keep-idx] (if (nth (:raw r) i) 1.0 0.0))))}))
-            grid (for [prior [10.0 100.0] discount [1.0 0.99]]
-                   (let [ps (us/predictions prows h prior discount 1980)]
-                     {:prior prior :discount discount :preds ps :ls (us/log-score (in-years ps 1980 2004))}))
-            best (apply max-key :ls grid)
-            preds (:preds best)
+      (let [{:keys [keep-idx best preds]} (hazard {:rows rows :names names} tname h)
             p-at (into {} (for [[t p _ u] preds] [[u t] p]))
             known (fn [lo hi] (filter #(some? (nth % 2)) (in-years preds lo hi)))
             base (let [ys (map #(nth % 2) (known 1980 1989))] (/ (count (filter true? ys)) (double (count ys))))

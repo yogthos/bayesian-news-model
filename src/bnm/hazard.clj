@@ -18,8 +18,9 @@
   the scale of their standard deviation in the rows, so the prior does not
   depend on units. Damped Newton steps, each halved until the penalized
   likelihood improves, until they are small or :iterations (default 25) have
-  run. :start gives coefficients to start from."
-  ^doubles [rows ^long k {:keys [prior start iterations] :or {prior 1.0 iterations 25}}]
+  run. :start gives coefficients to start from; :penalties, one multiplier
+  of :prior per coefficient (`fit-shrunk`)."
+  ^doubles [rows ^long k {:keys [prior start iterations penalties] :or {prior 1.0 iterations 25}}]
   (let [rows (vec rows)
         n (count rows)
         prior (double prior)
@@ -56,7 +57,9 @@
             (let [^doubles st start]
               (aset b 0 (+ (aget st 0) (loop [j 1 acc 0.0] (if (< j k) (recur (inc j) (+ acc (* (aget st j) (aget mean j)))) acc))))
               (loop [j 1] (when (< j k) (aset b j (* (aget st j) (aget sd j))) (recur (inc j))))))
-        ^doubles pen (double-array k prior)
+        ;; :penalties scales each coefficient's precision (on the
+        ;; standardized scale); the intercept stays nearly free
+        ^doubles pen (double-array (if penalties (map #(* prior (double %)) penalties) (repeat k prior)))
         _ (aset pen 0 1e-4)
         eta (fn ^double [^doubles bb ^long r]
               (let [o (* r k)]
@@ -111,32 +114,154 @@
       (aset beta 0 (- (aget b 0) (loop [j 1 acc 0.0] (if (< j k) (recur (inc j) (+ acc (* (aget beta j) (aget mean j)))) acc))))
       beta)))
 
+(defn fit-shrunk
+  "`fit` with a horseshoe-like penalty in place of the ridge: the log
+  penalty log(b^2 + c), majorized by a ridge reweighted each round (Candes,
+  Wakin & Boyd 2008), each coefficient's precision scaled by
+  10c / (b^2 + c) with c the ridge's prior variance on the standardized
+  scale: ten times the ridge's shrinkage near zero, the ridge's own at
+  b^2 = 9c, less beyond, so small coefficients are shrunk harder and large
+  ones freed, as the
+  horseshoe does for many weak signals among a few strong ones (Carvalho,
+  Polson & Scott 2010). `rounds` reweightings (3)."
+  ^doubles [rows ^long k {:keys [prior rounds] :or {prior 1.0 rounds 3} :as opts}]
+  (let [rows (vec rows)
+        n (count rows)
+        ;; each input's weighted spread in the rows, as `fit` standardizes,
+        ;; to read coefficients on the scale the penalties act on
+        wsum (max 1e-12 (reduce + (map #(double (:w %)) rows)))
+        sd (vec (for [j (range k)]
+                  (let [mu (/ (reduce + (map #(* (double (:w %)) (aget ^doubles (:x %) j)) rows)) wsum)
+                        s (Math/sqrt (/ (reduce + (map #(let [d (- (aget ^doubles (:x %) j) mu)] (* (double (:w %)) d d)) rows))
+                                        wsum))]
+                    (if (> s 1e-9) s 1.0))))
+        c (/ 1.0 (double prior))]
+    (loop [r 0 beta (fit rows k opts)]
+      (if (>= r rounds)
+        beta
+        (let [mult (vec (for [j (range k)]
+                          (if (zero? j) 1.0 (let [b (* (aget ^doubles beta j) (sd j))] (/ (* 10.0 c) (+ (* b b) c))))))]
+          (recur (inc r) (fit rows k (assoc opts :penalties mult :start beta))))))))
+
 (defn predict ^double [^doubles beta ^doubles x]
   (m/expit (loop [i 0 acc 0.0] (if (< i (alength beta)) (recur (inc i) (+ acc (* (aget beta i) (aget x i)))) acc))))
 
 ;; --- combining forecasters ------------------------------------------------------------------
 
+(defn- likelihoods
+  "Each forecaster's likelihood of each row's outcome, row-major."
+  ^doubles [ps ys]
+  (let [ps (vec ps) ys (vec ys) n (count ps) m (count (first ps))
+        lik (double-array (* n m))]
+    (dotimes [r n]
+      (let [row (ps r) y (ys r)]
+        (dotimes [j m]
+          (let [p (double (nth row j))]
+            (aset lik (+ (* r m) j) (if y p (- 1.0 p)))))))
+    lik))
+
+(defn- em-step
+  "One EM update of mixture weights `w` (m of them) over n rows."
+  ^doubles [^doubles lik ^doubles wr tot n m ^doubles w]
+  (let [n (long n) m (long m) tot (double tot)
+        acc (double-array m)]
+    (dotimes [r n]
+      (let [o (* r m)
+            mix (loop [j 0 s 0.0] (if (< j m) (recur (inc j) (+ s (* (aget w j) (aget lik (+ o j))))) s))]
+        (when (> mix 0.0)
+          (let [x (aget wr r)]
+            (dotimes [j m] (aset acc j (+ (aget acc j) (/ (* x (aget w j) (aget lik (+ o j))) mix))))))))
+    (dotimes [j m] (aset acc j (/ (aget acc j) tot)))
+    acc))
+
+(defn- mix-loglik ^double [^doubles lik ^doubles wr n m ^doubles w]
+  (let [n (long n) m (long m)]
+    (loop [r 0 s 0.0]
+      (if (< r n)
+        (let [o (* r m)
+              mix (loop [j 0 t 0.0] (if (< j m) (recur (inc j) (+ t (* (aget w j) (aget lik (+ o j))))) t))]
+          (recur (inc r) (+ s (* (aget wr r) (Math/log (max mix 1e-300))))))
+        s))))
+
 (defn pool-weights
-  "Weights of a linear pool of forecasters that maximize the weighted log
-  score: `ps` gives each row's probabilities, one per forecaster. EM over the
-  mixture weights, from equal ones."
+  "Weights of a linear pool of forecasters by EM on the weighted log score:
+  `ps` gives each row's probabilities, one per forecaster. A fixed number of
+  steps from equal weights, which with many similar members stops well
+  short of the maximum and so shrinks toward equal weights
+  (`pool-weights-ml` goes to the maximum)."
   ^doubles [ps ys ws & {:keys [iterations] :or {iterations 200}}]
-  (let [ps (vec ps) ys (vec ys) ws (vec ws)
-        m (count (first ps))
-        ^doubles w (double-array m (/ 1.0 m))]
-    (dotimes [_ iterations]
-      (let [^doubles acc (double-array m)
-            tot (loop [r 0 tot 0.0]
-                  (if (< r (count ps))
-                    (let [row (ps r) y (ys r) wr (double (ws r))
-                          lik (fn ^double [j] (let [p (double (nth row j))] (if y p (- 1.0 p))))
-                          mix (loop [j 0 s 0.0] (if (< j m) (recur (inc j) (+ s (* (aget w j) (lik j)))) s))]
-                      (when (> mix 0.0)
-                        (dotimes [j m] (aset acc j (+ (aget acc j) (/ (* wr (aget w j) (lik j)) mix)))))
-                      (recur (inc r) (+ tot wr)))
-                    tot))]
-        (dotimes [j m] (aset w j (/ (aget acc j) tot)))))
-    w))
+  (let [n (count ps) m (count (first ps))
+        lik (likelihoods ps ys)
+        ^doubles wr (double-array (map double ws))
+        tot (areduce wr i s 0.0 (+ s (aget wr i)))]
+    (loop [k 0 w (double-array m (/ 1.0 m))]
+      (if (< k iterations) (recur (inc k) (em-step lik wr tot n m w)) w))))
+
+(defn pool-weights-ml
+  "The weights of a linear pool that maximize the weighted log score, by EM
+  accelerated with SQUAREM (Varadhan & Roland 2008): two EM steps give a
+  direction, an extrapolated step along it is kept when it raises the
+  likelihood. Stops when a round gains less than `tol` of the log score
+  (1e-6 lands within a tenth of a nat of the maximum, a thousand times
+  sooner than 1e-8)."
+  ^doubles [ps ys ws & {:keys [tol max-rounds] :or {tol 1e-6 max-rounds 1000}}]
+  (let [n (count ps) m (count (first ps))
+        lik (likelihoods ps ys)
+        ^doubles wr (double-array (map double ws))
+        tot (areduce wr i s 0.0 (+ s (aget wr i)))
+        step #(em-step lik wr tot n m %)
+        ll #(mix-loglik lik wr n m %)]
+    (loop [k 0 ^doubles w (double-array m (/ 1.0 m)) l (ll (double-array m (/ 1.0 m)))]
+      (let [^doubles w1 (step w) ^doubles w2 (step w1)
+            r (double-array m) v (double-array m)
+            _ (dotimes [j m]
+                (aset r j (- (aget w1 j) (aget w j)))
+                (aset v j (- (aget w2 j) (* 2.0 (aget w1 j)) (- (aget w j)))))
+            nr (Math/sqrt (areduce r i s 0.0 (+ s (* (aget r i) (aget r i)))))
+            nv (Math/sqrt (areduce v i s 0.0 (+ s (* (aget v i) (aget v i)))))
+            a (if (pos? nv) (min -1.0 (- (/ nr nv))) -1.0)
+            ;; the extrapolated point, kept on the simplex, then one EM step to stabilise
+            x (double-array m)
+            _ (dotimes [j m] (aset x j (max 0.0 (+ (aget w j) (* -2.0 a (aget r j)) (* a a (aget v j))))))
+            sx (areduce x i s 0.0 (+ s (aget x i)))
+            _ (dotimes [j m] (aset x j (/ (aget x j) sx)))
+            x (step x)
+            lx (ll x) l2 (ll w2)
+            [w' l'] (if (>= lx l2) [x lx] [w2 l2])]
+        (if (or (>= k max-rounds) (< (- l' l) (* tol (max 1.0 (Math/abs l)))))
+          (if (>= l' l) w' w)
+          (recur (inc k) w' l'))))))
+
+(defn hedge-weights
+  "Exponential weights of forecasters by their own record (Hedge; the online
+  expert weighting of Fouliard, Howell, Rey & Stavrakeva for crisis
+  forecasts): each weight proportional to exp(eta x its weighted log score
+  per weighted outcome), so a forecaster a nat per onset ahead of another
+  gets e^eta times its weight, however many rows there are."
+  ^doubles [ps ys ws eta]
+  (let [m (count (first ps))
+        ls (double-array m)
+        pos (reduce + (map (fn [y w] (if y (double w) 0.0)) ys ws))]
+    (doseq [[row y w] (map vector ps ys ws)
+            j (range m)
+            :let [p (min (max (double (nth row j)) 1e-6) (- 1.0 1e-6))]]
+      (aset ls j (+ (aget ls j) (* (double w) (Math/log (if y p (- 1.0 p)))))))
+    (let [scale (/ (double eta) (max pos 1.0))
+          top (apply max (seq ls))
+          e (double-array (map #(Math/exp (* scale (- % top))) ls))
+          tot (reduce + (seq e))]
+      (double-array (map #(/ % tot) e)))))
+
+(defn median-pool
+  "The members' median forecast, on the log-odds scale (an even count takes
+  the mean of the middle two): the untrained combination that matched or
+  beat trained weights in the epidemic forecast hubs (Cramer et al., PNAS
+  2022; Sherratt et al., eLife 2023), where weights fit on few outcomes
+  chase noise."
+  ^double [ps]
+  (let [ls (vec (sort (map #(m/logit (min (max (double %) 1e-9) (- 1.0 1e-9))) ps)))
+        n (count ls)]
+    (m/expit (if (odd? n) (ls (quot n 2)) (* 0.5 (+ (ls (dec (quot n 2))) (ls (quot n 2))))))))
 
 (defn pool ^double [^doubles w ps]
   (loop [j 0 s 0.0 [p & more] (seq ps)]
@@ -205,16 +330,107 @@
             (recur more (inc i) hits acc))
           (/ acc n-pos))))))
 
+(defn recall-parts
+  "{period [hits positives]} at the top `budget` fraction of each period's
+  rows ([period score label]) by score; rows tied at the cutoff share the
+  slots left, so the order they come in does not matter."
+  [rows budget]
+  (into {} (for [[q g] (group-by first rows)
+                 :let [k (long (Math/ceil (* budget (count g))))]]
+             [q [(loop [[[_ tied] & more] (sort-by #(- (double (key %))) (group-by #(double (second %)) g))
+                        left k acc 0.0]
+                   (if (or (nil? tied) (<= left 0))
+                     acc
+                     (let [n (count tied) hits (count (filter #(nth % 2) tied))
+                           t (min n left)]
+                       (recur more (- left t) (+ acc (* hits (/ t (double n))))))))
+                 (count (filter #(nth % 2) g))]])))
+
+(defn alarm-shares
+  "Each row's share of an alarm at the top `budget` of its period by score
+  (rows [period score ...], in their order): 1 above the cutoff, 0 below,
+  and for rows tied at it the slots left over their number, as in
+  `recall-parts`."
+  [rows budget]
+  (let [rows (vec rows)
+        out (double-array (count rows))]
+    (doseq [[_ idx] (group-by #(first (rows %)) (range (count rows)))
+            :let [k (long (Math/ceil (* budget (count idx))))]]
+      (loop [[[_ tied] & more] (sort-by #(- (double (key %))) (group-by #(double (second (rows %))) idx))
+             left k]
+        (when (and tied (pos? left))
+          (let [n (count tied) t (min n left)]
+            (doseq [i tied] (aset out (int i) (/ t (double n))))
+            (recur more (- left t))))))
+    out))
+
+(defn paired-recall-gain-2way
+  "`paired-recall-gain` on rows [period p-model p-bench outcome unit], the
+  interval resampling units and years both (the pigeonhole bootstrap, Owen
+  2007): each row weighted by how often its unit and its year were drawn,
+  so a unit's overlapping windows and a year's shared shocks stay together.
+  Alarms are fixed by the full sample."
+  ([rows budget reps seed] (paired-recall-gain-2way rows budget reps seed 0.1))
+  ([rows budget reps seed alpha]
+   (let [rows (vec rows)
+         n (count rows)
+         ha (alarm-shares (map (fn [[q a]] [q a]) rows) budget)
+         hb (alarm-shares (map (fn [[q _ b]] [q b]) rows) budget)
+         ys (boolean-array (map #(boolean (nth % 3)) rows))
+         units (vec (distinct (map #(nth % 4) rows)))
+         years (vec (distinct (map #(quot (first %) 4) rows)))
+         ui (let [ix (zipmap units (range))] (int-array (map #(ix (nth % 4)) rows)))
+         yi (let [ix (zipmap years (range))] (int-array (map #(ix (quot (first %) 4)) rows)))
+         ;; only onsets enter the gain: loop over them alone
+         pos-idx (int-array (filter #(aget ys %) (range n)))
+         npos (alength pos-idx)
+         gain (fn [^doubles wu ^doubles wy]
+                (loop [k 0 num 0.0 pos 0.0]
+                  (if (< k npos)
+                    (let [i (aget pos-idx k)
+                          w (* (aget wu (aget ui i)) (aget wy (aget yi i)))]
+                      (recur (inc k) (+ num (* w (- (aget ha i) (aget hb i)))) (+ pos w)))
+                    (if (pos? pos) (/ num pos) 0.0))))
+         draw (fn [g k] (let [c (double-array k)]
+                          (dotimes [_ k] (let [j (min (dec k) (long (* k (m/next-double! g))))] (aset c j (inc (aget c j)))))
+                          c))
+         g (m/rng seed)
+         diffs (vec (sort (for [_ (range reps)] (gain (draw g (count units)) (draw g (count years))))))
+         at (fn [q] (nth diffs (min (dec (count diffs)) (long (* q (count diffs))))))]
+     {:diff (gain (double-array (count units) 1.0) (double-array (count years) 1.0))
+      :lo (at (/ alpha 2)) :hi (at (- 1.0 (/ alpha 2)))})))
+
 (defn recall-at-budget
   "Of the positives, the share among the top `budget` fraction of rows by
-  score in their period: `rows` are [period score label]."
+  score in their period: `rows` are [period score label]. Rows tied at the
+  cutoff share the slots left (`recall-parts`)."
   [rows budget]
-  (let [pos (count (filter #(nth % 2) rows))]
+  (let [parts (vals (recall-parts rows budget))
+        pos (reduce + (map second parts))]
     (when (pos? pos)
-      (/ (reduce + (for [[_ g] (group-by first rows)
-                         :let [k (long (Math/ceil (* budget (count g))))]]
-                     (count (filter #(nth % 2) (take k (sort-by #(- (double (second %))) g))))))
-         (double pos)))))
+      (/ (reduce + (map first parts)) (double pos)))))
+
+(defn paired-recall-gain
+  "`paired-gain` for recall at `budget` on rows [period p-model p-bench
+  outcome], from per-period hits, so each resample sums years instead of
+  rescoring rows. The interval is 1 - alpha (0.9 by default; alpha over the
+  number of tests for a Bonferroni bound)."
+  ([rows budget reps seed] (paired-recall-gain rows budget reps seed 0.1))
+  ([rows budget reps seed alpha]
+  (let [pa (recall-parts (map (fn [[q a _ y]] [q a y]) rows) budget)
+        pb (recall-parts (map (fn [[q _ b y]] [q b y]) rows) budget)
+        ;; per year: [model hits, bench hits, positives]
+        blocks (vec (for [[_ qs] (group-by #(quot % 4) (keys pa))]
+                      (reduce (fn [[x y z] q] [(+ x (first (pa q))) (+ y (first (pb q))) (+ z (second (pa q)))])
+                              [0.0 0.0 0.0] qs)))
+        score (fn [bs] (let [[x y z] (reduce #(mapv + %1 %2) [0.0 0.0 0.0] bs)]
+                         (if (pos? z) (/ (- x y) z) 0.0)))
+        k (count blocks)
+        g (m/rng seed)
+        diffs (vec (sort (for [_ (range reps)]
+                           (score (map (fn [_] (blocks (min (dec k) (long (* k (m/next-double! g)))))) (range k))))))
+        at (fn [q] (nth diffs (min (dec (count diffs)) (long (* q (count diffs))))))]
+    {:diff (score blocks) :lo (at (/ alpha 2)) :hi (at (- 1.0 (/ alpha 2)))})))
 
 (defn brier [ps ys]
   (/ (reduce + (map (fn [p y] (let [d (- (double p) (if y 1.0 0.0))] (* d d))) ps ys)) (double (count ps))))
@@ -224,21 +440,25 @@
   for a policymaker who weighs missed events by mu and false alarms by
   1 - mu: the share of the loss of ignoring the forecast (always or never
   acting, whichever is cheaper) that the best threshold saves. 1 is a
-  perfect forecast, 0 one worth nothing."
+  perfect forecast, 0 one worth nothing. Every threshold is tried in one
+  sweep down the sorted forecasts."
   [ps ys mu]
   (let [n (count ys)
         pos (count (filter true? ys))
         neg (- n pos)
         p1 (/ pos (double n)) p2 (- 1.0 p1)
-        pairs (map vector ps ys)
-        loss (fn [thr]
-               (let [alarm (filter #(>= (first %) thr) pairs)
-                     tp (count (filter #(true? (second %)) alarm))
-                     fp (- (count alarm) tp)
-                     t1 (if (pos? pos) (/ (- pos tp) (double pos)) 0.0)
-                     t2 (if (pos? neg) (/ fp (double neg)) 0.0)]
-                 (+ (* mu p1 t1) (* (- 1.0 mu) p2 t2))))
-        best (apply min (loss Double/POSITIVE_INFINITY) (map loss (distinct ps)))
+        loss (fn [tp fp]
+               (+ (* mu p1 (if (pos? pos) (/ (- pos tp) (double pos)) 0.0))
+                  (* (- 1.0 mu) p2 (if (pos? neg) (/ fp (double neg)) 0.0))))
+        ;; alarms at threshold p are all forecasts >= p: walk the groups of
+        ;; equal forecasts from the highest down
+        groups (partition-by first (sort-by #(- (double (first %))) (map vector ps ys)))
+        best (loop [[g & more] groups tp 0 fp 0 best (loss 0 0)]
+               (if-not g
+                 best
+                 (let [t (count (filter #(true? (second %)) g))
+                       tp (+ tp t) fp (+ fp (- (count g) t))]
+                   (recur more tp fp (min best (loss tp fp))))))
         ignore (min (* mu p1) (* (- 1.0 mu) p2))]
     (if (pos? ignore) (/ (- ignore best) ignore) 0.0)))
 
@@ -316,3 +536,152 @@
                         [_ p y] this]
                     (- (ll (clip (sig (+ a (logit p)))) y) (ll (clip p) y)))]
         (/ (reduce + diffs) (double (count diffs)))))))
+
+(defn stack-out-of-sample
+  "Rows [quarter ps outcome], ps the forecasters' probabilities, forecast
+  out of sample by a stack (`fit-stack`): each year from quarter `from` on
+  by one fit on the rows known by its start (a row is known `overlap`
+  quarters on), discounted yearly by `discount`. Returns [quarter p outcome]
+  for those years, with whatever else each row carried after its outcome.
+  With :by, a function of a row, each group it makes gets its own stack."
+  [rows from {:keys [overlap discount prior by] :or {overlap 1 discount 1.0 prior 1.0}}]
+  (if by
+    (vec (mapcat #(stack-out-of-sample % from {:overlap overlap :discount discount :prior prior})
+                 (vals (group-by by rows))))
+    (vec (for [[yr this] (sort-by key (group-by #(quot (first %) 4) (filter #(>= (first %) from) rows)))
+               :let [q0 (* 4 yr)
+                     known (filter #(<= (+ (first %) overlap) q0) rows)
+                     beta (fit-stack (map second known) (map #(nth % 2) known)
+                                     (map #(Math/pow discount (/ (- q0 (first %)) 4.0)) known)
+                                     {:prior prior})]
+               [q ps y & more] this]
+           (into [q (predict-stack beta ps) y] more)))))
+
+(defn pick-model
+  "The model whose forecasts, {model [[quarter p outcome unit] ...]}, have
+  the best mean log score over the years lo-hi, on the rows every model
+  with rows there shares (a combination that starts later is not scored on
+  other years than its members): chosen before the years held out, as the
+  members' priors are. nil when none has rows there."
+  [preds lo hi]
+  (let [in (into {} (for [[m rows] preds
+                          :let [rs (into {} (for [[q p y unit] rows :when (<= lo (quot q 4) hi)] [[q unit] [p y]]))]
+                          :when (seq rs)]
+                      [m rs]))
+        common (when (seq in) (reduce (fn [ks rs] (filter #(contains? rs %) ks)) (keys (val (first in))) (vals in)))
+        score (fn [rs]
+                (when (seq common)
+                  (/ (reduce + (for [k common
+                                     :let [[p y] (rs k) p (min (max (double p) 1e-6) (- 1.0 1e-6))]]
+                                 (Math/log (if y p (- 1.0 p)))))
+                     (double (count common)))))
+        scored (keep (fn [[m rs]] (when-let [s (score rs)] [m s])) in)]
+    (when (seq scored) (key (apply max-key val (into {} scored))))))
+
+(defn paired-gain
+  "How much better a model scores than a benchmark on the same rows [period
+  p-model p-bench outcome] by `metric` (a function of rows [period p
+  outcome], higher better): {:diff :lo :hi}, the 90% interval resampling
+  whole years (four periods) `reps` times (seeded), which keeps the
+  correlation of countries within a year and of a year's quarters."
+  [rows metric reps seed]
+  (let [score (fn [rs] (- (or (metric (map (fn [[q a _ y]] [q a y]) rs)) 0.0)
+                          (or (metric (map (fn [[q _ b y]] [q b y]) rs)) 0.0)))
+        blocks (vec (vals (group-by #(quot (first %) 4) rows)))
+        k (count blocks)
+        g (m/rng seed)
+        diffs (vec (sort (for [_ (range reps)]
+                           (score (mapcat (fn [_] (blocks (min (dec k) (long (* k (m/next-double! g)))))) (range k))))))
+        at (fn [q] (nth diffs (min (dec (count diffs)) (long (* q (count diffs))))))]
+    {:diff (score rows) :lo (at 0.05) :hi (at 0.95)}))
+
+(defn paired-usefulness-gain
+  "`paired-gain` for `usefulness` at `mu`, with the same draws: a resample
+  is integer weights on the rows (how often each one's year was drawn),
+  swept down one sort per model instead of rescoring copied rows."
+  [rows mu reps seed]
+  (let [blocks (vec (vals (group-by #(quot (first %) 4) rows)))
+        rows (vec (apply concat blocks))
+        n (count rows)
+        bix (long-array (mapcat (fn [i b] (repeat (count b) i)) (range) blocks))
+        ys (boolean-array (map #(boolean (nth % 3)) rows))
+        sweep (fn [col]
+                (let [order (int-array (sort-by #(- (double (nth (rows %) col))) (range n)))
+                      ps (double-array (map #(double (nth (rows %) col)) order))]
+                  (fn [^doubles w]
+                    (let [[pos tot] (loop [i 0 pos 0.0 tot 0.0]
+                                      (if (< i n)
+                                        (recur (inc i) (if (aget ys i) (+ pos (aget w i)) pos) (+ tot (aget w i)))
+                                        [pos tot]))
+                          neg (- tot pos)
+                          p1 (/ pos tot) p2 (- 1.0 p1)
+                          loss (fn [tp fp]
+                                 (+ (* mu p1 (if (pos? pos) (/ (- pos tp) pos) 0.0))
+                                    (* (- 1.0 mu) p2 (if (pos? neg) (/ fp neg) 0.0))))
+                          best (loop [i 0 tp 0.0 fp 0.0 best (loss 0.0 0.0)]
+                                 (if (< i n)
+                                   (let [r (aget order i) wi (aget w r)
+                                         tp (if (aget ys r) (+ tp wi) tp)
+                                         fp (if (aget ys r) fp (+ fp wi))
+                                         ;; a threshold only between distinct forecasts
+                                         end? (or (= i (dec n)) (not= (aget ps i) (aget ps (inc i))))]
+                                     (recur (inc i) tp fp (if end? (min best (loss tp fp)) best)))
+                                   best))
+                          ignore (min (* mu p1) (* (- 1.0 mu) p2))]
+                      (if (pos? ignore) (/ (- ignore best) ignore) 0.0)))))
+        ua (sweep 1) ub (sweep 2)
+        score (fn [w] (- (double (ua w)) (double (ub w))))
+        k (count blocks)
+        g (m/rng seed)
+        diffs (vec (sort (for [_ (range reps)]
+                           (let [c (long-array k)]
+                             (dotimes [_ k]
+                               (let [b (min (dec k) (long (* k (m/next-double! g))))]
+                                 (aset c b (inc (aget c b)))))
+                             (score (double-array (map #(aget c (int %)) bix)))))))
+        at (fn [q] (nth diffs (min (dec (count diffs)) (long (* q (count diffs))))))]
+    {:diff (score (double-array n 1.0)) :lo (at 0.05) :hi (at 0.95)}))
+
+(defn area-skill
+  "The area skill score of an error diagram (Molchan 1990; Zechar & Jordan
+  2008) for rows [period p outcome weight]: alarms are raised by rank
+  within each period (the alert budgets' order), the alarm volume is the
+  share of the weights covered, and the score is one minus the area under
+  the miss rate. 0.5 is a random order; with weights the benchmark's
+  probabilities, 0.5 is no better than the benchmark (Kossobokov's
+  reference-weighted volume). nil without onsets."
+  [rows]
+  (let [pos (count (filter #(nth % 2) rows))
+        total (reduce + (map #(double (nth % 3)) rows))]
+    (when (and (pos? pos) (pos? total))
+      (let [;; each row's place in its period, 0 the highest, ties sharing the mean
+            ranked (mapcat (fn [[_ g]]
+                             (let [n (count g)]
+                               (loop [[t & more] (partition-by second (sort-by #(- (double (second %))) g)) at 0 out []]
+                                 (if-not t
+                                   out
+                                   (let [k (count t) frac (/ (+ at (* 0.5 k)) n)]
+                                     (recur more (+ at k) (into out (map #(vector frac (nth % 2) (nth % 3)) t))))))))
+                           (group-by first rows))
+            area (loop [[t & more] (partition-by first (sort-by first ranked)) miss 1.0 area 0.0]
+                   (if-not t
+                     area
+                     (let [dt (/ (reduce + (map #(double (nth % 2)) t)) total)
+                           dm (/ (count (filter second t)) (double pos))]
+                       (recur more (- miss dm) (+ area (* dt (- miss (* 0.5 dm))))))))]
+        (- 1.0 area)))))
+
+(defn matched-concordance
+  "Signal beyond a benchmark: each event (rows {:period :p-model :p-bench
+  :y}) is set against the `k` non-events of its period whose benchmark
+  probabilities are closest to its own, and the share of those pairs the
+  model ranks the event above is returned (ties count a half). A model that
+  knows only what the benchmark knows scores about 0.5. nil without events."
+  [rows k]
+  (let [pairs (for [[_ g] (group-by :period rows)
+                    :let [neg (filter (complement :y) g)]
+                    e (filter :y g)
+                    c (take k (sort-by #(Math/abs (- (double (:p-bench %)) (double (:p-bench e)))) neg))]
+                (let [a (double (:p-model e)) b (double (:p-model c))]
+                  (cond (> a b) 1.0 (= a b) 0.5 :else 0.0)))]
+    (when (seq pairs) (/ (reduce + pairs) (double (count pairs))))))

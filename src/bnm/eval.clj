@@ -283,6 +283,27 @@
                                     (or (nil? channel) (= channel (:channel %))))))
              (line-seq r))))))
 
+;; --- surges from a quiet base -------------------------------------------------------------
+
+(defn with-surges
+  "Scored rows (one node and channel per quarter, in period order within
+  each) with :surge, the target the shock work is judged on: the quarter at
+  least 3x the node's mean over the four before it, from a node that did not
+  escalate in them. nil for a node's first year."
+  [rows]
+  (mapcat (fn [[_ g]]
+            (let [g (vec (sort-by :period g))]
+              (map-indexed (fn [i r]
+                             (assoc r :surge
+                                    (when (>= i 4)
+                                      (let [prev (subvec g (- i 4) i)
+                                            mean (/ (reduce + (map :actual prev)) 4.0)]
+                                        (boolean (and (pos? mean)
+                                                      (>= (:actual r) (* 3.0 mean))
+                                                      (not-any? :escalated prev)))))))
+                           g)))
+          (group-by (juxt :id :channel) rows)))
+
 ;; --- pooled escalation scores --------------------------------------------------------------
 
 (defn- auc

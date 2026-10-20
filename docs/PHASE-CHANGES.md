@@ -278,6 +278,21 @@ onsets.
   - the top decile is calibrated.
 
   A plot of a hazard rising before one famous case does not count.
+- **Amended October 2026, before the epic's adoption decisions.** Every
+  forecast was out of sample, but the same 2003-26 years had been looked
+  at while choosing among many groups and combinations, which overfits at
+  the level of method choice. From now on:
+  - adoption is scored on 2003-14 and 2015-22 only; 2023 on is locked and
+    scored once (`bnm.anticipation --confirm true`) for the record chosen.
+    It was seen in aggregate in earlier rounds, and conflict catalogues
+    end in 2024, so the lock is thin: the chosen record is also frozen
+    with a dated tag, and the live quarters after it are the clean test;
+  - a gain must hold with each region left out (the lowest lower bound,
+    `loro`), so one wave such as 2011 cannot carry it;
+  - recall intervals are Bonferroni-corrected for the configurations
+    tried, counted in docs/TRIALS.md (`--tests` with its line count);
+  - hyperparameters of new methods come from the literature, not the
+    scored years. `scripts/scoreboard.py` applies all of it.
 
 **What to expect.** Event data give real but short warning for violence
 onsets: months, occasionally a year for interstate war. They give little
