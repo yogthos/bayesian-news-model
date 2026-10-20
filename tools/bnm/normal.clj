@@ -110,7 +110,8 @@
   :combo (restricted) :combo-raw :ridge (returns), :ewma :garch :garch-t
   :har :model-var (variances), :nu (the t's degrees of freedom). Models are
   refit each January on the periods whose next period ended before it;
-  nothing is forecast before year `from`."
+  nothing is forecast before year `from`, nor without three years of
+  history."
   [ps {:keys [signs har-lags from]}]
   (let [n (count ps)
         rets (mapv :ret ps) rvs (mapv :rv ps) xs (mapv :x ps) hz (mapv :p ps)
@@ -119,7 +120,9 @@
         ewma (vol/ewma rets 0.94)
         maxlag (apply max har-lags)
         first-of (into (sorted-map) (reverse (map-indexed (fn [i p] [(:year p) i]) ps)))]
-    (loop [[[yr start] & more] (seq (subseq first-of >= from)) g nil gt nil out (vec (repeat n nil))]
+    ;; a year is forecast once three years (and the longest HAR window) lie before it
+    (loop [[[yr start] & more] (seq (filter #(>= (val %) (+ 36 maxlag)) (subseq first-of >= from)))
+           g nil gt nil out (vec (repeat n nil))]
       (if-not yr
         out
         (let [end (or (second (first more)) n)

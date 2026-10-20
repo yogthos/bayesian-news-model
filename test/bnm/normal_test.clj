@@ -64,3 +64,11 @@
         held (filter #(>= (:year (ps %)) 1960) (range (dec (count ps))))
         y (map #(:ret (ps (inc %))) held)]
     (is (pos? (fs/oos-r2 y (map #(:combo-raw (fc %)) held) (map #(:hm (fc %)) held))))))
+
+(deftest a-series-starting-late-waits-for-history
+  ;; a market whose data begin after the first forecast year
+  (let [ps (mapv #(update % :year + 15) (synthetic 600))
+        fc (nr/forecasts ps opts)]
+    (is (= (count ps) (count fc)))
+    (is (every? nil? (take 36 fc)) "no forecast without three years before it")
+    (is (some some? fc))))
