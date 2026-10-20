@@ -290,7 +290,7 @@
 (def alpha-forecast (/ 0.05 18))
 (def trials 24)
 
-(defn- mean [xs] (/ (reduce + xs) (double (count xs))))
+(defn- mean [xs] (if (seq xs) (/ (double (reduce + xs)) (count xs)) Double/NaN))
 
 (defn- t-scale ^double [^double v ^double nu] (Math/sqrt (/ (* v (- nu 2.0)) nu)))
 
