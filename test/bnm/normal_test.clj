@@ -81,3 +81,20 @@
                     :f {:hm 0.004 :combo 0.005 :combo-raw 0.006 :ridge 0.005 :model-var 0.002
                         :garch 0.002 :garch-t 0.002 :har 0.002 :ewma 0.002 :nu 8.0}}))]
     (is (= 1.0 (:p (:pt (nr/score-panel obs)))))))
+
+(deftest volatility-management-matches-buy-and-hold-under-the-cap
+  (let [g (m/rng 5)
+        rvs (vec (repeatedly 400 #(* 1e-4 (Math/exp (* 1.5 (m/normal! g))))))
+        rets (mapv #(* (Math/sqrt %) (m/normal! g)) rvs)
+        sd (fn [xs] (let [mu (/ (reduce + xs) (count xs))] (Math/sqrt (/ (reduce + (map #(* (- % mu) (- % mu)) xs)) (count xs)))))
+        target (sd (rest rets))
+        c (nr/mm-scale (butlast rvs) (rest rets) target 1.5)
+        managed (map #(* (min 1.5 (/ c %1)) %2) (butlast rvs) (rest rets))]
+    (is (< (Math/abs (- (sd managed) target)) (* 1e-6 target)))))
+
+(deftest har-forecasts-stay-in-the-range-seen
+  (is (= 2.0 (nr/sane-variance -0.5 [2.0 3.0 9.0])))
+  (is (= 9.0 (nr/sane-variance 40.0 [2.0 3.0 9.0])))
+  (is (= 4.0 (nr/sane-variance 4.0 [2.0 3.0 9.0])))
+  (testing "zeros in the history do not set the floor"
+    (is (= 2.0 (nr/sane-variance 1e-9 [0.0 2.0 3.0])))))

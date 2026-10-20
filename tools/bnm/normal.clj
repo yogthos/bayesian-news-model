@@ -105,6 +105,14 @@
                         (map #(or % 0.0) (xs s))
                         [(or (ps s) 0.0)])))
 
+(defn sane-variance
+  "A variance forecast held to the range of the positive realized variances
+  it was fit on (Swanson & White's insanity filter): a linear HAR can go to
+  zero or below."
+  ^double [^double h rvs]
+  (let [pos (filter pos? rvs)]
+    (min (apply max pos) (max (apply min pos) h))))
+
 (defn forecasts
   "For each period i, the forecasts for period i + 1 made at its end: :hm
   :combo (restricted) :combo-raw :ridge (returns), :ewma :garch :garch-t
@@ -139,6 +147,8 @@
                                {:a a :b b})))))
               rdg (ridge (mapv xs fit-s) (mapv #(rets (inc %)) fit-s) 100.0)
               har (vol/har-fit (subvec rvs 0 start) {:lags har-lags})
+              ;; the positive extremes of the fitting sample, all the filter needs
+              seen (let [pos (filter pos? (subvec rvs 0 start))] [(apply min pos) (apply max pos)])
               vs (filter #(>= % (dec maxlag)) fit-s)
               mv (ols (map #(log-har-row rvs xs hz % har-lags) vs) (map #(Math/log (max 1e-12 (rvs (inc %)))) vs))
               ;; GARCH variances through the year, each from the returns before it
@@ -151,7 +161,7 @@
                                   combo (/ (reduce + (map-indexed (fn [j f] (if f (one-input-forecast f (nth signs j) (nth (xs i) j) (hm i)) (hm i))) one)) k)]
                               (assoc out i {:hm (hm i) :combo (max 0.0 combo) :combo-raw raw :ridge (rdg (xs i))
                                             :ewma (ewma i) :garch (hg (inc i)) :garch-t (hgt (inc i)) :nu (:nu gt)
-                                            :har (max 1e-12 (vol/har-forecast har (subvec rvs 0 (inc i))))
+                                            :har (sane-variance (vol/har-forecast har (subvec rvs 0 (inc i))) seen)
                                             :model-var (Math/exp (+ (reduce + (map * (:beta mv) (log-har-row rvs xs hz i har-lags)))
                                                                     (/ (:s2 mv) 2.0)))})))
                           out (range start end))]
@@ -346,6 +356,20 @@
   (mapv (fn [i e e0] (- (* e (:ret (ps (inc i)))) (* 0.001 (Math/abs (- e e0)))))
         idx ex (cons (first ex) ex)))
 
+(defn mm-scale
+  "Moreira & Muir's scale c: the exposure min(cap, c / rv[t]) to return
+  rets[t] (the period after rv[t]) gives the managed series the sd `target`.
+  Found by bisection, since the cap binds."
+  [rvs rets target cap]
+  (let [sd (fn [c] (let [xs (mapv #(* (min cap (/ c (max 1e-12 %1))) %2) rvs rets)
+                         mu (/ (reduce + xs) (count xs))]
+                     (Math/sqrt (/ (reduce + (map #(* (- % mu) (- % mu)) xs)) (count xs)))))]
+    (loop [lo 0.0 hi (* 2.0 (apply max rvs)) it 0]
+      (cond (< (sd hi) target) (recur hi (* 2.0 hi) it)
+            (or (> it 200) (< (- hi lo) (* 1e-12 hi))) (/ (+ lo hi) 2.0)
+            :else (let [mid (/ (+ lo hi) 2.0)]
+                    (if (< (sd mid) target) (recur mid hi (inc it)) (recur lo mid (inc it))))))))
+
 (defn strategies
   "{name exposure-fn} for the fixed strategies and the benchmarks; each fn
   takes period i and gives the exposure for i + 1."
@@ -355,9 +379,7 @@
         target (let [rs (map #(:ret (ps (inc %))) tuning) m (mean rs)]
                  (Math/sqrt (mean (map #(* (- % m) (- % m)) rs))))
         ;; Moreira & Muir: scaled so the tuning years' volatility is buy and hold's
-        mm-c (let [scaled (map #(/ (:ret (ps (inc %))) (max 1e-12 (:rv (ps %)))) tuning)
-                   m (mean scaled)]
-               (/ target (Math/sqrt (mean (map #(* (- % m) (- % m)) scaled)))))
+        mm-c (mm-scale (mapv #(:rv (ps %)) tuning) (mapv #(:ret (ps (inc %))) tuning) target 1.5)
         n-avg (if (= periods 52) 40 10)
         wealth (tr/wealth (map #(+ (:ret %) (:rf %)) ps))
         above-avg (fn [i] (if (and (>= i n-avg)
@@ -546,6 +568,9 @@
         (say)
         (say (format "%s, %d markets: stressed when the pooled hazard is at or above %.3f; tests on monthly" name (count markets) cut))
         (say "  cross-market means (Newey-West); Christoffersen, Berkowitz and the CE gain need one series: -")
+        (say "  French's country returns are monthly only, so realized variance here is one squared return,")
+        (say "  not the sum of daily squares the protocol names: the variance and distribution lines, strategies")
+        (say "  3 and 4, and volatility management are shown but not assessable; returns and signs are.")
         (doseq [[era lo hi] eras
                 regime [:normal :stressed :all]
                 :let [obs (vec (panel-obs markets fcs cut lo hi regime))]
