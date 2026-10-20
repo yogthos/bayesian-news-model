@@ -14,7 +14,7 @@
   written to preds-<level>.tsv, which bnm.anticipation --level reads beside
   the independent aggregate of the countries' forecasts.
 
-    jolt -A:tools -M -m bnm.dynamic --run r6-pooled --models hedge,named --out r7-dyn [--levels subregion,region]
+    jolt -A:tools -M -m bnm.dynamic --run r6-pooled --models hedge,named --out r7-dyn [--levels subregion,region] [--threads 4]
 
   Writes data/runs/<out>/preds.tsv: the run's rows and the dynamic ones."
   (:require [bnm.onset :as o]
@@ -40,8 +40,15 @@
   [units]
   (into {} (for [u units :let [p (on/hier-path u)] :when (= 3 (count p))] [u (into ["world"] p)])))
 
+(defn- lines
+  "A block's rows as preds.tsv lines, model dyn-<m>."
+  [kind wname m rows]
+  (apply str (for [[q p y unit] rows]
+               (str kind "\t" wname "\t" "dyn-" m "\t" q "\t" unit "\t" p "\t" (str y) "\n"))))
+
 (defn -main [& args]
-  (let [{:keys [run models out levels]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run models out levels threads]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+        threads (or (some-> threads parse-long) 4)
         models (set (str/split models #","))
         levels (when levels (str/split levels #","))
         src (str "data/runs/" run "/preds.tsv")
@@ -58,30 +65,29 @@
         units (set (for [[_ rows] picked [_ _ _ u] rows] u))
         tree (paths units)
         groups (on/unit-groups units)
-        ;; the states for a kind, a model and the horizon of a window
-        fits (memoize (fn [kind m wname]
-                        (let [lag (get-in sets [:lags kind] 0)]
-                          (o/dynamic-fits (get picked [kind "w1" m]) (get-in sets [:onsets kind]) tree lag
-                                          (assoc opts :horizon (o/horizon (on/windows (keyword wname)) lag))))))]
+        blocks (vec (for [[[kind wname m] rows] (sort-by key picked)
+                          :when (get picked [kind "w1" m])]
+                      {:kind kind :wname wname :m m :rows rows
+                       :window (on/windows (keyword wname)) :lag (get-in sets [:lags kind] 0)}))
+        ;; the states for each block: a kind, a model and its window's horizon
+        fits (on/in-parallel threads
+                             (for [{:keys [kind m window lag]} blocks]
+                               #(o/dynamic-fits (get picked [kind "w1" m]) (get-in sets [:onsets kind]) tree lag
+                                                (assoc opts :horizon (o/horizon window lag)))))]
+    (println (count blocks) "blocks fitted") (flush)
     (.mkdirs (io/file dir))
     (with-open [w (io/writer (str dir "/preds.tsv"))]
       (with-open [r (io/reader src)]
         (doseq [line (line-seq r)] (.write w (str line "\n"))))
-      (doseq [[[kind wname m] rows] (sort-by key picked)
-              :let [w1 (get picked [kind "w1" m])]
-              :when w1]
-        (println kind wname m) (flush)
-        (doseq [[q p y unit] (o/dynamic-frailty rows (fits kind m wname) tree (on/windows (keyword wname)) (get-in sets [:lags kind] 0))]
-          (.write w (str kind "\t" wname "\t" "dyn-" m "\t" q "\t" unit "\t" p "\t" (str y) "\n")))
-        (.flush w)))
+      (doseq [text (on/in-parallel threads
+                                   (for [[{:keys [kind wname m rows window lag]} fit] (map vector blocks fits)]
+                                     #(lines kind wname m (o/dynamic-frailty rows fit tree window lag))))]
+        (.write w ^String text)))
     (doseq [level levels
             :let [group-of (get groups (keyword level))]]
+      (println level) (flush)
       (with-open [w (io/writer (str dir "/preds-" level ".tsv"))]
-        (doseq [[[kind wname m] rows] (sort-by key picked)
-                :let [w1 (get picked [kind "w1" m])]
-                :when w1]
-          (println level kind wname m) (flush)
-          (doseq [[q p y g] (o/dynamic-groups rows (fits kind m wname) tree group-of (on/windows (keyword wname))
-                                              (get-in sets [:lags kind] 0) draw-opts)]
-            (.write w (str kind "\t" wname "\t" "dyn-" m "\t" q "\t" g "\t" p "\t" (str y) "\n")))
-          (.flush w))))))
+        (doseq [text (on/in-parallel threads
+                                     (for [[{:keys [kind wname m rows window lag]} fit] (map vector blocks fits)]
+                                       #(lines kind wname m (o/dynamic-groups rows fit tree group-of window lag draw-opts))))]
+          (.write w ^String text))))))
