@@ -330,11 +330,13 @@ with the historical mean.
 **Multiple testing.** Every configuration scored (strategy, frequency, market,
 forecast) is a line in the ledger below, added before it is scored.
 - A strategy's Sharpe ratio is deflated (Bailey & López de Prado 2014) for
-  the ledger's count and the spread of the trials' Sharpe ratios, with their
-  skew and kurtosis.
+  the number of strategy series the ledger implies (each strategies line is
+  four series, and the secondary forecast doubles them: 24 as it stands) and
+  the spread of their Sharpe ratios, with their skew and kurtosis.
 - Whether the best strategy beats the benchmark set at all is Hansen's (2005)
   SPA test, with the stationary bootstrap (mean block 10 weeks or 6 months).
-- Forecast tests are Bonferroni-corrected for the ledger's count.
+- Forecast tests are Bonferroni-corrected for the number run: three targets
+  in three settings for two forecasts, 18 as it stands.
 
 **Counts as a forecast** of ordinary moves only if, in the normal regime, in
 each held-out era separately:
@@ -361,7 +363,7 @@ returns (Moreira & Muir 2017). So the likely outcome is a model that helps
 size risk and does not time returns; the test is built so that either answer
 is clear.
 
-**Ledger** (the count is the number of lines):
+**Ledger**, extended before anything new is scored:
 
 | # | configuration | note |
 |---|---|---|
