@@ -423,7 +423,10 @@
                          px (/ (count (filter #(pos? (get-in % [:f k])) obs)) n)
                          expect (+ (* py px) (* (- 1 py) (- 1 px)))
                          {:keys [stat]} (one-sided (mapv #(- % expect) (monthly (hit k))))]
-                     {:hit (mean (map (hit k) obs)) :stat stat :p (fs/phi-sf stat)}))
+                     ;; forecasts of one sign: no timing to test
+                     (if (< 0.0 px 1.0)
+                       {:hit (mean (map (hit k) obs)) :stat stat :p (fs/phi-sf stat)}
+                       {:hit (mean (map (hit k) obs)) :stat Double/NaN :p 1.0})))
         ql (fn [k] #(fs/qlike (max 1e-12 (:rv %)) (get-in % [:f k])))
         dist (fn [mk vk] #(let [{:keys [y f]} %] [(mk f) (t-scale (vk f) (:nu f)) (:nu f) y]))
         crps (fn [mk vk] #(apply fs/crps-t ((dist mk vk) %)))

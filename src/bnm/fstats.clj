@@ -120,10 +120,15 @@
     (reduce (fn [s l] (+ s (* 2.0 (- 1.0 (/ l (+ lags 1.0))) (acov l)))) (acov 0) (range 1 (inc lags)))))
 
 (defn- t-of-mean
-  "The mean of xs over its Newey-West standard error."
+  "The mean of xs over its Newey-West standard error; 0 when xs do not vary
+  and are all zero (nothing to test), NaN when they do not vary otherwise."
   ^double [xs lags]
-  (let [n (count xs)]
-    (/ (/ (reduce + xs) n) (Math/sqrt (/ (long-run-variance xs lags) n)))))
+  (let [n (count xs)
+        mu (/ (double (reduce + xs)) n)
+        se (Math/sqrt (/ (double (long-run-variance xs lags)) n))]
+    (cond (pos? se) (/ mu se)
+          (zero? mu) 0.0
+          :else Double/NaN)))
 
 ;; --- point forecasts --------------------------------------------------------------------
 
@@ -162,8 +167,12 @@
         vs (+ (/ (* (Math/pow (- (* 2 py) 1) 2) px (- 1 px)) n)
               (/ (* (Math/pow (- (* 2 px) 1) 2) py (- 1 py)) n)
               (/ (* 4 py px (- 1 py) (- 1 px)) (* n n)))
-        t (/ (- hit ps) (Math/sqrt (- v vs)))]
-    {:hit hit :stat t :p (phi-sf t)}))
+        d (- v vs)]
+    ;; with forecasts (or outcomes) of one sign the statistic is undefined:
+    ;; there is no timing to test
+    (if (> d (* 1e-12 v))
+      (let [t (/ (- hit ps) (Math/sqrt d))] {:hit hit :stat t :p (phi-sf t)})
+      {:hit hit :stat Double/NaN :p 1.0})))
 
 (defn qlike
   "Patton's QLIKE loss of variance forecast h for realized variance rv."

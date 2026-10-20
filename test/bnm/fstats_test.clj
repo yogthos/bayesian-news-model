@@ -27,7 +27,16 @@
   (let [{:keys [hit stat p]} (fs/pesaran-timmermann y f)]
     (is (close? (/ 2.0 3.0) hit))
     (is (close? 2.6445341229533574 stat))
-    (is (close? 0.0040901729104615425 p))))
+    (is (close? 0.0040901729104615425 p)))
+  (testing "forecasts of one sign carry no timing information"
+    (let [{:keys [hit p]} (fs/pesaran-timmermann [1.0 -1.0 1.0] [0.1 0.2 0.3])]
+      (is (close? (/ 2.0 3.0) hit))
+      (is (= 1.0 p))))
+  (testing "identical forecasts give no difference to test"
+    (let [{:keys [stat p]} (fs/clark-west y b b 3)]
+      (is (= 0.0 stat))
+      (is (= 0.5 p)))
+    (is (= 1.0 (:p (fs/diebold-mariano [1.0 2.0 3.0] [1.0 2.0 3.0] 2))))))
 
 (deftest distributions
   (is (close? 0.07363827012030295 (fs/chi2-sf 3.2 1)))

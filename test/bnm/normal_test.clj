@@ -72,3 +72,12 @@
     (is (= (count ps) (count fc)))
     (is (every? nil? (take 36 fc)) "no forecast without three years before it")
     (is (some some? fc))))
+
+(deftest one-sign-forecasts-have-no-timing-to-test
+  (let [g (m/rng 9)
+        obs (vec (for [t (range 120) mkt (range 3)
+                       :let [y (* 0.04 (m/normal! g))]]
+                   {:t t :y y :rv (* y y)
+                    :f {:hm 0.004 :combo 0.005 :combo-raw 0.006 :ridge 0.005 :model-var 0.002
+                        :garch 0.002 :garch-t 0.002 :har 0.002 :ewma 0.002 :nu 8.0}}))]
+    (is (= 1.0 (:p (:pt (nr/score-panel obs)))))))
