@@ -251,3 +251,124 @@ within 12 months).
   risk is priced.
 - Cutting exposure on the model's probability (the hedge by probability,
   Sharpe 0.68-0.82 held out) is worth more than buying options with it.
+
+## Ordinary moves: forecasts in the normal regime, and whether to trade on them
+
+Pre-registered October 2026, before any of it was scored. The tests above ask
+about tails. This one asks whether the model forecasts the ordinary weeks and
+months well enough to act on: the next period's return, its volatility, and
+its whole distribution, and whether strategies built on them survive costs and
+the number of strategies tried.
+
+**Data and eras.** As the crash tests, so the eras are already fixed:
+- US: French daily market and bill returns 1926-, summed to weeks (Friday to
+  Friday) and months. Tuned on 1950-1989; held out 1990-2007 and 2008-2022,
+  each judged on its own; 2023 on locked and scored once for the record chosen.
+- The 22-market panel: French country returns, monthly, 1975-. Tuned on
+  1980-2004; held out 2005-2022; 2023 on locked.
+
+**Targets**, each out of sample at every origin from information known then:
+the next period's excess return; its realized variance (the sum of squared
+daily returns in the week, or month); and its predictive distribution.
+
+**The regime, ex ante.** A period is *normal* when the model's out-of-sample
+drawdown hazard at its start (20% within 12 months, or 52 weeks; `bnm.trader`,
+`bnm.weekly`) is below the 80th percentile of that hazard over the tuning
+years, the cut the crash tests already use for their top fifth; else
+*stressed*. Nothing about the regime is chosen on held-out years or seen after
+the fact. As a check, the split by the filtered low-volatility state of a
+two-state Markov-switching model refit yearly (scripts/regime-hmm) is
+reported beside it, not used for decisions.
+
+**Benchmarks**
+- Returns: the prevailing historical mean (expanding), and zero.
+- Volatility: EWMA at λ 0.94 (RiskMetrics); GARCH(1,1) by Gaussian quasi
+  likelihood, refit yearly on an expanding window; HAR-RV (Corsi 2009) for
+  realized variance.
+- Distributions: Gaussian and Student-t around the historical mean with the
+  GARCH variance, the t's degrees of freedom fit with it.
+
+**The model's forecasts**, refit yearly, settings from the literature rather
+than the scored years:
+- Returns: the mean of one-input forecasts, each a regression of the next
+  return on one of the model's state inputs, with the sign restriction and the
+  non-negative truncation of Campbell & Thompson (2008), combined as Rapach,
+  Strauss & Zhou (2010). The inputs are the trader's (valuation, the turn of
+  the trend, volatility), the drawdown hazard itself, the slow layer's
+  market-domain gaps, and the event model's world and US political risk.
+  A joint ridge regression on the same inputs is the secondary forecast.
+- Volatility: HAR-RV with the same state inputs added, in logs.
+- Distributions: Student-t with the model's mean and volatility, its degrees
+  of freedom fit on the tuning years.
+
+**Measures**
+- Returns: out-of-sample R² against the historical mean (Campbell & Thompson
+  2008), tested by Clark & West (2007) with Newey-West errors; the share of
+  signs right, tested by Pesaran & Timmermann (1992).
+- Volatility: QLIKE and MSE on realized variance (Patton 2011), tested
+  against each benchmark by Diebold & Mariano with Newey-West errors.
+- Distributions: CRPS and log score against the GARCH-t; PIT histograms with
+  the Berkowitz test; 80% and 95% interval coverage with the Kupiec and
+  Christoffersen tests.
+- Economic value: the certainty-equivalent gain of a mean-variance investor
+  (risk aversion 3, weight the forecast mean over 3 times the forecast
+  variance, held between 0 and 1.5) over the same investor using the
+  historical mean, net of 10bp per unit of turnover, annualized.
+
+**Strategies**, a fixed list, each net of 10bp per unit of exposure changed:
+1. sign timing: the market when the forecast excess return is positive, else
+   bills;
+2. mean-variance with the model's mean and the GARCH variance;
+3. volatility targeting with the model's volatility (exposure the tuning
+   years' volatility over the forecast, capped at 1.5);
+4. mean-variance with the model's mean and volatility.
+
+Against buy and hold, the 10-month (40-week) average, Moreira & Muir
+volatility management on last period's realized variance, and mean-variance
+with the historical mean.
+
+**Multiple testing.** Every configuration scored (strategy, frequency, market,
+forecast) is a line in the ledger below, added before it is scored.
+- A strategy's Sharpe ratio is deflated (Bailey & López de Prado 2014) for
+  the ledger's count and the spread of the trials' Sharpe ratios, with their
+  skew and kurtosis.
+- Whether the best strategy beats the benchmark set at all is Hansen's (2005)
+  SPA test, with the stationary bootstrap (mean block 10 weeks or 6 months).
+- Forecast tests are Bonferroni-corrected for the ledger's count.
+
+**Counts as a forecast** of ordinary moves only if, in the normal regime, in
+each held-out era separately:
+- returns: R² above zero with Clark-West significant after correction, and
+  signs right more often than chance by Pesaran-Timmermann;
+- volatility: QLIKE below GARCH(1,1) and HAR-RV, Diebold-Mariano significant;
+- distributions: coverage not rejected and CRPS no worse than the GARCH-t.
+
+**Counts as reliable for trading** only if a strategy, net of costs:
+- beats the best benchmark's Sharpe ratio in each held-out era, with a
+  deflated Sharpe ratio above 0.95 and the SPA test rejecting at 5%;
+- gains in normal periods alone, not only by stepping aside in stressed ones;
+- holds on the panel, not only the US;
+- and then holds in the locked years, scored once.
+
+**What to expect.** Return prediction out of sample is mostly a failure:
+Welch & Goyal (2008) found few predictors beat the historical mean, their
+2024 update with Zafirov found the same for most proposed since, and the
+successes are monthly R² near 1% concentrated in recessions, which this test
+puts in the stressed regime. Signs are right about 52-55% of the time at
+best. Volatility, by contrast, is highly predictable, GARCH and HAR are hard
+to beat, and most of the economic value of timing comes from volatility, not
+returns (Moreira & Muir 2017). So the likely outcome is a model that helps
+size risk and does not time returns; the test is built so that either answer
+is clear.
+
+**Ledger** (the count is the number of lines):
+
+| # | configuration | note |
+|---|---|---|
+| 1 | US monthly: return, volatility, distribution forecasts | model vs benchmarks |
+| 2 | US weekly: return, volatility, distribution forecasts | model vs benchmarks |
+| 3 | panel monthly: return, volatility, distribution forecasts | model vs benchmarks |
+| 4 | US monthly: strategies 1-4 | |
+| 5 | US weekly: strategies 1-4 | |
+| 6 | panel monthly: strategies 1-4 | |
+| 7 | joint ridge in place of the combination, all of the above | secondary forecast |
