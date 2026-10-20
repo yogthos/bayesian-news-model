@@ -10,7 +10,7 @@
 
     jolt -A:tools -M -m bnm.anticipation [--run onsets-live] [--kinds a,b] [--bench history]
                                          [--level country|subregion|region]
-                                         [--tests m] [--confirm true] [--split world]
+                                         [--tests m] [--confirm true] [--split world] [--threads n]
 
   --bench sets the model every other is scored against: a group's placebo
   (ties-placebo) asks whether the group knows anything about the country.
@@ -102,7 +102,8 @@
     "region" (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u (first (geo/parents s))]))))
 
 (defn -main [& args]
-  (let [{:keys [run kinds bench level tests confirm split]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run kinds bench level tests confirm split threads]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+        threads (or (some-> threads parse-long) 4)
         ;; Bonferroni over the groups and models tried for the same cells
         alpha (/ 0.1 (double (or (some-> tests parse-long) 1)))
         eras (if (= confirm "true") confirmation eras)
@@ -149,15 +150,16 @@
                     (format "Recall intervals at %.1f%%%s.\n" (* 100 (- 1.0 alpha))
                             (if tests (str ", Bonferroni over " tests " tests") ""))
                     (if (= confirm "true") "Confirmation period (locked; scored once).\n" ""))
-        ;; each block (kind, window, era, hard or all) on a thread of its own,
-        ;; printed in order as they finish
-        blocks (for [[[kind w] by-model] (sort-by key preds)
+        ;; each block (kind, window, era, hard or all) a task, run on up to
+        ;; --threads threads (4) and printed in order as they finish: a
+        ;; thread per block starves every other job on the machine
+        tasks (vec (for [[[kind w] by-model] (sort-by key preds)
                      :let [b (get by-model bench)]
                      :when b
                      [era lo hi] eras
                      state (if state-of ["calm" "busy"] [nil])
                      hard? [false true]]
-                 (future
+                 (fn []
                    (let [window (onsets/windows (keyword w))
                          lag (get lags kind 0)
                          in (filter (fn [[unit q]] (and (o/in-era? q window lag [lo hi] lock (= confirm "true"))
@@ -175,10 +177,18 @@
                                           m (:n s) (:pos s) (double (:r5 s)) (gain (:r5-gain s)) (double (:r10 s)) (gain (:r10-gain s))
                                           (double (:u s)) (gain (:u-gain s)) (double (or (:matched s) 0.5))
                                           (double (:ass s)) (double (:ass-bench s)))
-                                  (if-let [[a b] (:loro s)] (format "  loro %s %s" (f3 a) (f3 b)) ""))))))))
+                                  (if-let [[a b] (:loro s)] (format "  loro %s %s" (f3 a) (f3 b)) "")))))))))
+        blocks (vec (repeatedly (count tasks) promise))
+        next-i (atom -1)
+        _ (dotimes [_ (min threads (count tasks))]
+            (future (loop []
+                      (let [i (swap! next-i inc)]
+                        (when (< i (count tasks))
+                          (deliver (blocks i) (try ((tasks i)) (catch Throwable e (str "block failed: " e "\n"))))
+                          (recur))))))
         out (StringBuilder. header)
         _ (print header)
-        _ (doseq [blk (doall blocks)]
+        _ (doseq [blk blocks]
             (let [s @blk] (print s) (flush) (.append out s)))
         out (str out)
         file (str "anticipation" (when (not= bench default-bench) (str "-vs-" bench))
