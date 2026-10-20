@@ -3,7 +3,9 @@
  ;; The model is plain EDN data, and the host (newsroom) persists it however
  ;; it likes. Its statistics come from augur, which has no dependencies.
  :paths ["src" "resources"]
- :deps {io.github.jlt-commons/augur {:local/root "../augur"}}
+ :deps {io.github.jlt-commons/augur {:git/url "https://github.com/jlt-commons/augur"
+                                     :git/tag "v0.1.0"
+                                     :git/sha "e76da92b1b3ee4d825810066d72985e65f819814"}}
 
  :aliases
  {:test {:extra-paths ["test" "tools"]
