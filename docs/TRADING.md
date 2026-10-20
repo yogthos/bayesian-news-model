@@ -394,3 +394,61 @@ is clear.
 | 5 | US weekly: strategies 1-4 | |
 | 6 | panel monthly: strategies 1-4 | |
 | 7 | joint ridge in place of the combination, all of the above | secondary forecast |
+
+### Results (`data/runs/normal-1`)
+
+Scored once on the held-out eras under the rules above. Three faults were
+fixed before this run and none was chosen on held-out results. A test that
+divided by zero when forecasts never change sign. The Moreira & Muir scale,
+which ignored the cap, so that benchmark ran below buy and hold's volatility,
+against the detail fixed above. HAR forecasts that went to zero, now held to
+the range of realized variance they were fit on (Swanson & White).
+
+One departure from the protocol could not be avoided. French's country
+returns are monthly only, so the panel has no realized variance from daily
+squares. Its variance and distribution tests, strategies 3 and 4, and volatility
+management rest on a single squared return. They are reported but not assessed;
+the panel's return and sign tests are valid.
+
+Normal regime, the period the hazard calls calm (significance 0.0028):
+
+| | US monthly 1990-2007 | US monthly 2008-2022 | US weekly 1990-2007 | US weekly 2008-2022 | panel 2005-2022 |
+|---|---|---|---|---|---|
+| periods | 61 | 108 | 720 | 575 | 4099 |
+| return R² | -0.0003 | -0.0063 | -0.0005 | -0.0004 | -0.0002 |
+| Clark-West p | 0.48 | 0.90 | 0.68 | 0.68 | 0.45 |
+| signs: hit, PT p | 0.61, - | 0.70, - | 0.56, - | 0.60, - | 0.57, 0.55 |
+| QLIKE model / GARCH / HAR | 0.202 / 0.271 / 0.195 | 0.482 / 0.550 / 0.492 | 0.326 / 0.349 / 0.346 | 0.474 / 0.506 / 0.479 | n/a |
+| DM p vs GARCH, HAR | 0.15, 0.64 | 0.44, 0.65 | 0.16, 0.15 | 0.044, 0.58 | n/a |
+| CRPS model / GARCH-t, DM p | equal, 0.97 | lower, 0.10 | equal, 0.97 | lower, 0.0011 | n/a |
+| 80% / 95% coverage rejected | no / no | no / no | no / no | no / no | n/a |
+
+- **Returns: no forecast.** R² is at or below zero in every era and setting,
+  and Clark-West never comes near significance. The combination of
+  one-input forecasts is never negative in the US, so its sign is buy and
+  hold's and Pesaran-Timmermann has nothing to test (-). The ridge's signs
+  are no better than chance anywhere (p 0.26-0.91). This is what Welch &
+  Goyal lead one to expect.
+- **Volatility: not a forecast by the rule.** The model's variance has lower
+  QLIKE than GARCH in every normal-regime cell and lower than HAR in three of
+  four, but no difference is significant after correction (best p 0.044).
+  Outside the normal regime it can be worse: in the stressed weeks of
+  1990-2007 it loses to both GARCH (p 0.0074) and HAR (p 0.0011).
+- **Distributions: pass, in the US.** Coverage is never rejected, and CRPS is
+  no worse than the GARCH-t in any era, and significantly better in the
+  weekly 2008-2022 normal regime (p 0.0011). The model's predictive
+  distribution is at least as good as the standard benchmark.
+- **Trading: not reliable.** No strategy has a deflated Sharpe ratio above
+  0.95 (best 0.87, US monthly 2008-2022) and the SPA test never rejects (p
+  0.31 to 1.00). The ridge versions are worse than buy and hold throughout.
+  On the panel every strategy trails the 10-month average.
+
+So, as expected: the model does not time ordinary moves in returns and should
+not be traded on. Its volatility and distribution forecasts match the standard
+benchmarks in calm periods. Those are usable for sizing risk but are not
+better than GARCH or HAR by a margin this test can confirm. The locked years
+are not scored, since no record passed.
+
+Monthly, the hazard's cut from the tuning years leaves 1990-2007 72% stressed
+(the late-1990s valuations), so that era's normal regime is 61 months.
+Weekly, the split is 77/23.
