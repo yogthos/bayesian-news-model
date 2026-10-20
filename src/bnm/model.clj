@@ -48,7 +48,7 @@
   what lets jolt compile it to unboxed flonum code."
   (:require [bnm.calibrate :as cal]
             [bnm.geo :as geo]
-            [bnm.math :as m]
+            [augur.math :as m]
             [bnm.ontology :as ont]))
 
 (set! *unchecked-math* true)

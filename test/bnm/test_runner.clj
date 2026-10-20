@@ -1,6 +1,6 @@
 (ns bnm.test-runner
   (:require [clojure.test :as t]
-            [bnm.math-test]
+            [bnm.time-test]
             [bnm.calibrate-test]
             [bnm.core-test]
             [bnm.model-test]
@@ -8,7 +8,6 @@
             [bnm.slow-test]
             [bnm.stocks-test]
             [bnm.trade-test]
-            [bnm.hazard-test]
             [bnm.polecon-test]
             [bnm.invariants-test]
             [bnm.pit-test]
@@ -17,17 +16,14 @@
             [bnm.ties-test]
             [bnm.onset-test]
             [bnm.calm-test]
-            [bnm.trees-test]
             [bnm.sync-test]
-            [bnm.analog-test]
-            [bnm.changepoint-test]
             [bnm.ingest-test]
             [bnm.fstats-test]
             [bnm.vol-test]
             [bnm.normal-test]))
 
 (def namespaces
-  '[bnm.math-test
+  '[bnm.time-test
     bnm.model-test
     bnm.core-test
     bnm.calibrate-test
@@ -35,7 +31,6 @@
     bnm.slow-test
     bnm.stocks-test
     bnm.trade-test
-    bnm.hazard-test
     bnm.polecon-test
     bnm.invariants-test
     bnm.pit-test
@@ -44,10 +39,7 @@
     bnm.ties-test
     bnm.onset-test
     bnm.calm-test
-    bnm.trees-test
     bnm.sync-test
-    bnm.analog-test
-    bnm.changepoint-test
     bnm.ingest-test
     bnm.fstats-test
     bnm.vol-test

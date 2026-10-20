@@ -10,7 +10,7 @@
   1990 on.
 
     jolt -A:tools -M -m bnm.regime [--name regime-1]"
-  (:require [bnm.hazard :as hz]
+  (:require [augur.score :as sc]
             [bnm.trade :as tr]
             [bnm.trader :as td]
             [bnm.us-polecon :as upc]
@@ -40,7 +40,7 @@
   (let [rs (filter #(and (<= lo (quot (:t %) 12) hi) (some? (:y %)) (some? (get (:raw %) k))) rows)
         n (count (filter :y rs))]
     (when (and (>= n 5) (> (count rs) n))
-      (hz/auc (map #(get (:raw %) k) rs) (map :y rs)))))
+      (sc/auc (map #(get (:raw %) k) rs) (map :y rs)))))
 
 (defn stable?
   "Same side of 0.5 in the early eras (from `from`, an index into eras), all known."
@@ -58,7 +58,7 @@
         ps (:ps (apply max-key :ls grid))]
     (fn [lo hi]
       (let [ps (filter #(and (some? (nth % 2)) (<= lo (quot (first %) 12) hi)) ps)]
-        (hz/auc (map second ps) (map #(nth % 2) ps))))))
+        (sc/auc (map second ps) (map #(nth % 2) ps))))))
 
 (defn run [{:keys [name]}]
   (let [name (or name "regime")

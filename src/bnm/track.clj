@@ -22,7 +22,8 @@
   them, and the period's totals join the history. A model trained by
   `bnm.train` with `--every 13` ships its history and climatology, so a
   live model starts with decades of both."
-  (:require [bnm.calibrate :as cal]
+  (:require [augur.calibrate :as pcal]
+            [bnm.calibrate :as cal]
             [bnm.eval :as eval]
             [bnm.geo :as geo]
             [bnm.model :as model]
@@ -121,7 +122,7 @@
         ranges (for [r rows :when (:median r)]
                  (assoc r :q10 (:low r) :q50 (:median r) :q90 (:high r)))]
     (-> m
-        (cond-> (seq outcomes) (update :calibration #(cal/learn (or % {}) outcomes)))
+        (cond-> (seq outcomes) (update :calibration #(pcal/learn (or % {}) outcomes cal/probability)))
         (cond-> (seq ranges) (update :spread #(cal/learn-by (get-in m [:config :spread-mode]) (or % {}) ranges
                                                      (cal/shock-learning (:config m)))))
         (assoc :track {:hist (eval/add-history (or hist {}) actual)

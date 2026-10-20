@@ -1,7 +1,7 @@
 (ns bnm.vol-test
   "GARCH expectations from the arch package (8.0.0) on test/bnm/garch-series.txt,
   a simulated GARCH(1,1) with t innovations."
-  (:require [bnm.math :as m]
+  (:require [augur.math :as m]
             [bnm.vol :as vol]
             [clojure.java.io :as io]
             [clojure.string :as str]

@@ -26,7 +26,8 @@
   an input that only works in its own era fails here.
 
     jolt -A:tools -M -m bnm.macrohistory [--name macro-1]"
-  (:require [bnm.hazard :as hz]
+  (:require [augur.logit :as lgt]
+            [augur.score :as sc]
             [bnm.paths]
             [bnm.invariants :as iv]
             [clojure.java.io :as io]
@@ -367,10 +368,10 @@
                     :let [train-rows (filter #(not= era (era-of (:year %))) rows)
                           m (means train-rows names)
                           train (for [r train-rows] {:x (vectorize r names m) :y (target r) :w 1.0})
-                          beta (hz/fit train k {:prior prior})]
+                          beta (lgt/fit train k {:prior prior})]
                     r rows :when (= era (era-of (:year r)))]
-                [era (hz/predict beta (vectorize r names m)) (target r)])
-        auc (fn [ps] (when (some #(nth % 2) ps) (hz/auc (map second ps) (map #(nth % 2) ps))))]
+                [era (lgt/predict beta (vectorize r names m)) (target r)])
+        auc (fn [ps] (when (some #(nth % 2) ps) (sc/auc (map second ps) (map #(nth % 2) ps))))]
     (assoc (into {} (for [[era ps] (group-by first preds)] [era (auc ps)])) :all (auc preds))))
 
 (defn prequential
@@ -389,21 +390,21 @@
                         m (means train-rows names)
                         train (for [r train-rows]
                                 {:x (vectorize r names m) :y (target r) :w (Math/pow discount (- yr (:year r)))})
-                        beta (if (>= (count (filter :y train)) 10) (hz/fit train k {:prior prior :start beta}) beta)
+                        beta (if (>= (count (filter :y train)) 10) (lgt/fit train k {:prior prior :start beta}) beta)
                         scored (for [r rows :when (and beta (= yr (:year r)))]
-                                 [(:year r) (hz/predict beta (vectorize r names m)) (target r) (:wave r)])]
+                                 [(:year r) (lgt/predict beta (vectorize r names m)) (target r) (:wave r)])]
                     (recur more beta (into out scored)))))
-        auc (fn [ps] (when (and (some #(nth % 2) ps) (some #(not (nth % 2)) ps)) (hz/auc (map second ps) (map #(nth % 2) ps))))]
+        auc (fn [ps] (when (and (some #(nth % 2) ps) (some #(not (nth % 2)) ps)) (sc/auc (map second ps) (map #(nth % 2) ps))))]
     (assoc (into {} (for [[era lo hi] eras] [era (auc (filter #(<= lo (first %) hi) preds))]))
            :post (auc (filter #(>= (first %) 1950) preds))
            ;; ranking countries within each year only, setting aside when the waves come
-           :within (hz/auc-within (filter #(>= (first %) 1950) preds))
+           :within (sc/auc-within (filter #(>= (first %) 1950) preds))
            ;; when the waves come: the year's mean probability against three or more
            ;; countries starting a crisis within two years
            :timing (let [by-year (for [[yr ps] (group-by first (filter #(>= (first %) 1950) preds))]
                                    [(/ (reduce + (map second ps)) (count ps)) (nth (first ps) 3)])]
                      (when (and (some second by-year) (some (complement second) by-year))
-                       (hz/auc (map first by-year) (map second by-year)))))))
+                       (sc/auc (map first by-year) (map second by-year)))))))
 
 (def transfer-names
   "The banking-crisis hazard carried to the US monthly model: the credit gap
@@ -429,14 +430,14 @@
                       m (means train-rows transfer-names)
                       train (for [r train-rows] {:x (vectorize r transfer-names m) :y (:crisis r) :w 1.0})]
                 :when (>= (count (filter :y train)) 10)]
-            [yr [(vec (hz/fit train k {:prior 10.0})) (mapv m transfer-names)]]))))
+            [yr [(vec (lgt/fit train k {:prior 10.0})) (mapv m transfer-names)]]))))
 
 (defn- era-auc [rows target fam k]
   (for [[era lo hi] eras]
     (let [rs (filter #(and (<= lo (:year %) hi) (some? (target %)) (some? (get-in % [fam k]))) rows)]
       ;; an era with fewer than five positives says nothing (1950-72 has one crisis)
       (when (and (>= (count (filter target rs)) 5) (some (complement target) rs))
-        (hz/auc (map #(get-in % [fam k]) rs) (map target rs))))))
+        (sc/auc (map #(get-in % [fam k]) rs) (map target rs))))))
 
 (defn run [{:keys [name waves]}]
   (let [name (or name "macro")

@@ -1,6 +1,6 @@
 (ns bnm.core-test
   (:require [bnm.core :as bnm]
-            [bnm.math :as m]
+            [augur.math :as m]
             [bnm.time :as t]
             [bnm.store]
             [clojure.test :refer [deftest is testing]]))

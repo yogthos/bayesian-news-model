@@ -10,7 +10,7 @@
   model should be refit or recalibrated before it is trusted.
 
     jolt -A:tools -M -m bnm.readings [--onsets data/derived/onset-preds.tsv] [--n 10]"
-  (:require [bnm.hazard :as hz]
+  (:require [augur.score :as sc]
             [bnm.paths :as paths]
             [bnm.slow-train :as st]
             [bnm.weekly]
@@ -64,8 +64,7 @@
     (into {} (for [[kind by-kind] (group-by first rows)
                    :let [by-model (group-by second by-kind)
                          resolved-of (fn [rs] (for [[_ _ q u p y] rs :when (#{"true" "false"} y)] [q p (= "true" y) u]))
-                         chosen (or model (hz/pick-model (update-vals by-model resolved-of)
-                                                         (first tune-years) (second tune-years)))
+                         chosen (or model (sc/pick-model (update-vals by-model resolved-of) (first tune-years) (second tune-years) 4))
                          rs (mapv (fn [[k _ q u p y]] [k q u p y]) (get by-model chosen))]]
                (let [q (apply max (map second rs))
                      now (filter #(= q (second %)) rs)
@@ -75,10 +74,10 @@
                  [kind {:q q :model chosen
                         :top (take n (sort-by #(- (nth % 3)) now))
                         :base (/ (count (filter true? ys)) (double (max 1 (count ys))))
-                        :cusum {:up (hz/cusum ps ys 2.0 :overlap 4) :down (hz/cusum ps ys 0.5 :overlap 4)
-                                :gain (hz/recalibration-gain known (- q 40) {:overlap 4})
+                        :cusum {:up (sc/cusum ps ys 2.0 :overlap 4 :h 4.0) :down (sc/cusum ps ys 0.5 :overlap 4 :h 4.0)
+                                :gain (sc/recalibration-gain known (- q 40) {:overlap 4 :discount 0.8 :per-block 4})
                                 ;; over every year with five years of outcomes before it
-                                :gain-all (hz/recalibration-gain known (+ (apply min (map first known)) 20) {:overlap 4})}}])))))
+                                :gain-all (sc/recalibration-gain known (+ (apply min (map first known)) 20) {:overlap 4 :discount 0.8 :per-block 4})}}])))))
 
 (defn- flag
   "The monitor's verdict now (the charts' current values against h = 4),

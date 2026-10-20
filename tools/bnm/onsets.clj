@@ -65,7 +65,7 @@
   80th or below its 20th percentile over the rows known by the year
   (bnm.onset/tail-flags). One named knn-<inputs> is the analog forecast:
   the onset share among the hundred most similar resolved rows (bnm.analog);
-  hs-<inputs> the logit with horseshoe-like shrinkage (hz/fit-shrunk);
+  hs-<inputs> the logit with horseshoe-like shrinkage (lgt/fit-shrunk);
   mt-<inputs> the logit fit on the kind's rows and the other political
   kinds' rows, weighted by a share chosen each year, borrowing strength
   across kinds.
@@ -73,17 +73,19 @@
   Writes data/runs/<name>/onsets.txt, the out-of-sample predictions,
   preds.tsv (kind window model quarter unit p outcome), and the recorded
   rows, rows.tsv, which --rows reads back instead of running the slow layer."
-  (:require [bnm.analog :as analog]
+  (:require [augur.logit :as lgt]
+            [augur.pool :as pl]
+            [augur.score :as sc]
+            [augur.analog :as analog]
             [bnm.calm :as calm]
             [bnm.geo :as geo]
-            [bnm.hazard :as hz]
             [bnm.mix :as mix]
             [bnm.named :as nm]
             [bnm.onset :as o]
             [bnm.slow :as slow]
             [bnm.slow-train :as st]
             [bnm.ties :as ties]
-            [bnm.trees :as trees]
+            [augur.trees :as trees]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -308,11 +310,11 @@
 (def combined
   "Combinations of the fitted models, refit each year on the forecasts whose
   outcomes are known by then: a linear pool and a log-linear stack, and
-  members weighted by their own recent record (hz/hedge-weights, a
+  members weighted by their own recent record (pl/hedge-weights, a
   three-year half-life). pool stops EM after a fixed number of steps from
   equal weights, which shrinks toward them; mlpool is the same pool at the
-  maximum of its log score (hz/pool-weights-ml); median, untrained, the
-  members' median log odds (hz/median-pool)."
+  maximum of its log score (pl/pool-weights-ml); median, untrained, the
+  members' median log odds (pl/median-pool)."
   [:pool :mlpool :stack :hedge :median])
 
 (def hedge-discount 0.8)
@@ -436,12 +438,12 @@
                                    :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))})
                           beta (if (some :y train)
                                  (if shrunk?
-                                   (hz/fit-shrunk train k {:prior prior :start beta})
-                                   (hz/fit train k {:prior prior :start beta}))
+                                   (lgt/fit-shrunk train k {:prior prior :start beta})
+                                   (lgt/fit train k {:prior prior :start beta}))
                                  beta)
                           scored (for [{:keys [unit q y full]} prepared
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
-                                   [q (hz/predict beta (xf full)) y unit])]
+                                   [q (lgt/predict beta (xf full)) y unit])]
                       (recur more beta (into preds scored)))))))
             ;; multi-task (mt-): the kind's rows and the other kinds' rows
             ;; weighted by lam, an extra column marking the others so the
@@ -468,10 +470,10 @@
                                        :when (and (<= (o/resolves-at q window alag) q0) (some? y) (or y (keep-negative? unit q)))]
                                    {:x (x+ full true) :y y :w (* lam (w q y))})
                           train (concat own others)
-                          beta (if (some :y own) (hz/fit train k {:prior 100.0 :start beta}) beta)
+                          beta (if (some :y own) (lgt/fit train k {:prior 100.0 :start beta}) beta)
                           scored (for [{:keys [unit q y full]} prepared
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
-                                   [q (hz/predict beta (x+ full false)) y unit])]
+                                   [q (lgt/predict beta (x+ full false)) y unit])]
                       (recur more beta (into preds scored)))))))
             ;; analogs (bnm.analog): fit on the resolved rows each scored
             ;; year, negatives thinned to a third of the usual sample
@@ -505,7 +507,7 @@
                                          :when (and (<= (o/resolves-at q window (or lag 0)) q0) (some? y) (or y (keep-negative? unit q)))]
                                      {:x (pick full idx) :y y
                                       :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))}))
-                        model (if (some :y train) (trees/fit train {:rounds (apply max tree-rounds)}) model)
+                        model (if (some :y train) (trees/fit train (assoc trees/defaults :rounds (apply max tree-rounds))) model)
                         this (when model (filterv #(and (= (quot (:q %) 4) yr) (>= yr score-from)) prepared))
                         cut (fn [r] (update model :trees #(subvec % 0 (min r (count %)))))]
                     (recur more model
@@ -577,12 +579,12 @@
   (let [years (sort (distinct (map #(quot (:q %) 4) rows)))
          ;; each combination: from the known rows, their discounts and the
          ;; year's start, a function of a row's member probabilities
-         fits {:pool (fn [ps ys ws _] (let [w (hz/pool-weights ps ys ws)] #(hz/pool w %)))
-               :mlpool (fn [ps ys ws _] (let [w (hz/pool-weights-ml ps ys ws)] #(hz/pool w %)))
-               :stack (fn [ps ys ws _] (let [b (hz/fit-stack ps ys ws {:prior 10.0})] #(hz/predict-stack b %)))
-               :median (fn [_ _ _ _] hz/median-pool)
-               :hedge (fn [ps ys _ qs] (let [h (hz/hedge-weights ps ys (map #(Math/pow hedge-discount (/ % 4.0)) qs) 1.0)]
-                                         #(hz/pool h %)))}
+         fits {:pool (fn [ps ys ws _] (let [w (pl/pool-weights ps ys ws)] #(pl/pool w %)))
+               :mlpool (fn [ps ys ws _] (let [w (pl/pool-weights-ml ps ys ws)] #(pl/pool w %)))
+               :stack (fn [ps ys ws _] (let [b (pl/fit-stack ps ys ws {:prior 10.0})] #(pl/predict-stack b %)))
+               :median (fn [_ _ _ _] pl/median-pool)
+               :hedge (fn [ps ys _ qs] (let [h (pl/hedge-weights ps ys (map #(Math/pow hedge-discount (/ % 4.0)) qs) 1.0)]
+                                         #(pl/pool h %)))}
          out (loop [[yr & more] years out {}]
                (if-not yr
                  out
@@ -604,18 +606,18 @@
 (defn- scores [preds base]
   (let [ps (map second preds) ys (map #(nth % 2) preds)]
     {:n (count preds) :pos (count (filter true? ys))
-     :auc (hz/auc ps ys) :auq (hz/auc-within (map (fn [[q p y]] [q p y]) preds))
-     :ap (hz/avg-precision ps ys)
-     :r10 (hz/recall-at-budget (map (fn [[q p y]] [q p y]) preds) 0.10)
+     :auc (sc/auc ps ys) :auq (sc/auc-within (map (fn [[q p y]] [q p y]) preds))
+     :ap (sc/avg-precision ps ys)
+     :r10 (sc/recall-at-budget (map (fn [[q p y]] [q p y]) preds) 0.10)
      ;; 90% interval resampling whole years; Sarlin's usefulness for a policymaker weighing
      ;; missed onsets by 0.9 and by 0.95 (for events this rare, a balanced policymaker never acts)
      :ci (when (and (some #(true? (nth % 2)) preds) (some #(false? (nth % 2)) preds))
-           (hz/block-bootstrap-auc (map (fn [[q p y]] [(quot q 4) p y]) preds) 200 1))
-     :u50 (when (some true? ys) (hz/usefulness ps ys 0.9))
-     :u80 (when (some true? ys) (hz/usefulness ps ys 0.95))
+           (sc/block-bootstrap-auc (map (fn [[q p y]] [(quot q 4) p y]) preds) 200 1))
+     :u50 (when (some true? ys) (sc/usefulness ps ys 0.9))
+     :u80 (when (some true? ys) (sc/usefulness ps ys 0.95))
      :bss (when (seq base)
-            (let [bb (hz/brier (map second base) (map #(nth % 2) base))]
-              (when (pos? bb) (- 1.0 (/ (hz/brier ps ys) bb)))))}))
+            (let [bb (sc/brier (map second base) (map #(nth % 2) base))]
+              (when (pos? bb) (- 1.0 (/ (sc/brier ps ys) bb)))))}))
 
 (defn- f3 [x] (if x (format "%.3f" (double x)) "  -  "))
 

@@ -22,7 +22,7 @@
   Missing values are 0, with an indicator per source so the hazard can tell
   absent from neutral."
   (:require [bnm.calm :as calm]
-            [bnm.changepoint :as cp]
+            [augur.changepoint :as cp]
             [bnm.geo :as geo]
             [bnm.mix :as mix]
             [bnm.ties :as ties]
@@ -619,7 +619,7 @@
   (let [series (channel-series path)]
     (into {} (for [[u s] series
                    :let [qs (sort (keys s))
-                         per (mapv (fn [j] (cp/run (mapv #(nth (s %) j) qs) {:hazard (/ 1.0 20) :recent 2 :prior-var 0.25}))
+                         per (mapv (fn [j] (cp/run (mapv #(nth (s %) j) qs) {:hazard (/ 1.0 20) :recent 2 :prior-var 0.25 :max-run 400}))
                                    (range (count calm/channels)))]
                    [i q] (map-indexed vector qs)]
                [[u q] (double-array (mapcat (fn [out] (let [{:keys [recent run]} (out i)] [recent (Math/log1p run)])) per))]))))

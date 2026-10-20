@@ -1,5 +1,5 @@
 (ns bnm.sync-test
-  (:require [bnm.math :as m]
+  (:require [augur.math :as m]
             [bnm.sync :as sync]
             [clojure.test :refer [deftest is testing]]))
 

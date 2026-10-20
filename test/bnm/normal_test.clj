@@ -1,7 +1,7 @@
 (ns bnm.normal-test
-  (:require [bnm.math :as m]
+  (:require [augur.ftest :as ft]
+            [augur.math :as m]
             [bnm.normal :as nr]
-            [bnm.fstats :as fs]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- synthetic
@@ -63,7 +63,7 @@
         fc (nr/forecasts ps opts)
         held (filter #(>= (:year (ps %)) 1960) (range (dec (count ps))))
         y (map #(:ret (ps (inc %))) held)]
-    (is (pos? (fs/oos-r2 y (map #(:combo-raw (fc %)) held) (map #(:hm (fc %)) held))))))
+    (is (pos? (ft/oos-r2 y (map #(:combo-raw (fc %)) held) (map #(:hm (fc %)) held))))))
 
 (deftest a-series-starting-late-waits-for-history
   ;; a market whose data begin after the first forecast year

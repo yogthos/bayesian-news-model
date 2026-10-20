@@ -19,7 +19,7 @@
 
     jolt -A:tools -M -m bnm.reconcile v3-q 20080221,20080522,... [sims]"
   (:require [bnm.geo :as geo]
-            [bnm.math :as m]
+            [augur.math :as m]
             [bnm.model :as model]
             [bnm.ontology :as ont]
             [bnm.store :as store]

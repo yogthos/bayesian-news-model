@@ -26,9 +26,11 @@
     climatology). Brier skill against climatology, ROC AUC, average
     precision (PR AUC, which suits rare onsets), and precision and recall
     among the top `top-k` per period."
-  (:require [bnm.calibrate :as cal]
+  (:require [augur.score :as sc]
+            [augur.calibrate :as pcal]
+            [bnm.calibrate :as cal]
             [bnm.geo :as geo]
-            [bnm.math :as m]
+            [augur.math :as m]
             [bnm.model :as model]
             [bnm.ontology :as ont]
             [clojure.edn :as edn]
@@ -121,36 +123,6 @@
 
 ;; --- scores ------------------------------------------------------------------------------
 
-(defn- crps
-  "CRPS of the sorted sample `xs` for the outcome `a`."
-  [^doubles xs a]
-  (let [n (alength xs)
-        s1 (areduce xs i s 0.0 (+ s (Math/abs (- (aget xs i) a))))
-        s2 (areduce xs i s 0.0 (+ s (* (aget xs i) (- (* 2 i) n -1))))]
-    (- (/ s1 n) (/ s2 (* n (double n))))))
-
-(defn pit-bounds
-  "[F(a-) F(a)]: the predictive cdf just below and at the outcome a, from
-  the sorted sample xs. For counts the PIT is an interval, not a point; its
-  non-randomized histogram spreads each outcome uniformly over it (Czado,
-  Gneiting & Held 2009)."
-  [^doubles xs a]
-  (let [n (alength xs)
-        below (areduce xs i c 0 (if (< (aget xs i) a) (inc c) c))
-        at (areduce xs i c 0 (if (<= (aget xs i) a) (inc c) c))]
-    [(/ below (double n)) (/ at (double n))]))
-
-(defn pit-histogram
-  "The non-randomized PIT histogram over `bins` equal bins: the mean over
-  outcomes of the mass each [lo hi] puts in each bin. Flat when the
-  forecasts are calibrated; a U when they are too narrow; a hump when too
-  wide."
-  [bounds bins]
-  (let [cdf (fn [[lo hi] u] (cond (>= u hi) 1.0 (<= u lo) 0.0 :else (/ (- u lo) (- hi lo))))
-        n (count bounds)]
-    (for [j (range 1 (inc bins))]
-      (/ (reduce + (map #(- (cdf % (/ j (double bins))) (cdf % (/ (dec j) (double bins)))) bounds)) n))))
-
 (defn- log-sorted [xs]
   (let [arr (double-array (map #(Math/log1p (max 0.0 %)) xs))]
     (java.util.Arrays/sort arr)
@@ -193,12 +165,12 @@
        :clim3 (mean (take-last 3 series))
        :mean (/ (areduce xs k s 0.0 (+ s (aget xs k))) n)
        :q10 (m/quantile xs 0.1) :q50 (m/quantile xs 0.5) :q90 (m/quantile xs 0.9)
-       :crps (crps (log-sorted xs) (Math/log1p a))
-       :pit (let [ys (aclone xs)] (java.util.Arrays/sort ys) (pit-bounds ys a))
-       :crps-hist (crps (log-sorted series) (Math/log1p a))
+       :crps (sc/crps-sample (log-sorted xs) (Math/log1p a))
+       :pit (let [ys (aclone xs)] (java.util.Arrays/sort ys) (sc/pit-bounds ys a))
+       :crps-hist (sc/crps-sample (log-sorted series) (Math/log1p a))
        :p-escalate p
        :sims n
-       :p-cal (cal/calibrate (:calibration fc) [ch st] p)
+       :p-cal (pcal/calibrate (:calibration fc) [ch st] p cal/probability)
        :p-clim pc
        :p-hist (history-rate series h pc)
        :escalated (escalated? a b h)})))
@@ -214,18 +186,18 @@
    :crps-model (mean (map :crps rs))
    :crps-hist (mean (map :crps-hist rs))
    :coverage80 (mean (map #(if (<= (:q10 %) (:actual %) (:q90 %)) 1.0 0.0) rs))
-   :pit (let [bs (keep :pit rs)] (when (seq bs) (vec (pit-histogram bs 10))))})
+   :pit (let [bs (keep :pit rs)] (when (seq bs) (vec (sc/pit-histogram bs 10))))})
 
 (defn- escalation-row? [r]
   (some #{(:channel r)} escalation-channels))
 
 (defn outcomes
-  "Resolved escalation forecasts, for `bnm.calibrate/learn`, keyed by
+  "Resolved escalation forecasts, for `augur.calibrate/learn`, keyed by
   channel and stratum."
   [rs]
   (for [r rs
         :when (and (not (#{:region :world} (:level r))) (escalation-row? r))]
-    {:channel [(:channel r) (:stratum r)] :p (:p-escalate r) :outcome (:escalated r)}))
+    {:key [(:channel r) (:stratum r)] :p (:p-escalate r) :outcome (:escalated r)}))
 
 (def scored-kinds
   "The kinds of node whose escalations are pooled and reported."
@@ -306,36 +278,6 @@
 
 ;; --- pooled escalation scores --------------------------------------------------------------
 
-(defn- auc
-  "Area under the ROC curve of `scores` for boolean `labels` (Mann-Whitney)."
-  [scores labels]
-  (let [pairs (sort-by first (map vector scores labels))
-        n-pos (count (filter true? labels))
-        n-neg (- (count labels) n-pos)]
-    (when (and (pos? n-pos) (pos? n-neg))
-      ;; average ranks over ties
-      (let [ranked (loop [xs (vec pairs) i 0 acc []]
-                     (if (>= i (count xs))
-                       acc
-                       (let [s (first (xs i))
-                             j (loop [j i] (if (and (< j (count xs)) (= s (first (xs j)))) (recur (inc j)) j))
-                             r (/ (+ (inc i) j) 2.0)]
-                         (recur xs j (into acc (map (fn [[_ l]] [r l]) (subvec xs i j)))))))
-            rank-sum (reduce + (keep (fn [[r l]] (when l r)) ranked))]
-        (/ (- rank-sum (/ (* n-pos (inc n-pos)) 2.0)) (* n-pos n-neg))))))
-
-(defn- avg-precision
-  "Average precision (area under the precision-recall curve) of `scores`."
-  [scores labels]
-  (let [n-pos (count (filter true? labels))]
-    (when (pos? n-pos)
-      (loop [xs (sort-by (comp - first) (map vector scores labels)) i 1 hits 0 acc 0.0]
-        (if-let [[[_ l] & more] (seq xs)]
-          (if l
-            (recur more (inc i) (inc hits) (+ acc (/ (inc hits) (double i))))
-            (recur more (inc i) hits acc))
-          (/ acc n-pos))))))
-
 (defn- brier [ps ys]
   (mean (map (fn [p y] (let [d (- p (if y 1.0 0.0))] (* d d))) ps ys)))
 
@@ -360,10 +302,10 @@
      :brier-cal (brier (map :p-cal g) ys)
      :brier-hist (brier (map :p-hist g) ys)
      :brier-clim (brier (map :p-clim g) ys)
-     :auc-model (auc (map :p-escalate g) ys)
-     :auc-hist (auc (map :p-hist g) ys)
-     :ap-model (avg-precision (map :p-escalate g) ys)
-     :ap-hist (avg-precision (map :p-hist g) ys)
+     :auc-model (sc/auc (map :p-escalate g) ys)
+     :auc-hist (sc/auc (map :p-hist g) ys)
+     :ap-model (sc/avg-precision (map :p-escalate g) ys)
+     :ap-hist (sc/avg-precision (map :p-hist g) ys)
      :top-model (top g :p-escalate top-k)
      :top-hist (top g :p-hist top-k)
      ;; Monte Carlo error: a probability from n simulations has variance

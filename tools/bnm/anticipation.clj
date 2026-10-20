@@ -22,8 +22,8 @@
   world scores calm and busy world quarters apart.
 
   Reads data/runs/<run>/preds.tsv; writes anticipation.txt beside it."
-  (:require [bnm.geo :as geo]
-            [bnm.hazard :as hz]
+  (:require [augur.score :as sc]
+            [bnm.geo :as geo]
             [bnm.onset :as o]
             [bnm.onsets :as onsets]
             [clojure.java.io :as io]
@@ -69,11 +69,11 @@
         reps (max 200 (long (Math/ceil (/ 10.0 (/ alpha 2)))))
         ;; countries and years resampled both: a country's overlapping
         ;; windows and a year's shared shocks are not independent draws
-        gain (fn [rs budget] (hz/paired-recall-gain-2way rs budget reps 1 alpha))]
+        gain (fn [rs budget] (sc/paired-recall-gain-2way rs budget {:reps reps :seed 1 :alpha alpha :per-block 4}))]
     (when (and (pos? pos) (< pos (count rows)))
-      (let [r5 #(hz/recall-at-budget % 0.05)
-            r10 #(hz/recall-at-budget % 0.10)
-            u (fn [rs] (hz/usefulness (map second rs) (map #(nth % 2) rs) 0.9))
+      (let [r5 #(sc/recall-at-budget % 0.05)
+            r10 #(sc/recall-at-budget % 0.10)
+            u (fn [rs] (sc/usefulness (map second rs) (map #(nth % 2) rs) 0.9))
             loro (when region-of
                    (let [regions (distinct (keep (comp region-of first) keyed))
                          without (fn [r] (vec (for [[unit row] keyed :when (not= r (region-of unit))] row)))
@@ -83,12 +83,12 @@
         {:n (count rows) :pos pos :loro loro
          :r5 (r5 (map (fn [[q a _ y]] [q a y]) rows)) :r5-gain (gain rows 0.05)
          :r10 (r10 (map (fn [[q a _ y]] [q a y]) rows)) :r10-gain (gain rows 0.10)
-         :u (u (map (fn [[q a _ y]] [q a y]) rows)) :u-gain (hz/paired-usefulness-gain rows 0.9 200 1)
+         :u (u (map (fn [[q a _ y]] [q a y]) rows)) :u-gain (sc/paired-usefulness-gain rows 0.9 {:reps 200 :seed 1 :per-block 4})
          ;; error diagrams: alarm volume by rows, and by the benchmark's
          ;; probabilities (0.5 = no better than the benchmark)
-         :ass (hz/area-skill (map (fn [[q a _ y]] [q a y 1.0]) rows))
-         :ass-bench (hz/area-skill (map (fn [[q a b y]] [q a y b]) rows))
-         :matched (hz/matched-concordance (map (fn [[q a b y]] {:period q :p-model a :p-bench b :y y}) rows) 4)}))))
+         :ass (sc/area-skill (map (fn [[q a _ y]] [q a y 1.0]) rows))
+         :ass-bench (sc/area-skill (map (fn [[q a b y]] [q a y b]) rows))
+         :matched (sc/matched-concordance (map (fn [[q a b y]] {:period q :p-model a :p-bench b :y y}) rows) 4)}))))
 
 (defn- group-map
   "{unit group} at `level` (subregion or region, the M49 groups of

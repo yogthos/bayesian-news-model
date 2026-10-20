@@ -21,7 +21,8 @@
   model and the scoring context at each origin, for `bnm.refit`. With
   --ppc true, ppc.txt: posterior predictive checks of the weekly series of a
   sample of nodes in every scored period (see `bnm.eval/ppc`)."
-  (:require [bnm.calibrate :as cal]
+  (:require [augur.calibrate :as pcal]
+            [bnm.calibrate :as cal]
             [bnm.eval :as ev]
             [bnm.geo :as geo]
             [bnm.model :as model]
@@ -214,7 +215,7 @@
                   results (cond-> results scored (conj (ev/slim scored)))
                   ;; the calibration and the climatology learn from the period just scored
                   mdl (cond-> mdl
-                        scored (-> (update :calibration cal/learn (:outcomes scored))
+                        scored (-> (update :calibration pcal/learn (:outcomes scored))
                                    (update :spread #(cal/learn-by (get-in mdl [:config :spread-mode]) % (:rows r)
                                                              (cal/shock-learning (:config mdl))))))
                   clim (cond-> clim scored (ev/learn-climate (:scored scored)))

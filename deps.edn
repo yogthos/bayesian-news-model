@@ -1,8 +1,9 @@
 {:jolt/min-version "0.8.16"
 
- ;; The library has no dependencies: the model is plain EDN data, and the
- ;; host (newsroom) persists it however it likes.
+ ;; The model is plain EDN data, and the host (newsroom) persists it however
+ ;; it likes. Its statistics come from augur, which has no dependencies.
  :paths ["src" "resources"]
+ :deps {io.github.jlt-commons/augur {:local/root "../augur"}}
 
  :aliases
  {:test {:extra-paths ["test" "tools"]

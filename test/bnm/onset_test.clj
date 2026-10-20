@@ -1,5 +1,5 @@
 (ns bnm.onset-test
-  (:require [bnm.math :as m]
+  (:require [augur.math :as m]
             [bnm.onset :as o]
             [clojure.test :refer [deftest is testing]]))
 

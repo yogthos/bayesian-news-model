@@ -3,7 +3,7 @@
   likelihood or with standardized Student t innovations, set up as the arch
   package does (zero mean, the variance started from an exponentially
   weighted backcast), and HAR regressions of realized variance (Corsi 2009)."
-  (:require [bnm.math :as m]))
+  (:require [augur.math :as m]))
 
 (defn backcast
   "The starting variance: squared returns over the first 75 periods,

@@ -18,9 +18,10 @@
 
   Writes data/runs/<name>/normal.txt and forecasts-<setting>.tsv. The
   locked years (2023 on) are scored only with --confirm true."
-  (:require [bnm.fstats :as fs]
-            [bnm.hazard :as hz]
-            [bnm.math :as m]
+  (:require [augur.special :as sp]
+            [augur.ftest :as ft]
+            [bnm.fstats :as fs]
+            [augur.math :as m]
             [bnm.panel :as panel]
             [bnm.trade :as tr]
             [bnm.trader :as us]
@@ -314,15 +315,15 @@
         rv (mapv #(:rv (ps (inc %))) idx)
         f (mapv fc idx)
         col (fn [k] (mapv k f))
-        lags (fs/nw-lags (count idx))
+        lags (ft/nw-lags (count idx))
         hm (col :hm)
-        q (fn [k] (mapv #(fs/qlike (max 1e-12 %1) %2) rv (col k)))
+        q (fn [k] (mapv #(ft/qlike (max 1e-12 %1) %2) rv (col k)))
         nu (col :nu)
         mu-m (col :combo) vm (col :model-var)
         sm (mapv t-scale vm nu) sb (mapv t-scale (col :garch-t) nu)
-        crps-m (mapv #(fs/crps-t %1 %2 %3 %4) mu-m sm nu y)
-        crps-b (mapv #(fs/crps-t %1 %2 %3 %4) hm sb nu y)
-        pit (mapv #(fs/t-cdf (/ (- %4 %1) %2) %3) mu-m sm nu y)
+        crps-m (mapv #(ft/crps-t %1 %2 %3 %4) mu-m sm nu y)
+        crps-b (mapv #(ft/crps-t %1 %2 %3 %4) hm sb nu y)
+        pit (mapv #(sp/t-cdf (/ (- %4 %1) %2) %3) mu-m sm nu y)
         miss (fn [a] (mapv #(if (or (< % (/ a 2)) (> % (- 1 (/ a 2)))) 1 0) pit))
         ;; mean-variance investors, the model's mean against the historical
         ;; mean, both with the GARCH variance, net of 10bp per unit turned over
@@ -331,22 +332,22 @@
                            m (mean rs)]
                        (- m (* 1.5 (mean (map #(* (- % m) (- % m)) rs))))))]
     {:n (count idx)
-     :r2 (fs/oos-r2 y (col :combo) hm) :r2-ridge (fs/oos-r2 y (col :ridge) hm)
-     :cw (fs/clark-west y (col :combo) hm lags) :cw-ridge (fs/clark-west y (col :ridge) hm lags)
-     :pt (fs/pesaran-timmermann y (col :combo-raw)) :pt-ridge (fs/pesaran-timmermann y (col :ridge))
+     :r2 (ft/oos-r2 y (col :combo) hm) :r2-ridge (ft/oos-r2 y (col :ridge) hm)
+     :cw (ft/clark-west y (col :combo) hm lags) :cw-ridge (ft/clark-west y (col :ridge) hm lags)
+     :pt (ft/pesaran-timmermann y (col :combo-raw)) :pt-ridge (ft/pesaran-timmermann y (col :ridge))
      :qlike (into {} (for [k [:model-var :garch :har :ewma]] [k (mean (q k))]))
-     :dm-garch (fs/diebold-mariano (q :model-var) (q :garch) lags)
-     :dm-har (fs/diebold-mariano (q :model-var) (q :har) lags)
+     :dm-garch (ft/diebold-mariano (q :model-var) (q :garch) lags)
+     :dm-har (ft/diebold-mariano (q :model-var) (q :har) lags)
      :crps {:model (mean crps-m) :garch-t (mean crps-b)
-            :gauss (mean (map #(fs/crps-normal %1 (Math/sqrt %2) %3) hm (col :garch) y))}
-     :dm-crps (fs/diebold-mariano crps-m crps-b lags)
-     :log {:model (mean (map #(fs/log-t %1 %2 %3 %4) mu-m sm nu y))
-           :garch-t (mean (map #(fs/log-t %1 %2 %3 %4) hm sb nu y))
+            :gauss (mean (map #(ft/crps-normal %1 (Math/sqrt %2) %3) hm (col :garch) y))}
+     :dm-crps (ft/diebold-mariano crps-m crps-b lags)
+     :log {:model (mean (map #(ft/log-t %1 %2 %3 %4) mu-m sm nu y))
+           :garch-t (mean (map #(ft/log-t %1 %2 %3 %4) hm sb nu y))
            :gauss (mean (map #(log-normal-density %1 %2 %3) hm (col :garch) y))}
      :cover (into {} (for [a [0.2 0.05] :let [ms (miss a)]]
                        [a {:rate (/ (reduce + ms) (double (count ms)))
-                           :kupiec (fs/kupiec (reduce + ms) (count ms) a) :chr (fs/christoffersen ms)}]))
-     :berkowitz (fs/berkowitz pit)
+                           :kupiec (ft/kupiec (reduce + ms) (count ms) a) :chr (ft/christoffersen ms)}]))
+     :berkowitz (ft/berkowitz pit)
      :ce-gain (- (ce (col :combo)) (ce hm))}))
 
 (defn- strategy-returns
@@ -432,9 +433,9 @@
   [obs]
   (let [by-month (vals (group-by :t obs))
         monthly (fn [g] (mapv #(mean (map g %)) by-month))
-        lags (fs/nw-lags (count by-month))
-        one-sided (fn [xs] (let [{:keys [stat]} (fs/diebold-mariano xs (repeat (count xs) 0.0) lags)]
-                             {:stat stat :p (fs/phi-sf stat)}))
+        lags (ft/nw-lags (count by-month))
+        one-sided (fn [xs] (let [{:keys [stat]} (ft/diebold-mariano xs (repeat (count xs) 0.0) lags)]
+                             {:stat stat :p (sp/phi-sf stat)}))
         sq (fn [a] (* a a))
         se (fn [k] #(sq (- (:y %) (get-in % [:f k]))))
         cw (fn [k] #(let [{:keys [y f]} %] (- (sq (- y (:hm f))) (- (sq (- y (k f))) (sq (- (k f) (:hm f)))))))
@@ -447,25 +448,25 @@
                          {:keys [stat]} (one-sided (mapv #(- % expect) (monthly (hit k))))]
                      ;; forecasts of one sign: no timing to test
                      (if (< 0.0 px 1.0)
-                       {:hit (mean (map (hit k) obs)) :stat stat :p (fs/phi-sf stat)}
+                       {:hit (mean (map (hit k) obs)) :stat stat :p (sp/phi-sf stat)}
                        {:hit (mean (map (hit k) obs)) :stat Double/NaN :p 1.0})))
-        ql (fn [k] #(fs/qlike (max 1e-12 (:rv %)) (get-in % [:f k])))
+        ql (fn [k] #(ft/qlike (max 1e-12 (:rv %)) (get-in % [:f k])))
         dist (fn [mk vk] #(let [{:keys [y f]} %] [(mk f) (t-scale (vk f) (:nu f)) (:nu f) y]))
-        crps (fn [mk vk] #(apply fs/crps-t ((dist mk vk) %)))
-        logs (fn [mk vk] #(apply fs/log-t ((dist mk vk) %)))
-        pit #(let [[mu sc nu y] ((dist :combo :model-var) %)] (fs/t-cdf (/ (- y mu) sc) nu))
+        crps (fn [mk vk] #(apply ft/crps-t ((dist mk vk) %)))
+        logs (fn [mk vk] #(apply ft/log-t ((dist mk vk) %)))
+        pit #(let [[mu sc nu y] ((dist :combo :model-var) %)] (sp/t-cdf (/ (- y mu) sc) nu))
         cover (fn [a] (let [ms (map #(let [u (pit %)] (if (or (< u (/ a 2)) (> u (- 1 (/ a 2)))) 1 0)) obs)]
-                        {:rate (mean ms) :kupiec (fs/kupiec (reduce + ms) (count obs) a) :chr {:p Double/NaN}}))]
+                        {:rate (mean ms) :kupiec (ft/kupiec (reduce + ms) (count obs) a) :chr {:p Double/NaN}}))]
     {:n (count obs)
      :r2 (r2 :combo) :r2-ridge (r2 :ridge)
      :cw (one-sided (monthly (cw :combo))) :cw-ridge (one-sided (monthly (cw :ridge)))
      :pt (pt :combo-raw) :pt-ridge (pt :ridge)
      :qlike (into {} (for [k [:model-var :garch :har :ewma]] [k (mean (map (ql k) obs))]))
-     :dm-garch (fs/diebold-mariano (monthly (ql :model-var)) (monthly (ql :garch)) lags)
-     :dm-har (fs/diebold-mariano (monthly (ql :model-var)) (monthly (ql :har)) lags)
+     :dm-garch (ft/diebold-mariano (monthly (ql :model-var)) (monthly (ql :garch)) lags)
+     :dm-har (ft/diebold-mariano (monthly (ql :model-var)) (monthly (ql :har)) lags)
      :crps {:model (mean (map (crps :combo :model-var) obs)) :garch-t (mean (map (crps :hm :garch-t) obs))
-            :gauss (mean (map #(fs/crps-normal (get-in % [:f :hm]) (Math/sqrt (get-in % [:f :garch])) (:y %)) obs))}
-     :dm-crps (fs/diebold-mariano (monthly (crps :combo :model-var)) (monthly (crps :hm :garch-t)) lags)
+            :gauss (mean (map #(ft/crps-normal (get-in % [:f :hm]) (Math/sqrt (get-in % [:f :garch])) (:y %)) obs))}
+     :dm-crps (ft/diebold-mariano (monthly (crps :combo :model-var)) (monthly (crps :hm :garch-t)) lags)
      :log {:model (mean (map (logs :combo :model-var) obs)) :garch-t (mean (map (logs :hm :garch-t) obs))
            :gauss (mean (map #(log-normal-density (get-in % [:f :hm]) (get-in % [:f :garch]) (:y %)) obs))}
      :cover {0.2 (cover 0.2) 0.05 (cover 0.05)}
@@ -581,7 +582,7 @@
             best (apply max-key :sr benches)
             periods (:periods (first group))
             spa-p (apply max (for [b benches]
-                               (:p (fs/spa (for [r (remove :bench? group)] (mapv - (utility (:rs r)) (utility (:rs b))))
+                               (:p (ft/spa (for [r (remove :bench? group)] (mapv - (utility (:rs r)) (utility (:rs b))))
                                            {:block (if (= 52 periods) 10 6) :reps 999 :seed 7}))))]
         (say)
         (say (format "Strategies, %s %s: excess Sharpe net of 10bp; DSR against %d trials; SPA p %.3f (largest over the benchmarks)"

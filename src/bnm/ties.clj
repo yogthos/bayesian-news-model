@@ -11,7 +11,7 @@
   patron; how concentrated its ties are; and its own conflict share with its
   partners. A placebo shuffles any such inputs across countries within each
   quarter, keeping their distribution and breaking who has them."
-  (:require [bnm.math :as m]))
+  (:require [augur.math :as m]))
 
 (def top-k 10)
 

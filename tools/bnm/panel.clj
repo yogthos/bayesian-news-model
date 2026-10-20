@@ -18,7 +18,7 @@
   are chosen on 1980-2004; 2005 on is held out.
 
     jolt -A:tools -M -m bnm.panel [--name panel] [--events v3-q]"
-  (:require [bnm.hazard :as hz]
+  (:require [augur.score :as sc]
             [bnm.named :as nm]
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
@@ -84,7 +84,7 @@
 (defn- auc-of [rows i label-key]
   (let [rs (filter #(and (some? (label-key %)) (some? (nth (:raw %) i))) rows)]
     (when (> (count (filter label-key rs)) 10)
-      (hz/auc (map #(nth (:raw %) i) rs) (map label-key rs)))))
+      (sc/auc (map #(nth (:raw %) i) rs) (map label-key rs)))))
 
 (defn setup
   "The markets, their wealth and the US bill rate by month, and a row of
@@ -206,10 +206,10 @@
                 b (let [ys0 (map #(nth % 2) (known 1975 (dec lo)))] (/ (count (filter true? ys0)) (double (max 1 (count ys0)))))
                 b (if (zero? b) base b)]
             (say (format "  %-15s n=%5d pos=%4d  auc %s  within-month auc %s  ap %s  bss %s" era (count ps) (count (filter true? ys))
-                         (fmt (hz/auc (map second ps) ys))
-                         (fmt (hz/auc-within (map (fn [[t p y]] [t p y]) ps)))
-                         (fmt (hz/avg-precision (map second ps) ys))
-                         (fmt (- 1.0 (/ (hz/brier (map second ps) ys) (hz/brier (repeat (count ps) b) ys))))))))
+                         (fmt (sc/auc (map second ps) ys))
+                         (fmt (sc/auc-within (map (fn [[t p y]] [t p y]) ps)))
+                         (fmt (sc/avg-precision (map second ps) ys))
+                         (fmt (- 1.0 (/ (sc/brier (map second ps) ys) (sc/brier (repeat (count ps) b) ys))))))))
         (doseq [[era ts] [["tune 1980-2004" tune-ts] ["held out 2005-" held-ts]]]
           (say (str "  equal-weight portfolio, " era))
           (line "buy and hold" (portfolio ts (constantly 1.0)))

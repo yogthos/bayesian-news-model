@@ -13,7 +13,8 @@
 
   Writes data/runs/<run>/coupling-<onsets>.txt and the stack's coefficients,
   fit on every resolved row, to coupling-<onsets>.edn."
-  (:require [bnm.hazard :as hz]
+  (:require [augur.pool :as pl]
+            [augur.score :as sc]
             [bnm.eval :as ev]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -48,23 +49,23 @@
        (double (count rows)))))
 
 (defn- neg-brier [rows]
-  (when (seq rows) (- (hz/brier (map second rows) (map #(nth % 2) rows)))))
+  (when (seq rows) (- (sc/brier (map second rows) (map #(nth % 2) rows)))))
 
-(defn- r10 [rows] (hz/recall-at-budget rows 0.1))
+(defn- r10 [rows] (sc/recall-at-budget rows 0.1))
 
 (defn- line [label rows-a rows-b]
   ;; rows-a the stack, rows-b the recalibrated event model, the same rows in the same order
   (assert (= (map (juxt first #(nth % 4)) rows-a) (map (juxt first #(nth % 4)) rows-b)))
   (let [paired (mapv (fn [[q a y] [_ b _]] [q a b y]) rows-a rows-b)
-        gain (fn [metric] (hz/paired-gain paired metric 500 7))
+        gain (fn [metric] (sc/paired-gain paired metric {:reps 500 :seed 7 :per-block 4}))
         fmt (fn [{:keys [diff lo hi]}] (format "%+.4f [%+.4f %+.4f]%s" diff lo hi (if (pos? lo) "*" " ")))
         ys (map #(nth % 2) rows-a)]
     (format "  %-6s n=%6d pos=%5d  auc %.3f -> %.3f  r@10 %.3f -> %.3f  log %s  brier %s  matched %.3f"
             label (count rows-a) (count (filter true? ys))
-            (hz/auc (map second rows-b) ys) (hz/auc (map second rows-a) ys)
+            (sc/auc (map second rows-b) ys) (sc/auc (map second rows-a) ys)
             (r10 rows-b) (r10 rows-a)
             (fmt (gain ll)) (fmt (gain neg-brier))
-            (or (hz/matched-concordance (map (fn [[q a b y]] {:period q :p-model a :p-bench b :y y}) paired) 4) 0.5))))
+            (or (sc/matched-concordance (map (fn [[q a b y]] {:period q :p-model a :p-bench b :y y}) paired) 4) 0.5))))
 
 (defn -main [& args]
   (let [{:keys [run onsets model target]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
@@ -89,12 +90,12 @@
                     alone-rows (mapv (fn [[q ps y & more]] (into [q (take 2 ps) y] more)) stack-rows)
                     ;; each stratum's own stack, against the event model recalibrated per stratum
                     by-stratum {:by #(nth % 3)}
-                    pooled (hz/stack-out-of-sample stack-rows from {})
-                    both (hz/stack-out-of-sample stack-rows from by-stratum)
-                    alone (hz/stack-out-of-sample alone-rows from by-stratum)
+                    pooled (sc/stack-out-of-sample stack-rows from {:per-block 4 :prior 1.0})
+                    both (sc/stack-out-of-sample stack-rows from (merge by-stratum {:per-block 4 :prior 1.0}))
+                    alone (sc/stack-out-of-sample alone-rows from (merge by-stratum {:per-block 4 :prior 1.0}))
                     quiet #(filterv (fn [r] (nth r 3)) %)
                     beta (into {} (for [[k g] (group-by :quiet? rows)]
-                                    [(if k :quiet :other) (vec (hz/fit-stack (map :ps g) (map :y g) (repeat 1.0) {}))]))]]
+                                    [(if k :quiet :other) (vec (pl/fit-stack (map :ps g) (map :y g) (repeat 1.0) {:prior 1.0}))]))]]
           {:channel ch :kinds kinds :beta beta
            :text (str (format "%s (event model + %s)\n" (name ch) (str/join ", " kinds))
                       (line "all" both alone) "\n"

@@ -1,6 +1,6 @@
 (ns bnm.model-test
   (:require [bnm.events :as ev]
-            [bnm.math :as m]
+            [augur.math :as m]
             [bnm.model :as model]
             [bnm.ontology :as ont]
             [bnm.series :as series]
