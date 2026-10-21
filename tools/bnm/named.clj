@@ -53,7 +53,8 @@
     "regime/military_executive" "regime/election_legislative" "regime/election_presidential"
     "regime/regime_type"
     "finance/fx_peg" "finance/fx_falling" "finance/anchor_usd" "finance/anchor_euro"
-    "finance/anchor_gbp" "finance/anchor_cny" "finance/anchor_rub"})
+    "finance/anchor_gbp" "finance/anchor_cny" "finance/anchor_rub"
+    "people/working_age_share" "finance/fx_per_usd"})
 
 (defn load-series
   "{[unit var] series} for `vars`, values transformed as data/slow/variables.tsv says."

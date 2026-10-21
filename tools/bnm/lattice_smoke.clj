@@ -66,6 +66,13 @@
             spread (let [m (/ (reduce + vals) (count vals))] (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) vals)) (count vals))))]
         (check (and (> live 0.01) (> spread 1e-6))
                (format "%-12s %-9s %-14s live %.2f spread %.2f" (name scale) (name level) (name g) live spread))))
+    ;; 2b. every gauge input live somewhere in the run (a source that never
+    ;; reaches the node, through a loader's whitelist say, reads as zeros)
+    (doseq [[[scale level] rows] (group-by (juxt :scale :level) (:trace r))
+            :when (= level :country)
+            :let [w (get-in sp [:gauge-width scale] 0)
+                  dead (for [i (range 1 (inc w)) :when (every? #(= 0.0 (double (nth (:x %) i))) rows)] (dec i))]]
+      (check (empty? dead) (format "%s country: every gauge input live somewhere %s" (name scale) (vec dead))))
     ;; 3. no group's own model is broken: its log score per outcome over the
     ;; run against the intercept-only base model's. A broken one (forecasts
     ;; at the extremes) is a nat or more worse; past 0.25 fails, past 0.05 is

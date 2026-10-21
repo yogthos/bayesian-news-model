@@ -22,3 +22,11 @@
     (is (= 1.0 (#'lb/count10 ys 2009)))
     (is (nil? (#'lb/count10 ys 2015)) "six of ten years missing: unknown")
     (is (nil? (#'lb/count10 {} 2009)))))
+
+(deftest currency-crises-by-laeven-and-valencia-s-rule
+  ;; a depreciation against the dollar of 30% or more, at least 10 points
+  ;; above the year before's; the first year of each five-year window
+  (let [fx {2000 1.0 2001 1.05 2002 1.5 2003 2.1 2004 2.2 2005 2.3 2006 2.4 2007 2.5 2008 3.5 2009 3.6}]
+    (is (= #{2002 2008} (lb/currency-crises fx)) "2003 (+40%) is not 10 points above 2002 (+43%); 2008 is six years on"))
+  (is (= #{2003} (lb/currency-crises {2001 1.0 2002 1.25 2003 1.7})) "+36%, 11 points above +25%")
+  (is (= #{} (lb/currency-crises {2001 1.0 2003 2.0})) "no year before: unknown, not a crisis"))

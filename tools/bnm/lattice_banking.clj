@@ -197,7 +197,8 @@
      :profitability [56 57]
      :inequality [58 59 60]
      :debt [61 62 63]
-     :distress [64 65]}))
+     :distress [64 65]
+     :external [66 67]}))
 
 (defn- by-country-year
   "{iso {year value}} from rows, keeping non-nil values of (f row)."
@@ -227,6 +228,29 @@
 
 (defn- change [ys year k]
   (when-let [a (get ys year)] (when-let [b (get ys (- year k))] (- a b))))
+
+(defn currency-crises
+  "The years of currency crises in `fx` ({year local currency per dollar}) by
+  Laeven & Valencia's rule (2018): a depreciation against the dollar of 30%
+  or more that is at least 10 points above the year before's, the first year
+  of each five-year window. A year without the two before it is unknown, not
+  calm."
+  [fx]
+  (let [dep (fn [y] (when-let [a (get fx y)] (when-let [b (get fx (dec y))] (when (pos? b) (- (/ a b) 1.0)))))]
+    (loop [[y & ys] (sort (keys fx)) last-c nil out #{}]
+      (if-not y
+        out
+        (let [d (dep y) d0 (dep (dec y))
+              c? (and d d0 (>= d 0.3) (>= (- d d0) 0.1) (or (nil? last-c) (>= (- y last-c) 5)))]
+          (recur ys (if c? y last-c) (if c? (conj out y) out)))))))
+
+(defn- crises-in
+  "Crises of `crises` (a set of years) in the n years to `year`, or nil
+  unless all but one of them are covered by `covered` (years with data)."
+  [crises covered year n]
+  (let [ys (range (- year (dec n)) (inc year))]
+    (when (>= (count (filter covered ys)) (dec n))
+      (double (count (filter crises ys))))))
 
 (defn- read-pwt
   "{column {iso {year value}}} from data/raw/slow/pwt/pwt110-full.csv
@@ -276,7 +300,11 @@
    ;; and public debt (IMF); financial distress (Romer & Romer)
    :bank-return3 :nonfin-return3 :bank-crashes10 :unproductive-credit :unproductive-credit3
    :profit-rate :profit-rate3 :top10-income :bottom50-income :top1-wealth
-   :household-debt :corporate-debt :public-debt-wide :distress :distress3])
+   :household-debt :corporate-debt :public-debt-wide :distress :distress3
+   ;; currency crises by Laeven & Valencia's rule from WDI's exchange rates
+   ;; (every year, where LV 2018 ends in 2017): small crises feeding large
+   ;; ones, and the twin crises' path (docs/ANATOMY.md)
+   :currency-crises3 :currency-crises10])
 
 (defn extended-table
   "{[iso year] [values in extended-names order]} for every country-year."
@@ -305,6 +333,8 @@
                           [u (if (>= (count bis) 10) bis (by-data-year u "finance/private_credit_gdp"))]))
         a (fn [v] (get annual v {}))
         sum3 (fn [ys y] (let [xs (keep #(get ys %) [(- y 2) (dec y) y])] (when (= 3 (count xs)) (reduce + xs))))
+        fx (into {} (for [u units :let [ys (update-vals (by-data-year u "finance/fx_per_usd") #(Math/exp %))] :when (seq ys)]
+                      [u {:crises (currency-crises ys) :covered (set (keys ys))}]))
         years (range 1870 2027)]
     (into {} (for [u (into (set units) (map :iso jst-rows)) y years]
                [[u y] [(stretch-at (hh u) y) (stretch-at (biz u) y) (stretch-at (ltd u) y) (stretch-at (noncore u) y)
@@ -322,7 +352,9 @@
                        (stretch-at (get-in annual ["wid_top1_wealth" u]) (dec y))
                        (stretch-at (get-in annual ["gdd_household" u]) (dec y)) (stretch-at (get-in annual ["gdd_corporate" u]) (dec y))
                        (stretch-at (get-in annual ["gdd_government" u]) (dec y))
-                       (get-in annual ["romer_distress" u y]) (change (get-in annual ["romer_distress" u]) y 3)]]))))
+                       (get-in annual ["romer_distress" u y]) (change (get-in annual ["romer_distress" u]) y 3)
+                       (when-let [{:keys [crises covered]} (fx u)] (crises-in crises covered y 3))
+                       (when-let [{:keys [crises covered]} (fx u)] (crises-in crises covered y 10))]]))))
 
 (def half-groups {:long-stretch [0 1 2 3] :long-displacement [4 5] :memory [6 7 8 9 10]})
 

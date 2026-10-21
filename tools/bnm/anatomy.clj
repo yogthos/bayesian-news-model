@@ -145,6 +145,15 @@
                            (double (or (get-in e [-1 :share-up]) 0.0))
                            (or (get-in e [-1 :n]) 0))))))
 
+(defn lv-years
+  "{iso #{years}} of one kind of crisis in Laeven & Valencia (2018)
+  (data/derived/lv2018.csv, scripts/lv2018-dates.py): banking, currency,
+  sovereign, restructuring."
+  [kind]
+  (with-open [r (io/reader "data/derived/lv2018.csv")]
+    (reduce (fn [acc l] (let [[iso k y] (str/split l #",")] (if (= k kind) (update acc iso (fnil conj #{}) (parse-long y)) acc)))
+            {} (rest (line-seq r)))))
+
 (defn -main [& _]
   (let [jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
         built (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap))
@@ -179,7 +188,30 @@
     (let [y-crises (into {} (for [[u qs] q-crises] [u (set (map #(quot % 4) qs))]))]
       (.append out (format "\nAnnual, every country: %d banking crises of the modern catalogue, 1974-2002 (Penn World Table, WDI).\n"
                            (reduce + (map count (vals y-crises)))))
-      (table out "Credit, production and their tension" (wide-series ext y-crises) y-crises {:lags (range -10 6) :calm 5} "years"))
+      (table out "Credit, production and their tension" (wide-series ext y-crises) y-crises {:lags (range -10 6) :calm 5} "years")
+      ;; by type (Laeven & Valencia 2018): twin crises, with a currency crisis
+      ;; within a year of the onset, against domestic ones. Hindsight, for the
+      ;; anatomy only
+      (let [cur (lv-years "currency")
+            twin? (fn [u y] (some #(<= (Math/abs (long (- % y))) 1) (get cur u)))
+            split (fn [keep?] (into {} (for [[u ys] y-crises :let [ys (set (filter #(keep? u %) ys))] :when (seq ys)] [u ys])))
+            twins (split twin?)
+            domestic (split (complement twin?))
+            ws (wide-series ext y-crises)]
+        (.append out (format "\nBy type (Laeven & Valencia 2018 currency crises): %d twin crises, %d domestic.\n"
+                             (reduce + (map count (vals twins))) (reduce + (map count (vals domestic)))))
+        (table out "Twin crises (a currency crisis within a year)" ws twins {:lags (range -10 6) :calm 5} "years")
+        (table out "Domestic crises" ws domestic {:lags (range -10 6) :calm 5} "years")
+        ;; the other crises as history: currency crises and sovereign defaults
+        ;; (or restructurings) in the years before, known as they happen
+        (let [count-in (fn [m n] (into {} (for [u (keys y-crises)]
+                                            [u (into {} (for [y (range 1975 2003)]
+                                                          [y (double (count (filter #(< (- y n) % (inc y)) (get m u))))]))])))
+              sov (merge-with into (lv-years "sovereign") (lv-years "restructuring"))
+              hist {"currency crises in the 3 years to" (count-in cur 3) "currency crises in the 10 years to" (count-in cur 10)
+                    "sovereign crises in the 10 years to" (count-in sov 10)}]
+          (table out "Other crises as history (Laeven & Valencia 2018), every banking crisis" hist y-crises
+                 {:lags (range -10 6) :calm 5} "years"))))
     (.append out (format "\nQuarterly: %d banking crises of the modern catalogue, 1974-2002.\n" (reduce + (map count (vals q-crises)))))
     (table out "Financial inputs (bnm.named), lags in quarters" quarterly q-crises
            {:lags (range -12 5) :calm 20} "quarters")

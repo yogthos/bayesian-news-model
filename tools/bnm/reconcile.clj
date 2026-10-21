@@ -8,8 +8,9 @@
 
     jolt -A:tools -M -m bnm.reconcile --run lattice-banking [--kind banking_crisis]
 
-  Writes the reconciled country rows to data/runs/<run>/preds-rec.tsv as
-  model lattice-rec."
+  Writes data/runs/<run>-rec/: forecasts.tsv (the run's, its country
+  quarter rows reconciled; those with no year forecast before them left
+  out) and preds.tsv (model lattice), scored like any run."
   (:require [bnm.lattice :as lt]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -36,16 +37,22 @@
 (defn -main [& args]
   (let [{:keys [run kind]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         dir (str "data/runs/" run)
+        out-dir (str dir "-rec")
         kind (or kind "banking_crisis")
         rows (with-open [r (io/reader (str dir "/forecasts.tsv"))]
                (vec (for [l (line-seq r)
-                          :let [[s place o p y] (str/split l #"\t" -1)]
-                          :when (= 3 (count place))]
+                          :let [[s place o p y] (str/split l #"\t" -1)]]
                       {:scale (keyword s) :place place :origin (parse-long o) :p (parse-double p)
                        :y (case y "true" true "false" false nil)})))
-        out (reconciled rows {:quarter-lead 9 :quarter-w2 12 :year 24})]
-    (with-open [w (io/writer (str dir "/preds-rec.tsv"))]
-      (doseq [{:keys [scale place origin p y]} (sort-by (juxt :origin :place :scale) out)]
-        (.write w (str kind "\t" ({:quarter-lead "lead" :quarter-w2 "w2"} scale) "\tlattice-rec\t" (quot (- origin 2) 3)
+        rec (reconciled (filter #(= 3 (count (:place %))) rows) {:quarter-lead 9 :quarter-w2 12 :year 24})
+        quarter? #(#{:quarter-lead :quarter-w2} (:scale %))
+        out (concat (remove #(and (quarter? %) (= 3 (count (:place %)))) rows) rec)]
+    (io/make-parents (str out-dir "/x"))
+    (with-open [w (io/writer (str out-dir "/forecasts.tsv"))]
+      (doseq [{:keys [scale place origin p y]} (sort-by (juxt :origin :scale :place) out)]
+        (.write w (str (name scale) "\t" place "\t" origin "\t" p "\t" (if (nil? y) "" y) "\n"))))
+    (with-open [w (io/writer (str out-dir "/preds.tsv"))]
+      (doseq [{:keys [scale place origin p y]} (sort-by (juxt :origin :place :scale) rec)]
+        (.write w (str kind "\t" ({:quarter-lead "lead" :quarter-w2 "w2"} scale) "\tlattice\t" (quot (- origin 2) 3)
                        "\t" place "\t" p "\t" (if (nil? y) "nil" y) "\n"))))
-    (println "wrote" (count out) "rows to" (str dir "/preds-rec.tsv"))))
+    (println "wrote" (count rec) "reconciled rows to" out-dir)))

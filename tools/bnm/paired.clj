@@ -122,18 +122,21 @@
           cells)))
 
 (defn read-lattice
-  "{[place year] [p y]} of a lattice run's country forecasts at `scale`,
-  issued at the end of each year from `from` to `to`, resolved only."
+  "{[place origin] [p y]} of a lattice run's country forecasts at `scale`,
+  resolved only, from origins in the years `from` to `to`: the quarter nodes'
+  at every quarter end, the year's and coarser nodes' at the end of each
+  year."
   [run scale from to]
-  (with-open [r (clojure.java.io/reader (str "data/runs/" run "/forecasts.tsv"))]
-    (reduce (fn [acc line]
-              (let [[s place o p y] (str/split line #"\t")
-                    o (parse-long o)]
-                (if (and (= s scale) (= 3 (count place)) (#{"true" "false"} y)
-                         (= 11 (mod o 12)) (<= from (quot o 12) to))
-                  (assoc acc [place (quot o 12)] [(parse-double p) (= y "true")])
-                  acc)))
-            {} (line-seq r))))
+  (let [quarter? (str/starts-with? scale "quarter")]
+    (with-open [r (clojure.java.io/reader (str "data/runs/" run "/forecasts.tsv"))]
+      (reduce (fn [acc line]
+                (let [[s place o p y] (str/split line #"\t")
+                      o (parse-long o)]
+                  (if (and (= s scale) (= 3 (count place)) (#{"true" "false"} y)
+                           (= (if quarter? 2 11) (mod o (if quarter? 3 12))) (<= from (quot o 12) to))
+                    (assoc acc [place o] [(parse-double p) (= y "true")])
+                    acc)))
+              {} (line-seq r)))))
 
 (defn lattice-pair
   "Paired Brier and log score of two lattice runs' country forecasts at one
@@ -142,7 +145,8 @@
   (let [alpha (or alpha 0.1)
         a (read-lattice model scale from to)
         b (read-lattice bench scale from to)
-        rows (for [[k [pa y]] a :let [[pb _] (b k)] :when pb] [(second k) pa pb y (first k) scale])]
+        ;; resampled by the origin's year with the countries
+        rows (for [[k [pa y]] a :let [[pb _] (b k)] :when pb] [(quot (second k) 12) pa pb y (first k) scale])]
     {:n (count rows) :pos (count (filter #(nth % 3) rows))
      :brier (sc/paired-loss-2way rows brier {:reps reps :seed 1 :alpha alpha :per-block 1})
      :log (sc/paired-loss-2way rows log-loss {:reps reps :seed 1 :alpha alpha :per-block 1})}))

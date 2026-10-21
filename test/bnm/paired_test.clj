@@ -50,3 +50,22 @@
             rs (null ["k" "lead" "e"])
             hi (filter #(> (:pm %) 0.1) rs) low (filter #(< (:pm %) 0.02) rs)]
         (is (< (Math/abs (- (rate hi) (rate low))) 0.03))))))
+
+(deftest lattice-forecasts-at-their-own-cadence
+  ;; the year and coarser nodes at year-end origins, the quarter nodes at
+  ;; every quarter end; keyed by place and origin, resolved rows only
+  (let [dir "data/runs/test-paired-lattice"]
+    (clojure.java.io/make-parents (str dir "/x"))
+    (spit (str dir "/forecasts.tsv")
+          (str "year\tAAA\t" (+ 11 (* 12 2005)) "\t0.2\ttrue\n"
+               "year\tAAA\t" (+ 5 (* 12 2005)) "\t0.3\tfalse\n"
+               "quarter-lead\tAAA\t" (+ 2 (* 12 2005)) "\t0.1\tfalse\n"
+               "quarter-lead\tAAA\t" (+ 5 (* 12 2005)) "\t0.1\t\n"
+               "quarter-lead\tAAA\t" (+ 8 (* 12 2005)) "\t0.4\ttrue\n"
+               "quarter-lead\tAB\t" (+ 8 (* 12 2005)) "\t0.4\ttrue\n"))
+    (is (= {["AAA" (+ 11 (* 12 2005))] [0.2 true]} (pd/read-lattice "test-paired-lattice" "year" 2003 2022)))
+    (is (= {["AAA" (+ 2 (* 12 2005))] [0.1 false] ["AAA" (+ 8 (* 12 2005))] [0.4 true]}
+           (pd/read-lattice "test-paired-lattice" "quarter-lead" 2003 2022)))
+    (is (empty? (pd/read-lattice "test-paired-lattice" "quarter-lead" 1980 2002)))
+    (doseq [f [(str dir "/forecasts.tsv")]] (clojure.java.io/delete-file f))
+    (clojure.java.io/delete-file dir)))
