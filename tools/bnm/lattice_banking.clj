@@ -71,6 +71,14 @@
   catalogues supply only the years before."
   (* 12 1974))
 
+(defn join-years
+  "The onset years of two catalogues of one country, a year of the second
+  dropped when the first has one within a year of it: the same crisis
+  dated a year apart counts once."
+  [first-years second-years]
+  (into (set first-years)
+        (remove (fn [y] (some #(<= (Math/abs (long (- % y))) 1) first-years)) second-years)))
+
 (defn catalogue
   "{:onsets {unit sorted-set of months} :busy {unit sorted-set of months}
   :from {unit month} :through {unit month}}: onset months (an annual onset
@@ -84,9 +92,10 @@
         cov-q (some (fn [[k q]] (when (= k kind) q)) (on/read-coverage "data/slow/coverage.tsv"))
         jst (reduce (fn [acc r] (if (= 1.0 (:crisisJST r)) (update acc (:iso r) (fnil conj #{}) (:year r)) acc)) {} jst-rows)
         jst-units (set (map :iso jst-rows))
+        long-run (into {} (for [u (into (set (keys rr)) (keys jst))] [u (join-years (get rr u #{}) (get jst u #{}))]))
         early (fn [m] (update-vals m #(set (keep (fn [y] (when (< (* 12 y) modern) (* 12 y))) %))))
-        months (merge-with into (early rr) (early jst) (update-vals ev #(set (map (fn [q] (* 3 q)) %))))
-        busy (merge-with into (early rr) (early jst)
+        months (merge-with into (early long-run) (update-vals ev #(set (map (fn [q] (* 3 q)) %))))
+        busy (merge-with into (early long-run)
                          (update-vals spans #(set (mapcat (fn [q] (range (* 3 q) (+ 3 (* 3 q)))) %))))
         units (into (into rr-units jst-units) (keys ev))]
     {:onsets (into {} (for [u units] [u (into (sorted-set) (get months u))]))
@@ -214,10 +223,11 @@
 (defn- exposure-of
   "A place's openness to what comes down to it at origin t: trade
   openness (exports and imports over GDP) and capital-account openness
-  (Chinn-Ito), 0 where unknown."
+  (Chinn-Ito, two years back), 0 where unknown."
   [db regimes unit t]
   [(or (some-> (db [unit "trade/openness"]) (bnm.stocks/value t {:stale 30}) (/ 100.0)) 0.0)
-   (or (get-in regimes [[unit (dec (quot t 12))] :capital-openness]) 0.0)])
+   ;; the Chinn-Ito index is published a year or more late
+   (or (get-in regimes [[unit (- (quot t 12) 2)] :capital-openness]) 0.0)])
 
 (defn spec
   "The lattice spec for banking crises."
@@ -261,6 +271,11 @@
      :gauge-width widths
      :gauge-groups {:quarter-lead quarter-groups :quarter-w2 quarter-groups :year year-groups :half-decade half-groups}
      :tensions tensions
+     ;; a country's tensions resolve once per onset, when it is known; an
+     ;; aggregate has an onset somewhere most of the time, so never
+     :resolutions (fn [place]
+                    (when (sub place)
+                      (into (sorted-set) (map #(+ % known-lag) (get-in cat [:onsets place])))))
      :exposure (let [ex (memoize (fn [u t] (exposure-of db regimes u t)))]
                  (fn [_ place t]
                    (let [vs (map #(ex % t) (members place))]
@@ -282,7 +297,8 @@
                        [[(:iso r) (:year r)] r]))
         cat (catalogue jst-rows)
         units (set (filter #(first (geo/parents %)) (keys (:onsets cat))))
-        months (range start (inc end) 3)
+        ;; the quarter nodes' origins: the last month of each quarter
+        months (range (+ start 2) (inc end) 3)
         wc (nm/world-credit db units months)
         _ (println (count units) "countries; building gauges")
         sp (spec {:db db :wc wc :jst jst :cat cat :units units :end end :regimes (mh/read-regimes)})

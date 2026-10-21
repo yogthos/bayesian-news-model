@@ -157,7 +157,10 @@
                [((:noise w))]))
    :gauge-width {:month 1 :year 1}
    ;; the month node has no outcome: its state is its gauge
-   :state (fn [scale _ _ gs] (when (= scale :month) (first gs)))})
+   :state (fn [scale _ _ gs] (when (= scale :month) (first gs)))
+   ;; a country's crisis in year y is known at the year's end
+   :resolutions (fn [place]
+                  (into (sorted-set) (for [[y hit] (get-in w [:crisis place]) :when hit] (+ (* 12 y) 11))))})
 
 (deftest accumulated-contradiction-between-levels
   ;; ablations: what each group adds, not which model the averaging favours
@@ -233,3 +236,21 @@
 
 (deftest internal-tensions-are-gaps-between-paired-gauges
   (is (= [2.0 -1.0] (lt/tension-gaps [[0 1] [2 0]] [3.0 1.0 2.0]))))
+
+(deftest resolutions-come-once-per-onset
+  (let [w (contradiction-world 7)
+        r (lt/run (assoc (contradiction-spec w) :end 200 :trace true))
+        resets (:resets r)]
+    (testing "a country resets once per crisis, when it is known"
+      (let [c "a1"
+            known (set (filter #(<= % 200) ((:resolutions (contradiction-spec w)) c)))]
+        (is (= known (set (keep (fn [[[s p] ts]] (when (and (= p c) (= s :month)) ts)) (for [[k ts] resets t ts] [k t]))))
+            [known (get resets [:month c])])))
+    (testing "an aggregate resets only when the spec says"
+      (is (empty? (get resets [:year "A"]))))))
+
+(deftest without-drops-what-it-names
+  (let [w (world 5)]
+    (is (thrown? Exception (lt/run (assoc (spec w) :end 30 :without #{:nonsense}))))
+    (let [r (lt/run (assoc (spec w) :end 30 :without #{:gauges}))]
+      (is (not (contains? (lt/weights r :year :country) :gauges))))))

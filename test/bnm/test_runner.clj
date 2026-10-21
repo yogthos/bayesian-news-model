@@ -19,6 +19,7 @@
             [bnm.precursors-test]
             [bnm.paired-test]
             [bnm.lattice-test]
+            [bnm.lattice-banking-test]
             [bnm.calm-test]
             [bnm.sync-test]
             [bnm.ingest-test]
@@ -46,6 +47,7 @@
     bnm.precursors-test
     bnm.paired-test
     bnm.lattice-test
+    bnm.lattice-banking-test
     bnm.calm-test
     bnm.sync-test
     bnm.ingest-test
