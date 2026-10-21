@@ -645,3 +645,19 @@ quarter rows aligned with the scoring tools.
 2. the dialectic itself: the year node of this design against the same
    design without the contradiction group, on the year nodes' own
    outcomes for origins 2003-2022 (bnm.paired --scale year), paired Brier.
+
+**Results, 21 October 2026 (trial 39).**
+1. The quarter nodes against `named` (primary, paired): Brier -0.00014
+   [-0.00052 +0.00030], log score -0.0018 [-0.0052 +0.0021]: level, no
+   gain. As the validation chose, the quarters read their own gauges with
+   named's forecast as their offset; the lattice's structure sits above
+   them.
+2. **The dialectic, out of sample: a gain.** The year node against the
+   same design without the contradiction group, origins 2003-2022, on its
+   own outcomes (2538 country-years, 82 crises): Brier +0.00143 [+0.00029
+   +0.00326], log score +0.0067 [+0.0017 +0.0141]. The accumulated,
+   directional contradictions (strain over the tensions a place can
+   measure, its disagreement with its parent, the strain carried down and
+   built up, reset at resolution) improve the year-scale forecast of
+   banking crises in years no design choice saw.
+The first registered gain of the hierarchy and dialectic (trials 31-39).
