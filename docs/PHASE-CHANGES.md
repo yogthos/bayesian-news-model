@@ -551,3 +551,19 @@ on banking_crisis by the amended paired test and the original test,
 Bonferroni over 37; exploratory, each group's weight through time and the
 ablations without the contradictions and without the learning across
 levels.
+
+**Results, 21 October 2026 (trial 37).** Negative: `lattice` against
+`named`, primary Brier -0.00150 [-0.00260 -0.00068], log score -0.0130.
+Exploratory runs (r11-*):
+- without the contradictions: -0.00108 [-0.00193 -0.00038];
+- without the learning across levels: -0.00111 [-0.00212 -0.00042];
+- the quarter node on its own gauges alone, no flows at all: -0.00062
+  [-0.00129 -0.00018].
+Two separate shortfalls. The node learner (online dynamic logistic from
+1870, model averaging over gauge groups) is about 0.0006 worse than the
+batch logit on the same financial inputs, and too high on its rows (3.0%
+forecast against 2.6%); its averaging tends to put nearly all weight on
+one group. And the lattice's flows and contradictions, each a block of
+loosely-priored inputs, add about 0.0009 of noise on about a hundred
+crises. In the synthetic worlds built to need them they carried the
+signal; on banking crises as measured here they do not yet.
