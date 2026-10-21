@@ -23,7 +23,7 @@
   standardized by the means and spreads of the origins before it, so
   nothing is scaled by the future.
 
-    jolt -A:tools -M -m bnm.lattice-banking --out lattice-banking [--without contradiction,feedback] [--coupling 0]
+    jolt -A:tools -M -m bnm.lattice-banking --out lattice-banking [--without contradiction,feedback] [--coupling 0] [--known r6-at]
 
   Writes data/runs/<out>/preds.tsv in bnm.onsets' format (the quarter
   nodes' country forecasts as kind banking_crisis, windows lead and w2,
@@ -229,9 +229,22 @@
    ;; the Chinn-Ito index is published a year or more late
    (or (get-in regimes [[unit (- (quot t 12) 2)] :capital-openness]) 0.0)])
 
+(defn read-known
+  "What is known, as a forecast: bnm.onsets' named model for each window
+  (`run`'s preds, refit each year on the years before it, so out of sample
+  at every origin), {[window unit q] p}."
+  [run]
+  (with-open [r (io/reader (str "data/runs/" run "/preds.tsv"))]
+    (reduce (fn [acc line]
+              (let [[k w m q u p] (str/split line #"\t")]
+                (if (and (= k kind) (= m "named") (#{"lead" "w2"} w))
+                  (assoc acc [w u (parse-long q)] (parse-double p))
+                  acc)))
+            {} (line-seq r))))
+
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst cat units end regimes]}]
+  [{:keys [db wc jst cat units end regimes known]}]
   (let [[_ fin] (nm/financial db wc)
         sub (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u s]))
         reg (into {} (for [s (set (vals sub))] [s (first (geo/parents s))]))
@@ -247,6 +260,15 @@
         table (into {} (for [{:keys [name] :as s} scales]
                          [name (into {} (for [t (origins s) u countries] [[u t] ((raw name) u t)]))]))
         std (into {} (for [[name tb] table] [name (standardizer (for [[[_ t] v] tb] [t v]))]))
+        ;; what is known: named's forecast for the window, as log odds (from
+        ;; 2000); an aggregate's, the chance any member has a crisis. nil
+        ;; elsewhere, where the node starts from climatology
+        known-at (fn [scale place t]
+                   (let [w ({:quarter-lead "lead" :quarter-w2 "w2"} scale)
+                         ps (when w (keep #(get known [w % (quot (- t 2) 3)]) (members place)))]
+                     (when (seq ps)
+                       (let [p (- 1.0 (reduce * (map #(- 1.0 %) ps)))]
+                         (Math/log (/ (max 1e-6 p) (max 1e-6 (- 1.0 p))))))))
         gauges (fn [scale place t]
                  (let [f (std scale)
                        vs (keep #(some->> (get-in table [scale [% t]]) (f t)) (members place))]
@@ -259,6 +281,7 @@
               [:subregion (sort (set (vals sub)))]
               [:region (sort (set (vals reg)))]
               [:world ["world"]]]
+     :offset known-at
      :parent parent
      :start start :end end
      :forget 0.995
@@ -270,6 +293,7 @@
      :gauges gauges
      :gauge-width widths
      :gauge-groups {:quarter-lead quarter-groups :quarter-w2 quarter-groups :year year-groups :half-decade half-groups}
+     :shrink 0.1
      :tensions tensions
      ;; a country's tensions resolve once per onset, when it is known; an
      ;; aggregate has an onset somewhere most of the time, so never
@@ -286,7 +310,7 @@
               (into {} (for [[g ixs] (get priors scale) [i mv] ixs] [(nth (groups g) i) mv])))}))
 
 (defn -main [& args]
-  (let [{:keys [out end without coupling]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [out end without coupling known]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         out (or out "lattice-banking")
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
@@ -301,7 +325,8 @@
         months (range (+ start 2) (inc end) 3)
         wc (nm/world-credit db units months)
         _ (println (count units) "countries; building gauges")
-        sp (cond-> (spec {:db db :wc wc :jst jst :cat cat :units units :end end :regimes (mh/read-regimes)})
+        sp (cond-> (spec {:db db :wc wc :jst jst :cat cat :units units :end end :regimes (mh/read-regimes)
+                          :known (read-known (or known "r6-at"))})
              ;; ablations: --without contradiction,feedback  --coupling 0
              without (assoc :without (set (map keyword (str/split without #","))))
              coupling (assoc :coupling (let [c (parse-double coupling)] (when (pos? c) c))))

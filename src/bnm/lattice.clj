@@ -124,17 +124,26 @@
                     {:base [] :all (vec (mapcat spans [:gauges :up :down :contradiction :exposure :feedback]))})}))
 
 (defn- node-model
-  "A node's model average: one dynamic logistic per group of its inputs
-  (each with the intercept), and one over all of them. A coefficient
-  starts at zero with variance 1 (4 for the intercept) unless the spec's
-  :prior gives {input-index [mean variance]} for the node."
+  "A node's model average: one dynamic logistic per group of its inputs and
+  one over all of them, each reading the intercept and the spec's :core
+  inputs (what is known, read by every model). A coefficient starts at zero
+  with variance 1 (4 for the intercept), the all-inputs model's non-core
+  ones at the spec's :shrink, unless the spec's :prior gives {input-index
+  [mean variance]} for the node."
   [spec scale level {:keys [discount]} {:keys [groups order] :as lay}]
-  (let [prior (or (when-let [f (:prior spec)] (f scale level lay)) {})]
+  (let [prior (or (when-let [f (:prior spec)] (f scale level lay)) {})
+        core (mapv #(inc (long %)) (get-in spec [:core scale]))
+        core? (set core)
+        shrink (:shrink spec)]
     (d/averaged (into {} (for [g (if (:only spec) (filter (:only spec) order) order)
-                               :let [ix (vec (cons 0 (groups g)))]
+                               :let [ix (vec (distinct (concat [0] core (remove core? (groups g)))))]
                                :when (or (= g :base) (seq (groups g)))]
                            [g (d/logistic {:mean (map #(first (get prior % [0.0])) ix)
-                                           :var (map #(second (get prior % [nil (if (zero? %) 4.0 1.0)])) ix)
+                                           :var (map #(or (second (get prior % [nil nil]))
+                                                          (cond (zero? %) 4.0
+                                                                (and shrink (= g :all) (not (core? %))) shrink
+                                                                :else 1.0))
+                                                     ix)
                                            :discount discount :inputs ix})]))
                 {:forget (:forget spec)})))
 
@@ -266,6 +275,11 @@
    :target (fn [scale place origin]) -> {:y :known-at} or nil,
    :gauges (fn [scale place origin]) -> [inputs], :gauge-width {scale n},
    :gauge-groups {scale {group [indices]}}, :prior (fn [scale level layout]),
+   :core {scale [gauge indices]}, read by every model,
+   :offset (fn [scale place origin]) -> the log odds of what is known (a
+   calibrated forecast from elsewhere), or nil for climatology, the rate
+   among the node's resolved outcomes; the node learns departures from it,
+   :shrink, the all-inputs model's prior variance on its non-core inputs,
    :state (fn [scale place origin gauges]) -> a node's state or nil,
    :tensions {scale [[i j] ...]}, :tension-decay (0.7),
    :resolutions (fn [place]) -> sorted-set of the months at which each
@@ -298,7 +312,14 @@
                        model (or (get-in st [:models k]) (node-model spec scale level scale-spec (layout spec scale level-ix)))
                        ;; learn from what is known by t; its errors become known now
                        {ready true waiting false} (group-by #(<= (:known-at %) t) (get-in st [:pending k]))
-                       model (d/step model (map #(select-keys % [:x :y]) ready))
+                       model (d/step model (map #(select-keys % [:x :y :o]) ready))
+                       ;; climatology: the rate among this node's resolved outcomes
+                       st (update-in st [:clim k] (fn [[n1 n]] [(+ (or n1 0) (count (filter :y ready))) (+ (or n 0) (count ready))]))
+                       offset-of (if-let [f (:offset spec)]
+                                   (let [[n1 n] (get-in st [:clim k] [0 0])
+                                         clim (logit (/ (+ n1 0.5) (+ n 1.0)))]
+                                     (fn [place t] (double (or (f scale place t) clim))))
+                                   (constantly 0.0))
                        st (reduce (fn [st {:keys [place y p known-at]}]
                                     (update-in st [:errors [scale place]] (fnil assoc (sorted-map)) known-at
                                                (- (if y 1.0 0.0) p)))
@@ -306,9 +327,10 @@
                        made (vec (for [place places
                                        :let [g ((:gauges spec) scale place t)
                                              {:keys [x reads stated tension acc resolved]} (inputs spec st scale scale-spec level-ix place t g)
-                                             p (d/predict model x)
+                                             o (offset-of place t)
+                                             p (d/predict model x o)
                                              target ((:target spec) scale place t)]]
-                                   {:place place :x x :p p :target target :reads reads :stated stated :tension tension :acc acc
+                                   {:place place :x x :o o :p p :target target :reads reads :stated stated :tension tension :acc acc
                                     :resolved resolved}))
                        st (reduce (fn [st {:keys [place p stated tension acc resolved]}]
                                     (-> st
@@ -321,8 +343,8 @@
                        st (-> st
                               (assoc-in [:models k] model)
                               (assoc-in [:pending k] (into (vec waiting)
-                                                           (for [{:keys [place x p target]} made :when target]
-                                                             {:place place :x x :p p :y (:y target) :known-at (:known-at target)}))))]
+                                                           (for [{:keys [place x o p target]} made :when target]
+                                                             {:place place :x x :o o :p p :y (:y target) :known-at (:known-at target)}))))]
                    [st
                     (reduce conj! forecasts (for [{:keys [place p target]} made]
                                               {:scale scale :place place :origin t :p p :y (:y target)}))

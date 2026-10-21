@@ -254,3 +254,48 @@
     (is (thrown? Exception (lt/run (assoc (spec w) :end 30 :without #{:nonsense}))))
     (let [r (lt/run (assoc (spec w) :end 30 :without #{:gauges}))]
       (is (not (contains? (lt/weights r :year :country) :gauges))))))
+
+(deftest core-inputs-in-every-model-and-shrinkage
+  (let [w (world 5)
+        s (assoc (spec w) :end 0
+                 :gauge-width {:month 2 :year 1}
+                 :gauges (fn [scale _ _] (if (= scale :month) [0.3 -0.2] [0.1]))
+                 :gauge-groups {:month {:known [0] :other [1]}}
+                 :core {:month [0]}
+                 :shrink 0.05)
+        r (lt/run s)
+        k (fn [g] (:inputs (lt/model r :month :country g)))]
+    (testing "the known input sits beside the intercept in every model"
+      (is (= [0 1] (k :base)))
+      (is (= [0 1 2] (k :other)))
+      (is (some #{1} (k :down))))
+    (testing "the all-inputs model shrinks what is not core"
+      (let [m (lt/model r :month :country :all)
+            ix (:inputs m)
+            v (fn [i] (let [j (.indexOf ix i) kk (:k m)] (aget ^doubles (:c m) (+ (* j kk) j))))]
+        (is (< (v 2) 0.06) "a non-core input starts tight (one discounted period)")
+        (is (> (v 1) 0.5) "the core input does not")))))
+
+(deftest offsets-are-what-is-known
+  ;; with an offset, a model with nothing else to say forecasts the offset;
+  ;; without one, climatology: the rate among outcomes already resolved
+  (let [g (m/rng 21)
+        truth (fn [place t] (- (* 0.5 (Math/sin (/ t 10.0))) 2.0 (if (= place "a1") 1.0 0.0)))
+        ys (into {} (for [c countries t (range months)] [[c t] (< (m/next-double! g) (m/expit (truth c t)))]))
+        base {:scales [{:name :month :per 1 :horizon 1 :discount 0.99}]
+              :levels [[:country countries]]
+              :parent {} :start 0 :end 300 :forget 0.99
+              :target (fn [_ place t] {:y (ys [place (inc t)]) :known-at (inc t)})
+              :gauges (fn [_ _ _] [])
+              :gauge-width {:month 0}}
+        known (lt/run (assoc base :offset (fn [_ place t] (truth place (inc t)))))
+        clim (lt/run (assoc base :offset (fn [_ _ _] nil)))
+        late (fn [r] (filter #(> (:origin %) 200) (:forecasts r)))
+        err (fn [r] (/ (reduce + (map (fn [{:keys [place origin p]}] (Math/abs (- p (m/expit (truth place (inc origin)))))) (late r)))
+                       (count (late r))))]
+    (is (< (err known) 0.01) (err known))
+    (testing "climatology: the pooled resolved rate, from the start"
+      (let [first-p (:p (first (:forecasts clim)))
+            rate (/ (count (filter true? (vals ys))) (double (count ys)))]
+        (is (< (Math/abs (- first-p 0.5)) 0.01) "nothing resolved yet: an even prior")
+        (is (< (Math/abs (- (:p (last (:forecasts clim))) rate)) 0.05))))))
