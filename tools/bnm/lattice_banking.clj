@@ -156,8 +156,21 @@
                  0.0)))))))
 
 (def quarter-groups
-  "The financial inputs of bnm.named in groups (indices among them)."
-  {:credit [0 1 2 3] :assets [4 5 6 7 8 9 10] :curve [11] :global [12 13 14 15 16 17]})
+  "The financial inputs of bnm.named in groups (indices among them), and
+  the OECD's house prices to incomes and to rents against their own ten
+  years."
+  {:credit [0 1 2 3] :assets [4 5 6 7 8 9 10] :curve [11] :global [12 13 14 15 16 17] :house-valuation [18 19]})
+
+(defn- quarter-stretch
+  "x at quarter q against the 40 quarters before (at least 20), or nil."
+  [qs q]
+  (when-let [x (get qs q)]
+    (let [past (keep #(get qs %) (range (- q 40) q))]
+      (when (>= (count past) 20)
+        (let [m (/ (reduce + past) (count past))
+              sd (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) past)) (dec (count past))))]
+          (let [sd (Math/max sd (* 0.02 (Math/abs m)))]
+            (when (> sd 1e-9) (Math/max -5.0 (Math/min 5.0 (/ (- x m) sd))))))))))
 
 (def year-specific (mapv first mh/dimensions))
 (def year-invariants [:norm :breadth :max-displacement :resonance :norm-long :flow-norm :stock-x-flow :world-norm :world-crises])
@@ -178,7 +191,13 @@
      :valuation (vec (range 43 45))
      :fiscal [45]
      :production (vec (range 46 50))
-     :credit-wide [50]}))
+     :credit-wide [50]
+     :bank-equity [51 52 53]
+     :sectoral [54 55]
+     :profitability [56 57]
+     :inequality [58 59 60]
+     :debt [61 62 63]
+     :distress [64 65]}))
 
 (defn- by-country-year
   "{iso {year value}} from rows, keeping non-nil values of (f row)."
@@ -186,14 +205,18 @@
   (reduce (fn [acc r] (if-let [v (f r)] (assoc-in acc [(iso-of r) (year-of r)] (double v)) acc)) {} rows))
 
 (defn- stretch-at
-  "x in `year` against the country's previous ten years (at least six), or nil."
+  "x in `year` against the country's previous ten years (at least six), or
+  nil. The spread is floored at 2% of the series' level and the stretch
+  capped at 5: a source's imputed years held nearly flat would otherwise
+  make any change look enormous."
   [ys year]
   (when-let [x (get ys year)]
     (let [past (keep #(get ys %) (range (- year 10) year))]
       (when (>= (count past) 6)
         (let [m (/ (reduce + past) (count past))
-              sd (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) past)) (dec (count past))))]
-          (when (> sd 1e-9) (/ (- x m) sd)))))))
+              sd (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) past)) (dec (count past))))
+              sd (Math/max sd (* 0.02 (Math/abs m)))]
+          (when (> sd 1e-9) (Math/max -5.0 (Math/min 5.0 (/ (- x m) sd)))))))))
 
 (defn- change [ys year k]
   (when-let [a (get ys year)] (when-let [b (get ys (- year k))] (- a b))))
@@ -210,6 +233,25 @@
       (into {} (for [c ["rgdpna" "rkna" "rtfpna" "labsh" "csh_i"]]
                  [c (by-country-year rows #(get % "countrycode") #(long (num (get % "year"))) #(num (get % c)))])))))
 
+(defn read-annual
+  "{var {iso {year value}}} from data/derived/lattice-annual.csv
+  (scripts/lattice-data.py)."
+  []
+  (with-open [r (io/reader "data/derived/lattice-annual.csv")]
+    (reduce (fn [acc l]
+              (let [[iso y v x] (str/split l #",")]
+                (assoc-in acc [v iso (parse-long y)] (parse-double x))))
+            {} (rest (line-seq r)))))
+
+(defn read-quarterly
+  "{var {iso {q value}}} from data/derived/lattice-quarterly.csv."
+  []
+  (with-open [r (io/reader "data/derived/lattice-quarterly.csv")]
+    (reduce (fn [acc l]
+              (let [[iso q v x] (str/split l #",")]
+                (assoc-in acc [v iso (parse-long q)] (parse-double x))))
+            {} (rest (line-seq r)))))
+
 (def extended-names
   "The year node's dimensions beyond bnm.macrohistory's: from the
   Macrohistory panel's unused columns, household and business credit,
@@ -219,11 +261,19 @@
   investment shares; from WDI for every country, private credit. Each
   stock against the country's own decade."
   [:household-credit :business-credit :loans-to-deposits :noncore :rent-yield :dividend-yield :fiscal-balance
-   :tfp3 :capital-output3 :labour-share :investment-share :credit-wide])
+   :tfp3 :capital-output3 :labour-share :investment-share :credit-wide
+   ;; the downloaded sources (scripts/lattice-data.py, data/raw/slow/DOWNLOADS-2026-10-21.md):
+   ;; bank against nonfinancial equity and bank crashes (Baron, Verner &
+   ;; Xiong); unproductive credit (Mueller & Verner); the profit rate
+   ;; (Extended PWT); income and wealth shares (WID); household, corporate
+   ;; and public debt (IMF); financial distress (Romer & Romer)
+   :bank-return3 :nonfin-return3 :bank-crashes10 :unproductive-credit :unproductive-credit3
+   :profit-rate :profit-rate3 :top10-income :bottom50-income :top1-wealth
+   :household-debt :corporate-debt :public-debt-wide :distress :distress3])
 
 (defn extended-table
   "{[iso year] [values in extended-names order]} for every country-year."
-  [jst-rows pwt db units]
+  [jst-rows pwt db units annual]
   (let [div (fn [a b] (when (and a b (not (zero? (double b)))) (/ (double a) (double b))))
         lg (fn [x] (when (and x (pos? x)) (Math/log x)))
         jst (fn [f] (by-country-year jst-rows :iso :year f))
@@ -238,13 +288,25 @@
                           [u (into {} (for [y (range 1960 2027)
                                             :let [v (some-> (db [u "finance/private_credit_gdp"]) (bnm.stocks/value (+ (* 12 y) 11) {:stale 18}))]
                                             :when v] [y v]))]))
+        a (fn [v] (get annual v {}))
+        sum3 (fn [ys y] (let [xs (keep #(get ys %) [(- y 2) (dec y) y])] (when (= 3 (count xs)) (reduce + xs))))
+        count10 (fn [ys y] (when (seq ys) (reduce + (keep #(get ys %) (range (- y 9) (inc y))))))
         years (range 1870 2027)]
     (into {} (for [u (into (set units) (map :iso jst-rows)) y years]
                [[u y] [(stretch-at (hh u) y) (stretch-at (biz u) y) (stretch-at (ltd u) y) (stretch-at (noncore u) y)
                        (stretch-at (rent u) y) (stretch-at (dp u) y) (stretch-at (fiscal u) y)
                        (change (tfp u) y 3) (change (ko u) y 3)
                        (stretch-at (get-in pwt ["labsh" u]) y) (stretch-at (get-in pwt ["csh_i" u]) y)
-                       (stretch-at (credit u) y)]]))))
+                       (stretch-at (credit u) y)
+                       (sum3 (get-in annual ["bvx_bank_ret" u]) y) (sum3 (get-in annual ["bvx_nonfin_ret" u]) y)
+                       (count10 (get-in annual ["bvx_bank_crash" u]) y)
+                       (stretch-at (get-in annual ["mv_unproductive" u]) y) (change (get-in annual ["mv_unproductive" u]) y 3)
+                       (stretch-at (get-in annual ["epwt_profit_rate" u]) y) (change (get-in annual ["epwt_profit_rate" u]) y 3)
+                       (stretch-at (get-in annual ["wid_top10" u]) y) (stretch-at (get-in annual ["wid_bottom50" u]) y)
+                       (stretch-at (get-in annual ["wid_top1_wealth" u]) y)
+                       (stretch-at (get-in annual ["gdd_household" u]) y) (stretch-at (get-in annual ["gdd_corporate" u]) y)
+                       (stretch-at (get-in annual ["gdd_government" u]) y)
+                       (get-in annual ["romer_distress" u y]) (change (get-in annual ["romer_distress" u]) y 3)]]))))
 
 (def half-groups {:long-stretch [0 1 2 3] :long-displacement [4 5] :memory [6 7 8 9 10]})
 
@@ -295,7 +357,12 @@
           ;; household credit ahead of wages, house prices ahead of rents
           ;; (the rent yield's stretch falls as valuations rise), and credit
           ;; ahead of productivity (every country, from WDI and the PWT)
-          [39 10] [2 43] [50 46]]
+          [39 10] [2 43] [50 46]
+          ;; bank equity ahead of nonfinancial (finance ahead of production),
+          ;; unproductive credit ahead of profitability, household debt ahead
+          ;; of the labour share, corporate debt ahead of profitability, the
+          ;; top's income ahead of the bottom half's
+          [51 52] [54 56] [61 48] [62 56] [58 59]]
    :quarter-lead [[0 11] [0 12]]
    :quarter-w2 [[0 11] [0 12]]})
 
@@ -306,9 +373,9 @@
   prices or equity fall from their three-year peak; at the quarter, the
   credit gap stretched while house prices, the household boom or equity
   fall from their eight-quarter peak."
-  {:year [[0 2 3] [0 3 3]]
-   :quarter-lead [[2 4 8] [2 5 8] [2 7 8]]
-   :quarter-w2 [[2 4 8] [2 5 8] [2 7 8]]})
+  {:year [[0 2 3] [0 3 3] [0 51 3] [50 51 3]]
+   :quarter-lead [[2 4 8] [2 5 8] [2 7 8] [2 18 8]]
+   :quarter-w2 [[2 4 8] [2 5 8] [2 7 8] [2 18 8]]})
 
 (defn- exposure-of
   "A place's openness to what comes down to it at origin t: trade
@@ -334,7 +401,7 @@
 
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst ext cat units end regimes known]}]
+  [{:keys [db wc jst ext cat units end regimes known quarterly]}]
   (let [[_ fin] (nm/financial db wc)
         sub (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u s]))
         reg (into {} (for [s (set (vals sub))] [s (first (geo/parents s))]))
@@ -342,8 +409,12 @@
         countries (sort (keys sub))
         members (fn [place] (if (sub place) [place] (filter #(let [s (sub %)] (or (= s place) (= (reg s) place) (= "world" place))) countries)))
         origins (fn [{:keys [per]}] (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end))))
-        raw {:quarter-lead (fn [u t] (vec (fin u t)))
-             :quarter-w2 (fn [u t] (vec (fin u t)))
+        ;; the OECD's house valuation, as of the quarter before (published late)
+        valuation (fn [u t] (let [q (dec (quot (- t 2) 3))]
+                              [(quarter-stretch (get-in quarterly ["oecd_price_income" u]) q)
+                               (quarter-stretch (get-in quarterly ["oecd_price_rent" u]) q)]))
+        raw {:quarter-lead (fn [u t] (into (vec (fin u t)) (valuation u t)))
+             :quarter-w2 (fn [u t] (into (vec (fin u t)) (valuation u t)))
              :year (fn [u t] (year-raw jst ext cat u t))
              :half-decade (fn [u t] (half-raw jst cat u t))}
         ;; each scale's country gauges at its origins, then standardized by the past
@@ -416,9 +487,9 @@
         months (range (+ start 2) (inc end) 3)
         wc (nm/world-credit db units months)
         _ (println (count units) "countries; building gauges")
-        ext (extended-table jst-rows (read-pwt) db units)
+        ext (extended-table jst-rows (read-pwt) db units (read-annual))
         sp (cond-> (spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
-                          :known (read-known (or known "r6-at"))})
+                          :known (read-known (or known "r6-at")) :quarterly (read-quarterly)})
              ;; ablations: --without contradiction,feedback  --coupling 0
              without (assoc :without (set (map keyword (str/split without #","))))
              coupling (assoc :coupling (let [c (parse-double coupling)] (when (pos? c) c))))

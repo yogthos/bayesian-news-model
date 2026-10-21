@@ -98,7 +98,8 @@
         pair (fn [a b] (str a "-ahead-of-" b))
         tension-defs [["credit" "investment"] ["house-prices" "wage-share"] ["equity-prices" "investment"]
                       ["credit" "wage-share"] ["household-credit" "wage-share"] ["house-prices" "rent-yield"]
-                      ["credit-wide" "tfp3"]]
+                      ["credit-wide" "tfp3"] ["bank-return3" "nonfin-return3"] ["unproductive-credit" "profit-rate"]
+                      ["household-debt" "labour-share"] ["corporate-debt" "profit-rate"] ["top10-income" "bottom50-income"]]
         gap (fn [a b] (into {} (for [[iso ys] (base a)]
                                  [iso (into {} (for [[y x] ys :let [z (get-in base [b iso y])] :when (some? z)] [y (- x z)]))])))
         gaps (into {} (for [[a b] tension-defs] [(pair a b) (gap a b)]))
@@ -111,17 +112,24 @@
     (merge base gaps strains turns)))
 
 (defn- wide-series
-  "{name {iso {year value}}} for every country, from the Penn World Table
-  and WDI (the extended dimensions measured for all), with credit ahead of
-  productivity as a gap and as strain."
+  "{name {iso {year value}}} for every country, from the sources measured
+  beyond the Macrohistory panel, with their tensions as gaps and as
+  strain."
   [ext crises]
   (let [pick (fn [k] (let [i (.indexOf lb/extended-names k)]
                        (reduce (fn [acc [[iso y] v]] (if-let [x (nth v i)] (if (< y 2003) (assoc-in acc [iso y] x) acc) acc)) {} ext)))
-        base (into {} (for [k [:credit-wide :tfp3 :capital-output3 :labour-share :investment-share]] [(name k) (pick k)]))
-        gap (into {} (for [[iso ys] (base "credit-wide")]
-                       [iso (into {} (for [[y x] ys :let [z (get-in base ["tfp3" iso y])] :when z] [y (- x (* 10.0 z))]))]))]
-    (merge base {"credit-wide-ahead-of-tfp3" gap
-                 "credit-wide-ahead-of-tfp3 (strain)" (into {} (for [[iso ys] gap] [iso (accumulate-reset ys (get crises iso #{}) 0.7)]))})))
+        ks [:credit-wide :tfp3 :capital-output3 :labour-share :investment-share :bank-return3 :nonfin-return3
+            :bank-crashes10 :unproductive-credit :unproductive-credit3 :profit-rate :profit-rate3 :top10-income
+            :bottom50-income :top1-wealth :household-debt :corporate-debt :public-debt-wide :distress :distress3]
+        base (into {} (for [k ks] [(name k) (pick k)]))
+        gap (fn [a b scale] (into {} (for [[iso ys] (base a)]
+                                       [iso (into {} (for [[y x] ys :let [z (get-in base [b iso y])] :when z] [y (- x (* scale z))]))])))
+        defs [["credit-wide" "tfp3" 10.0] ["bank-return3" "nonfin-return3" 1.0] ["unproductive-credit" "profit-rate" 1.0]
+              ["household-debt" "labour-share" 1.0] ["corporate-debt" "profit-rate" 1.0] ["top10-income" "bottom50-income" 1.0]]
+        gaps (into {} (for [[a b sc] defs] [(str a "-ahead-of-" b) (gap a b sc)]))]
+    (merge base gaps
+           (into {} (for [[n g] gaps]
+                      [(str n " (strain)") (into {} (for [[iso ys] g] [iso (accumulate-reset ys (get crises iso #{}) 0.7)]))])))))
 
 (defn- table [out title series crises opts unit]
   (let [rows (for [[n s] series :let [e (epoch s crises opts)] :when (seq e)] [n e])
@@ -147,7 +155,7 @@
         units (set (concat (map :iso jst-rows) (keys (get (on/read-events "data/slow/events.tsv") "banking_crisis"))))
         variables0 (st/read-variables "data/slow/variables.tsv")
         db0 (nm/load-series "data/slow/series.tsv" variables0)
-        ext (lb/extended-table jst-rows (#'lb/read-pwt) db0 units)
+        ext (lb/extended-table jst-rows (#'lb/read-pwt) db0 units (lb/read-annual))
         annual (annual-series built ext crises)
         ;; the modern catalogue's banking crises of 1974-2002, by quarter
         ev (get (on/read-events "data/slow/events.tsv") "banking_crisis")

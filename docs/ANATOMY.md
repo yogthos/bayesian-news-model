@@ -110,3 +110,37 @@ productivity is flat: many of these crises do not follow the credit boom's
 path. The anatomy differs by type of crisis (a domestic credit boom, an
 external or currency crisis), which is what the crisis-mechanics data
 (ESRB cause flags, Laeven-Valencia details) would let the model separate.
+
+## The downloaded dimensions (October 2026)
+
+From the sources in data/raw/slow/DOWNLOADS-2026-10-21.md (scripts/
+lattice-data.py), on the modern catalogue's crises of 1974-2002 in every
+country with data:
+
+| | -10 | -5 | -3 | -1 | 0 | n |
+|---|---|---|---|---|---|---|
+| bank equity ahead of nonfinancial, strain (BVX) | +0.30 | +0.41 | +1.05 | +1.20 | -0.32 | 29 |
+| bank equity, three-year return (BVX) | +0.25 | +0.51 | +1.44 | +0.64 | -0.45 | 30 |
+| bank equity crashes in the decade before (BVX) | +0.39 | +0.43 | +0.43 | +0.79 | +1.35 | 40 |
+| top 10% income share (WID) | -0.13 | +0.30 | +0.49 | +0.50 | +0.39 | 101 |
+| bottom 50% income share (WID) | -0.11 | -0.38 | -0.35 | -0.40 | -0.31 | 101 |
+| top incomes ahead of the bottom half, strain (WID) | -0.27 | +0.02 | +0.23 | +0.33 | -0.38 | 101 |
+| top 1% wealth share (WID) | -0.21 | +0.13 | +0.23 | +0.39 | +0.30 | 99 |
+| profit rate, three-year change (EPWT) | -0.03 | -0.24 | -0.03 | -0.14 | -0.19 | 103 |
+| financial distress, 0-15 (Romer & Romer) | -0.07 | +1.60 | +1.36 | +2.31 | +5.65 | 14 |
+
+- **Finance ahead of production** in market prices: bank equity outruns
+  nonfinancial equity for a decade, peaks three years out and is falling
+  when the crisis comes (the turn); the strain is released at the onset.
+- **Small crises feed large ones**: bank equity crashes in the decade before
+  stand above the calm, and graded distress rises from seven years out.
+- **Distribution polarizes**: the top's share rises and the bottom half's
+  falls for six years before, the top's wealth concentrating; the strain
+  between them builds from five years out and is released at the crisis.
+- **Profitability weakens** for most of the decade before.
+- Household and corporate debt (IMF) and sectoral credit (Mueller-Verner)
+  barely cover crises before 2003, so they cannot be judged here.
+
+A flaw found on the way: series a source holds nearly flat (WID's imputed
+years) made any change look enormous against their own decade; stretches
+are now floored at 2% of the level and capped at 5.
