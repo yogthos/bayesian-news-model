@@ -487,3 +487,30 @@ Exploratory, as trial 1 predates the amendment: `named+mix` against
 score (+0.00094 [+0.00050 +0.00139]), where the original test found
 nothing: the amended test has power on real data, and every trial since
 has found no signal it could detect.
+
+## Pre-registered, 21 October 2026: banking crises on the lattice (trial 36)
+
+Registered before the run. The framing is docs/LATTICE.md: a model per
+place (country, subregion, region, world) and per time scale (the quarter's
+lead and w2 windows, the year, the half-decade), each a dynamic-model
+average (augur.dynamic) over its own gauge groups, what finer scales and
+its children passed up, and what coarser scales and its parent passed
+down a step before, learning online from 1870 (`bnm.lattice-banking`).
+
+- **Quarter nodes**: bnm.named's financial inputs in groups (credit, asset
+  prices, the curve, global conditions).
+- **Year node**: the Macrohistory stretches of fourteen stocks, the
+  displacement invariants, the crisis process, the stabilizers, booms, and
+  the catalogue's own history for every country.
+- **Half-decade node**: long stretches, long displacement and resonance,
+  and memory (time since the country's and the world's last crises).
+- Priors from the literature (credit booms, credit with asset booms, the
+  credit gap, breadth of displacement), everything else from zero; gauges
+  standardized by the origins before each; outcomes known a year after
+  their window closes. Settings fixed here, not tuned on scored years.
+
+**Test**: `lattice` against `named` (r6-at) on banking_crisis, by the
+amended paired test (bnm.paired, hard rows, lead and w2, 2003-14 and
+2015-22), and by the original test, Bonferroni over 36. Exploratory, not
+counted: the year and half-decade nodes' own scores, and the weights the
+model averaging gave each group through time.
