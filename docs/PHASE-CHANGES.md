@@ -595,3 +595,17 @@ amended paired test and the original test (Bonferroni over 38).
 Exploratory: the ablations without the contradictions, without the turn,
 and with the quarter node's own gauges only, and each group's weight
 through time.
+
+**Results, 21 October 2026 (trial 38).** Negative, but a fifth of trial
+37's loss: `lattice` against `named`, primary Brier -0.00032 [-0.00051
+-0.00013], log score -0.0025. Exploratory ablations (r13-*):
+- without the turn: -0.00117 [-0.00182 -0.00057]: the turn carries most of
+  what the lattice adds, about 0.0009;
+- without the contradictions: -0.00029 [-0.00076 +0.00031]: measured
+  directionally they no longer cost anything, but do not yet add;
+- the quarter node's own gauges with the offset: -0.00015 [-0.00051
+  +0.00027], level with named.
+The lattice now starts where named stands and the turn earns its place;
+what still costs (about 0.0002, the flows between nodes besides the turn)
+shows mostly in 2003-14 (timing error 0.00120 against 0.00092), the years
+of the global wave of 2007-09.
