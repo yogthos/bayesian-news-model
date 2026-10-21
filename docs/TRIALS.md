@@ -46,3 +46,4 @@ the count is the number of lines below.
 | 36 | lattice (banking) | 2026-10 | nodes per place and time scale, dynamic model averaging, flows up and lagged flows down, learning from 1870 |
 | 37 | lattice as a dialectic (banking) | 2026-10 | trial 36 with contradictions between and within levels, resolution, exposure, errors across levels, coupled learning |
 | 38 | lattice rebuilt from the anatomy (banking) | 2026-10 | known forecast as offset, directional strain, the turn, strain carried down, unused and downloaded dimensions |
+| 39 | lattice, flows standardized, design chosen on 1980-2002 (banking) | 2026-10 | contradictions summarized with theory's sign, data-flow fixes, full lattice at the year and half-decade, quarters on their gauges |

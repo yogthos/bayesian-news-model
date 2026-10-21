@@ -609,3 +609,39 @@ The lattice now starts where named stands and the turn earns its place;
 what still costs (about 0.0002, the flows between nodes besides the turn)
 shows mostly in 2003-14 (timing error 0.00120 against 0.00092), the years
 of the global wave of 2007-09.
+
+## Pre-registered, 21 October 2026: the lattice with its flows standardized, chosen on 1980-2002 (trial 39)
+
+Registered before the run. Since trial 38:
+- **the node's own inputs standardized**: strain, gaps, turns and feedback
+  had entered raw, so the models reading them made extreme forecasts and
+  the averaging dropped them (the year node's contradiction and
+  all-inputs models held weights near 1e-8); each node now standardizes
+  them by their running mean and spread at earlier origins;
+- **contradictions summarized**: the place's mean and largest strain over
+  the tensions it can measure, their change, its disagreement with its
+  parent, the strain carried down and built up, with a prior that more
+  strain means more risk (mean 0.3, variance 0.25);
+- **data-flow fixes from review**: Romer distress for the US, UK and New
+  Zealand, sectoral credit's combined sectors, crash counts unknown where
+  uncovered, credit by the year it describes (BIS where it has the
+  country), the world's quantities for every country, WID's Namibia and
+  Kosovo, the slower sources a further year back;
+- **the design chosen on 1980-2002 alone**, from the validation of each
+  node on its own outcomes in those years (data/runs/w-*): the full lattice
+  at the year and the half-decade, the quarters on their own gauges with
+  named's forecast as their offset. On those years the chosen design beat
+  the year node without contradictions by Brier +0.00087 [-0.00000
+  +0.00233] and the full lattice by +0.00280 [-0.00022 +0.00786].
+Smoke checks (bnm.lattice-smoke) to 2001 and to 2008 pass: probabilities,
+live inputs in every group, weights that move, strain and the year's log
+odds positively related (r 0.06), nothing read from after an origin,
+quarter rows aligned with the scoring tools.
+
+**Tests**, both at one-sided 5%:
+1. as trials 36-38: the quarter nodes, `lattice` against `named` on
+   banking_crisis, the amended paired test (primary) and the original test
+   (Bonferroni over 39);
+2. the dialectic itself: the year node of this design against the same
+   design without the contradiction group, on the year nodes' own
+   outcomes for origins 2003-2022 (bnm.paired --scale year), paired Brier.
