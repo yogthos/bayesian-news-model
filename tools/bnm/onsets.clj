@@ -407,6 +407,15 @@
 
 (defn- in-years [preds lo hi] (filter #(<= lo (quot (first %) 4) hi) preds))
 
+(defn checked
+  "p, or an error naming `where` if it is not a finite number: a fit that
+  diverged stops the run at once rather than poisoning the scores."
+  [p where]
+  (let [p (double p)]
+    (if (or (Double/isNaN p) (Double/isInfinite p))
+      (throw (ex-info (str "non-finite forecast " p " " (pr-str where)) where))
+      p)))
+
 (defn lagged
   "The window whose end is when a row's label is final: its own end plus the
   kind's reporting lag (bnm.onset/resolves-at), for the checks of what was
@@ -501,7 +510,9 @@
                                       :else [(lgt/fit train k {:prior prior :start beta}) fx])
                           scored (for [{:keys [unit q y full]} prepared
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
-                                   [q (lgt/predict beta (xf full) (if fx (hier/effect fx (hier-path unit)) 0.0)) y unit])]
+                                   [q (checked (lgt/predict beta (xf full) (if fx (hier/effect fx (hier-path unit)) 0.0))
+                                             {:year yr :prior prior :unit unit})
+                                    y unit])]
                       (recur more beta fx (into preds scored)))))))
             ;; multi-task (mt-): the kind's rows and the other kinds' rows
             ;; weighted by lam, an extra column marking the others so the

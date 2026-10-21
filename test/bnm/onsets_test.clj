@@ -35,3 +35,11 @@
     (is (= 23 @ran) "each once")
     (is (= (on/in-parallel 1 thunks) (on/in-parallel 8 thunks)))
     (is (= [] (on/in-parallel 3 [])))))
+
+(deftest non-finite-forecasts-stop-the-run
+  (is (= 0.25 (on/checked 0.25 {:model :history})))
+  (let [e (try (on/checked ##NaN {:model :hier-history :year 2003}) nil
+               (catch Exception e e))]
+    (is e "NaN throws")
+    (is (= 2003 (:year (ex-data e)))))
+  (is (thrown? Exception (on/checked ##Inf {}))))
