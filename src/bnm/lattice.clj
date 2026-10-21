@@ -66,6 +66,8 @@
 
 (defn- logit ^double [^double p] (m/logit (Math/max 1e-6 (Math/min (- 1.0 1e-6) p))))
 
+(defn logit-of "Log odds, the probability kept off 0 and 1." ^double [^double p] (logit p))
+
 (defn- mean [xs] (when (seq xs) (/ (reduce + xs) (double (count xs)))))
 
 (defn tension-gaps
@@ -100,6 +102,44 @@
         dd (if (seq recent) (Math/max 0.0 (- (double (apply max recent)) (double (last recent)))) 0.0)
         stretched (Math/max 0.0 (double stock))]
     [(if (pos? stretched) dd 0.0) (* stretched dd)]))
+
+(defn window-log-odds
+  "The log odds of an onset in a window a fraction `ratio` of a coarser
+  node's, whose forecast for its own window is p, under a hazard constant
+  across it: 1 - (1 - p)^ratio."
+  ^double [^double p ^double ratio]
+  (let [p (Math/max 1e-9 (Math/min (- 1.0 1e-9) p))
+        q (- (Math/expm1 (* ratio (Math/log1p (- p)))))]
+    (logit q)))
+
+(def ^:private hermite
+  "Five-point Gauss-Hermite quadrature for the standard normal: nodes and
+  weights."
+  [[0.0 0.5333333333333333] [1.3556261799742657 0.2220759220056126] [-1.3556261799742657 0.2220759220056126]
+   [2.8569700138728056 0.011257411327720691] [-2.8569700138728056 0.011257411327720691]])
+
+(defn offsets-under
+  "[[weight offset]...]: a coarser node's linear predictor N(f, q) carried
+  into a finer window (a fraction `ratio` of its own), by quadrature over
+  it (Berry & West 2020: the aggregate's uncertainty passed down)."
+  [f q ratio]
+  (let [sd (Math/sqrt (Math/max 0.0 (double q)))]
+    (vec (for [[z w] hermite] [w (window-log-odds (m/expit (+ f (* sd z))) ratio)]))))
+
+(defn reconcile
+  "The two windows' forecasts [a b] made coherent with a coarser forecast p
+  of an onset anywhere in its window, of which they and a remainder (base
+  probability r) are the parts: the windows' own chance of any onset and
+  p pooled in log odds with equal weights, and every part's hazard scaled
+  in proportion to meet it. Coherent forecasts are left as they are."
+  [a b r p]
+  (let [clamp #(Math/max 1e-9 (Math/min (- 1.0 1e-9) (double %)))
+        a (clamp a) b (clamp b) r (Math/max 0.0 (Math/min (- 1.0 1e-9) (double r)))
+        log-none (+ (Math/log1p (- a)) (Math/log1p (- b)) (Math/log1p (- r)))
+        s (- (Math/expm1 log-none))
+        target (m/expit (* 0.5 (+ (logit s) (logit (clamp p)))))
+        k (/ (Math/log1p (- target)) log-none)]
+    [(- (Math/expm1 (* k (Math/log1p (- a))))) (- (Math/expm1 (* k (Math/log1p (- b)))))]))
 
 (defn accumulate
   "Strain accumulated through time, for the tests and the record: `entries`
@@ -435,6 +475,22 @@
                                          clim (logit (/ (+ n1 0.5) (+ n 1.0)))]
                                      (fn [place t] (double (or (f scale place t) clim))))
                                    (constantly 0.0))
+                       ;; :downscale: the offset from a coarser node's latest forecast for the
+                       ;; place, issued before t, scaled to this window under a constant
+                       ;; hazard (docs/DOWNSCALE.md); pooled in log odds with what is known
+                       ;; (:downscale-pool, its weight), its uncertainty carried down by
+                       ;; quadrature (:downscale-uncertainty). [[weight offset]...] and the read
+                       offsets-of (let [ds (get-in spec [:downscale scale])
+                                        horizon-of (fn [n] (:horizon (first (filter #(= n (:name %)) (:scales spec)))))
+                                        ratio (when ds (/ (double (:horizon scale-spec)) (horizon-of (:from ds))))
+                                        pool (:downscale-pool spec)]
+                                    (fn [place t]
+                                      (if-let [[o-t {:keys [p f q]}] (when ds (some-> (get-in st [:book [(:from ds) place]]) (rsubseq < t) first))]
+                                        (let [os (if (:downscale-uncertainty spec) (offsets-under f q ratio) [[1.0 (window-log-odds p ratio)]])
+                                              known (when (and pool (:offset spec)) ((:offset spec) scale place t))
+                                              os (if known (mapv (fn [[w o]] [w (+ (* pool known) (* (- 1.0 pool) o))]) os) os)]
+                                          {:os os :read {:dir :downscale :scale (:from ds) :place place :origin o-t}})
+                                        {:os [[1.0 (offset-of place t)]]})))
                        st (reduce (fn [st {:keys [place y p known-at]}]
                                     (update-in st [:errors [scale place]] (fnil assoc (sorted-map)) known-at
                                                (- (if y 1.0 0.0) p)))
@@ -448,16 +504,23 @@
                                              {:keys [x reads stated tension strain resolved]} (inputs spec st scale scale-spec level-ix place t g)
                                              raw-flows (subvec x (inc g-width))
                                              x (into (subvec x 0 (inc g-width)) (standardize flow-std raw-flows))
-                                             o (offset-of place t)
-                                             p (d/predict model x o)
+                                             {:keys [os read]} (offsets-of place t)
+                                             reads (cond-> reads read (conj read))
+                                             one? (= 1 (count os))
+                                             ;; the mean offset, learned from: the one whose
+                                             ;; probability is the offsets' average
+                                             o (if one? (second (first os)) (logit (reduce + (for [[w o] os] (* w (m/expit o))))))
+                                             p (if one? (d/predict model x o) (reduce + (for [[w o] os] (* w (d/predict model x o)))))
+                                             {pf :f pq :q} (d/predictive model x o)
                                              target ((:target spec) scale place t)]]
                                    {:place place :x x :raw-flows raw-flows :o o :p p :target target :reads reads :stated stated :tension tension :strain strain
-                                    :resolved resolved}))
-                       st (reduce (fn [st {:keys [place p stated tension strain resolved]}]
+                                    :resolved resolved :f pf :q pq}))
+                       st (reduce (fn [st {:keys [place p stated tension strain resolved f q]}]
                                     (-> st
                                         (update-in [:book [scale place]] (fnil assoc (sorted-map)) t
-                                                   ;; a node's state: the spec's when it gives one, else its forecast's log odds
-                                                   {:p p :s (or stated (logit p)) :strain strain})
+                                                   ;; a node's state: the spec's when it gives one, else its
+                                                   ;; forecast's log odds; f and q its linear predictor's moments
+                                                   {:p p :s (or stated (logit p)) :strain strain :f f :q q})
                                         (assoc-in [:tension [scale place]] tension)
                                         (cond-> resolved (update-in [:resets [scale place]] (fnil into []) resolved))))
                                   st made)
@@ -472,10 +535,10 @@
                                               {:scale scale :place place :origin t :p p :y (:y target)}))
                     (update weights k (fnil conj []) [t (d/weights model)])
                     (if (:trace spec)
-                      (reduce conj! trace (for [{:keys [place reads x p]} made]
+                      (reduce conj! trace (for [{:keys [place reads x p o]} made]
                                             (cond-> {:scale scale :level level :place place :origin t :reads reads
                                                      :learned (map #(select-keys % [:known-at]) ready)}
-                                              (= :inputs (:trace spec)) (assoc :x x :p p))))
+                                              (= :inputs (:trace spec)) (assoc :x x :p p :o o))))
                       trace)]))
                [st forecasts weights trace]
                (for [s due level-ix (range (count levels))] [s level-ix]))

@@ -55,6 +55,7 @@ NAMES.update({  # names the sources use that GeoNames and M49 don't
     "sri lanka (ceylon)": "LKA", "surinam": "SUR", "korea": "KOR", "mainland china": "CHN", "brunei": "BRN",
     "bahamas": "BHS", "the gambia": "GMB", "papua new guinea": "PNG", "united arab emirates": "ARE",
     "rumania": "ROU", "italy/sardinia": "ITA", "zanzibar": "TZA", "solomon islands": "SLB",
+    "netherlands": "NLD", "st. kitts and nevis": "KNA",
 })
 
 

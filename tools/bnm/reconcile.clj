@@ -1,110 +1,51 @@
 (ns bnm.reconcile
-  "Coherent forecasts over the hierarchy (bnm-enb.11): do a country's
-  children improve its forecast if the two are reconciled instead of blended?
+  "The quarter nodes' windows made coherent with the year node's forecast
+  (docs/DOWNSCALE.md, step 3): at each quarter origin, the lead and w2
+  windows and the first quarter (the year's hazard over its three months)
+  are the parts of the next two years; their chance of any onset is pooled
+  with the year's latest forecast for the place, issued before the origin,
+  and every part's hazard scaled to meet it (bnm.lattice/reconcile).
 
-  On a run's saved origins, each forecast is re-made, and for every country
-  with tracked children (its rest leaf and dyads), three forecasts of the
-  country's total are scored by CRPS in log space against what happened:
+    jolt -A:tools -M -m bnm.reconcile --run lattice-banking [--kind banking_crisis]
 
-    base       the country's own simulated totals (the blend of its own rate
-               and its children's, as the model forecasts it)
-    bottom-up  the sum of its children's totals in the same simulation
-    BUIS       the bottom-up draws reweighted by the base forecast's density
-               at their sum and resampled: bottom-up importance sampling
-               (Zambon, Azzimonti & Corani 2024, the bayesRecon package),
-               which conditions the children's joint draws on the country's
-               own forecast, so both levels agree
-
-  The children's own CRPS before and after BUIS is scored as well.
-
-    jolt -A:tools -M -m bnm.reconcile v3-q 20080221,20080522,... [sims]"
-  (:require [bnm.geo :as geo]
-            [augur.math :as m]
-            [bnm.model :as model]
-            [bnm.ontology :as ont]
-            [bnm.store :as store]
+  Writes the reconciled country rows to data/runs/<run>/preds-rec.tsv as
+  model lattice-rec."
+  (:require [bnm.lattice :as lt]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
-(defn- L ^double [x] (Math/log1p (max 0.0 (double x))))
+(defn reconciled
+  "The reconciled quarter rows of `rows` ({:scale :place :origin :p :y}),
+  `horizons` each scale's window in months; rows with no year forecast
+  before them are left out."
+  [rows horizons]
+  (let [years (into {} (for [[place rs] (group-by :place (filter #(= :year (:scale %)) rows))]
+                         [place (into (sorted-map) (map (juxt :origin :p) rs))]))
+        quarters (group-by (juxt :place :origin) (filter #(#{:quarter-lead :quarter-w2} (:scale %)) rows))
+        first-q (/ 3.0 (:year horizons))]
+    (for [[[place t] rs] quarters
+          :let [by (into {} (map (juxt :scale identity) rs))
+                lead (by :quarter-lead) w2 (by :quarter-w2)
+                py (some-> (get years place) (rsubseq < t) first val)]
+          :when (and lead w2 py)
+          :let [r (- 1.0 (Math/pow (- 1.0 py) first-q))
+                [a b] (lt/reconcile (:p lead) (:p w2) r py)]
+          row [(assoc lead :p a) (assoc w2 :p b)]]
+      row)))
 
-(defn- crps
-  "CRPS of the sample xs (log1p units) for the outcome a."
-  [xs a]
-  (let [xs (double-array (sort (map L xs)))
-        a (L a)
-        n (alength xs)
-        s1 (areduce xs i s 0.0 (+ s (Math/abs (- (aget xs i) a))))
-        s2 (areduce xs i s 0.0 (+ s (* (aget xs i) (- (* 2 i) n -1))))]
-    (- (/ s1 n) (/ s2 (* n (double n))))))
-
-(defn buis-indices
-  "Simulation indices resampled with weights: the density of the parent's
-  sample `parent` (a Gaussian kernel density in log1p units, Silverman's
-  bandwidth) at each simulation's children sum `sums`."
-  [parent sums g]
-  (let [lp (mapv L parent)
-        n (count lp)
-        mean (/ (reduce + lp) n)
-        sd (Math/sqrt (/ (reduce + (map #(let [d (- % mean)] (* d d)) lp)) (max 1 (dec n))))
-        bw (max 1e-3 (* 1.06 sd (Math/pow n -0.2)))
-        dens (fn [x] (reduce + (map #(Math/exp (* -0.5 (let [z (/ (- x %) bw)] (* z z)))) lp)))
-        ws (mapv #(dens (L %)) sums)
-        total (reduce + ws)]
-    (if (<= total 0.0)
-      (vec (range (count sums)))
-      (let [cum (vec (reductions + (map #(/ % total) ws)))]
-        (vec (for [_ (range (count sums))]
-               (let [u (m/next-double! g)]
-                 (or (first (keep-indexed (fn [i c] (when (<= u c) i)) cum)) (dec (count cum))))))))))
-
-(defn- recorded
-  "{id actual-totals} from a run's rows file for a period."
-  [path]
-  (with-open [r (io/reader path)]
-    (reduce (fn [acc line]
-              (let [[id _ ch _ _ actual] (str/split line #"\t")
-                    c (.indexOf ^java.util.List ont/channels (keyword ch))
-                    ^doubles a (or (acc id) (double-array model/C))]
-                (aset a c (parse-double actual))
-                (assoc acc id a)))
-            {} (line-seq r))))
-
-(defn -main [run labels & [sims]]
-  (let [dir (str "data/runs/" run)
-        sims (parse-long (or sims "100"))
-        every (:every (clojure.edn/read-string (slurp (str dir "/args.edn"))))
-        acc (atom {})]
-    (doseq [lbl (str/split labels #",")]
-      (let [mdl (store/read-file (str dir "/origin-" lbl ".edn"))
-            rec (recorded (str dir "/rows/" lbl ".tsv"))
-            fc (model/forecast mdl {:horizon every :sims sims :seed (parse-long lbl)})
-            nodes (:nodes mdl)
-            g (m/rng (parse-long lbl))]
-        (doseq [[i node] (map-indexed vector nodes)
-                :when (= :country (geo/kind (:id node)))
-                :let [kids (vec (:children node))
-                      act (rec (:id node))]
-                :when (and act (seq kids))
-                c (range model/C)
-                :let [base (mapv #(model/total fc i % c) (range sims))
-                      sums (mapv (fn [s] (reduce + (map #(model/total fc % s c) kids))) (range sims))
-                      idx (buis-indices base sums g)
-                      a (aget ^doubles act c)
-                      ch (ont/channels c)]]
-          (swap! acc update ch (fn [m] (merge-with + (or m {})
-                                                   {:n 1 :base (crps base a) :bottom-up (crps sums a)
-                                                    :buis (crps (mapv sums idx) a)})))
-          ;; the children, before and after conditioning on the parent
-          (doseq [k kids
-                  :let [ka (some-> (rec (:id (nodes k))) (aget c))]
-                  :when ka
-                  :let [xs (mapv #(model/total fc k % c) (range sims))]]
-            (swap! acc update [:children ch] (fn [m] (merge-with + (or m {})
-                                                                 {:n 1 :base (crps xs ka) :buis (crps (mapv xs idx) ka)})))))
-        (println lbl "done")))
-    (println "Mean CRPS (log1p units) over countries with tracked children, and over their children")
-    (doseq [[k {:keys [n base bottom-up buis]}] (sort-by (comp str key) @acc)]
-      (println (format "  %-28s n=%6d  base %.4f  %s  BUIS %.4f" (str k) n (/ base n)
-                       (if bottom-up (format "bottom-up %.4f" (/ bottom-up n)) "                ")
-                       (/ buis n))))))
+(defn -main [& args]
+  (let [{:keys [run kind]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+        dir (str "data/runs/" run)
+        kind (or kind "banking_crisis")
+        rows (with-open [r (io/reader (str dir "/forecasts.tsv"))]
+               (vec (for [l (line-seq r)
+                          :let [[s place o p y] (str/split l #"\t" -1)]
+                          :when (= 3 (count place))]
+                      {:scale (keyword s) :place place :origin (parse-long o) :p (parse-double p)
+                       :y (case y "true" true "false" false nil)})))
+        out (reconciled rows {:quarter-lead 9 :quarter-w2 12 :year 24})]
+    (with-open [w (io/writer (str dir "/preds-rec.tsv"))]
+      (doseq [{:keys [scale place origin p y]} (sort-by (juxt :origin :place :scale) out)]
+        (.write w (str kind "\t" ({:quarter-lead "lead" :quarter-w2 "w2"} scale) "\tlattice-rec\t" (quot (- origin 2) 3)
+                       "\t" place "\t" p "\t" (if (nil? y) "nil" y) "\n"))))
+    (println "wrote" (count out) "rows to" (str dir "/preds-rec.tsv"))))

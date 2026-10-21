@@ -5,6 +5,7 @@
   the future, and exports rows that line up with the scoring tools.
 
     jolt -A:tools -M -m bnm.lattice-smoke [--end 23999] [--without-at ...] [--kind coup]
+                                          [--downscale year --pool 0.5 --uncertainty true]
 
   With --kind, a political kind's lattice (bnm.lattice-political).
 
@@ -26,7 +27,7 @@
     (if (and (pos? sx) (pos? sy)) (/ sxy (* sx sy)) 0.0)))
 
 (defn -main [& args]
-  (let [{:keys [end without-at kind]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [end without-at kind downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         end (or (some-> end parse-long) (+ (* 12 1999) 11))
         kind (or kind lb/kind)
         sp0 (if (not= kind lb/kind)
@@ -43,6 +44,9 @@
                           :known (lb/read-known "r6-at") :quarterly (lb/read-quarterly)})))
         sp (cond-> sp0
              true (assoc :trace :inputs)
+             downscale (assoc :downscale {:quarter-lead {:from (keyword downscale)} :quarter-w2 {:from (keyword downscale)}})
+             pool (assoc :downscale-pool (parse-double pool))
+             (= "true" uncertainty) (assoc :downscale-uncertainty true)
              without-at (assoc :without-at (into {} (for [part (str/split without-at #",") :let [[sc gs] (str/split part #":")]]
                                                       [(keyword sc) (set (map keyword (str/split gs #"\+")))]))))
         r (lt/run sp)
@@ -105,6 +109,7 @@
                     rd reads
                     :when (case (:dir rd)
                             :down (>= (:origin rd) origin)
+                            :downscale (>= (:origin rd) origin)
                             :up (> (:origin rd) origin)
                             :feedback (> (:known-at rd) origin))]
                 [scale origin rd])

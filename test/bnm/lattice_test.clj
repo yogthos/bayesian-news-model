@@ -369,3 +369,61 @@
     (is (every? (fn [[ll n]] (and (pos? n) (neg? ll))) (vals ev)) "log scores of outcomes, counted")
     (is (apply = (map second (vals ev))) "every model scored on the same rows")
     (is (nil? (:evidence (lt/run (spec (world 1))))) "only when traced")))
+
+(deftest a-coarser-forecast-scaled-to-a-window
+  ;; constant hazard: a window of a fraction r of the coarser one carries r
+  ;; of its cumulative hazard, 1 - (1 - p)^r
+  (is (< (Math/abs (- (lt/window-log-odds 0.19 0.5) (Math/log (/ 0.1 0.9)))) 1e-12) "0.19 over two years is 0.1 a year")
+  (is (< (Math/abs (- (lt/window-log-odds 0.3 1.0) (Math/log (/ 0.3 0.7)))) 1e-12) "the whole window, itself")
+  (is (< -100.0 (lt/window-log-odds 1e-12 0.375) 0.0) "tiny probabilities stay finite")
+  (testing "the coarser uncertainty carried down: quadrature over its linear predictor"
+    (let [os (lt/offsets-under 0.0 0.0 0.5)]
+      (is (< (Math/abs (- 1.0 (reduce + (map first os)))) 1e-9) "weights sum to one")
+      (is (every? #(< (Math/abs (- (second %) (lt/window-log-odds 0.5 0.5))) 1e-12) os) "no uncertainty, one offset"))
+    (let [os (lt/offsets-under -2.0 1.0 0.5)
+          os0 (lt/offsets-under -2.0 0.0 0.5)]
+      (is (> (apply max (map second os)) (second (first os0))) "uncertainty spreads the offsets")
+      (is (= 5 (count os))))))
+
+(deftest windows-reconciled-with-their-year
+  ;; the windows' chance of any onset pooled with the year's (log odds,
+  ;; equal weights) and their hazards scaled in proportion to meet it.
+  ;; Conditioning (bottom-up importance sampling) would multiply the two
+  ;; forecasts' odds, counting twice what both know
+  (let [[a b] (lt/reconcile 0.1 0.1 0.0 0.19)]
+    (is (< (Math/abs (- a 0.1)) 1e-12) "already coherent: unchanged")
+    (is (< (Math/abs (- b 0.1)) 1e-12)))
+  (let [[a b] (lt/reconcile 0.1 0.1 0.0 0.5)]
+    (is (> a 0.1) "the year sees more risk: the windows rise")
+    (is (< a 0.5)))
+  (let [[a] (lt/reconcile 0.1 0.1 0.05 0.05)]
+    (is (< a 0.1) "the year sees less: they fall")))
+
+(deftest the-year-sets-the-months-offset
+  ;; :downscale: a finer node's offset is the coarser node's latest forecast
+  ;; for the same place, issued before the origin, scaled to its window
+  (let [w (world 1)
+        latest (fn [r place t] (some-> (get-in r [:book [:year place]]) (rsubseq < t) first val))
+        check (fn [r f]
+                (let [rows (filter #(and (= :month (:scale %)) (> (:origin %) 24)) (:trace r))]
+                  (is (seq rows))
+                  (is (every? (fn [{:keys [place origin o]}]
+                                (let [y (latest r place origin)]
+                                  (< (Math/abs (- o (f y))) 1e-9)))
+                              rows))))
+        r (lt/run (assoc (spec w) :trace :inputs :downscale {:month {:from :year}}))]
+    (check r #(lt/window-log-odds (:p %) (/ 1.0 12.0)))
+    (testing "its read is from before the origin"
+      (is (every? (fn [{:keys [origin reads]}] (every? #(< (:origin %) origin) (filter #(= :downscale (:dir %)) reads)))
+                  (filter #(= :month (:scale %)) (:trace r))))
+      (is (some (fn [{:keys [reads]}] (some #(= :downscale (:dir %)) reads)) (:trace r))))
+    (testing "pooled with what is known, in log odds"
+      (let [r (lt/run (assoc (spec w) :trace :inputs :downscale {:month {:from :year}} :downscale-pool 0.5
+                             :offset (fn [scale _ _] (when (= scale :month) -3.0))))]
+        (check r #(+ (* 0.5 -3.0) (* 0.5 (lt/window-log-odds (:p %) (/ 1.0 12.0)))))))
+    (testing "the year's uncertainty carried down: the forecast averages over it"
+      (let [r (lt/run (assoc (spec w) :trace :inputs :downscale {:month {:from :year}} :downscale-uncertainty true))
+            rows (filter #(and (= :month (:scale %)) (> (:origin %) 24)) (:trace r))]
+        (check r (fn [{:keys [f q]}]
+                   (lt/logit-of (reduce + (for [[wt o] (lt/offsets-under f q (/ 1.0 12.0))] (* wt (m/expit o)))))))
+        (is (every? #(< 0.0 (:p %) 1.0) rows))))))

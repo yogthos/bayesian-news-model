@@ -506,7 +506,7 @@
               (into {} (for [[g ixs] (get priors scale) [i mv] ixs] [(nth (groups g) i) mv])))}))
 
 (defn -main [& args]
-  (let [{:keys [out end without coupling known without-at]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [out end without coupling known without-at downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         out (or out "lattice-banking")
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
@@ -530,6 +530,11 @@
              without-at (assoc :without-at (into {} (for [part (str/split without-at #",")
                                                          :let [[sc gs] (str/split part #":")]]
                                                      [(keyword sc) (set (map keyword (str/split gs #"\+")))])))
+             ;; the quarters' offset from the year's forecast (docs/DOWNSCALE.md):
+             ;; --downscale year [--pool 0.5] [--uncertainty true]
+             downscale (assoc :downscale {:quarter-lead {:from (keyword downscale)} :quarter-w2 {:from (keyword downscale)}})
+             pool (assoc :downscale-pool (parse-double pool))
+             (= "true" uncertainty) (assoc :downscale-uncertainty true)
              coupling (assoc :coupling (let [c (parse-double coupling)] (when (pos? c) c))))
         _ (println "running the lattice")
         r (lt/run sp)]

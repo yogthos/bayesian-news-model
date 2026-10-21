@@ -231,7 +231,7 @@
            :known (lb/read-known known-run kind)})))
 
 (defn -main [& args]
-  (let [{:keys [kind out end without-at known]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [kind out end without-at known downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         out (or out (str "lattice-" kind))
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
@@ -239,7 +239,12 @@
         sp (cond-> (build kind end (or known "r6-at"))
              without-at (assoc :without-at (into {} (for [part (str/split without-at #",")
                                                          :let [[sc gs] (str/split part #":")]]
-                                                     [(keyword sc) (set (map keyword (str/split gs #"\+")))]))))
+                                                     [(keyword sc) (set (map keyword (str/split gs #"\+")))])))
+             ;; the quarters' offset from the year's forecast (docs/DOWNSCALE.md):
+             ;; --downscale year [--pool 0.5] [--uncertainty true]
+             downscale (assoc :downscale {:quarter-lead {:from (keyword downscale)} :quarter-w2 {:from (keyword downscale)}})
+             pool (assoc :downscale-pool (parse-double pool))
+             (= "true" uncertainty) (assoc :downscale-uncertainty true))
         _ (println "running the lattice")
         r (lt/run sp)]
     (io/make-parents (str dir "/x"))
