@@ -23,7 +23,7 @@
   standardized by the means and spreads of the origins before it, so
   nothing is scaled by the future.
 
-    jolt -A:tools -M -m bnm.lattice-banking --out lattice-banking [--without contradiction,feedback] [--coupling 0] [--known r6-at]
+    jolt -A:tools -M -m bnm.lattice-banking --out lattice-banking [--without contradiction,feedback] [--without-at quarter-lead:up+feedback] [--coupling 0] [--known r6-at]
 
   Writes data/runs/<out>/preds.tsv in bnm.onsets' format (the quarter
   nodes' country forecasts as kind banking_crisis, windows lead and w2,
@@ -455,6 +455,9 @@
      :gauge-width widths
      :gauge-groups {:quarter-lead quarter-groups :quarter-w2 quarter-groups :year year-groups :half-decade half-groups}
      :shrink 0.1
+     ;; theory's sign on the contradiction summaries: more strain, more
+     ;; risk, held loosely enough for the data to revise
+     :contradiction-prior [0.3 0.25]
      :tensions tensions
      :turns turns
      ;; a country's tensions resolve once per onset, when it is known; an
@@ -472,7 +475,7 @@
               (into {} (for [[g ixs] (get priors scale) [i mv] ixs] [(nth (groups g) i) mv])))}))
 
 (defn -main [& args]
-  (let [{:keys [out end without coupling known]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [out end without coupling known without-at]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         out (or out "lattice-banking")
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
@@ -492,6 +495,10 @@
                           :known (read-known (or known "r6-at")) :quarterly (read-quarterly)})
              ;; ablations: --without contradiction,feedback  --coupling 0
              without (assoc :without (set (map keyword (str/split without #","))))
+             ;; per scale: --without-at quarter-lead:up+feedback,year:exposure
+             without-at (assoc :without-at (into {} (for [part (str/split without-at #",")
+                                                         :let [[sc gs] (str/split part #":")]]
+                                                     [(keyword sc) (set (map keyword (str/split gs #"\+")))])))
              coupling (assoc :coupling (let [c (parse-double coupling)] (when (pos? c) c))))
         _ (println "running the lattice")
         r (lt/run sp)]

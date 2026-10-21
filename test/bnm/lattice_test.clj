@@ -339,3 +339,22 @@
       (is (< (Math/abs (- (first (lt/standardize s [4.0])) (/ (- 4.0 2.5) (Math/sqrt 1.25)))) 1e-9)
           "against the mean and spread of what came before")
       (is (= [5.0] (lt/standardize s [1e6])) "capped"))))
+
+(deftest contradictions-are-summarized
+  ;; a place's strain as a few summaries, not one input per tension: its
+  ;; mean over the tensions it can measure, its change, its largest
+  (is (= {:mean 1.5 :max 2.0} (lt/strain-summary [1.0 2.0 0.0] [true true false])))
+  (is (= {:mean 0.0 :max 0.0} (lt/strain-summary [] [])))
+  (testing "the summaries start from theory: more strain, more risk"
+    (let [w (contradiction-world 7)
+          r (lt/run (assoc (contradiction-spec w) :end 30 :tensions {:year [[0 0]]} :contradiction-prior [0.3 0.1]))
+          m (lt/model r :year :country :contradiction)]
+      (is (some #(< (Math/abs (- % 0.3)) 0.2) (augur.dynamic/means m))))))
+
+(deftest groups-can-differ-by-scale
+  (let [w (world 5)
+        r (lt/run (assoc (spec w) :end 30 :without-at {:year #{:feedback :up}}))]
+    (is (not (contains? (lt/weights r :year :country) :feedback)))
+    (is (not (contains? (lt/weights r :year :country) :up)))
+    (is (contains? (lt/weights r :month :country) :down) "the month keeps its own")
+    (is (thrown? Exception (lt/run (assoc (spec w) :end 3 :without-at {:year #{:bogus}}))))))
