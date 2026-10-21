@@ -787,7 +787,8 @@ year's offset alone (w2 -0.0064) and nearly recovers when reconciled
    gain most (+0.0012, +0.0018), banking crises' 2003-14 cells lose
    (-0.0005 lead, -0.0012 w2); no cell differs after Romano-Wolf. Pooled
    recall at 10% rises over named for coups, protest and violence surges
-   in 2003-14.
+   in 2003-14. On the original test (Bonferroni over 41) 0/24 counted
+   cells pass.
 2. **Against A** (the trial 39/40 quarters), per kind, on the quarter
    nodes' own outcomes 2003-2022 (lead and w2 pooled):
 
