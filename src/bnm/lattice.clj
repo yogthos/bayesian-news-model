@@ -56,6 +56,7 @@
   which gauges, flows and contradictions mattered at that node. :prior
   seeds coefficients with what is known."
   (:require [augur.dynamic :as d]
+            [bnm.relations :as rel]
             [augur.math :as m]))
 
 (defn finer?
@@ -213,7 +214,9 @@
                [:contradiction (+ 3 (if (pos? n-anc) 3 0) (if (seq coarser) 1 0) (if (seq finer) 1 0) (if kids? 1 0))]
                [:turn (* 2 (count (get-in spec [:turns scale])))]
                [:exposure (* ew (+ (count coarser) n-anc))]
-               [:feedback (+ (count coarser) (if (pos? n-anc) 1 0) (if kids? 1 0))]]
+               [:feedback (+ (count coarser) (if (pos? n-anc) 1 0) (if kids? 1 0))]
+               ;; what other kinds pass in (bnm.world-run): their states, onsets
+               [:relations (if (:relations spec) (get-in spec [:relation-width scale] 0) 0)]]
         ;; :without drops groups from the inputs altogether (ablations)
         sizes (map (fn [[g n]] [g (if (contains? (without spec scale) g) 0 n)]) sizes)
         spans (second (reduce (fn [[from acc] [g n]] [(+ from n) (assoc acc g (vec (range from (+ from n))))])
@@ -222,6 +225,10 @@
         gauge-groups (cond (contains? (without spec scale) :gauges) {}
                            named (into {} (for [[g ix] named] [g (mapv #(inc (long %)) ix)]))
                            :else {:gauges (spans :gauges)})
+        rel-groups (when-let [rs (seq (spans :relations))]
+                     (if-let [named (get-in spec [:relation-groups scale])]
+                       (into {} (for [[g ix] named] [g (mapv #(nth rs %) ix)]))
+                       {:relations (vec rs)}))
         flows (filter #(seq (spans %)) [:up :down :contradiction :turn :exposure :feedback])]
     {:width (+ 1 (reduce + (map second sizes))) :finer finer :coarser coarser
      ;; the contradiction summaries theory signs (more strain, more risk):
@@ -233,9 +240,9 @@
                       (vec (concat [base (+ base 2)]
                                    (when (seq coarser) [after-parent])
                                    (when (seq finer) [(+ after-parent (if (seq coarser) 1 0))]))))))
-     :order (vec (concat [:base] (sort (keys gauge-groups)) flows [:all]))
-     :groups (merge gauge-groups (select-keys spans flows)
-                    {:base [] :all (vec (mapcat spans [:gauges :up :down :contradiction :turn :exposure :feedback]))})}))
+     :order (vec (concat [:base] (sort (keys gauge-groups)) flows (sort (keys rel-groups)) [:all]))
+     :groups (merge gauge-groups (select-keys spans flows) rel-groups
+                    {:base [] :all (vec (mapcat spans [:gauges :up :down :contradiction :turn :exposure :feedback :relations]))})}))
 
 (defn- node-model
   "A node's model average: one dynamic logistic per group of its inputs and
@@ -370,7 +377,14 @@
         parent (get (:parent spec) place)
         feedback (concat (map #(or (err % place) 0.0) coarser)
                          (when parent [(or (err scale parent) 0.0)])
-                         (when (pos? level-ix) [(or (mean (keep #(err scale %) kids)) 0.0)]))]
+                         (when (pos? level-ix) [(or (mean (keep #(err scale %) kids)) 0.0)]))
+        ;; relations: other kinds' states and onsets for the place, from before t
+        rel (when-let [f (:relations spec)]
+              (let [{:keys [x] :as r} (f scale place t)
+                    width (get-in spec [:relation-width scale] 0)]
+                (when (not= width (count x))
+                  (throw (ex-info "bnm.lattice: :relations gave the wrong width" {:scale scale :width width :got (count x)})))
+                (update r :x #(mapv double %))))]
     {:x (let [w (without spec scale)]
           (vec (concat [1.0] (when-not (w :gauges) gauges)
                        (when-not (w :up) (concat up-time up-space))
@@ -378,8 +392,9 @@
                        (when-not (w :contradiction) contradiction)
                        (when-not (w :turn) turn)
                        (when-not (w :exposure) exposure)
-                       (when-not (w :feedback) feedback))))
-     :reads (persistent! reads)
+                       (when-not (w :feedback) feedback)
+                       (when-not (w :relations) (:x rel)))))
+     :reads (into (persistent! reads) (when-not ((without spec scale) :relations) (:reads rel)))
      :stated stated
      :resolved resolved
      :strain strain-total
@@ -407,6 +422,8 @@
                   (assoc models ka a kb b))
                 models)))
           models (partition 2 1 levels)))
+
+(declare start step finish)
 
 (defn run
   "Runs the lattice of `spec` from :start to :end (months):
@@ -437,18 +454,41 @@
   {:forecasts [{:scale :place :origin :p :y}] :weights {[scale level]
   [[t weights]]} :models :trace}."
   [spec]
-  (when-let [bad (seq (remove #{:gauges :up :down :contradiction :turn :exposure :feedback}
+  (loop [state (start spec)]
+    (if (> (:t state) (:end spec))
+      (finish state)
+      (recur (step spec state)))))
+
+(defn start
+  "The lattice's state before its first month: what `step` advances."
+  [spec]
+  (when-let [bad (seq (remove #{:gauges :up :down :contradiction :turn :exposure :feedback :relations}
                               (concat (:without spec) (mapcat val (:without-at spec)))))]
     (throw (ex-info (str "bnm.lattice/run: :without names no group " (vec bad)) {:without (:without spec) :without-at (:without-at spec)})))
-  (let [{:keys [scales levels start end]} spec
-        resolutions (memoize (fn [place] (if-let [f (:resolutions spec)] (or (f place) (sorted-set)) (sorted-set))))]
-    (loop [t start
-           st {:book {} :errors {} :tension {} :models {} :pending {} :resolutions resolutions :resets {}}
-           forecasts (transient []) weights {} trace (transient [])]
-      (if (> t end)
-        {:forecasts (persistent! forecasts) :weights weights :trace (persistent! trace)
-         :book (:book st) :models (:models st) :resets (:resets st)
-         :evidence (:evidence st)}
+  (let [resolutions (memoize (fn [place] (if-let [f (:resolutions spec)] (or (f place) (sorted-set)) (sorted-set))))]
+    {:t (:start spec)
+     :st {:book {} :errors {} :tension {} :models {} :pending {} :resolutions resolutions :resets {}}
+     :forecasts [] :weights {} :trace []}))
+
+(defn finish
+  "The result of a run from its last state."
+  [{:keys [st forecasts weights trace]}]
+  {:forecasts forecasts :weights weights :trace trace
+   :book (:book st) :models (:models st) :resets (:resets st)
+   :evidence (:evidence st)})
+
+(defn book
+  "The book of a lattice state: {[scale place] (sorted-map origin entry)}."
+  [state]
+  (get-in state [:st :book]))
+
+(defn step
+  "The lattice's state after month (:t state): every node due then learns
+  what is known and issues its forecasts. A world of kinds steps each
+  kind's lattice in turn (bnm.world-run), each reading the others' books
+  from before t through its :relations."
+  [spec {:keys [t st forecasts weights trace]}]
+  (let [{:keys [scales levels start]} spec]
         (let [due (filter #(zero? (mod (inc (- t start)) (:per %))) scales)
               [st forecasts weights trace]
               (reduce
@@ -499,6 +539,22 @@
                        ;; gauges, which the spec standardizes) against their past
                        g-width (if (contains? (without spec scale) :gauges) 0 (get-in spec [:gauge-width scale] 0))
                        flow-std (get-in st [:flow-std k] (standardizer))
+                       ;; :principal, a set of groups (or :auto, every contradiction, turn
+                       ;; and relation group): the one contributing most at each place under
+                       ;; the all-inputs model's coefficients, recorded in the book
+                       principal-of (when-let [pc (:principal spec)]
+                                      (let [{:keys [groups]} (layout spec scale level-ix)
+                                            all (get-in model [:models :all])
+                                            cands (if (= :auto pc)
+                                                    (set (filter #(or (#{:contradiction :turn :relations} %)
+                                                                      (= "rel" (namespace %)))
+                                                                 (keys groups)))
+                                                    pc)]
+                                        (when all
+                                          (fn [x] (let [mx (reduce (fn [v [i j]] (assoc v j (nth (d/means all) i)))
+                                                                   (vec (repeat (count x) 0.0))
+                                                                   (map-indexed vector (:inputs all)))]
+                                                    (rel/principal mx x groups cands))))))
                        made (vec (for [place places
                                        :let [g ((:gauges spec) scale place t)
                                              {:keys [x reads stated tension strain resolved]} (inputs spec st scale scale-spec level-ix place t g)
@@ -514,13 +570,14 @@
                                              {pf :f pq :q} (d/predictive model x o)
                                              target ((:target spec) scale place t)]]
                                    {:place place :x x :raw-flows raw-flows :o o :p p :target target :reads reads :stated stated :tension tension :strain strain
-                                    :resolved resolved :f pf :q pq}))
-                       st (reduce (fn [st {:keys [place p stated tension strain resolved f q]}]
+                                    :resolved resolved :f pf :q pq :principal (when principal-of (principal-of x))}))
+                       st (reduce (fn [st {:keys [place p stated tension strain resolved f q principal]}]
                                     (-> st
                                         (update-in [:book [scale place]] (fnil assoc (sorted-map)) t
                                                    ;; a node's state: the spec's when it gives one, else its
                                                    ;; forecast's log odds; f and q its linear predictor's moments
-                                                   {:p p :s (or stated (logit p)) :strain strain :f f :q q})
+                                                   (cond-> {:p p :s (or stated (logit p)) :strain strain :f f :q q}
+                                                     principal (assoc :principal principal)))
                                         (assoc-in [:tension [scale place]] tension)
                                         (cond-> resolved (update-in [:resets [scale place]] (fnil into []) resolved))))
                                   st made)
@@ -531,11 +588,11 @@
                                                            (for [{:keys [place x o p target]} made :when target]
                                                              {:place place :x x :o o :p p :y (:y target) :known-at (:known-at target)}))))]
                    [st
-                    (reduce conj! forecasts (for [{:keys [place p target]} made]
+                    (into forecasts (for [{:keys [place p target]} made]
                                               {:scale scale :place place :origin t :p p :y (:y target)}))
                     (update weights k (fnil conj []) [t (d/weights model)])
                     (if (:trace spec)
-                      (reduce conj! trace (for [{:keys [place reads x p o]} made]
+                      (into trace (for [{:keys [place reads x p o]} made]
                                             (cond-> {:scale scale :level level :place place :origin t :reads reads
                                                      :learned (map #(select-keys % [:known-at]) ready)}
                                               (= :inputs (:trace spec)) (assoc :x x :p p :o o))))
@@ -546,7 +603,7 @@
               st (if-let [s (:coupling spec)]
                    (reduce (fn [st sc] (update st :models couple-levels (:name sc) (map first levels) s)) st due)
                    st)]
-          (recur (inc t) st forecasts weights trace))))))
+          {:t (inc t) :st st :forecasts forecasts :weights weights :trace trace})))
 
 (defn weights
   "The model-averaging weights of the node at `scale` and `level` after its

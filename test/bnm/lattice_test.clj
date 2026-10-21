@@ -427,3 +427,46 @@
         (check r (fn [{:keys [f q]}]
                    (lt/logit-of (reduce + (for [[wt o] (lt/offsets-under f q (/ 1.0 12.0))] (* wt (m/expit o)))))))
         (is (every? #(< 0.0 (:p %) 1.0) rows))))))
+
+(deftest relations-are-their-own-groups
+  ;; :relations (fn [scale place t]) -> {:x [...] :reads [...]}: inputs from
+  ;; other kinds, a group per parent (:relation-groups), standardized as the
+  ;; node's other flows; a node whose outcome another kind's state drives
+  ;; learns it there
+  (let [g (m/rng 5)
+        drive (into {} (for [c countries t (range months)] [[c t] (m/normal! g)]))
+        ys (into {} (for [c countries t (range months)] [[c t] (< (m/next-double! g) (m/expit (- (* 1.5 (drive [c t])) 2.0)))]))
+        base {:scales [{:name :month :per 1 :horizon 1 :discount 0.99}]
+              :levels [[:country countries]]
+              :parent {} :start 0 :end 400 :forget 0.99
+              :target (fn [_ place t] {:y (ys [place (inc t)]) :known-at (inc t)})
+              :gauges (fn [_ _ _] [(m/normal! g)])
+              :gauge-width {:month 1}
+              :trace :inputs}
+        rel (fn [_ place t] {:x [(drive [place (inc t)]) (m/normal! g)]
+                             :reads [{:dir :relation :kind "other" :place place :origin (dec t)}]})
+        r (lt/run (assoc base :relations rel :relation-width {:month 2}
+                         :relation-groups {:month {:rel/driver [0] :rel/noise [1]}}))
+        ws (lt/weights r :month :country)]
+    (is (contains? ws :rel/driver))
+    (is (> (+ (get ws :rel/driver 0.0) (get ws :all 0.0)) 0.8) ws)
+    (is (< (get ws :rel/noise 0.0) 0.1))
+    (is (some #(= :relation (:dir %)) (mapcat :reads (:trace r))) "its reads recorded")
+    (testing "dropped with :without"
+      (let [r2 (lt/run (assoc base :relations rel :relation-width {:month 2} :without #{:relations}))]
+        (is (not (contains? (lt/weights r2 :month :country) :rel/driver)))))))
+
+(deftest the-principal-contradiction-is-recorded
+  (let [g (m/rng 5)
+        drive (into {} (for [c countries t (range months)] [[c t] (m/normal! g)]))
+        ys (into {} (for [c countries t (range months)] [[c t] (< (m/next-double! g) (m/expit (- (* 1.5 (drive [c t])) 2.0)))]))
+        r (lt/run {:scales [{:name :month :per 1 :horizon 1 :discount 0.99}]
+                   :levels [[:country countries]] :parent {} :start 0 :end 300 :forget 0.99
+                   :target (fn [_ place t] {:y (ys [place (inc t)]) :known-at (inc t)})
+                   :gauges (fn [_ _ _] [(m/normal! g)]) :gauge-width {:month 1}
+                   :relations (fn [_ place t] {:x [(drive [place (inc t)]) (m/normal! g)] :reads []})
+                   :relation-width {:month 2} :relation-groups {:month {:rel/driver [0] :rel/noise [1]}}
+                   :principal :auto})
+        late (for [c countries [o e] (get-in r [:book [:month c]]) :when (> o 200)] (first (:principal e)))]
+    (is (every? some? late))
+    (is (> (/ (count (filter #{:rel/driver} late)) (double (count late))) 0.8) "the driver leads")))

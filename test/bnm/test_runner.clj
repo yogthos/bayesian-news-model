@@ -24,6 +24,7 @@
             [bnm.reconcile-test]
             [bnm.economic-events-test]
             [bnm.sequencing-test]
+            [bnm.relations-test]
             [bnm.anatomy-test]
             [bnm.calm-test]
             [bnm.sync-test]
@@ -57,6 +58,7 @@
     bnm.reconcile-test
     bnm.economic-events-test
     bnm.sequencing-test
+    bnm.relations-test
     bnm.anatomy-test
     bnm.calm-test
     bnm.sync-test
