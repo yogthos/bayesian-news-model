@@ -18,6 +18,7 @@
             [bnm.onsets-test]
             [bnm.precursors-test]
             [bnm.paired-test]
+            [bnm.lattice-test]
             [bnm.calm-test]
             [bnm.sync-test]
             [bnm.ingest-test]
@@ -44,6 +45,7 @@
     bnm.onsets-test
     bnm.precursors-test
     bnm.paired-test
+    bnm.lattice-test
     bnm.calm-test
     bnm.sync-test
     bnm.ingest-test
