@@ -770,3 +770,12 @@ the same (named starts in 2000).
    (bnm.paired), and the original test for the record;
 2. the chosen variant against A on the quarter nodes' own outcomes, per
    kind (bnm.paired --scale), Holm over the six.
+
+**Design chosen, 21 October 2026, before any 2003-2022 score (trial 41).**
+Mean over the six kinds of the paired Brier difference against A, quarter
+nodes' own outcomes 1980-2002, lead and w2 averaged: C reconciled
++0.00336, B reconciled +0.00334, A reconciled +0.00294, C +0.00191, B
++0.00190. **C reconciled** is the design tested. Every political kind
+gains from the year (+0.0014 to +0.0078 by window); banking loses with the
+year's offset alone (w2 -0.0064) and nearly recovers when reconciled
+(-0.0010).

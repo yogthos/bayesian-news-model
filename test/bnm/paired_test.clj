@@ -67,5 +67,7 @@
     (is (= {["AAA" (+ 2 (* 12 2005))] [0.1 false] ["AAA" (+ 8 (* 12 2005))] [0.4 true]}
            (pd/read-lattice "test-paired-lattice" "quarter-lead" 2003 2022)))
     (is (empty? (pd/read-lattice "test-paired-lattice" "quarter-lead" 1980 2002)))
+    (is (= 2 (count (pd/read-lattice "test-paired-lattice" "quarter" 2003 2022))) "quarter: both windows' nodes")
+    (is (every? #(= 3 (count %)) (keys (pd/read-lattice "test-paired-lattice" "quarter" 2003 2022))) "keyed by window too")
     (doseq [f [(str dir "/forecasts.tsv")]] (clojure.java.io/delete-file f))
     (clojure.java.io/delete-file dir)))

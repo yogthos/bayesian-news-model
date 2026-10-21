@@ -125,16 +125,17 @@
   "{[place origin] [p y]} of a lattice run's country forecasts at `scale`,
   resolved only, from origins in the years `from` to `to`: the quarter nodes'
   at every quarter end, the year's and coarser nodes' at the end of each
-  year."
+  year; \"quarter\", both quarter nodes' (keyed by window too)."
   [run scale from to]
   (let [quarter? (str/starts-with? scale "quarter")]
     (with-open [r (clojure.java.io/reader (str "data/runs/" run "/forecasts.tsv"))]
       (reduce (fn [acc line]
                 (let [[s place o p y] (str/split line #"\t")
                       o (parse-long o)]
-                  (if (and (= s scale) (= 3 (count place)) (#{"true" "false"} y)
+                  (if (and (if (= scale "quarter") (str/starts-with? s "quarter") (= s scale))
+                           (= 3 (count place)) (#{"true" "false"} y)
                            (= (if quarter? 2 11) (mod o (if quarter? 3 12))) (<= from (quot o 12) to))
-                    (assoc acc [place o] [(parse-double p) (= y "true")])
+                    (assoc acc (if (= scale "quarter") [place o s] [place o]) [(parse-double p) (= y "true")])
                     acc)))
               {} (line-seq r)))))
 
