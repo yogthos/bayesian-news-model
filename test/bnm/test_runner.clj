@@ -22,6 +22,7 @@
             [bnm.lattice-banking-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
+            [bnm.economic-events-test]
             [bnm.anatomy-test]
             [bnm.calm-test]
             [bnm.sync-test]
@@ -53,6 +54,7 @@
     bnm.lattice-banking-test
     bnm.political-gauges-test
     bnm.reconcile-test
+    bnm.economic-events-test
     bnm.anatomy-test
     bnm.calm-test
     bnm.sync-test
