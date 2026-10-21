@@ -44,7 +44,7 @@
 
 (def default-bench "history")
 
-(defn- read-preds
+(defn read-preds
   "{[kind window] {model {[unit q] [p y]}}}, resolved rows only."
   [path kinds]
   (with-open [r (io/reader path)]

@@ -101,11 +101,11 @@
 
 (defn unused-groups
   "The input groups that no model names: a model's inputs are its name
-  without a gbt-, at-, knn-, hs-, mt- or hier- prefix, split on +, each part without
+  without a gbt-, at-, knn-, hs-, mt-, hier- or cs- prefix, split on +, each part without
   -placebo."
   [models groups]
   (let [used (set (for [m models
-                        part (clojure.string/split (clojure.string/replace (name m) #"^(gbt|at|knn|hs|mt|hier)-" "") #"\+")]
+                        part (clojure.string/split (clojure.string/replace (name m) #"^(gbt|at|knn|hs|mt|hier|cs)-" "") #"\+")]
                     (clojure.string/replace part #"-placebo$" "")))]
     (vec (remove used groups))))
 

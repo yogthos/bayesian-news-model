@@ -71,3 +71,9 @@
     (is (<= (:rounds capped) (:rounds on/hier-opts)))
     (is (< (:rounds cold) 100) "it settles")
     (is (<= (:rounds warm) 2) "started where it settled, it stops at once")))
+
+(deftest calm-slopes-double-the-inputs
+  ;; cs-<inputs>: the inputs, then each times the calm flag (no known onset
+  ;; in ten years), so a calm country gets its own intercept and slopes
+  (is (= [1.0 2.0 3.0 1.0 2.0 3.0] (vec (on/with-calm (double-array [1.0 2.0 3.0]) 1.0))))
+  (is (= [1.0 2.0 3.0 0.0 0.0 0.0] (vec (on/with-calm (double-array [1.0 2.0 3.0]) 0.0)))))

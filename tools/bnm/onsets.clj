@@ -89,6 +89,7 @@
             [bnm.mix :as mix]
             [bnm.named :as nm]
             [bnm.onset :as o]
+            [bnm.precursors :as pc]
             [bnm.slow :as slow]
             [bnm.slow-train :as st]
             [bnm.ties :as ties]
@@ -179,6 +180,17 @@
            (fn [^doubles x] (vec (take-last 2 x)))]
    "departure" [(count nm/departure-names) (fn [_] (nm/load-event-departure mix-path))]
    "breaks" [(count nm/break-names) (fn [_] (nm/load-event-breaks mix-path))]
+   ;; trial 34: displacement, trigger, burstiness and neighbour co-movement
+   ;; of the event streams against the country's own past (bnm.precursors)
+   "precursors" [(count pc/names)
+                 (fn [{:keys [units rows]}]
+                   (let [counts (pc/load-counts mix-path)
+                         near (:subregion (peers units))]
+                     (into {} (for [[u rs] (group-by :unit rows)
+                                    :let [c (counts u)]
+                                    :when c
+                                    [q f] (pc/features-for {:counts c :peers (keep counts (near u))} (distinct (map :q rs)))]
+                                [[u q] (double-array (pc/->vector f))]))))]
    "histories" [(* 2 (count history-kinds))
                 (fn [{:keys [events rows]}]
                   (into {} (for [{:keys [unit q]} rows] [[unit q] (o/histories events history-kinds unit q)])))]})
@@ -364,6 +376,19 @@
 (defn- dot ^double [^doubles beta ^doubles x]
   (loop [i 0 acc 0.0] (if (< i (alength beta)) (recur (inc i) (+ acc (* (aget beta i) (aget x i)))) acc)))
 
+(defn with-calm
+  "The cs-<inputs> models' inputs: x, then x times `calm` (1 when the
+  country has had no known onset of the kind in ten years, else 0), so the
+  calm countries, where the scores are counted, get their own intercept and
+  slopes (Mueller & Rauh 2022: what predicts an onset out of peace is not
+  what predicts one where conflict is recent)."
+  ^doubles [^doubles x ^double calm]
+  (let [n (alength x)
+        out (double-array (* 2 n))]
+    (System/arraycopy x 0 out 0 n)
+    (dotimes [j n] (aset out (+ n j) (* calm (aget x j))))
+    out))
+
 (defn country-means
   "The between part of the hier- models' inputs (Mundlak 1978; Bafumi &
   Gelman 2006; Bell & Jones 2015): each unit's mean of the inputs from
@@ -516,6 +541,7 @@
                     full))
         prepared (mapv (fn [{:keys [unit q] :as r}]
                          (assoc r :full (full-of r (o/history-features (get known unit (sorted-set)) q))
+                                  :calm (if (o/hard-row? (get known unit (sorted-set)) q) 1.0 0.0)
                                   :y (when (<= (+ q (second window)) last-q) (labels-q r))))
                        usable)
         ;; the other kinds' rows on the same inputs, for the mt- models; only
@@ -529,7 +555,8 @@
                                                           (pick full idx))
                                                         3 tail-share)))
             run-model
-            (fn [idx prior flags? shrunk? hier?]
+            (fn [idx prior flags? shrunk? hier? & [calm?]]
+              ;; calm?: the inputs and the inputs times the calm flag (with-calm);
               ;; flags?: inputs past the constant and history as at-risk
               ;; flags (o/tail-flags), their cuts from the rows known each year;
               ;; hier?: the inputs then each country's means of those past the
@@ -537,6 +564,7 @@
               ;; with the intercepts' variances (fit-hier), `prior` its start
               (let [k (cond flags? (+ 3 (* 2 (- (count idx) 3)))
                             hier? (- (* 2 (count idx)) 3)
+                            calm? (* 2 (count idx))
                             :else (count idx))]
                 (loop [[yr & more] (filter #(>= % (+ 10 (first years))) years)
                        beta nil
@@ -549,15 +577,16 @@
                           known (filter #(<= (o/resolves-at (:q %) window (or lag 0)) q0) prepared)
                           xf (cond
                                flags? (let [cuts (cuts-for idx q0)]
-                                        (fn [_ full] (o/tail-flags (pick full idx) 3 cuts)))
+                                        (fn [{:keys [full]}] (o/tail-flags (pick full idx) 3 cuts)))
                                hier? (let [ext (with-means (country-means (for [{:keys [unit q full]} prepared :when (< q q0)]
                                                                             {:unit unit :q q :x (pick full idx)})
                                                                           3 q0))]
-                                       (fn [unit full] (ext unit (pick full idx))))
-                               :else (fn [_ full] (pick full idx)))
-                          train (for [{:keys [unit q y full]} known
+                                       (fn [{:keys [unit full]}] (ext unit (pick full idx))))
+                               calm? (fn [{:keys [full calm]}] (with-calm (pick full idx) calm))
+                               :else (fn [{:keys [full]}] (pick full idx)))
+                          train (for [{:keys [unit q y] :as r} known
                                       :when (and (some? y) (or y (keep-negative? unit q)))]
-                                  {:x (xf unit full) :y y :q q :unit unit :path (when hier? (hier-path unit))
+                                  {:x (xf r) :y y :q q :unit unit :path (when hier? (hier-path unit))
                                    :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))})
                           [beta fx prior] (cond
                                             (not (some :y train)) [beta fx prior]
@@ -565,9 +594,9 @@
                                                     [(:beta f) (:fx f) (:prior f)])
                                             shrunk? [(lgt/fit-shrunk train k {:prior prior :start beta}) fx prior]
                                             :else [(lgt/fit train k {:prior prior :start beta}) fx prior])
-                          scored (for [{:keys [unit q y full]} prepared
+                          scored (for [{:keys [unit q y] :as r} prepared
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
-                                   [q (checked (lgt/predict beta (xf unit full) (if fx (hier/effect fx (hier-path unit)) 0.0))
+                                   [q (checked (lgt/predict beta (xf r) (if fx (hier/effect fx (hier-path unit)) 0.0))
                                              {:year yr :prior prior :unit unit})
                                     y unit])]
                       (recur more beta fx prior (into preds scored)))))))
@@ -649,12 +678,14 @@
                                 shrunk? (str/starts-with? (name model) "hs-")
                                 mt? (str/starts-with? (name model) "mt-")
                                 hier? (str/starts-with? (name model) "hier-")
+                                calm? (str/starts-with? (name model) "cs-")
                                 inputs (cond tree? (keyword (subs (name model) 4))
                                              flags? (keyword (subs (name model) 3))
                                              knn? (keyword (subs (name model) 4))
                                              shrunk? (keyword (subs (name model) 3))
                                              mt? (keyword (subs (name model) 3))
                                              hier? (keyword (subs (name model) 5))
+                                             calm? (keyword (subs (name model) 3))
                                              :else model)
                                 idx (or (sets inputs)
                                         (throw (ex-info (str "no inputs for model " (name model)) {:model model})))]]
@@ -671,7 +702,7 @@
                                 hier? [#(let [ps (run-model idx (:prior hier-opts) false false true)]
                                           (vector {:prior (:prior (meta ps)) :preds ps}))]
                                 :else (vec (for [p (if (= model :base) [1.0] priors)]
-                                             #(vector {:prior p :preds (run-model idx p flags? shrunk? hier?)}))))})
+                                             #(vector {:prior p :preds (run-model idx p flags? shrunk? hier? calm?)}))))})
               results (in-parallel (or threads 1) (mapcat :tasks specs))
               by-model (loop [[spec & more] specs rs results acc {}]
                          (if-not spec

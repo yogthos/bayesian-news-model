@@ -124,6 +124,7 @@
   (is (empty? (o/unused-groups ["at-named+mix"] ["mix"])))
   (is (empty? (o/unused-groups ["knn-named+mix" "hs-named+ties"] ["mix" "ties"])))
   (is (empty? (o/unused-groups ["hier-named+mix"] ["mix"])))
+  (is (empty? (o/unused-groups ["cs-mix"] ["mix"])))
   (is (= ["mix"] (o/unused-groups ["mixed"] ["mix"])) "whole names only"))
 
 (deftest forecasts-for-groups-of-units
