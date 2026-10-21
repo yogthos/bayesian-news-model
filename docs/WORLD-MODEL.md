@@ -162,6 +162,86 @@ and scale, and a layer of **relation models** links them.
 - Pesaran, Schuermann & Weiner, JBES 2004 (GVAR); Diebold & Yilmaz, connectedness
 - Polson, Scott & Windle, Bayesian inference for logistic models using Pólya-gamma latent variables, JASA 2013; Schein et al., Bayesian Poisson Tucker decomposition for international relations, ICML 2016; Poisson-randomized gamma dynamical systems, NeurIPS 2019
 
+## Chinese approaches, and what they change
+
+- **Open complex giant systems and meta-synthesis** (Qian Xuesen; Yu
+  Jingyuan, Dai Ruwei 2001). A society is an open complex giant system:
+  many kinds of subsystems, many levels, open to its surroundings, with
+  people in it. No single model of it is adequate; the method is
+  "from qualitative to quantitative": experts' hypotheses, data and models
+  integrated and revised in a loop (the hall for workshop of
+  metasynthetic engineering). *For us*: every relation edge is an explicit
+  hypothesis with its source (theory, anatomy, sequencing), its prior and
+  its learned weight through time, kept in one registry and reviewed; the
+  model's record of which hypotheses earned weight is the quantitative
+  half of the loop.
+- **Wuli-Shili-Renli** (Gu Jifa & Zhu Zhichang 1994): a system is known
+  through its material order (wuli), the logic of its processes and
+  institutions (shili) and its human relations (renli). *For us*: the
+  dimensions fall into three tiers, matching base and superstructure: the
+  material base (output, prices, food and energy, demography, sectoral
+  balance sheets), institutions and processes (regime, fiscal and
+  financial systems, the military's place) and actors (protest,
+  violence, coups, elites, public mood). The graph's prior runs base to
+  institutions to actors, with feedback edges back (protest to regime
+  change, war to output), so its sparsity has a structure rather than
+  being a list.
+- **Parallel systems, ACP** (Wang Fei-Yue, from 2004): artificial
+  societies to represent the system, computational experiments to
+  evaluate and predict, parallel execution in which the artificial system
+  runs beside the real one and learns from their divergence. *For us*:
+  the recoupled world model is the artificial system; scenarios are its
+  computational experiments (set a parent's shock, follow its children);
+  its divergence from what happens is tracked continuously and fed back
+  (the lattice's feedback group, now across dimensions).
+- **Event logic graphs** (Ding, Li, Liu & Liao 2019, Harbin Institute of
+  Technology): events as nodes, with sequential, causal, conditional and
+  is-a edges, mined from text, to predict what follows. *For us*: the
+  fast scales' event streams (GDELT's coded event types, weeks and
+  months) give a data-driven graph of which event types follow which;
+  the is-a edges are our tiers (specific event types roll up into
+  kinds and kinds into dimensions); its edges are candidates for the
+  fast scales' relations, as the sequencing table is for the slow ones.
+- **Risk coupling** (the N-K model and coupling-coordination degree in
+  Chinese safety and systems engineering): risk rises with the number of
+  factors coupled at once, measured by the information in their joint
+  occurrence, beyond each factor's own. *For us*: a coupling input, how
+  many dimensions are stressed together at a place and the interaction
+  their pre-2003 co-occurrence earned (the polycrisis), generalizing the
+  breadth invariant from stocks to dimensions.
+- **Sectoral transmission** (CASS's national balance sheets, Li Yang and
+  colleagues; time-varying spillover networks of local government debt,
+  real estate and banks): risk passes between sectors through their
+  balance sheets' mismatches, and which sector transmits and which
+  receives changes over time (local government debt a net transmitter
+  until 2020, a receiver after). *For us*: the financial dimension is
+  sectors (households, firms, government, banks, external) linked by
+  their stocks, and the world model reports connectedness: each
+  dimension's share of every other's forecast variance, by period, so
+  the transmitters and receivers through time are an output.
+- **Integration for forecasting** (TEI@I, Wang Shouyang): text mining,
+  econometrics and learned models integrated, decomposing a complex
+  series into parts, modelling each and recombining. The decouple and
+  recouple design is this in Bayesian form.
+- **Societal risk perception** (Tang Xijin): search terms and forum
+  posts measure how the public perceives risk, and negative moods predict
+  it. *For us*: the actors' tier needs perception as well as events: the
+  event streams' tone and, where available, search interest.
+- **The principal contradiction** (Mao, On Contradiction, 1937): of a
+  process's many contradictions one at each stage is principal and
+  determines the others, and which one it is shifts. No formal
+  quantitative version turned up. *For us* it can be one: at each place
+  and origin, the tension or relation contributing most to the forecast
+  (its weight times its strain) is the principal contradiction; its
+  identity and a recent shift in it are inputs, and its history is how
+  the model explains a place.
+- **Grey systems** (Deng Julong): models for small samples and poor
+  information (GM(1,1)), grey relational analysis ranking factors by the
+  similarity of their curves to an outcome's. Their critique is that they
+  drop the statistical inference; informative priors do the small-sample
+  work here. Grey relational degree is kept only as a robustness check on
+  the sequencing of the short catalogues (protest from 1980).
+
 ## The concrete design
 
 ### The model, in one equation
@@ -275,3 +355,24 @@ excursion kernels; the PCMCI idea in our setting). The output is the
 candidate graph, edges with signs and lags, written to
 data/runs/sequencing/ and docs/SEQUENCING.md, reviewed before any model
 reads it.
+
+### What the Chinese approaches add to the design
+
+1. **Tiers** (wuli, shili, renli): each kind is assigned to a tier; the
+   graph's candidate edges default to base to institutions to actors, with
+   feedback edges admitted only with sequencing support.
+2. **A hypothesis registry** (meta-synthesis): docs/RELATIONS.md and a
+   data file listing every edge, its source, prior and, after each run,
+   its weight path; edges that never earn weight are reported, not
+   silently kept.
+3. **Coupling across dimensions**: the number of dimensions above their
+   own calm at a place, and their pairwise co-stress, as inputs (the
+   polycrisis term).
+4. **The principal contradiction**: per place and origin, the dominant
+   contribution among tensions and relations, its identity, and whether
+   it shifted in the last year; written out for every place.
+5. **Connectedness and parallel running**: the world simulation reports
+   each dimension's share of the others' forecast variance by period, and
+   its divergence from outcomes is fed back.
+6. **Fast-scale event graph and perception**: from the event streams,
+   which event types follow which (candidate fast edges) and their tone.
