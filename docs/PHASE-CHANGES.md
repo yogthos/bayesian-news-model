@@ -661,6 +661,9 @@ quarter rows aligned with the scoring tools.
    built up, reset at resolution) improve the year-scale forecast of
    banking crises in years no design choice saw.
 The first registered gain of the hierarchy and dialectic (trials 31-39).
+On the original test (anticipation within the quarter, Bonferroni over 39)
+the quarter nodes pass 0/4 counted cells, as their paired result says:
+level with named.
 
 ## Pre-registered, 21 October 2026: the lattice for the political kinds (trial 40)
 
