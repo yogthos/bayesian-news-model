@@ -723,7 +723,8 @@ rows aligned with the scoring tools.
 2. The quarter nodes against `named`, pooled over the five kinds: Brier
    +0.00001 [-0.00010 +0.00010], log score +0.00002 [-0.00143 +0.00113]:
    level, no gain; no cell differs after Romano-Wolf (violence surges'
-   best, +0.0005 to +0.0006 at w2).
+   best, +0.0005 to +0.0006 at w2). On the original test (Bonferroni over
+   40) they pass 0/20 counted cells.
 
 With trial 39: the accumulated contradictions improve the year-scale
 forecast for banking crises and violence surges, the two kinds whose
