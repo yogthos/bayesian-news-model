@@ -23,7 +23,7 @@
   standardized by the means and spreads of the origins before it, so
   nothing is scaled by the future.
 
-    jolt -A:tools -M -m bnm.lattice-banking --out lattice-banking
+    jolt -A:tools -M -m bnm.lattice-banking --out lattice-banking [--without contradiction,feedback] [--coupling 0]
 
   Writes data/runs/<out>/preds.tsv in bnm.onsets' format (the quarter
   nodes' country forecasts as kind banking_crisis, windows lead and w2,
@@ -286,7 +286,7 @@
               (into {} (for [[g ixs] (get priors scale) [i mv] ixs] [(nth (groups g) i) mv])))}))
 
 (defn -main [& args]
-  (let [{:keys [out end]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [out end without coupling]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         out (or out "lattice-banking")
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
@@ -301,7 +301,10 @@
         months (range (+ start 2) (inc end) 3)
         wc (nm/world-credit db units months)
         _ (println (count units) "countries; building gauges")
-        sp (spec {:db db :wc wc :jst jst :cat cat :units units :end end :regimes (mh/read-regimes)})
+        sp (cond-> (spec {:db db :wc wc :jst jst :cat cat :units units :end end :regimes (mh/read-regimes)})
+             ;; ablations: --without contradiction,feedback  --coupling 0
+             without (assoc :without (set (map keyword (str/split without #","))))
+             coupling (assoc :coupling (let [c (parse-double coupling)] (when (pos? c) c))))
         _ (println "running the lattice")
         r (lt/run sp)]
     (io/make-parents (str dir "/x"))
