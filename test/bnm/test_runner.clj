@@ -23,6 +23,7 @@
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
             [bnm.economic-events-test]
+            [bnm.sequencing-test]
             [bnm.anatomy-test]
             [bnm.calm-test]
             [bnm.sync-test]
@@ -55,6 +56,7 @@
     bnm.political-gauges-test
     bnm.reconcile-test
     bnm.economic-events-test
+    bnm.sequencing-test
     bnm.anatomy-test
     bnm.calm-test
     bnm.sync-test
