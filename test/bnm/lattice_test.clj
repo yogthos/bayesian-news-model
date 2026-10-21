@@ -299,3 +299,28 @@
             rate (/ (count (filter true? (vals ys))) (double (count ys)))]
         (is (< (Math/abs (- first-p 0.5)) 0.01) "nothing resolved yet: an even prior")
         (is (< (Math/abs (- (:p (last (:forecasts clim))) rate)) 0.05))))))
+
+(deftest strain-is-directional
+  ;; credit running ahead of wages strains the system; wages ahead of credit does not
+  (is (= [0.0 2.0] (lt/strain [[0 1] [1 0]] [1.0 3.0])))
+  (let [acc (lt/accumulate {:decay 0.7} [[0 2.0 nil] [1 -5.0 nil] [2 1.0 nil]])]
+    (is (< (Math/abs (- (acc 1) 1.4)) 1e-12) "a gap the other way adds nothing; the strain only decays")
+    (is (< (Math/abs (- (acc 2) (+ 1.0 (* 0.7 1.4)))) 1e-12))))
+
+(deftest the-turn-is-a-boom-receding-from-its-peak
+  ;; flow rises to a peak, then falls: the drawdown, alone and times the stretched stock
+  (let [hist [0.0 1.0 2.0 3.0 2.5 1.5]
+        turns (map #(lt/turn-of (subvec hist 0 (inc %)) 2.0 4) (range (count hist)))]
+    (is (= [0.0 0.0 0.0 0.0] (map first (take 4 turns))) "rising: no turn")
+    (is (= [0.5 1.5] (map first (drop 4 turns))) "falling from its peak of 3")
+    (is (= [1.0 3.0] (map second (drop 4 turns))) "times the stock's stretch, 2")
+    (is (= [0.0 0.0] (lt/turn-of [3.0 2.0] -1.0 4)) "an unstretched stock: no turn")))
+
+(deftest coarser-strain-comes-down
+  (let [w (contradiction-world 9)
+        sp (assoc (contradiction-spec w) :end 120 :trace true
+                  :tensions {:year [[0 0]]})
+        r (lt/run sp)
+        month-reads (for [{:keys [scale reads]} (:trace r) :when (= scale :month) rd reads
+                          :when (and (= :down (:dir rd)) (= :year (:scale rd)))] rd)]
+    (is (seq month-reads) "the month reads the year's last state and strain")))

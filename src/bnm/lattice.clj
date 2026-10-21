@@ -67,11 +67,30 @@
   [pairs gauges]
   (mapv (fn [[i j]] (- (double (nth gauges i)) (double (nth gauges j)))) pairs))
 
+(defn strain
+  "The strain of each of `pairs` ([i j]) in `gauges`: how far i runs ahead
+  of j, nothing when it does not. A contradiction has a direction: credit
+  ahead of wages strains a system, wages ahead of credit does not."
+  [pairs gauges]
+  (mapv (fn [[i j]] (Math/max 0.0 (- (double (nth gauges i)) (double (nth gauges j))))) pairs))
+
+(defn turn-of
+  "The turn of a boom in `history` (a flow's values, the latest last): its
+  drawdown from its peak over the last `window` values, counted only while
+  the `stock` is stretched (above zero), and that times the stock's
+  stretch. A stretched stock whose flow reverses is the moment the
+  quantity turns into a change of quality (docs/ANATOMY.md)."
+  [history stock window]
+  (let [recent (take-last window history)
+        dd (if (seq recent) (Math/max 0.0 (- (double (apply max recent)) (double (last recent)))) 0.0)
+        stretched (Math/max 0.0 (double stock))]
+    [(if (pos? stretched) dd 0.0) (* stretched dd)]))
+
 (defn accumulate
-  "Tension accumulated through time, for the tests and the record:
-  `entries` [t gap info] in time order, info {:resolved-at k} when a crisis
-  seen at t becomes known at k. {t accumulated}: each period the tension
-  decays by :decay and adds the gap's size, and resets to zero first in the
+  "Strain accumulated through time, for the tests and the record: `entries`
+  [t gap info] in time order, info {:resolved-at k} when a crisis seen at t
+  becomes known at k. {t accumulated}: each period the strain decays by
+  :decay and adds the gap's positive part, and resets to zero first in the
   first period at or after a crisis became known."
   [{:keys [decay]} entries]
   (loop [[[t gap info] & more] entries acc 0.0 resolve-at [] out {}]
@@ -79,7 +98,7 @@
       out
       (let [due (filter #(<= % t) resolve-at)
             acc (if (seq due) 0.0 acc)
-            acc (+ (Math/abs (double gap)) (* decay acc))
+            acc (+ (Math/max 0.0 (double gap)) (* decay acc))
             resolve-at (cond-> (vec (remove #(<= % t) resolve-at)) (:resolved-at info) (conj (:resolved-at info)))]
         (recur more acc resolve-at (assoc out t acc))))))
 
@@ -105,8 +124,9 @@
         sizes [[:gauges gw]
                [:up (+ (* 2 (count finer)) (if kids? 2 0))]
                [:down (+ (count coarser) n-anc)]
-               [:contradiction (+ (* 3 (if (pos? n-anc) 1 0)) (* 3 (count coarser)) (* 2 (count finer))
+               [:contradiction (+ (* 3 (if (pos? n-anc) 1 0)) (* 4 (count coarser)) (* 2 (count finer))
                                   (if kids? 1 0) (* 2 n-tensions))]
+               [:turn (* 2 (count (get-in spec [:turns scale])))]
                [:exposure (* ew (+ (count coarser) n-anc))]
                [:feedback (+ (count coarser) (if (pos? n-anc) 1 0) (if kids? 1 0))]]
         ;; :without drops groups from the inputs altogether (ablations)
@@ -117,11 +137,11 @@
         gauge-groups (cond (contains? (:without spec) :gauges) {}
                            named (into {} (for [[g ix] named] [g (mapv #(inc (long %)) ix)]))
                            :else {:gauges (spans :gauges)})
-        flows (filter #(seq (spans %)) [:up :down :contradiction :exposure :feedback])]
+        flows (filter #(seq (spans %)) [:up :down :contradiction :turn :exposure :feedback])]
     {:width (+ 1 (reduce + (map second sizes))) :finer finer :coarser coarser
      :order (vec (concat [:base] (sort (keys gauge-groups)) flows [:all]))
      :groups (merge gauge-groups (select-keys spans flows)
-                    {:base [] :all (vec (mapcat spans [:gauges :up :down :contradiction :exposure :feedback]))})}))
+                    {:base [] :all (vec (mapcat spans [:gauges :up :down :contradiction :turn :exposure :feedback]))})}))
 
 (defn- node-model
   "A node's model average: one dynamic logistic per group of its inputs and
@@ -195,9 +215,10 @@
         stated (when-let [f (:state spec)] (f scale place t gauges))
         own (or stated (some-> (get-in book [[scale place] (- t per)]) :s) 0.0)
         ;; the dialectic, like against like: the place against its parent at
-        ;; this scale, and against each coarser scale; each gap, its size,
-        ;; and its size accumulated through time
-        {:keys [rel fin tacc last-t]} (get tension [scale place] {:rel {} :fin {} :last-t Long/MIN_VALUE})
+        ;; this scale, and against each coarser scale; each gap, and the
+        ;; strain each way (the place above, the place below) accumulated
+        ;; through time
+        {:keys [rel fin tacc flows last-t]} (get tension [scale place] {:rel {} :fin {} :flows {} :last-t Long/MIN_VALUE})
         ;; resolutions: the onsets at the place that became known since the
         ;; node's last period (the spec's :resolutions, one per onset)
         resolved (seq (subseq (resolutions place) > last-t <= t))
@@ -209,19 +230,37 @@
                           (map vector coarser down-time))
         rel' (into {} (for [[r other] relations
                             :let [gap (if other (- own other) 0.0)]]
-                        [r {:gap gap :acc (+ (Math/abs gap) (carry (get-in rel [r :acc])))}]))
-        ;; tension built at finer scales, re-accumulated at this one's pace:
-        ;; months of local tension become years of it
+                        [r {:gap gap
+                            :above (+ (Math/max 0.0 gap) (carry (get-in rel [r :above])))
+                            :below (+ (Math/max 0.0 (- gap)) (carry (get-in rel [r :below])))}]))
+        ;; the strain each coarser scale has accumulated, carried down (from before t)
+        coarser-strain (map (fn [c] (or (some-> (last (issued book c place Long/MIN_VALUE (dec t))) val :strain) 0.0)) coarser)
+        ;; strain built at finer scales, re-accumulated at this one's pace:
+        ;; months of local strain become years of it
         fin' (into {} (for [[f es] finer-entries
-                            :let [now (or (mean (keep (comp :acc val) es)) 0.0)]]
+                            :let [now (or (mean (keep (comp :strain val) es)) 0.0)]]
                         [f {:now now :acc (+ now (carry (get-in fin [f :acc])))}]))
-        kid-acc (when (pos? level-ix) [(or (mean (keep :acc kid-entries)) 0.0)])
-        tgaps (tension-gaps (get-in spec [:tensions scale]) gauges)
-        tacc (mapv (fn [g a] (+ (Math/abs g) (carry a))) tgaps (or tacc (repeat (count tgaps) 0.0)))
-        contradiction (concat (mapcat (fn [[r _]] (let [{:keys [gap acc]} (rel' r)] [gap (Math/abs gap) acc])) relations)
+        kid-strain (when (pos? level-ix) [(or (mean (keep :strain kid-entries)) 0.0)])
+        pairs (get-in spec [:tensions scale])
+        tgaps (tension-gaps pairs gauges)
+        tacc (mapv (fn [g a] (+ (Math/max 0.0 g) (carry a))) tgaps (or tacc (repeat (count tgaps) 0.0)))
+        contradiction (concat (mapcat (fn [[r _]] (let [{:keys [gap above below]} (rel' r)] [gap above below])) relations)
+                              coarser-strain
                               (mapcat (fn [[f _]] [(get-in fin' [f :now]) (get-in fin' [f :acc])]) finer-entries)
-                              kid-acc
+                              kid-strain
                               (mapcat vector tgaps tacc))
+        ;; the place's total accumulated strain, what it passes up and down:
+        ;; its opposed aspects' strain (directional, from theory) and its
+        ;; disagreement with its parent either way (a place out of step with
+        ;; its parent is a contradiction whichever way it runs). Its gaps
+        ;; against coarser scales stay its own inputs: they set a state
+        ;; against another scale's, which other nodes cannot read like for like
+        strain-total (+ (reduce + tacc) (if-let [{:keys [above below]} (rel' :parent)] (+ above below) 0.0))
+        ;; the turn: each boom's drawdown from its peak while its stock is stretched
+        turn-specs (get-in spec [:turns scale])
+        flows' (into {} (for [[_ f w] turn-specs]
+                          [f (vec (take-last w (conj (get flows f []) (double (nth gauges f)))))]))
+        turn (mapcat (fn [[stock f w]] (turn-of (flows' f) (nth gauges stock) w)) turn-specs)
         ;; exposure: what comes down, times the place's exposure to it
         exposure (when-let [f (:exposure spec)]
                    (let [e (f scale place t)] (for [dv down ev e] (* dv ev))))
@@ -236,16 +275,16 @@
                        (when-not (w :up) (concat up-time up-space))
                        (when-not (w :down) down)
                        (when-not (w :contradiction) contradiction)
+                       (when-not (w :turn) turn)
                        (when-not (w :exposure) exposure)
                        (when-not (w :feedback) feedback))))
      :reads (persistent! reads)
      :stated stated
      :resolved resolved
-     ;; what the node passes up as its tension: the place against its parent
-     :acc (or (get-in rel' [:parent :acc]) 0.0)
-     :tension {:rel rel' :fin fin' :tacc tacc :last-t t}}))
+     :strain strain-total
+     :tension {:rel rel' :fin fin' :tacc tacc :flows flows' :last-t t}}))
 
-(def ^:private flow-groups #{:base :up :down :contradiction :exposure :feedback :all})
+(def ^:private flow-groups #{:base :up :down :contradiction :turn :exposure :feedback :all})
 
 (defn- couple-levels
   "Couples the gauge-group models of each pair of adjacent levels at one
@@ -281,7 +320,9 @@
    among the node's resolved outcomes; the node learns departures from it,
    :shrink, the all-inputs model's prior variance on its non-core inputs,
    :state (fn [scale place origin gauges]) -> a node's state or nil,
-   :tensions {scale [[i j] ...]}, :tension-decay (0.7),
+   :tensions {scale [[i j] ...]}, each i's strain ahead of j, :tension-decay (0.7),
+   :turns {scale [[stock flow window] ...]}, gauge indices: the flow's
+   drawdown from its peak over window periods while the stock is stretched,
    :resolutions (fn [place]) -> sorted-set of the months at which each
    onset at the place became known (none without),
    :exposure (fn [scale place origin]) -> [exposures], :exposure-width n,
@@ -292,7 +333,7 @@
   {:forecasts [{:scale :place :origin :p :y}] :weights {[scale level]
   [[t weights]]} :models :trace}."
   [spec]
-  (when-let [bad (seq (remove #{:gauges :up :down :contradiction :exposure :feedback} (:without spec)))]
+  (when-let [bad (seq (remove #{:gauges :up :down :contradiction :turn :exposure :feedback} (:without spec)))]
     (throw (ex-info (str "bnm.lattice/run: :without names no group " (vec bad)) {:without (:without spec)})))
   (let [{:keys [scales levels start end]} spec
         resolutions (memoize (fn [place] (if-let [f (:resolutions spec)] (or (f place) (sorted-set)) (sorted-set))))]
@@ -326,17 +367,17 @@
                                   st ready)
                        made (vec (for [place places
                                        :let [g ((:gauges spec) scale place t)
-                                             {:keys [x reads stated tension acc resolved]} (inputs spec st scale scale-spec level-ix place t g)
+                                             {:keys [x reads stated tension strain resolved]} (inputs spec st scale scale-spec level-ix place t g)
                                              o (offset-of place t)
                                              p (d/predict model x o)
                                              target ((:target spec) scale place t)]]
-                                   {:place place :x x :o o :p p :target target :reads reads :stated stated :tension tension :acc acc
+                                   {:place place :x x :o o :p p :target target :reads reads :stated stated :tension tension :strain strain
                                     :resolved resolved}))
-                       st (reduce (fn [st {:keys [place p stated tension acc resolved]}]
+                       st (reduce (fn [st {:keys [place p stated tension strain resolved]}]
                                     (-> st
                                         (update-in [:book [scale place]] (fnil assoc (sorted-map)) t
                                                    ;; a node's state: the spec's when it gives one, else its forecast's log odds
-                                                   {:p p :s (or stated (logit p)) :acc acc})
+                                                   {:p p :s (or stated (logit p)) :strain strain})
                                         (assoc-in [:tension [scale place]] tension)
                                         (cond-> resolved (update-in [:resets [scale place]] (fnil into []) resolved))))
                                   st made)
