@@ -514,3 +514,40 @@ amended paired test (bnm.paired, hard rows, lead and w2, 2003-14 and
 2015-22), and by the original test, Bonferroni over 36. Exploratory, not
 counted: the year and half-decade nodes' own scores, and the weights the
 model averaging gave each group through time.
+
+**Results, 21 October 2026 (trial 36).** Two runs, both negative against
+`named` on the hard rows, primary Brier:
+- as registered: -0.00100 [-0.00178 -0.00040]. The lattice's labels were
+  the joined catalogues in every year, with countries already in a crisis
+  counted at risk: its base rate was about 5% where the scored labels run
+  about 0.4%;
+- with the labels matched to bnm.onsets (the modern catalogue from 1974,
+  the long ones before; the at-risk rule): -0.00064 [-0.00136 -0.00014],
+  too high after 2008 (timing error 0.00045-0.00165 against
+  0.00015-0.00023 in 2015-22).
+A review then found world credit never known at the quarter nodes (keyed
+to the wrong month), so both runs had half the global group empty.
+
+## Pre-registered, 21 October 2026: the lattice as a dialectic (trial 37)
+
+Registered before the run. Trial 36's lattice with the labels matched and
+the world-credit bug fixed, and with the dialectic and learning across
+levels (docs/LATTICE.md, "The system as a dialectic"):
+- contradictions between levels (each place against its parent and
+  against each coarser scale; gap, size, accumulated size), tension from
+  finer scales re-accumulated at coarser ones, and opposed gauges within a
+  place fixed from theory (`bnm.lattice-banking/tensions`): credit against
+  investment, house prices against the wage share, equity against
+  investment, credit against the wage share; credit growth against the
+  curve, the country's credit cycle against the world's;
+- resolution: a country's tensions reset once per crisis, a year after
+  it, when it is known;
+- down-flows through exposure (trade openness, capital openness two years
+  back);
+- errors fed across levels, and coupled learning between adjacent levels
+  (strength 0.1).
+The settings are fixed here. Test as trial 36: `lattice` against `named`
+on banking_crisis by the amended paired test and the original test,
+Bonferroni over 37; exploratory, each group's weight through time and the
+ablations without the contradictions and without the learning across
+levels.
