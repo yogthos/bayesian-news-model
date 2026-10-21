@@ -466,3 +466,5 @@ the test is counted, get their own intercept and slopes (Mueller & Rauh
 
 **Run r9**: the rows of r6 (`--rows onsets-3`), the benchmarks from r6-at
 on the same rows. Bonferroni count for the original test: 35.
+
+The registration closes here (21 October 2026, before r9 is scored).
