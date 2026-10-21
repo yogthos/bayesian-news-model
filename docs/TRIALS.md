@@ -41,3 +41,5 @@ the count is the number of lines below.
 | 31 | hier (nested intercepts) | 2026-10 | region, subregion and country intercepts, variances by empirical Bayes |
 | 32 | dyn (multilevel states) | 2026-10 | AR(1) states over world, region, subregion, country, from onsets known by then; also scored for subregions and regions |
 | 33 | hier, amended (r8) | 2026-10 | trial 31 with within-between (Mundlak) inputs, the ridge estimated with the variances, half-normal priors on level sds |
+| 34 | precursors | 2026-10 | event streams against their own past: displacement at three scales, trigger, burstiness, co-movement with neighbours |
+| 35 | cs (calm slopes) | 2026-10 | every input also times a no-onset-in-ten-years flag |

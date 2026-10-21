@@ -383,3 +383,79 @@ offline check on the training rows of protest_surge and violence_surge
 0.804 for the flat logit with its ridge estimated the same way. r8 runs the
 same models on the same rows, and is judged by the criteria above with the
 Bonferroni count raised to 33.
+
+**Results, 21 October 2026 (trials 31-33).** Every registered pair failed
+the original test: `hier-history`, `hier-named` and `hier-named+mix`
+against `history`, `named` and `named+mix` passed 0 of 24 counted cells in
+r7b (trial 31) and again in r8 (trial 33), and `dyn-named` against `named`
+passed 0 of 24 at the country level, 0 of 24 for subregions and 0 of 12
+for regions (trial 32). Point gains on the hard rows were near zero and the
+intervals about ±0.5 in recall. Country intercepts are learned from a
+country's own onsets, and hard rows are the countries without any, so they
+could not help there; a state shared by a region scales its members alike,
+which ranking within a quarter cannot see.
+
+## Pre-registered, 21 October 2026: precursors, calm slopes, and a test with power
+
+Registered before any of r9 is scored. The original test stays, and is run
+and reported for every trial, these included.
+
+**Why the test is amended.** Recall within each quarter at 5% and 10%, with
+99.7% intervals (Bonferroni) on 12-140 hard onsets a cell, has almost no
+power, and is blind to timing by construction. A power simulation
+(`bnm.paired --simulate`, on the hard rows of r6-at with the outcomes
+replaced: a signal of log-odds size beta, shared within a country's year
+and across a kind's windows, that only the model knows; 10 draws a size)
+gave the share of draws each test found it:
+
+| beta | new primary | new per-cell (any) | original (any cell) |
+|---|---|---|---|
+| 0.25, null | 0.00 | 0.00 | 0.00 |
+| 0.25 | 0.70 | 0.00 | 0.00 |
+| 0.50, null | 0.00 | 0.00 | 0.00 |
+| 0.50 | 1.00 | 0.00 | 0.00 |
+
+The null rows draw outcomes from the benchmark, so they measure the false
+positive rate. The choice follows from power and propriety, made on
+synthetic outcomes, not from which test the results so far favour
+(Gneiting & Raftery 2007; Diebold & Mariano 1995; Pepe et al. 2013; Lerch
+et al. 2017 on outcome conditioning: the hard-row filter conditions on
+past onsets only).
+
+**The amended test** (`bnm.paired`), on the hard rows of the counted cells
+(lead and w2, 2003-14 and 2015-22):
+- **Primary:** the paired difference in mean Brier score against the
+  benchmark, pooled over the cells with every kind weighted equally; a
+  gain when the one-sided 95% bound of the two-way (countries and blocks
+  of years) bootstrap is above zero. The log score, floored at 1e-4, is
+  reported beside it.
+- **Per cell:** Romano-Wolf stepdown on the cells' Brier differences,
+  family-wise 5% (Romano & Wolf 2005), in place of Bonferroni.
+- **Secondary, for timing:** recall at a 10% budget pooled over the
+  quarters of a cell, and the between-quarter calibration error.
+- Trials scored before this amendment (1-33) are not rescored as
+  confirmatory; any rescoring of them is exploratory.
+
+**Trial 34, `precursors`** (`bnm.precursors`): invariants of a country's
+fifteen event streams against its own past, needing no onset history:
+displacement (norm, breadth past 1.5, largest, at 20 quarters, and
+resonance, the smallest norm of 8, 20 and 40), the sharpest one-quarter
+rise (trigger), burstiness of the total (dispersion), and the shift in its
+co-movement with its subregion's countries (range). Sources: the
+Macrohistory invariants above (docs/INVARIANTS.md), the Keilis-Borok
+school's premonitory activity, clustering and range of correlation,
+spatial early warnings (Dakos et al.), the credit-gap principle of
+measuring against one's own baseline (Drehmann & Yetman 2018). Spreads are
+floored at 0.25 on the log scale and z-scores capped at 10, set before any
+scored run. `named+precursors` against `named` and against
+`named+precursors-placebo`.
+
+**Trial 35, calm slopes (`cs-<inputs>`)**: every input also times a flag
+for no known onset of the kind in ten years, so the calm countries, where
+the test is counted, get their own intercept and slopes (Mueller & Rauh
+2022: what predicts onsets out of peace differs). `cs-named`,
+`cs-named+mix`, `cs-named+precursors` against `named`, `named+mix` and
+`named+precursors`.
+
+**Run r9**: the rows of r6 (`--rows onsets-3`), the benchmarks from r6-at
+on the same rows. Bonferroni count for the original test: 35.
