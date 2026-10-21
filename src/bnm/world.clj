@@ -85,3 +85,12 @@
                                                   :do (into {} (for [p places] [[j p] 1]))}))]
                    k (keys world) :when (not= j k)]
                [[j k] (mean (for [p places :when (get-in base [k p])] (- (get-in hit [k p]) (get-in base [k p]))))]))))
+
+(defn joints
+  "[{:j :k :place :pj :pk :joint}] for each of `edges` ([j k]) and place:
+  the simulated chances of each onset and of both within the horizon."
+  [world edges opts]
+  (let [{:keys [p joint]} (simulate world opts)]
+    (vec (for [[j k] edges p' (sort (keys (get p j)))
+               :when (get-in p [k p'])]
+           {:j j :k k :place p' :pj (get-in p [j p']) :pk (get-in p [k p']) :joint (get-in joint [[j k] p'])}))))

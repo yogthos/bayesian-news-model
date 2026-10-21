@@ -71,3 +71,25 @@
     (is (every? #(= 3 (count %)) (keys (pd/read-lattice "test-paired-lattice" "quarter" 2003 2022))) "keyed by window too")
     (doseq [f [(str dir "/forecasts.tsv")]] (clojure.java.io/delete-file f))
     (clojure.java.io/delete-file dir)))
+
+(deftest a-world-pooled-over-kinds-equally
+  ;; two world runs' year nodes, kind by kind, pooled with each kind weighed
+  ;; equally: the pooled difference is the mean of the kinds'
+  (let [mk (fn [run kind ps]
+             (let [dir (str "data/runs/" run "/" kind)]
+               (clojure.java.io/make-parents (str dir "/x"))
+               (spit (str dir "/forecasts.tsv")
+                     (apply str (for [[i [p y]] (map-indexed vector ps)]
+                                  (str "year\tA" (char (+ 65 (mod i 20))) (char (+ 65 (quot i 20))) "\t" (+ 11 (* 12 (+ 2003 (mod i 15)))) "\t" p "\t" y "\n"))))))
+        good (vec (for [i (range 60)] [(if (even? i) 0.8 0.1) (even? i)]))
+        flat (vec (for [i (range 60)] [0.4 (even? i)]))]
+    (mk "test-world-a" "k1" good) (mk "test-world-a" "k2" flat)
+    (mk "test-world-b" "k1" flat) (mk "test-world-b" "k2" flat)
+    (let [{:keys [pooled per-kind]} (pd/world-pair "test-world-a" "test-world-b" ["k1" "k2"] "year" 2003 2022 50 0.1)]
+      (is (pos? (:diff (per-kind "k1"))))
+      (is (= 0.0 (:diff (per-kind "k2"))))
+      (is (< (Math/abs (- (:diff pooled) (/ (:diff (per-kind "k1")) 2.0))) 1e-12)))
+    (doseq [run ["test-world-a" "test-world-b"] k ["k1" "k2"]]
+      (clojure.java.io/delete-file (str "data/runs/" run "/" k "/forecasts.tsv"))
+      (clojure.java.io/delete-file (str "data/runs/" run "/" k)))
+    (doseq [run ["test-world-a" "test-world-b"]] (clojure.java.io/delete-file (str "data/runs/" run)))))

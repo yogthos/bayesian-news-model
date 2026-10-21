@@ -26,6 +26,7 @@
             [bnm.sequencing-test]
             [bnm.relations-test]
             [bnm.world-test]
+            [bnm.world-score-test]
             [bnm.anatomy-test]
             [bnm.calm-test]
             [bnm.sync-test]
@@ -61,6 +62,7 @@
     bnm.sequencing-test
     bnm.relations-test
     bnm.world-test
+    bnm.world-score-test
     bnm.anatomy-test
     bnm.calm-test
     bnm.sync-test

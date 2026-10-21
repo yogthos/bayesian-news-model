@@ -20,37 +20,19 @@
             [clojure.string :as str]))
 
 (defn- corr [xs ys]
+  (if (< (count xs) 2)
+    0.0
   (let [n (count xs) mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
         sxy (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
         sx (Math/sqrt (reduce + (map #(* (- % mx) (- % mx)) xs)))
         sy (Math/sqrt (reduce + (map #(* (- % my) (- % my)) ys)))]
-    (if (and (pos? sx) (pos? sy)) (/ sxy (* sx sy)) 0.0)))
+    (if (and (pos? sx) (pos? sy)) (/ sxy (* sx sy)) 0.0))))
 
-(defn -main [& args]
-  (let [{:keys [end without-at kind downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
-        end (or (some-> end parse-long) (+ (* 12 1999) 11))
-        kind (or kind lb/kind)
-        sp0 (if (not= kind lb/kind)
-              (lp/build kind end "r6-at")
-              (let [variables (st/read-variables "data/slow/variables.tsv")
-                    db (nm/load-series "data/slow/series.tsv" variables)
-                    jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
-                    jst (into {} (for [r (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap))] [[(:iso r) (:year r)] r]))
-                    cat (lb/catalogue jst-rows)
-                    units (set (filter #(first (geo/parents %)) (keys (:onsets cat))))
-                    wc (nm/world-credit db units (range (+ lb/start 2) (inc end) 3))
-                    ext (lb/extended-table jst-rows (#'lb/read-pwt) db units (lb/read-annual))]
-                (lb/spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
-                          :known (lb/read-known "r6-at") :quarterly (lb/read-quarterly)})))
-        sp (cond-> sp0
-             true (assoc :trace :inputs)
-             downscale (assoc :downscale {:quarter-lead {:from (keyword downscale)} :quarter-w2 {:from (keyword downscale)}})
-             pool (assoc :downscale-pool (parse-double pool))
-             (= "true" uncertainty) (assoc :downscale-uncertainty true)
-             without-at (assoc :without-at (into {} (for [part (str/split without-at #",") :let [[sc gs] (str/split part #":")]]
-                                                      [(keyword sc) (set (map keyword (str/split gs #"\+")))]))))
-        r (lt/run sp)
-        fails (atom [])
+(defn checks
+  "The smoke checks on a run `r` of spec `sp` for `kind` to month `end`;
+  prints each and returns the failures."
+  [sp r kind end]
+  (let [fails (atom [])
         check (fn [ok? msg] (println (if ok? "  ok  " "  FAIL") msg) (when-not ok? (swap! fails conj msg)))]
     (println "smoke run to" (quot end 12) ":" (count (:forecasts r)) "forecasts")
     ;; 1. probabilities
@@ -117,6 +99,7 @@
                     :when (case (:dir rd)
                             :down (>= (:origin rd) origin)
                             :downscale (>= (:origin rd) origin)
+                            :relation (>= (:origin rd) origin)
                             :up (> (:origin rd) origin)
                             :feedback (> (:known-at rd) origin))]
                 [scale origin rd])
@@ -133,5 +116,36 @@
                      (:forecasts r))
              "quarter origins are quarter ends")
       (println (format "        %d of %d quarter rows have a named forecast at the same (window, unit, q)" aligned (count rows))))
-    (println (if (empty? @fails) "smoke: all checks passed" (str "smoke: " (count @fails) " failed")))
-    (System/exit (if (empty? @fails) 0 1))))
+    (when (:relations sp)
+      ;; 7. relations: read only from before the origin, live, and the
+      ;; principal contradiction recorded at every year node
+      (let [rows (filter #(= :year (:scale %)) (:trace r))
+            lay (#'lt/layout sp :year 0)
+            rel-ix (vec (mapcat val (filter #(= "rel" (some-> (key %) namespace)) (:groups lay))))
+            late (filter #(and (= :country (:level %)) (>= (:origin %) (- end 120))) rows)
+            vals (for [row late i rel-ix] (double (nth (:x row) i)))]
+        (check (seq rel-ix) "year: relation groups present")
+        (when (seq vals)
+          (check (> (/ (count (filter #(not= 0.0 %) vals)) (double (count vals))) 0.05)
+                 (format "year country: relation inputs live (%.2f nonzero)" (/ (count (filter #(not= 0.0 %) vals)) (double (count vals))))))
+        (check (every? (fn [[[s p] byo]] (or (not= s :year) (not= 3 (count p)) (every? #(some? (:principal (val %))) (subseq byo >= (- end 120)))))
+                       (:book r))
+               "year country: a principal contradiction at every recent origin")))
+    @fails))
+
+(defn -main [& args]
+  (let [{:keys [end without-at kind downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+        end (or (some-> end parse-long) (+ (* 12 1999) 11))
+        kind (or kind lb/kind)
+        sp0 (if (not= kind lb/kind) (lp/build kind end "r6-at") (lb/build end "r6-at"))
+        sp (cond-> sp0
+             true (assoc :trace :inputs)
+             downscale (assoc :downscale {:quarter-lead {:from (keyword downscale)} :quarter-w2 {:from (keyword downscale)}})
+             pool (assoc :downscale-pool (parse-double pool))
+             (= "true" uncertainty) (assoc :downscale-uncertainty true)
+             without-at (assoc :without-at (into {} (for [part (str/split without-at #",") :let [[sc gs] (str/split part #":")]]
+                                                      [(keyword sc) (set (map keyword (str/split gs #"\+")))]))))
+        r (lt/run sp)
+        fails (checks sp r kind end)]
+    (println (if (empty? fails) "smoke: all checks passed" (str "smoke: " (count fails) " failed")))
+    (System/exit (if (empty? fails) 0 1))))

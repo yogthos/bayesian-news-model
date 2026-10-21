@@ -379,7 +379,7 @@
                          (when parent [(or (err scale parent) 0.0)])
                          (when (pos? level-ix) [(or (mean (keep #(err scale %) kids)) 0.0)]))
         ;; relations: other kinds' states and onsets for the place, from before t
-        rel (when-let [f (:relations spec)]
+        rel (when-let [f (when-not ((without spec scale) :relations) (:relations spec))]
               (let [{:keys [x] :as r} (f scale place t)
                     width (get-in spec [:relation-width scale] 0)]
                 (when (not= width (count x))

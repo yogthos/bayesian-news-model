@@ -152,6 +152,22 @@
      :brier (sc/paired-loss-2way rows brier {:reps reps :seed 1 :alpha alpha :per-block 1})
      :log (sc/paired-loss-2way rows log-loss {:reps reps :seed 1 :alpha alpha :per-block 1})}))
 
+(defn world-pair
+  "Two world runs (bnm.world-run) at one scale, each kind's country
+  forecasts on their own outcomes: {:per-kind {kind {:brier :log :n :pos}}
+  :pooled {:brier :log}}, the pooled statistic each kind weighed equally,
+  its interval resampling countries and years across the kinds."
+  [model bench ks scale from to reps alpha]
+  (let [rows-of (fn [k] (let [a (read-lattice (str model "/" k) scale from to)
+                              b (read-lattice (str bench "/" k) scale from to)]
+                          (for [[key [pa y]] a :let [[pb _] (b key)] :when pb] [(quot (second key) 12) pa pb y (first key) k])))
+        all (vec (mapcat rows-of ks))
+        opts {:reps reps :seed 1 :alpha alpha :per-block 1}]
+    {:per-kind (into {} (for [k ks :let [rs (filter #(= k (nth % 5)) all)] :when (seq rs)]
+                          [k {:brier (sc/paired-loss-2way rs brier opts) :log (sc/paired-loss-2way rs log-loss opts)
+                              :n (count rs) :pos (count (filter #(nth % 3) rs)) :diff (:diff (sc/paired-loss-2way rs brier opts))}]))
+     :pooled (let [b (sc/paired-loss-2way all brier opts)] (assoc b :log (sc/paired-loss-2way all log-loss opts)))}))
+
 (defn- fmt [{:keys [diff lo hi]}] (format "%+.5f [%+.5f %+.5f]%s" diff lo hi (if (pos? lo) " GAIN" "")))
 
 (defn -main [& args]

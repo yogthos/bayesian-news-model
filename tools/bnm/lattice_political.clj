@@ -41,9 +41,17 @@
 
 (defn scales-for
   "The banking lattice's scales; without the half-decade for the kinds whose
-  catalogue starts in 1980, too few origins for it to learn from."
-  [kind]
-  (if (>= (pg/long-from kind) 1980) (vec (remove #(= :half-decade (:name %)) lb/scales)) lb/scales))
+  catalogue starts in 1980 or later, too few origins for it to learn from.
+  `first-year`, the catalogue's first covered year, for kinds beyond the
+  political ones."
+  ([kind] (scales-for kind (pg/long-from kind)))
+  ([_ first-year]
+   (if (>= first-year 1980) (vec (remove #(= :half-decade (:name %)) lb/scales)) lb/scales)))
+
+(defn first-year
+  "A catalogue's first covered year, over its places."
+  [cat]
+  (quot (apply min (vals (:from cat))) 12))
 
 (def quarter-groups
   "bnm.named's political inputs and its political economy, in groups."
@@ -81,7 +89,22 @@
                               "protest_surge" (t [:polyarchy :rule-of-law] [:tertiary5 :growth3]
                                                  [:soldiers-per-capita :spending-per-soldier3] [:participation :assembly])
                               "violence_surge" (t [:polyarchy :rule-of-law] [:inflation :growth3] [:population-growth3 :growth3]
-                                                  [:urban-growth5 :growth3] [:tertiary5 :growth3])}]
+                                                  [:urban-growth5 :growth3] [:tertiary5 :growth3])
+                              ;; the economic kinds and market crashes: chosen by rule from their
+                              ;; anatomy (bnm.anatomy-political economic: strain at -1 >= +0.15 and
+                              ;; above its level at -10; data/runs/anatomy/anatomy-economic.txt)
+                              "currency_crisis" (t [:urban-growth5 :growth3] [:inflation :growth3] [:participation :assembly]
+                                                   [:population-growth3 :growth3] [:top10 :bottom50] [:polyarchy :rule-of-law])
+                              "fiscal_consolidation" (t [:inflation :growth3] [:participation :assembly] [:top10 :bottom50]
+                                                        [:polyarchy :rule-of-law])
+                              "growth_collapse" (t [:participation :assembly])
+                              "inflation_crisis" (t [:urban-growth5 :growth3] [:inflation :growth3] [:participation :assembly]
+                                                    [:soldiers-per-capita :spending-per-soldier3] [:population-growth3 :growth3]
+                                                    [:top10 :bottom50] [:polyarchy :rule-of-law])
+                              "market_crash" (t [:working-age :growth3] [:polyarchy :rule-of-law])
+                              "sovereign_default" (t [:inflation :growth3] [:population-growth3 :growth3] [:top10 :bottom50]
+                                                     [:polyarchy :rule-of-law])
+                              "food_price_shock" []}]
                [k {:year pairs :quarter-lead q :quarter-w2 q}]))))
 
 (def turns
@@ -91,7 +114,8 @@
   fragility and mobilization stretched while growth falls from its
   eight-quarter peak."
   (let [q [[4 7 8] [14 7 8]]]
-    (into {} (for [k kinds]
+    (into {} (for [k (concat kinds ["currency_crisis" "inflation_crisis" "growth_collapse" "sovereign_default"
+                                     "fiscal_consolidation" "market_crash" "food_price_shock"])]
                [k {:year (if (= k "coup") [[(yi :participation) (yi :polyarchy) 3]] [])
                    :quarter-lead q :quarter-w2 q}]))))
 
@@ -118,11 +142,12 @@
         (double (count (subseq (get-in cat [:onsets unit] (sorted-set)) > (- k months) <= k)))))))
 
 (defn spec
-  [{:keys [kind db cats annual wdi units end known]}]
+  [{:keys [kind db cats annual wdi units end known start]}]
   (let [cat (cats kind)
-        scales (scales-for kind)
-        others (remove #{kind} kinds)
-        start (* 12 (pg/long-from kind))
+        scales (scales-for kind (or (pg/long-from kind) (first-year cat)))
+        ;; four other political kinds' recent onsets (the :others group)
+        others (take 4 (remove #{kind} kinds))
+        start (or start (* 12 (pg/long-from kind)))
         [_ pol] (nm/political db)
         months (range (+ start 2) (inc end) 3)
         [_ pe] (nm/political-economy db units months)
@@ -219,16 +244,19 @@
                                  :long-from (pg/long-from k) :modern (pg/modern k)})]))))
 
 (defn build
-  "The spec for `kind` to month `end`, from the data on disk."
-  [kind end known-run]
+  "The spec for `kind` to month `end`, from the data on disk; `cats` (every
+  kind's catalogue, bnm.kinds) and `start` (a month) for the world run,
+  where any kind with a catalogue may be built this way."
+  ([kind end known-run] (build kind end known-run nil nil))
+  ([kind end known-run cats start]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
-        cats (catalogues)
+        cats (or cats (catalogues))
         units (set (filter #(first (geo/parents %)) (keys (get-in cats [kind :onsets]))))]
-    (spec {:kind kind :db db :cats cats :units units :end end
+    (spec {:kind kind :db db :cats cats :units units :end end :start start
            :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
            :wdi (fn [iso v y] (some-> (db [iso v]) (sk/value (+ 11 (* 12 y)) {:stale 18})))
-           :known (lb/read-known known-run kind)})))
+           :known (lb/read-known known-run kind)}))))
 
 (defn -main [& args]
   (let [{:keys [kind out end without-at known downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))

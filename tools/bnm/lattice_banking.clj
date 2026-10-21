@@ -537,12 +537,11 @@
      :prior (fn [scale _level {:keys [groups]}]
               (into {} (for [[g ixs] (get priors scale) [i mv] ixs] [(nth (groups g) i) mv])))}))
 
-(defn -main [& args]
-  (let [{:keys [out end without coupling known without-at downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
-        out (or out "lattice-banking")
-        dir (str "data/runs/" out)
-        end (or (some-> end parse-long) (+ (* 12 2025) 11))
-        variables (st/read-variables "data/slow/variables.tsv")
+(defn build
+  "The banking lattice's spec to month `end`, from the data on disk, with
+  `known-run`'s named forecasts as what is known."
+  [end known-run]
+  (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
         jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
         jst (into {} (for [r (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap))]
@@ -552,10 +551,16 @@
         ;; the quarter nodes' origins: the last month of each quarter
         months (range (+ start 2) (inc end) 3)
         wc (nm/world-credit db units months)
-        _ (println (count units) "countries; building gauges")
-        ext (extended-table jst-rows (read-pwt) db units (read-annual))
-        sp (cond-> (spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
-                          :known (read-known (or known "r6-at")) :quarterly (read-quarterly)})
+        ext (extended-table jst-rows (read-pwt) db units (read-annual))]
+    (spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
+           :known (read-known known-run) :quarterly (read-quarterly)})))
+
+(defn -main [& args]
+  (let [{:keys [out end without coupling known without-at downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+        out (or out "lattice-banking")
+        dir (str "data/runs/" out)
+        end (or (some-> end parse-long) (+ (* 12 2025) 11))
+        sp (cond-> (build end (or known "r6-at"))
              ;; ablations: --without contradiction,feedback  --coupling 0
              without (assoc :without (set (map keyword (str/split without #","))))
              ;; per scale: --without-at quarter-lead:up+feedback,year:exposure

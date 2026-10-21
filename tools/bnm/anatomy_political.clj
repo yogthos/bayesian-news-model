@@ -7,17 +7,21 @@
   gaps between standardized gauges and as strain accumulated through time
   (never reset: a political onset does not close its gaps); candidate turns.
 
-    jolt -A:tools -M -m bnm.anatomy-political
+    jolt -A:tools -M -m bnm.anatomy-political [economic]
 
-  Writes data/runs/anatomy/anatomy-political.txt."
+  Writes data/runs/anatomy/anatomy-political.txt, or with `economic` the
+  economic kinds' and market crashes' anatomy-economic.txt, with the
+  tensions chosen for them by rule."
   (:require [bnm.anatomy :as an]
             [bnm.lattice-banking :as lb]
             [bnm.named :as nm]
             [bnm.onsets :as on]
+            [bnm.kinds :as kinds]
             [bnm.political-gauges :as pg]
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clojure.string :as str]))
 
 (def kinds ["conflict_onset" "war_onset" "coup" "protest_surge" "violence_surge"])
 
@@ -44,7 +48,20 @@
             sd (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) vs)) (dec n)))]
         (update-vals s (fn [ys] (update-vals ys #(/ (- % m) (Math/max 1e-9 sd)))))))))
 
-(defn -main [& _]
+(def economic-kinds ["currency_crisis" "inflation_crisis" "growth_collapse" "sovereign_default"
+                     "fiscal_consolidation" "market_crash"])
+
+(defn chosen-tensions
+  "The tensions whose strain (never reset) stands at +0.15 calm deviations
+  or more the year before the onsets and above where it stood ten years
+  before: the rule for the kinds whose anatomy is read by code."
+  [epochs]
+  (vec (for [[n e] epochs
+             :let [d1 (get-in e [-1 :d]) d10 (get-in e [-10 :d])]
+             :when (and d1 d10 (>= d1 0.15) (> d1 d10))]
+         n)))
+
+(defn -main [& args]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
         annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
@@ -57,17 +74,21 @@
         series (into {} (for [[i k] (map-indexed vector pg/year-names)]
                           [k (reduce (fn [acc [[iso y] r]] (if-let [x (nth r i)] (assoc-in acc [iso y] (double x)) acc)) {} rows)]))
         zs (update-vals series z-all)
-        out (StringBuilder.)]
+        out (StringBuilder.)
+        all-cats (delay (kinds/catalogues))
+        chosen (atom {})]
     (.append out (str "The anatomy of known political onsets, before 2003 (superposed epochs, by year).\n"
                       "Each cell: the onset-window mean against the calm (more than 5 years from any onset of the kind), in\n"
                       "calm standard deviations; turn: the earliest lag from which it stays 0.3 above the calm.\n"
                       "Gauges are of the data year (V-Dem) or the year before (national accounts, WDI): lag 0 reads what\n"
                       "an origin at the end of the onset year would; lag -1 what one a year before it would.\n"))
-    (doseq [kind kinds
+    (doseq [kind (if (= "economic" (first args)) economic-kinds kinds)
             :let [modern (pg/modern kind)
-                  crises (merge-with into
-                                     (update-vals (get long kind {}) #(set (filter (fn [y] (< y modern)) %)))
-                                     (update-vals (get events kind {}) #(set (keep (fn [q] (let [y (quot q 4)] (when (< y 2003) y))) %))))
+                  crises (if modern
+                           (merge-with into
+                                       (update-vals (get long kind {}) #(set (filter (fn [y] (< y modern)) %)))
+                                       (update-vals (get events kind {}) #(set (keep (fn [q] (let [y (quot q 4)] (when (< y 2003) y))) %))))
+                           (update-vals (:onsets (kinds/annual (get @all-cats kind))) #(set (filter (fn [y] (< y 2003)) %))))
                   crises (into {} (for [[u ys] crises :when (and (seq ys) (states u))] [u ys]))
                   gaps (into {} (for [[a b] tension-defs]
                                   [(str (name a) "-ahead-of-" (name b))
@@ -89,9 +110,13 @@
                                                                                            (concat (filter (fn [x] (< x (pg/modern k))) (get c iso))
                                                                                                    (map (fn [q] (quot q 4)) (get e iso))))))]))]))]))]]
       (.append out (format "\n%s: %d onsets in %d countries, %d-2002.\n" kind (reduce + (map count (vals crises))) (count crises)
-                           (pg/long-from kind)))
+                           (or (pg/long-from kind) (apply min (mapcat seq (vals crises))))))
       (#'an/table out "Year gauges, tensions and their strain, turns, history" (merge (update-keys series name) gaps strains turns history)
-                  crises {:lags (range -10 6) :calm 5} "years"))
+                  crises {:lags (range -10 6) :calm 5} "years")
+      (swap! chosen assoc kind (chosen-tensions (for [[n st] strains] [n (an/epoch st crises {:lags (range -10 6) :calm 5})]))))
+    (when (= "economic" (first args))
+      (.append out (str "\nTensions chosen by rule (strain at -1 >= +0.15 and above its level at -10):\n"))
+      (doseq [[k ts] (sort @chosen)] (.append out (str "  " k ": " (str/join ", " ts) "\n"))))
     (io/make-parents "data/runs/anatomy/x")
-    (spit "data/runs/anatomy/anatomy-political.txt" (str out))
+    (spit (if (= "economic" (first args)) "data/runs/anatomy/anatomy-economic.txt" "data/runs/anatomy/anatomy-political.txt") (str out))
     (print (str out))))

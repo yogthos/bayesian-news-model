@@ -28,3 +28,11 @@
       (let [imp (w/impulse world {:horizon 4 :draws 2000 :seed 2})]
         (is (> (get imp ["bank" "coup"]) 0.03))
         (is (< (Math/abs (get imp ["coup" "bank"])) 0.01))))))
+
+(deftest joint-forecasts-for-the-graph-s-edges
+  ;; for each edge, each place's chance of both onsets within the horizon
+  ;; from the simulation, beside the product of the two marginals
+  (let [rows (w/joints world [["bank" "coup"]] {:horizon 4 :draws 4000 :seed 1})]
+    (is (= 2 (count rows)) "one per place")
+    (is (every? #(> (:joint %) (* (:pj %) (:pk %))) rows) "the relation makes them co-occur")
+    (is (every? #(<= (:joint %) (min (:pj %) (:pk %))) rows))))
