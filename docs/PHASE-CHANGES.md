@@ -567,3 +567,31 @@ one group. And the lattice's flows and contradictions, each a block of
 loosely-priored inputs, add about 0.0009 of noise on about a hundred
 crises. In the synthetic worlds built to need them they carried the
 signal; on banking crises as measured here they do not yet.
+
+## Pre-registered, 21 October 2026: the lattice rebuilt from the anatomy (trial 38)
+
+Registered before the run. Trial 37's lattice, rebuilt from what the known
+crises before 2003 share (docs/ANATOMY.md):
+- **what is known as the offset**: each quarter node learns departures from
+  named's out-of-sample forecast (from 2000), climatology before it and at
+  the coarser scales; the all-inputs model shrunk (prior variance 0.1);
+- **directional contradictions**: opposed gauges accumulate only their
+  strain (the positive part), a place's disagreement with its parent each
+  way apart, reset once per crisis when known; each node passes its strain
+  (its tensions and its disagreement with its parent) to finer scales;
+- **the turn**: a boom's drawdown from its peak while the stock is
+  stretched (house prices, the household boom, equity, bank equity, house
+  valuation);
+- **more dimensions**: the Macrohistory panel's unused columns, the full
+  Penn World Table, WDI credit, and the downloaded sources (bank equity,
+  sectoral credit, profit rates, income and wealth shares, IMF debt,
+  financial distress, OECD house valuation), with the tensions listed in
+  `bnm.lattice-banking/tensions` and the turns in `turns`.
+The tensions, turns and settings are fixed here from the anatomy of crises
+before 2003 and from theory, not tuned on scored years.
+
+**Test** as trials 36-37: `lattice` against `named` on banking_crisis, the
+amended paired test and the original test (Bonferroni over 38).
+Exploratory: the ablations without the contradictions, without the turn,
+and with the quarter node's own gauges only, and each group's weight
+through time.

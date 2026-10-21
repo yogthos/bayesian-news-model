@@ -45,3 +45,4 @@ the count is the number of lines below.
 | 35 | cs (calm slopes) | 2026-10 | every input also times a no-onset-in-ten-years flag |
 | 36 | lattice (banking) | 2026-10 | nodes per place and time scale, dynamic model averaging, flows up and lagged flows down, learning from 1870 |
 | 37 | lattice as a dialectic (banking) | 2026-10 | trial 36 with contradictions between and within levels, resolution, exposure, errors across levels, coupled learning |
+| 38 | lattice rebuilt from the anatomy (banking) | 2026-10 | known forecast as offset, directional strain, the turn, strain carried down, unused and downloaded dimensions |
