@@ -76,6 +76,54 @@ decade in a region. The invariants can differ by scale.
   base forecasts (Corani & Zambon's bottom-up importance sampling), and
   binary onsets read off as the chance of at least one.
 
+## The system as a dialectic
+
+The lattice is not only a tree of forecasts passed up and down. A society
+or an economy is a unity of opposed tendencies, and its crises are where
+their contradictions, built up by quantity, turn into a change of quality.
+The model carries that in four ways.
+
+- **Contradictions between levels.** Every node has a state (its
+  forecast's log odds, or its gauges where the spec gives one, as for a
+  world energy gauge). Each place is set against its parent at its own
+  scale, and against itself at each coarser scale: a calm country in a
+  region under strain, a quarter that looks quiet inside a year that does
+  not. Each gap, its size, and its size accumulated through time are
+  inputs. Tension built at finer scales is passed up and accumulated again
+  at the coarser node's own pace, so months of local strain become years
+  of it. Like is compared with like: a place against its parent, a scale
+  against a coarser one, never a mean of unlike signals.
+- **Contradictions within a place.** Pairs of opposed aspects, fixed from
+  theory before any run: credit against investment (credit growing without
+  productive accumulation), asset prices against the wage share, credit
+  against the curve, a country's credit cycle against the world's. Each
+  gap and its accumulation.
+- **Resolution.** When a crisis at a place becomes known, the tensions
+  accumulated there reset: the leap negates the contradiction that built
+  it, and the place starts accumulating anew. This is what lets risk fall
+  after a crisis instead of chasing the last wave, and it uses only what is
+  known when it is known.
+- **Shocks from above, through exposure.** What comes down from coarser
+  nodes (a world energy shock, a global credit cycle) acts through each
+  place's exposure to it (trade and capital openness, fuel imports), so
+  the same shock lands hard where a place is open and lightly where it is
+  not.
+
+And the levels learn from each other:
+
+- **Errors across levels.** Each node reads the last resolved errors of its
+  parent, its coarser scales and its children: a region's surprise is
+  information for its countries, and theirs for it.
+- **Coupled learning.** Adjacent levels reading the same gauge group pull
+  their coefficients toward each other's, weighted by how certain each is
+  (augur.dynamic/couple), means only, so no evidence is counted twice:
+  what the regions learn about credit informs the countries, and the
+  countries' experience informs the regions.
+
+On synthetic worlds built to need them, removing the contradictions cost
+the year node 0.29 in log score; the errors fed across levels added 0.08,
+and only on top of the contradictions (test/bnm/lattice_test.clj).
+
 ## The five gaps this closes
 
 1. **Invariants on the slow layer.** The displacement invariants that held

@@ -30,6 +30,7 @@
   model lattice), forecasts.tsv (every node), and weights.tsv (each node's model
   averaging weights by year)."
   (:require [bnm.geo :as geo]
+            [bnm.stocks]
             [bnm.lattice :as lt]
             [bnm.macrohistory :as mh]
             [bnm.named :as nm]
@@ -64,30 +65,43 @@
       [(reduce (fn [acc [iso y b]] (if b (update acc iso (fnil conj #{}) y) acc)) {} rows)
        (set (for [[iso _ _ known] rows :when known] iso))])))
 
+(def modern
+  "The first month of the modern catalogue (data/slow/events.tsv): from
+  then on its onsets alone are the labels, as for bnm.onsets, and the long
+  catalogues supply only the years before."
+  (* 12 1974))
+
 (defn catalogue
-  "{:onsets {unit sorted-set of months} :from {unit month} :through {unit
-  month}}: onset months (an annual onset at the year's first month) and
-  how far each unit's catalogue reaches."
+  "{:onsets {unit sorted-set of months} :busy {unit sorted-set of months}
+  :from {unit month} :through {unit month}}: onset months (an annual onset
+  at the year's first month), the months a crisis is under way (the modern
+  catalogue's spans), and how far each unit's catalogue reaches."
   [jst-rows]
   (let [[rr rr-units] (read-rr)
-        ev (get (on/read-events "data/slow/events.tsv") kind)
+        sets (on/read-event-sets "data/slow/events.tsv")
+        ev (get-in sets [:onsets kind])
+        spans (get-in sets [:spans kind])
         cov-q (some (fn [[k q]] (when (= k kind) q)) (on/read-coverage "data/slow/coverage.tsv"))
         jst (reduce (fn [acc r] (if (= 1.0 (:crisisJST r)) (update acc (:iso r) (fnil conj #{}) (:year r)) acc)) {} jst-rows)
         jst-units (set (map :iso jst-rows))
-        months (merge-with into
-                           (update-vals rr #(set (map (fn [y] (* 12 y)) %)))
-                           (update-vals jst #(set (map (fn [y] (* 12 y)) %)))
-                           (update-vals ev #(set (map (fn [q] (* 3 q)) %))))
+        early (fn [m] (update-vals m #(set (keep (fn [y] (when (< (* 12 y) modern) (* 12 y))) %))))
+        months (merge-with into (early rr) (early jst) (update-vals ev #(set (map (fn [q] (* 3 q)) %))))
+        busy (merge-with into (early rr) (early jst)
+                         (update-vals spans #(set (mapcat (fn [q] (range (* 3 q) (+ 3 (* 3 q)))) %))))
         units (into (into rr-units jst-units) (keys ev))]
     {:onsets (into {} (for [u units] [u (into (sorted-set) (get months u))]))
-     :from (into {} (for [u units] [u (cond (rr-units u) (* 12 1800) (jst-units u) (* 12 1870) :else (* 12 1974))]))
+     :busy (into {} (for [u units] [u (into (sorted-set) (get busy u))]))
+     :from (into {} (for [u units] [u (cond (rr-units u) (* 12 1800) (jst-units u) (* 12 1870) :else modern)]))
      :through (into {} (for [u units] [u (max (* 3 (inc cov-q)) (if (rr-units u) (* 12 2017) 0) (if (jst-units u) (* 12 2021) 0))]))}))
 
 (defn- onset-in?
-  "Whether `unit` has an onset in months (lo, hi], or nil when its
-  catalogue does not cover them."
-  [{:keys [onsets from through]} unit lo hi]
-  (when (and (from unit) (<= (from unit) (inc lo)) (<= hi (through unit)))
+  "Whether `unit` has an onset in months (lo, hi] as seen from origin t, or
+  nil when its catalogue does not cover them or it is not at risk: a crisis
+  under way in the year up to the origin, or before the window opens, is
+  not a new one (bnm.onset/at-risk?)."
+  [{:keys [onsets busy from through]} unit t lo hi]
+  (when (and (from unit) (<= (from unit) (inc lo)) (<= hi (through unit))
+             (empty? (subseq (get busy unit (sorted-set)) >= (- t 11) <= lo)))
     (boolean (seq (subseq (onsets unit) > lo <= hi)))))
 
 (defn- history
@@ -184,9 +198,30 @@
           :booms {0 [0.3 0.1] 1 [0.2 0.1]}}
    :half-decade {:long-stretch {0 [0.3 0.1] 3 [0.3 0.1]} :long-displacement {1 [0.2 0.1]}}})
 
+(def tensions
+  "Opposed aspects within a place, fixed from theory before any run, as
+  pairs of gauge indices: at the year (the Macrohistory stretches, in
+  bnm.macrohistory/dimensions' order), credit against investment (credit
+  growing without productive accumulation), house prices against the wage
+  share (asset prices outrunning wages), equity against investment, and
+  credit against the wage share (debt standing in for wages); at the
+  quarter, credit growth against the curve (credit expanding as the curve
+  flattens) and the country's credit cycle against the world's."
+  {:year [[0 4] [2 10] [3 4] [0 10]]
+   :quarter-lead [[0 11] [0 12]]
+   :quarter-w2 [[0 11] [0 12]]})
+
+(defn- exposure-of
+  "A place's openness to what comes down to it at origin t: trade
+  openness (exports and imports over GDP) and capital-account openness
+  (Chinn-Ito), 0 where unknown."
+  [db regimes unit t]
+  [(or (some-> (db [unit "trade/openness"]) (bnm.stocks/value t {:stale 30}) (/ 100.0)) 0.0)
+   (or (get-in regimes [[unit (dec (quot t 12))] :capital-openness]) 0.0)])
+
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst cat units end]}]
+  [{:keys [db wc jst cat units end regimes]}]
   (let [[_ fin] (nm/financial db wc)
         sub (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u s]))
         reg (into {} (for [s (set (vals sub))] [s (first (geo/parents s))]))
@@ -220,11 +255,18 @@
      :target (fn [scale place t]
                (let [{:keys [offset horizon]} (first (filter #(= scale (:name %)) scales))
                      lo (+ t offset) hi (+ t offset horizon)
-                     ys (keep #(onset-in? cat % lo hi) (members place))]
+                     ys (keep #(onset-in? cat % t lo hi) (members place))]
                  (when (seq ys) {:y (boolean (some true? ys)) :known-at (+ hi known-lag)})))
      :gauges gauges
      :gauge-width widths
      :gauge-groups {:quarter-lead quarter-groups :quarter-w2 quarter-groups :year year-groups :half-decade half-groups}
+     :tensions tensions
+     :exposure (let [ex (memoize (fn [u t] (exposure-of db regimes u t)))]
+                 (fn [_ place t]
+                   (let [vs (map #(ex % t) (members place))]
+                     (if (seq vs) (apply mapv (fn [& xs] (/ (reduce + xs) (count xs))) vs) [0.0 0.0]))))
+     :exposure-width 2
+     :coupling 0.1
      :prior (fn [scale _level {:keys [groups]}]
               (into {} (for [[g ixs] (get priors scale) [i mv] ixs] [(nth (groups g) i) mv])))}))
 
@@ -243,7 +285,7 @@
         months (range start (inc end) 3)
         wc (nm/world-credit db units months)
         _ (println (count units) "countries; building gauges")
-        sp (spec {:db db :wc wc :jst jst :cat cat :units units :end end})
+        sp (spec {:db db :wc wc :jst jst :cat cat :units units :end end :regimes (mh/read-regimes)})
         _ (println "running the lattice")
         r (lt/run sp)]
     (io/make-parents (str dir "/x"))
