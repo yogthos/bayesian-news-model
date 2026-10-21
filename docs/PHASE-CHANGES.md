@@ -779,3 +779,35 @@ nodes' own outcomes 1980-2002, lead and w2 averaged: C reconciled
 gains from the year (+0.0014 to +0.0078 by window); banking loses with the
 year's offset alone (w2 -0.0064) and nearly recovers when reconciled
 (-0.0010).
+
+**Results, 21 October 2026 (trial 41).**
+1. **Against named** (primary), the quarter nodes of C reconciled pooled
+   over the six kinds: Brier +0.00004 [-0.00012 +0.00021], log score
+   +0.00088 [-0.00051 +0.00218]: level, no gain. Violence surges' w2 cells
+   gain most (+0.0012, +0.0018), banking crises' 2003-14 cells lose
+   (-0.0005 lead, -0.0012 w2); no cell differs after Romano-Wolf. Pooled
+   recall at 10% rises over named for coups, protest and violence surges
+   in 2003-14.
+2. **Against A** (the trial 39/40 quarters), per kind, on the quarter
+   nodes' own outcomes 2003-2022 (lead and w2 pooled):
+
+   | kind | n | onsets | Brier | log score |
+   |---|---|---|---|---|
+   | coup | 27275 | 537 | **+0.00107 [+0.00053 +0.00190]** | **+0.00765 [+0.00323 +0.01317]** |
+   | violence_surge | 26323 | 936 | +0.00073 [+0.00003 +0.00180] | +0.00690 [+0.00123 +0.01609] |
+   | conflict_onset | 25698 | 903 | +0.00047 [-0.00024 +0.00136] | +0.00165 [-0.00200 +0.00548] |
+   | war_onset | 26564 | 272 | +0.00036 [-0.00002 +0.00091] | +0.00175 [-0.00137 +0.00552] |
+   | protest_surge | 26700 | 358 | +0.00016 [-0.00033 +0.00073] | +0.00239 [-0.00061 +0.00566] |
+   | banking_crisis | 19967 | 286 | -0.00028 [-0.00102 +0.00024] | -0.00294 [-0.00831 +0.00120] |
+
+   Holm over six: coups gain (one-sided 0.83%: Brier +0.00107 [+0.00029
+   ...], 2000 resamples); violence surges stop it at the next step
+   (one-sided 1%: [-0.00024 ...]). Five of six point estimates favour
+   carrying the year down.
+
+The year carried down improves the quarters over the trial 39/40 design
+for coups, out of sample and after correction, with every political
+kind's estimate on the same side; against named, it is level. Banking,
+where the year node itself gains (trial 39), is the one kind where the
+quarters do not: its year forecast for two years scaled to a quarter
+blunts what named's financial inputs time within the year.
