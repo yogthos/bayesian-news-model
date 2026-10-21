@@ -144,3 +144,27 @@ country with data:
 A flaw found on the way: series a source holds nearly flat (WID's imputed
 years) made any change look enormous against their own decade; stretches
 are now floored at 2% of the level and capped at 5.
+
+## By type, and the other crises (Laeven & Valencia 2018)
+
+The 2018 database's Table 1 (data/raw/slow/lv2018, parsed from the paper's
+text layer by scripts/lv2018-dates.py) dates currency and sovereign crises
+beside the banking ones. Of the modern catalogue's 130 banking crises of
+1974-2002, 41 are twin (a currency crisis within a year), 89 domestic:
+
+- **twin crises** follow finance running ahead of production for eight
+  years (bank equity ahead of nonfinancial, strain +1.0 to +1.4), bank
+  equity crashes accumulating, productivity falling, credit pulling
+  ahead of productivity late;
+- **domestic crises** follow polarization (the top's income share ahead of
+  the bottom half's, from three years out), rising graded distress from
+  six years out, and bank equity ahead of nonfinancial only late.
+
+The type is known only in hindsight; what is known before is the other
+crises: currency crises in the three and ten years before and sovereign
+crises in the ten years before stand +0.2 to +0.33 above the calm from
+four years out. Laeven & Valencia's own dates end in 2017, so the year
+node reads currency crises by their rule (a depreciation against the
+dollar of 30% or more, 10 points above the year before's, once per five
+years) from WDI's exchange rates: 84% of these fall within a year of one
+of theirs, and they find 81% of theirs.

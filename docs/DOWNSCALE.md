@@ -68,3 +68,26 @@ Each step is one comparison on the paired test against trial 39's quarter.
 - Ranjan & Gneiting, Combining probability forecasts, JRSS-B 2010
 - Athanasopoulos et al., Forecasting with temporal hierarchies, EJOR 262 2017
 - Zambon, Azzimonti & Corani, Probabilistic reconciliation of forecasts via importance sampling, Stat. Comput. 2024 (arXiv 2210.02286)
+
+## As built (trial 41)
+
+- `bnm.lattice` `:downscale {scale {:from :year}}`: the quarter's offset is
+  `window-log-odds` of the year node's latest forecast for the place
+  issued before the origin, the window a fraction h/24 of the year's
+  (lead 9 months, w2 12). `:downscale-pool w` pools it in log odds with
+  the spec's known offset (named), weight w on named; `:downscale-
+  uncertainty` integrates the quarter's forecast over the year's linear
+  predictor N(f, q) by five-point Gauss-Hermite quadrature (augur.dynamic/
+  predictive, v0.7.0), learning from the offset whose probability is the
+  quadrature's average. The read is recorded and the smoke checks it comes
+  from before the origin.
+- `bnm.reconcile`: at each quarter origin the first quarter (the year's
+  hazard over three months), lead and w2 are the parts of the next two
+  years. Their chance of any onset is pooled in log odds with the year's
+  and every part's hazard scaled to meet it. Not BUIS: conditioning the
+  bottom forecasts on the year's density multiplies the two forecasts'
+  odds, which for two calibrated forecasts of the same event counts what
+  both know twice (two forecasts of 0.19 reconcile to 0.05); the pool
+  leaves coherent forecasts unchanged.
+- Flags: `--downscale year [--pool 0.5] [--uncertainty true]` on
+  bnm.lattice-banking, bnm.lattice-political and bnm.lattice-smoke.
