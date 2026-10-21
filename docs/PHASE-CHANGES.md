@@ -468,3 +468,22 @@ the test is counted, get their own intercept and slopes (Mueller & Rauh
 on the same rows. Bonferroni count for the original test: 35.
 
 The registration closes here (21 October 2026, before r9 is scored).
+
+**Results, 21 October 2026 (r9, trials 34-35).** Neither gains.
+
+| model | bench | primary Brier (90% two-way) | log score | original test |
+|---|---|---|---|---|
+| named+precursors | named | -0.00002 [-0.00007 +0.00005] | worse | 0/24 |
+| named+precursors | named+precursors-placebo | -0.00001 [-0.00004 +0.00001] | worse | - |
+| named+precursors | named+mix | -0.00006 [-0.00014 +0.00002] | worse | 0/24 |
+| cs-named | named | -0.00012 [-0.00027 +0.00001] | worse | 0/24 |
+| cs-named+mix | named+mix | -0.00013 [-0.00028 +0.00000] | worse | 0/24 |
+| cs-named+precursors | named | -0.00018 [-0.00035 -0.00004] | worse | 0/24 |
+
+On the hard rows the precursors carry nothing beyond a shuffle of
+themselves, and the calm slopes cost more in fitting than they return.
+Exploratory, as trial 1 predates the amendment: `named+mix` against
+`named` gains on the primary (+0.00004 [+0.00000 +0.00009]) and on the log
+score (+0.00094 [+0.00050 +0.00139]), where the original test found
+nothing: the amended test has power on real data, and every trial since
+has found no signal it could detect.
