@@ -116,8 +116,8 @@
 (defn- history
   "The own-history inputs at origin t from onsets known by then: log years
   since the last, and the counts in the last 10 and 30 years."
-  [{:keys [onsets from]} unit t]
-  (let [known (subseq (get onsets unit (sorted-set)) <= (- t known-lag))
+  [{:keys [onsets from] :as cat} unit t]
+  (let [known (subseq (get onsets unit (sorted-set)) <= (- t (get cat :known-lag known-lag)))
         last-m (last known)]
     (when (and (from unit) (<= (from unit) t))
       [(if last-m (Math/log (+ 1.0 (/ (- t last-m) 12.0))) (Math/log (+ 1.0 (/ (- t (from unit)) 12.0))))
@@ -420,14 +420,15 @@
   "What is known, as a forecast: bnm.onsets' named model for each window
   (`run`'s preds, refit each year on the years before it, so out of sample
   at every origin), {[window unit q] p}."
-  [run]
-  (with-open [r (io/reader (str "data/runs/" run "/preds.tsv"))]
+  ([run] (read-known run kind))
+  ([run kind]
+   (with-open [r (io/reader (str "data/runs/" run "/preds.tsv"))]
     (reduce (fn [acc line]
               (let [[k w m q u p] (str/split line #"\t")]
                 (if (and (= k kind) (= m "named") (#{"lead" "w2"} w))
                   (assoc acc [w u (parse-long q)] (parse-double p))
                   acc)))
-            {} (line-seq r))))
+            {} (line-seq r)))))
 
 (defn spec
   "The lattice spec for banking crises."

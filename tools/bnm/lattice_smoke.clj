@@ -4,12 +4,15 @@
   weights move, uses its strain in theory's direction, reads nothing from
   the future, and exports rows that line up with the scoring tools.
 
-    jolt -A:tools -M -m bnm.lattice-smoke [--end 23999] [--without-at ...]
+    jolt -A:tools -M -m bnm.lattice-smoke [--end 23999] [--without-at ...] [--kind coup]
+
+  With --kind, a political kind's lattice (bnm.lattice-political).
 
   Exits 1 when a check fails."
   (:require [bnm.geo :as geo]
             [bnm.lattice :as lt]
             [bnm.lattice-banking :as lb]
+            [bnm.lattice-political :as lp]
             [bnm.macrohistory :as mh]
             [bnm.named :as nm]
             [bnm.slow-train :as st]
@@ -23,18 +26,22 @@
     (if (and (pos? sx) (pos? sy)) (/ sxy (* sx sy)) 0.0)))
 
 (defn -main [& args]
-  (let [{:keys [end without-at]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [end without-at kind]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         end (or (some-> end parse-long) (+ (* 12 1999) 11))
-        variables (st/read-variables "data/slow/variables.tsv")
-        db (nm/load-series "data/slow/series.tsv" variables)
-        jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
-        jst (into {} (for [r (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap))] [[(:iso r) (:year r)] r]))
-        cat (lb/catalogue jst-rows)
-        units (set (filter #(first (geo/parents %)) (keys (:onsets cat))))
-        wc (nm/world-credit db units (range (+ lb/start 2) (inc end) 3))
-        ext (lb/extended-table jst-rows (#'lb/read-pwt) db units (lb/read-annual))
-        sp (cond-> (lb/spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
-                             :known (lb/read-known "r6-at") :quarterly (lb/read-quarterly)})
+        kind (or kind lb/kind)
+        sp0 (if (not= kind lb/kind)
+              (lp/build kind end "r6-at")
+              (let [variables (st/read-variables "data/slow/variables.tsv")
+                    db (nm/load-series "data/slow/series.tsv" variables)
+                    jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
+                    jst (into {} (for [r (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap))] [[(:iso r) (:year r)] r]))
+                    cat (lb/catalogue jst-rows)
+                    units (set (filter #(first (geo/parents %)) (keys (:onsets cat))))
+                    wc (nm/world-credit db units (range (+ lb/start 2) (inc end) 3))
+                    ext (lb/extended-table jst-rows (#'lb/read-pwt) db units (lb/read-annual))]
+                (lb/spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
+                          :known (lb/read-known "r6-at") :quarterly (lb/read-quarterly)})))
+        sp (cond-> sp0
              true (assoc :trace :inputs)
              without-at (assoc :without-at (into {} (for [part (str/split without-at #",") :let [[sc gs] (str/split part #":")]]
                                                       [(keyword sc) (set (map keyword (str/split gs #"\+")))]))))
@@ -62,7 +69,7 @@
       (check (empty? dead) (format "%s %s: no group's weight stays below 1e-4 throughout %s" (name scale) (name level) (vec dead))))
     ;; 4. strain in theory's direction at the year
     (let [rows (for [[[s p] byo] (:book r) :when (and (= s :year) (= 3 (count p)))
-                     [o {:keys [p strain]}] byo :when (>= o (* 12 1960))]
+                     [o {:keys [p strain]}] byo :when (>= o (max (:start sp) (* 12 1960)))]
                  [(double strain) (Math/log (/ p (- 1.0 p)))])]
       (check (> (corr (map first rows) (map second rows)) 0.0)
              (format "year: strain and the forecast's log odds move together (r = %.2f)" (corr (map first rows) (map second rows)))))
@@ -77,7 +84,7 @@
           bad-learn (for [{:keys [origin learned]} (:trace r) {k :known-at} learned :when (> k origin)] origin)]
       (check (and (empty? bad) (empty? bad-learn)) (format "no read or learning from after the origin (%d bad reads)" (count bad))))
     ;; 6. the export lines up with the scoring tools' rows
-    (let [known (lb/read-known "r6-at")
+    (let [known (lb/read-known "r6-at" kind)
           rows (for [{:keys [scale place origin y]} (:forecasts r)
                      :let [w ({:quarter-lead "lead" :quarter-w2 "w2"} scale)]
                      :when (and w (= 3 (count place)) (zero? (mod (- origin 2) 3)))]

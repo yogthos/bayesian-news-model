@@ -20,6 +20,7 @@
             [bnm.paired-test]
             [bnm.lattice-test]
             [bnm.lattice-banking-test]
+            [bnm.political-gauges-test]
             [bnm.anatomy-test]
             [bnm.calm-test]
             [bnm.sync-test]
@@ -49,6 +50,7 @@
     bnm.paired-test
     bnm.lattice-test
     bnm.lattice-banking-test
+    bnm.political-gauges-test
     bnm.anatomy-test
     bnm.calm-test
     bnm.sync-test
