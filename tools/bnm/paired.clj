@@ -20,7 +20,7 @@
 
     jolt -A:tools -M -m bnm.paired --run r9 --bench named [--models a,b] [--kinds a,b]
                                    [--reps 400] [--simulate 0.25,0.5,1.0 --sims 20]
-    jolt -A:tools -M -m bnm.paired --run lattice-a --bench lattice-b --scale year [--from 2003 --to 2022]
+    jolt -A:tools -M -m bnm.paired --run lattice-a --bench lattice-b --scale year [--from 2003 --to 2022] [--alpha 0.1]
 
   --simulate replaces the outcomes with draws from the benchmark's
   probabilities shifted by a signal of size beta that only the model knows
@@ -138,18 +138,19 @@
 (defn lattice-pair
   "Paired Brier and log score of two lattice runs' country forecasts at one
   scale on their own outcomes, years resampled with countries."
-  [model bench scale from to reps]
-  (let [a (read-lattice model scale from to)
+  [model bench scale from to reps & [alpha]]
+  (let [alpha (or alpha 0.1)
+        a (read-lattice model scale from to)
         b (read-lattice bench scale from to)
         rows (for [[k [pa y]] a :let [[pb _] (b k)] :when pb] [(second k) pa pb y (first k) scale])]
     {:n (count rows) :pos (count (filter #(nth % 3) rows))
-     :brier (sc/paired-loss-2way rows brier {:reps reps :seed 1 :alpha 0.1 :per-block 1})
-     :log (sc/paired-loss-2way rows log-loss {:reps reps :seed 1 :alpha 0.1 :per-block 1})}))
+     :brier (sc/paired-loss-2way rows brier {:reps reps :seed 1 :alpha alpha :per-block 1})
+     :log (sc/paired-loss-2way rows log-loss {:reps reps :seed 1 :alpha alpha :per-block 1})}))
 
 (defn- fmt [{:keys [diff lo hi]}] (format "%+.5f [%+.5f %+.5f]%s" diff lo hi (if (pos? lo) " GAIN" "")))
 
 (defn -main [& args]
-  (let [{:keys [run bench models kinds reps sims tests scale from to] betas-arg :simulate} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run bench models kinds reps sims tests scale from to alpha] betas-arg :simulate} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         dir (str "data/runs/" run)
         reps (or (some-> reps parse-long) 400)
         kinds (when kinds (set (str/split kinds #",")))
@@ -163,7 +164,8 @@
     (cond
       ;; two lattice runs at one scale: --run model-run --bench bench-run --scale year
       scale
-      (let [{:keys [n pos brier log]} (lattice-pair run bench scale (or (some-> from parse-long) 2003) (or (some-> to parse-long) 2022) reps)]
+      (let [{:keys [n pos brier log]} (lattice-pair run bench scale (or (some-> from parse-long) 2003) (or (some-> to parse-long) 2022) reps
+                                                 (some-> alpha parse-double))]
         (say (format "%s against %s, %s nodes' country forecasts on their own outcomes, %s-%s: n=%d pos=%d"
                      run bench scale (or from "2003") (or to "2022") n pos))
         (say "  Brier     " (fmt brier))

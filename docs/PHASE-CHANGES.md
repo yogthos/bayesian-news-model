@@ -700,3 +700,34 @@ rows aligned with the scoring tools.
 2. the quarter nodes, `lattice` against `named`, pooled over the five kinds
    with equal weights on the amended paired test (bnm.paired), and the
    original test for the record.
+
+**Results, 21 October 2026 (trial 40).**
+1. The dialectic per kind, year nodes against the same design without the
+   contradiction group, origins 2003-2022 (paired Brier, one-sided 95%;
+   Holm over the five kinds):
+
+   | kind | n | onsets | Brier | log score |
+   |---|---|---|---|---|
+   | violence_surge | 3387 | 271 | **+0.00148 [+0.00057 +0.00269]** | **+0.00383 [+0.00106 +0.00711]** |
+   | protest_surge | 3371 | 104 | -0.00010 [-0.00088 +0.00068] | -0.00045 [-0.00384 +0.00322] |
+   | war_onset | 3381 | 87 | -0.00014 [-0.00065 +0.00028] | -0.00128 [-0.00365 +0.00068] |
+   | conflict_onset | 3286 | 272 | -0.00039 [-0.00085 +0.00008] | -0.00191 [-0.00370 -0.00023] |
+   | coup | 3461 | 157 | -0.00044 [-0.00127 +0.00042] | -0.00192 [-0.00611 +0.00307] |
+
+   Violence surges gain and survive Holm (Brier at one-sided 1%: +0.00012
+   lower bound, 2000 resamples); Holm stops at the next kind. The other
+   four are level, conflict onsets slightly worse on the log score. The
+   year nodes lean on their all-inputs model (weight near 1 from 2002;
+   conflict on its history until about 2012), so the contradictions act
+   through it.
+2. The quarter nodes against `named`, pooled over the five kinds: Brier
+   +0.00001 [-0.00010 +0.00010], log score +0.00002 [-0.00143 +0.00113]:
+   level, no gain; no cell differs after Romano-Wolf (violence surges'
+   best, +0.0005 to +0.0006 at w2).
+
+With trial 39: the accumulated contradictions improve the year-scale
+forecast for banking crises and violence surges, the two kinds whose
+anatomy showed strain building steadily (credit against wages;
+democracy against the rule of law, inflation and population against
+growth), and not for the kinds whose risk the traps and structure carry
+(conflict, war, coups) or whose catalogue is short and rare (protest).
