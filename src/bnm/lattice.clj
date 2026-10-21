@@ -605,6 +605,30 @@
                    st)]
           {:t (inc t) :st st :forecasts forecasts :weights weights :trace trace})))
 
+(defn relation-effects
+  "Each relation input's effect on the node's log odds per raw unit, at
+  `scale` and level index `level-ix`, from a lattice state: every model's
+  coefficient on it weighted by the model averaging, over the input's
+  running spread (what bnm.world runs forward). A vector over the
+  relation inputs, in their order."
+  [spec state scale level-ix]
+  (let [[level _] (nth (:levels spec) level-ix)
+        k [scale level]
+        lay (layout spec scale level-ix)
+        rel-ix (vec (sort (mapcat val (filter #(or (= :relations (key %)) (= "rel" (some-> (key %) namespace))) (:groups lay)))))
+        g-width (if (contains? (without spec scale) :gauges) 0 (get-in spec [:gauge-width scale] 0))
+        avg (get-in state [:st :models k])
+        {:keys [n s ss]} (get-in state [:st :flow-std k])
+        sd (fn [i] (let [j (- i (inc g-width))
+                         m (/ (nth s j) n)]
+                     (Math/sqrt (Math/max 1e-12 (- (/ (nth ss j) n) (* m m))))))]
+    (vec (for [i rel-ix]
+           (/ (reduce + 0.0 (for [[g mdl] (:models avg)
+                                  :let [ins (:inputs mdl) pos (.indexOf ^java.util.List (vec ins) i)]
+                                  :when (>= pos 0)]
+                              (* (get (d/weights avg) g 0.0) (nth (d/means mdl) pos))))
+              (sd i))))))
+
 (defn weights
   "The model-averaging weights of the node at `scale` and `level` after its
   last period, from the result of `run`."

@@ -470,3 +470,20 @@
         late (for [c countries [o e] (get-in r [:book [:month c]]) :when (> o 200)] (first (:principal e)))]
     (is (every? some? late))
     (is (> (/ (count (filter #{:rel/driver} late)) (double (count late))) 0.8) "the driver leads")))
+
+(deftest relation-effects-in-raw-units
+  ;; each relation input's effect on the log odds per raw unit: the models'
+  ;; coefficients weighted by the model averaging, over the input's spread
+  (let [g (m/rng 5)
+        drive (into {} (for [c countries t (range months)] [[c t] (* 4.0 (m/normal! g))]))
+        ys (into {} (for [c countries t (range months)] [[c t] (< (m/next-double! g) (m/expit (- (* 0.5 (drive [c t])) 2.0)))]))
+        spec {:scales [{:name :month :per 1 :horizon 1 :discount 0.99}]
+              :levels [[:country countries]] :parent {} :start 0 :end 300 :forget 0.99
+              :target (fn [_ place t] {:y (ys [place (inc t)]) :known-at (inc t)})
+              :gauges (fn [_ _ _] [(m/normal! g)]) :gauge-width {:month 1}
+              :relations (fn [_ place t] {:x [(drive [place (inc t)]) (m/normal! g)] :reads []})
+              :relation-width {:month 2} :relation-groups {:month {:rel/driver [0] :rel/noise [1]}}}
+        state (loop [s (lt/start spec)] (if (> (:t s) (:end spec)) s (recur (lt/step spec s))))
+        [eff noise] (lt/relation-effects spec state :month 0)]
+    (is (< 0.3 eff 0.7) "about the true 0.5 per raw unit (the driver's spread is 4)")
+    (is (< (Math/abs noise) 0.1))))
