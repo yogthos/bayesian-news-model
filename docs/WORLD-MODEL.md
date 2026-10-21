@@ -161,3 +161,117 @@ and scale, and a layer of **relation models** links them.
 - Lawrence, Homer-Dixon, Janzwood, Rockström, Renn & Donges, Global polycrisis: the causal mechanisms of crisis entanglement, Global Sustainability 2024; Cascade Institute, Polycrisis Core Model v2.5, 2025
 - Pesaran, Schuermann & Weiner, JBES 2004 (GVAR); Diebold & Yilmaz, connectedness
 - Polson, Scott & Windle, Bayesian inference for logistic models using Pólya-gamma latent variables, JASA 2013; Schein et al., Bayesian Poisson Tucker decomposition for international relations, ICML 2016; Poisson-randomized gamma dynamical systems, NeurIPS 2019
+
+## The concrete design
+
+### The model, in one equation
+
+For kind (dimension) k at place p, scale s and origin t, the node's linear
+predictor is today's lattice node plus a relation term:
+
+    eta[k,p,s,t] = o[k,p,s,t]                       offset: named, or the coarser scale carried down
+                 + x[k,p,s,t]' b[k,s,t]              its own gauges and flows (the lattice as now)
+                 + sum over j in Pa(k) of
+                     g[kj,s,t] z(f[j,p,s,t-])         the parent's state: its linear predictor at its
+                                                      latest origin before t, standardized
+                   + d[kj,s,t] e[j,p,t]               the parent's recent onsets, as an excursion
+                                                      above the place's own rate of that kind
+                   + h[kj,s,t] z(f[j,p,s,t-]) m[p,t]  the same state through a moderator (exposure,
+                                                      executive constraints)
+                 + c[k,s,t]' strain(cross tensions)   one dimension's stress ahead of another's capacity
+
+Every coefficient is a dynamic state (augur.dynamic: discounted, linear-
+Bayes updates). Dynamic model averaging runs over groups as now, plus one
+group per parent kind, so the weight on "coups read banking" through time
+is the model's own estimate of that relation.
+
+### Four choices that make it tractable
+
+1. **Parents are read lagged, never at the same origin.** Every relation
+   input comes from the parent's latest forecast issued before t. Within
+   a time step the kinds are then independent: they can run in any order,
+   in parallel, and the graph may have cycles (coups and conflicts lead
+   each other; banking and currency crises mutate both ways) with no
+   simultaneity to untangle. This is the dynamic dependence network's
+   form without its contemporaneous (Cholesky) part; what that part
+   would add, the same-quarter co-movement of kinds, the recoupling in 4
+   supplies by simulation. The smoke check that every read is from
+   before the origin already covers it.
+2. **What one dimension reads of another is its state, not its label.**
+   f and q, the parent node's linear predictor and its variance (now in
+   every book entry, from augur.dynamic/predictive), carry the parent's
+   whole stress: its gauges, flows and contradictions, already weighted by
+   what the parent learned. Onsets enter as well but through kernels, as
+   excursions: e[j,p,t] = sum over known onsets of j at p of
+   exp(-(t - t_i)/tau) minus the place's long-run rate times tau, at tau
+   of one and five years. Without the subtraction the kernel only
+   re-learns the level (bd memory: the branching ratio is not identified
+   from the level).
+3. **The graph is sparse and set before training.** Candidate edges j to k
+   come from the sequencing step (pre-2003 lead-lag tables and lagged
+   conditional-independence tests given k's own past) and from theory.
+   An edge with support gets a prior coefficient of theory's sign (mean
+   0.2, variance 0.1, as the gauges' priors); an edge without either is
+   left out, not given a flat prior, so a dozen kinds do not mean a
+   hundred and more noisy coefficients. Model averaging then weighs the
+   parents it was given.
+4. **The world model is a forward simulation.** No joint fitting: once
+   every node has learned to t, draw each kind's linear predictor from
+   N(f, q), its window's event from that, and pass the draws to the
+   children's relation inputs for the next step, over the horizon, S
+   times. The draws give joint and conditional forecasts (a banking
+   crisis then a coup, a currency crisis given a sovereign default) and
+   scenarios (set a parent's event and see what follows), coherent with
+   every node's own forecast because they are made of them. This is
+   Berry & West's top-down sampling run along the dimension graph.
+
+### Where it lives
+
+- **bnm.lattice**: node keys gain the kind, [scale place] to [kind scale
+  place] in the book, the models and the tensions; a spec gains
+  :kinds {kind kind-spec}, each kind-spec today's spec less what the kinds
+  share (:scales, :levels, :parent, :start, :end); one more input group,
+  :relations, assembled in `inputs` from the book; the run loop's inner
+  step maps over kinds (in parallel: their inputs are all from before t).
+  A one-kind spec runs as now.
+- **bnm.relations** (new, src): the pure pieces, each tested: the excursion
+  kernel, the parent-state reads with their read records, the cross-
+  tension pairs across kinds, the moderated terms.
+- **bnm.world** (new, src): the forward simulation over the learned nodes,
+  joint and conditional probabilities, scenarios.
+- **tools**: bnm.lattice-banking and bnm.lattice-political become kind-spec
+  builders; a new bnm.economic-events defines the economic kinds;
+  bnm.world-run composes them, writes every kind's forecasts, the
+  relation weights through time and the simulated joint forecasts;
+  bnm.sequencing writes the lead-lag tables and the candidate graph.
+
+### The economic kinds
+
+Defined by rules fixed in advance, on data already on disk, annual unless
+marked:
+
+| kind | rule | source, coverage |
+|---|---|---|
+| currency_crisis | Laeven & Valencia's: depreciation >= 30%, 10 points above the year before, once in five years | WDI exchange rates, 1960- |
+| inflation_crisis | consumer prices up 40% or more in the year (Reinhart & Rogoff's high-inflation threshold, raised past the 20% that the 1970s cross everywhere) | WDI, BIS monthly where present |
+| growth_collapse | real GDP per head growth more than two standard deviations below the country's own previous twenty years | Maddison, PWT, WDI |
+| sovereign_default | default or restructuring | Laeven & Valencia 1970-2017, Reinhart & Rogoff 1800-2016; unknown after, so this kind is a parent only until 2017 |
+| food_price_shock | food inflation over three times its own five-year mean (quarterly) | FAOSTAT 2000-, WDI before |
+| market_crash | as now, a 30% fall from the 24-month high (monthly) | existing |
+
+Austerity, the strongest economic-to-unrest link in the literature
+(Ponticelli & Voth), needs primary balances for every country; the
+Macrohistory panel has them for 18 and the IMF's public finances dataset
+would extend it: a later download.
+
+### What the first concrete step produces
+
+`bnm.sequencing`, on onsets before 2003 only: for every ordered pair of
+kinds (the six we forecast plus the economic kinds), the rate of j's
+onsets at each year lag -10 to +3 around k's onsets against the calm, in
+calm deviations (the anatomy's measure), and a lagged test of j's past
+onsets on k's onsets given k's own past (a panel logit with the
+excursion kernels; the PCMCI idea in our setting). The output is the
+candidate graph, edges with signs and lags, written to
+data/runs/sequencing/ and docs/SEQUENCING.md, reviewed before any model
+reads it.
