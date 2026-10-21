@@ -430,7 +430,8 @@
   score, the ridge went to the grid's strongest and the intercepts took
   over what the covariates carried. Up to :rounds rounds, fewer once the
   precision moves by under 1e-3 in log and the variances by under 1e-3. Warm from
-  `start` ({:beta :fx :prior}). {:beta :fx :prior :rounds}."
+  `start` ({:beta :fx :prior}). {:beta :fx :prior, the precision the
+  coefficients were fit at, :next-prior, the next step's, :rounds}."
   [train k {:keys [beta fx prior]} {:keys [tau2 sweeps rounds sd-prior] start-prior :prior}]
   (let [train (vec train)
         settled? (fn [p p' t t'] (and t (< (Math/abs (- (Math/log p') (Math/log p))) 1e-3)
@@ -444,7 +445,8 @@
             prior' (lgt/evidence-step (map #(assoc % :o (hier/effect fx' (:path %))) train) k beta prior)
             r (inc r)]
         (if (or (>= r rounds) (settled? prior prior' (:tau2 fx) (:tau2 fx')))
-          {:beta beta :fx fx' :prior prior' :rounds r}
+          ;; the coefficients were fit at `prior`; the next year starts from prior'
+          {:beta beta :fx fx' :prior prior :next-prior prior' :rounds r}
           (recur r beta fx' prior'))))))
 
 (def analog-opts
@@ -591,7 +593,7 @@
                           [beta fx prior] (cond
                                             (not (some :y train)) [beta fx prior]
                                             hier? (let [f (fit-hier train k {:beta beta :fx fx :prior prior} hier-opts)]
-                                                    [(:beta f) (:fx f) (:prior f)])
+                                                    [(:beta f) (:fx f) (:next-prior f)])
                                             shrunk? [(lgt/fit-shrunk train k {:prior prior :start beta}) fx prior]
                                             :else [(lgt/fit train k {:prior prior :start beta}) fx prior])
                           scored (for [{:keys [unit q y] :as r} prepared

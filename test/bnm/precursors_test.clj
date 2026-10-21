@@ -77,3 +77,27 @@
       (is (= 5.0 (at "AAA" 12 "protest-did")))
       (is (nil? (get-in c ["AAA" 13])) "nothing past the unit's last quarter")
       (is (= (count types) (count (get-in c ["BBB" 11])))))))
+
+(deftest a-stream-waking-from-zero-is-seen
+  ;; a flat past has no spread: the z-score needs a floor, or the strongest
+  ;; precursor (silence to activity) is dropped or explodes
+  (let [quiet (into {} (for [q (range 59)] [q (vec (repeat 15 0.0))]))
+        woke (assoc quiet 59 (vec (repeat 15 50.0)))
+        f (p/features {:counts woke} 59)]
+    (is f "a row, not nothing")
+    (is (> (:norm f) 3.0) f)
+    (is (= 1.0 (:breadth f))))
+  (let [g (m/rng 8)
+        one (into {} (for [q (range 59)] [q (assoc (vec (repeat 15 0.0)) 0 (+ 20.0 (rand-int 3)))]))
+        jumped (assoc one 59 (assoc (one 58) 5 40.0))
+        f (p/features {:counts jumped} 59)]
+    (is (> (:max f) 3.0) f)
+    (is (> (:trigger f) 3.0) f)
+    (is (> (:breadth f) 0.0) f)
+    (is (every? #(<= (Math/abs (double %)) 10.0) (p/->vector f)) "z-scores are capped")))
+
+(deftest units-run-to-the-files-last-quarter
+  (let [f (java.io.File/createTempFile "mix" ".tsv")]
+    (spit f (str "AAA\t10\tprotest-did\t3\n" "BBB\t14\tprotest-did\t2\n"))
+    (let [c (p/load-counts (.getPath f))]
+      (is (= (vec (repeat 15 0.0)) (get-in c ["AAA" 14])) "quiet to the end, not missing"))))

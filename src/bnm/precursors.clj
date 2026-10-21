@@ -33,12 +33,19 @@
   (let [mu (mean xs)]
     (Math/sqrt (/ (reduce + (map #(let [d (- % mu)] (* d d)) xs)) (dec (count xs))))))
 
+(def ^:private sd-floor
+  "The least spread a z-score divides by, on the log scale: a stream silent
+  for years has none, and waking is the strongest precursor."
+  0.25)
+
+(def ^:private cap "z-scores are capped at this size either way." 10.0)
+
 (defn- z
-  "x against `past` (at least n values): nil when too few or flat."
+  "x against `past` (at least n values), its spread floored and the
+  result capped; nil when too few."
   [x past n]
   (when (and x (>= (count past) (max n 2)))
-    (let [s (sd past)]
-      (when (> s 1e-9) (/ (- x (mean past)) s)))))
+    (Math/max (- cap) (Math/min cap (/ (- x (mean past)) (Math/max sd-floor (sd past)))))))
 
 (defn- logs [counts t] (some->> (get counts t) (mapv #(Math/log1p (double %)))))
 
@@ -105,7 +112,7 @@
     (or (when-let [now (rf q)]
           (let [past (keep rf (range (- q 40) (- q 11)))]
             (when (>= (count past) 8)
-              (/ (- now (mean past)) (Math/max 0.05 (sd past))))))
+              (Math/max (- cap) (Math/min cap (/ (- now (mean past)) (Math/max 0.05 (sd past))))))))
         0.0)))
 
 (defn features-for
@@ -141,8 +148,8 @@
 
 (defn load-counts
   "{unit {quarter [count per stream]}} from an event-mix file (unit,
-  quarter, stream, count), every quarter from the unit's first to its last;
-  a quarter with no events counts zero in every stream."
+  quarter, stream, count), every quarter from the unit's first to the
+  file's last; a quarter with no events counts zero in every stream."
   [path]
   (let [ix (zipmap streams (range))
         by-unit (with-open [r (clojure.java.io/reader path)]
@@ -152,6 +159,7 @@
                                 (update-in acc [unit (parse-long q)] (fnil assoc (vec (repeat (count streams) 0.0))) i (parse-double n))
                                 acc)))
                           {} (line-seq r)))]
-    (into {} (for [[unit qs] by-unit
-                   :let [q0 (apply min (keys qs)) q1 (apply max (keys qs))]]
-               [unit (into {} (for [q (range q0 (inc q1))] [q (get qs q (vec (repeat (count streams) 0.0)))]))]))))
+    (let [q1 (apply max (for [[_ qs] by-unit q (keys qs)] q))]
+     (into {} (for [[unit qs] by-unit
+                   :let [q0 (apply min (keys qs))]]
+               [unit (into {} (for [q (range q0 (inc q1))] [q (get qs q (vec (repeat (count streams) 0.0)))]))])))))

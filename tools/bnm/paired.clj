@@ -65,16 +65,22 @@
     (when (pos? pos) (/ hits (double pos)))))
 
 (defn simulate
-  "Rows {:unit :q :pb} with synthetic outcomes: a signal z shared within a
-  unit's year shifts the benchmark's log odds by beta z; the model knows z
-  (:pm) and the outcome is drawn from it (:y)."
-  [rows beta g]
-  (let [zs (atom {})
-        z-of (fn [k] (or (@zs k) (let [v (m/normal! g)] (swap! zs assoc k v) v)))]
-    (vec (for [{:keys [unit q pb] :as r} rows
-               :let [z (z-of [unit (quot q 4)])
-                     pm (if (zero? beta) pb (m/expit (+ (m/logit pb) (* beta z))))]]
-           (assoc r :pm pm :y (< (m/next-double! g) pm))))))
+  "Cells {[kind window era] [{:unit :q :pb}]} with synthetic outcomes: a
+  signal z shared by a kind, unit and year (whatever the window) shifts the
+  benchmark's log odds by beta z, and the model knows it (:pm). One uniform
+  draw per kind, unit and quarter decides every window's outcome (:y), so
+  a kind's windows move together as their overlapping labels do. With
+  `informative?` the outcome follows the model; without, it follows the
+  bench and the shift is noise (the test's size)."
+  [cells beta g informative?]
+  (let [zs (atom {}) us (atom {})
+        draw (fn [a k f] (or (@a k) (let [v (f)] (swap! a assoc k v) v)))]
+    (into {} (for [[[kind :as cell] rows] (sort-by key cells)]
+               [cell (vec (for [{:keys [unit q pb] :as r} rows
+                                :let [z (draw zs [kind unit (quot q 4)] #(m/normal! g))
+                                      pm (if (zero? beta) pb (m/expit (+ (m/logit pb) (* beta z))))
+                                      u (draw us [kind unit q] #(m/next-double! g))]]
+                            (assoc r :pm pm :y (< u (if informative? pm pb)))))]))))
 
 (defn- hard-rows
   "{[kind window era] [{:unit :q :pm :pb :y}]} on the counted cells' hard
@@ -111,13 +117,13 @@
   (let [alpha (/ 0.1 tests)]
     (some (fn [[_ rows]]
             (pos? (:lo (sc/paired-recall-gain-2way (for [{:keys [unit q pm pb y]} rows] [q pm pb y unit])
-                                                   0.10 {:reps 2000 :seed 3 :alpha alpha :per-block 4}))))
+                                                   0.10 {:reps (max 200 (long (Math/ceil (/ 10.0 (/ alpha 2))))) :seed 3 :alpha alpha :per-block 4}))))
           cells)))
 
 (defn- fmt [{:keys [diff lo hi]}] (format "%+.5f [%+.5f %+.5f]%s" diff lo hi (if (pos? lo) " GAIN" "")))
 
 (defn -main [& args]
-  (let [{:keys [run bench models kinds reps simulate sims tests]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run bench models kinds reps sims tests] betas-arg :simulate} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         dir (str "data/runs/" run)
         reps (or (some-> reps parse-long) 400)
         kinds (when kinds (set (str/split kinds #",")))
@@ -128,22 +134,25 @@
         models (if models (str/split models #",") all-models)
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out (str s "\n"))))]
-    (if simulate
-      (let [betas (map parse-double (str/split simulate #","))
+    (if betas-arg
+      (let [betas (map parse-double (str/split betas-arg #","))
             sims (or (some-> sims parse-long) 20)
             tests (or (some-> tests parse-long) 33)
             cells (hard-rows preds bench bench events lags)]
         (say (format "Power against %s on %d cells' hard rows, %d simulations per beta: the share finding the signal." bench (count cells) sims))
-        (say "beta   new primary (Brier)   new per-cell (any, Romano-Wolf)   old (any cell, recall within quarter, Bonferroni" tests ")")
-        (doseq [beta betas]
+        (say "Null rows: the outcome ignores the model's shift, so the share is the test's false-positive rate.")
+        (say "beta        new primary (Brier)   new per-cell (any, Romano-Wolf)   old (any cell, recall within quarter, Bonferroni" tests ")")
+        (doseq [beta betas
+                informative? [false true]]
           (let [g (m/rng 42)
                 res (vec (for [_ (range sims)]
-                           (let [sim (into {} (for [[c rows] cells] [c (simulate rows beta g)]))]
+                           (let [sim (simulate cells beta g informative?)]
                              [(pos? (:lo (primary sim brier 200)))
                               (boolean (some :reject (vals (per-cell sim 200))))
                               (boolean (old-test sim tests))])))
                 share (fn [i] (/ (count (filter #(nth % i) res)) (double sims)))]
-            (say (format "%.2f   %.2f                  %.2f                              %.2f" beta (share 0) (share 1) (share 2)))))
+            (say (format "%.2f %-6s %.2f                  %.2f                              %.2f"
+                         beta (if informative? "signal" "null") (share 0) (share 1) (share 2)))))
         (spit (str dir "/power-vs-" bench ".txt") (str out)))
       (do
         (say (format "Paired scores against %s on hard rows of the counted cells (lead, w2; 2003-14, 2015-22)." bench))

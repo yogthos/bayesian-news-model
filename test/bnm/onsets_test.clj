@@ -77,3 +77,15 @@
   ;; in ten years), so a calm country gets its own intercept and slopes
   (is (= [1.0 2.0 3.0 1.0 2.0 3.0] (vec (on/with-calm (double-array [1.0 2.0 3.0]) 1.0))))
   (is (= [1.0 2.0 3.0 0.0 0.0 0.0] (vec (on/with-calm (double-array [1.0 2.0 3.0]) 0.0)))))
+
+(deftest hier-fits-report-the-prior-their-coefficients-used
+  ;; stopped by the round limit before settling, the coefficients are the
+  ;; fit at :prior; the next step's estimate is :next-prior
+  (let [g (m/rng 10)
+        paths (for [r (range 2) s (range 3) c (range 4)] [(str "r" r) (str "r" r "s" s) (str "r" r "s" s "c" c)])
+        train (vec (for [path paths _ (range 40)
+                         :let [x (m/normal! g)]]
+                     {:x (double-array [1.0 x]) :y (< (m/next-double! g) (m/expit (+ -2.5 (* 0.8 x)))) :w 1.0 :path path}))
+        f (on/fit-hier train 2 {} (assoc on/hier-opts :rounds 1))]
+    (is (= (:prior on/hier-opts) (:prior f)) "one round: fit at the starting prior")
+    (is (not= (:prior f) (:next-prior f)))))

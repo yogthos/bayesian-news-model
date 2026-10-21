@@ -24,15 +24,29 @@
     (is (= 0.5 (pd/pooled-recall rows 0.1)))))
 
 (deftest simulated-outcomes-follow-the-model-not-the-data
-  (let [rows (vec (for [u (range 200) q (range 40)] {:unit (str "u" u) :q q :pb 0.05}))
-        sim (pd/simulate rows 1.0 (m/rng 1))
-        rate (fn [rs] (/ (count (filter :y rs)) (double (count rs))))]
+  (let [rows (fn [pb] (vec (for [u (range 200) q (range 40)] {:unit (str "u" u) :q q :pb pb})))
+        cells {["k" "lead" "e"] (rows 0.05) ["k" "w2" "e"] (rows 0.06) ["j" "lead" "e"] (rows 0.05)}
+        sim (pd/simulate cells 1.0 (m/rng 1) true)
+        rate (fn [rs] (/ (count (filter :y rs)) (double (count rs))))
+        lo (fn [p] (- (Math/log p) (Math/log (- 1.0 p))))]
     (testing "the model's probability carries the signal the bench lacks"
-      (is (every? #(and (< 0.0 (:pm %) 1.0)) sim))
-      (let [hi (filter #(> (:pm %) 0.1) sim) lo (filter #(< (:pm %) 0.02) sim)]
-        (is (> (rate hi) (* 3 (rate lo))))))
-    (testing "the signal is shared within a unit's year"
-      (let [by (group-by (juxt :unit #(quot (:q %) 4)) sim)]
-        (is (every? #(apply = (map :pm %)) (vals by)))))
-    (testing "no signal, no difference"
-      (is (every? #(= (:pm %) (:pb %)) (pd/simulate rows 0.0 (m/rng 2)))))))
+      (let [rs (sim ["k" "lead" "e"])
+            hi (filter #(> (:pm %) 0.1) rs) low (filter #(< (:pm %) 0.02) rs)]
+        (is (> (rate hi) (* 3 (rate low))))))
+    (testing "one signal per kind, unit and year, whatever the window"
+      (let [shift (fn [r] (- (lo (:pm r)) (lo (:pb r))))
+            by (fn [c] (into {} (map (juxt (juxt :unit :q) shift) (sim c))))
+            a (by ["k" "lead" "e"]) b (by ["k" "w2" "e"]) c (by ["j" "lead" "e"])]
+        (is (every? #(< (Math/abs (- (a %) (b %))) 1e-9) (keys a)) "windows of a kind share it")
+        (is (not-every? #(< (Math/abs (- (a %) (c %))) 1e-9) (keys a)) "kinds do not")
+        (is (every? (fn [[_ rs]] (apply = (map shift rs))) (group-by (juxt :unit #(quot (:q %) 4)) (sim ["k" "lead" "e"]))))))
+    (testing "windows of a kind draw their outcomes together"
+      (let [ya (into {} (map (juxt (juxt :unit :q) :y) (sim ["k" "lead" "e"])))
+            yb (into {} (map (juxt (juxt :unit :q) :y) (sim ["k" "w2" "e"])))
+            agree (/ (count (filter #(= (ya %) (yb %)) (keys ya))) (double (count ya)))]
+        (is (> agree 0.97) agree)))
+    (testing "the null: outcomes from the bench, the model's shift is noise"
+      (let [null (pd/simulate cells 1.0 (m/rng 2) false)
+            rs (null ["k" "lead" "e"])
+            hi (filter #(> (:pm %) 0.1) rs) low (filter #(< (:pm %) 0.02) rs)]
+        (is (< (Math/abs (- (rate hi) (rate low))) 0.03))))))
