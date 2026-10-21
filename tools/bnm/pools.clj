@@ -6,7 +6,11 @@
   several runs is the same fit (same rows, same inputs) and is read once.
   No model is refit, only the combinations (bnm.onsets/combine).
 
-    jolt -A:tools -M -m bnm.pools --runs onsets-mixties,onsets-regime,... --out onsets-pooled [--drop ties-un,named+ties-un]
+    jolt -A:tools -M -m bnm.pools --runs onsets-mixties,onsets-regime,... --out onsets-pooled [--drop ties-un,named+ties-un] [--threads 4]
+
+  A window's combinations and sub-pools are fit on up to --threads threads
+  (4 by default): one thread each held some fifty at once and starved
+  every other run of cores and memory.
 
   Writes data/runs/<out>/preds.tsv, scored by bnm.anticipation (--bench mlpool:
   a member whose removal loses recall carries something the rest don't)."
@@ -36,11 +40,12 @@
           {} runs))
 
 (defn -main [& args]
-  (let [{:keys [runs out drop]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [runs out drop threads]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         runs (str/split runs #",")
         drop? (set (when drop (str/split drop #",")))
         by-kw (read-runs runs drop?)
         lags (:lags (on/read-event-sets "data/slow/events.tsv"))
+        threads (or (some-> threads parse-long) 4)
         dir (str "data/runs/" out)]
     (.mkdirs (io/file dir))
     (with-open [w (io/writer (str dir "/preds.tsv"))]
@@ -53,17 +58,18 @@
         (println kind wname (count members) "members:" (str/join " " members))
         (doseq [m members] (emit m (models m)))
         ;; the members' forecasts aligned once; a sub-pool takes their columns.
-        ;; Every combination and sub-pool of the window on a thread of its own
+        ;; The window's combinations and sub-pools on a bounded pool
         (let [[ms rows] (on/aligned (into {} (for [m members] [(keyword m) {:preds (models m)}])) true)
               col (zipmap (map name ms) (range))
               ;; a sub-pool's rows: those all its own members forecast
               sub (fn [names] (let [ix (mapv col names)]
                                 (into [] (keep (fn [r] (let [ps (mapv (:ps r) ix)] (when (every? some? ps) (assoc r :ps ps)))))
                                       rows)))
-              fit (fn [rows c] (future (:preds (c (on/combine-rows rows window #{c})))))
-              jobs (doall (concat (for [c on/combined] [(name c) (fit (sub members) c)])
-                                  (when (every? models record) [["pool-record" (fit (sub record) :pool)]])
-                                  ;; the converged pool without each member
-                                  (for [m members] [(str "pool-minus-" m) (fit (sub (remove #{m} members)) :mlpool)])))]
-          (doseq [[label f] jobs] (emit label @f)))
+              fit (fn [names c] #(:preds (c (on/combine-rows (sub names) window #{c}))))
+              jobs (concat (for [c on/combined] [(name c) (fit members c)])
+                           (when (every? models record) [["pool-record" (fit record :pool)]])
+                           ;; the converged pool without each member
+                           (for [m members] [(str "pool-minus-" m) (fit (remove #{m} members) :mlpool)]))
+              done (on/in-parallel threads (map second jobs))]
+          (doseq [[[label] preds] (map vector jobs done)] (emit label preds)))
         (.flush w)))))
