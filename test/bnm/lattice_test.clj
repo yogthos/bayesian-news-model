@@ -73,8 +73,10 @@
   (let [w (world 2)
         r (lt/run (assoc (spec w) :end 200 :trace true))]
     (doseq [{:keys [scale place origin reads learned]} (:trace r)]
-      (doseq [{s :scale o :origin dir :dir} reads]
+      (doseq [{s :scale o :origin dir :dir k :known-at} reads]
         (case dir
+          ;; errors fed back: only those known by the origin
+          :feedback (is (<= k origin) [scale place origin s k])
           ;; finer scales and children: issued by the origin
           :up (is (and (<= o origin) (or (lt/finer? (spec w) s scale) (= s scale))) [scale place origin s o])
           ;; coarser scales and parents: issued before it
@@ -115,3 +117,119 @@
     (testing "undiscounted, a tight prior holds the signal's coefficient near its mean"
       (let [m (lt/model r :month :country :signal)]
         (is (< (Math/abs (- 1.5 (second (augur.dynamic/means m)))) 0.3) (augur.dynamic/means m))))))
+
+;; --- the dialectic: contradictions, their accumulation and resolution ---
+
+(defn- contradiction-world
+  "Countries whose monthly gauge says calm or stress, inside regions whose
+  own gauge drifts on its own: a country's yearly crisis comes when the
+  gap between it and its region has accumulated, and resets the tension."
+  [seed]
+  (let [g (m/rng seed)
+        walk (fn [] (vec (reductions (fn [s _] (+ (* 0.97 s) (* 0.4 (m/normal! g)))) 0.0 (range (dec months)))))
+        region (into {} (for [r ["A" "B"]] [r (walk)]))
+        local (into {} (for [c countries] [c (walk)]))
+        gap (into {} (for [c countries] [c (mapv - (region (parent c)) (local c))]))
+        crisis (into {} (for [c countries]
+                          [c (loop [y 3 acc 0.0 out {}]
+                               (if (>= y (quot months 12))
+                                 out
+                                 (let [acc (+ (* 0.7 acc) (/ (reduce + (map #(Math/abs (double %)) (subvec (gap c) (- (* 12 y) 12) (* 12 y)))) 12.0))
+                                       hit (< (m/next-double! g) (m/expit (- (* 1.5 acc) 4.0)))]
+                                   (recur (inc y) (if hit 0.0 acc) (assoc out y hit)))))]))]
+    {:region region :local local :crisis crisis :noise #(m/normal! g)}))
+
+(defn- contradiction-spec [w]
+  {:scales [{:name :month :per 1 :horizon 1 :discount 0.99}
+            {:name :year :per 12 :horizon 12 :discount 0.995}]
+   :levels [[:country countries] [:region ["A" "B"]]]
+   :parent parent :start 0 :end (dec months) :forget 0.99
+   :target (fn [scale place origin]
+             (when (= scale :year)
+               (let [y (quot (inc origin) 12)
+                     cs (if (= 2 (count place)) [place] (filter #(= place (parent %)) countries))
+                     ys (keep #(get-in w [:crisis % y]) cs)]
+                 (when (seq ys) {:y (boolean (some true? ys)) :known-at (+ origin 12)}))))
+   ;; each place's month gauge is its own state: a country's local, a region's own
+   :gauges (fn [scale place origin]
+             (if (= scale :month)
+               [(if (= 2 (count place)) (get-in w [:local place origin]) (get-in w [:region place origin]))]
+               [((:noise w))]))
+   :gauge-width {:month 1 :year 1}
+   ;; the month node has no outcome: its state is its gauge
+   :state (fn [scale _ _ gs] (when (= scale :month) (first gs)))})
+
+(deftest accumulated-contradiction-between-levels
+  ;; ablations: what each group adds, not which model the averaging favours
+  (let [w (contradiction-world 7)
+        late (fn [r] (filter #(and (= :year (:scale %)) (= 2 (count (:place %))) (> (:origin %) 240)) (:forecasts r)))
+        score (fn [without] (log-score (late (lt/run (assoc (contradiction-spec w) :without without)))))
+        full (score #{})]
+    (is (> full (+ 0.1 (score #{:contradiction}))) "the contradiction carries the signal")
+    (testing "errors fed across levels add to it, but only on top of it"
+      (is (> full (+ 0.02 (score #{:feedback}))))
+      (is (< (Math/abs (- (score #{:contradiction}) (score #{:contradiction :feedback}))) 0.02)))))
+
+(deftest tension-resets-only-when-the-crisis-is-known
+  (let [acc (lt/accumulate {:decay 0.7} [[0 1.0 nil] [1 1.0 nil] [2 1.0 {:resolved-at 5}] [3 1.0 nil] [5 1.0 nil] [6 1.0 nil]])]
+    (is (< (Math/abs (- (acc 3) (+ 1.0 (* 0.7 (+ 1.0 (* 0.7 (+ 1.0 (* 0.7 1.0)))))))) 1e-9)
+        "before the crisis is known, the tension keeps building")
+    (is (= 1.0 (acc 5)) "known at 5: the tension resets, then this period's gap")
+    (is (< (Math/abs (- (acc 6) (+ 1.0 0.7))) 1e-9))))
+
+(deftest a-world-shock-lands-through-exposure
+  ;; a world shock hits only the countries exposed to it (fuel importers)
+  (let [g (m/rng 11)
+        ;; a slow shock, as an energy shock is: months, not weeks
+        shock (vec (reductions (fn [s _] (+ (* 0.98 s) (* 0.2 (m/normal! g)))) 0.0 (range (dec months))))
+        exposed #{"a1" "b2"}
+        crisis (into {} (for [c countries]
+                          [c (into {} (for [y (range 3 (quot months 12))
+                                            :let [s (/ (reduce + (subvec shock (- (* 12 y) 12) (* 12 y))) 12.0)]]
+                                        [y (< (m/next-double! g) (m/expit (- (if (exposed c) (* 3.0 s) 0.0) 2.5)))]))]))
+        sp {:scales [{:name :month :per 1 :horizon 1 :discount 0.99}
+                     {:name :year :per 12 :horizon 12 :discount 0.995}]
+            :levels [[:country countries] [:region ["A" "B"]] [:world ["W"]]]
+            :parent parent :start 0 :end (dec months) :forget 0.99
+            :target (fn [scale place origin]
+                      (when (and (= scale :year) (= 2 (count place)))
+                        (when-some [y (get-in crisis [place (quot (inc origin) 12)])]
+                          {:y y :known-at (+ origin 12)})))
+            ;; only the world sees the shock
+            :gauges (fn [scale place origin] [(if (= place "W") (shock origin) 0.0)])
+            :gauge-width {:month 1 :year 1}
+            ;; every node's state is its gauge: the world's is the shock
+            :state (fn [_ _ _ gs] (first gs))
+            :exposure (fn [_ place _] [(if (exposed place) 1.0 0.0)])
+            :exposure-width 1}
+        r (lt/run sp)
+        cut (lt/run (assoc sp :without #{:exposure}))
+        late (fn [r] (filter #(and (= :year (:scale %)) (= 2 (count (:place %))) (> (:origin %) 240)) (:forecasts r)))]
+    ;; two countries of six are exposed: the gain is theirs
+    (is (> (log-score (late r)) (+ 0.005 (log-score (late cut)))) [(log-score (late r)) (log-score (late cut))])
+    (is (> (get (lt/weights r :year :country) :exposure 0.0) 0.5) (lt/weights r :year :country))))
+
+(deftest levels-learn-from-each-other
+  ;; countries see their gauge only in a short spell of outcomes; the
+  ;; regions see theirs throughout: coupled, the countries' credit
+  ;; coefficient learns from the regions' experience
+  (let [g (m/rng 13)
+        x (into {} (for [p (concat countries ["A" "B"]) t (range months)] [[p t] (m/normal! g)]))
+        y (into {} (for [[k v] x] [k (< (m/next-double! g) (m/expit (- (* 1.5 v) 1.0)))]))
+        sp {:scales [{:name :month :per 1 :horizon 1 :discount 1.0}]
+            :levels [[:country countries] [:region ["A" "B"]]]
+            :parent parent :start 0 :end 300 :forget 0.99
+            :target (fn [_ place origin]
+                      (when (or (= 1 (count place)) (< origin 30))
+                        {:y (y [place (inc origin)]) :known-at (inc origin)}))
+            :gauges (fn [_ place origin] [(x [place (inc origin)])])
+            :gauge-width {:month 1}
+            :gauge-groups {:month {:credit [0]}}}
+        coupled (lt/run (assoc sp :coupling 0.2))
+        alone (lt/run sp)
+        coef (fn [r] (second (augur.dynamic/means (lt/model r :month :country :credit))))]
+    (is (< (Math/abs (- 1.5 (coef coupled))) (Math/abs (- 1.5 (coef alone))))
+        [(coef coupled) (coef alone)])))
+
+(deftest internal-tensions-are-gaps-between-paired-gauges
+  (is (= [2.0 -1.0] (lt/tension-gaps [[0 1] [2 0]] [3.0 1.0 2.0]))))

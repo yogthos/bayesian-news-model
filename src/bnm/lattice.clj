@@ -7,23 +7,45 @@
   inputs, pooled across the level's places, learning from each period's
   resolved outcomes and carrying what it learned forward.
 
-  A node's inputs at origin t, by group:
-  - :gauges, its own scale's, from the spec's :gauges function;
-  - :up, what finer nodes passed up: each finer scale's forecasts for the
-    place issued over the node's period (the last and the mean, as log
-    odds), and its children's chance of any onset at this origin;
+  Every node has a state at each origin: the spec's :state of its gauges
+  when given (a node may have no outcome of its own, a world energy gauge
+  say), else the log odds of its forecast. A node's inputs at origin t, by
+  group:
+  - its gauges, as one group or as the spec's :gauge-groups;
+  - :up, what finer nodes passed up: each finer scale's states for the
+    place over the node's period (the last and the mean), and its
+    children's at this origin (the chance any has an onset, and their
+    mean state);
   - :down, what coarser nodes passed down, lagged: each coarser scale's
-    last forecast for the place issued before t, and its parent's forecast
-    at the previous origin of this scale.
-  Each quantity flows one way, and down only from before t, so nothing is
-  counted twice. Outcomes ({:y :known-at} from the spec's :target) are
-  held back from learning until they are known.
+    last state for the place before t, and every ancestor's state at the
+    previous origin of this scale;
+  - :contradiction, the dialectic between levels and within a place: the
+    gap between the place's own state and what comes down to it, its size,
+    and that size accumulated through time (unresolved tension building),
+    the tension finer nodes and its children have accumulated, and the
+    spec's :tensions, pairs of opposed gauges (credit against investment,
+    say), each gap and its accumulation. A place's accumulated tensions
+    are resolved, reset, when a crisis there becomes known: the leap
+    negates the contradiction that built it;
+  - :exposure, with the spec's :exposure: everything that comes down,
+    times the place's exposure to it, so a world shock lands where the
+    place is open to it;
+  - :feedback, errors passed across levels: the last resolved errors
+    (outcome less forecast) of the place's coarser scales, its parent and
+    its children, each known by t.
+  Each quantity flows one way at a time: down only from before t, errors
+  only once known, so nothing is counted twice.
+
+  With :coupling s, the levels learn from each other: after each period,
+  a level's model of a gauge group and the next level's share their
+  coefficients (augur.dynamic/couple at strength s), so what the regions
+  learn about a gauge informs the countries and the countries' experience
+  informs the regions.
 
   The models averaged at each node read the intercept and one group each,
-  or all of them (:base, the gauges as one group or as the spec's
-  :gauge-groups, :up, :down, :all; :only picks a subset): the weights
-  through time say which gauges and which flows mattered at that node.
-  :prior seeds coefficients with what is known."
+  or all of them (:only picks a subset): the weights through time say
+  which gauges, flows and contradictions mattered at that node. :prior
+  seeds coefficients with what is known."
   (:require [augur.dynamic :as d]
             [augur.math :as m]))
 
@@ -35,31 +57,68 @@
 
 (defn- logit ^double [^double p] (m/logit (Math/max 1e-6 (Math/min (- 1.0 1e-6) p))))
 
+(defn- mean [xs] (when (seq xs) (/ (reduce + xs) (double (count xs)))))
+
+(defn tension-gaps
+  "The gaps between `pairs` ([i j], indices into the gauges) of `gauges`."
+  [pairs gauges]
+  (mapv (fn [[i j]] (- (double (nth gauges i)) (double (nth gauges j)))) pairs))
+
+(defn accumulate
+  "Tension accumulated through time, for the tests and the record:
+  `entries` [t gap info] in time order, info {:resolved-at k} when a crisis
+  seen at t becomes known at k. {t accumulated}: each period the tension
+  decays by :decay and adds the gap's size, and resets to zero first in the
+  first period at or after a crisis became known."
+  [{:keys [decay]} entries]
+  (loop [[[t gap info] & more] entries acc 0.0 resolve-at [] out {}]
+    (if-not t
+      out
+      (let [due (filter #(<= % t) resolve-at)
+            acc (if (seq due) 0.0 acc)
+            acc (+ (Math/abs (double gap)) (* decay acc))
+            resolve-at (cond-> (vec (remove #(<= % t) resolve-at)) (:resolved-at info) (conj (:resolved-at info)))]
+        (recur more acc resolve-at (assoc out t acc))))))
+
 (defn- children-of [spec level-ix place]
   (when (pos? level-ix)
     (let [[_ below] (nth (:levels spec) (dec level-ix))]
       (filter #(= place (get (:parent spec) %)) below))))
 
+(defn- ancestors-of [spec place]
+  (take-while some? (rest (iterate #(get (:parent spec) %) place))))
+
 (defn- layout
-  "The input layout of a node: {:width n :groups {group [index...]}}."
+  "The input layout of a node: {:width n :groups {group [index...]} :order}."
   [spec scale level-ix]
   (let [names (map :name (:scales spec))
         finer (take-while #(not= % scale) names)
         coarser (rest (drop-while #(not= % scale) names))
+        kids? (pos? level-ix)
+        n-anc (- (count (:levels spec)) level-ix 1)
         gw (get-in spec [:gauge-width scale] 0)
-        up-n (+ (* 2 (count finer)) (if (pos? level-ix) 1 0))
-        down-n (+ (count coarser) (if (< level-ix (dec (count (:levels spec)))) 1 0))
-        gauges (vec (range 1 (+ 1 gw)))
-        up (vec (range (+ 1 gw) (+ 1 gw up-n)))
-        down (vec (range (+ 1 gw up-n) (+ 1 gw up-n down-n)))
-        ;; named groups of the gauges (indices among them), else one group
+        n-tensions (count (get-in spec [:tensions scale]))
+        ew (if (:exposure spec) (:exposure-width spec) 0)
+        sizes [[:gauges gw]
+               [:up (+ (* 2 (count finer)) (if kids? 2 0))]
+               [:down (+ (count coarser) n-anc)]
+               [:contradiction (+ (* 3 (if (pos? n-anc) 1 0)) (* 3 (count coarser)) (* 2 (count finer))
+                                  (if kids? 1 0) (* 2 n-tensions))]
+               [:exposure (* ew (+ (count coarser) n-anc))]
+               [:feedback (+ (count coarser) (if (pos? n-anc) 1 0) (if kids? 1 0))]]
+        ;; :without drops groups from the inputs altogether (ablations)
+        sizes (map (fn [[g n]] [g (if (contains? (:without spec) g) 0 n)]) sizes)
+        spans (second (reduce (fn [[from acc] [g n]] [(+ from n) (assoc acc g (vec (range from (+ from n))))])
+                              [1 {}] sizes))
         named (get-in spec [:gauge-groups scale])
         gauge-groups (if named
                        (into {} (for [[g ix] named] [g (mapv #(inc (long %)) ix)]))
-                       {:gauges gauges})]
-    {:width (+ 1 gw up-n down-n) :finer finer :coarser coarser
-     :order (vec (concat [:base] (sort (keys gauge-groups)) [:up :down :all]))
-     :groups (merge gauge-groups {:base [] :up up :down down :all (vec (concat gauges up down))})}))
+                       {:gauges (spans :gauges)})
+        flows (filter #(seq (spans %)) [:up :down :contradiction :exposure :feedback])]
+    {:width (+ 1 (reduce + (map second sizes))) :finer finer :coarser coarser
+     :order (vec (concat [:base] (sort (keys gauge-groups)) flows [:all]))
+     :groups (merge gauge-groups (select-keys spans flows)
+                    {:base [] :all (vec (mapcat spans [:gauges :up :down :contradiction :exposure :feedback]))})}))
 
 (defn- node-model
   "A node's model average: one dynamic logistic per group of its inputs
@@ -77,45 +136,121 @@
                 {:forget (:forget spec)})))
 
 (defn- issued
-  "Forecasts for [scale place] issued at origins in [lo, hi], oldest first."
+  "Entries for [scale place] issued at origins in [lo, hi], oldest first."
   [book scale place lo hi]
   (when-let [byo (get book [scale place])]
     (subseq byo >= lo <= hi)))
 
+(defn- last-error
+  "The last error of [scale place] known by t, as [known-at error]."
+  [errors scale place t]
+  (some-> (get errors [scale place]) (rsubseq <= t) first))
+
 (defn- inputs
-  "The node's inputs for `place` at origin t, and what it read."
-  [spec book scale scale-spec level-ix place t gauges]
+  "The node's inputs for `place` at origin t, what it read, its own state
+  and its accumulated tensions after this period."
+  [spec {:keys [book errors tension crises]} scale scale-spec level-ix place t gauges]
   (let [{:keys [finer coarser]} (layout spec scale level-ix)
         per (:per scale-spec)
         reads (transient [])
-        read! (fn [dir s p o] (conj! reads {:dir dir :scale s :place p :origin o}))
-        ;; finer scales: the forecasts they issued over this period
-        up-time (mapcat (fn [f]
-                          (let [fs (issued book f place (- t (dec per)) t)]
-                            (doseq [[o _] fs] (read! :up f place o))
-                            (if (seq fs)
-                              [(logit (val (last fs))) (logit (/ (reduce + (map val fs)) (count fs)))]
-                              [0.0 0.0])))
-                        finer)
-        ;; children at this scale and origin: the chance any has an onset
+        read! (fn [r] (conj! reads r))
+        ;; up: finer scales over this period, children at this origin
+        finer-entries (for [f finer] [f (issued book f place (- t (dec per)) t)])
+        up-time (mapcat (fn [[f es]]
+                          (doseq [[o _] es] (read! {:dir :up :scale f :place place :origin o}))
+                          (if (seq es) [(:s (val (last es))) (mean (map (comp :s val) es))] [0.0 0.0]))
+                        finer-entries)
         kids (children-of spec level-ix place)
+        kid-entries (keep (fn [c] (when-let [e (get-in book [[scale c] t])] (read! {:dir :up :scale scale :place c :origin t}) e)) kids)
         up-space (when (pos? level-ix)
-                   (let [ps (keep (fn [c] (when-let [p (get-in book [[scale c] t])] (read! :up scale c t) p)) kids)]
-                     [(if (seq ps) (logit (- 1.0 (reduce * (map #(- 1.0 %) ps)))) 0.0)]))
-        ;; coarser scales: their last forecast for the place before t
-        down-time (map (fn [c]
-                         (if-let [[o p] (last (issued book c place Long/MIN_VALUE (dec t)))]
-                           (do (read! :down c place o) (logit p))
-                           0.0))
-                       coarser)
-        ;; the parent at this scale, at the previous origin
+                   (if (seq kid-entries)
+                     [(logit (- 1.0 (reduce * (map #(- 1.0 (:p %)) kid-entries)))) (mean (map :s kid-entries))]
+                     [0.0 0.0]))
+        ;; down: coarser scales before t, every ancestor at the previous origin
+        down-time (mapv (fn [c]
+                          (if-let [[o e] (last (issued book c place Long/MIN_VALUE (dec t)))]
+                            (do (read! {:dir :down :scale c :place place :origin o}) (:s e))
+                            nil))
+                        coarser)
+        down-space (mapv (fn [a]
+                           (if-let [e (get-in book [[scale a] (- t per)])]
+                             (do (read! {:dir :down :scale scale :place a :origin (- t per)}) (:s e))
+                             nil))
+                         (ancestors-of spec place))
+        down (mapv #(or % 0.0) (concat down-time down-space))
+        ;; the place's own state: its gauges' when the spec says, else its
+        ;; last forecast's (never this one's, which these inputs make)
+        stated (when-let [f (:state spec)] (f scale place t gauges))
+        own (or stated (some-> (get-in book [[scale place] (- t per)]) :s) 0.0)
+        ;; the dialectic, like against like: the place against its parent at
+        ;; this scale, and against each coarser scale; each gap, its size,
+        ;; and its size accumulated through time
+        {:keys [rel fin tacc last-t]} (get tension [scale place] {:rel {} :fin {} :last-t Long/MIN_VALUE})
+        resolved? (seq (subseq (get crises place (sorted-set)) > last-t <= t))
+        decay (double (get spec :tension-decay 0.7))
+        carry (fn [a] (if resolved? 0.0 (* decay (double (or a 0.0)))))
+        parent-state (first down-space)
+        relations (concat (when (seq (ancestors-of spec place)) [[:parent parent-state]])
+                          (map vector coarser down-time))
+        rel' (into {} (for [[r other] relations
+                            :let [gap (if other (- own other) 0.0)]]
+                        [r {:gap gap :acc (+ (Math/abs gap) (carry (get-in rel [r :acc])))}]))
+        ;; tension built at finer scales, re-accumulated at this one's pace:
+        ;; months of local tension become years of it
+        fin' (into {} (for [[f es] finer-entries
+                            :let [now (or (mean (keep (comp :acc val) es)) 0.0)]]
+                        [f {:now now :acc (+ now (carry (get-in fin [f :acc])))}]))
+        kid-acc (when (pos? level-ix) [(or (mean (keep :acc kid-entries)) 0.0)])
+        tgaps (tension-gaps (get-in spec [:tensions scale]) gauges)
+        tacc (mapv (fn [g a] (+ (Math/abs g) (carry a))) tgaps (or tacc (repeat (count tgaps) 0.0)))
+        contradiction (concat (mapcat (fn [[r _]] (let [{:keys [gap acc]} (rel' r)] [gap (Math/abs gap) acc])) relations)
+                              (mapcat (fn [[f _]] [(get-in fin' [f :now]) (get-in fin' [f :acc])]) finer-entries)
+                              kid-acc
+                              (mapcat vector tgaps tacc))
+        ;; exposure: what comes down, times the place's exposure to it
+        exposure (when-let [f (:exposure spec)]
+                   (let [e (f scale place t)] (for [dv down ev e] (* dv ev))))
+        ;; feedback: errors of the coarser scales, the parent, the children, known by t
+        err (fn [s p] (when-let [[k v] (last-error errors s p t)] (read! {:dir :feedback :scale s :place p :known-at k}) v))
         parent (get (:parent spec) place)
-        down-space (when (< level-ix (dec (count (:levels spec))))
-                     [(if-let [p (get-in book [[scale parent] (- t per)])]
-                        (do (read! :down scale parent (- t per)) (logit p))
-                        0.0)])]
-    {:x (vec (concat [1.0] gauges up-time up-space down-time down-space))
-     :reads (persistent! reads)}))
+        feedback (concat (map #(or (err % place) 0.0) coarser)
+                         (when parent [(or (err scale parent) 0.0)])
+                         (when (pos? level-ix) [(or (mean (keep #(err scale %) kids)) 0.0)]))]
+    {:x (let [w (or (:without spec) #{})]
+          (vec (concat [1.0] gauges
+                       (when-not (w :up) (concat up-time up-space))
+                       (when-not (w :down) down)
+                       (when-not (w :contradiction) contradiction)
+                       (when-not (w :exposure) exposure)
+                       (when-not (w :feedback) feedback))))
+     :reads (persistent! reads)
+     :stated stated
+     ;; what the node passes up as its tension: the place against its parent
+     :acc (or (get-in rel' [:parent :acc]) 0.0)
+     :tension {:rel rel' :fin fin' :tacc tacc :last-t t}}))
+
+(def ^:private flow-groups #{:base :up :down :contradiction :exposure :feedback :all})
+
+(defn- couple-levels
+  "Couples the gauge-group models of each pair of adjacent levels at one
+  scale."
+  [models scale levels strength]
+  (reduce (fn [models [la lb]]
+            (let [ka [scale la] kb [scale lb]
+                  a (models ka) b (models kb)]
+              (if (and a b)
+                (let [shared (filter #(and (not (flow-groups %))
+                                           (get-in b [:models %])
+                                           (= (:k (get-in a [:models %])) (:k (get-in b [:models %]))))
+                                     (keys (:models a)))
+                      [a b] (reduce (fn [[a b] g]
+                                      (let [ma (get-in a [:models g]) mb (get-in b [:models g])
+                                            [ma mb] (d/couple ma mb {:indices (range 1 (:k ma)) :strength strength})]
+                                        [(assoc-in a [:models g] ma) (assoc-in b [:models g] mb)]))
+                                    [a b] shared)]
+                  (assoc models ka a kb b))
+                models)))
+          models (partition 2 1 levels)))
 
 (defn run
   "Runs the lattice of `spec` from :start to :end (months):
@@ -123,39 +258,60 @@
    :levels [[level [places]] ...] bottom-up, :parent {place parent},
    :target (fn [scale place origin]) -> {:y :known-at} or nil,
    :gauges (fn [scale place origin]) -> [inputs], :gauge-width {scale n},
+   :gauge-groups {scale {group [indices]}}, :prior (fn [scale level layout]),
+   :state (fn [scale place origin gauges]) -> a node's state or nil,
+   :tensions {scale [[i j] ...]}, :tension-decay (0.7),
+   :exposure (fn [scale place origin]) -> [exposures], :exposure-width n,
+   :coupling, the strength levels share what they learn (none without),
    :forget, the model averaging's forgetting, :only, a subset of groups,
+   :without, groups dropped from the inputs altogether,
    :trace, to record what each node read and learned from}.
   {:forecasts [{:scale :place :origin :p :y}] :weights {[scale level]
-  [[t weights]]} :trace [...]}."
+  [[t weights]]} :models :trace}."
   [spec]
   (let [{:keys [scales levels start end]} spec]
-    (loop [t start book {} models {} pending {} forecasts (transient []) weights {} trace (transient [])]
+    (loop [t start
+           st {:book {} :errors {} :tension {} :crises {} :models {} :pending {}}
+           forecasts (transient []) weights {} trace (transient [])]
       (if (> t end)
-        {:forecasts (persistent! forecasts) :weights weights :trace (persistent! trace) :book book :models models}
-        (let [[book models pending forecasts weights trace]
+        {:forecasts (persistent! forecasts) :weights weights :trace (persistent! trace)
+         :book (:book st) :models (:models st)}
+        (let [due (filter #(zero? (mod (inc (- t start)) (:per %))) scales)
+              [st forecasts weights trace]
               (reduce
-               (fn [[book models pending forecasts weights trace] [scale-spec level-ix]]
+               (fn [[st forecasts weights trace] [scale-spec level-ix]]
                  (let [scale (:name scale-spec)
                        [level places] (nth levels level-ix)
                        k [scale level]
-                       model (or (models k) (node-model spec scale level scale-spec (layout spec scale level-ix)))
-                       ;; learn from what is known by t
-                       {ready true waiting false} (group-by #(<= (:known-at %) t) (pending k))
+                       model (or (get-in st [:models k]) (node-model spec scale level scale-spec (layout spec scale level-ix)))
+                       ;; learn from what is known by t; its errors become known now
+                       {ready true waiting false} (group-by #(<= (:known-at %) t) (get-in st [:pending k]))
                        model (d/step model (map #(select-keys % [:x :y]) ready))
-                       made (for [place places
-                                  :let [{:keys [x reads]} (inputs spec book scale scale-spec level-ix place t
-                                                                  ((:gauges spec) scale place t))
-                                        p (d/predict model x)
-                                        target ((:target spec) scale place t)]]
-                              {:place place :x x :p p :target target :reads reads})
-                       book (reduce (fn [b {:keys [place p]}]
-                                      (update b [scale place] (fnil assoc (sorted-map)) t p))
-                                    book made)]
-                   [book
-                    (assoc models k model)
-                    (assoc pending k (into (vec waiting)
-                                           (for [{:keys [x target]} made :when target]
-                                             {:x x :y (:y target) :known-at (:known-at target)})))
+                       st (reduce (fn [st {:keys [place y p known-at]}]
+                                    (update-in st [:errors [scale place]] (fnil assoc (sorted-map)) known-at
+                                               (- (if y 1.0 0.0) p)))
+                                  st ready)
+                       made (vec (for [place places
+                                       :let [g ((:gauges spec) scale place t)
+                                             {:keys [x reads stated tension acc]} (inputs spec st scale scale-spec level-ix place t g)
+                                             p (d/predict model x)
+                                             target ((:target spec) scale place t)]]
+                                   {:place place :x x :p p :target target :reads reads :stated stated :tension tension :acc acc}))
+                       st (reduce (fn [st {:keys [place p stated tension acc target]}]
+                                    (-> st
+                                        (update-in [:book [scale place]] (fnil assoc (sorted-map)) t
+                                                   ;; a node's state: the spec's when it gives one, else its forecast's log odds
+                                                   {:p p :s (or stated (logit p)) :acc acc})
+                                        (assoc-in [:tension [scale place]] tension)
+                                        (cond-> (true? (:y target))
+                                          (update-in [:crises place] (fnil conj (sorted-set)) (:known-at target)))))
+                                  st made)
+                       st (-> st
+                              (assoc-in [:models k] model)
+                              (assoc-in [:pending k] (into (vec waiting)
+                                                           (for [{:keys [place x p target]} made :when target]
+                                                             {:place place :x x :p p :y (:y target) :known-at (:known-at target)}))))]
+                   [st
                     (reduce conj! forecasts (for [{:keys [place p target]} made]
                                               {:scale scale :place place :origin t :p p :y (:y target)}))
                     (update weights k (fnil conj []) [t (d/weights model)])
@@ -164,12 +320,13 @@
                                             {:scale scale :place place :origin t :reads reads
                                              :learned (map #(select-keys % [:known-at]) ready)}))
                       trace)]))
-               [book models pending forecasts weights trace]
-               (for [s scales
-                     :when (zero? (mod (inc (- t start)) (:per s)))
-                     level-ix (range (count levels))]
-                 [s level-ix]))]
-          (recur (inc t) book models pending forecasts weights trace))))))
+               [st forecasts weights trace]
+               (for [s due level-ix (range (count levels))] [s level-ix]))
+              ;; the levels share what they learned this period
+              st (if-let [s (:coupling spec)]
+                   (reduce (fn [st sc] (update st :models couple-levels (:name sc) (map first levels) s)) st due)
+                   st)]
+          (recur (inc t) st forecasts weights trace))))))
 
 (defn weights
   "The model-averaging weights of the node at `scale` and `level` after its
