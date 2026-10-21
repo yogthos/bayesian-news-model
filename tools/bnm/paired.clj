@@ -20,6 +20,7 @@
 
     jolt -A:tools -M -m bnm.paired --run r9 --bench named [--models a,b] [--kinds a,b]
                                    [--reps 400] [--simulate 0.25,0.5,1.0 --sims 20]
+    jolt -A:tools -M -m bnm.paired --run lattice-a --bench lattice-b --scale year [--from 2003 --to 2022]
 
   --simulate replaces the outcomes with draws from the benchmark's
   probabilities shifted by a signal of size beta that only the model knows
@@ -120,10 +121,35 @@
                                                    0.10 {:reps (max 200 (long (Math/ceil (/ 10.0 (/ alpha 2))))) :seed 3 :alpha alpha :per-block 4}))))
           cells)))
 
+(defn read-lattice
+  "{[place year] [p y]} of a lattice run's country forecasts at `scale`,
+  issued at the end of each year from `from` to `to`, resolved only."
+  [run scale from to]
+  (with-open [r (clojure.java.io/reader (str "data/runs/" run "/forecasts.tsv"))]
+    (reduce (fn [acc line]
+              (let [[s place o p y] (str/split line #"\t")
+                    o (parse-long o)]
+                (if (and (= s scale) (= 3 (count place)) (#{"true" "false"} y)
+                         (= 11 (mod o 12)) (<= from (quot o 12) to))
+                  (assoc acc [place (quot o 12)] [(parse-double p) (= y "true")])
+                  acc)))
+            {} (line-seq r))))
+
+(defn lattice-pair
+  "Paired Brier and log score of two lattice runs' country forecasts at one
+  scale on their own outcomes, years resampled with countries."
+  [model bench scale from to reps]
+  (let [a (read-lattice model scale from to)
+        b (read-lattice bench scale from to)
+        rows (for [[k [pa y]] a :let [[pb _] (b k)] :when pb] [(second k) pa pb y (first k) scale])]
+    {:n (count rows) :pos (count (filter #(nth % 3) rows))
+     :brier (sc/paired-loss-2way rows brier {:reps reps :seed 1 :alpha 0.1 :per-block 1})
+     :log (sc/paired-loss-2way rows log-loss {:reps reps :seed 1 :alpha 0.1 :per-block 1})}))
+
 (defn- fmt [{:keys [diff lo hi]}] (format "%+.5f [%+.5f %+.5f]%s" diff lo hi (if (pos? lo) " GAIN" "")))
 
 (defn -main [& args]
-  (let [{:keys [run bench models kinds reps sims tests] betas-arg :simulate} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run bench models kinds reps sims tests scale from to] betas-arg :simulate} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         dir (str "data/runs/" run)
         reps (or (some-> reps parse-long) 400)
         kinds (when kinds (set (str/split kinds #",")))
@@ -134,7 +160,15 @@
         models (if models (str/split models #",") all-models)
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out (str s "\n"))))]
-    (if betas-arg
+    (cond
+      ;; two lattice runs at one scale: --run model-run --bench bench-run --scale year
+      scale
+      (let [{:keys [n pos brier log]} (lattice-pair run bench scale (or (some-> from parse-long) 2003) (or (some-> to parse-long) 2022) reps)]
+        (say (format "%s against %s, %s nodes' country forecasts on their own outcomes, %s-%s: n=%d pos=%d"
+                     run bench scale (or from "2003") (or to "2022") n pos))
+        (say "  Brier     " (fmt brier))
+        (say "  log score " (fmt log)))
+      betas-arg
       (let [betas (map parse-double (str/split betas-arg #","))
             sims (or (some-> sims parse-long) 20)
             tests (or (some-> tests parse-long) 33)
@@ -154,6 +188,7 @@
             (say (format "%.2f %-6s %.2f                  %.2f                              %.2f"
                          beta (if informative? "signal" "null") (share 0) (share 1) (share 2)))))
         (spit (str dir "/power-vs-" bench ".txt") (str out)))
+      :else
       (do
         (say (format "Paired scores against %s on hard rows of the counted cells (lead, w2; 2003-14, 2015-22)." bench))
         (say "Differences are bench loss minus model loss: positive favours the model. Primary: Brier, kinds weighted")
