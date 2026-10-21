@@ -349,8 +349,8 @@
   "Settings of the hier-<inputs> models, set in advance: the starting
   variances of the region, subregion and country intercepts and the
   starting prior precision of the coefficients (each year's start is the
-  year before's estimate), the backfitting sweeps per round, the rounds
-  alternating the coefficients and the intercepts, and the scales of the
+  year before's estimate), the backfitting sweeps per round, the most
+  rounds alternating the coefficients and the intercepts, and the scales of the
   half-normal priors on each level's sd (1 on the log odds, the weakly
   informative default of Gelman 2006)."
   {:tau2 [0.25 0.25 0.25] :prior 100.0 :sweeps 8 :rounds 10 :sd-prior [1.0 1.0 1.0]})
@@ -403,18 +403,24 @@
   they are estimated together, each round one Laplace EM step for each
   (Wood 2011), rather than the ridge picked from a grid: picked on log
   score, the ridge went to the grid's strongest and the intercepts took
-  over what the covariates carried. Warm from `start` ({:beta :fx :prior}).
-  {:beta :fx :prior}."
+  over what the covariates carried. Up to :rounds rounds, fewer once the
+  precision moves by under 1e-3 in log and the variances by under 1e-3. Warm from
+  `start` ({:beta :fx :prior}). {:beta :fx :prior :rounds}."
   [train k {:keys [beta fx prior]} {:keys [tau2 sweeps rounds sd-prior] start-prior :prior}]
-  (let [train (vec train)]
-    (loop [r 0 beta beta fx fx prior (or prior start-prior)]
-      (if (>= r rounds)
-        {:beta beta :fx fx :prior prior}
-        (let [{beta :beta prior :prior} (lgt/fit-evidence (map #(assoc % :o (if fx (hier/effect fx (:path %)) 0.0)) train) k
-                                                          {:prior prior :rounds 1 :start beta})
-              fx (hier/intercepts (map #(assoc % :o (dot beta (:x %))) train)
-                                  {:tau2 (or (:tau2 fx) tau2) :sweeps sweeps :sd-prior sd-prior :start (:effects fx)})]
-          (recur (inc r) beta fx prior))))))
+  (let [train (vec train)
+        settled? (fn [p p' t t'] (and t (< (Math/abs (- (Math/log p') (Math/log p))) 1e-3)
+                                      ;; absolute for the variances: one with no signal
+                                      ;; drifts toward zero by a constant factor
+                                      (every? #(< (Math/abs %) 1e-3) (map - t' t))))]
+    (loop [r 0 beta beta fx fx prior (double (or prior start-prior))]
+      (let [beta (lgt/fit (map #(assoc % :o (if fx (hier/effect fx (:path %)) 0.0)) train) k {:prior prior :start beta})
+            fx' (hier/intercepts (map #(assoc % :o (dot beta (:x %))) train)
+                                 {:tau2 (or (:tau2 fx) tau2) :sweeps sweeps :sd-prior sd-prior :start (:effects fx)})
+            prior' (lgt/evidence-step (map #(assoc % :o (hier/effect fx' (:path %))) train) k beta prior)
+            r (inc r)]
+        (if (or (>= r rounds) (settled? prior prior' (:tau2 fx) (:tau2 fx')))
+          {:beta beta :fx fx' :prior prior' :rounds r}
+          (recur r beta fx' prior'))))))
 
 (def analog-opts
   "Neighbours and shrinkage of the knn-<inputs> models, set in advance: more

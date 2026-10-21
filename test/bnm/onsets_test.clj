@@ -58,3 +58,16 @@
         "the row's own inputs, then its country's means")
     (is (= [3.0 10.0] (drop 5 (vec (extend "C" (double-array [1.0 0.0 0.0 0.0 0.0])))))
         "a country with no earlier rows takes the mean of all rows before the cut")))
+
+(deftest hier-fits-stop-once-settled
+  (let [g (m/rng 9)
+        paths (for [r (range 2) s (range 3) c (range 4)] [(str "r" r) (str "r" r "s" s) (str "r" r "s" s "c" c)])
+        train (vec (for [path paths _ (range 40)
+                         :let [x (m/normal! g)]]
+                     {:x (double-array [1.0 x]) :y (< (m/next-double! g) (m/expit (+ -2.5 (* 0.8 x)))) :w 1.0 :path path}))
+        capped (on/fit-hier train 2 {} on/hier-opts)
+        cold (on/fit-hier train 2 {} (assoc on/hier-opts :rounds 100))
+        warm (on/fit-hier train 2 cold on/hier-opts)]
+    (is (<= (:rounds capped) (:rounds on/hier-opts)))
+    (is (< (:rounds cold) 100) "it settles")
+    (is (<= (:rounds warm) 2) "started where it settled, it stops at once")))
