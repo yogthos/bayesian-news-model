@@ -47,7 +47,7 @@
 (defn -main [& _]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
-        annual (merge (pg/read-annual) (lb/read-annual))
+        annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
         wdi (fn [iso v y] (some-> (db [iso v]) (sk/value (+ 11 (* 12 y)) {:stale 18})))
         states (pg/read-states)
         long (pg/read-long)

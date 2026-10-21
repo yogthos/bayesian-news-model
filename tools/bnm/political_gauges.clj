@@ -83,7 +83,9 @@
   [:polyarchy :anocracy :polyarchy3 :physical-integrity :physical-integrity3 :repression :repression3
    :participation :military-executive :neopatrimonial :social-exclusion :economic-exclusion :rule-of-law :assembly
    :log-gdppc :growth3 :population-growth3 :urban-growth5 :soldiers-per-capita :spending-per-soldier3
-   :infant-mortality :working-age :tertiary5 :inflation :food-inflation :top10 :bottom50])
+   :infant-mortality :working-age :tertiary5 :inflation :food-inflation :top10 :bottom50
+   ;; austerity as Ponticelli & Voth measure it (data/derived/fiscal.csv)
+   :spending-growth :balance-change])
 
 (defn- change [ys y k] (when-let [a (get ys y)] (when-let [b (get ys (- y k))] (- a b))))
 (defn- lg [x] (when (and x (pos? x)) (Math/log x)))
@@ -122,4 +124,6 @@
      soldiers (change per-soldier p 3)
      (w "people/infant_mortality" p) (w "people/working_age_share" p) (wchange "people/tertiary_enrolment" p 5)
      (slog (w "economy/inflation" p)) (slog (w "food/food_inflation" p))
-     (get-in annual ["wid_top10" iso p]) (get-in annual ["wid_bottom50" iso p])]))
+     (get-in annual ["wid_top10" iso p]) (get-in annual ["wid_bottom50" iso p])
+     (some-> (change (update-vals (vy "gov_exp_real") lg) p 1))
+     (change (vy "gov_bal_gdp") p 1)]))

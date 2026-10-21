@@ -43,3 +43,13 @@
     (is (< (Math/abs (- (nth row (ix :growth3)) (Math/log 1.21))) 1e-12)
         "national accounts a year further back: 1999 against 1996")
     (is (nil? (nth row (ix :infant-mortality))) "no WDI: nil, not zero")))
+
+(deftest spending-cuts-in-the-year-row
+  ;; real government spending growth and the balance's change, of the year
+  ;; before the data year (fiscal accounts come late), as Ponticelli & Voth
+  ;; measure austerity
+  (let [annual {"gov_exp_real" {"AAA" {1998 100.0 1999 90.0}} "gov_bal_gdp" {"AAA" {1998 -6.0 1999 -3.0}}}
+        row (pg/year-row annual (fn [_ _ _] nil) "AAA" 2000)
+        ix (zipmap pg/year-names (range))]
+    (is (< (Math/abs (- (nth row (ix :spending-growth)) (Math/log 0.9))) 1e-12))
+    (is (= 3.0 (nth row (ix :balance-change))))))

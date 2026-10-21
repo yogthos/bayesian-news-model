@@ -44,3 +44,15 @@
     (is (= (+ 11 (* 12 2020)) (get-in cat [:through "AAA"])))
     (is (contains? (get-in cat [:busy "AAA"]) (+ 5 (* 12 1990))))
     (is (= 18 (:known-lag cat)))))
+
+(deftest spending-led-consolidations
+  ;; the balance improves by 1.5 points of GDP or more and spending falls by
+  ;; a point or more: the spending cuts that drive unrest (Ponticelli &
+  ;; Voth), at Alesina & Ardagna's threshold; once in three years
+  (let [bal {2009 -15.4 2010 -11.4 2011 -10.5 2012 -9.3 2013 -13.6 2014 -3.8}
+        exp {2009 54.8 2010 53.1 2011 55.1 2012 57.9 2013 63.9 2014 51.5}]
+    (is (= #{2010 2014} (ee/consolidations bal exp)) "Greece: 2010 (+4.0, -1.7) and 2014 (+9.8, -12.4)")
+    (is (= #{} (ee/consolidations {2000 -5.0 2001 -3.0} {2000 40.0 2001 40.5})) "a tax-led one is not")))
+
+(deftest runs-start-a-crisis
+  (is (= #{1982 1990} (ee/onsets-of-runs #{1982 1983 1984 1990}))))

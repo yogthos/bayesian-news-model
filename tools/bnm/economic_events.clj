@@ -13,7 +13,13 @@
     (1970-2017) joined with Reinhart & Rogoff (1800-2016);
   - food_price_shock: twelve-month food inflation of 15% or more and 10
     points above its own previous five years' mean, by quarter, once a
-    year (FAOSTAT, from 2000).
+    year (FAOSTAT, from 2000);
+  - fiscal_consolidation: the general government balance up 1.5 points of
+    GDP or more and its expenditure down a point or more in the year
+    (Alesina & Ardagna's threshold; spending cuts, which Ponticelli & Voth
+    find drive unrest), once in three years (Global Macro Database).
+  The sovereign catalogue also takes the Global Macro Database's crisis
+  years (their runs' first years), which reach 2023.
 
     jolt -A:tools -M -m bnm.economic-events
 
@@ -27,7 +33,8 @@
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
-(def kinds ["currency_crisis" "inflation_crisis" "growth_collapse" "sovereign_default" "food_price_shock"])
+(def kinds ["currency_crisis" "inflation_crisis" "growth_collapse" "sovereign_default" "food_price_shock"
+            "fiscal_consolidation"])
 
 (defn- runs-start
   "The first year of each run of consecutive years in `ys`."
@@ -65,6 +72,18 @@
   first has one within a year of it."
   [a b]
   (lb/join-years a b))
+
+(defn consolidations
+  "Years of spending-led fiscal consolidation from the balance and
+  expenditure ({year % of GDP}): the balance up 1.5 points or more and
+  expenditure down a point or more, once in three years."
+  [bal exp]
+  (once-in 3 (for [[y b] bal
+                   :let [b0 (get bal (dec y)) e (get exp y) e0 (get exp (dec y))]
+                   :when (and b0 e e0 (>= (- b b0) 1.5) (<= (- e e0) -1.0))]
+               y)))
+
+(defn onsets-of-runs "The first year of each run of years." [ys] (runs-start (set ys)))
 
 (defn food-shocks
   "Quarters of food price shocks from {quarter twelve-month food inflation}:
@@ -142,6 +161,7 @@
   (let [db (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))
         units (sort (keys (pg/read-states)))
         annual (pg/read-annual)
+        fiscal (pg/read-annual "data/derived/fiscal.csv")
         span (fn [ys lead] (when (seq ys) [(+ lead (apply min ys)) (apply max ys)]))
         out (atom []) cov (atom [])
         add! (fn [k u onsets [a b] & [months busy]]
@@ -162,15 +182,20 @@
                      wdi-g)
             [rr rr-known] (read-rr-defaults)
             sov-lv (merge-with into (lv "sovereign") (lv "restructuring"))
-            food (by-quarter db u "food/food_inflation")]
+            food (by-quarter db u "food/food_inflation")
+            bal (get-in fiscal ["gov_bal_gdp" u] {})
+            gexp (get-in fiscal ["gov_exp_gdp" u] {})
+            gmd-sov (onsets-of-runs (keys (get-in fiscal ["gmd_sovereign" u] {})))]
         (add! "currency_crisis" u (lb/currency-crises fx) (span (keys fx) 2))
         (add! "inflation_crisis" u (inflation-crises infl) (span (keys infl) 1))
         (add! "growth_collapse" u (growth-collapses levels) (span (keys levels) 16))
-        ;; Laeven & Valencia cover every IMF member 1970-2017; Reinhart &
-        ;; Rogoff reach further back for their seventy
+        ;; Laeven & Valencia cover every IMF member 1970-2017, the Global Macro
+        ;; Database to 2023; Reinhart & Rogoff reach further back for their seventy
         (let [known (get rr-known u #{})]
-          (add! "sovereign_default" u (join (get sov-lv u #{}) (get rr u #{}))
-                [(if (seq known) (min 1970 (apply min known)) 1970) 2017]))
+          (add! "sovereign_default" u (join (join (get sov-lv u #{}) (get rr u #{})) gmd-sov)
+                [(if (seq known) (min 1970 (apply min known)) 1970) 2023]))
+        (let [ys (filter #(and (get bal %) (get bal (dec %)) (get gexp %) (get gexp (dec %))) (keys bal))]
+          (add! "fiscal_consolidation" u (consolidations bal gexp) (span ys 0)))
         (when (seq food)
           (let [qs (keys food)]
             (add! "food_price_shock" u (map #(* 3 %) (food-shocks food)) [(* 3 (+ 12 (apply min qs))) (+ 2 (* 3 (apply max qs)))] true 3)))))

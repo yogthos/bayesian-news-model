@@ -56,7 +56,7 @@
 (def year-groups
   {:regime [0 1 2 12 13] :violence [3 4 5 6] :society [7 10 11] :military [8 18 19] :patronage [9]
    :economy [14 15 23 24] :demography [16 17 20 21 22] :inequality [25 26]
-   :history [27 28 29] :others [30 31 32 33] :world [34]})
+   :fiscal [27 28] :history [29 30 31] :others [32 33 34 35] :world [36]})
 
 (def half-names [:polyarchy :anocracy :log-gdppc :physical-integrity :social-exclusion :military-executive
                  :since-last :own10 :own30 :world3])
@@ -226,7 +226,7 @@
         cats (catalogues)
         units (set (filter #(first (geo/parents %)) (keys (get-in cats [kind :onsets]))))]
     (spec {:kind kind :db db :cats cats :units units :end end
-           :annual (merge (pg/read-annual) (lb/read-annual))
+           :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
            :wdi (fn [iso v y] (some-> (db [iso v]) (sk/value (+ 11 (* 12 y)) {:stale 18})))
            :known (lb/read-known known-run kind)})))
 
