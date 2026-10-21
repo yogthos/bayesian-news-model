@@ -392,7 +392,8 @@
    :forget, the model averaging's forgetting, :only, a subset of groups,
    :without, groups dropped from the inputs altogether, :without-at
    {scale #{groups}} the same at one scale,
-   :trace, to record what each node read and learned from}.
+   :trace, to record what each node read and learned from (:inputs, also
+   each row's inputs and forecast)}.
   {:forecasts [{:scale :place :origin :p :y}] :weights {[scale level]
   [[t weights]]} :models :trace}."
   [spec]
@@ -462,9 +463,10 @@
                                               {:scale scale :place place :origin t :p p :y (:y target)}))
                     (update weights k (fnil conj []) [t (d/weights model)])
                     (if (:trace spec)
-                      (reduce conj! trace (for [{:keys [place reads]} made]
-                                            {:scale scale :place place :origin t :reads reads
-                                             :learned (map #(select-keys % [:known-at]) ready)}))
+                      (reduce conj! trace (for [{:keys [place reads x p]} made]
+                                            (cond-> {:scale scale :level level :place place :origin t :reads reads
+                                                     :learned (map #(select-keys % [:known-at]) ready)}
+                                              (= :inputs (:trace spec)) (assoc :x x :p p))))
                       trace)]))
                [st forecasts weights trace]
                (for [s due level-ix (range (count levels))] [s level-ix]))

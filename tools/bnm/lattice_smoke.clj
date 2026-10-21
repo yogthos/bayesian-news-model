@@ -1,0 +1,91 @@
+(ns bnm.lattice-smoke
+  "Mechanical checks of the banking lattice before a training run: that it
+  runs, forecasts probabilities, feeds every group live inputs, lets its
+  weights move, uses its strain in theory's direction, reads nothing from
+  the future, and exports rows that line up with the scoring tools.
+
+    jolt -A:tools -M -m bnm.lattice-smoke [--end 23999] [--without-at ...]
+
+  Exits 1 when a check fails."
+  (:require [bnm.geo :as geo]
+            [bnm.lattice :as lt]
+            [bnm.lattice-banking :as lb]
+            [bnm.macrohistory :as mh]
+            [bnm.named :as nm]
+            [bnm.slow-train :as st]
+            [clojure.string :as str]))
+
+(defn- corr [xs ys]
+  (let [n (count xs) mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
+        sxy (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
+        sx (Math/sqrt (reduce + (map #(* (- % mx) (- % mx)) xs)))
+        sy (Math/sqrt (reduce + (map #(* (- % my) (- % my)) ys)))]
+    (if (and (pos? sx) (pos? sy)) (/ sxy (* sx sy)) 0.0)))
+
+(defn -main [& args]
+  (let [{:keys [end without-at]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+        end (or (some-> end parse-long) (+ (* 12 1999) 11))
+        variables (st/read-variables "data/slow/variables.tsv")
+        db (nm/load-series "data/slow/series.tsv" variables)
+        jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
+        jst (into {} (for [r (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap))] [[(:iso r) (:year r)] r]))
+        cat (lb/catalogue jst-rows)
+        units (set (filter #(first (geo/parents %)) (keys (:onsets cat))))
+        wc (nm/world-credit db units (range (+ lb/start 2) (inc end) 3))
+        ext (lb/extended-table jst-rows (#'lb/read-pwt) db units (lb/read-annual))
+        sp (cond-> (lb/spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
+                             :known (lb/read-known "r6-at") :quarterly (lb/read-quarterly)})
+             true (assoc :trace :inputs)
+             without-at (assoc :without-at (into {} (for [part (str/split without-at #",") :let [[sc gs] (str/split part #":")]]
+                                                      [(keyword sc) (set (map keyword (str/split gs #"\+")))]))))
+        r (lt/run sp)
+        fails (atom [])
+        check (fn [ok? msg] (println (if ok? "  ok  " "  FAIL") msg) (when-not ok? (swap! fails conj msg)))]
+    (println "smoke run to" (quot end 12) ":" (count (:forecasts r)) "forecasts")
+    ;; 1. probabilities
+    (check (every? #(let [p (:p %)] (and (number? p) (< 0.0 p 1.0))) (:forecasts r)) "every forecast a probability in (0, 1)")
+    ;; 2. live inputs: per node and group, the share of rows where any input is nonzero, and its spread
+    (doseq [[[scale level] rows] (group-by (juxt :scale :level) (:trace r))
+            :let [lay (#'lt/layout sp scale (.indexOf (map first (:levels sp)) level))
+                  late (filter #(>= (:origin %) (- end 120)) rows)]
+            [g ix] (sort-by key (:groups lay))
+            :when (and (seq ix) (not= g :all) (seq late))]
+      (let [vals (for [row late i ix] (double (nth (:x row) i)))
+            live (/ (count (filter #(not= 0.0 %) vals)) (double (count vals)))
+            spread (let [m (/ (reduce + vals) (count vals))] (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) vals)) (count vals))))]
+        (check (and (> live 0.01) (> spread 1e-6))
+               (format "%-12s %-9s %-14s live %.2f spread %.2f" (name scale) (name level) (name g) live spread))))
+    ;; 3. weights move: each group's weight somewhere above 1e-4 over the run
+    (doseq [[[scale level] hist] (sort-by key (:weights r))
+            :let [gs (keys (second (last hist)))
+                  dead (filter (fn [g] (every? #(< (get (second %) g 0.0) 1e-4) (drop 4 hist))) gs)]]
+      (check (empty? dead) (format "%s %s: no group's weight stays below 1e-4 throughout %s" (name scale) (name level) (vec dead))))
+    ;; 4. strain in theory's direction at the year
+    (let [rows (for [[[s p] byo] (:book r) :when (and (= s :year) (= 3 (count p)))
+                     [o {:keys [p strain]}] byo :when (>= o (* 12 1960))]
+                 [(double strain) (Math/log (/ p (- 1.0 p)))])]
+      (check (> (corr (map first rows) (map second rows)) 0.0)
+             (format "year: strain and the forecast's log odds move together (r = %.2f)" (corr (map first rows) (map second rows)))))
+    ;; 5. nothing from the future
+    (let [bad (for [{:keys [origin reads learned scale]} (:trace r)
+                    rd reads
+                    :when (case (:dir rd)
+                            :down (>= (:origin rd) origin)
+                            :up (> (:origin rd) origin)
+                            :feedback (> (:known-at rd) origin))]
+                [scale origin rd])
+          bad-learn (for [{:keys [origin learned]} (:trace r) {k :known-at} learned :when (> k origin)] origin)]
+      (check (and (empty? bad) (empty? bad-learn)) (format "no read or learning from after the origin (%d bad reads)" (count bad))))
+    ;; 6. the export lines up with the scoring tools' rows
+    (let [known (lb/read-known "r6-at")
+          rows (for [{:keys [scale place origin y]} (:forecasts r)
+                     :let [w ({:quarter-lead "lead" :quarter-w2 "w2"} scale)]
+                     :when (and w (= 3 (count place)) (zero? (mod (- origin 2) 3)))]
+                 [w place (quot (- origin 2) 3)])
+          aligned (count (filter #(contains? known %) rows))]
+      (check (every? (fn [{:keys [scale origin]}] (or (not (#{:quarter-lead :quarter-w2} scale)) (zero? (mod (- origin 2) 3))))
+                     (:forecasts r))
+             "quarter origins are quarter ends")
+      (println (format "        %d of %d quarter rows have a named forecast at the same (window, unit, q)" aligned (count rows))))
+    (println (if (empty? @fails) "smoke: all checks passed" (str "smoke: " (count @fails) " failed")))
+    (System/exit (if (empty? @fails) 0 1))))
