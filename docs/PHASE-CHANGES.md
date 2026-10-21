@@ -414,9 +414,16 @@ gave the share of draws each test found it:
 | 0.25 | 0.70 | 0.00 | 0.00 |
 | 0.50, null | 0.00 | 0.00 | 0.00 |
 | 0.50 | 1.00 | 0.00 | 0.00 |
+| 1.00, null | 0.00 | 0.00 | 0.00 |
+| 1.00 | 1.00 | 0.00 | 0.90 |
 
 The null rows draw outcomes from the benchmark, so they measure the false
-positive rate. The choice follows from power and propriety, made on
+positive rate. The per-cell Romano-Wolf test on Brier found nothing even at
+beta 1, where the original test found it nine times in ten: a cell's Brier
+difference for rare onsets is buried in the noise of thousands of
+non-onsets (its t was 1-2), and only pooling over cells gives it power. So
+per-cell claims rest on the original test and on Romano-Wolf together, and
+the decision on the pooled primary. The choice follows from power and propriety, made on
 synthetic outcomes, not from which test the results so far favour
 (Gneiting & Raftery 2007; Diebold & Mariano 1995; Pepe et al. 2013; Lerch
 et al. 2017 on outcome conditioning: the hard-row filter conditions on
