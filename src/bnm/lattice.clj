@@ -20,12 +20,12 @@
   held back from learning until they are known.
 
   The models averaged at each node read the intercept and one group each,
-  or all of them (:base :gauges :up :down :all; :only picks a subset): the
-  weights through time say which flows mattered at that node."
+  or all of them (:base, the gauges as one group or as the spec's
+  :gauge-groups, :up, :down, :all; :only picks a subset): the weights
+  through time say which gauges and which flows mattered at that node.
+  :prior seeds coefficients with what is known."
   (:require [augur.dynamic :as d]
             [augur.math :as m]))
-
-(def groups-order "The groups a node's models read." [:base :gauges :up :down :all])
 
 (defn finer?
   "Whether scale a is finer than scale b in `spec`."
@@ -51,18 +51,30 @@
         down-n (+ (count coarser) (if (< level-ix (dec (count (:levels spec)))) 1 0))
         gauges (vec (range 1 (+ 1 gw)))
         up (vec (range (+ 1 gw) (+ 1 gw up-n)))
-        down (vec (range (+ 1 gw up-n) (+ 1 gw up-n down-n)))]
+        down (vec (range (+ 1 gw up-n) (+ 1 gw up-n down-n)))
+        ;; named groups of the gauges (indices among them), else one group
+        named (get-in spec [:gauge-groups scale])
+        gauge-groups (if named
+                       (into {} (for [[g ix] named] [g (mapv #(inc (long %)) ix)]))
+                       {:gauges gauges})]
     {:width (+ 1 gw up-n down-n) :finer finer :coarser coarser
-     :groups {:base [] :gauges gauges :up up :down down :all (vec (concat gauges up down))}}))
+     :order (vec (concat [:base] (sort (keys gauge-groups)) [:up :down :all]))
+     :groups (merge gauge-groups {:base [] :up up :down down :all (vec (concat gauges up down))})}))
 
-(defn- node-model [spec {:keys [discount]} {:keys [groups]}]
-  (d/averaged (into {} (for [g (or (:only spec) groups-order)
-                             :let [ix (vec (cons 0 (groups g)))]
-                             :when (or (= g :base) (seq (groups g)))]
-                         [g (d/logistic {:mean (repeat (count ix) 0.0)
-                                         :var (cons 4.0 (repeat (dec (count ix)) 1.0))
-                                         :discount discount :inputs ix})]))
-              {:forget (:forget spec)}))
+(defn- node-model
+  "A node's model average: one dynamic logistic per group of its inputs
+  (each with the intercept), and one over all of them. A coefficient
+  starts at zero with variance 1 (4 for the intercept) unless the spec's
+  :prior gives {input-index [mean variance]} for the node."
+  [spec scale level {:keys [discount]} {:keys [groups order] :as lay}]
+  (let [prior (or (when-let [f (:prior spec)] (f scale level lay)) {})]
+    (d/averaged (into {} (for [g (if (:only spec) (filter (:only spec) order) order)
+                               :let [ix (vec (cons 0 (groups g)))]
+                               :when (or (= g :base) (seq (groups g)))]
+                           [g (d/logistic {:mean (map #(first (get prior % [0.0])) ix)
+                                           :var (map #(second (get prior % [nil (if (zero? %) 4.0 1.0)])) ix)
+                                           :discount discount :inputs ix})]))
+                {:forget (:forget spec)})))
 
 (defn- issued
   "Forecasts for [scale place] issued at origins in [lo, hi], oldest first."
@@ -119,14 +131,14 @@
   (let [{:keys [scales levels start end]} spec]
     (loop [t start book {} models {} pending {} forecasts (transient []) weights {} trace (transient [])]
       (if (> t end)
-        {:forecasts (persistent! forecasts) :weights weights :trace (persistent! trace) :book book}
+        {:forecasts (persistent! forecasts) :weights weights :trace (persistent! trace) :book book :models models}
         (let [[book models pending forecasts weights trace]
               (reduce
                (fn [[book models pending forecasts weights trace] [scale-spec level-ix]]
                  (let [scale (:name scale-spec)
                        [level places] (nth levels level-ix)
                        k [scale level]
-                       model (or (models k) (node-model spec scale-spec (layout spec scale level-ix)))
+                       model (or (models k) (node-model spec scale level scale-spec (layout spec scale level-ix)))
                        ;; learn from what is known by t
                        {ready true waiting false} (group-by #(<= (:known-at %) t) (pending k))
                        model (d/step model (map #(select-keys % [:x :y]) ready))
@@ -164,3 +176,9 @@
   last period, from the result of `run`."
   [result scale level]
   (second (last (get-in result [:weights [scale level]]))))
+
+(defn model
+  "The model reading `group` in the average at `scale` and `level`, after
+  the run."
+  [result scale level group]
+  (get-in result [:models [scale level] :models group]))

@@ -1,5 +1,6 @@
 (ns bnm.lattice-test
-  (:require [augur.math :as m]
+  (:require [augur.dynamic]
+            [augur.math :as m]
             [bnm.lattice :as lt]
             [clojure.test :refer [deftest is testing]]))
 
@@ -87,3 +88,30 @@
         region-reads (for [{:keys [place reads]} (:trace r) :when (= "A" place) {p :place} reads] p)]
     (is (some #{"a1"} region-reads) "a region hears its countries")
     (is (not-any? #{"b1"} region-reads) "and not another region's")))
+
+(deftest gauge-groups-and-priors
+  ;; a node's gauges in named groups, each its own model in the average,
+  ;; and priors that start the weights from what is known
+  (let [w (world 4)
+        s (assoc (spec w)
+                 :end 240
+                 ;; no discount at the month, so the prior is not forgotten
+                 :scales [{:name :month :per 1 :horizon 1 :discount 1.0}
+                          {:name :year :per 12 :horizon 12 :discount 0.995}]
+                 :gauge-width {:month 2 :year 1}
+                 :gauges (fn [scale place origin]
+                           (if (= scale :month)
+                             (if (= 2 (count place)) [(get-in w [:gauge place origin]) ((:noise w))] [0.0 0.0])
+                             [((:noise w))]))
+                 :gauge-groups {:month {:signal [0] :noise [1]}}
+                 :prior (fn [scale level layout]
+                          (when (and (= scale :month) (= level :country))
+                            {(first (get-in layout [:groups :signal])) [1.5 0.01]})))
+        r (lt/run s)
+        ws (lt/weights r :month :country)]
+    (is (contains? ws :signal))
+    (is (contains? ws :noise))
+    (is (> (:signal ws) (:noise ws)) ws)
+    (testing "undiscounted, a tight prior holds the signal's coefficient near its mean"
+      (let [m (lt/model r :month :country :signal)]
+        (is (< (Math/abs (- 1.5 (second (augur.dynamic/means m)))) 0.3) (augur.dynamic/means m))))))
