@@ -64,7 +64,8 @@
    [:term-spread #(when (and (:ltrate %) (:stir %)) (- (:ltrate %) (:stir %)))]
    [:wage-share #(lg (div (:wage %) (div (:gdp %) (:pop %))))]
    [:unemployment :unemp]
-   [:bank-leverage :lev]
+   ;; JST's lev is capital over assets: a capital ratio, leverage's inverse
+   [:bank-capital :lev]
    [:exchange-rate #(lg (:xrusd %))]])
 
 (def invariant-names

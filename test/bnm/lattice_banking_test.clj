@@ -15,3 +15,10 @@
   (let [ys (into {} (for [y (range 1990 2001)] [y (if (even? y) 1.0 3.0)]))]
     (is (< (Math/abs (- (#'lb/stretch-at ys 2000) (/ (- 1.0 2.0) (Math/sqrt (/ 10.0 9.0))))) 1e-9)
         "a moving series is untouched")))
+
+(deftest counts-need-their-window-covered
+  ;; no data is not no crashes
+  (let [ys (merge (zipmap (range 2000 2010) (repeat 0.0)) {2008 1.0})]
+    (is (= 1.0 (#'lb/count10 ys 2009)))
+    (is (nil? (#'lb/count10 ys 2015)) "six of ten years missing: unknown")
+    (is (nil? (#'lb/count10 {} 2009)))))

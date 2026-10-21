@@ -48,8 +48,12 @@ for var, col in [("bvx_bank_ret", "Rtot_real"), ("bvx_nonfin_ret", "Rtot_nonfin_
 
 mv = pd.read_stata(f"{RAW}/mullerverner/ReStud_Replication_Kit_20230912/Build/MuellerVerner.dta")
 mv = mv.groupby(["country", "year"], as_index=False).last()
-unprod = mv[["HH", "F", "G", "I", "L"]].sum(axis=1, min_count=5)
-prod = mv[["A", "B", "C"]].sum(axis=1, min_count=3)
+def pair(a, b, ab):
+    # a sector pair, or the combined column some countries report instead
+    both = mv[a] + mv[b]
+    return both.where(both.notna(), mv[ab])
+unprod = mv["HH"] + pair("F", "L", "FL") + pair("G", "I", "GI")
+prod = mv["A"] + pair("B", "C", "BC")
 mv["unprod"] = (unprod / prod).where((unprod > 0) & (prod > 0))
 mv["unprod"] = mv["unprod"].apply(lambda x: None if pd.isna(x) else __import__("math").log(x))
 add(out_a, mv, "country", "year", "mv_unproductive", "unprod")
@@ -58,8 +62,10 @@ ep = pd.read_excel(f"{RAW}/epwt/EPWT_7.0_FV.xlsx", sheet_name="EPWT7.0")
 add(out_a, ep, "Countrycode", "Year", "epwt_profit_rate", "rnat2017")
 add(out_a, ep, "Countrycode", "Year", "epwt_labour_share", "LabShare")
 
-w = pd.read_csv(f"{RAW}/wid/wid_shares_extract.csv")
-w["iso"] = w["country"].map(iso2)
+# "NA" is Namibia, not a missing value; KS is Kosovo
+w = pd.read_csv(f"{RAW}/wid/wid_shares_extract.csv", keep_default_na=False, na_values={"value": [""]})
+w["value"] = pd.to_numeric(w["value"], errors="coerce")
+w["iso"] = w["country"].map(lambda c: iso2.get(c, "XKX" if c == "KS" else None))
 for var, v, p in [("wid_top10", "sptincj992", "p90p100"), ("wid_bottom50", "sptincj992", "p0p50"),
                   ("wid_top1_wealth", "shwealj992", "p99p100")]:
     add(out_a, w[(w["variable"] == v) & (w["percentile"] == p)], "iso", "year", var, "value")
@@ -76,7 +82,9 @@ names = {"Australia": "AUS", "Austria": "AUT", "Belgium": "BEL", "Canada": "CAN"
 rr = pd.read_excel(f"{RAW}/romer/Data and Programs/Romer&RomerCrisesData.xlsx", sheet_name="New Meas. of Financial Distress")
 rr["year"] = rr["Date"].astype(str).str.slice(0, 4).astype(int)
 long = rr.melt(id_vars=["Date", "year"], var_name="name", value_name="v").dropna()
-long["iso"] = long["name"].map(names)
+# the workbook's headers drop the spaces ("UnitedStates")
+squash = {k.replace(" ", ""): v for k, v in names.items()}
+long["iso"] = long["name"].astype(str).str.replace(" ", "").map(squash)
 yr = long.dropna(subset=["iso"]).groupby(["iso", "year"], as_index=False)["v"].mean()
 add(out_a, yr, "iso", "year", "romer_distress", "v")
 

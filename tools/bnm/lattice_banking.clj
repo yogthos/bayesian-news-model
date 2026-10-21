@@ -218,6 +218,13 @@
               sd (Math/max sd (* 0.02 (Math/abs m)))]
           (when (> sd 1e-9) (Math/max -5.0 (Math/min 5.0 (/ (- x m) sd)))))))))
 
+(defn- count10
+  "Events in the ten years to `year`, or nil unless at least eight of them
+  are covered: no data is not no events."
+  [ys year]
+  (let [xs (keep #(get ys %) (range (- year 9) (inc year)))]
+    (when (>= (count xs) 8) (reduce + xs))))
+
 (defn- change [ys year k]
   (when-let [a (get ys year)] (when-let [b (get ys (- year k))] (- a b))))
 
@@ -284,38 +291,61 @@
         tfp (update-vals (pwt "rtfpna") #(update-vals % lg))
         ko (into {} (for [[c ys] (pwt "rkna")]
                       [c (into {} (for [[y k] ys :let [q (get-in pwt ["rgdpna" c y])] :when (and q (pos? k) (pos? q))] [y (Math/log (/ k q))]))]))
-        credit (into {} (for [u units]
-                          [u (into {} (for [y (range 1960 2027)
-                                            :let [v (some-> (db [u "finance/private_credit_gdp"]) (bnm.stocks/value (+ (* 12 y) 11) {:stale 18}))]
-                                            :when v] [y v]))]))
+        ;; credit to the private sector by the year the data describe (its
+        ;; publication comes before the origin that reads it, the year
+        ;; after): the BIS's where it has the country (longer, and through
+        ;; the euro members' WDI gap), else WDI's
+        by-data-year (fn [u v] (if-let [{:keys [period value]} (db [u v])]
+                                 ;; each year's last observation (a quarterly series' fourth)
+                                 (reduce (fn [acc i] (assoc acc (quot (long (nth period i)) 12) (double (nth value i))))
+                                         {} (range (count period)))
+                                 {}))
+        credit (into {} (for [u units
+                              :let [bis (by-data-year u "finance/credit_gdp")]]
+                          [u (if (>= (count bis) 10) bis (by-data-year u "finance/private_credit_gdp"))]))
         a (fn [v] (get annual v {}))
         sum3 (fn [ys y] (let [xs (keep #(get ys %) [(- y 2) (dec y) y])] (when (= 3 (count xs)) (reduce + xs))))
-        count10 (fn [ys y] (when (seq ys) (reduce + (keep #(get ys %) (range (- y 9) (inc y))))))
         years (range 1870 2027)]
     (into {} (for [u (into (set units) (map :iso jst-rows)) y years]
                [[u y] [(stretch-at (hh u) y) (stretch-at (biz u) y) (stretch-at (ltd u) y) (stretch-at (noncore u) y)
                        (stretch-at (rent u) y) (stretch-at (dp u) y) (stretch-at (fiscal u) y)
-                       (change (tfp u) y 3) (change (ko u) y 3)
-                       (stretch-at (get-in pwt ["labsh" u]) y) (stretch-at (get-in pwt ["csh_i" u]) y)
+                       ;; the national accounts' and distribution sources a further year
+                       ;; back: they are published one to three years late
+                       (change (tfp u) (dec y) 3) (change (ko u) (dec y) 3)
+                       (stretch-at (get-in pwt ["labsh" u]) (dec y)) (stretch-at (get-in pwt ["csh_i" u]) (dec y))
                        (stretch-at (credit u) y)
                        (sum3 (get-in annual ["bvx_bank_ret" u]) y) (sum3 (get-in annual ["bvx_nonfin_ret" u]) y)
                        (count10 (get-in annual ["bvx_bank_crash" u]) y)
-                       (stretch-at (get-in annual ["mv_unproductive" u]) y) (change (get-in annual ["mv_unproductive" u]) y 3)
-                       (stretch-at (get-in annual ["epwt_profit_rate" u]) y) (change (get-in annual ["epwt_profit_rate" u]) y 3)
-                       (stretch-at (get-in annual ["wid_top10" u]) y) (stretch-at (get-in annual ["wid_bottom50" u]) y)
-                       (stretch-at (get-in annual ["wid_top1_wealth" u]) y)
-                       (stretch-at (get-in annual ["gdd_household" u]) y) (stretch-at (get-in annual ["gdd_corporate" u]) y)
-                       (stretch-at (get-in annual ["gdd_government" u]) y)
+                       (stretch-at (get-in annual ["mv_unproductive" u]) (dec y)) (change (get-in annual ["mv_unproductive" u]) (dec y) 3)
+                       (stretch-at (get-in annual ["epwt_profit_rate" u]) (dec y)) (change (get-in annual ["epwt_profit_rate" u]) (dec y) 3)
+                       (stretch-at (get-in annual ["wid_top10" u]) (dec y)) (stretch-at (get-in annual ["wid_bottom50" u]) (dec y))
+                       (stretch-at (get-in annual ["wid_top1_wealth" u]) (dec y))
+                       (stretch-at (get-in annual ["gdd_household" u]) (dec y)) (stretch-at (get-in annual ["gdd_corporate" u]) (dec y))
+                       (stretch-at (get-in annual ["gdd_government" u]) (dec y))
                        (get-in annual ["romer_distress" u y]) (change (get-in annual ["romer_distress" u]) y 3)]]))))
 
 (def half-groups {:long-stretch [0 1 2 3] :long-displacement [4 5] :memory [6 7 8 9 10]})
 
+(def ^:private world-invariants #{:world-norm :world-crises})
+(def ^:private world-process #{:world-k1 :world-k3 :world-k10 :world-k30})
+
+(def ^:private world-of
+  "{year {:invariant {...} :process {...}}}: the Macrohistory panel's world
+  quantities, the same for every country, for the countries outside it."
+  (memoize (fn [jst]
+             (into {} (for [[[_ y] r] jst]
+                        [y {:invariant (select-keys (:invariant r) world-invariants)
+                            :process (select-keys (:process r) world-process)}])))))
+
 (defn- year-raw
   "The year node's raw gauges for a country at origin t, from its
   Macrohistory row and extended dimensions of the year before (published
-  by then) and its known history."
+  by then) and its known history; the world's quantities for every
+  country."
   [jst ext cat unit t]
-  (let [r (get jst [unit (dec (quot t 12))])
+  (let [y (dec (quot t 12))
+        w (get (world-of jst) y)
+        r (merge-with merge w (get jst [unit y]))
         e (get ext [unit (dec (quot t 12))] (repeat (count extended-names) nil))]
     (vec (concat (map #(get-in r [:specific %]) year-specific)
                  (map #(get-in r [:invariant %]) year-invariants)
