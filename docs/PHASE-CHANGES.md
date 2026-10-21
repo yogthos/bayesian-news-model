@@ -661,3 +661,39 @@ quarter rows aligned with the scoring tools.
    built up, reset at resolution) improve the year-scale forecast of
    banking crises in years no design choice saw.
 The first registered gain of the hierarchy and dialectic (trials 31-39).
+
+## Pre-registered, 21 October 2026: the lattice for the political kinds (trial 40)
+
+Registered before any run past 2008. bnm.lattice-political carries trial
+39's design, chosen on banking's 1980-2002, over unchanged (the full
+lattice at the year and half-decade, the quarters on their own gauges with
+named's forecast as their offset) to conflict_onset, war_onset, coup,
+protest_surge and violence_surge. What is new is per kind and fixed before
+any outcome after 2002 was looked at:
+- **long catalogues** before the modern ones: Correlates of War intra-state
+  wars from 1816 (conflict and war), Archigos removals by the military and
+  other government actors from 1875 (coups); protest and violence surges
+  start in 1980 and have no half-decade node;
+- **year gauges** (bnm.political-gauges) from V-Dem, Maddison, Correlates of
+  War capabilities and WDI; the kind's own history, the other kinds'
+  recent onsets in the place, the world's share of states with one;
+- **tensions, turn and priors from the anatomy** of onsets before 2003
+  (docs/ANATOMY-POLITICAL.md);
+- **no resolution**: no political gap closes after an onset, so strain is
+  never reset, only decays.
+Smoke checks to 2008 pass for every kind (and for banking with the trial 39
+design): probabilities, live inputs, no group's own model broken (each
+within 0.1 nats per outcome of the intercept-only model, the groups that
+lose their weight within 0.01), a country's own strain rising with its
+outcomes (r +0.04 to +0.12), nothing read from after an origin, quarter
+rows aligned with the scoring tools.
+
+**Tests**, one-sided 5%:
+1. **the dialectic, per kind** (primary): the year node against the same
+   design without the contradiction group (`--without-at
+   year:contradiction` added), on the year nodes' own outcomes for origins
+   2003-2022 (bnm.paired --scale year), paired Brier; Holm over the five
+   kinds. Reported with the log score.
+2. the quarter nodes, `lattice` against `named`, pooled over the five kinds
+   with equal weights on the amended paired test (bnm.paired), and the
+   original test for the record.
