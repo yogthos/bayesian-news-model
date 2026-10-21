@@ -35,24 +35,33 @@ political-states.csv and political-annual.csv).
    neopatrimonial rule, weak rule of law, repression: all stand apart
    from the calm a decade before and barely move. Countries at risk are a
    different kind of country, more than countries in a different moment.
-3. **Pressure building against growth, released at the onset.** As
-   strain (each tension's positive part, decaying 0.7 a year, reset at
-   each onset):
-   - population growth ahead of output growth: +0.15 before conflicts,
-     +0.15 before coups, +0.3 to +0.4 before violence surges;
-   - urban growth ahead of output growth: +0.2 before conflicts and wars,
-     rising to +0.15 before coups;
-   - social exclusion ahead of democracy: +0.3 to +0.45 before wars, +0.15
-     to +0.3 before conflicts;
+3. **Pressure building against growth, not released at the onset.** As
+   strain (each tension's positive part, decaying 0.7 a year), from ten
+   years before to the year before:
+   - population growth ahead of output growth: +0.18 to +0.30 before
+     conflicts, +0.25 to +0.45 before coups, +0.40 to +0.64 before
+     violence surges;
+   - urban growth ahead of output growth: +0.30 to +0.41 before conflicts,
+     +0.23 to +0.32 before wars, +0.29 to +0.54 before coups;
+   - inflation ahead of growth: from about zero to +0.22 to +0.27 before
+     conflicts, wars and coups, to +0.68 before violence surges;
    - democracy ahead of the rule of law (democratization outrunning
-     institutions): +0.37 before violence surges, +0.2 before protest
-     surges, rising to +0.14 before coups;
-   - inflation ahead of growth: rising to +0.33 before violence surges;
-   - tertiary enrolment ahead of growth (elite overproduction): rising to
-     +0.14 to +0.22 before protest and violence surges;
-   - the top's income ahead of the bottom half's: +0.17 before coups.
-   Each falls at the onset, as the banking strains do. They are a third to
-   half the size of banking's.
+     institutions): +0.28 to +0.49 before coups, +0.15 to +0.35 before
+     protest surges, +0.32 to +0.71 before violence surges;
+   - education ahead of growth (elite overproduction): -0.22 to +0.33
+     before protest surges, +0.15 to +0.45 before violence surges;
+   - social exclusion ahead of democracy: standing at +0.6 to +0.7 before
+     wars, +0.4 to +0.55 before conflicts and coups;
+   - the top's income ahead of the bottom half's: +0.29 to +0.41 before
+     coups.
+   **No gap closes after the onset**: every one stays where it was or
+   widens over the next two years. A banking crisis resolves its
+   contradiction (credit falls back against wages); a coup or a war does
+   not. A first pass reset the strain at each onset, as for banking, and
+   showed a "release" that was the reset's own artefact; with it, the
+   country in a trap had its strain wiped by every onset and the lattice's
+   strain ran against its forecasts in the smoke checks (r -0.2 to -0.7).
+   The political lattice never resets: strain only decays.
 4. **Growth falls before.** Output growth over three years falls from five
    years before wars and violence surges (-0.2 to -0.46).
 5. **Protest is different.** Protest surges come in richer, more
@@ -71,8 +80,7 @@ political-states.csv and political-annual.csv).
 - The year nodes carry the history and structural groups with priors
   where the literature and the anatomy agree: past onsets (the traps),
   poverty, infant mortality, exclusion, the military's place.
-- Tensions per kind are the strains in point 3, the turn for coups only.
-- The contradictions are weaker here than for banking crises, and a
-  country in a trap has its strain reset by every onset: its accumulated
-  strain stays low while its risk is high. Whether the contradictions add
-  out of sample is the question trial 40 asks.
+- Tensions per kind are the strains in point 3, the turn for coups only,
+  accumulated without resolution.
+- Whether the contradictions add out of sample is the question trial 40
+  asks.

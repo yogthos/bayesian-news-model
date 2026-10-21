@@ -39,7 +39,11 @@
 
 (def kinds ["conflict_onset" "war_onset" "coup" "protest_surge" "violence_surge"])
 
-(def scales lb/scales)
+(defn scales-for
+  "The banking lattice's scales; without the half-decade for the kinds whose
+  catalogue starts in 1980, too few origins for it to learn from."
+  [kind]
+  (if (>= (pg/long-from kind) 1980) (vec (remove #(= :half-decade (:name %)) lb/scales)) lb/scales))
 
 (def quarter-groups
   "bnm.named's political inputs and its political economy, in groups."
@@ -62,18 +66,20 @@
 (def ^:private yi (zipmap year-names (range)))
 
 (def tensions
-  "Per kind, the year's tensions [a b] (a ahead of b strains) that the
-  anatomy of onsets before 2003 found standing above the calm before onsets
-  and released at them; at the quarter, mobilization ahead of coercion and
-  prices ahead of growth."
+  "Per kind, the year's tensions [a b] (a ahead of b strains) whose strain,
+  accumulated without reset, the anatomy of onsets before 2003 found
+  building or standing above the calm before onsets; at the quarter,
+  mobilization ahead of coercion and prices ahead of growth."
   (let [t (fn [& pairs] (mapv (fn [[a b]] [(yi a) (yi b)]) pairs))
         q [[14 17] [2 7] [8 7]]]
-    (into {} (for [[k pairs] {"conflict_onset" (t [:population-growth3 :growth3] [:urban-growth5 :growth3] [:social-exclusion :polyarchy])
+    (into {} (for [[k pairs] {"conflict_onset" (t [:population-growth3 :growth3] [:urban-growth5 :growth3] [:inflation :growth3]
+                                                  [:social-exclusion :polyarchy] [:polyarchy :rule-of-law])
                               "war_onset" (t [:social-exclusion :polyarchy] [:urban-growth5 :growth3] [:population-growth3 :growth3]
                                              [:inflation :growth3])
-                              "coup" (t [:top10 :bottom50] [:population-growth3 :growth3] [:urban-growth5 :growth3]
-                                        [:polyarchy :rule-of-law] [:social-exclusion :polyarchy])
-                              "protest_surge" (t [:polyarchy :rule-of-law] [:tertiary5 :growth3])
+                              "coup" (t [:urban-growth5 :growth3] [:polyarchy :rule-of-law] [:population-growth3 :growth3]
+                                        [:top10 :bottom50] [:social-exclusion :polyarchy] [:inflation :growth3])
+                              "protest_surge" (t [:polyarchy :rule-of-law] [:tertiary5 :growth3]
+                                                 [:soldiers-per-capita :spending-per-soldier3] [:participation :assembly])
                               "violence_surge" (t [:polyarchy :rule-of-law] [:inflation :growth3] [:population-growth3 :growth3]
                                                   [:urban-growth5 :growth3] [:tertiary5 :growth3])}]
                [k {:year pairs :quarter-lead q :quarter-w2 q}]))))
@@ -114,6 +120,7 @@
 (defn spec
   [{:keys [kind db cats annual wdi units end known]}]
   (let [cat (cats kind)
+        scales (scales-for kind)
         others (remove #{kind} kinds)
         start (* 12 (pg/long-from kind))
         [_ pol] (nm/political db)
@@ -147,7 +154,8 @@
              :quarter-w2 (fn [u t] (when (in-system u t) (into (vec (pol u t)) (pe u t))))
              :year year-raw
              :half-decade half-raw}
-        widths {:quarter-lead 24 :quarter-w2 24 :year (count year-names) :half-decade (count half-names)}
+        widths (select-keys {:quarter-lead 24 :quarter-w2 24 :year (count year-names) :half-decade (count half-names)}
+                            (map :name scales))
         table (into {} (for [{:keys [name] :as s} scales]
                          [name (into {} (for [t (origins s) u countries :let [v ((raw name) u t)] :when v] [[u t] v]))]))
         std (into {} (for [[name tb] table] [name (#'lb/standardizer (for [[[_ t] v] tb] [t v]))]))
@@ -185,9 +193,10 @@
      :contradiction-prior [0.3 0.25]
      :tensions (tensions kind)
      :turns (turns kind)
-     :resolutions (fn [place]
-                    (when (sub place)
-                      (into (sorted-set) (map #(+ % known-lag) (get-in cat [:onsets place])))))
+     ;; no resolution: unlike a banking crisis, after which credit falls
+     ;; back against wages, a political onset leaves its tensions as they
+     ;; were or wider (docs/ANATOMY-POLITICAL.md); strain only decays
+     :resolutions (fn [_] nil)
      :exposure (let [regimes (mh/read-regimes)
                      ex (memoize (fn [u t] (#'lb/exposure-of db regimes u t)))]
                  (fn [_ place t]

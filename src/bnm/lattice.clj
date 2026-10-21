@@ -407,7 +407,8 @@
            forecasts (transient []) weights {} trace (transient [])]
       (if (> t end)
         {:forecasts (persistent! forecasts) :weights weights :trace (persistent! trace)
-         :book (:book st) :models (:models st) :resets (:resets st)}
+         :book (:book st) :models (:models st) :resets (:resets st)
+         :evidence (:evidence st)}
         (let [due (filter #(zero? (mod (inc (- t start)) (:per %))) scales)
               [st forecasts weights trace]
               (reduce
@@ -418,7 +419,15 @@
                        model (or (get-in st [:models k]) (node-model spec scale level scale-spec (layout spec scale level-ix)))
                        ;; learn from what is known by t; its errors become known now
                        {ready true waiting false} (group-by #(<= (:known-at %) t) (get-in st [:pending k]))
-                       model (d/step model (map #(select-keys % [:x :y :o]) ready))
+                       rows (map #(select-keys % [:x :y :o]) ready)
+                       ;; traced: each model's evidence, the log score of the outcomes it
+                       ;; learns from now, scored before it learns them
+                       st (if (and (:trace spec) (seq rows))
+                            (reduce (fn [st [g m]]
+                                      (update-in st [:evidence k g] (fn [[ll n]] [(+ (or ll 0.0) (d/log-score m rows)) (+ (or n 0) (count rows))])))
+                                    st (:models model))
+                            st)
+                       model (d/step model rows)
                        ;; climatology: the rate among this node's resolved outcomes
                        st (update-in st [:clim k] (fn [[n1 n]] [(+ (or n1 0) (count (filter :y ready))) (+ (or n 0) (count ready))]))
                        offset-of (if-let [f (:offset spec)]

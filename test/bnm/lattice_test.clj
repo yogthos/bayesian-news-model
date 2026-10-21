@@ -358,3 +358,14 @@
     (is (not (contains? (lt/weights r :year :country) :up)))
     (is (contains? (lt/weights r :month :country) :down) "the month keeps its own")
     (is (thrown? Exception (lt/run (assoc (spec w) :end 3 :without-at {:year #{:bogus}}))))))
+
+(deftest each-group-s-evidence-is-kept-when-traced
+  ;; for the smoke checks: a group losing its weight on evidence is told
+  ;; from a broken one by its own record against the base model
+  (let [r (lt/run (assoc (spec (world 1)) :trace true))
+        ev (get-in r [:evidence [:year :country]])]
+    (is (contains? ev :base))
+    (is (= (set (keys (lt/weights r :year :country))) (set (keys ev))) "every model in the average")
+    (is (every? (fn [[ll n]] (and (pos? n) (neg? ll))) (vals ev)) "log scores of outcomes, counted")
+    (is (apply = (map second (vals ev))) "every model scored on the same rows")
+    (is (nil? (:evidence (lt/run (spec (world 1))))) "only when traced")))

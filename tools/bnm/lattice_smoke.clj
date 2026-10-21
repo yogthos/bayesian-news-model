@@ -62,17 +62,44 @@
             spread (let [m (/ (reduce + vals) (count vals))] (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) vals)) (count vals))))]
         (check (and (> live 0.01) (> spread 1e-6))
                (format "%-12s %-9s %-14s live %.2f spread %.2f" (name scale) (name level) (name g) live spread))))
-    ;; 3. weights move: each group's weight somewhere above 1e-4 over the run
-    (doseq [[[scale level] hist] (sort-by key (:weights r))
-            :let [gs (keys (second (last hist)))
-                  dead (filter (fn [g] (every? #(< (get (second %) g 0.0) 1e-4) (drop 4 hist))) gs)]]
-      (check (empty? dead) (format "%s %s: no group's weight stays below 1e-4 throughout %s" (name scale) (name level) (vec dead))))
-    ;; 4. strain in theory's direction at the year
-    (let [rows (for [[[s p] byo] (:book r) :when (and (= s :year) (= 3 (count p)))
+    ;; 3. no group's own model is broken: its log score per outcome over the
+    ;; run against the intercept-only base model's. A broken one (forecasts
+    ;; at the extremes) is a nat or more worse; past 0.25 fails, past 0.05 is
+    ;; noted. A group whose weight stays below 1e-4 throughout lost on its
+    ;; evidence, and fails only if its model is also broken
+    (let [behind (into {} (for [[node ev] (:evidence r)
+                                :let [[bl bn] (ev :base) base (/ bl bn)]]
+                            [node (into {} (for [[g [ll n]] ev] [g (- base (/ ll n))]))]))]
+      (doseq [[node gs] (sort-by key behind)
+              :let [[g worst] (apply max-key val gs)]]
+        (check (< worst 0.25) (format "%s %s: no group's model broken (worst %s, %.4f nats behind the base per outcome)"
+                                      (name (first node)) (name (second node)) (name g) worst))
+        (when (> worst 0.05) (println (format "        note: %s %s %s is %.4f nats behind the base" (name (first node)) (name (second node)) (name g) worst))))
+      (doseq [[[scale level] hist] (sort-by key (:weights r))
+              :let [gs (keys (second (last hist)))
+                    dead (filter (fn [g] (every? #(< (get (second %) g 0.0) 1e-4) (drop 4 hist))) gs)
+                    broken (filter #(>= (get-in behind [[scale level] %] 0.0) 0.25) dead)]]
+        (check (empty? broken) (format "%s %s: no group both without weight and broken %s" (name scale) (name level) (vec broken)))
+        (when (seq dead)
+          (println (format "        lost on evidence (weight below 1e-4 throughout): %s %s %s"
+                           (name scale) (name level)
+                           (str/join ", " (for [g dead] (format "%s %.4f behind" (name g) (get-in behind [[scale level] g] 0.0)))))))))
+    ;; 4. strain in theory's direction at the year: the countries' own mean
+    ;; strain (the first contradiction input) against the outcomes; the
+    ;; total strain they pass on (own strain and disagreement with the
+    ;; parent either way) against the forecasts, for the record
+    (let [ys (into {} (for [{:keys [scale place origin y]} (:forecasts r) :when (and (= scale :year) (some? y))] [[place origin] y]))
+          i (first (:strain-ix (#'lt/layout sp :year 0)))
+          own (for [{:keys [scale level place origin x]} (:trace r)
+                    :let [y (ys [place origin])]
+                    :when (and (= scale :year) (= level :country) (>= origin (max (:start sp) (* 12 1960))) (some? y))]
+                [(double (nth x i)) (if y 1.0 0.0)])
+          r-y (corr (map first own) (map second own))
+          rows (for [[[s place] byo] (:book r) :when (and (= s :year) (= 3 (count place)))
                      [o {:keys [p strain]}] byo :when (>= o (max (:start sp) (* 12 1960)))]
                  [(double strain) (Math/log (/ p (- 1.0 p)))])]
-      (check (> (corr (map first rows) (map second rows)) 0.0)
-             (format "year: strain and the forecast's log odds move together (r = %.2f)" (corr (map first rows) (map second rows)))))
+      (check (> r-y 0.0) (format "year: a country's own strain and its outcomes move together (r = %.3f, n %d)" r-y (count own)))
+      (println (format "        year: total strain and the forecast's log odds, r = %.2f" (corr (map first rows) (map second rows)))))
     ;; 5. nothing from the future
     (let [bad (for [{:keys [origin reads learned scale]} (:trace r)
                     rd reads

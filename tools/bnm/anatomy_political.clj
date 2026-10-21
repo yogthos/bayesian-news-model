@@ -4,8 +4,8 @@
   of a kind lined up at its year, each year gauge of bnm.political-gauges
   against the calm (years more than five from any onset of the kind in the
   country) in calm standard deviations; candidate tensions from theory as
-  gaps between standardized gauges and as strain accumulated through time,
-  reset at each onset; candidate turns.
+  gaps between standardized gauges and as strain accumulated through time
+  (never reset: a political onset does not close its gaps); candidate turns.
 
     jolt -A:tools -M -m bnm.anatomy-political
 
@@ -75,7 +75,7 @@
                                               [iso (into {} (for [[y x] ys :let [z (get-in zs [b iso y])] :when z] [y (- x z)]))]))]))
                   strains (into {} (for [[n g] gaps]
                                      [(str n " (strain)")
-                                      (into {} (for [[iso ys] g] [iso (#'an/accumulate-reset ys (get crises iso #{}) 0.7)]))]))
+                                      (into {} (for [[iso ys] g] [iso (#'an/accumulate-reset ys #{} 0.7)]))]))
                   turns (into {} (for [[s f] turn-defs]
                                    [(str "turn: " (name s) " stretched, " (name f) " off its peak")
                                     (into {} (for [[iso ys] (zs f) :let [dd (#'an/drawdown ys 3)]]
