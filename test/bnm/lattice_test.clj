@@ -324,3 +324,18 @@
         month-reads (for [{:keys [scale reads]} (:trace r) :when (= scale :month) rd reads
                           :when (and (= :down (:dir rd)) (= :year (:scale rd)))] rd)]
     (is (seq month-reads) "the month reads the year's last state and strain")))
+
+(deftest flows-are-standardized-by-their-past
+  ;; strain and gaps come in whatever units the states have: a node must
+  ;; see them standardized, or a model reading them is wrecked by scale
+  (let [w (contradiction-world 7)
+        late (fn [r] (filter #(and (= :year (:scale %)) (= 2 (count (:place %))) (> (:origin %) 240)) (:forecasts r)))
+        base (contradiction-spec w)
+        scaled (assoc base :state (fn [scale p t gs] (some-> ((:state base) scale p t gs) (* 100.0))))]
+    (is (< (Math/abs (- (log-score (late (lt/run base))) (log-score (late (lt/run scaled))))) 0.02)))
+  (testing "the running standardizer reads only the past"
+    (let [s (lt/standardizer)
+          s (reduce (fn [s x] (lt/observe s [x])) s (concat [1.0 2.0 3.0 4.0] [1.0 2.0 3.0 4.0] [1.0 2.0 3.0 4.0]))]
+      (is (< (Math/abs (- (first (lt/standardize s [4.0])) (/ (- 4.0 2.5) (Math/sqrt 1.25)))) 1e-9)
+          "against the mean and spread of what came before")
+      (is (= [5.0] (lt/standardize s [1e6])) "capped"))))

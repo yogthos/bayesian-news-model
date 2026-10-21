@@ -34,6 +34,12 @@
   - :feedback, errors passed across levels: the last resolved errors
     (outcome less forecast) of the place's coarser scales, its parent and
     its children, each known by t.
+  The node's own inputs (everything but the intercept and the spec's
+  gauges, which the spec standardizes) are standardized by their running
+  mean and spread at the node's earlier origins, capped at 5: strain, gaps
+  and turns come in whatever units the states have, and a model reading
+  them raw is wrecked by their scale.
+
   Each quantity flows one way at a time: down only from before t, errors
   only once known, so nothing is counted twice. A node learns, and its
   errors become readable, when it is next due after they are known: at a
@@ -101,6 +107,31 @@
             acc (+ (Math/max 0.0 (double gap)) (* decay acc))
             resolve-at (cond-> (vec (remove #(<= % t) resolve-at)) (:resolved-at info) (conj (:resolved-at info)))]
         (recur more acc resolve-at (assoc out t acc))))))
+
+(defn standardizer
+  "An empty running standardizer: counts, sums and sums of squares per
+  input."
+  []
+  {:n 0 :s nil :ss nil})
+
+(defn observe
+  "The standardizer after seeing the vector xs."
+  [{:keys [n s ss]} xs]
+  {:n (inc n)
+   :s (mapv + (or s (repeat (count xs) 0.0)) xs)
+   :ss (mapv + (or ss (repeat (count xs) 0.0)) (map #(* % %) xs))})
+
+(defn standardize
+  "xs against the mean and spread of everything observed before, capped at
+  5; 0 until ten have been seen (the scale is not known yet)."
+  [{:keys [n s ss]} xs]
+  (if (< n 10)
+    (mapv (constantly 0.0) xs)
+    (mapv (fn [x si ssi]
+            (let [m (/ si n)
+                  sd (Math/sqrt (Math/max 0.0 (- (/ ssi n) (* m m))))]
+              (if (> sd 1e-9) (Math/max -5.0 (Math/min 5.0 (/ (- x m) sd))) 0.0)))
+          xs s ss)))
 
 (defn- children-of [spec level-ix place]
   (when (pos? level-ix)
@@ -365,13 +396,19 @@
                                     (update-in st [:errors [scale place]] (fnil assoc (sorted-map)) known-at
                                                (- (if y 1.0 0.0) p)))
                                   st ready)
+                       ;; the node's own inputs (everything past the intercept and the
+                       ;; gauges, which the spec standardizes) against their past
+                       g-width (if (contains? (:without spec) :gauges) 0 (get-in spec [:gauge-width scale] 0))
+                       flow-std (get-in st [:flow-std k] (standardizer))
                        made (vec (for [place places
                                        :let [g ((:gauges spec) scale place t)
                                              {:keys [x reads stated tension strain resolved]} (inputs spec st scale scale-spec level-ix place t g)
+                                             raw-flows (subvec x (inc g-width))
+                                             x (into (subvec x 0 (inc g-width)) (standardize flow-std raw-flows))
                                              o (offset-of place t)
                                              p (d/predict model x o)
                                              target ((:target spec) scale place t)]]
-                                   {:place place :x x :o o :p p :target target :reads reads :stated stated :tension tension :strain strain
+                                   {:place place :x x :raw-flows raw-flows :o o :p p :target target :reads reads :stated stated :tension tension :strain strain
                                     :resolved resolved}))
                        st (reduce (fn [st {:keys [place p stated tension strain resolved]}]
                                     (-> st
@@ -381,6 +418,7 @@
                                         (assoc-in [:tension [scale place]] tension)
                                         (cond-> resolved (update-in [:resets [scale place]] (fnil into []) resolved))))
                                   st made)
+                       st (assoc-in st [:flow-std k] (reduce (fn [sd {:keys [raw-flows]}] (observe sd raw-flows)) flow-std made))
                        st (-> st
                               (assoc-in [:models k] model)
                               (assoc-in [:pending k] (into (vec waiting)
