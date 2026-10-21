@@ -35,7 +35,7 @@
 (def vars
   #{"finance/credit_gdp" "finance/household_credit_gdp" "finance/credit_gap" "finance/dsr_private"
     "finance/real_house_prices" "markets/share_prices" "finance/yield_long" "finance/rate_3m"
-    "finance/vix" "finance/curve_10y3m" "trade/openness"
+    "finance/vix" "finance/curve_10y3m" "trade/openness" "finance/private_credit_gdp"
     "food/food_inflation" "food/price_index" "food/imports_share" "people/infant_mortality"
     "energy/oil_brent" "energy/fuel_imports_share" "energy/fuel_exports_share"
     "economy/gdp_growth" "economy/inflation" "people/youth_unemployment" "people/population"

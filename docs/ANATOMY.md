@@ -84,3 +84,29 @@ wages, no boom to turn, a normal curve, steady volatility.
   quarter; the quarter node watches for the turn.
 - **A calm surface is not stability.** Low world volatility goes with
   accumulation, not against it.
+
+## The contradictions measured with their direction (October 2026)
+
+Accumulated as strain (each tension's positive part, decaying 0.7 a year,
+reset at each crisis), the contradictions now do what the theory says:
+they build before the known crises and are released at the onset. The
+absolute measure had them below the calm before crises.
+
+| (annual, Macrohistory countries) | -4 | -3 | -2 | -1 | 0 | turn |
+|---|---|---|---|---|---|---|
+| business credit (unused column) | +0.60 | +0.77 | +1.15 | +1.04 | +0.78 | -4 |
+| household credit ahead of wages, strain | +0.17 | +0.41 | +0.56 | +0.58 | -0.84 | -3 |
+| house prices ahead of rents, strain | +0.06 | +0.12 | +0.34 | +0.44 | -0.71 | -2 |
+| loan-to-deposit ratio (unused column) | +0.04 | +0.25 | +0.51 | +0.45 | +0.47 | -2 |
+| credit ahead of wages, strain | +0.05 | +0.15 | +0.27 | +0.31 | -0.74 | -1 |
+| turn: credit stretched, equity off its peak | +0.38 | +0.09 | +0.14 | +0.44 | +0.82 | -1 |
+| WDI credit ahead of TFP growth, strain (8 crises) | +0.24 | +0.61 | +0.79 | +1.06 | -0.31 | -3 |
+
+Across all countries (66 crises of the modern catalogue with Penn World
+Table and WDI data, mostly emerging markets, 1974-2002), productivity
+growth is depressed for a decade before crises (-0.4 to -0.5), but credit
+relative to its own decade is not elevated, and credit ahead of
+productivity is flat: many of these crises do not follow the credit boom's
+path. The anatomy differs by type of crisis (a domestic credit boom, an
+external or currency crisis), which is what the crisis-mechanics data
+(ESRB cause flags, Laeven-Valencia details) would let the model separate.
