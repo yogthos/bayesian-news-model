@@ -21,12 +21,14 @@
         train (draw 60)
         test (draw 60)
         flat (lgt/fit train 2 {:prior 1.0})
-        {:keys [beta fx]} (on/fit-hier train 2 1.0 {} on/hier-opts)
+        {:keys [beta fx prior]} (on/fit-hier train 2 {} on/hier-opts)
         loss (fn [f] (/ (reduce + (for [{:keys [y] :as r} test :let [p (f r)]] (- (Math/log (if y p (- 1.0 p)))))) (count test)))]
     (is (< (loss #(lgt/predict beta (:x %) (hier/effect fx (:path %))))
            (loss #(lgt/predict flat (:x %)))))
     (testing "the slope is still found"
-      (is (< 0.6 (aget ^doubles beta 1) 1.0) (vec beta)))))
+      (is (< 0.6 (aget ^doubles beta 1) 1.0) (vec beta)))
+    (testing "the coefficients' prior precision is estimated with the variances"
+      (is (< 0.0 prior 1e12) prior))))
 
 (deftest parallel-fits-keep-their-order
   (let [ran (atom 0)
@@ -43,3 +45,16 @@
     (is e "NaN throws")
     (is (= 2003 (:year (ex-data e)))))
   (is (thrown? Exception (on/checked ##Inf {}))))
+
+(deftest country-means-look-only-backwards
+  ;; the Mundlak (within-between) terms: each country's mean of the inputs
+  ;; past the constant and the two history columns, from rows before the cut
+  (let [row (fn [u q a b] {:unit u :q q :x (double-array [1.0 0.0 0.0 a b])})
+        rows [(row "A" 0 1.0 10.0) (row "A" 1 3.0 20.0) (row "A" 8 100.0 100.0) (row "B" 0 5.0 0.0)]
+        means (on/country-means rows 3 8)
+        extend (on/with-means means)]
+    (is (= [2.0 15.0] (vec (get-in means [:by "A"]))) "A's rows before quarter 8 only")
+    (is (= [1.0 0.0 0.0 7.0 9.0 2.0 15.0] (vec (extend "A" (double-array [1.0 0.0 0.0 7.0 9.0]))))
+        "the row's own inputs, then its country's means")
+    (is (= [3.0 10.0] (drop 5 (vec (extend "C" (double-array [1.0 0.0 0.0 0.0 0.0])))))
+        "a country with no earlier rows takes the mean of all rows before the cut")))

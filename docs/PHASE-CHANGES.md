@@ -351,3 +351,35 @@ r6-pooled, of `hedge` and `mlpool`.
 
 If neither gains, the pooled logit stays and the result is written up as a
 negative one.
+
+**Amended, 21 October 2026, before r8 (trial 33).** The first run of
+`hier-` (r7b, augur v0.2.3) is kept and scored as registered above. Its
+training summaries, seen before this amendment but before its paired
+scores, showed `hier-named` falling to `hier-history`'s level where the
+covariates had helped (protest_surge lead 2008+ AUC 0.818 against
+`named`'s 0.865). Two causes, both known in the literature:
+
+- The country intercepts span much the same space as slow country
+  covariates and absorb them (Bafumi & Gelman 2006; Bell & Jones 2015;
+  Hodges & Reich 2010).
+- The ridge was picked from {10, 100, 1000} by log score, and with the
+  intercepts in, it went to 1000 in 15 of 18 blocks (against 10-100 for
+  the flat models), shrinking the covariates to nothing. A ridge and
+  random-effect variances compete for the same signal and should be
+  estimated together (Wood 2011).
+
+So `hier-` becomes, for r8:
+- **within-between inputs**: the inputs, then each country's means of
+  those past the constant and history, over its rows before the year
+  (Mundlak 1978);
+- **the ridge estimated with the variances**: one Laplace EM step for each
+  per round, ten rounds (`augur.logit/fit-evidence`), no grid;
+- **half-normal(0, 1) priors on each level's sd** on the log odds, the
+  weakly informative default (Gelman 2006; Chung et al. 2013).
+
+The settings are the literature's defaults, not tuned on scored years. An
+offline check on the training rows of protest_surge and violence_surge
+(lead, years 2004-19) gave pooled AUC 0.869 and 0.817 against 0.848 and
+0.804 for the flat logit with its ridge estimated the same way. r8 runs the
+same models on the same rows, and is judged by the criteria above with the
+Bonferroni count raised to 33.

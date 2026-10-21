@@ -40,3 +40,4 @@ the count is the number of lines below.
 | 30 | mt (multi-task) | 2026-10 | other political kinds' rows, weighted, shared coefficients |
 | 31 | hier (nested intercepts) | 2026-10 | region, subregion and country intercepts, variances by empirical Bayes |
 | 32 | dyn (multilevel states) | 2026-10 | AR(1) states over world, region, subregion, country, from onsets known by then; also scored for subregions and regions |
+| 33 | hier, amended (r8) | 2026-10 | trial 31 with within-between (Mundlak) inputs, the ridge estimated with the variances, half-normal priors on level sds |

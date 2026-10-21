@@ -346,11 +346,14 @@
   #{"conflict_onset" "war_onset" "coup" "protest_surge" "violence_surge"})
 
 (def hier-opts
-  "Starting variances of the region, subregion and country intercepts of
-  the hier-<inputs> models (each year's start is the year before's
-  estimate), the backfitting sweeps per fit, and the alternations between
-  the coefficients and the intercepts. Set in advance."
-  {:tau2 [0.25 0.25 0.25] :sweeps 8 :rounds 2})
+  "Settings of the hier-<inputs> models, set in advance: the starting
+  variances of the region, subregion and country intercepts and the
+  starting prior precision of the coefficients (each year's start is the
+  year before's estimate), the backfitting sweeps per round, the rounds
+  alternating the coefficients and the intercepts, and the scales of the
+  half-normal priors on each level's sd (1 on the log odds, the weakly
+  informative default of Gelman 2006)."
+  {:tau2 [0.25 0.25 0.25] :prior 100.0 :sweeps 8 :rounds 10 :sd-prior [1.0 1.0 1.0]})
 
 (defn hier-path
   "[region subregion unit] for a country, from the M49 tree."
@@ -361,20 +364,57 @@
 (defn- dot ^double [^doubles beta ^doubles x]
   (loop [i 0 acc 0.0] (if (< i (alength beta)) (recur (inc i) (+ acc (* (aget beta i) (aget x i)))) acc)))
 
+(defn country-means
+  "The between part of the hier- models' inputs (Mundlak 1978; Bafumi &
+  Gelman 2006; Bell & Jones 2015): each unit's mean of the inputs from
+  column `from` on, over its rows ({:unit :q :x}) before quarter `cut`, and
+  :all, the mean over every such row, for units with none. With them as
+  inputs the slow covariates keep their between-country signal instead of
+  the country intercepts absorbing it. {:by {unit means} :all means}."
+  [rows from cut]
+  (let [before (filter #(< (:q %) cut) rows)
+        width (fn [^doubles x] (- (alength x) from))
+        mean-of (fn [rs]
+                  (when (seq rs)
+                    (let [w (width (:x (first rs)))
+                          acc (double-array w)]
+                      (doseq [{:keys [^doubles x]} rs] (dotimes [j w] (aset acc j (+ (aget acc j) (aget x (+ from j))))))
+                      (dotimes [j w] (aset acc j (/ (aget acc j) (count rs))))
+                      acc)))]
+    {:by (into {} (for [[u rs] (group-by :unit before)] [u (mean-of rs)]))
+     :all (mean-of before)}))
+
+(defn with-means
+  "A function of a unit and its inputs giving the inputs followed by the
+  unit's means from `country-means` (:all's for a unit it lacks)."
+  [{:keys [by all]}]
+  (fn [unit ^doubles x]
+    (let [^doubles m (get by unit all)
+          out (double-array (+ (alength x) (alength m)))]
+      (System/arraycopy x 0 out 0 (alength x))
+      (System/arraycopy m 0 out (alength x) (alength m))
+      out)))
+
 (defn fit-hier
-  "Coefficients and nested intercepts for `train` ({:x :y :w :path}),
-  alternating: the coefficients with the intercepts as offsets, then the
-  intercepts with the coefficients' log odds as offsets. Warm from
-  `start` ({:beta :fx}). {:beta :fx}."
-  [train k prior {:keys [beta fx]} {:keys [tau2 sweeps rounds]}]
+  "Coefficients, their prior precision and nested intercepts for `train`
+  ({:x :y :w :path}), alternating: the coefficients with the intercepts as
+  offsets, then the intercepts with the coefficients' log odds as offsets.
+  The ridge and the intercepts' variances compete for the same signal, so
+  they are estimated together, each round one Laplace EM step for each
+  (Wood 2011), rather than the ridge picked from a grid: picked on log
+  score, the ridge went to the grid's strongest and the intercepts took
+  over what the covariates carried. Warm from `start` ({:beta :fx :prior}).
+  {:beta :fx :prior}."
+  [train k {:keys [beta fx prior]} {:keys [tau2 sweeps rounds sd-prior] start-prior :prior}]
   (let [train (vec train)]
-    (loop [r 0 beta beta fx fx]
+    (loop [r 0 beta beta fx fx prior (or prior start-prior)]
       (if (>= r rounds)
-        {:beta beta :fx fx}
-        (let [beta (lgt/fit (map #(assoc % :o (if fx (hier/effect fx (:path %)) 0.0)) train) k {:prior prior :start beta})
+        {:beta beta :fx fx :prior prior}
+        (let [{beta :beta prior :prior} (lgt/fit-evidence (map #(assoc % :o (if fx (hier/effect fx (:path %)) 0.0)) train) k
+                                                          {:prior prior :rounds 1 :start beta})
               fx (hier/intercepts (map #(assoc % :o (dot beta (:x %))) train)
-                                  {:tau2 (or (:tau2 fx) tau2) :sweeps sweeps :start (:effects fx)})]
-          (recur (inc r) beta fx))))))
+                                  {:tau2 (or (:tau2 fx) tau2) :sweeps sweeps :sd-prior sd-prior :start (:effects fx)})]
+          (recur (inc r) beta fx prior))))))
 
 (def analog-opts
   "Neighbours and shrinkage of the knn-<inputs> models, set in advance: more
@@ -485,35 +525,46 @@
             run-model
             (fn [idx prior flags? shrunk? hier?]
               ;; flags?: inputs past the constant and history as at-risk
-              ;; flags (o/tail-flags), their cuts from the rows known each year
-              (let [k (if flags? (+ 3 (* 2 (- (count idx) 3))) (count idx))]
+              ;; flags (o/tail-flags), their cuts from the rows known each year;
+              ;; hier?: the inputs then each country's means of those past the
+              ;; constant and history (country-means), and the prior estimated
+              ;; with the intercepts' variances (fit-hier), `prior` its start
+              (let [k (cond flags? (+ 3 (* 2 (- (count idx) 3)))
+                            hier? (- (* 2 (count idx)) 3)
+                            :else (count idx))]
                 (loop [[yr & more] (filter #(>= % (+ 10 (first years))) years)
                        beta nil
                        fx nil
+                       prior prior
                        preds []]
                   (if-not yr
-                    preds
+                    (with-meta preds {:prior prior})
                     (let [q0 (* 4 yr)
                           known (filter #(<= (o/resolves-at (:q %) window (or lag 0)) q0) prepared)
-                          xf (if flags?
-                               (let [cuts (cuts-for idx q0)]
-                                 #(o/tail-flags (pick % idx) 3 cuts))
-                               #(pick % idx))
+                          xf (cond
+                               flags? (let [cuts (cuts-for idx q0)]
+                                        (fn [_ full] (o/tail-flags (pick full idx) 3 cuts)))
+                               hier? (let [ext (with-means (country-means (for [{:keys [unit q full]} prepared :when (< q q0)]
+                                                                            {:unit unit :q q :x (pick full idx)})
+                                                                          3 q0))]
+                                       (fn [unit full] (ext unit (pick full idx))))
+                               :else (fn [_ full] (pick full idx)))
                           train (for [{:keys [unit q y full]} known
                                       :when (and (some? y) (or y (keep-negative? unit q)))]
-                                  {:x (xf full) :y y :path (when hier? (hier-path unit))
+                                  {:x (xf unit full) :y y :q q :unit unit :path (when hier? (hier-path unit))
                                    :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))})
-                          [beta fx] (cond
-                                      (not (some :y train)) [beta fx]
-                                      hier? (let [f (fit-hier train k prior {:beta beta :fx fx} hier-opts)] [(:beta f) (:fx f)])
-                                      shrunk? [(lgt/fit-shrunk train k {:prior prior :start beta}) fx]
-                                      :else [(lgt/fit train k {:prior prior :start beta}) fx])
+                          [beta fx prior] (cond
+                                            (not (some :y train)) [beta fx prior]
+                                            hier? (let [f (fit-hier train k {:beta beta :fx fx :prior prior} hier-opts)]
+                                                    [(:beta f) (:fx f) (:prior f)])
+                                            shrunk? [(lgt/fit-shrunk train k {:prior prior :start beta}) fx prior]
+                                            :else [(lgt/fit train k {:prior prior :start beta}) fx prior])
                           scored (for [{:keys [unit q y full]} prepared
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
-                                   [q (checked (lgt/predict beta (xf full) (if fx (hier/effect fx (hier-path unit)) 0.0))
+                                   [q (checked (lgt/predict beta (xf unit full) (if fx (hier/effect fx (hier-path unit)) 0.0))
                                              {:year yr :prior prior :unit unit})
                                     y unit])]
-                      (recur more beta fx (into preds scored)))))))
+                      (recur more beta fx prior (into preds scored)))))))
             ;; multi-task (mt-): the kind's rows and the other kinds' rows
             ;; weighted by lam, an extra column marking the others so the
             ;; kind keeps its own intercept; the coefficients are shared, so
@@ -609,6 +660,10 @@
                                 tree? [#(run-trees idx)]
                                 knn? [#(vector {:prior (double (:k analog-opts)) :preds (run-analog idx)})]
                                 mt? (vec (for [lam mt-weights] #(vector {:prior lam :preds (run-mt idx lam)})))
+                                ;; a hier- model's prior is estimated, so one run, its
+                                ;; :prior the last year's estimate
+                                hier? [#(let [ps (run-model idx (:prior hier-opts) false false true)]
+                                          (vector {:prior (:prior (meta ps)) :preds ps}))]
                                 :else (vec (for [p (if (= model :base) [1.0] priors)]
                                              #(vector {:prior p :preds (run-model idx p flags? shrunk? hier?)}))))})
               results (in-parallel (or threads 1) (mapcat :tasks specs))
