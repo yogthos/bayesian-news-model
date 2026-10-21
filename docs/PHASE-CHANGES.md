@@ -732,3 +732,41 @@ anatomy showed strain building steadily (credit against wages;
 democracy against the rule of law, inflation and population against
 growth), and not for the kinds whose risk the traps and structure carry
 (conflict, war, coups) or whose catalogue is short and rare (protest).
+
+## Pre-registered, 21 October 2026: the year carried down to the quarter (trial 41)
+
+Registered before any run. docs/DOWNSCALE.md's recommendations, for all
+six kinds (banking_crisis and the five political kinds), each on the
+trial 39/40 design otherwise:
+- **A**, the trial 39/40 design: the quarters on their own gauges with
+  named's forecast as their offset (climatology before named exists, 2000);
+- **B**, the year carried down: the quarters' offset is the year node's
+  latest forecast for the place, issued before the origin, scaled to the
+  quarter's window under a constant hazard (1 - (1 - p)^(h/24)), the
+  year's uncertainty carried by quadrature over its linear predictor;
+- **C**, B pooled with named: the offset the equal-weight log-odds pool of
+  B's and named's (B where named is absent);
+- each also **reconciled** (bnm.reconcile): the lead and w2 windows and
+  the first quarter scaled in hazard to meet the equal-weight pool of
+  their own and the year's chance of an onset in two years.
+Changes since trial 40 in all three: the working-age share now reaches
+the political year nodes (the loader's whitelist dropped it), the 1962
+Dutch conflict onset is in the catalogue (the gazetteer dropped it), and
+the banking year node reads currency crises in the last 3 and 10 years
+(Laeven & Valencia's rule on WDI exchange rates).
+
+Smoke checks to 2008 pass for every kind with A and with C, including a
+new one: every gauge input live somewhere in the run.
+
+**Design**, on 1980-2002 only: of the six (A, B, C, each raw or
+reconciled), the one with the best mean over the six kinds of the paired
+Brier difference against A, on the quarter nodes' own outcomes (lead and
+w2 pooled, every quarter-end origin 1980-2002). Before 2000, B and C are
+the same (named starts in 2000).
+
+**Tests**, one-sided 5%, 2003-2022:
+1. (primary) the chosen variant's quarter nodes against `named`, pooled
+   over the six kinds with equal weights, on the amended paired test
+   (bnm.paired), and the original test for the record;
+2. the chosen variant against A on the quarter nodes' own outcomes, per
+   kind (bnm.paired --scale), Holm over the six.

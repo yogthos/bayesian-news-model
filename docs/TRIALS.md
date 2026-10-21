@@ -48,3 +48,4 @@ the count is the number of lines below.
 | 38 | lattice rebuilt from the anatomy (banking) | 2026-10 | known forecast as offset, directional strain, the turn, strain carried down, unused and downloaded dimensions |
 | 39 | lattice, flows standardized, design chosen on 1980-2002 (banking) | 2026-10 | contradictions summarized with theory's sign, data-flow fixes, full lattice at the year and half-decade, quarters on their gauges |
 | 40 | lattice for the political kinds | 2026-10 | trial 39's design carried over to conflict, war, coup, protest and violence onsets; long catalogues from 1816/1875, V-Dem/Maddison/COW year gauges, tensions from their anatomy, no resolution |
+| 41 | the year carried down to the quarter | 2026-10 | the year's forecast as the quarters' offset (constant hazard), pooled with named, its uncertainty carried by quadrature, windows reconciled with the year; design chosen on 1980-2002 over all six kinds |
