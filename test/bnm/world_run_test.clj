@@ -147,3 +147,17 @@
     (is (= [1.0 1.0 7.0] (:x ((:relations sp) :year "AAA" 120))))
     (is (= {4 [0.2 0.1] 5 [-0.2 0.1] 6 [-0.2 0.1]}
            ((:prior sp) :year :country {:parts {:rel/bank [4] :rel/infl [5] :rel/warning [6]}})))))
+
+(deftest stock-flow-states-as-nested-groups
+  ;; a kind's chosen states (bnm.state-diag) beside its links and warning:
+  ;; one nested group each, signed by the design years, as known at the
+  ;; origin, a region their countries' mean, unknown nil
+  (let [par {"AAA" "Reg" "BBB" "Reg" "Reg" "world"}
+        st [{:name "food/import_dependence" :sign 1 :at (fn [c t] ({["AAA" 2000] 0.4 ["BBB" 2000] 0.2} [c (bnm.lattice-political/ended t)]))}
+            {:name "keen/debt" :sign -1 :at (fn [_ _] nil)}]
+        sp (wr/with-relations {:scales [{:name :year}] :parent par} [] (atom {}) {} {} {} identity {:states st})]
+    (is (= {:rel/food-import_dependence [0] :rel/keen-debt [1]} (get-in sp [:relation-groups :year])))
+    (is (= [0.4 nil] (:x ((:relations sp) :year "AAA" (+ 11 (* 12 2000))))))
+    (is (< (Math/abs (- 0.3 (first (:x ((:relations sp) :year "Reg" (+ 11 (* 12 2000))))))) 1e-12))
+    (is (= {3 [0.2 0.1] 4 [-0.2 0.1]}
+           ((:prior sp) :year :country {:parts {:rel/food-import_dependence [3] :rel/keen-debt [4]}})))))

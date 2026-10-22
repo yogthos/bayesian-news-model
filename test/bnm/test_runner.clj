@@ -32,6 +32,8 @@
             [bnm.energy-pilot-test]
             [bnm.archetypes-test]
             [bnm.hypergraph-test]
+            [bnm.state-diag-test]
+            [bnm.tension-test]
             [bnm.lattice-banking-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -83,6 +85,8 @@
     bnm.energy-pilot-test
     bnm.archetypes-test
     bnm.hypergraph-test
+    bnm.state-diag-test
+    bnm.tension-test
     bnm.lattice-banking-test
     bnm.political-gauges-test
     bnm.reconcile-test
