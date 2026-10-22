@@ -405,15 +405,34 @@ the hybrid units, from the industry-technology assumption on the hybrid
 supply and use tables (the inputs of the industries making the product,
 each per unit of its output in the product's unit, weighted by its share
 of the product's supply); and share_<year>, the monetary technical
-coefficient (the input's value per unit of the output's value). The two do
-not always agree on routing: the monetary tables send Germany's N
-fertiliser its gas as gas distribution services and its plastics their
-naphtha as chemicals nec, where the hybrid ones show 0.64 t of gas per t
-of fertiliser and 0.93 t of naphtha per t of plastics. Valuing phys at
-monetary output over hybrid supply does not mend it (the two releases
-disagree on products' sizes: a "value share" of 9 for that gas), so the
-physical rows keep phys and the monetary share side by side and the rule
-below reads both.
+coefficient (the input's value per unit of the output's value). An
+industry making products in more than one unit (waste treatment and the
+secondary material it recovers, incineration and its electricity, pulp
+and its heat) has its inputs split between its units by the value of its
+output in each; before that split each unit's recipes took the industry's
+whole input, so upstream counted a recycler's power once through the
+steel and again through the waste service. Every phys coefficient is
+input-unit per output-unit, so along any path the units telescope and
+upstream's sums are in the input's unit per unit of the product; nothing
+adds tonnes to TJ. The two numbers do not always agree on routing: the
+monetary tables send Germany's N fertiliser its gas as gas distribution
+services and its plastics their naphtha as chemicals nec, where the
+hybrid ones show 0.60 t of gas per t of fertiliser and 0.96 t of naphtha
+per t of plastics. Valuing phys at monetary output over hybrid supply does
+not mend it (the two releases disagree on products' sizes: a "value
+share" of 9 for that gas), so the physical rows keep phys and the
+monetary share side by side and the rule below reads both.
+
+Shares above 1. The monetary A has 4 coefficients above 1 in 2011 (Korea's
+lead-zinc ores buy 17 times their value in hotels) and about 20 region-products
+whose inputs add to 1 or more of their value (tiny outputs, cattle in four
+European countries): bnm.supply drops a share above 1 and scales an
+output's shares to sum to 0.99 where they reach 1 (`supply/share-flags`:
+4 dropped, 1,236 rows scaled), so neither reaches the critical test, the
+CES weights or downstream's dependence. use.csv's value_share, valued at
+the rough prices, comes out above 1 in 1,029 rows; there it is blank and
+the ratio sits in value_rough, flagged, and `users` reports it as
+:value-rough, not a share.
 
 Balances: every good's supply equals its uses (intermediate and final, at
 home and abroad) to rounding (median residual 1e-9; the 922 region-
@@ -431,39 +450,70 @@ losses a refinery burns, as it should be.
 An input is critical (Leontief: output capped by it, no substitute) when
 it is a good, not a service, and either its value share in the output is
 at least 5% (`supply/critical-share`) or it is a feedstock: a raw
-material or fuel converted into an energy carrier or material at 0.1
-tonnes per tonne or more (`supply/feedstock`), critical whatever the
-monetary table makes of its value (gas in N fertiliser, naphtha, ethane
-and LPG in plastics, crude in every refined product, iron ore and coke in
-steel, coal in China's ammonia). The feedstock test is kept to conversion
-because elsewhere the hybrid tonnage of a fuel is no ingredient (the
-industry-technology split gives Britain's beverages 0.54 t of gas per t).
-Electricity by source (EXIOBASE's twelve C_POW* products) is one carrier
-to its users: its rows are critical together when their shares add to 5%
-and enter the recipe as one pool, their share-weighted mean (losing gas
-power costs a user its gas-fired share, not all its power). Every other
-input is substitutable. A product's recipe is then nested: the minimum of
-its critical inputs and a bundle, the bundle a CES of the
+material or fuel converted into a material or energy carrier at 0.1 per
+unit or more (`supply/feedstock`), tonnes per tonne, or for a carrier in
+TJ (electricity, heat) the fuel's heat per TJ at the IPCC 2006 default
+net calorific values (`supply/ncv`: gas in gas-fired power, 1.3 TJ per TJ
+in Germany, whose monetary share is 4e-6). Feedstocks are critical
+whatever the monetary table makes of their value (gas in N fertiliser,
+naphtha, ethane and LPG in plastics, crude in every refined product, iron
+ore and coke in steel, coal in China's ammonia). The feedstock test is
+kept to conversion because elsewhere the hybrid tonnage of a fuel is no
+ingredient (the industry-technology split gives Britain's beverages
+0.54 t of gas per t), and natural gas in a refinery feeds only what gas
+processing makes (ethane, LPG, refinery gas; `supply/gas-processing`):
+the split spreads it over every refinery product, 0.1-0.4 t per t of
+diesel in eight regions. Electricity by source (EXIOBASE's twelve C_POW*
+products) is one carrier to its users: its rows are critical together
+when their shares add to 5% and enter the recipe as one pool, their
+share-weighted mean (losing gas power costs a user its gas-fired share,
+not all its power).
+
+Crops are the exception: fertiliser (N, P and compound) and chemicals nec
+(crop protection) are substitutable in a crop's recipe whatever their
+share (`supply/yield-inputs`). A field given 40% less fertiliser yields
+less, not 40% less: yield-response curves are concave and soils carry
+nutrients over a season, so short-run yield losses are a fraction of the
+input cut. Before, P fertiliser at 5-6% and chemicals at 6-9% of French
+and Polish cereals' value made them critical, and the gas cut took 20-36%
+of those countries' wheat, one for one with their gas-hit inputs. In the
+CES bundle (sigma 0.2, with the land, labour and capital of value added)
+a 40% fertiliser cut at an 8% share costs a crop about 10%.
+
+Every other input is substitutable. A product's recipe is then nested:
+the minimum of its critical inputs and a bundle, the bundle a CES of the
 substitutable inputs and value added (labour and capital, weighted by one
 less the input shares), elasticity sigma 0.2 by default
 (`supply/default-sigma`). Why: intermediate inputs are close to
 complements at business-cycle horizons. Atalay (2017) estimates the
-elasticity among intermediates near zero (below 0.2); Boehm, Flaaen &
-Pandalai-Nayar (2019) find Japanese affiliates in the US after the 2011
-Tohoku earthquake cut output one for one with their imported inputs,
-an elasticity around 0.2 in the short run; Baqaee & Farhi (2019) show such
+elasticity among intermediates near zero; Boehm, Flaaen & Pandalai-Nayar
+(2019) find Japanese affiliates in the US after the 2011 Tohoku
+earthquake cut output almost one for one with their imported inputs, an
+elasticity around 0.2 in the short run; Baqaee & Farhi (2019) show such
 complementarity makes large shocks' losses convex, far above Hulten's
 first-order sales-share answer. Pure Leontief overpredicts (Moll,
 Schularick & Zachmann 2023 on Germany's 2022 gas), so only the inputs
-production physically cannot do without bind fully (as Pichler et al.
-2022 rated critical inputs); the rest pass on a CES loss, and a larger
-sigma (1, Cobb-Douglas, for a year or more) is the option for longer
-horizons. Imports are not reallocated: what a region uses of a product is
-the share-weighted mean of its origins. Substitutable inputs below a 0.1%
-share are left with value added in outage (a CES bundle barely feels
-them; they are half the rows). Of 530,669 recipe rows (48 regions, 7,118
-region-products, 206,166 rows physical in both units) 10,694 are
-critical.
+production physically cannot do without bind fully; the rest pass on a
+CES loss, and a larger sigma (1, Cobb-Douglas, for a year or more) is the
+option for longer horizons. The thresholds are this model's, not the
+literature's: Pichler et al. (2022) had analysts rate each input of each
+industry critical or not (the IHS Markit survey), which is the idea the
+5% share and the 0.1 per unit stand in for where no rating exists; they
+are a rule to audit, not an estimate.
+
+Imports are not reallocated: what a region uses of a product is the
+share-weighted mean of its origins, at EXIOBASE's 2011 import shares, and
+a region that imports its feedstock (Japan's crude, the Netherlands' gas)
+loses what its suppliers lose in proportion. That is a short-run
+assumption (weeks to months: contracts, shipping, crude grades and plant
+specifications), and it overstates losses beyond that, when buyers turn
+to other origins. The shares are per region, not per user: a region's
+refineries and households draw on the same origins.
+
+Substitutable inputs below a 0.1% share are left with value added in
+outage (a CES bundle barely feels them; they are half the rows). Of
+530,512 recipe rows (48 regions, 7,118 region-products, 206,009 rows
+physical in both units) 10,668 are critical.
 
 ### What bnm.supply gives
 
@@ -482,51 +532,102 @@ critical.
 - users: a product's direct uses by industry and final demand.
 - outage: a cut of x of a product in a region (where it is made, or where
   it is used) propagated through the nested recipes across regions by
-  hypergraph/propagate, which iterates the availabilities to their largest
-  fixed point (recipes loop: power needs coal, coal mines need power).
+  hypergraph/propagate (recipes loop: power needs coal, coal mines need
+  power), with how it settled (:settled, the updates and residual).
 - tools/bnm/supply_check.clj reports the balances, EXIOBASE against UNSD,
-  the validation and two shocks.
+  the validation and two shocks, and asserts the real-data checks (ok or
+  FAIL, exit 1 on a failure). They take about seven minutes, so the unit
+  suite (test/bnm/supply_test.clj) runs on synthetic graphs only.
+
+hypergraph/propagate. Every rule (minimum, share-weighted mean, CES with
+positive weights, each capped by a node's given value) is monotone and
+continuous, so the system has a greatest fixed point, and iteration from
+the top (recipe nodes at max(1, the largest given value)) falls to it.
+Fixed points are not unique: a loop of critical recipes holds at any
+level its cuts allow, and the greatest is the one with no shortfall
+beyond what the cuts force. Each recomputation only lowers a node and
+never below that point, so the order (first in first out, or last in
+first out) changes the work, not the answer; the tests check both orders
+against synchronous iteration on random graphs with loops. It stops when
+every node is within tol of its recipe (the residual is returned), which
+leaves it at most tol / (1 - g) above the fixed point on a loop of gain
+g; past a cap on updates (2,000 per node) it throws with the residual
+instead of returning. The two shocks below settle in 9.5 and 5.8 million
+updates to a residual of 1e-6.
 
 ### What it shows (tools/bnm/supply_check.clj)
 
-- EXIOBASE's 2011 refinery output against UNSD's 2011 production: motor
-  gasoline, gas/diesel oil, jet kerosene and heavy fuel oil agree (median
-  ratio 1.00, 32-36 of 33-37 countries within 20%; Spain's jet is 12
-  times UNSD's), naphtha does not (EXIOBASE about twice UNSD, 6 of 31
-  within 20%).
+- EXIOBASE's 2011 refinery output against UNSD's 2011 production
+  (countries above 100 kt): the fuels agree, the rest do not.
+
+      product          countries  median  within 20%  furthest
+      motor gasoline       37      1.00       34      NL 1.40, BE 0.78
+      gas/diesel oil       37      1.00       35      ZA 1.64, MX 1.29
+      jet kerosene         33      1.00       32      ES 12.4
+      other kerosene       13      1.01       10      CN 0.36, IE 2.14
+      jet + kerosene       35      1.00       32      IE 2.14, NO 1.69, ES 1.44
+      heavy fuel oil       37      1.00       36      DE 1.36
+      refinery gas         35      1.01       27      US 2.47, FI 2.08
+      LPG                  36      1.24       18      CA 3.58, SE 3.13, US 2.43
+      naphtha              31      1.94        6      ES 5.84, BE 3.11, CN 3.06
+      bitumen              30      1.90        1      PT 2.70, AU 2.50
+      other products       25      1.56        5      ID 4.07, TR 3.97
+
+  Neither gap is the script's. production.csv is the hybrid supply table
+  as it stands (tonnes, divided by 1,000 against UNSD's kt), and every
+  naphtha tonne comes from the refinery industry. Spain's jet is UNSD's
+  reporting: it puts Spain's refinery kerosene, 6.45 Mt, under other
+  kerosene (and moves it to jet as a transfer), leaving 0.26 Mt of jet;
+  EXIOBASE has 3.18 Mt of jet and the same 6.45 Mt of kerosene, so jet
+  and kerosene together are 1.44 times UNSD's, a double count in
+  EXIOBASE rather than a 12-fold one. Naphtha, LPG, bitumen and the
+  other non-fuel products run 1.5-3 times UNSD's across countries, by
+  ratios that differ by country, so not a unit or calorific factor: the
+  hybrid tables' refinery output carries what its refinery industry also
+  takes in (gas processing, product backflows from petrochemicals;
+  products out 14% above crude and feedstocks in), and that excess lands
+  on the light and non-fuel products. Read EXIOBASE's naphtha tonnages
+  (and its naphtha-to-plastics phys) as up to twice too large; UNSD's
+  yearly figures are the ones to scale by.
 - Validation: US crude reaches gasoline, jet, diesel, naphtha and basic
   plastics in one recipe step (dependence 0.21-0.23, plastics 0.075; each
   37% exposed, the domestic share of US refinery crude), land and air
   transport and chemicals in two. Germany's and America's basic plastics
   need naphtha (0.96 and 0.20 t/t) and crude (1.4 and 1.3 t/t) and natural
-  gas (0.14 and 0.24 t/t); N fertiliser needs gas (Germany 0.64, the US
-  0.83, China 0.33 t/t beside its coal). The gas links are invisible in
+  gas (0.14 and 0.24 t/t); N fertiliser needs gas (Germany 0.60, the US
+  0.78, China 0.33 t/t beside its coal). The gas links are invisible in
   value (dependence below 0.001: the monetary tables route gas through
   gas distribution services), which is why exposure and the feedstock
   rule read the physical rows.
-- Natural gas for use in Europe cut 40%: N fertiliser falls 40% in
-  Germany, France, the Netherlands and Poland (gas is its feedstock),
-  agriculture less and unevenly (wheat 4% in Germany, 23-36% in France,
-  the Netherlands and Poland, where fertiliser or gas-fired inputs are
-  critical), steel 20-40%; America's N fertiliser loses 3%, China's
-  products about 9% (European inputs, short-run complements). Leontief on
-  critical inputs overstates the depth (Germany's 2022 output fell far
-  less, Moll et al. 2023): read the ordering, not the size.
-- Middle East crude output cut 50%: refining falls 48% in Japan, 33% in
-  India, 27-29% in China and Indonesia, 17% in Korea, 11% in the rest of
-  Asia-Pacific; 2-31% in Europe and the Americas (Russia 2%, Brazil 7%,
-  the US 14%, Germany 29%). Asia's mean 27% against 16%. The import
-  shares are EXIOBASE's, estimated where no bilateral data exist: Korea's
-  is far below its known Gulf dependence (about 85%) and Germany's and
-  Britain's above theirs; bilateral crude flows (BACI) are the next step.
+- Natural gas for use in Europe cut 40%: N fertiliser and gas-fired
+  electricity fall 40% in Germany, France, the Netherlands and Poland;
+  crops lose 2-6% (wheat 4-6%; Germany's vegetables 14%), cattle 4-6%;
+  steel 13-40% (gas burnt at 0.1 t/t or more counts as a feedstock);
+  America's N fertiliser loses 3%, China's 9%. Before the changes above,
+  gas power lost 2% in Germany (gas into TJ was never a feedstock) while
+  wheat lost 25% in France and 36% in Poland (fertiliser and crop
+  protection critical, and Poland's diesel capped by refinery gas).
+  Leontief on critical inputs still overstates the depth (Germany's 2022
+  output fell far less, Moll et al. 2023): read the ordering, not the
+  size.
+- Middle East crude output cut 50% (unchanged by the fixes): refining
+  falls 48% in Japan, 33% in India, 27-29% in China and Indonesia, 17% in
+  Korea, 11% in the rest of Asia-Pacific; 2-31% in Europe and the Americas
+  (Russia 2%, Brazil 7%, the US 14%, Germany 29%). Asia's mean 27% against
+  16%. The import shares are EXIOBASE's, estimated where no bilateral data
+  exist: Korea's is far below its known Gulf dependence (about 85%) and
+  Germany's and Britain's above theirs; bilateral crude flows (BACI) are
+  the next step.
 
 What is missing: one hybrid year (2011) of structure, with UNSD's yearly
 oil products as the only time dimension; plant locations (refineries,
 crackers, fertiliser and steel plants), so a cut is per region, not per
 cell (only SFI's ethylene assets are at hand); bilateral trade (the MR
-tables' shares, Taiwan inside WA); inventories (Pichler et al. 2022's
-days of use); and value shares the monetary tables route differently
-from the physical flows.
+tables' shares, Taiwan inside WA, region-wide rather than per user);
+reallocation of imports; inventories (Pichler et al. 2022's days of use);
+fuel switching (gas burnt for heat is a feedstock once at 0.1 t/t, which
+is why steel loses up to 40%); and value shares the monetary tables route
+differently from the physical flows.
 
 ### Time: the UN energy statistics
 
@@ -537,6 +638,9 @@ feedstocks and every refined product's production, imports, exports,
 stock changes, refinery and petrochemical intake, own use and use by
 sector, in kt, with refinery capacity (crude, transaction 131), each row
 tagged with the EXIOBASE product it matches. A year's figures are taken
-as known two years later (column known = year + 2): UNSD publishes a
-year's balances some 18-24 months after it ends and keeps revising them,
-so the file is a current vintage read with that lag, never earlier.
+as known three years later (column known = year + 3). The database fills
+a year in over the second and third years after it: downloaded in
+October 2026 it held 2023 for every country and 2024 for about half (600
+production rows against 1,214 for 2023), so year + 2 would read most
+countries' figures before they were out. The values are the current
+vintage, revised since first release; the lag does not undo that.
