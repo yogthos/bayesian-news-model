@@ -1218,3 +1218,115 @@ Hulten weights, not as fitted coefficients. The energy/* states
 identity in L_REF,REF, out of the economy's exposure, as in the
 corrected network term. That lowers the exposure by about 0.02 on
 average; the shock is unchanged.
+
+## Power audit, 22 October 2026 (trial 0 of bnm-3qu)
+
+How large an effect could trial 45's design find? bnm.power-audit injects
+synthetic states with a known odds ratio per SD into the real rows of
+t44-world-norel (each kind's year-end country forecasts, design years
+1960-2002, test years 2003-2022, as bnm.state-diag reads them) and redraws
+the outcomes as y* ~ Bernoulli(sigmoid(logit p + u_year + beta x)). The
+states, standardized on the design rows: *own*, an AR(1) at 0.9 within
+each country, independent across countries; *level*, a persistent
+country mean plus a little noise (90% of the variance between
+countries, like arable land); *world*, one AR(1) at 0.9 over years, the
+same at every country. The placebo is state-diag's: another country's x,
+or for a world series x ten years before. Twelve kinds (food price
+shocks have no design-year onsets and are not tried). Results in
+data/runs/sequencing/power-audit.tsv.
+
+**Year shocks.** The sd of u_year per kind, by the method of moments on
+the design years' yearly onset counts against the base's (their
+variance past binomial, matched to what a shock of sd s adds):
+
+    market crashes 1.65   currency 1.06   inflation 0.92   banking 0.76
+    protest 0.75   violence 0.75   sovereign default 0.75
+    growth collapse 0.73   fiscal consolidation 0.38   conflict 0.24
+    coup 0.18   war 0.18
+
+The base leaves much of the year-to-year clustering of onsets
+unexplained, most of all for the financial kinds.
+
+**The diagnostic** (passes? on the clustered score test against the
+placebo), share passing, mean over the twelve kinds, 200 draws per kind
+and cell (Monte Carlo error of the mean at most 0.009); with year
+shocks, and in brackets without:
+
+    OR per SD        1.0      1.1      1.2      1.35     1.5      1.8      2.5
+    own   k = 348    .00      .00      .14(.16) .54(.58) .72(.78) .86(.91) .93(.92)
+          k = 10     .00      .13(.13) .54(.57) .86(.91) .96(.97) 1.0      1.0
+          k = 1      .04(.04) .38(.40) .80(.83) .96(.98) .99      1.0      1.0
+    level k = 348    .00      .01(.00) .15(.18) .55(.58) .75(.78) .87(.91) .92(.91)
+          k = 10     .00      .13(.13) .57(.58) .88(.90) .96(.97) .98(.99) .98(.99)
+          k = 1      .04(.04) .39(.39) .82(.82) .96(.97) .99      .99      .98(.99)
+    world k = 348    .00      .00      .00(.02) .04(.13) .10(.23) .17(.31) .20(.37)
+          k = 10     .00      .02(.07) .10(.32) .26(.64) .34(.72) .46(.76) .60(.75)
+          k = 1      .04(.04) .14(.32) .31(.67) .49(.83) .58(.84) .71(.84) .81(.83)
+
+At OR 1 the test holds its level (k = 1: 0.039-0.044 against 5%). The
+kinds differ widely: at OR 1.2 and k = 348 an own state passes for coups
+and fiscal consolidations 44% of the time and for banking crises,
+protest surges, inflation crises and market crashes under 1%; at k = 1,
+39-99%. A world series is hard to find at any list size: it is 43
+observations, the year shocks compete with it, and its placebo (itself
+ten years before, still correlated at 0.9^10) gains with it, so even a
+strong world effect often fails the 2x-placebo rule. Year shocks cost the
+country states little (a few points) and the world series half its power.
+
+**Out of sample**, 2003-2022, with year shocks, the same effect in every
+kind at once, 60 draws per cell (Monte Carlo error up to 0.065): an
+oracle (beta known) and a realistic model (beta fitted on the draw's
+design years with the base as offset) against the base, the paired
+bootstrap of bnm.world-score (countries and years resampled, gain when
+the 90% interval's lower end is above 0). Power, pooled over the kinds
+with equal weights, realistic model, Brier (log score):
+
+    OR per SD   1.0       1.1       1.2       1.35      1.5       1.8       2.5
+    own         .00(.00)  .08(.13)  .50(.65)  .92(1.0)  1.0       1.0       1.0
+    level       .00(.00)  .15(.12)  .50(.70)  .95(1.0)  1.0       1.0       1.0
+    world       .02(.02)  .03(.05)  .23(.23)  .47(.50)  .60(.63)  .82(.88)  .97
+
+**Minimum detectable effects at 80% power** (interpolated on log OR; the
+expected gain over the base at that OR is the equivalence bound):
+
+    pooled, own or level state   OR 1.30-1.31   Brier +0.00063-0.00065   log +0.0017-0.0020 (OR 1.25-1.26)
+    pooled, world series         OR 1.77        Brier +0.0100            log +0.031 (OR 1.69)
+    per kind, own state, Brier   OR 1.38 (fiscal consolidations), 1.65 (violence surges),
+                                 1.9-2.45 (conflict, coup, growth, banking, currency, war),
+                                 above 2.5 (inflation, market crashes, protest, sovereign default)
+
+The pre-registered equivalence bounds for later trials: a pooled Brier
+gain of +0.0006 (log score +0.002) for country states carried by every
+kind; per kind, about +0.003 to +0.006 on Brier where reachable at all.
+A "level" pooled result is read as "a pooled gain under 0.0006", not as
+no effect; a per-kind "level" says almost nothing.
+
+What follows:
+- The literature review's rough figure (OR about 1.8 per SD at k =
+  4,530) is too pessimistic for country states on our rows: the screen
+  was per kind (k = 348), and a state with independent variation across
+  178 countries is close to independent rows once years are clustered.
+  At k = 348 the screen still finds OR 1.35 only about half the time and
+  OR 1.2 one time in seven; at OR 1.1 never. The review's falsification
+  test (OR 1.3 found 80% of the time) is not met: trial 45's null does
+  not rule out effects of 1.1-1.3 per SD, nor any world series under
+  OR 2.5.
+- A theory-led list of about 10 states finds OR 1.35 86-88% of the time
+  and OR 1.2 about 55%; one pre-registered hypothesis per kind finds OR
+  1.2 80%. Trial 1 should name at most 10 states (the 8-10 of
+  LIT-NEXT-STEPS fit), signed, with Holm over the list; it can then
+  detect OR 1.3 or more per SD for country states on the better covered
+  kinds, and should pool a state's coefficient across its kinds, since
+  rare kinds (inflation, protest, market crashes) cannot carry a test
+  alone.
+- World series cannot be tested this way: drop the ten-year placebo rule
+  for them (it is correlated with the series) or test them through
+  their country exposures, and expect only OR 1.8 or more to show.
+- Out of sample, 2003-2022 detects a pooled gain only when the effect is
+  OR 1.3 or more in every kind; a state that helps two kinds (as trial
+  45's did) needs a per-kind effect of OR 1.4-2.0. Later trials should
+  score the pooled named states, not per kind, and state the bound
+  above beforehand.
+- These are best cases: the synthetic states are known at every row and
+  independent of the base, where real states have gaps and are partly
+  held by the base already (the mediation of LIT-NEXT-STEPS 3b).
