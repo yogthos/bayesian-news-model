@@ -84,17 +84,24 @@
     (doseq [[k what] [["refinery-unscaled" "refined products out over crude, NGL, other hydrocarbons and feedstocks in, before the UNSD scaling"]
                       ["refinery" "the same, scaled"]
                       ["refinery-all-unscaled" "refined products out over every hydrocarbon, product, additive and biofuel in, before"]
-                      ["refinery-all" "the same, scaled"]]]
+                      ["refinery-all" "the same, scaled"]
+                      ["refinery-nogas-unscaled" "against all that but natural gas (gas processing's dry gas goes back to the grid unrecorded), before"]
+                      ["refinery-nogas" "the same, scaled: a refinery's own fuel and losses, 6-8% in practice"]]]
       (let [r (refin k) xs (map second r)]
         (when (seq xs)
           (println (format " %s (%s): %d regions, median %+.3f, range %+.3f to %+.3f" k what (count r)
                            (median xs) (reduce min xs) (reduce max xs))))))
     (let [ps (for [b bs :when (str/starts-with? (:check b) "product:") :when (seq (:residual b))]
                [(subs (:check b) 8) (Math/abs (parse-double (:residual b)))])
-          off (filter #(> (second %) 0.01) ps)]
+          off (filter #(> (second %) 0.01) ps)
+          scaled #{"C_NAPT" "C_LPGA" "C_BITU" "C_NSPP" "C_KJET" "C_KERO"}
+          sc (filter (comp scaled first) ps)]
       (println (format " product balances: %d region-products, %d off by more than 1%%, all of them %s"
                        (count ps) (count off)
-                       (str/join "/" (distinct (map #(:group (get-in g [:products (first %)])) off))))))))
+                       (str/join "/" (distinct (map #(:group (get-in g [:products (first %)])) off)))))
+      (check (and (seq sc) (every? #(< (second %) 1e-3) sc))
+             (format "the scaled products' supply equals their use in every region, to the tables' rounding (%d region-products, largest %.1g)"
+                     (count sc) (reduce max 0.0 (map second sc)))))))
 
 (defn- unsd-report
   "EXIOBASE's 2011 refinery output against UNSD's 2011 production, per
@@ -124,7 +131,8 @@
   []
   (println "== light products scaled to UNSD 2011 (scaling.csv)")
   (let [rs (rows "scaling.csv")
-        n #(when (seq %) (parse-double %))]
+        n #(when (seq %) (parse-double %))
+        by (into {} (for [r rs] [[(:region r) (:products r) (:kind r)] r]))]
     (doseq [[[ps kind] xs] (sort-by key (group-by (juxt :products :kind) rs))]
       (let [un (filter #(= "unsd" (:source %)) xs)
             before (map #(/ (n (:exiobase_kt %)) (n (:unsd_kt %))) un)
@@ -134,7 +142,15 @@
                          ps kind (count un) (median before) (median after) (reduce min after) (reduce max after)
                          (tot :exiobase_kt) (tot :fitted_kt)))
         (when (= kind "production")
-          (check (< 0.95 (median after) 1.05) (str ps " production fitted to UNSD (median within 5%)")))))))
+          (check (< 0.95 (median after) 1.05) (str ps " production fitted to UNSD (median within 5%)")))))
+    (println " the rest of the world, naphtha (kt; UNSD the sum of each region's countries):")
+    (doseq [r ["WA" "WE" "WF" "WL" "WM"] k ["production" "use"]
+            :let [x (by [r "C_NAPT" k])] :when x]
+      (println (format "  %s %-10s EXIOBASE %6.0f  UNSD %6s  fitted %6.0f  %s" r k (n (:exiobase_kt x))
+                       (or (:unsd_kt x) "-") (n (:fitted_kt x)) (:source x))))
+    (let [x (by ["WM" "C_NAPT" "use"])]
+      (check (and x (= "unsd" (:source x)) (< 0.95 (/ (n (:fitted_kt x)) (n (:unsd_kt x))) 1.05))
+             "the Middle East's naphtha use fitted to UNSD's (no longer a free destination)"))))
 
 (defn- validation-report [g]
   (println "== validation")
@@ -182,25 +198,35 @@
   (println "== Germany 2022: gas for use in Germany cut 26% (industry's cut July 2022 - March 2023, Moll et al. 2023)")
   (let [value (into {} (for [r (rows "production.csv") :when (and (= "DE" (:region r)) (seq (:value_2011 r)))]
                          [(:product r) (parse-double (:value_2011 r))]))
+        ;; value added: output less its inputs (Destatis's index weights
+        ;; by value added, so refining, big in output and thin in value
+        ;; added, does not swamp it)
+        va (into {} (for [[p v] value
+                          :let [ins (get-in g [:recipes ["DE" p]])
+                                s (reduce + 0.0 (keep (comp :share val) ins))]]
+                      [p (* v (max 0.0 (- 1.0 s)))]))
         other (set (for [[c {gr :group}] (:products g) :when (or (= gr "manufactured") (#{"C_TEXT" "C_WOOD"} c))] c))
-        mean (fn [po ps] (let [ps (filter value ps)]
-                           (/ (reduce + (map #(* (value %) (loss po ["DE" %])) ps)) (reduce + (map value ps)))))
+        wmean (fn [wt po ps] (let [ps (filter wt ps)]
+                               (/ (reduce + (map #(* (wt %) (loss po ["DE" %])) ps)) (reduce + (map wt ps)))))
+        mean (partial wmean value)
         run (fn [h] (:products (sup/outage g {["DE" "C_GASE"] 0.26} {:at :use :hypergraph h})))
         po (run h)
-        ei (mean po energy-intensive) ot (mean po other)]
-    (println (format " energy-intensive output %s, other manufacturing %s (value-weighted; Destatis: energy-intensive down by up to 20%%, the rest hardly)"
-                     (pct ei) (pct ot)))
+        ei (mean po energy-intensive) ot (mean po other)
+        ei-va (wmean va po energy-intensive) ot-va (wmean va po other)]
+    (println (format " energy-intensive output %s, other manufacturing %s (weighted by 2011 output value)" (pct ei) (pct ot)))
+    (println (format " energy-intensive output %s, other manufacturing %s (weighted by 2011 value added, as Destatis's index; it fell close to 20%% at its low, the rest hardly)"
+                     (pct ei-va) (pct ot-va)))
     (println (format "  N fert %s  chemicals %s  plastics %s  paper %s  glass %s  ceramics %s  cement %s  steel %s  aluminium %s  machinery %s  vehicles %s"
                      (pct (loss po ["DE" "C_NFER"])) (pct (loss po ["DE" "C_CHEM"])) (pct (loss po ["DE" "C_PLAS"]))
                      (pct (loss po ["DE" "C_PAPE"])) (pct (loss po ["DE" "C_GLAS"])) (pct (loss po ["DE" "C_CRMC"]))
                      (pct (loss po ["DE" "C_CMNT"])) (pct (loss po ["DE" "C_STEL"])) (pct (loss po ["DE" "C_ALUM"]))
                      (pct (loss po ["DE" "C_MACH"])) (pct (loss po ["DE" "C_MOTO"]))))
-    (check (< 0.02 ei 0.26) "energy-intensive output falls, by less than the gas")
-    (check (< ot (/ ei 2)) "the rest of manufacturing by less than half as much")
+    (check (< 0.02 ei-va 0.26) "energy-intensive output falls, by less than the gas")
+    (check (< ot-va (/ ei-va 2)) "the rest of manufacturing by less than half as much")
     (doseq [es [0.25 1.0]]
       (let [po (run (sup/hypergraph g sup/default-sigma 1e-3 es))]
-        (println (format "  energy-sigma %.2f: energy-intensive %s, other %s, chemicals %s, paper %s, steel %s"
-                         es (pct (mean po energy-intensive)) (pct (mean po other))
+        (println (format "  energy-sigma %.2f: energy-intensive %s, other %s (value added), chemicals %s, paper %s, steel %s"
+                         es (pct (wmean va po energy-intensive)) (pct (wmean va po other))
                          (pct (loss po ["DE" "C_CHEM"])) (pct (loss po ["DE" "C_PAPE"])) (pct (loss po ["DE" "C_STEL"]))))))))
 
 (defn- shock-report [g]
@@ -223,6 +249,18 @@
         (check (every? #(< % 0.36) ls) "steel loses less than 90% of the cut everywhere (gas its heat, not its feedstock)")
         (check (< (/ (reduce + ls) (count ls)) 0.25) "and well under the cut on average"))
       (check (< (loss po ["DE" "C_FVEG"]) 0.05) "Germany's vegetables lose under 5% (machinery is no ingredient of a crop)")
+      (let [made (fn [p] (filter #(get-in g [:recipes [% p]]) europe))
+            gp (map #(loss po [% "C_POWG"]) (made "C_POWG"))
+            nu (map (juxt identity #(loss po [% "C_POWN"])) (made "C_POWN"))]
+        (println (format " gas power: %d European regions, loss %s to %s; nuclear: %s" (count gp)
+                         (pct (reduce min gp)) (pct (reduce max gp))
+                         (str/join " " (for [[r x] nu] (str r " " (pct x))))))
+        (check (every? #(< 0.35 % 0.45) gp) "gas power loses about the cut in every European region making it")
+        ;; not zero: nuclear fuel buys chemicals (conversion and
+        ;; enrichment, 34% of its value in Germany) and the graph holds no
+        ;; fuel stocks, though a reactor holds a year or more of fuel
+        (check (and (every? #(< (second %) 0.2) nu) (< (median (map second nu)) 0.1))
+               "nuclear power well under gas power (under 20% everywhere, median under 10%: its fuel's chemicals, no stocks)"))
       (println " loss by product, Europe's four largest N fertiliser makers and two outside:")
       (doseq [r ["DE" "FR" "NL" "PL" "US" "CN"]]
         (println (format "  %s  N fert %s  P fert %s  wheat %s  cereals %s  vegetables %s  cattle %s  gas power %s  steel %s"
@@ -232,6 +270,15 @@
       (println " hardest hit industries in Europe:")
       (doseq [[[r j] a] (take 12 (sort-by val (filter (fn [[[r _] _]] (some #{r} europe)) io)))]
         (println (format "  %s %s %s" r j (pct (- 1.0 a))))))
+    (println "== natural gas for use cut 40% in the Middle East and Mexico (gas-based DRI, sup/dri-share)")
+    (let [cut {["WM" "C_GASE"] 0.4 ["MX" "C_GASE"] 0.4}
+          o (:products (sup/outage g cut {:at :use :hypergraph h}))
+          heat (with-redefs [sup/dri-share {}] (:products (sup/outage g cut {:at :use})))]
+      (doseq [r ["WM" "MX"]]
+        (println (format "  %s steel %s with the DRI share %.1f, %s with its gas as heat only; N fert %s, gas power %s"
+                         r (pct (loss o [r "C_STEL"])) (sup/dri-share r) (pct (loss heat [r "C_STEL"]))
+                         (pct (loss o [r "C_NFER"])) (pct (loss o [r "C_POWG"]))))
+        (check (< (- (* 0.4 (sup/dri-share r)) 1e-3) (loss o [r "C_STEL"])) (str r " steel loses at least its DRI part of the cut"))))
     (println "== shock 2: Middle East (WM) crude output cut 50%")
     (let [o (sup/outage g {["WM" "C_COIL"] 0.5} {:hypergraph h})
           po (:products o) io (:industries o)]

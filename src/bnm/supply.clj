@@ -108,7 +108,7 @@
   cases of German firms switched in 2022. Held at their availability, the
   other fuels cannot rise, so a bundle loses at least the cut fuel's share
   of the heat times its cut whatever sigma: sigma moves the loss within
-  that (a 40% cut of half the heat: 20% linear, 25% at 0.5, 29% at 0.2)."
+  that (a 40% cut of half the heat: 20% linear, 25% at 0.5, 31% at 0.2)."
   0.5)
 
 (def equipment
