@@ -30,7 +30,7 @@
   year end from 2003, for each edge and country, the simulated chances of
   each onset and of both within three years, from what the world had
   learned by then)."
-  (:require [bnm.ews-diag :as ed]
+  (:require [bnm.ews :as ews]
             [bnm.factors :as fac]
             [bnm.kinds :as kinds]
             [bnm.lattice :as lt]
@@ -124,9 +124,9 @@
         own-input (fn [bs j scale place t srcs]
                     (let [{:keys [own common reads summary]} (own-at bs j (:form (edges j)) scale t)]
                       (if (leaf? place)
-                        {:x (double (get own (first srcs) 0.0)) :reads (into (vec (get reads (first srcs))) summary)}
+                        {:x (get own (first srcs)) :reads (into (vec (get reads (first srcs))) summary)}
                         (let [vs (keep common srcs)]
-                          {:x (if (seq vs) (/ (reduce + vs) (count vs)) 0.0) :reads (vec summary)}))))
+                          {:x (when (seq vs) (/ (reduce + vs) (count vs))) :reads (vec summary)}))))
         input (fn [bs j scale place t]
                 (rl/edge-input (:form (edges j)) {:kind j :book (bs j) :catalogue (cats j)} (scale-for j scale) place t))]
     (if (and (empty? parents) (nil? warning))
@@ -141,11 +141,13 @@
                                     (let [rs (if (own? (:form (edges j)))
                                                [(own-input bs j scale place t (map source ms))]
                                                (map #(input bs j scale (source %) t) ms))]
-                                      {:x (/ (reduce + 0.0 (map :x rs)) (count rs)) :reads (mapcat :reads rs)}))]
+                                      ;; the members' mean over those known; unknown (nil) without any
+                                      {:x (let [vs (keep :x rs)] (when (seq vs) (/ (reduce + vs) (double (count vs)))))
+                                       :reads (mapcat :reads rs)}))]
                           {:x (cond-> (mapv :x ins)
                                 ;; the kind's early warning: its countries' mean above them
                                 warning (conj (let [vs (keep #((:at warning) (source %) t) ms)]
-                                                (if (seq vs) (/ (reduce + vs) (double (count vs))) 0.0))))
+                                                (when (seq vs) (/ (reduce + vs) (double (count vs)))))))
                            :reads (vec (mapcat :reads ins))}))
            :relation-width (into {} (for [{n :name} (:scales sp)] [n (count groups)]))
            :relation-groups (into {} (for [{n :name} (:scales sp)] [n groups]))
@@ -170,23 +172,16 @@
 
 (defn warnings
   "{kind {:sign :at (fn [country t])}} of each kind's early warning
-  ({kind [series indicator sign]}, bnm.ews-diag): the indicator of the
-  country's own part of the series over the window ending the data year
-  before the origin's."
-  [ews db countries]
+  ({:window w :warnings {kind [series indicator sign]}}, bnm.ews-diag):
+  the indicator of the country's own part of the series over the window
+  ending at the origin's year, as known then."
+  [{:keys [window] ews :warnings} db countries]
   (let [tree (fac/place-tree countries)
         cs (filter tree countries)
-        sigs (into {} (pmap (fn [v]
-                              [v (ed/own-indicators
-                                  (into {} (for [c cs :let [byy (into (sorted-map)
-                                                                      (for [y (range 1950 2026)
-                                                                            :let [x (some-> (db [c v]) (sk/value (+ 11 (* 12 y)) {:stale 18}))]
-                                                                            :when x] [y (double x)]))]
-                                                 :when (seq byy)] [c byy]))
-                                  tree 12)])
+        sigs (into {} (pmap (fn [v] [v (ews/own-indicators (ews/series-panel db cs v) tree window)])
                             (distinct (map first (vals ews)))))]
     (into {} (for [[k [v ind sign]] ews]
-               [k {:sign sign :at (fn [c t] (get-in sigs [v c (dec (quot t 12)) ind]))}]))))
+               [k {:sign sign :at (fn [c t] (get-in sigs [v c (quot t 12) ind]))}]))))
 
 (defn build-specs
   "{kind spec} for `ks` to month `end`."

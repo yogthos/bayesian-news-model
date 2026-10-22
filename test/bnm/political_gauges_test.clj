@@ -53,3 +53,16 @@
         ix (zipmap pg/year-names (range))]
     (is (< (Math/abs (- (nth row (ix :spending-growth)) (Math/log 0.9))) 1e-12))
     (is (= 3.0 (nth row (ix :balance-change))))))
+
+(deftest wdi-as-known-at-the-origin
+  ;; WDI's values carry their publication (sk/value applies it): read at the
+  ;; origin's year end (data year + 1), what was known then, the year
+  ;; before's figures among them; read at the data year's end they would
+  ;; be a year staler than needed
+  (let [asked (atom #{})
+        wdi (fn [_ v y] (swap! asked conj [v y]) (when (= y 2001) 1.0))
+        row (pg/year-row {} wdi "AAA" 2000)
+        ix (zipmap pg/year-names (range))]
+    (is (= 1.0 (nth row (ix :infant-mortality))))
+    (is (contains? @asked ["people/infant_mortality" 2001]))
+    (is (not-any? (fn [[_ y]] (> y 2001)) @asked) "nothing past the origin")))

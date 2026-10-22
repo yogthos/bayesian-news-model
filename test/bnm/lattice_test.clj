@@ -338,7 +338,14 @@
           s (reduce (fn [s x] (lt/observe s [x])) s (concat [1.0 2.0 3.0 4.0] [1.0 2.0 3.0 4.0] [1.0 2.0 3.0 4.0]))]
       (is (< (Math/abs (- (first (lt/standardize s [4.0])) (/ (- 4.0 2.5) (Math/sqrt 1.25)))) 1e-9)
           "against the mean and spread of what came before")
-      (is (= [5.0] (lt/standardize s [1e6])) "capped"))))
+      (is (= [5.0] (lt/standardize s [1e6])) "capped")))
+  (testing "an unknown input (nil) is the mean, z = 0, and does not count"
+    (let [s (reduce (fn [s x] (lt/observe s x)) (lt/standardizer)
+                    (concat (repeat 12 [1.0 nil]) (repeat 12 [3.0 10.0]) [[nil 20.0]]))]
+      (is (= 0.0 (first (lt/standardize s [nil 0.0]))))
+      (is (< (Math/abs (- (first (lt/standardize s [3.0 0.0])) 1.0)) 1e-9) "the first input's 24 values only")
+      (is (< (Math/abs (- (second (lt/standardize s [0.0 15.0])) (/ (- 15.0 (/ 140.0 13)) (Math/sqrt (- (/ (+ 1200.0 400.0) 13) (* (/ 140.0 13) (/ 140.0 13)))))))) 1e-9)
+          "the second input's 13 values, its 12 unknowns left out")))
 
 (deftest contradictions-are-summarized
   ;; a place's strain as a few summaries, not one input per tension: its
@@ -525,3 +532,24 @@
             [eff noise] (lt/relation-effects spec state :month 0)]
         (is (< 0.6 eff 1.4) "about the true 1.0 per raw unit")
         (is (< (Math/abs noise) 0.15))))))
+
+(deftest unknown-relation-inputs-are-the-mean
+  ;; a relation input the source does not know (nil) reaches the models as
+  ;; 0 after standardizing and does not move the input's running mean
+  (let [g (m/rng 9)
+        drive (into {} (for [c countries t (range months)] [[c t] (m/normal! g)]))
+        ys (into {} (for [c countries t (range (dec months))] [[c t] (< (m/next-double! g) (m/expit (- (* 1.5 (drive [c (inc t)])) 2.0)))]))
+        spec {:scales [{:name :month :per 1 :horizon 1 :discount 0.99}]
+              :levels [[:country countries]] :parent {} :start 0 :end 300 :forget 0.99
+              :target (fn [_ place t] {:y (ys [place t]) :known-at (inc t)})
+              :gauges (fn [_ _ _] [0.0]) :gauge-width {:month 1}
+              :relations (fn [_ place t] {:x [(when (odd? t) (+ 100.0 (drive [place (inc t)])))] :reads []})
+              :relation-width {:month 1} :relation-groups {:month {:rel/d [0]}} :relation-nest true
+              :trace :inputs}
+        r (lt/run spec)
+        rel-ix (first (get-in (lt/layout-of spec :month 0) [:parts :rel/d]))
+        even (filter #(and (even? (:origin %)) (> (:origin %) 20)) (:trace r))
+        odd (filter #(and (odd? (:origin %)) (> (:origin %) 20)) (:trace r))]
+    (is (every? #(= 0.0 (nth (:x %) rel-ix)) even) "unknown: z = 0")
+    (is (< (Math/abs (/ (reduce + (map #(nth (:x %) rel-ix) odd)) (count odd))) 0.3)
+        "the known ones centred on their own mean, near 100, not dragged toward 0")))

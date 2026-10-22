@@ -115,7 +115,7 @@
     (is (= {:rel/warning [0]} (get-in sp [:relation-groups :year])))
     (is (= [2.0] (:x ((:relations sp) :year "AAA" 23))))
     (is (= [3.0] (:x ((:relations sp) :year "Reg" 23))))
-    (is (= [0.0] (:x ((:relations sp) :year "AAA" 35))) "unknown: 0")
+    (is (= [nil] (:x ((:relations sp) :year "AAA" 35))) "unknown: nil, the lattice's mean")
     (is (= {5 [-0.2 0.1]} ((:prior sp) :year :country {:parts {:rel/warning [5]}})))))
 
 (deftest the-placebo-reads-another-country-s-warning

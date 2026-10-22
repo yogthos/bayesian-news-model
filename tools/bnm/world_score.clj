@@ -47,8 +47,9 @@
         reps (or (some-> reps parse-long) 400)
         all-ks (sort (filter #(.exists (io/file (str "data/runs/" run "/" % "/forecasts.tsv"))) (keys kinds/tiers)))
         ;; the kinds with any relation input: the graph's children and the kinds warned
+        _ (when (and ews (not graph)) (throw (ex-info "bnm.world-score: --ews needs --graph" {})))
         linked (when graph (into (set (map second (keys (read-string (slurp graph)))))
-                                 (when ews (keys (read-string (slurp ews))))))
+                                 (when ews (keys (:warnings (read-string (slurp ews)))))))
         ks (if linked (filter linked all-ks) all-ks)
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out (str s "\n"))))

@@ -15,7 +15,7 @@
         sig (ews/indicators xs {:window 100})]
     (testing "lag-1 autocorrelation and variance rise as resilience falls"
       (is (< (:ac1 (nth sig 150)) (:ac1 (nth sig 590))))
-      (is (< (:variance (nth sig 150)) (:variance (nth sig 590))))
+      (is (< (:log-variance (nth sig 150)) (:log-variance (nth sig 590))))
       (is (< 0.0 (:ac1 (nth sig 590)) 1.0)))
     (testing "the return rate: how fast a departure decays, falling"
       (is (> (:return-rate (nth sig 150)) (:return-rate (nth sig 590)))))
@@ -40,3 +40,21 @@
   (let [xs (mapv + (ar1 4 400 0.3 0.3) (map #(* 0.5 %) (range 400)))
         sig (ews/indicators xs {:window 100})]
     (is (< (:ac1 (nth sig 390)) 0.6))))
+
+(deftest trends-wait-for-a-full-window-of-indicators
+  ;; a trend over two or three indicators is +-1 by construction: none until
+  ;; a window of them
+  (let [sig (ews/indicators (ar1 5 60 0.3 0.3) {:window 10})]
+    (is (some? (:ac1 (nth sig 9))))
+    (is (nil? (:ac1-trend (nth sig 9))))
+    (is (nil? (:ac1-trend (nth sig 17))))
+    (is (some? (:ac1-trend (nth sig 18))) "the tenth full window")))
+
+(deftest gaps-and-flat-windows
+  (let [xs (assoc (ar1 6 60 0.3 0.3) 30 nil)
+        sig (ews/indicators xs {:window 10})]
+    (is (nil? (:ac1 (nth sig 35))) "a window over a missing year: nothing")
+    (is (some? (:ac1 (nth sig 40))) "past it")
+    (is (nil? (:ac1 (nth (ews/indicators (repeat 20 1.0) {:window 10}) 15))) "a flat window: nothing"))
+  (testing "Kendall's tau-b counts ties"
+    (is (< (Math/abs (- (ews/kendall-tau [1.0 2.0 2.0 3.0]) (/ 5.0 (Math/sqrt 30.0)))) 1e-9))))

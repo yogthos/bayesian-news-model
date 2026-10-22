@@ -19,3 +19,11 @@
       (is (= :post3-own (rd/choose-form {:post3 (r 4.0 0.1 3.0) :post3-own (r 9.0 0.1 1.0) :level-own (r 20.0 0.2 1.0)} 1)))
       (is (= :post3 (rd/choose-form {:post3 (r 12.0 0.1 1.0) :post3-own (r 9.0 0.1 1.0)} 1)) "the larger of the two")
       (is (= :level-own (rd/choose-form {:level-own (r 20.0 0.2 1.0) :destab-own (r 10.0 0.2 1.0)} 1))))))
+
+(deftest the-threshold-is-corrected-for-the-candidates
+  ;; the best of k candidates kept: chi-squared at 5%/k
+  (is (< (Math/abs (- (rd/critical 1) 3.8415)) 1e-3))
+  (is (< (Math/abs (- (rd/critical 10) 7.8794)) 1e-3))
+  (is (rd/passes? {:lr 8.0 :placebo-lr 1.0} 10))
+  (is (not (rd/passes? {:lr 7.0 :placebo-lr 1.0} 10)))
+  (is (not (rd/passes? {:lr 9.0 :placebo-lr 5.0} 10)) "half its placebo's: not enough"))

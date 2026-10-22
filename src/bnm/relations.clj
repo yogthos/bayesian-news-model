@@ -68,13 +68,13 @@
         (throw (ex-info (str "bnm.relations/raw-input: no form " form) {:form form}))))))
 
 (defn edge-input
-  "raw-input's {:x :reads} along an edge, an unknown value read as 0
-  (docs/WORLD-MODEL.md, trial 43); never the parent's level, which carries
+  "raw-input's {:x :reads} along an edge, an unknown value nil (the lattice
+  reads it as the input's mean); never the parent's level, which carries
   the place's lasting risk the child already sees."
   [form parent scale place t]
   (when (= :level form)
     (throw (ex-info "bnm.relations/edge-input: the level is no link's form" {:form form})))
-  (update (raw-input form parent scale place t) :x #(or % 0.0)))
+  (raw-input form parent scale place t))
 
 (defn principal
   "The principal contradiction: of the `candidates` among `groups` ({group

@@ -22,6 +22,7 @@
   edges kept, each with its form (choose-form), to
   data/runs/sequencing/graph-t43.edn."
   (:require [augur.logit :as lg]
+            [augur.math :as m]
             [bnm.factors :as fac]
             [bnm.kinds :as kinds]
             [bnm.relations :as rl]
@@ -100,6 +101,19 @@
               (reduce (fn [acc [p byt]] (reduce (fn [acc [t {:keys [own]}]] (assoc-in acc [p t k] own)) acc byt)) acc parts)))
           by-place own-forms))
 
+(defn critical
+  "The likelihood ratio a one-input gain must reach when the best of `k`
+  candidates is kept: chi-squared (1 df) at 5%/k (Bonferroni)."
+  [k]
+  (let [z (m/normal-quantile (- 1.0 (/ 0.05 (* 2.0 (max 1 k)))))] (* z z)))
+
+(defn passes?
+  "A candidate's design-year result {:lr :placebo-lr} passes: its gain
+  past the child's forecast beyond the corrected threshold for `k`
+  candidates, and at least twice its placebo's on the same rows."
+  [{:keys [lr placebo-lr]} k]
+  (and (>= lr (critical k)) (>= lr (* 2.0 placebo-lr))))
+
 (def link-forms
   "The forms the lattice can read along an edge: each raw, and as its own
   part (bnm.factors), never the raw level."
@@ -107,14 +121,15 @@
 
 (defn choose-form
   "An edge's form from its design-year results {form {:lr :coef
-  :placebo-lr}} and its sign: of the forms the lattice reads, those that
-  gain past the child's forecast (LR >= 3.84) in the edge's direction and
-  at least twice their placebo's; the post-crisis regime (:post3 or its
+  :placebo-lr}} and its sign: of the forms the lattice reads, those in
+  the edge's direction that pass (passes?, the threshold corrected for
+  the forms tried); the post-crisis regime (:post3 or its
   own part, the larger) when among them, else the one that gains most;
   nil, no edge, without any."
   [results sign]
-  (let [ok (for [[f {:keys [lr coef placebo-lr]}] results
-                 :when (and (link-forms f) (>= lr 3.84) (= (pos? coef) (pos? sign)) (>= lr (* 2.0 placebo-lr)))]
+  (let [k (count (filter (comp link-forms key) results))
+        ok (for [[f {:keys [lr coef] :as r}] results
+                 :when (and (link-forms f) (= (pos? coef) (pos? sign)) (passes? r k))]
              [f lr])]
     (if-let [post (seq (filter #(#{:post3 :post3-own} (first %)) ok))]
       (first (apply max-key second post))
@@ -154,15 +169,15 @@
                               [(get-in fv [src o]) {:y y :o (logit p) :w 1.0}]))
                   real (vec (rows-of false)) fake (vec (rows-of true))]
             f (into form-names (map #(keyword (str (name %) "-own")) own-forms))
-            :let [pick (fn [rs] (for [[fs r] rs :let [v (f fs)] :when v] (assoc r :x [1.0 (double v)])))
-                  a (pick real) b (pick fake)]
+            ;; real and placebo on the same rows: where the form is known at both
+            :let [pairs (for [[[fa r] [fb _]] (map vector real fake)
+                              :let [va (f fa) vb (f fb)] :when (and (some? va) (some? vb))]
+                          [(assoc r :x [1.0 (double va)]) (assoc r :x [1.0 (double vb)])])
+                  a (mapv first pairs) b (mapv second pairs)]
             :when (>= (count (filter :y a)) 5)]
       (let [ra (lr-test a) rb (lr-test b)]
         (swap! results assoc-in [[j k] f] {:lr (:lr ra) :coef (:coef ra) :placebo-lr (:lr rb)})
-        (say (format "%s>%s\t%s\t%d\t%d\t%.2f\t%+.3f\t%.2f\t%+.3f%s" j k (name f) (:n ra) (:pos ra) (:lr ra) (:coef ra) (:lr rb) (:coef rb)
-                     (cond (and (> (:lr ra) 3.84) (= (pos? (:coef ra)) (pos? (:sign e 1)))) "\t*"
-                           (> (:lr ra) 3.84) "\t(wrong sign)"
-                           :else "")))))
+        (say (format "%s>%s\t%s\t%d\t%d\t%.2f\t%+.3f\t%.2f\t%+.3f%s" j k (name f) (:n ra) (:pos ra) (:lr ra) (:coef ra) (:lr rb) (:coef rb) ""))))
     (spit (str "data/runs/" run "/relation-diag.tsv") (str out))
     ;; the edges kept, each with its form (trial 43's graph)
     (let [kept (into (sorted-map) (for [[edge e] graph :let [f (choose-form (@results edge) (:sign e 1))] :when f]

@@ -25,6 +25,7 @@
             [bnm.ews-test]
             [bnm.ews-diag-test]
             [bnm.stockflow-test]
+            [bnm.world3-test]
             [bnm.lattice-banking-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -69,6 +70,7 @@
     bnm.ews-test
     bnm.ews-diag-test
     bnm.stockflow-test
+    bnm.world3-test
     bnm.lattice-banking-test
     bnm.political-gauges-test
     bnm.reconcile-test

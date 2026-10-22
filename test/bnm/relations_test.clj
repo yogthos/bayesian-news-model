@@ -42,20 +42,20 @@
     (is (= 0.0 (:x (in :post1 "A" 124))))
     (is (= (rl/excursion cat "A" 150 12.0) (:x (in :e1 "A" 150))))
     (is (= (rl/excursion cat "A" 150 60.0) (:x (in :e5 "A" 150))))
-    (is (= 0.0 (:x (in :post3 "C" 400))) "before the catalogue covers the place")
-    (is (= 0.0 (:x (in :post3 "B" 400))) "a place it never covers")
+    (is (nil? (:x (in :post3 "C" 400))) "before the catalogue covers the place: unknown")
+    (is (nil? (:x (in :post3 "B" 400))) "a place it never covers")
     (testing "destabilization: the latest state less its own recent mean"
       (is (= 1.0 (:x (in :destab "A" 72))))
       (is (= (for [o [71 59 47 35 23 11]] {:dir :relation :kind "bank" :scale :year :place "A" :origin o})
              (:reads (in :destab "A" 72)))
           "the latest state and the five it is set against, each read")
-      (is (= 0.0 (:x (in :destab "A" 40))) "fewer than three before it: unknown")
-      (is (= 0.0 (:x (in :destab "B" 72)))))
+      (is (nil? (:x (in :destab "A" 40))) "fewer than three before it: unknown")
+      (is (nil? (:x (in :destab "B" 72)))))
     (is (thrown? clojure.lang.ExceptionInfo (in :level "A" 72)) "the level is not a link's form")))
 
 (deftest raw-inputs-know-what-they-do-not-know
   ;; raw-input's nil where the value is unknown (not covered yet, no state
-  ;; issued, too few to destabilize against); edge-input reads it as 0
+  ;; issued, too few to destabilize against), and edge-input's
   (let [cat {:onsets {"A" (sorted-set)} :from {"A" 0 "C" 500} :known-lag 12}
         book {[:year "A"] (sorted-map 11 {:f -2.0})}
         p {:kind "bank" :book book :catalogue cat}]
@@ -63,5 +63,5 @@
     (is (nil? (:x (rl/raw-input :destab p :year "A" 40))))
     (is (nil? (:x (rl/raw-input :level p :year "A" 5))))
     (is (= -2.0 (:x (rl/raw-input :level p :year "A" 12))))
-    (is (= 0.0 (:x (rl/edge-input :destab p :year "A" 40))))
-    (is (= 0.0 (:x (rl/edge-input :post3 p :year "C" 400))))))
+    (is (nil? (:x (rl/edge-input :destab p :year "A" 40))))
+    (is (nil? (:x (rl/edge-input :post3 p :year "C" 400))))))

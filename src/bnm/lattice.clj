@@ -166,23 +166,31 @@
   {:n 0 :s nil :ss nil})
 
 (defn observe
-  "The standardizer after seeing the vector xs."
-  [{:keys [n s ss]} xs]
-  {:n (inc n)
-   :s (mapv + (or s (repeat (count xs) 0.0)) xs)
-   :ss (mapv + (or ss (repeat (count xs) 0.0)) (map #(* % %) xs))})
+  "The standardizer after seeing the vector xs; an unknown input (nil)
+  does not count toward its mean and spread."
+  [{:keys [n s ss ns]} xs]
+  (let [k (count xs)
+        z (fn [v] (or v (vec (repeat k 0.0))))]
+    {:n (inc n)
+     :ns (mapv (fn [c x] (if (nil? x) c (inc c))) (or ns (vec (repeat k (long n)))) xs)
+     :s (mapv (fn [a x] (if (nil? x) a (+ a x))) (z s) xs)
+     :ss (mapv (fn [a x] (if (nil? x) a (+ a (* x x)))) (z ss) xs)}))
 
 (defn standardize
   "xs against the mean and spread of everything observed before, capped at
-  5; 0 until ten have been seen (the scale is not known yet)."
-  [{:keys [n s ss]} xs]
+  5; 0 until ten of an input have been seen (its scale is not known yet),
+  and 0 for an unknown input (nil): the mean."
+  [{:keys [n s ss ns]} xs]
   (if (< n 10)
     (mapv (constantly 0.0) xs)
-    (mapv (fn [x si ssi]
-            (let [m (/ si n)
-                  sd (Math/sqrt (Math/max 0.0 (- (/ ssi n) (* m m))))]
-              (if (> sd 1e-9) (Math/max -5.0 (Math/min 5.0 (/ (- x m) sd))) 0.0)))
-          xs s ss)))
+    (mapv (fn [x si ssi ni]
+            (let [ni (double ni)]
+              (if (or (nil? x) (< ni 10))
+                0.0
+                (let [m (/ si ni)
+                      sd (Math/sqrt (Math/max 0.0 (- (/ ssi ni) (* m m))))]
+                  (if (> sd 1e-9) (Math/max -5.0 (Math/min 5.0 (/ (- x m) sd))) 0.0)))))
+          xs s ss (or ns (repeat n)))))
 
 (defn- without
   "The groups dropped at `scale`: the spec's :without everywhere, and its
@@ -386,7 +394,8 @@
                     width (get-in spec [:relation-width scale] 0)]
                 (when (not= width (count x))
                   (throw (ex-info "bnm.lattice: :relations gave the wrong width" {:scale scale :width width :got (count x)})))
-                (update r :x #(mapv double %))))
+                ;; an unknown input stays nil: standardized to the mean
+                (update r :x #(mapv (fn [v] (some-> v double)) %))))
         x (let [w (without spec scale)]
             (vec (concat [1.0] (when-not (w :gauges) gauges)
                          (when-not (w :up) (concat up-time up-space))
@@ -623,10 +632,11 @@
         rel-ix (vec (sort (mapcat val (:parts lay))))
         g-width (if (contains? (without spec scale) :gauges) 0 (get-in spec [:gauge-width scale] 0))
         avg (get-in state [:st :models k])
-        {:keys [n s ss]} (get-in state [:st :flow-std k])
+        {:keys [n s ss ns]} (get-in state [:st :flow-std k])
         sd (fn [i] (let [j (- i (inc g-width))
-                         m (/ (nth s j) n)]
-                     (Math/sqrt (Math/max 1e-12 (- (/ (nth ss j) n) (* m m))))))]
+                         nj (double (max 1 (if ns (nth ns j) n)))
+                         m (/ (nth s j) nj)]
+                     (Math/sqrt (Math/max 1e-12 (- (/ (nth ss j) nj) (* m m))))))]
     (vec (for [i rel-ix]
            (/ (reduce + 0.0 (for [[g mdl] (:models avg)
                                   :let [ins (:inputs mdl) pos (.indexOf ^java.util.List (vec ins) i)]

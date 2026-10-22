@@ -96,8 +96,9 @@
   "The year gauges for a country in data year `y`, in year-names' order (nil
   where unknown): V-Dem's year (published by the next origin), the
   national accounts and material capabilities a year further back
-  (published late), WDI's through `wdi` ((wdi iso var year), the value at
-  the year's end)."
+  (published late), WDI's through `wdi` ((wdi iso var year), the value
+  known at that year's end, each value's publication applied) as known at
+  the origin, data year + 1."
   [annual wdi iso y]
   (let [v (fn [k] (get-in annual [k iso y]))
         vy (fn [k] (by-year annual k iso))
@@ -110,6 +111,9 @@
                                [yr (Math/log (/ m s))]))
         soldiers (let [s (get (vy "nmc_milper") p) t (get tpop p)] (when (and s t (pos? t)) (/ s t)))
         neg (fn [x] (when x (- x)))
+        ;; WDI as known at the origin, the data year's end + 1: wdi applies
+        ;; each value's publication, so the year before's figures are there
+        q (inc y)
         w (fn [k yr] (wdi iso k yr))
         wchange (fn [k yr n] (when-let [a (w k yr)] (when-let [b (w k (- yr n))] (- a b))))]
     [(v "vdem_polyarchy") (anocracy (v "vdem_polyarchy")) (change (vy "vdem_polyarchy") y 3)
@@ -120,10 +124,10 @@
      (v "vdem_rule") (v "vdem_caassemb")
      (get gdppc p) (change gdppc p 3) (change pop p 3)
      ;; urbanization: material capabilities to 2016, WDI's urban share after
-     (or (change urban p 5) (some-> (wchange "people/urban_share" p 5) (/ 100.0)))
+     (or (change urban p 5) (some-> (wchange "people/urban_share" q 5) (/ 100.0)))
      soldiers (change per-soldier p 3)
-     (w "people/infant_mortality" p) (w "people/working_age_share" p) (wchange "people/tertiary_enrolment" p 5)
-     (slog (w "economy/inflation" p)) (slog (w "food/food_inflation" p))
+     (w "people/infant_mortality" q) (w "people/working_age_share" q) (wchange "people/tertiary_enrolment" q 5)
+     (slog (w "economy/inflation" q)) (slog (w "food/food_inflation" q))
      (get-in annual ["wid_top10" iso p]) (get-in annual ["wid_bottom50" iso p])
      (some-> (change (update-vals (vy "gov_exp_real") lg) p 1))
      (change (vy "gov_bal_gdp") p 1)]))
