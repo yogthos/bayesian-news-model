@@ -1,23 +1,22 @@
 (ns bnm.world-run
-  "The world model (docs/WORLD-MODEL.md, trial 42): every kind's lattice
-  (bnm.kinds) stepped together, month by month from 1870, each reading its
-  parents' states and onsets (the candidate graph of bnm.sequencing) and how
-  many kinds are stressed together at the place, all from before t; then
-  the learned world run forward as an artificial system (bnm.world).
+  "The world model (docs/WORLD-MODEL.md, trials 42 and 43): every kind's
+  lattice (bnm.kinds) stepped together, month by month from 1870, each
+  reading its parents along the graph's edges, all from before t; then the
+  learned world run forward as an artificial system (bnm.world).
 
   Each kind is built as on its own (bnm.lattice-banking, bnm.lattice-
   political, which builds the economic kinds and market crashes too) with
   the trial 41 design (the quarters on their own gauges, their offset the
-  year's forecast pooled with named's, its uncertainty carried down) and a
-  :relations group at the year and half-decade: per parent its state, its
-  onsets as one- and five-year excursions, its state through the place's
-  executive constraints (V-Dem's judicial and legislative constraints, the
-  year before), and the coupling. A parent's state coefficient starts at
-  its edge's sign (mean 0.2 for an exciting edge, -0.2 for an inhibiting
-  one, variance 0.1).
+  year's forecast pooled with named's, its uncertainty carried down) and,
+  at the year and half-decade, one input per parent in its edge's form
+  (trial 43's graph, data/runs/sequencing/graph-t43.edn, bnm.relation-
+  diag), each nested in the node's own model (with-relations).
 
     jolt -A:tools -M -m bnm.world-run --out world [--end m] [--kinds a,b] [--without-relations true]
-                                      [--smoke true]
+                                      [--smoke true] [--graph path] [--placebo true]
+
+  With --placebo, each country reads its parents at the next country in
+  sorted order: the links' placebo.
 
   Writes data/runs/<out>/<kind>/{forecasts,preds,weights}.tsv as the
   lattice tools do, principal.tsv (the principal contradiction of every
@@ -34,7 +33,6 @@
             [bnm.lattice-banking :as lb]
             [bnm.lattice-political :as lp]
             [bnm.lattice-smoke :as smoke]
-            [bnm.political-gauges :as pg]
             [bnm.relations :as rl]
             [bnm.world :as w]
             [clojure.java.io :as io]
@@ -50,7 +48,9 @@
    :downscale-pool 0.5
    :downscale-uncertainty true})
 
-(defn read-graph [] (read-string (slurp "data/runs/sequencing/graph.edn")))
+(defn read-graph
+  ([] (read-graph "data/runs/sequencing/graph.edn"))
+  ([path] (read-string (slurp path))))
 
 (defn parents-of
   "{kind [parent kinds]} from the graph, among `ks`."
@@ -58,42 +58,46 @@
   (let [in (set ks)]
     (into {} (for [k ks] [k (vec (sort (for [[[j k'] _] graph :when (and (= k k') (in j))] j)))]))))
 
-(defn- constraints
-  "{[iso year] executive constraint}: the mean of V-Dem's judicial and
-  legislative constraints on the executive."
-  []
-  (let [a (pg/read-annual)
-        ju (get a "vdem_jucon") lg (get a "vdem_xlg_legcon")]
-    (into {} (for [[u ys] ju [y x] ys :let [z (get-in lg [u y])] :when z] [[u y] (/ (+ x z) 2.0)]))))
-
 (defn with-relations
-  "`sp` with its :relations: the parents' inputs from `books` (an atom of
-  {kind book}, the state before t), the coupling over every other kind."
-  [sp kind parents all-kinds books cats moderator scales-of signs]
-  (let [others (vec (remove #{kind} all-kinds))
-        width (inc (* 4 (count parents)))
-        groups (into {(keyword "rel" "coupling") [(* 4 (count parents))]}
-                     (for [[i j] (map-indexed vector parents)] [(keyword "rel" j) (vec (range (* 4 i) (+ 4 (* 4 i))))]))
-        cut (memoize (fn [k scale t] (rl/stress-cut (get @books k) scale t)))
+  "`sp` with its :relations: one input per parent, in its edge's form
+  (bnm.relations/edge-input), from `books` (an atom of {kind book}, the
+  state before t); each link nested in the node's own model, so the
+  averaging sets the node with it against the node without it. A link's
+  coefficient starts at its edge's sign (mean 0.2 for an exciting edge,
+  -0.2 for an inhibiting one, variance 0.1, in the input's spreads).
+  `source` maps the place to the one whose parents it reads (identity, or
+  the placebo's other country)."
+  [sp parents books cats scales-of edges source]
+  (let [groups (into {} (for [[i j] (map-indexed vector parents)] [(keyword "rel" j) [i]]))
         prior (:prior sp)]
     (assoc sp
            :relations (fn [scale place t]
                         (let [bs @books
-                              m (get moderator [place (dec (quot t 12))] 0.0)
                               ;; a parent without this scale (no half-decade for the kinds from
                               ;; 1980) is read at its year node
-                              ins (map #(rl/parent-inputs {:kind % :book (bs %) :catalogue (cats %)}
-                                                          (if (contains? (scales-of %) scale) scale :year) place t m)
+                              src (source place)
+                              ins (map #(rl/edge-input (:form (edges %)) {:kind % :book (bs %) :catalogue (cats %)}
+                                                       (if (contains? (scales-of %) scale) scale :year) src t)
                                        parents)]
-                          {:x (vec (concat (mapcat :x ins) [(rl/coupling bs others scale place t #(cut % scale t))]))
-                           :reads (vec (mapcat :reads ins))}))
-           :relation-width (into {} (for [{n :name} (:scales sp)] [n width]))
+                          {:x (mapv :x ins) :reads (vec (mapcat :reads ins))}))
+           :relation-width (into {} (for [{n :name} (:scales sp)] [n (count parents)]))
            :relation-groups (into {} (for [{n :name} (:scales sp)] [n groups]))
+           :relation-nest true
            :principal :auto
            :prior (fn [scale level lay]
                     (merge (when prior (prior scale level lay))
-                           (into {} (for [j parents :let [ix (get-in lay [:groups (keyword "rel" j)])] :when (seq ix)]
-                                      [(first ix) [(* 0.2 (get signs j 1)) 0.1]])))))))
+                           (into {} (for [j parents :let [ix (get-in lay [:parts (keyword "rel" j)])] :when (seq ix)]
+                                      [(first ix) [(* 0.2 (:sign (edges j) 1)) 0.1]])))))))
+
+(defn placebo-source
+  "The placebo's map from each country to the next in sorted order (the
+  last to the first), other places to themselves: a parent read from
+  another country carries what is common to the period, not what the
+  parent did at the place."
+  [countries]
+  (let [cs (vec (sort countries))
+        m (zipmap cs (conj (subvec cs 1) (first cs)))]
+    (fn [place] (get m place place))))
 
 (defn build-specs
   "{kind spec} for `ks` to month `end`."
@@ -122,8 +126,8 @@
 
 (defn world-of
   "The world for bnm.world from the final states: each kind's year-node
-  forecasts by country and its relation effects per parent."
-  [specs states parents moderator end]
+  forecasts by country and, per parent, its edge's form, effect and lag."
+  [specs states parents graph cats end]
   (into {} (for [[k sp] specs
                  :let [st (states k)
                        eff (if (:relations sp) (lt/relation-effects sp st :year 0) [])
@@ -134,28 +138,29 @@
                                    :let [[_ e] (first (rsubseq byo <= end))] :when e] [p (:q e)]))
                  :window 24
                  :parents (into {} (for [[i j] (map-indexed vector (parents k)) :when (seq eff)]
-                                     [j (subvec eff (* 4 i) (+ 4 (* 4 i)))]))
-                 :moderator (into {} (for [[[u y] m] moderator :when (= y (dec (quot end 12)))] [u m]))}])))
+                                     [j {:form (:form (graph [j k])) :coef (nth eff i) :lag (:known-lag (cats j) 12)}]))}])))
 
 (defn -main [& args]
-  (let [{:keys [out end kinds without-relations smoke]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [out end kinds without-relations smoke graph placebo]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         out (or out "world")
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
         cats (kinds/catalogues)
         ks (if kinds (str/split kinds #",") (sort (keys kinds/tiers)))
-        graph (read-graph)
+        graph (read-graph (or graph "data/runs/sequencing/graph-t43.edn"))
         parents (parents-of graph ks)
-        moderator (constraints)
         _ (println "building" (count ks) "kinds")
         specs0 (build-specs ks end cats)
         books (atom {})
         specs (into {} (for [[k sp] specs0]
                          [k (cond-> (if (= "true" without-relations) sp
-                                      (with-relations sp k (parents k) ks books cats moderator
+                                      (with-relations sp (parents k) books cats
                                                       (into {} (for [[j sj] specs0] [j (set (map :name (:scales sj)))]))
-                                                      ;; each parent's edge sign: exciting or inhibiting
-                                                      (into {} (for [[[j k'] e] graph :when (= k' k)] [j (:sign e 1)]))))
+                                                      ;; each parent's edge: its form and sign
+                                                      (into {} (for [[[j k'] e] graph :when (= k' k)] [j e]))
+                                                      (if (= "true" placebo)
+                                                        (placebo-source (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats))))
+                                                        identity)))
                               (= "true" smoke) (assoc :trace :inputs))]))
         ;; the runner owns the books atom the relations read
         _ (println "running the world")
@@ -170,7 +175,7 @@
                       ;; what it had learned by then: trial 42's second test
                       (when (and (not= "true" without-relations) (not= "true" smoke) (seq edges)
                                  (= 11 (mod t 12)) (<= 2003 y (- (quot end 12) 3)) (pos? (- t start)))
-                        (let [wd (world-of specs states parents moderator (dec t))]
+                        (let [wd (world-of specs states parents graph cats (dec t))]
                           (swap! joint-rows into (map #(assoc % :year y) (w/joints wd edges {:horizon 3 :draws 400 :seed y})))))
                       (if (> t end)
                         states
@@ -197,14 +202,14 @@
                   [g wt] ws :when (= "rel" (namespace g))]
             (.write wr (str k "\t" (name scale) "\t" (name level) "\t" (quot t 12) "\t" (name g) "\t" wt "\n"))))
         (when-not (= "true" without-relations)
-          (let [world (world-of specs results parents moderator end)
+          (let [world (world-of specs results parents graph cats end)
                 base (w/simulate world {:horizon 3 :draws 2000 :seed 1})
                 imp (w/impulse world {:horizon 3 :draws 1000 :seed 2})]
             (with-open [wr (io/writer (str dir "/world-baseline.tsv"))]
               (doseq [[k ps] (sort-by key (:p base)) [p x] (sort-by key ps)] (.write wr (str k "\t" p "\t" x "\n"))))
             (with-open [wr (io/writer (str dir "/world-impulse.tsv"))]
               (doseq [[[j k] x] (sort-by key imp)] (.write wr (str j "\t" k "\t" x "\n"))))
-            (spit (str dir "/world.edn") (pr-str (update-vals world #(dissoc % :moderator)))))
+            (spit (str dir "/world.edn") (pr-str world)))
           (with-open [wr (io/writer (str dir "/world-joint.tsv"))]
             (doseq [{:keys [j k place year pj pk joint]} @joint-rows]
               (.write wr (str j "\t" k "\t" place "\t" year "\t" pj "\t" pk "\t" joint "\n")))))

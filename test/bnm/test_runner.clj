@@ -25,7 +25,9 @@
             [bnm.economic-events-test]
             [bnm.sequencing-test]
             [bnm.relations-test]
+            [bnm.relation-diag-test]
             [bnm.world-test]
+            [bnm.world-run-test]
             [bnm.world-score-test]
             [bnm.anatomy-test]
             [bnm.calm-test]
@@ -61,7 +63,9 @@
     bnm.economic-events-test
     bnm.sequencing-test
     bnm.relations-test
+    bnm.relation-diag-test
     bnm.world-test
+    bnm.world-run-test
     bnm.world-score-test
     bnm.anatomy-test
     bnm.calm-test

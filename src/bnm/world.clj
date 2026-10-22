@@ -6,17 +6,19 @@
   kind's onset at a place and follow what follows.
 
   A world is {kind {:f {place linear predictor} :q {place variance}
-  :window months :parents {parent [c-state c-onsets-1y c-onsets-5y
-  c-state*moderator]} :moderator {place m}}}: each kind's last forecast for
-  each place (its year node's f and q) and, per parent, the effect on its
-  log odds of a unit of each relation input in raw units (the models'
-  coefficients, weighted by the model averaging, over the inputs' spreads).
-  Forward, year by year: each kind's linear predictor is its last one plus
-  its relations' change (its parents' simulated states less their last
-  ones, and their simulated onsets as the kernels would count them); a
-  state is drawn from N(f, q), an onset in the year from its window's
-  chance scaled to a year under a constant hazard. Everything else a node
-  reads is held where it last was: the experiment isolates the relations."
+  :window months :parents {parent {:form :coef :lag}}}}: each kind's last
+  forecast for each place (its year node's f and q) and, per parent, the
+  edge's form (bnm.relations/edge-input), its effect on the log odds per
+  raw unit of the input (the models' coefficients, weighted by the model
+  averaging, over the input's spread) and the months before the parent's
+  onsets are known. Forward, year by year: each kind's linear predictor is
+  its last one plus each edge's change in its input times the effect (a
+  simulated onset of the parent entering once it would be known, as the
+  lattice reads it; a destabilized parent, its simulated state less its
+  last); a state is drawn from N(f, q), an onset in the year from its
+  window's chance scaled to a year under a constant hazard. Everything else
+  a node reads is held where it last was: the experiment isolates the
+  relations."
   (:require [augur.math :as m]))
 
 (defn- year-p
@@ -24,6 +26,23 @@
   `window` months, under a constant hazard."
   ^double [^double eta ^double window]
   (- (Math/expm1 (* (/ 12.0 window) (Math/log1p (- (m/expit eta)))))))
+
+(defn edge-change
+  "The change in an edge's input ({:form :lag}) at the origin starting
+  simulated year h (month 12(h - 1)), from the parent's first simulated
+  onset (in year `onset`, at its middle, or nil) and its simulated state
+  less its last (`dj`)."
+  ^double [{:keys [form lag]} h onset dj]
+  (let [t (* 12.0 (dec h))
+        m (when onset (+ 6.0 (* 12.0 (dec onset))))
+        known? (and m (<= (+ m (double (or lag 12))) t))
+        within (fn [w] (if (and known? (> m (- t (double (or lag 12)) w))) 1.0 0.0))]
+    (case form
+      :post1 (within 12.0)
+      :post3 (within 36.0)
+      :e1 (if known? (Math/exp (- (/ (- t m) 12.0))) 0.0)
+      :e5 (if known? (Math/exp (- (/ (- t m) 60.0))) 0.0)
+      :destab (double dj))))
 
 (defn- one-draw
   "One path: {[kind place] first-year-of-onset or nil}, in years from 1."
@@ -33,19 +52,14 @@
     (if (> h horizon)
       onsets
       (let [;; each kind's predictor: its last one plus what its parents changed
-            eta (into {} (for [[k {:keys [f parents moderator]}] world p places
+            eta (into {} (for [[k {:keys [f parents]}] world p places
                                :let [base (get f p)]
                                :when base]
                            [[k p] (+ base
                                      (reduce + 0.0
-                                             (for [[j [cs c1 c5 cm]] parents
-                                                   :let [dj (- (or (f-now [j p]) 0.0) (or (get-in world [j :f p]) 0.0))
-                                                         since (some-> (onsets [j p]) (#(- h %)))]]
-                                               (+ (* cs dj) (* cm dj (double (get moderator p 0.0)))
-                                                  ;; an onset s years ago, as the kernels count it
-                                                  (if since (+ (* c1 (Math/exp (- (/ (* 12.0 since) 12.0))))
-                                                               (* c5 (Math/exp (- (/ (* 12.0 since) 60.0)))))
-                                                      0.0)))))]))
+                                             (for [[j {:keys [coef] :as edge}] parents
+                                                   :let [dj (- (or (f-now [j p]) 0.0) (or (get-in world [j :f p]) 0.0))]]
+                                               (* (double coef) (edge-change edge h (onsets [j p]) dj)))))]))
             drawn (into {} (for [[kp e] eta :let [[k p] kp q (get-in world [k :q p] 0.0)]]
                              [kp (+ e (* (Math/sqrt (Math/max 0.0 q)) (m/normal! g)))]))
             onsets (reduce (fn [acc [[k p] e]]

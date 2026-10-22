@@ -41,7 +41,8 @@
     (doseq [[[scale level] rows] (group-by (juxt :scale :level) (:trace r))
             :let [lay (#'lt/layout sp scale (.indexOf (map first (:levels sp)) level))
                   late (filter #(>= (:origin %) (- end 120)) rows)]
-            [g ix] (sort-by key (:groups lay))
+            ;; a nested link's own input, not the node's inputs its model also reads
+            [g ix] (sort-by key (merge (:groups lay) (:parts lay)))
             :when (and (seq ix) (not= g :all) (seq late))]
       (let [vals (for [row late i ix] (double (nth (:x row) i)))
             live (/ (count (filter #(not= 0.0 %) vals)) (double (count vals)))
@@ -129,7 +130,7 @@
       ;; principal contradiction recorded at every year node
       (let [rows (filter #(= :year (:scale %)) (:trace r))
             lay (#'lt/layout sp :year 0)
-            rel-ix (vec (mapcat val (filter #(= "rel" (some-> (key %) namespace)) (:groups lay))))
+            rel-ix (vec (mapcat val (:parts lay)))
             late (filter #(and (= :country (:level %)) (>= (:origin %) (- end 120))) rows)
             vals (for [row late i rel-ix] (double (nth (:x row) i)))]
         (check (seq rel-ix) "year: relation groups present")

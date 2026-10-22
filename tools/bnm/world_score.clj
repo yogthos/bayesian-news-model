@@ -1,16 +1,21 @@
 (ns bnm.world-score
-  "Trial 42's tests on a world run (bnm.world-run):
+  "Trials 42 and 43's tests on a world run (bnm.world-run):
 
   1. each kind's year node with relations against the same world without
      them, origins 2003-2022, on its own outcomes; per kind and pooled with
-     the kinds weighed equally (bnm.paired/world-pair);
+     the kinds weighed equally (bnm.paired/world-pair), over the kinds the
+     graph links (--graph; every kind without one); a kind with no parent
+     should match the bench exactly, and its largest difference is printed;
   2. the world's joint forecasts: for each edge of the graph, each country
      and year end from 2003, the chance that both kinds have an onset within
      three years, from the simulation, against the product of the same two
      simulated marginals (the kinds treated as independent), on whether both
-     happened; paired Brier and log score, edges weighed equally.
+     happened; paired Brier and log score, edges weighed equally;
+  3. with --placebo, the run against its placebo (each country reading its
+     parents at another), pooled as 1.
 
     jolt -A:tools -M -m bnm.world-score --run world --bench world-norel [--reps 400]
+                                        [--graph path] [--placebo run]
 
   Prints and writes data/runs/<run>/world-score.txt."
   (:require [augur.score :as sc]
@@ -38,9 +43,11 @@
     [y (parse-double joint) (* (parse-double pj) (parse-double pk)) both place (str j ">" k)]))
 
 (defn -main [& args]
-  (let [{:keys [run bench reps]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run bench reps graph placebo]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         reps (or (some-> reps parse-long) 400)
-        ks (sort (filter #(.exists (io/file (str "data/runs/" run "/" % "/forecasts.tsv"))) (keys kinds/tiers)))
+        all-ks (sort (filter #(.exists (io/file (str "data/runs/" run "/" % "/forecasts.tsv"))) (keys kinds/tiers)))
+        linked (when graph (set (map second (keys (read-string (slurp graph))))))
+        ks (if linked (filter linked all-ks) all-ks)
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out (str s "\n"))))
         fmt (fn [{:keys [diff lo hi]}] (format "%+.5f [%+.5f %+.5f]%s" diff lo hi (if (pos? lo) " GAIN" "")))
@@ -49,6 +56,14 @@
     (say (format "   pooled (kinds equally)  Brier %s  log %s" (fmt pooled) (fmt (:log pooled))))
     (doseq [[k {:keys [brier log n pos]}] (sort-by key per-kind)]
       (say (format "   %-20s n=%5d pos=%4d  Brier %s  log %s" k n pos (fmt brier) (fmt log))))
+    (doseq [k (remove (set ks) all-ks)
+            :let [a (pd/read-lattice (str run "/" k) "year" 1870 2022)
+                  b (pd/read-lattice (str bench "/" k) "year" 1870 2022)
+                  d (reduce max 0.0 (for [[key [pa _]] a :let [[pb _] (b key)] :when pb] (Math/abs (- (double pa) (double pb)))))]]
+      (say (format "   %-20s no parent: largest difference from %s %.2e%s" k bench d (if (< d 1e-12) "" "  MISMATCH"))))
+    (when placebo
+      (let [{:keys [pooled]} (pd/world-pair run placebo ks "year" 2003 2022 reps 0.1)]
+        (say (format "3. %s against its placebo %s, pooled  Brier %s  log %s" run placebo (fmt pooled) (fmt (:log pooled))))))
     (let [cats (update-vals (kinds/catalogues) kinds/annual)
           rows (with-open [r (io/reader (str "data/runs/" run "/world-joint.tsv"))] (vec (joint-rows (line-seq r) cats)))
           opts {:reps reps :seed 1 :alpha 0.1 :per-block 1}]

@@ -376,3 +376,72 @@ reads it.
    its divergence from outcomes is fed back.
 6. **Fast-scale event graph and perception**: from the event streams,
    which event types follow which (candidate fast edges) and their tone.
+
+## Why the links cost in trial 42, and trial 43's design
+
+Trial 42's relations made the year forecasts worse (docs/PHASE-CHANGES.md).
+A review of the path from one kind's book to another's forecast, and a
+diagnostic on the design years (bnm.relation-diag, origins 1960-2002),
+found three bugs and three design faults.
+
+Bugs, each fixed with a test:
+- the onset excursion subtracted the place's rate over the whole kernel,
+  ignoring that only onsets known by t - lag enter it: the level was
+  overstated by a factor exp(lag/tau), 2.7 for the year kernel at a
+  year's lag, so a place prone to the parent read as calm, and the
+  excursion carried the place's rate with the wrong sign;
+- the coupling's top fifth was cut across every place in a book, regions
+  and the world among the countries;
+- the artificial world ran onsets through without the lag before they are
+  known, faster than the learned coefficients could carry them.
+
+Design faults, shown by the diagnostic: a logit of the child's outcome
+with the child's own forecast (without relations) as its offset, on one
+candidate input at a time, and the same input read from another country
+(a placebo):
+- the parent's level gains as much from the placebo as from the country
+  itself (currency to inflation crises: likelihood ratio 202 real, 265
+  placebo; banking crises to growth collapses 77 and 103): what it carries
+  is the period and the place's lasting risk, which the child's model
+  already holds. Often its sign is against the edge's, so trial 42's prior
+  pulled it the wrong way;
+- four inputs per parent, and the coupling, in a model of some sixty;
+- the links entered the all-inputs model, and their own groups (the
+  intercept and the link, without the node's gauges) could never win
+  weight: a link was never weighed as the node with it against the node
+  without it.
+
+What does carry past the child's forecast, well above its placebo, is a
+parent's onsets known in the last three years: the post-crisis regime of
+Bussiere & Fratzscher (2006). Protest surges to coups (LR 9.5, placebo
+0.9), violence surges to war onsets (23.0 and 2.5), sovereign defaults to
+inflation crises (13.1 and 0.7), and five more edges; for banking to
+currency crises it is the parent destabilized against its own past (27.3
+and 5.5).
+
+The literature agrees. Decouple/recouple models (Zhao, Xie & West 2016;
+Gruber & West 2016) give each series its full own model and add a few
+parents as extra states; under model averaging the comparison must be
+nested, the base against the base with the link (Clark & West 2007;
+Lavine, Lindon & West 2021, who choose predictors on the forecasts they
+make); a cross-variable level double-counts the unit's own effect (Mundlak
+1978), so what passes should be within the unit; excitation estimated
+against a fixed baseline absorbs heterogeneity (Filimonov & Sornette
+2015), which the placebo checks; and other crises help mostly as a regime
+after one (Bussiere & Fratzscher 2006; Reinhart & Rogoff 2011), with gains
+small beside a series' own history (Mueller & Rauh 2022).
+
+Trial 43's design, chosen on the design years:
+1. a parent passes one input along each edge, in the edge's form:
+   :post3, :post1, :e1, :e5 or :destab (bnm.relations/edge-input), never
+   its level; 0 before its catalogue covers the place;
+2. the form, and whether the edge is kept, by rule (bnm.relation-diag/
+   choose-form): a form qualifies when it gains past the child's forecast
+   (LR >= 3.84) in the edge's direction and at least twice its placebo's
+   gain; :post3 when it qualifies, else the form that gains most. Twelve
+   of the 22 edges are kept (data/runs/sequencing/graph-t43.edn);
+3. each link nested in the node's own model (:relation-nest): its model
+   reads all the all-inputs model reads and the link, the all-inputs model
+   no link, so the averaging adopts a link only where the node forecasts
+   better with it. No coupling, no moderator. A kind without a parent is
+   then exactly the world without relations, a check on the plumbing.

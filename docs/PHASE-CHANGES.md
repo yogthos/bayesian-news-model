@@ -880,3 +880,35 @@ which the child's own gauges already hold (poverty, regime), so it
 double-counts; the onset kernels and moderated terms quadruple the
 coefficients per parent; and the relations enter the all-inputs model,
 where a noisy coefficient cannot be refused.
+
+## Pre-registered, 21 October 2026: links nested, one per edge (trial 43)
+
+Registered before the training runs, after trial 42's links cost out of
+sample. docs/WORLD-MODEL.md ("Why the links cost in trial 42"): three bugs
+fixed (the excursion's level ignored the lag before onsets are known; the
+coupling's cut took in regions; the artificial world ignored that lag),
+and the design changed on the design years (bnm.relation-diag, origins
+1960-2002, against trial 42's world without relations): each edge passes
+one input in its form, never the parent's level; an edge is kept, and its
+form chosen, by rule (a gain past the child's forecast in the edge's
+direction, at least twice the placebo's; the post-crisis regime when it
+qualifies); twelve of 22 edges kept; each link nested in the node's own
+model, so the averaging weighs the node with it against the node without
+it; no coupling, no moderator. All else as trial 42.
+
+Three runs: **t43-world**, **t43-world-placebo** (each country reading
+its parents at the next country in sorted order), and trial 42's
+**t42-world-norel** as the bench (the code it ran is unchanged).
+
+**Tests**, one-sided 5%, 2003-2022:
+1. (primary) the eight linked kinds' year nodes (banking, currency and
+   inflation crises, coups, conflict and war onsets, protest and violence
+   surges), t43-world against t42-world-norel, on their own outcomes,
+   pooled with equal weights (bnm.world-score --graph); per kind for the
+   record, Holm over eight. The five kinds without a parent must match the
+   bench exactly (a check, not a test);
+2. the joint forecasts against independence, as trial 42's second test,
+   over the twelve edges;
+3. the links against their placebo: t43-world against t43-world-placebo,
+   pooled as 1. A gain on 1 without one here would be the period's, not
+   the links'.

@@ -229,7 +229,13 @@
                      (if-let [named (get-in spec [:relation-groups scale])]
                        (into {} (for [[g ix] named] [g (mapv #(nth rs %) ix)]))
                        {:relations (vec rs)}))
-        flows (filter #(seq (spans %)) [:up :down :contradiction :turn :exposure :feedback])]
+        flows (filter #(seq (spans %)) [:up :down :contradiction :turn :exposure :feedback])
+        ;; :relation-nest: a link's model reads all the node reads and the
+        ;; link, and the all-inputs model no link, so the averaging sets the
+        ;; node with each link against the node without it
+        nest? (:relation-nest spec)
+        own (vec (mapcat spans [:gauges :up :down :contradiction :turn :exposure :feedback]))
+        all (if nest? own (vec (mapcat spans [:gauges :up :down :contradiction :turn :exposure :feedback :relations])))]
     {:width (+ 1 (reduce + (map second sizes))) :finer finer :coarser coarser
      ;; the contradiction summaries theory signs (more strain, more risk):
      ;; the mean and largest strain, the coarser scales' and the finer ones'
@@ -241,8 +247,19 @@
                                    (when (seq coarser) [after-parent])
                                    (when (seq finer) [(+ after-parent (if (seq coarser) 1 0))]))))))
      :order (vec (concat [:base] (sort (keys gauge-groups)) flows (sort (keys rel-groups)) [:all]))
-     :groups (merge gauge-groups (select-keys spans flows) rel-groups
-                    {:base [] :all (vec (mapcat spans [:gauges :up :down :contradiction :turn :exposure :feedback :relations]))})}))
+     :groups (merge gauge-groups (select-keys spans flows)
+                    (if nest? (update-vals rel-groups #(vec (concat own %))) rel-groups)
+                    {:base [] :all all})
+     ;; each relation group's own inputs, whatever its model reads
+     :parts (or rel-groups {})
+     :nested (if nest? (set (keys rel-groups)) #{})}))
+
+(defn layout-of
+  "The input layout of the node at `scale` and level index `level-ix`:
+  {:width :groups {group [model inputs]} :parts {relation group [its own
+  inputs]} :order ...}."
+  [spec scale level-ix]
+  (layout spec scale level-ix))
 
 (defn- node-model
   "A node's model average: one dynamic logistic per group of its inputs and
@@ -251,7 +268,7 @@
   with variance 1 (4 for the intercept), the all-inputs model's non-core
   ones at the spec's :shrink, unless the spec's :prior gives {input-index
   [mean variance]} for the node."
-  [spec scale level {:keys [discount]} {:keys [groups order] :as lay}]
+  [spec scale level {:keys [discount]} {:keys [groups order nested] :as lay}]
   (let [prior (merge (when-let [[m v] (:contradiction-prior spec)]
                        (into {} (for [i (:strain-ix lay)] [i [m v]])))
                      (or (when-let [f (:prior spec)] (f scale level lay)) {}))
@@ -264,7 +281,7 @@
                            [g (d/logistic {:mean (map #(first (get prior % [0.0])) ix)
                                            :var (map #(or (second (get prior % [nil nil]))
                                                           (cond (zero? %) 4.0
-                                                                (and shrink (= g :all) (not (core? %))) shrink
+                                                                (and shrink (or (= g :all) (contains? nested g)) (not (core? %))) shrink
                                                                 :else 1.0))
                                                      ix)
                                            :discount discount :inputs ix})]))
@@ -543,7 +560,8 @@
                        ;; and relation group): the one contributing most at each place under
                        ;; the all-inputs model's coefficients, recorded in the book
                        principal-of (when-let [pc (:principal spec)]
-                                      (let [{:keys [groups]} (layout spec scale level-ix)
+                                      (let [{:keys [groups parts]} (layout spec scale level-ix)
+                                            groups (merge groups parts)
                                             all (get-in model [:models :all])
                                             cands (if (= :auto pc)
                                                     (set (filter #(or (#{:contradiction :turn :relations} %)
@@ -615,7 +633,7 @@
   (let [[level _] (nth (:levels spec) level-ix)
         k [scale level]
         lay (layout spec scale level-ix)
-        rel-ix (vec (sort (mapcat val (filter #(or (= :relations (key %)) (= "rel" (some-> (key %) namespace))) (:groups lay)))))
+        rel-ix (vec (sort (mapcat val (:parts lay))))
         g-width (if (contains? (without spec scale) :gauges) 0 (get-in spec [:gauge-width scale] 0))
         avg (get-in state [:st :models k])
         {:keys [n s ss]} (get-in state [:st :flow-std k])

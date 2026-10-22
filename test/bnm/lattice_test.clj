@@ -487,3 +487,41 @@
         [eff noise] (lt/relation-effects spec state :month 0)]
     (is (< 0.3 eff 0.7) "about the true 0.5 per raw unit (the driver's spread is 4)")
     (is (< (Math/abs noise) 0.1))))
+
+(deftest relations-nested-in-the-node-s-own-model
+  ;; :relation-nest: each relation group's model reads everything the
+  ;; all-inputs model reads and its own inputs, and the all-inputs model
+  ;; reads no relation: the averaging sets the node with a link against
+  ;; the node without it, and a link adopted is one that forecasts better
+  ;; given all else (the nested comparison; a link alone, without the
+  ;; node's gauges, would never win)
+  (let [g (m/rng 7)
+        drive (into {} (for [c countries t (range months)] [[c t] (m/normal! g)]))
+        gauge (into {} (for [c countries t (range months)] [[c t] (m/normal! g)]))
+        ys (into {} (for [c countries t (range (dec months))]
+                      [[c t] (< (m/next-double! g) (m/expit (- (+ (* 1.5 (gauge [c t])) (* 1.0 (drive [c (inc t)]))) 2.0)))]))
+        spec {:scales [{:name :month :per 1 :horizon 1 :discount 0.99}]
+              :levels [[:country countries]] :parent {} :start 0 :end 400 :forget 0.99
+              :target (fn [_ place t] {:y (ys [place t]) :known-at (inc t)})
+              :gauges (fn [_ place t] [(gauge [place t])]) :gauge-width {:month 1}
+              :relations (fn [_ place t] {:x [(drive [place (inc t)]) (m/normal! g)] :reads []})
+              :relation-width {:month 2} :relation-groups {:month {:rel/driver [0] :rel/noise [1]}}
+              :relation-nest true :shrink 0.5 :principal :auto}
+        r (lt/run spec)
+        ins (fn [grp] (set (:inputs (lt/model r :month :country grp))))
+        rel-ix (set (mapcat #(get-in (lt/layout-of spec :month 0) [:parts %]) [:rel/driver :rel/noise]))
+        ws (lt/weights r :month :country)]
+    (testing "the models' inputs"
+      (is (= 2 (count rel-ix)))
+      (is (empty? (filter rel-ix (ins :all))) "the all-inputs model reads no relation")
+      (is (contains? (ins :rel/driver) 1) "a link's model reads the gauges")
+      (is (= (disj (ins :rel/driver) (first (get-in (lt/layout-of spec :month 0) [:parts :rel/driver])))
+             (ins :all)) "and otherwise what the all-inputs model reads"))
+    (is (> (get ws :rel/driver 0.0) 0.8) (str "the link that forecasts better is adopted " ws))
+    (testing "the principal contradiction and the effects read a link's own inputs"
+      (let [late (for [c countries [o e] (get-in r [:book [:month c]]) :when (> o 300)] (first (:principal e)))]
+        (is (every? #{:rel/driver :rel/noise :contradiction} late)))
+      (let [state (loop [s (lt/start spec)] (if (> (:t s) (:end spec)) s (recur (lt/step spec s))))
+            [eff noise] (lt/relation-effects spec state :month 0)]
+        (is (< 0.6 eff 1.4) "about the true 1.0 per raw unit")
+        (is (< (Math/abs noise) 0.15))))))

@@ -11,16 +11,20 @@
 (defn excursion
   "The onsets of `cat` at `place` known by month t (onset + :known-lag <= t),
   each decaying exp(-(t - m)/tau), less what the place's rate of known
-  onsets so far would give over the same kernel: r / (1 - exp(-1/tau)) per
-  month. 0 where the catalogue does not cover the place."
+  onsets so far, r per month over the months f..k it covers, would give
+  over the same kernel and months: r exp(-(t - k)/tau) (1 - exp(-n/tau)) /
+  (1 - exp(-1/tau)), n = k - f + 1. Without the lag's discount the level
+  is overstated, and a place prone to the parent reads as calm. 0 where
+  the catalogue does not cover the place."
   ^double [{:keys [onsets from known-lag]} place t tau]
   (if-let [f (get from place)]
     (let [k (- t (or known-lag 12))
           known (subseq (get onsets place (sorted-set)) >= f <= k)
           raw (reduce + 0.0 (for [m known] (Math/exp (- (/ (- t m) tau)))))
-          months (max 1 (- k f))
-          rate (/ (count known) (double months))]
-      (if (< k f) 0.0 (- raw (* rate (/ 1.0 (- 1.0 (Math/exp (/ -1.0 tau))))))))
+          n (inc (- k f))
+          rate (/ (count known) (double (max 1 n)))
+          level (* (Math/exp (- (/ (- t k) tau))) (/ (- 1.0 (Math/exp (- (/ n tau)))) (- 1.0 (Math/exp (/ -1.0 tau)))))]
+      (if (< k f) 0.0 (- raw (* rate level))))
     0.0))
 
 (defn parent-inputs
@@ -33,15 +37,49 @@
     {:x [f (excursion catalogue place t 12.0) (excursion catalogue place t 60.0) (* f (double (or moderator 0.0)))]
      :reads (if e [{:dir :relation :kind kind :scale scale :place place :origin o}] [])}))
 
+(defn edge-input
+  "{:x value :reads [...]} of what a parent ({:kind :book :catalogue})
+  passes along one edge, in the edge's `form`, for `place` at `scale` and
+  origin t (months), 0 where its catalogue does not yet cover the place:
+  :post1, :post3, an onset of the parent known in the last one or three
+  years (a post-crisis regime, Bussiere & Fratzscher 2006); :e1, :e5, its
+  onsets as excursions over a year or five; :destab, its state at its
+  latest origin before t less its mean over the five origins before that
+  (at least three), the parent destabilized against its own past. Never
+  its level, which carries the place's lasting risk the child already sees
+  (docs/WORLD-MODEL.md, trial 43)."
+  [form {:keys [kind book catalogue]} scale place t]
+  (let [{:keys [onsets from known-lag]} catalogue
+        lag (or known-lag 12)
+        f (get from place)
+        covered? (and f (<= f t))
+        recent (fn [months] (if (seq (subseq (get onsets place (sorted-set)) > (- t lag months) <= (- t lag))) 1.0 0.0))]
+    (case form
+      :post1 {:x (if covered? (recent 12) 0.0) :reads []}
+      :post3 {:x (if covered? (recent 36) 0.0) :reads []}
+      :e1 {:x (if covered? (excursion catalogue place t 12.0) 0.0) :reads []}
+      :e5 {:x (if covered? (excursion catalogue place t 60.0) 0.0) :reads []}
+      :destab (let [past (some-> (get book [scale place]) (rsubseq < t))
+                    [o e] (first past)
+                    prior (map (comp :f val) (take 5 (rest past)))]
+                (if (and covered? e (>= (count prior) 3))
+                  {:x (- (double (:f e)) (/ (reduce + prior) (count prior)))
+                   :reads [{:dir :relation :kind kind :scale scale :place place :origin o}]}
+                  {:x 0.0 :reads []}))
+      (throw (ex-info (str "bnm.relations/edge-input: no form " form) {:form form})))))
+
 (defn- latest-f [book scale place t]
   (some-> (get book [scale place]) (rsubseq < t) first val :f))
 
 (defn stress-cut
   "The top fifth's threshold of a kind's latest states issued before t at
-  `scale`, across places, or nil with none."
-  [book scale t]
-  (let [fs (sort (keep (fn [[[s p] _]] (when (= s scale) (latest-f book scale p t))) book))]
-    (when (seq fs) (nth fs (int (Math/floor (* 0.8 (dec (count fs)))))))))
+  `scale`, across the places `peer?` keeps (every place by default; a
+  country's peers are the countries, not the regions above them), or nil
+  with none."
+  ([book scale t] (stress-cut book scale t (constantly true)))
+  ([book scale t peer?]
+  (let [fs (sort (keep (fn [[[s p] _]] (when (and (= s scale) (peer? p)) (latest-f book scale p t))) book))]
+    (when (seq fs) (nth fs (int (Math/floor (* 0.8 (dec (count fs))))))))))
 
 (defn coupling
   "How many of `kinds` (their books in `books`) have the place in their top
