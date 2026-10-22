@@ -236,3 +236,87 @@ tools/bnm/interactions.clj (`bnm.interactions`); see its docstring.
   - Leave-one-era-out log scores compare the levels model, the pairs
     entered one by one, the mean, the argmax, and τ chosen in the
     training eras.
+
+### Design-year results (origins 1960-2000, 200 permutations, seed 1)
+
+```
+jolt -A:tools -M -m bnm.interactions        # data/runs/sequencing/interactions-t3-design.tsv
+```
+
+| Pair | Kinds | Sign | Rows, onsets | γ (ML), se | Score z | Placebo z | Null mean z | p (perm.) | Holm |
+|---|---|---|---|---|---|---|---|---|---|
+| credit gap × house growth | banking | + | 809, 30 | +0.196, 0.098 | +1.84 | +0.49 | +0.01 | 0.060 | 0.219 |
+| youth bulge × grain gap | financial (7) | − | 24,285, 2,456 | −0.064, 0.042 | −1.63 | +0.19 | −0.07 | 0.134 | 0.269 |
+| youth bulge × neighbour conflict | financial (7) | + | 24,285, 2,456 | −0.023, 0.031 | −0.72 | −1.22 | −0.06 | 0.657 | 0.657 |
+| technology gap × grain gap | political (5) | + | 17,460, 1,678 | +0.159, 0.053 | +2.16 | −0.44 | −0.05 | 0.055 | 0.219 |
+
+- None passes Holm. Two come close on their own: technology gap × grain gap
+  (z 2.2, p 0.055, placebo the other way) and credit × house prices (z 1.8,
+  p 0.060 on 30 onsets: the continuous product needs both known, T2's zone
+  had 36).
+- The first T7 pair keeps its sign but is weak (p 0.13). The second
+  takes the wrong sign in the logit: the trees' synergy there is not a
+  product shape, so the T7 sign (+0.71 correlation) did not carry over.
+- These are the same rows T7 chose on, so the design-year p values are
+  optimistic for the three T7 pairs; only credit × house was named
+  beforehand. The test years are the test.
+
+**The principal contradiction** (financial group: three gauges for banking,
+two for the other kinds; the political group has one gauge, so τ is not
+identified there):
+
+| | log lik |
+|---|---|
+| τ = 0 (mean) | −7156.01 |
+| τ = ¼ | −7157.95 |
+| τ = 1 | −7158.51 |
+| τ = ∞ (argmax) | −7158.50 |
+
+- In sample the mean wins: τ̂ = 0, LR against the argmax 4.99. Any τ > 0
+  is about as bad as the argmax, because the products are heavy-tailed: a
+  single large gauge dominates the softmax already at τ = ¼.
+- Leave one era out (log score per row, 90% year-bootstrap):
+  - argmax − mean +0.00051 [−0.00006, +0.00119]: level;
+  - τ chosen in the training eras − mean −0.00023 [−0.00041, −0.00007]
+    (chosen τ 0, 0, 4, 1 by era): the learned temperature does worse than
+    either end;
+  - mean − levels −0.00084 [−0.00165, −0.00015], pairs one by one − levels
+    −0.00220 [−0.00431, −0.00056]: the gauges hurt out of era, however
+    they are combined;
+  - levels − recalibration +0.00367 [+0.00231, +0.00519].
+- Political: pairs − levels +0.00034 [−0.00017, +0.00082], level.
+
+Reading: on the design years the data do not prefer the argmax. In sample
+they prefer the plain mean; out of era neither end beats the other, and
+the interactions as a whole lose to the levels alone. The "principal
+contradiction" (τ large) is not supported, and LIT-NEXT-STEPS' falsifier
+for T3 ("the chosen temperature is high ... refutes the principal
+selection", "intervals include zero for most pairs") is met on the
+design years for the selection and nearly so for the pairs.
+
+### For the test years (2003-2022)
+
+```
+jolt -A:tools -M -m bnm.interactions --from 2003 --to 2022 --draws 200 --seed 1 \
+    --out data/runs/sequencing/interactions-t3-test.tsv
+```
+
+Origins 2003-2020 (windows to 2022). Scales, centres, the gauges' spreads
+and every out-of-sample fit come from 1960-2002 (`--design-from`,
+`--design-to` default to those); the pair tests and the τ profile are
+recomputed on the test rows; the out-of-sample block fits on the design
+rows and scores the test rows.
+
+Suggested registration:
+1. (primary) per pair, γ in its stated sign, one-sided 5% on the
+   permutation p, Holm over the four: credit × house prices (banking, +),
+   youth bulge × grain gap (financial, −), youth bulge × neighbour
+   conflict (financial, +), technology gap × grain gap (political, +).
+   Expectation from the design years: at most the two near-misses.
+2. (principal contradiction, financial group) argmax − mean on log score
+   per test row, fitted on 1960-2002, the lower end of the 90% interval
+   above 0. Falsified (the mean is not beaten by the selected gauge) if
+   not; the design years say it will be.
+3. For the record: the τ profile on the test rows, the placebo z per pair,
+   mean − levels and pairs − levels out of sample, the political group's
+   pairs − levels.
