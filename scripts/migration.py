@@ -19,6 +19,21 @@ writes data/derived/econ/
       the gross capital share (CFC + rents + royalties + net operating
       surplus over value added) and CFC per worker (M EUR per 1000
       persons). known is 2021, the year v3.8.2 was published.
+  capital-intensity-region.csv  region,product,code_nr,year,known,cfc,va,emp
+      the same satellite rows per EXIOBASE region (for the value-added
+      shares in scripts/migration-h12.py's processing-trade check).
+  capital-intensity-alt.csv  product,year,known,cfc_va,capital_share,
+      log_cfc_per_worker,cfc_va_median,cfc_va_emerging,klems_industry,
+      klems_k_per_worker,klems_cap_share
+      the 1995 measures side by side, for the sensitivity of H1/H2 to k:
+      CFC/VA as the median over regions and pooled over the emerging
+      regions (the world sum is 65% US, Japan and western Europe), and EU
+      KLEMS 2023 (earliest year <= 2000; 29 European countries, the US and
+      Japan) log net non-residential capital stock per person employed
+      (demeaned within country) and capital compensation over VA, medians
+      over countries, by NACE 1.1 division -> KLEMS industry (16 goods
+      industries). CFC/VA ranks mining and refining low (rents inflate
+      VA); KLEMS K per worker ranks them near the top.
   migration-hs6.csv      hs6,year,known,exporter,value,share,cap_intensity,cap_class,split
       every exporter of every HS92 product and year: its export value
       (thousand US$), its share of the product's world exports, the
@@ -41,7 +56,8 @@ check (rank correlation with 1995, printed).
 The HS92 exports of hs6-country.csv.gz are cached in
 data/derived/econ/hs6-exporter.csv; delete it to rebuild.
 
-Run with python -I scripts/migration.py
+Run with python -I scripts/migration.py (--measures: the intensity files
+only; --selftest: the helper tests)
 """
 import io
 import os
