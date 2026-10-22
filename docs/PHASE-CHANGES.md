@@ -1031,3 +1031,20 @@ country-sector, intervals by resampling countries:
 3. for the record, per shock, and the energy-intensive sectors (METAL,
    CHEM, MINR, PAPER, TRANSP) alone.
 The 2022 shock cannot be tested: the spine has no prices after 2014.
+
+**Results, 22 October 2026 (trial P1).** 7,368 country-sector-horizon rows
+over the four shocks (models fitted on 83,717 earlier rows):
+1. **The network against the trend** (primary), pooled: -0.000032
+   [-0.000916 +0.000659]: level.
+2. **The network against Hulten's unit pass-through**: +0.000726
+   [-0.001046 +0.002164]: level; Hulten's is worse than the trend (mse
+   0.02286 against 0.02210).
+3. For the record, per shock: 1974 a loss (-0.00140 [-0.00235 -0.00047]),
+   1979 and 1990 level, 2008 a gain (+0.00081 [+0.00015 +0.00185]); the
+   energy-intensive sectors alone level.
+The supply chain's exposure, estimated on the shocks before, helps once
+it has history to learn from (2008, after four decades and two oil
+shocks) and costs when it has almost none (1974, on 1966-73): a
+pass-through learned from the past is only as good as the past's
+shocks. Not adopted as a gauge on this evidence; the exposures stay in
+the stock-flow layer for the wiring step to test as states.
