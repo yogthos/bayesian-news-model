@@ -21,7 +21,13 @@
        codes;
     4. the projected 5-year growth of world demand per material against
        the realised one (the demand five data years later over the base
-       year's, both as written): sign agreement and correlation."
+       year's, both as written, the total holding the same technologies):
+       sign agreement, mean error and correlation. The projection rule
+       (bnm.tech-demand/project-growth, bead bnm-1pq.19) was set after the
+       logistic's failure here was seen: a rescore on history, not a
+       registered trial;
+    5. the EV route against world EV sales (DOE 2023, citing IEA): the
+       route is imports only, a lower bound."
   (:require [bnm.essentials :as ess]
             [bnm.essentials-check :as ec]
             [bnm.tech-demand :as td]
@@ -161,21 +167,51 @@
         (let [ps (map #(subvec (vec %) 2) pairs)]
           (println (str "   pooled: n " (count ps) " pearson " (f (pearson ps) 2) " spearman " (f (spearman ps) 2))))))))
 
-(defn- validate-projection [rows]
-  (println "\n4. Projected against realised 5-year log growth of world demand (EV + PV + wind)")
+(defn projection-pairs
+  "[projected realised] 5-year log growth of world demand for m: base rows
+  known in a with a growth5, realised as the demand known in a+5 over the
+  demand known in a, where a+5's data year is five on and the total holds
+  the same technologies (a technology joining the total is not growth).
+  route \"-li-ion\": the accumulator-trade route's instead."
+  ([rows m] (projection-pairs rows m ""))
+  ([rows m route]
   (let [w (reduce (fn [acc {:keys [variable year value]}] (assoc-in acc [variable year] value))
                   {} (filter #(= "WLD" (:iso %)) rows))
-        sy (w "tech-demand/state-year")]
-    (doseq [m ["lithium" "cobalt" "nickel" "graphite" "copper" "steel" "silicon" "silver" "rare-earths"]
-            :let [gs (w (str "tech-demand/" m "-growth5")) d (w (str "tech-demand/" m))
-                  ps (for [[a gr] (sort-by key gs)
-                           :let [now (get d a) fut (get d (+ a 5))]
-                           :when (and now fut (pos? now) (pos? fut) (= (+ 5 (sy a)) (sy (+ a 5))))]
-                       [gr (Math/log (/ fut now))])]]
-      (println (str "  " m ": n " (count ps)
-                    " sign agrees " (count (filter (fn [[a b]] (= (pos? a) (pos? b))) ps))
-                    " mean projected " (f (mean (map first ps)) 2) " mean realised " (f (mean (map second ps)) 2)
-                    " pearson " (f (pearson ps) 2))))))
+        sy (w "tech-demand/state-year")
+        base (str "tech-demand/" m route)
+        gs (w (str base "-growth5")) d (w base)
+        n (w (str base "-count"))]
+    (for [[a gr] (sort-by key gs)
+          :let [now (get d a) fut (get d (+ a 5))]
+          :when (and now fut (pos? now) (pos? fut)
+                     (sy a) (= (+ 5 (sy a)) (sy (+ a 5)))
+                     (= (get n a) (get n (+ a 5))))]
+      [gr (Math/log (/ fut now))]))))
+
+(defn- validate-projection [rows]
+  (println "\n4. Projected against realised 5-year log growth of world demand (EV + PV + wind; trade route)")
+  (doseq [[m route] (concat (for [m ["lithium" "cobalt" "nickel" "graphite" "copper" "steel" "silicon" "silver" "rare-earths"]] [m ""])
+                            (for [m battery-materials] [m "-li-ion"]))
+          :let [ps (projection-pairs rows m route)]]
+    (println (str "  " m route ": n " (count ps)
+                  " sign agrees " (count (filter (fn [[a b]] (= (pos? a) (pos? b))) ps))
+                  " mean projected " (f (mean (map first ps)) 2) " mean realised " (f (mean (map second ps)) 2)
+                  " mean error " (f (mean (map #(- (first %) (second %)) ps)) 2)
+                  " pearson " (f (pearson ps) 2)))))
+
+(def ev-sales
+  "World EV sales, BEV and PHEV, all road vehicles: DOE Critical Materials
+  Assessment 2023 (data/raw/material/doe-critical-materials-2023, citing
+  IEA 2023b), section 1.2.1."
+  {2015 716000.0 2022 10.6e6})
+
+(defn- validate-ev-sales [data]
+  (println "\n5. EV route (world 870380 imports, cars) against world EV sales (DOE 2023)")
+  (doseq [[t sales] (sort-by key ev-sales)
+          :let [cars (at-t (get-in data [:adds :ev "WLD"]) t)]]
+    (println (str "   " t "  imports " (g cars) "  sales " (g sales) "  imports/sales " (f (some-> cars (/ sales)) 2))))
+  (println "   (sales include PHEVs and buses and trucks, so the ratio is a floor on trade over BEV-car sales;"
+           "no BEV-car sales on disk, so the route is not scaled: a lower bound)"))
 
 (defn- coverage [rows]
   (println "Coverage (countries with a value, first and last year known):")
@@ -193,4 +229,5 @@
     (validate-pv data (ref-series "data/derived/supply/tech-demand-ref.csv"))
     (validate-rise data rows)
     (validate-projection rows)
+    (validate-ev-sales data)
     (shutdown-agents)))

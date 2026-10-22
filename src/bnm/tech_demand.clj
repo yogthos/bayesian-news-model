@@ -18,24 +18,39 @@
 
   Technologies and their units of additions:
     :ev      battery-electric cars: BACI HS17 870380 imports, tonnes / 1.8
-             t a car (`cars`). Apparent supply where there are no sales
-             data: imports only, so a producer's home sales (China's) are
-             missing; the world is the sum of imports, i.e. world trade,
-             about a third of world sales. 2017- (HS17).
+             t a car (`cars`). 2017- (HS17). A LOWER BOUND on EV demand:
+             apparent supply from imports alone, so a producer's home
+             sales (China's, 60% of 2022 EV registrations by DOE's count) are missing, and the
+             world is the sum of imports, i.e. world trade. On disk the
+             DOE Critical Materials Assessment 2023 (citing IEA 2023) has
+             world EV sales of 10.6 million in 2022 (BEV and PHEV, all
+             road vehicles); the world's 870380 imports that year are 2.55
+             million cars, 24% of it. The BEV-car part of those sales is
+             not on disk, so no trade-to-sales ratio is: the route is not
+             scaled, and world EV demand is understated about three- to
+             fourfold (re-exports through hubs counted twice push the other
+             way, a little). bnm.tech-demand-run prints the comparison.
     :pv      GW of solar added: the yearly rise in EIA installed capacity
              (data/derived/material/capacity.csv power_solar), falls
-             counted as zero.
+             counted as zero. The intensities are per watt of module
+             (ITRPV, Wp); where EIA counts inverter (AC) capacity the
+             additions, and so the demand, are low by the DC/AC ratio.
     :wind    GW of wind added, the same (power_wind). EIA does not split
-             onshore and offshore: the onshore coefficients are used, so
-             rare earths (offshore 239 t/GW against 14) are a lower bound.
+             onshore and offshore: the onshore coefficients are used, a
+             lower bound for rare earths (offshore 239 t/GW against 14) and
+             copper (8000 against 2900). The DOE assessment has offshore
+             installations of 6.2 GW in 2019 and 21.1 GW in 2021: against
+             the world's additions here (56 and 91 GW) that is 11% and 23%,
+             so rare earths from wind are low by about 3x (2019) to 5x
+             (2021), copper by 1.2-1.4x.
     :li-ion  kWh of Li-ion accumulators traded: HS92 850780 imports (all
              accumulators other than lead-acid and NiCd: NiMH is in it)
              x kwh-per-tonne. A second route to battery demand, 1995-,
              kept out of the totals (an EV's battery would count twice).
   Battery storage has no source on disk and is left out.
 
-  Adoption (the diffusion fitted by bnm.technology/fit-logistic, rolling,
-  only what is known by the year):
+  Adoption (bnm.technology/fit-logistic, rolling, only what is known by
+  the year):
     :ev      EV share of passenger car imports (870380 over all 8703
              tonnes), %, cap 100; demand follows the level (a flow), the
              car market held at its last known size.
@@ -45,15 +60,35 @@
     :li-ion  cumulative accumulator imports since 1995, no cap (the
              machinery's ceiling search, at most three times the highest
              level); additions follow the derivative.
+
+  Projection (`project-growth`, bead bnm-1pq.19). A logistic fitted to
+  adoption still on its exponential arm does not identify its ceiling: the
+  fit puts the midpoint at or before the data's end and projects falling
+  additions (world PV silver and silicon, the Li-ion trade route: projected
+  falls against realised 5-year rises of about +1.1 log). The rule: the
+  logistic only where bnm.technology's test says the ceiling is identified
+  and the data have reached half the cap (a share's 100%; without a cap,
+  never); otherwise the exponential arm, the slope of ln(adoption) over
+  the last five data years known held for the horizon, the level capped
+  at the cap. Additions on a falling share, or on an exponential that
+  meets the cap within the horizon, are not projected. The rule was chosen
+  after that failure was seen, and its half-the-cap condition after a
+  first version (the identified test alone) was scored and changed
+  little: on history, not a registered trial.
+
   The projected 5-year growth of demand for m (`growth5`) is the log of
   the projected demand five years after the base data year over demand in
-  it: each technology's demand moved by its fitted adoption (`growth`) and
-  by the intensity drift. It is written only when every technology in the
-  total has a fit.
+  it: each technology's demand moved by its adoption's projected growth
+  and by the intensity drift. It is written only when every technology in
+  the total has a projection.
 
   Known years: BACI and EIA capacity data year + 2, OWID + 1, the recipe
-  posterior of year t at t. Rows are by the year known; the data year
-  they describe is tech-demand/state-year (bookkeeping).
+  posterior of year t at t (recipes-filtered.csv's row t uses only the
+  observations known by t). A row known in Y takes each technology's
+  latest data year t <= Y and the posterior of t, so never a posterior of
+  a year after Y. Rows are by the year known; the data year they describe
+  is tech-demand/state-year (bookkeeping). Values are as published now
+  (revised), as everywhere in data/derived.
 
   Variables, per country (ISO3) and WLD (the sum of countries' additions;
   for the fits, the world's own adoption series), in tonnes:
@@ -66,6 +101,11 @@
     tech-demand/<k>-additions   cars, GW or kWh
     tech-demand/<k>-adoption    the latest adoption level known
     tech-demand/<k>-speed, -midpoint  the fitted logistic
+    tech-demand/<k>-identified  1 when bnm.technology calls its ceiling
+                                identified, else 0
+    tech-demand/<k>-logistic    1 when the logistic projects (`logistic?`),
+                                0 when the exponential arm does
+    tech-demand/<k>-slope       the exponential arm's slope
     tech-demand/state-year      the data year (bookkeeping)"
   (:require [bnm.csv :as csv]
             [bnm.recipes :as recipes]
@@ -75,16 +115,30 @@
 
 ;; ---------------------------------------------------------------- constants
 
-(def tonnes-per-car
-  "Kerb mass of a battery-electric car, t (a mid-size BEV is 1.6-2.1 t;
-  stated, not fitted)."
-  1.8)
-
 (def kwh-per-tonne
-  "kWh per tonne of traded accumulators: pack-level specific energy of
-  about 150 Wh/kg (cells 200-270, packs with casing and cooling less;
-  stated, not fitted)."
+  "kWh per tonne of traded accumulators, about 150 Wh/kg. Stated, not
+  fitted, and not from a source on disk; derived from the priors: 0.12 kg
+  Li per kWh (li-ion/lithium) is 17.3 mol, which in an NMC cathode
+  (LiMO2, about 97 g/mol) is 1.7 kg of cathode, with 1.0 kg of graphite
+  (li-ion/graphite) 2.7 kg of active material per kWh. Active material is
+  taken as about 60% of a cell's mass (foils, electrolyte, separator and
+  can the rest): 4.5 kg/kWh, 220 Wh/kg a cell; cells taken as about 65% of
+  a pack's mass (casing, cooling, electronics): 6.9 kg/kWh, 145 Wh/kg a
+  pack. HS 850780 holds both cells and packs, and NiMH (lighter in energy,
+  about half), so 150 is the middle of a range of perhaps 100-220. At 150
+  the priors put Li at 1.8% and graphite at 15% of the traded mass."
   150.0)
+
+(def tonnes-per-car
+  "Kerb mass of a battery-electric car, t. Stated, not fitted: a 55 kWh
+  pack (ev/battery's mean) at kwh-per-tonne is 0.37 t, on a compact or
+  mid-size glider of about 1.4 t. The DOE Critical Materials Assessment
+  2023 (Table B.2, on disk) has 2.07 t for the 2020 sales-weighted US
+  light-duty vehicle of every drivetrain, a heavier fleet than the world's
+  traded BEVs; small Chinese EVs are near 1 t. BACI's tonnes are the
+  goods' net mass. The error is proportional: a world mean 10% lighter
+  would mean 10% more cars and demand."
+  1.8)
 
 (def min-cover
   "The share of a flow's value whose tonnes must be known for its tonnes to
@@ -179,6 +233,71 @@
       (when (and (pos? a) (pos? b))
         (let [g (Math/log (/ b a))] (when (finite? g) g))))))
 
+(def window
+  "Data years of adoption the exponential arm's slope is fitted on."
+  5)
+
+(defn exp-slope
+  "The slope of ln x on t (least squares) over the positive points of the
+  last `window` data years of obs ([[t x]...], oldest first), nil with
+  fewer than three."
+  [obs]
+  (when-let [tl (some-> (seq obs) last first)]
+    (let [pts (for [[t x] obs :when (and (> t (- tl window)) x (pos? (double x)))]
+                [(double t) (Math/log (double x))])]
+      (when (>= (count pts) 3)
+        (let [n (count pts)
+              mt (/ (reduce + (map first pts)) n)
+              mz (/ (reduce + (map second pts)) n)
+              stt (reduce + (map (fn [[t _]] (* (- t mt) (- t mt))) pts))
+              stz (reduce + (map (fn [[t z]] (* (- t mt) (- z mz))) pts))]
+          (when (pos? stt) (/ stz stt)))))))
+
+(defn logistic?
+  "Whether the logistic projects: its ceiling identified by bnm.technology's
+  test and the data at half the cap at least. A share's physical ceiling
+  is its cap; a fitted ceiling far below it is a plateau the data have not
+  shown to be one (bnm.technology: identified ceilings on plateaus are
+  often passed later). Without a cap there is no a priori ceiling to
+  identify against: never."
+  [fit obs cap]
+  (boolean (and (:identified fit) cap (seq obs)
+                (>= (reduce max (map #(double (second %)) obs)) (* 0.5 (double cap))))))
+
+(defn project-growth
+  "The projection rule (bead bnm-1pq.19): the log growth over h years from
+  data year t of a technology's demand, from its fit and the adoption
+  points it was fitted on (obs, known by the row's year).
+
+    `logistic?`: the logistic, `growth`;
+    otherwise the exponential arm: E(u) = x_last exp(s (u - t_last)), s
+    the `exp-slope`, held for the horizon and capped at cap (nil: none).
+      :level  ln(C(t+h) / C(t)), C = min(cap, E);
+      :stock  additions follow E's derivative: s h, nil when s <= 0 or
+              E reaches the cap within the horizon.
+  nil without a fit or a slope.
+
+  Chosen after the logistic's failure was seen (world PV, Li-ion trade:
+  projected falls against realised rises), not registered before the
+  data: the design years are history. A first version used
+  bnm.technology's identified test alone; it calls world PV's and wind's
+  ceilings identified at shares of 1-8% (a ceiling 1.2-2 times the data)
+  and changed little, so the half-the-cap condition was added on that
+  second look."
+  [fit obs kind cap t h]
+  (when fit
+    (if (logistic? fit obs cap)
+      (growth fit kind t h)
+      (when-let [s (exp-slope obs)]
+        (let [[tl xl] (last obs)
+              E #(* (double xl) (Math/exp (* s (- (double %) (double tl)))))
+              C #(if cap (min (double cap) (E %)) (E %))]
+          (case kind
+            :level (let [a (C t) b (C (+ t h))]
+                     (when (and (pos? a) (pos? b)) (Math/log (/ b a))))
+            :stock (when (and (pos? s) (or (nil? cap) (<= (E (+ t h)) (double cap))))
+                     (* s h))))))))
+
 (defn drift
   "The log change of the recipe's coefficient from t to t+h that its prior
   predicts (bnm.recipes' centre: the learning drift from :drift-from on);
@@ -234,12 +353,13 @@
   (let [latest (into {} (for [k (keys techs) :let [e (latest-entry (get-in adds [k iso]) y)] :when e] [k e]))
         total-ks (filter #(get-in techs [% :total?]) (keys latest))
         t (when (seq total-ks) (reduce max (map #(:t (latest %)) total-ks)))
-        fits (into {} (for [k (keys techs)] [k (fit-as-of (get-in adopt [k iso] []) y (fit-opts k))]))
+        obs (into {} (for [k (keys techs)] [k (tech/as-of (get-in adopt [k iso] []) y)]))
+        fits (into {} (for [k (keys techs)] [k (tech/fit-logistic (obs k) (fit-opts k))]))
         demand (fn [k] (let [e (latest k)]
                          (into {} (filter val (material-demand k (:x e) (into {} (for [[r by] ints] [r (into {} (filter #(<= (key %) y) by))])) (:t e))))))
         totals (into {} (for [k total-ks :when (= t (:t (latest k)))] [k (demand k)]))
         li (when-let [e (latest :li-ion)] (demand :li-ion))
-        gk (fn [base] (fn [k] (growth (fits k) (get-in techs [k :kind]) base horizon)))
+        gk (fn [base] (fn [k] (project-growth (fits k) (obs k) (get-in techs [k :kind]) (get-in techs [k :fit :cap]) base horizon)))
         mats (sort (distinct (mapcat keys (vals totals))))]
     (vec
      (keep identity
@@ -263,7 +383,10 @@
                   :let [a (latest-entry (get-in adopt [k iso]) y) f (fits k)]
                   r [(when a (row iso y (v k "adoption") (:x a)))
                      (row iso y (v k "speed") (:speed f))
-                     (row iso y (v k "midpoint") (:midpoint f))]]
+                     (row iso y (v k "midpoint") (:midpoint f))
+                     (when f (row iso y (v k "identified") (if (:identified f) 1.0 0.0)))
+                     (when f (row iso y (v k "logistic") (if (logistic? f (obs k) (get-in techs [k :fit :cap])) 1.0 0.0)))
+                     (when f (row iso y (v k "slope") (exp-slope (obs k))))]]
               r))))))
 
 (defn rows

@@ -1,5 +1,6 @@
 (ns bnm.tech-demand-test
   (:require [bnm.tech-demand :as td]
+            [bnm.tech-demand-run :as run]
             [bnm.technology :as tech]
             [clojure.test :refer [deftest is testing]]))
 
@@ -73,7 +74,7 @@
     (is (nil? (td/growth nil :level 2010 5)))))
 
 (deftest drift-from-the-prior
-  (let [p {:id "pv/silver" :mean 15.0 :lo 10.0 :hi 20.0 :drift -0.12 :drift-from 2008 :ref-year 2020}]
+  (let [p {:id "pv/silver" :mean 15.0 :lo 10.0 :hi 20.0 :drift -0.12 :drift-from 2008 :ref-year 2020 :drift-cite [:itrpv]}]
     (is (close? -0.6 (td/drift p 2010 5) 1e-12) "five years of -12%")
     (is (close? -0.24 (td/drift p 2005 5) 1e-12) "only the years from 2008 drift")
     (is (close? 0.0 (td/drift {:mean 1.0 :lo 0.5 :hi 2.0} 2010 5) 1e-12) "no drift"))
@@ -99,7 +100,7 @@
    :adopt {:pv {"AAA" (logistic-entries 30.0 0.3 2022.0 (range 2000 2024) 1)}
            :ev {"AAA" (logistic-entries 50.0 0.5 2024.0 (range 2017 2024) 2)}}
    :ints (into {} (for [[k v] ints] [k (into {} (for [y (range 1995 2026)] [y (val (first v))]))]))
-   :priors {"pv/silver" {:id "pv/silver" :mean 15.0 :lo 10.0 :hi 20.0 :drift -0.12 :drift-from 2008 :ref-year 2020}}})
+   :priors {"pv/silver" {:id "pv/silver" :mean 15.0 :lo 10.0 :hi 20.0 :drift -0.12 :drift-from 2008 :ref-year 2020 :drift-cite [:itrpv]}}})
 
 (defn- at [rows v] (some #(when (= v (:variable %)) (:value %)) rows))
 
@@ -110,14 +111,20 @@
     (is (nil? (at rs "tech-demand/lithium")) "no EVs known in 2015")
     (is (every? #(= 2015 (:year %)) rs))))
 
-(deftest growth-uses-fits-and-the-drift
+(deftest growth-uses-the-rule-and-the-drift
   (let [d (data)
         rs (td/rows-at d "AAA" 2015)
-        f (td/fit-as-of (get-in d [:adopt :pv "AAA"]) 2015 (td/fit-opts :pv))]
-    (is (close? (+ (td/growth f :stock 2013 5) -0.6) (at rs "tech-demand/silver-growth5") 1e-9)
-        "the fit known in 2015, five years of silver drift")
-    (is (close? (td/growth f :stock 2013 5) (at rs "tech-demand/copper-growth5") 1e-9)
-        "no drift on copper")))
+        es (get-in d [:adopt :pv "AAA"])
+        f (td/fit-as-of es 2015 (td/fit-opts :pv))
+        g (td/project-growth f (tech/as-of es 2015) :stock 100.0 2013 5)]
+    (is (false? (:identified f)) "a 30% ceiling seen at 3%: not identified")
+    (is (close? (* 5 (td/exp-slope (tech/as-of es 2015))) g 1e-12) "so the exponential arm")
+    (is (close? (+ g -0.6) (at rs "tech-demand/silver-growth5") 1e-9)
+        "the rule's growth known in 2015, five years of silver drift")
+    (is (close? g (at rs "tech-demand/copper-growth5") 1e-9) "no drift on copper")
+    (is (= 0.0 (at rs "tech-demand/pv-identified")))
+    (is (= 0.0 (at rs "tech-demand/pv-logistic")))
+    (is (close? (td/exp-slope (tech/as-of es 2015)) (at rs "tech-demand/pv-slope") 1e-12))))
 
 (deftest no-fit-reads-after-the-year
   (let [d (data)
@@ -141,3 +148,165 @@
                                                                      {:t 2002 :known 2004 :x 5.0}]})]
     (is (= [{:t 2001 :known 2004 :x 3.0} {:t 2002 :known 2004 :x 5.0}] w)
         "known when every part is")))
+
+;; ---------------------------------------------------------------- the projection rule (bnm-1pq.19)
+
+(deftest exp-slope-of-the-last-window
+  (let [obs (vec (for [t (range 2000 2021)] [t (* 2.0 (Math/exp (* 0.25 (- t 2000))))]))]
+    (is (close? 0.25 (td/exp-slope obs) 1e-12) "exact on an exponential")
+    (is (close? 0.25 (td/exp-slope (into [[1990 1e6] [1995 1e-9]] obs)) 1e-12)
+        "only the last window's data years count")
+    (is (close? 0.25 (td/exp-slope (conj (vec (butlast obs)) [2019 0.0] [2020 (second (last obs))])) 1e-12)
+        "zeros are left out")
+    (is (nil? (td/exp-slope [[2019 1.0] [2020 2.0]])) "under three points")))
+
+(deftest the-rule-identified-logistic
+  (let [es (logistic-entries 60.0 0.35 2018.0 (range 2000 2026) 1)
+        obs (tech/as-of es 2025)
+        f (td/fit-as-of es 2025 {:cap 100.0})]
+    (is (:identified f))
+    (is (= (td/growth f :stock 2023 5) (td/project-growth f obs :stock 100.0 2023 5))
+        "an identified ceiling: the logistic")
+    (is (= (td/growth f :level 2023 5) (td/project-growth f obs :level 100.0 2023 5)))
+    (is (td/logistic? f obs 100.0) "data past half the cap")
+    (is (not (td/logistic? f obs nil)) "no cap: no a priori ceiling to identify against")
+    (is (close? (* 5 (td/exp-slope obs)) (td/project-growth f obs :stock nil 2023 5) 1e-12))))
+
+(deftest the-rule-a-ceiling-far-below-the-cap
+  (let [es (logistic-entries 5.0 0.5 2015.0 (range 2000 2026) 1)
+        obs (tech/as-of es 2025)
+        f (td/fit-as-of es 2025 {:cap 100.0})]
+    (is (:identified f) "bnm.technology's test passes on a plateau at 5%")
+    (is (not (td/logistic? f obs 100.0)) "but a share under half its cap: not a ceiling to project on")
+    (is (close? (* 5 (td/exp-slope obs)) (td/project-growth f obs :stock 100.0 2023 5) 1e-12)
+        "the exponential arm")))
+
+(deftest the-rule-unidentified-exponential
+  (let [es (logistic-entries 100.0 0.3 2040.0 (range 2000 2021) 1)
+        obs (tech/as-of es 2021)
+        f (td/fit-as-of es 2021 {:cap 100.0})
+        s (td/exp-slope obs)]
+    (is (false? (:identified f)) "1% of a 100% ceiling: not identified")
+    (is (close? 0.3 s 0.01) "the exponential arm's slope is the logistic's speed")
+    (is (close? (* 5 s) (td/project-growth f obs :stock 100.0 2018 5) 1e-12)
+        "additions grow at the slope")
+    (is (close? (* 5 s) (td/project-growth f obs :level 100.0 2018 5) 1e-12)
+        "so does a level far from the cap"))
+  (testing "the cap"
+    (let [obs (vec (for [t (range 2010 2021)] [t (* 50.0 (Math/exp (* 0.1 (- t 2020))))]))
+          f {:ceiling 100.0 :speed 0.2 :midpoint 2020.0 :identified false}
+          E #(* 50.0 (Math/exp (* 0.1 (- % 2020))))]
+      (is (close? (Math/log (/ (min 100.0 (E 2025)) (E 2020))) (td/project-growth f obs :level 100.0 2020 5) 1e-9)
+          "below the cap: the exponential through the last point")
+      (is (close? (Math/log (/ 60.0 (E 2018))) (td/project-growth f obs :level 60.0 2018 5) 1e-9)
+          "a level stops at the cap")
+      (is (nil? (td/project-growth f obs :stock 60.0 2018 5))
+          "additions when the exponential meets the cap within the horizon: no projection")
+      (is (close? 0.5 (td/project-growth f obs :stock nil 2018 5) 1e-9) "no cap: the slope")))
+  (testing "a falling share"
+    (let [obs (vec (for [t (range 2010 2021)] [t (Math/exp (* -0.1 (- t 2000)))]))
+          f {:ceiling 100.0 :speed 0.2 :midpoint 2030.0 :identified false}]
+      (is (nil? (td/project-growth f obs :stock 100.0 2018 5)) "additions do not follow a falling share")
+      (is (close? -0.5 (td/project-growth f obs :level 100.0 2018 5) 1e-9) "a level does")))
+  (is (nil? (td/project-growth nil [[2019 1.0]] :level 100.0 2018 5)) "no fit, no projection"))
+
+;; ---------------------------------------------------------------- worked unit examples, prior means
+
+(def ^:private means
+  "The priors' means (resources/bnm/recipe-priors.edn), as the filter would
+  give them without data."
+  {"ev/battery" 55.0 "ev/copper" 53.0
+   "li-ion/lithium" 0.12 "li-ion/cobalt" 0.25 "li-ion/nickel" 0.55 "li-ion/graphite" 1.0
+   "pv/silicon" 3200.0 "pv/silver" 15.0 "pv/copper" 2800.0 "pv/steel" 50000.0
+   "wind-onshore/copper" 2900.0 "wind-onshore/steel" 130000.0 "wind-onshore/rare-earths" 14.0
+   "wind-offshore/rare-earths" 239.0})
+
+(def ^:private ints-2020 (update-vals means (fn [x] {2020 x})))
+
+(defn- tmp [content]
+  (let [f (java.io.File/createTempFile "tech-demand" ".csv")]
+    (spit f content)
+    (.deleteOnExit f)
+    (.getPath f)))
+
+(deftest worked-ev
+  (let [trade (td/read-trade
+               (tmp (str "hs,year,known,hs6,iso,imports_t,imports_v,imports_vt,exports_t,exports_v,exports_vt\n"
+                         "HS17,2020,2022,870380,AAA,900,2000,1000,,,\n")))
+        [e] (get-in trade [:ev "AAA"])
+        d (td/material-demand :ev (:x e) ints-2020 (:t e))]
+    (is (= [2020 2022] [(:t e) (:known e)]))
+    (is (close? 1000.0 (:x e) 1e-9) "900 t on half the value: 1800 t, / 1.8 t a car = 1000 cars")
+    (is (close? 6.6 (d "lithium") 1e-9) "1000 cars x 55 kWh x 0.12 kg/kWh = 6600 kg")
+    (is (close? 13.75 (d "cobalt") 1e-9) "x 0.25 kg/kWh")
+    (is (close? 30.25 (d "nickel") 1e-9) "x 0.55 kg/kWh")
+    (is (close? 55.0 (d "graphite") 1e-9) "x 1.0 kg/kWh")
+    (is (close? 53.0 (d "copper") 1e-9) "1000 cars x 53 kg")))
+
+(deftest worked-li-ion
+  (let [trade (td/read-trade
+               (tmp (str "hs,year,known,hs6,iso,imports_t,imports_v,imports_vt,exports_t,exports_v,exports_vt\n"
+                         "HS92,2020,2022,850780,AAA,1000,500,500,,,\n")))
+        [e] (get-in trade [:li-ion "AAA"])
+        d (td/material-demand :li-ion (:x e) ints-2020 (:t e))]
+    (is (close? 1000.0 (:x e) 1e-9) "tonnes of accumulators")
+    (is (close? 18.0 (d "lithium") 1e-9) "1000 t x 150 kWh/t = 150 MWh, x 0.12 kg/kWh = 18 t")
+    (is (close? 150.0 (d "graphite") 1e-9))
+    (is (close? 37.5 (d "cobalt") 1e-9))
+    (is (close? 82.5 (d "nickel") 1e-9))))
+
+(deftest worked-pv-and-wind
+  (let [cap (td/read-capacity
+             (tmp (str "iso,year,variable,value,unit,flag\n"
+                       "AAA,2019,power_solar,1000.0,MW,\nAAA,2020,power_solar,3500.0,MW,\n"
+                       "AAA,2019,power_wind,10000.0,MW,\nAAA,2020,power_wind,12000.0,MW,\n"))
+             2)
+        [pv] (td/additions (get-in cap [:pv "AAA"]))
+        [wd] (td/additions (get-in cap [:wind "AAA"]))
+        p (td/material-demand :pv (:x pv) ints-2020 (:t pv))
+        w (td/material-demand :wind (:x wd) ints-2020 (:t wd))]
+    (is (= {:t 2020 :known 2022 :x 2.5} pv) "3500 - 1000 MW = 2.5 GW, known two years on")
+    (is (close? 8000.0 (p "silicon") 1e-9) "2.5 GW x 3200 t/GW (3.2 g/W)")
+    (is (close? 37.5 (p "silver") 1e-9) "2.5 GW x 15 t/GW (15 mg/W)")
+    (is (close? 7000.0 (p "copper") 1e-9))
+    (is (close? 125000.0 (p "steel") 1e-9))
+    (is (close? 2.0 (:x wd) 1e-9))
+    (is (close? 5800.0 (w "copper") 1e-9) "2 GW x 2900 t/GW onshore")
+    (is (close? 260000.0 (w "steel") 1e-9))
+    (is (close? 28.0 (w "rare-earths") 1e-9) "onshore 14 t/GW, not offshore 239: a lower bound")))
+
+(deftest constants-hang-together
+  (testing "a 55 kWh pack at 150 Wh/kg is about a fifth of a 1.8 t car"
+    (let [pack-t (/ 55.0 td/kwh-per-tonne)]
+      (is (close? 0.367 pack-t 0.001))
+      (is (< 0.15 (/ pack-t td/tonnes-per-car) 0.25))))
+  (testing "150 kWh/t against the priors: Li 1.8% and graphite 15% of an accumulator's mass"
+    (is (close? 0.018 (* 0.12 td/kwh-per-tonne 1e-3) 1e-12))
+    (is (close? 0.15 (* 1.0 td/kwh-per-tonne 1e-3) 1e-12))))
+
+;; ---------------------------------------------------------------- validation pairs
+
+(deftest projection-pairs-hold-the-technologies
+  (let [rows (concat
+              (for [a (range 2010 2016)]
+                {:iso "WLD" :year a :variable "tech-demand/state-year" :value (double (- a 2))})
+              [{:iso "WLD" :year 2010 :variable "tech-demand/copper" :value 10.0}
+               {:iso "WLD" :year 2010 :variable "tech-demand/copper-count" :value 1.0}
+               {:iso "WLD" :year 2010 :variable "tech-demand/copper-growth5" :value 0.5}
+               {:iso "WLD" :year 2015 :variable "tech-demand/copper" :value 40.0}
+               {:iso "WLD" :year 2015 :variable "tech-demand/copper-count" :value 2.0}
+               {:iso "WLD" :year 2011 :variable "tech-demand/copper" :value 10.0}
+               {:iso "WLD" :year 2011 :variable "tech-demand/copper-count" :value 1.0}
+               {:iso "WLD" :year 2011 :variable "tech-demand/copper-growth5" :value 0.4}])
+        rows (concat rows [{:iso "WLD" :year 2016 :variable "tech-demand/state-year" :value 2014.0}
+                           {:iso "WLD" :year 2016 :variable "tech-demand/copper" :value 20.0}
+                           {:iso "WLD" :year 2016 :variable "tech-demand/copper-count" :value 1.0}])]
+    (is (= [[0.4 (Math/log 2.0)]] (vec (run/projection-pairs rows "copper")))
+        "2010's pair is dropped: a technology joined the total by 2015")
+    (is (= [[0.3 (Math/log 3.0)]]
+           (vec (run/projection-pairs
+                 (concat rows [{:iso "WLD" :year 2010 :variable "tech-demand/lithium-li-ion" :value 1.0}
+                               {:iso "WLD" :year 2010 :variable "tech-demand/lithium-li-ion-growth5" :value 0.3}
+                               {:iso "WLD" :year 2015 :variable "tech-demand/lithium-li-ion" :value 3.0}])
+                 "lithium" "-li-ion")))
+        "the trade route's pairs")))
