@@ -1,7 +1,9 @@
 (ns bnm.material-test
   (:require [bnm.material :as mat]
+            [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]]))
+            [clojure.test :refer [deftest is testing]]
+            [dodeca.core :as a5]))
 
 (def plants
   ;; two gas plants in one place, one far away; a coal plant
@@ -69,3 +71,19 @@
         (is (= "XKX" (:iso (second ps))) "Kosovo under one code")
         (is (nil? (:year (second ps)))))
       (finally (.delete f)))))
+
+(deftest cells-unchanged-by-bnm-cells
+  ;; material went onto bnm.cells (bead bnm-3ka.10): the same cell ids as
+  ;; when it called dodeca itself
+  (is (= [["515b800000000000" "AAA" 400.0] ["5161800000000000" "AAA" 500.0] ["6a4c800000000000" "AAA" 100.0]]
+         (mapv (juxt :cell :iso :mw) (mat/cells plants 6))))
+  (is (= [["515b0a0000000000" "AAA" 300.0]] (mapv (juxt :cell :iso :mw) (mat/cells (take 1 plants) 9))))
+  (let [gppd "data/raw/material/gppd/x/global_power_plant_database.csv"]
+    (if-not (.exists (io/file gppd))
+      (println "bnm.material-test: no" gppd "- full-database identity check skipped")
+      (let [ps (mat/read-plants gppd)
+            direct (fn [{:keys [lon lat]}] (a5/cell->hex (a5/lon-lat->cell [lon lat] 6)))
+            cs (mat/cells ps 6)]
+        (is (= 5650 (count cs)) "34,936 plants on 5,650 cell x country entries")
+        (is (= (set (map (juxt direct :iso) ps)) (set (map (juxt :cell :iso) cs)))
+            "every plant in the cell dodeca puts it in")))))

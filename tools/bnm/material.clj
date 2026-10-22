@@ -12,9 +12,9 @@
   concentration at the snapshot only).
 
     jolt -A:tools -M -m bnm.material [--resolution 6]"
-  (:require [clojure.java.io :as io]
-            [clojure.string :as str]
-            [dodeca.core :as a5]))
+  (:require [bnm.cells :as cells]
+            [clojure.java.io :as io]
+            [clojure.string :as str]))
 
 (def vintage
   "The year the plant database became known (v1.3, June 2021)."
@@ -27,12 +27,12 @@
 (defn cells
   "[{:cell :iso :mw :fuels {fuel mw} :plants {fuel n}}] of `plants` ({:iso
   :fuel :mw :lon :lat}) on A5 cells at `resolution` (6: about 8,300 km2).
-  A cell across a border is one entry per country."
+  A cell across a border is one entry per country (bnm.cells)."
   [plants resolution]
   (->> plants
-       (group-by (fn [{:keys [iso lon lat]}] [iso (a5/lon-lat->cell [lon lat] resolution)]))
+       (group-by (fn [{:keys [iso lon lat]}] [iso (cells/cell lon lat resolution)]))
        (map (fn [[[iso cell] ps]]
-              {:cell (a5/cell->hex cell) :iso iso
+              {:cell cell :iso iso
                :mw (reduce + 0.0 (map :mw ps))
                :fuels (reduce (fn [m {:keys [fuel mw]}] (update m fuel (fnil + 0.0) mw)) {} ps)
                :plants (reduce (fn [m {:keys [fuel mw]}] (if (pos? mw) (update m fuel (fnil inc 0)) m)) {} ps)}))

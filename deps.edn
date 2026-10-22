@@ -2,20 +2,17 @@
 
  ;; The model is plain EDN data, and the host (newsroom) persists it however
  ;; it likes. Its statistics come from augur, which has no dependencies.
+ ;; Space is A5 equal-area cells (dodeca, docs/PRINCIPLES.md 11).
  :paths ["src" "resources"]
  :deps {io.github.jlt-commons/augur {:git/url "https://github.com/jlt-commons/augur"
                                      :git/tag "v0.9.0"
-                                     :git/sha "0c4d80f0a548fe5aadcb644c4defde5c2debf592"}}
+                                     :git/sha "0c4d80f0a548fe5aadcb644c4defde5c2debf592"}
+        io.github.jlt-commons/dodeca {:git/url "https://github.com/jlt-commons/dodeca"
+                                      :git/tag "v0.1.0"
+                                      :git/sha "20b01f749d8789ae5d6a6756649a2278d240199d"}}
 
  :aliases
  {:test {:extra-paths ["test" "tools"]
-         :extra-deps {io.github.jlt-commons/dodeca {:git/url "https://github.com/jlt-commons/dodeca"
-                                                    :git/tag "v0.1.0"
-                                                    :git/sha "20b01f749d8789ae5d6a6756649a2278d240199d"}}
          :main-opts ["-m" "bnm.test-runner"]}
   ;; ingestion, training and backtesting over data/ (see README)
-  :tools {:extra-paths ["tools"]
-          ;; A5 equal-area cells for event coordinates
-          :extra-deps {io.github.jlt-commons/dodeca {:git/url "https://github.com/jlt-commons/dodeca"
-                                                     :git/tag "v0.1.0"
-                                                     :git/sha "20b01f749d8789ae5d6a6756649a2278d240199d"}}}}}
+  :tools {:extra-paths ["tools"]}}}

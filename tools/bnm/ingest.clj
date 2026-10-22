@@ -7,15 +7,15 @@
 
   A raw file whose normalized file exists is skipped, so a run resumes. Codes
   and names the registry does not know are tallied in data/norm/<source>/unknown.tsv."
-  (:require [bnm.csv :as csv]
+  (:require [bnm.cells :as cells]
+            [bnm.csv :as csv]
             [bnm.events :as ev]
             [bnm.geo :as geo]
             [bnm.ontology :as ont]
             [bnm.time]
             [babashka.process :as p]
             [clojure.java.io :as io]
-            [clojure.string :as str]
-            [dodeca.core :as a5]))
+            [clojure.string :as str]))
 
 (def unknown (atom {}))
 
@@ -94,7 +94,7 @@
 
 (def cell-resolution
   "A5 resolution of the cell nodes: 8,300 km2 each."
-  6)
+  cells/resolution)
 
 (defn- cell-node
   "The cell node of a point in the country with FIPS code `fips`: the
@@ -104,7 +104,7 @@
   (when-let [iso3 (fips country)]
     (when-let [lat (parse-double lat)]
       (when-let [lon (parse-double lon)]
-        (str iso3 ".A" (str/upper-case (a5/cell->hex (a5/lon-lat->cell [lon lat] cell-resolution))))))))
+        (str iso3 ".A" (str/upper-case (cells/cell lon lat cell-resolution)))))))
 
 (def ^:private cell
   (let [m (java.util.HashMap.)]
