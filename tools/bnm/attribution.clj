@@ -17,7 +17,12 @@
   - M_B': M0 plus the base recalibrated, a + b logit p (b free): the
     primary base, since the raw base is far from calibrated (slopes 0.1-0.8
     on the design years) and its miscalibration is not history;
-  - M_B'S, M_B'P: M_B' plus the states, plus the placebo;
+  - M_P': the coverage-matched placebo: each country keeps its own
+    missing indicators, the values the next country's where both are
+    known, else the running mean. S - P' (primary contrast) isolates the
+    states' values from where the data are; P is kept for the record;
+  - M_I: M0 plus the missing indicators alone (coverage);
+  - M_B'S, M_B'P, M_B'P': M_B' plus the states, the placebos;
   - for the record, M_B, M_BS, M_BP: the base as a raw offset (b = 1).
 
   Scoring is out of sample, by era: fit on one era, score the other
@@ -36,7 +41,8 @@
   base's skill is skill(S) / skill(B'); the Shapley split of skill(B'S)
   between the states and the base's history is
   states = (skill(S) + skill(B'S) - skill(B')) / 2, history the rest;
-  the placebo gets the same numbers. Intervals (90%) from a bootstrap of
+  the placebos get the same numbers. Where less when: skill(S_where) -
+  skill(S_when), and the same of S - P' per subset. Intervals (90%) from a bootstrap of
   blocks of two consecutive origin years (overlapping windows), the
   fits held.
 
@@ -146,6 +152,19 @@
       (if-some [v (get-in panel [c t])]
         [v false]
         [(some-> (rsubseq rm <= t) first val) true]))))
+
+(defn matched-reader
+  "The coverage-matched placebo of `panel`: (fn [c t]) -> [value missing?]
+  with the country's own indicator, the value the other country's
+  (`other` {c c'}) where both are known, else the running mean. Credits
+  where the data are to the placebo as well."
+  [panel other]
+  (let [rm (running-means panel)
+        mean-at (fn [t] (some-> (rsubseq rm <= t) first val))]
+    (fn [c t]
+      (if (nil? (get-in panel [c t]))
+        [(mean-at t) true]
+        (if-some [v (get-in panel [(other c) t])] [v false] [(mean-at t) false])))))
 
 (defn derange
   "{c c'}: each country to the next in sorted order, the last to the first."
@@ -338,47 +357,64 @@
 (defn- ratio [a b] (if (and (some? a) (some? b) (not (zero? b))) (/ a b) Double/NaN))
 
 (defn derived
-  "The statistics from the skills {\"S\" \"P\" \"B\" \"BS\" \"BP\"}."
-  [{:strs [S P B BS BP]}]
-  (let [sh (shapley S B BS) ph (shapley P B BP)]
+  "The statistics from the skills {\"S\" \"P\" \"P'\" \"I\" \"B\" \"BS\" \"BP\"
+  \"BP'\"}: P the placebo, P' the coverage-matched placebo, I the
+  indicators alone."
+  [{:strs [S P B BS BP] :as sk}]
+  (let [sh (shapley S B BS) ph (shapley P B BP)
+        P' (get sk "P'") BP' (get sk "BP'") I (get sk "I")
+        mh (when (and P' BP') (shapley P' B BP'))]
     {"skill-B" B "skill-S" S "skill-P" P "skill-BS" BS "skill-BP" BP
      "share" (ratio S B) "placebo-share" (ratio P B)
      "shapley-states" (:states sh) "shapley-history" (:history sh) "shapley-share" (ratio (:states sh) BS)
      "placebo-shapley-states" (:states ph) "placebo-shapley-history" (:history ph) "placebo-shapley-share" (ratio (:states ph) BP)
-     "states-less-placebo" (- S P) "increment" (- BS B) "placebo-increment" (- BP B)}))
+     "states-less-placebo" (- S P) "increment" (- BS B) "placebo-increment" (- BP B)
+     "skill-P'" P' "skill-BP'" BP' "skill-I" I
+     "matched-share" (ratio P' B) "states-less-matched" (when P' (- S P'))
+     "matched-shapley-states" (:states mh) "matched-shapley-history" (:history mh) "matched-shapley-share" (when mh (ratio (:states mh) BP'))
+     "matched-increment" (when BP' (- BP' B)) "indicators-share" (ratio I B)}))
 
 (def stat-order
   ["skill-B" "skill-S" "skill-P" "skill-BS" "skill-BP" "share" "placebo-share"
    "shapley-states" "shapley-history" "shapley-share"
    "placebo-shapley-states" "placebo-shapley-history" "placebo-shapley-share"
-   "states-less-placebo" "increment" "placebo-increment"])
+   "states-less-placebo" "increment" "placebo-increment"
+   "skill-P'" "skill-BP'" "matched-share" "states-less-matched"
+   "matched-shapley-states" "matched-shapley-history" "matched-shapley-share" "matched-increment"
+   "skill-I" "indicators-share"])
 
 ;; --- models --------------------------------------------------------------------------------
 
 (defn specs
-  "The models: [{:id :base :group :states :placebo?}], base :none, :recal
-  (a + b logit p) or :offset (logit p, b = 1)."
+  "The models: [{:id :base :group :states :source :only-miss?}], base
+  :none, :recal (a + b logit p) or :offset (logit p, b = 1); source :real,
+  :placebo or :matched (coverage-matched placebo); only-miss? the
+  indicators alone."
   [groups]
   (vec (concat [{:id "0" :base :none} {:id "B'" :base :recal} {:id "B" :base :offset}]
-               (for [[g sts] groups [pre base placebo?] [["S" :none false] ["P" :none true] ["B'S" :recal false] ["B'P" :recal true]]]
-                 {:id (str pre "/" g) :base base :group g :states sts :placebo? placebo?})
-               (for [[g sts] (take 1 groups) [pre placebo?] [["BS" false] ["BP" true]]]
-                 {:id (str pre "/" g) :base :offset :group g :states sts :placebo? placebo?}))))
+               (for [[g sts] groups
+                     [pre base source only?] [["S" :none :real false] ["P" :none :placebo false] ["P'" :none :matched false]
+                                              ["I" :none :real true]
+                                              ["B'S" :recal :real false] ["B'P" :recal :placebo false] ["B'P'" :recal :matched false]]]
+                 {:id (str pre "/" g) :base base :group g :states sts :source source :only-miss? only?})
+               (for [[g sts] (take 1 groups) [pre source] [["BS" :real] ["BP" :placebo] ["BP'" :matched]]]
+                 {:id (str pre "/" g) :base :offset :group g :states sts :source source}))))
 
 (defn- design-row
   "The logit row of a scored or fitted row for a spec: :o the raw base
   for :offset, :x the base's log odds for :recal, then each state's value
-  and missing indicator (`feats` {state [z miss]} for real or placebo)."
-  [{:keys [base states placebo?]} row]
-  (let [fs (if placebo? (:placebo row) (:real row))
+  and missing indicator (the row's {state [z miss]} of the spec's
+  source), or the indicators alone."
+  [{:keys [base states source only-miss?]} row]
+  (let [fs (get row source)
         xs (concat (when (= base :recal) [(logit (:p row))])
-                   (mapcat #(fs %) states))]
+                   (if only-miss? (map #(second (fs %)) states) (mapcat #(fs %) states)))]
     {:t (:t row) :y (:y row) :o (if (= base :offset) (logit (:p row)) 0.0) :x (double-array xs)}))
 
-(defn- spec-k [{:keys [base states]}] (+ (if (= base :recal) 1 0) (* 2 (count states))))
+(defn- spec-k [{:keys [base states only-miss?]}] (+ (if (= base :recal) 1 0) (* (if only-miss? 1 2) (count states))))
 
-(defn- penalty-vector [{:keys [base states]} lam]
-  (vec (concat (when (= base :recal) [1e-4]) (repeat (* 2 (count states)) lam))))
+(defn- penalty-vector [{:keys [base] :as sp} lam]
+  (vec (concat (when (= base :recal) [1e-4]) (repeat (- (spec-k sp) (if (= base :recal) 1 0)) lam))))
 
 (defn- features
   "{state [z miss]} at row r from the readers and scalers."
@@ -388,12 +424,13 @@
 (defn- fit-split
   "Scored rows of one split for every kind: each with :p0 (M0's level) and
   :eta {[spec-id lam] log odds without year matching}."
-  [rows-by-kind real placebo split specs lambdas penalties]
+  [rows-by-kind real placebo matched split specs lambdas penalties]
   (let [parts (update-vals rows-by-kind #(split-rows % split))
         fit-cells (distinct (for [[_ {:keys [fit]}] parts r fit] [(:c r) (:t r)]))
         scalers-of (fn [readers] (into {} (for [[s rd] readers] [s (scaler (for [[c t] fit-cells :let [[v miss?] (rd c t)] :when (not miss?)] v))])))
-        sr (scalers-of real) sp (scalers-of placebo)
-        attach (fn [r] (assoc r :real (features real sr (:c r) (:t r)) :placebo (features placebo sp (:c r) (:t r))))]
+        sr (scalers-of real) sp (scalers-of placebo) sm (scalers-of matched)
+        attach (fn [r] (assoc r :real (features real sr (:c r) (:t r)) :placebo (features placebo sp (:c r) (:t r))
+                              :matched (features matched sm (:c r) (:t r))))]
     (vec (apply concat
                 (pmap (fn [[kind {:keys [fit score]}]]
                         (if (or (< (count (filter :y fit)) 5) (empty? score))
@@ -494,8 +531,9 @@
         other (derange cs)
         real (into {} (for [[s p] panels] [s (reader (select-keys p csset))]))
         placebo (into {} (for [[s rd] real] [s (fn [c t] (rd (other c) t))]))
+        matched (into {} (for [[s p] panels] [s (matched-reader (select-keys p csset) other)]))
         sps (specs groups)
-        scored (with-modes (vec (mapcat #(fit-split rows-by-kind real placebo % sps lambdas penalties) splits)))
+        scored (with-modes (vec (mapcat #(fit-split rows-by-kind real placebo matched % sps lambdas penalties) splits)))
         chosen (merge {"0" nil "B'" nil "B" nil} (or penalties (choose-penalties scored sps lambdas)))
         cols (vec (for [mode ["within" "raw"] score ["log" "brier"] sp sps] [mode score (:id sp)]))
         [point draws] (bootstrap scored cols chosen reps seed)
@@ -503,14 +541,30 @@
         results (vec (for [mode ["within" "raw"] [base gs] [["recal" (map first groups)] ["offset" (take 1 (map first groups))]]
                            g gs kind (concat (sort (remove #{"pooled"} (keys point))) ["pooled"]) score ["log" "brier"]
                            :let [ids (if (= base "recal")
-                                       {"B" "B'" "S" (str "S/" g) "P" (str "P/" g) "BS" (str "B'S/" g) "BP" (str "B'P/" g)}
-                                       {"B" "B" "S" (str "S/" g) "P" (str "P/" g) "BS" (str "BS/" g) "BP" (str "BP/" g)})
+                                       {"B" "B'" "S" (str "S/" g) "P" (str "P/" g) "P'" (str "P'/" g) "I" (str "I/" g)
+                                        "BS" (str "B'S/" g) "BP" (str "B'P/" g) "BP'" (str "B'P'/" g)}
+                                       {"B" "B" "S" (str "S/" g) "P" (str "P/" g) "P'" (str "P'/" g) "I" (str "I/" g)
+                                        "BS" (str "BS/" g) "BP" (str "BP/" g) "BP'" (str "BP'/" g)})
                                  skills (fn [tbl] (update-vals ids #(get-in tbl [kind [mode score %]])))
                                  st (derived (skills point))
                                  ds (map #(derived (skills %)) (filter #(get % kind) draws))]
                            s stat-order]
                        {:mode mode :base base :group g :kind kind :score score :stat s :value (st s)
-                        :lo (q (map #(get % s) ds) 0.05) :hi (q (map #(get % s) ds) 0.95)}))]
+                        :lo (q (map #(get % s) ds) 0.05) :hi (q (map #(get % s) ds) 0.95)}))
+        ;; where less when: the same draws, fits held
+        gnames (set (map first groups))
+        contrast (when (and (gnames "where") (gnames "when"))
+                   (vec (for [mode ["within" "raw"] kind (concat (sort (remove #{"pooled"} (keys point))) ["pooled"]) score ["log" "brier"]
+                              :let [sk (fn [tbl id] (get-in tbl [kind [mode score id]]))
+                                    f (fn [tbl] {"where-less-when" (- (sk tbl "S/where") (sk tbl "S/when"))
+                                                 "where-less-when-matched" (- (- (sk tbl "S/where") (sk tbl "P'/where"))
+                                                                              (- (sk tbl "S/when") (sk tbl "P'/when")))})
+                                    st (f point)
+                                    ds (map f (filter #(get % kind) draws))]
+                              s ["where-less-when" "where-less-when-matched"]]
+                          {:mode mode :base "recal" :group "where-when" :kind kind :score score :stat s :value (st s)
+                           :lo (q (map #(get % s) ds) 0.05) :hi (q (map #(get % s) ds) 0.95)})))
+        results (into results contrast)]
     {:results results :penalties (dissoc chosen "0" "B'" "B")
      :n (into (sorted-map) (for [[kd rs] (group-by :kind scored)] [kd [(count rs) (count (filter :y rs))]]))}))
 
@@ -590,7 +644,7 @@
     (say (str "# base recal (primary): a + b logit p fitted; offset: logit p with b = 1. Intervals 90%, " reps " draws of two-year blocks, seed " seed))
     (say "mode\tbase\tgroup\tkind\tscore\tstat\tvalue\tlo\thi")
     (doseq [{:keys [mode base group kind score stat value lo hi]} (:results res)]
-      (say (format "%s\t%s\t%s\t%s\t%s\t%s\t%.6f\t%.6f\t%.6f" mode base group kind score stat (double value) (double lo) (double hi))))
+      (say (format "%s\t%s\t%s\t%s\t%s\t%s\t%.6f\t%.6f\t%.6f" mode base group kind score stat (double (or value Double/NaN)) (double lo) (double hi))))
     (io/make-parents out)
     (spit out (str buf))
     (when-not registered?

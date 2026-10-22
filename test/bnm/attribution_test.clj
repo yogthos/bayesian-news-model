@@ -79,6 +79,23 @@
     (is (close? 0.0 (/ (reduce + (map f xs)) (count xs)) 0.05))
     (is (= 0.0 (f nil)) "unknown: the fit rows' centre")))
 
+;; the coverage-matched placebo: the country's own indicator, another
+;; country's value where both are known, else the running mean
+(deftest the-matched-placebo-keeps-the-country-s-coverage
+  (let [panel {"A" {1990 1.0 1991 3.0} "B" {1990 5.0 1992 7.0}}
+        other {"A" "B" "B" "A"}
+        rd (at/matched-reader panel other)]
+    (is (= [5.0 false] (rd "A" 1990)) "both known: the other's value, A's indicator")
+    (is (= [1.0 false] (rd "B" 1990)))
+    (is (= [3.0 false] (rd "A" 1991)) "only A known in 1991: the running mean of 1, 5, 3, not A's own 3 by chance")
+    (is (= [3.0 true] (rd "B" 1991)) "B unknown: missing, at the running mean")
+    (is (= [4.0 false] (rd "B" 1992)) "only B known: the running mean of 1, 5, 3, 7")
+    (is (= [nil true] (rd "A" 1980)))
+    (testing "no value after the origin"
+      (doseq [t (range 1988 1995) c ["A" "B"]
+              :let [later (update-vals panel (fn [byy] (into {} (for [[y x] byy] [y (if (> y t) (* 1000.0 x) x)]))))]]
+        (is (= (rd c t) ((at/matched-reader later other) c t)))))))
+
 ;; --- the fit ----------------------------------------------------------------------
 
 (defn- simulate
@@ -122,7 +139,12 @@
     (let [st (at/derived {"S" 0.002 "B" 0.005 "BS" 0.0055 "P" 0.0002 "BP" 0.0049})]
       (is (close? (st "skill-BS") (+ (st "shapley-states") (st "shapley-history")) 1e-15))
       (is (close? (st "skill-BP") (+ (st "placebo-shapley-states") (st "placebo-shapley-history")) 1e-15))
-      (is (close? 0.4 (st "share") 1e-12)))))
+      (is (close? 0.4 (st "share") 1e-12))))
+  (testing "the coverage-matched placebo's split adds up too"
+    (let [st (at/derived {"S" 0.002 "B" 0.005 "BS" 0.0055 "P" 0.0002 "BP" 0.0049 "P'" 0.001 "BP'" 0.0052 "I" 0.0007})]
+      (is (close? (st "skill-BP'") (+ (st "matched-shapley-states") (st "matched-shapley-history")) 1e-15))
+      (is (close? 0.001 (st "states-less-matched") 1e-15))
+      (is (close? 0.0007 (st "skill-I") 1e-15)))))
 
 ;; --- synthetic attribution ---------------------------------------------------------
 
@@ -139,26 +161,37 @@
         drive (case signal :states x :history h)
         rows (simulate (inc seed) 160 (fn [c _] (* 0.9 (drive (format "C%03d" c)))))
         rows (mapv (fn [r] {:c (:c r) :t (:t r) :y (:y r) :p (m/expit (:e r))}) rows)
-        panel (into {} (for [c cs] [c (into {} (for [t (range 1950 2003)] [t (+ (x c) (* 0.1 (m/normal! g)))]))]))]
+        panel (into {} (for [c cs] [c (into {} (for [t (range 1950 2003)] [t (+ (x c) (* 0.1 (m/normal! g)))]))]))
+        ;; a state of pure noise, known for half the countries only
+        noise (into {} (for [c (take 80 cs)] [c (into {} (for [t (range 1950 2003)] [t (m/normal! g)]))]))]
     (at/evaluate {:rows-by-kind {"k" rows}
-                  :panels {"s" panel}
-                  :groups [["all" ["s"]]]
+                  :panels {"s" panel "n" noise}
+                  :groups [["all" ["s" "n"]] ["where" ["s"]] ["when" ["n"]]]
                   :splits (at/splits {:from 1960 :to 2002 :split 1980})
                   :lambdas [0.1 10.0]
                   :reps 50 :seed 1})))
 
-(defn- point [res stat]
-  (some #(when (and (= "within" (:mode %)) (= "recal" (:base %)) (= "all" (:group %)) (= "pooled" (:kind %))
-                    (= "log" (:score %)) (= stat (:stat %)))
-           (:value %))
-        (:results res)))
+(defn- point
+  ([res stat] (point res stat "all"))
+  ([res stat group]
+   (some #(when (and (= "within" (:mode %)) (= "recal" (:base %)) (= group (:group %)) (= "pooled" (:kind %))
+                     (= "log" (:score %)) (= stat (:stat %)))
+            (:value %))
+         (:results res))))
 
 (deftest attribution-is-near-one-when-the-states-hold-the-signal
   (let [res (synthetic-run :states 21)]
     (is (pos? (point res "skill-B")))
     (is (close? 1.0 (point res "share") 0.2) (str "share " (point res "share")))
     (is (> (point res "shapley-share") 0.35) "the states and the base split their common skill")
-    (is (< (Math/abs (point res "placebo-share")) 0.15) "another country's state carries nothing")))
+    (is (< (Math/abs (point res "placebo-share")) 0.15) "another country's state carries nothing")
+    (is (< (Math/abs (point res "matched-share")) 0.15) "nor with the country's own coverage")
+    (is (> (point res "states-less-matched") 0.0))
+    (testing "where less when, from the same draws"
+      (let [w (point res "skill-S" "where") n (point res "skill-S" "when")]
+        (is (close? (- w n) (point res "where-less-when" "where-when") 1e-12))
+        (is (> (point res "where-less-when" "where-when") 0.0))
+        (is (some? (point res "where-less-when-matched" "where-when")))))))
 
 (deftest attribution-is-near-zero-when-the-states-hold-none
   (let [res (synthetic-run :history 22)]
