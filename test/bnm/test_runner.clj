@@ -70,7 +70,8 @@
             [bnm.power-audit-test]
             [bnm.ews-reframed-test]
             [bnm.migration-test]
-            [bnm.half-decade-test]))
+            [bnm.half-decade-test]
+            [bnm.econ-structure-test]))
 
 (def namespaces
   '[bnm.time-test
@@ -143,7 +144,8 @@
     bnm.power-audit-test
     bnm.ews-reframed-test
     bnm.migration-test
-    bnm.half-decade-test])
+    bnm.half-decade-test
+    bnm.econ-structure-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]

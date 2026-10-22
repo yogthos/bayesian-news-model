@@ -757,3 +757,60 @@ October 2026 it held 2023 for every country and 2024 for about half (600
 production rows against 1,214 for 2023), so year + 2 would read most
 countries' figures before they were out. The values are the current
 vintage, revised since first release; the lag does not undo that.
+
+## Finance rows: the spine against the national accounts (bead bnm-3ka.1)
+
+scripts/econ-structure.py sets the spine's finance (FIN) and
+manufacturing value-added shares beside BEA's (NAICS 52 and 31-33, the
+2021 historical file to 1996 and the 2026 release from 1997), OECD
+Table 6 (ISIC4 K and C over total gross value added) and EU KLEMS 2023
+(NACE K and C). It writes data/derived/econ/structure-inputs.csv and
+structure-ratios.csv (each spine segment's share over each benchmark's,
+pooled over the years both cover).
+
+The US gap is in the Long-run WIOD, not our scripts: our J rows equal its
+socio-economic accounts' VA. Its US value added matches BEA's to 0.1-1%
+in the industries both classify alike (agriculture, mining, utilities,
+construction, trade, hotels, real estate and business services); finance
+is 0.44-0.60 of BEA's from 1965
+to 1999 (0.51 pooled); output is short too (0.55-0.62). The total stays
+within 1% of BEA's GDP: what J lacks sits mostly in the public and
+personal services (LtQ) and some in manufacturing. LR-WIOD builds the US from BEA's original make-use tables
+(Woltjer et al. 2021, 3.26; version 1.1), which predate BEA's 2003 move
+to allocating FISIM to its users: the pattern is the finance industry's
+imputed services left with their users. WIOD 2016 and ICIO match BEA
+(1.01 and 1.04), so the 1.63 jump at 2000 is the definition changing,
+not finance growing. Elsewhere LR-WIOD's finance is 0.8-1.3 of OECD's
+(the UK, Greece and the Netherlands about 0.8, France 1.2-1.3, Mexico
+1.24); WIOD 2016's is within 10% except Australia (1.27), Turkey (1.25)
+and Canada (0.78). The spine's manufacturing is 4-22% above the
+benchmarks (the US 1.05 to 1999, 1.12 in WIOD 2016, 1.19 in ICIO):
+io-spine2.py puts all of ISIC4 J58 in PAPER, software publishing
+included, which ISIC3 classed outside manufacturing.
+
+The stock is data/derived/stocks/econ-structure.csv
+(iso,year,variable,value,known,source; year is the data year, known the
+year it could be read): econ/finance-va-share and
+econ/manufacturing-va-share, from bnm.econ-structure
+(tools/bnm/econ_structure_run.clj). A year with a benchmark takes it (BEA,
+then OECD, then EU KLEMS; known a year on for BEA, two for the others).
+A spine year without one takes the spine share times the benchmark's ratio
+to that spine segment over the nearest five overlap years, using only
+overlap years published by the value's known year: never before the
+spine's three-year lag, and not before the first overlap year is out. So
+LR-WIOD's Britain in 1965 is known in 1998, when OECD's 1995 is out. A
+segment with no overlap is chained through the next at their common year
+(LR-WIOD and WIOD 2016 in 2000). Countries without a benchmark (China,
+India, Taiwan, Indonesia and some ICIO-only countries) keep the spine's
+share, source the segment. The US is BEA throughout. The benchmarks are
+current vintages, revised since first release (BEA's NAICS history is
+the 2021 vintage): the known year dates a value, it does not restore what
+was published then.
+
+The 7b regression in docs/ECONOMIC-CHARACTER.md (change in manufacturing
+2000-2014 on the 2000 finance share, log income and the 2000
+manufacturing share, 43 WIOD 2016 countries) left ELEC out of
+manufacturing. With ELEC, on WIOD 2016: finance +0.009 (t 0.08); on the
+corrected series: +0.031 (t 0.26), without Luxembourg +0.24 (t 0.9).
+Finance size still does not predict deindustrialisation; the -0.08 was
+partly the missing sector.
