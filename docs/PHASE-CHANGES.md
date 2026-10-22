@@ -1033,18 +1033,84 @@ country-sector, intervals by resampling countries:
 The 2022 shock cannot be tested: the spine has no prices after 2014.
 
 **Results, 22 October 2026 (trial P1).** 7,368 country-sector-horizon rows
-over the four shocks (models fitted on 83,717 earlier rows):
+over the four shocks; the models fitted on 7,875, 15,750, 33,075 and
+65,393 earlier rows for 1974, 1979, 1990 and 2008 (the first write-up's
+"83,717" counted every row, not the training rows). Intervals as
+registered, countries resampled (the first write-up resampled shock
+years too; those intervals are kept below as the extra):
 1. **The network against the trend** (primary), pooled: -0.000032
-   [-0.000916 +0.000659]: level.
+   [-0.000396 +0.000413]: level (two-way: [-0.000916 +0.000659]).
 2. **The network against Hulten's unit pass-through**: +0.000726
-   [-0.001046 +0.002164]: level; Hulten's is worse than the trend (mse
+   [-0.000826 +0.001999]: level (two-way: [-0.001046 +0.002164]);
+   Hulten's against the trend -0.000758 [-0.002271 +0.001196] (mse
    0.02286 against 0.02210).
-3. For the record, per shock: 1974 a loss (-0.00140 [-0.00235 -0.00047]),
-   1979 and 1990 level, 2008 a gain (+0.00081 [+0.00015 +0.00185]); the
-   energy-intensive sectors alone level.
-The supply chain's exposure, estimated on the shocks before, helps once
-it has history to learn from (2008, after four decades and two oil
-shocks) and costs when it has almost none (1974, on 1966-73): a
-pass-through learned from the past is only as good as the past's
-shocks. Not adopted as a gauge on this evidence; the exposures stay in
-the stock-flow layer for the wiring step to test as states.
+3. For the record, per shock, the network against the trend: 1974 a
+   loss (-0.00140 [-0.00235 -0.00047]), 1979 and 1990 level, 2008 a gain
+   (+0.00081 [+0.00015 +0.00185]); the energy-intensive sectors a loss
+   (-0.000182 [-0.000323 -0.000065]; level with shock years resampled).
+The registered primary is level: the supply chain does not add to the
+trend. Not adopted as a gauge.
+
+**Deviations after review, 22 October 2026 (trial P1).** Not registered;
+decided after the results, so they qualify the reading and do not
+replace the registered test. The review found:
+- Refining's own rows drive the per-shock results. L_REF,REF carries the
+  Leontief identity (median about 1.08), so for s = REF the
+  "supply-chain" share L - a is about 1 against 0.01-0.1 elsewhere: 98.6%
+  of the b2 regressor's variation is refining's response to its own
+  price, and Hulten's predicts refining's output falling by 1.08 e.
+  Refining is 348 of the 7,368 test rows but about 35% of the squared
+  error, and one of them (Latvia 2008, a refinery of 0.1-50 million US$
+  with volume changes of x12, x0.002, x219) about 17%. On refining's rows
+  alone the network loses 0.021 in 1974 and gains 0.016 in 2008; on the
+  other sectors 0.0004 and 0.0001.
+- LR-WIOD's tables before 1990 are mostly backcast (the share is 0 or 1
+  by country-year; 1 for all but two to four countries), so the
+  exposures are not as known at the time.
+- In 1968-70, 11 of 25 countries have one deflator for every sector:
+  the shock is 0 and the volumes are nominal output over one deflator.
+- Four rows' table columns have inputs at or above output (Malta's
+  mining, 2000-2014).
+The corrected analysis (`bnm.energy-pilot`, printed after the registered
+one in data/runs/energy-pilot/score.txt): refining left out; the
+supply-chain share L_REF,s - delta_REF,s - a_REF,s; Hulten's pass-through
+L_REF,s / L_REF,REF of the observed refined-products price (that price
+already holds refining's own feedback); sectors under 0.1% of the
+economy's output at t - 1, rows with a flat-price year (t - 1, t or
+t + h) and columns with inputs at or above output dropped from training
+and test. 7,017 test rows (training 4,800 / 12,300 / 28,800 / 59,574);
+mse trend 0.015362, Hulten 0.015240, network 0.015573:
+1. The network against the trend, pooled: -0.000211 [-0.000375
+   -0.000048], a loss (two-way: [-0.000682 +0.000127], level).
+2. The network against Hulten's: -0.000332 [-0.000572 -0.000111], a
+   loss (two-way: [-0.000896 +0.000028], level). Hulten's against the
+   trend +0.000122 [-0.000079 +0.000334]: level, a point gain.
+3. Per shock, the network against the trend: 1974 a loss (-0.00113
+   [-0.00187 -0.00053]), 1979, 1990 and 2008 level (2008 +0.00007
+   [-0.00022 +0.00033]: the registered "gain" was refining's); Hulten's
+   against the trend a point gain at every shock, significant in 1979
+   (+0.000135 [+0.000029 +0.000289]). The energy-intensive sectors: the
+   network a loss (-0.000373 [-0.000663 -0.000104]).
+On the tables not backcast only (backcast share at most 0.5: Canada,
+the Netherlands, the United States and Japan or China before 2000, all
+countries in 2008; 3,177 test rows, training 460 / 1,500 / 4,820 /
+25,377) the reading holds: the network against the trend -0.000260
+[-0.000588 +0.000072], against Hulten's -0.000381 [-0.000744 +0.000036],
+Hulten's against the trend +0.000120 [-0.000263 +0.000461]; 1974 the
+network a loss (-0.0055 on 460 training rows), Hulten's a gain (+0.00016
+[+0.00008 +0.00025]).
+
+What follows from these numbers: no estimated pass-through beats the
+trend. Learned from earlier shocks, the network's two coefficients do
+worse than the trend and than unit pass-through, worst when the history
+is short (1974), and never significantly better. "It helps once it has
+history" came from refining's own rows. Hulten's fixed pass-through, a
+sector's L_REF,s / L_REF,REF times the shock, is the better
+supply-chain prior: a point gain on the trend at every shock, small
+(about 1% of the trend's squared error) and significant only in 1979.
+Not adopted as a gauge. If the exposures are used, use them as fixed
+Hulten weights, not as fitted coefficients. The energy/* states
+(data/derived/stocks/energy.csv) now leave refining's own output, the
+identity in L_REF,REF, out of the economy's exposure, as in the
+corrected network term. That lowers the exposure by about 0.02 on
+average; the shock is unchanged.
