@@ -26,6 +26,26 @@ the node forecasts better with it, in a nested comparison, checked against
 a placebo. Every piece is designed on the design years and tested as
 registered. The checklist is docs/PRINCIPLES.md (epic bnm-62z).
 
+## The material base: where things are
+
+People need food, homes and industry need energy, industry needs ores:
+the economy rests on where resources lie and where they are processed,
+and that geography sets supply chains, dependencies and what is fought
+over. Three tracked dimensions, each stocks and edges of this layer:
+- endowments: mineral deposits and reserves, energy reserves and fields,
+  arable land and its suitability, water; stocks that deplete and are
+  discovered, located by country and cell (bead bnm-62z.19);
+- processing capacity: refineries, smelters, rare-earth separation, steel
+  mills, fertilizer, cement, power plants, fabs; located plants with
+  capacities and dates, so capacity is a stock filled by construction and
+  drained by retirement, and its concentration a vulnerability (bnm-62z.20);
+- resource flows: bilateral trade in raw and processed goods, who
+  depends on whom for each input, the edges shocks travel along
+  (bnm-62z.21).
+A sector's output is bounded by its inputs, which come from endowments
+through processing and trade; the conflict kinds read the lootable and
+contested ones (Ross 2004; Lujala et al. 2005: diamonds and oil fields).
+
 ## What the store already holds
 
 Loose national totals and prices, not yet wired together:
