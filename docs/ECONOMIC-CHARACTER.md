@@ -51,7 +51,9 @@ regime.py, divergence.py, wid_beta.py, cinc.py, xsec.py).
 - **Cross-country, the size of the finance sector does not predict
   deindustrialisation.** Within WIOD 2016 (43 countries, 2000-2014), the
   change in the manufacturing share regressed on the 2000 finance share,
-  log income and the initial manufacturing share gives -0.08 (t -1.3). The
+  log income and the initial manufacturing share gives +0.03 (t 0.3) on
+  the corrected shares (7b; the first -0.08, t -1.3, left electrical
+  equipment out of manufacturing). The
   heavy-industry version (chemicals, metals, machinery and transport
   equipment) gives -0.084 (t -2.0), but Luxembourg alone produces it.
   Without Luxembourg the estimates are -0.006 (t 0.0) and -0.11 (t -0.9).
@@ -1005,10 +1007,9 @@ pair alone, n = 1: descriptive only, never a test.
    are on disk; add rare-earth separation from MYB facilities and trade in
    2846 and 8505. Feeds the essentials model's concentration factor
    immediately (supply/regime-exposure, H8). One day.
-3. **Step 0, the finance rows.** Check the spine's FIN against OECD
-   Table 6A and BEA for the 25 LR-WIOD countries; record the level ratio
-   per country; fix the source or document the break. Half a day, and
-   every finance-share reading depends on it.
+3. **Step 0, the finance rows (done, bnm-3ka.1).** LR-WIOD's US finance
+   is 0.44-0.60 of BEA's before 2000 (its pre-2003 BEA make-use tables);
+   the corrected series is data/derived/stocks/econ-structure.csv (7a).
 4. **The regime factor (H3).** WID (on disk), ICSD (manual download),
    GMD, PWT, Müller-Verner. The decisive check of whether "state-directed"
    is a measurable thing. Two days.
