@@ -203,3 +203,140 @@
     (is (close? 0.2 (:base r) 1e-12) "a random k's expected precision")
     (is (close? (/ 8.0 120) (:p r) 1e-12) "hypergeometric P(X >= 2), N 10, K 2, k 3")
     (is (close? 1.0 (:p (ess/precision entries #{"j"} 3)) 1e-12) "no hits: p is 1")))
+
+;; ---------------------------------------------------------------- edge proposal
+
+(deftest overlap-of-shares
+  (let [d (fn [& xs] (double-array xs))]
+    (is (close? 1.0 (ess/overlap (d 1 2 0) (d 2 4 0)) 1e-12) "the same shape, any scale")
+    (is (close? 0.0 (ess/overlap (d 1 0 0) (d 0 0 5)) 1e-12) "disjoint")
+    (is (close? 0.5 (ess/overlap (d 1 1 0) (d 0 1 1)) 1e-12))
+    (is (close? 0.0 (ess/overlap (d 0 0 0) (d 1 1 1)) 1e-12) "empty is no overlap")))
+
+(deftest weighted-correlation
+  (let [d (fn [& xs] (double-array xs))]
+    (is (close? 1.0 (ess/weighted-corr (d 1 2 3) (d 2 4 6) (d 1 1 1)) 1e-12))
+    (is (close? -1.0 (ess/weighted-corr (d 1 2 3) (d 3 2 1) (d 1 1 1)) 1e-12))
+    (is (close? 1.0 (ess/weighted-corr (d 1 2 3 9) (d 2 4 6 -50) (d 1 1 1 0)) 1e-12)
+        "a zero weight drops the point")
+    (is (nil? (ess/weighted-corr (d 1 1 1) (d 1 2 3) (d 1 1 1))) "no variance: undefined")))
+
+(def countries (mapv #(str "C" %) (range 20)))
+
+(defn- wave [i k] (+ 1.2 (Math/sin (+ (* 1.7 i) (* 0.9 k)))))
+
+(defn- flows
+  "Country rows of product `hs6` for `years`: exports and imports of
+  country index c in year y from (ex c y) and (im c y)."
+  [hs6 years ex im]
+  (for [y years [c name] (map-indexed vector countries)
+        :let [e (double (ex c y)) m (double (im c y))]
+        :when (or (pos? e) (pos? m))]
+    {:hs6 hs6 :year y :country name :exports e :imports m}))
+
+(def edge-years (range 1995 2015))
+
+(defn- ramp [y] (Math/exp (* 0.35 (- y 1995))))
+
+(def edge-world
+  (vec (concat
+        (map #(assoc % :value (* 1e9 (:share %))) (grower "282520" 1e-4 1e5 0.30 0.30 edge-years))
+        (map #(assoc % :value (* 1e9 (:share %))) (grower "850780" 1e-3 1e5 0.20 0.20 edge-years))
+        (map #(assoc % :value (* 1e9 (:share %))) (grower "720310" 1e-3 1e5 0.25 0.25 edge-years))
+        (mapcat (fn [i] (map #(assoc % :value (* 1e9 (:share %)))
+                             (grower (format "%04d00" (+ 3000 i)) (* 1e-4 (+ 0.5 (* 0.02 i))) 1e5
+                                     (* 0.001 i) (* 0.001 i) edge-years)))
+                (range 60)))))
+
+(def edge-countries
+  (vec (concat
+        ;; the input: imported by C0-C2 at a growing rate, C10-C12 flat
+        (flows "282520" edge-years (constantly 0.0)
+               (fn [c y] (cond (< c 3) (* 10 (ramp y)) (<= 10 c 12) 50.0 :else 0.0)))
+        ;; the downstream: exported by C0-C2, growing
+        (flows "850780" edge-years
+               (fn [c y] (if (< c 3) (* 100 (ramp y)) 1.0)) (fn [c _] (wave c 1)))
+        ;; a growing product made elsewhere (C15-C19)
+        (flows "720310" edge-years
+               (fn [c y] (if (>= c 15) (* 100 (ramp y)) 0.0)) (fn [c _] (wave c 2)))
+        ;; similar-sized products traded flat everywhere
+        (mapcat (fn [i] (flows (format "%04d00" (+ 3000 i)) edge-years
+                               (fn [c _] (* 40 (wave c i))) (fn [c _] (* 40 (wave c (+ i 7))))))
+                (range 60)))))
+
+(deftest placebo-pool-is-like-sized-and-unrelated
+  (let [pool (ess/placebo-pool edge-world "282520" 2010 10)
+        v (fn [code] (:value (first (filter #(and (= code (:hs6 %)) (= 2010 (:year %))) edge-world))))]
+    (is (= 10 (count pool)))
+    (is (not (contains? (set pool) "282520")))
+    (is (every? #(not= "2825" (subs % 0 4)) pool) "not the same heading")
+    (let [d (fn [c] (Math/abs (Math/log (/ (v c) (v "282520")))))
+          others (remove (set (conj pool "282520")) (distinct (map :hs6 edge-world)))]
+      (is (<= (apply max (map d pool)) (apply min (map d others))) "the nearest in size"))))
+
+(deftest proposes-the-downstream-its-importers-make
+  (let [panel (ess/country-panel edge-countries)
+        opts {:candidates #{"282520"} :placebos 39}
+        es (ess/edges edge-world panel 2010 opts)
+        by (into {} (map (juxt (juxt :input :output) identity)) es)
+        hit (by ["282520" "850780"])
+        decoy (by ["282520" "720310"])]
+    (is hit "the downstream is in the growing set")
+    (is (= 1 (:rank hit)) "the top proposal")
+    (is (:proposed hit))
+    (is (<= (:p hit) 0.05) "beats the like-sized placebos")
+    (is (pos? (:overlap-growth hit)))
+    (is (> (:comove hit) 0.5))
+    (is (= 2010 (:year hit)))
+    (is (= 2012 (:known hit)))
+    (is decoy "the other grower is scored")
+    (is (not (:proposed decoy)) "importers that do not make it: no edge")
+    (is (every? #(not= "282520" (:output %)) es) "no self edge")
+    (testing "candidates default to the rise top share"
+      (is (= #{"282520"} (set (map :input (ess/edges edge-world panel 2010 {:cand-pct 0.02 :placebos 39}))))))))
+
+(deftest edges-read-nothing-after-the-data-year
+  (let [y 2008
+        bad (fn [r] (> (:year r) y))
+        world2 (corrupt edge-world bad)
+        cty2 (mapv (fn [r] (if (bad r) (assoc r :imports (* 1e6 (wave 3 (:year r))) :exports 7.0) r))
+                   edge-countries)
+        opts {:candidates #{"282520"} :placebos 20}
+        key (fn [es] (into {} (map (juxt (juxt :input :output) (juxt :z :p :rank))) es))
+        a (key (ess/edges edge-world (ess/country-panel edge-countries) y opts))]
+    (is (seq a))
+    (is (= a (key (ess/edges world2 (ess/country-panel cty2) y opts))))
+    (testing "a corrupted present does change them"
+      (let [cty3 (mapv (fn [r] (if (= y (:year r)) (assoc r :imports (* 1e6 (wave 3 (:year r)))) r))
+                       edge-countries)]
+        (is (not= a (key (ess/edges edge-world (ess/country-panel cty3) y opts))))))))
+
+(deftest known-edges-from-recipes-and-parents
+  (let [recipes [{:region "A" :output "C_ELMA" :input "C_CHEM" :share 0.02}
+                 {:region "B" :output "C_ELMA" :input "C_CHEM" :share 0.01}
+                 {:region "C" :output "C_ELMA" :input "C_CHEM" :share 0.0}
+                 {:region "A" :output "C_MOTO" :input "C_CHEM" :share 0.001}
+                 {:region "B" :output "C_MOTO" :input "C_CHEM" :share 0.002}]
+        links (ess/recipe-links recipes 0.005)
+        parents {"282520" #{"C_CHEM"} "850780" #{"C_ELMA"} "870390" #{"C_MOTO"}}]
+    (is (= #{["C_CHEM" "C_ELMA"]} links) "the median share over regions, at or above the floor")
+    (is (ess/known-edge? links parents "282520" "850780"))
+    (is (not (ess/known-edge? links parents "282520" "870390")))
+    (is (not (ess/known-edge? links parents "999999" "850780")) "unmapped: not known")))
+
+(deftest edge-precision-against-known
+  (let [es [{:input "a" :output "x" :proposed true :rank 1}
+            {:input "a" :output "y" :proposed true :rank 2}
+            {:input "a" :output "z" :proposed false :rank 3}
+            {:input "b" :output "x" :proposed false :rank 1}]
+        known? (fn [a b] (contains? #{["a" "x"] ["b" "x"] ["a" "z"]} [a b]))
+        r (ess/edge-precision es known?)]
+    (is (= 2 (:proposed r)))
+    (is (= 1 (:hits r)))
+    (is (close? 0.5 (:precision r) 1e-12))
+    (is (= 4 (:pairs r)))
+    (is (= 3 (:known r)))
+    (is (close? 0.75 (:base r) 1e-12))
+    (is (close? (:p r) (ess/hypergeometric-tail 4 3 2 1) 1e-12))
+    (is (= 2 (:top-n r)) "the top proposal of each input")
+    (is (close? 1.0 (:top-precision r) 1e-12))))
