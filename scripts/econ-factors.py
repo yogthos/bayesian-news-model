@@ -29,10 +29,17 @@ Financialisation indicators:
                     (B2A3G). OECD Table 0800; Eurostat nasa_10_nf_tr where
                     OECD lacks the country-year. Outside the US D42 is all
                     there is: buybacks are not in the sector accounts.
-  nfc-net-lending   NFC net lending (B9) / NFC gross value added (B1G)
-  nfc-inv-profit    NFC gross fixed capital formation (P51G) / gross
-                    operating surplus (Stockhammer's accumulation against
-                    profit)
+  nfc-net-lending   NFC net lending (B9) / gross operating surplus. Over
+                    GOS, not value added: Japan has no S11 B1G in Table 0800
+  nfc-inv-profit    NFC gross fixed capital formation (P51G on total fixed
+                    assets, N11G; the table also breaks it down by asset) /
+                    gross operating surplus (Stockhammer's accumulation
+                    against profit)
+  nfc-property-income
+                    NFC property income received (D4, resources) / gross
+                    operating surplus (8a's portfolio income; Krippner).
+                    It includes dividends from subsidiaries, so holding-
+                    company economies (France, the Netherlands) read high
   fin-va-share      finance and insurance (ISIC K) share of gross value
                     added, OECD Table 6. HOOK: when data/derived/stocks/
                     econ-structure.csv exists (bead bnm-3ka.1, the
@@ -49,6 +56,9 @@ Investment regime indicators:
                     formation, ICSD (same split)
   public-wealth-ni  net public wealth / national income, WID wgweali999
   irr               PWT 11 internal rate of return on capital
+  hh-cons-share     household consumption / GDP, GMD hcons_GDP (forecast
+                    rows dropped), +1
+  current-account   current account / GDP, WDI BN.CAB.XOKA.GD.ZS, +1
   SOE share: no open cross-country panel (the doc, section 3); not built.
 Also written, not a factor indicator: log-gdp-pc (PWT rgdpna / pop, +3),
 for the validation's income control.
@@ -158,24 +168,33 @@ def fd_index():
 
 # ---------------------------------------------------------------- sector accounts
 
-def oecd_s11():
-    """{(iso, year): {transaction: value}} for S11, national currency."""
-    cols = ['REF_AREA', 'SECTOR', 'ACCOUNTING_ENTRY', 'TRANSACTION', 'UNIT_MEASURE',
-            'PRICE_BASE', 'TIME_PERIOD', 'OBS_VALUE']
-    head = pd.read_csv(RAW('econ', 'oecd-sna-sector-accounts', 'DF_TABLE14_all.csv.gz'), nrows=0).columns
-    use = [c for c in head if c.split(':')[0] in cols]
-    t = pd.read_csv(RAW('econ', 'oecd-sna-sector-accounts', 'DF_TABLE14_all.csv.gz'), usecols=use)
-    t.columns = [c.split(':')[0] for c in t.columns]
-    code = lambda s: s.str.split(':').str[0]
-    for c in ['REF_AREA', 'SECTOR', 'ACCOUNTING_ENTRY', 'TRANSACTION', 'UNIT_MEASURE', 'PRICE_BASE']:
-        t[c] = code(t[c])
-    t = t[(t.SECTOR == 'S11') & (t.UNIT_MEASURE == 'XDC') & (t.PRICE_BASE == 'V')]
+def s11_pivot(t):
+    """{(iso, year): {transaction: value}} for S11, national currency, from
+    Table 0800 rows with bare codes. P51G is broken down by asset in the
+    table; only the total (N11G, fixed assets) is taken. D4 received (the
+    resources side) is D4R."""
+    t = t[(t.SECTOR == 'S11') & (t.UNIT_MEASURE == 'XDC') & (t.PRICE_BASE == 'V')
+          & t.INSTR_ASSET.isin(['_Z', 'N11G'])]
     # uses (D) for payments, investment and balances; B9 and B1G appear on the uses side
-    want = {('D42', 'D'), ('B2A3G', 'D'), ('B2G', 'D'), ('B1G', 'D'), ('B9', 'D'), ('P51G', 'D')}
+    want = {('D42', 'D'), ('B2A3G', 'D'), ('B2G', 'D'), ('B1G', 'D'), ('B9', 'D'), ('P51G', 'D'), ('D4', 'C')}
     t = t[[(a, b) in want for a, b in zip(t.TRANSACTION, t.ACCOUNTING_ENTRY)]]
+    t = t.assign(TRANSACTION=np.where((t.TRANSACTION == 'D4') & (t.ACCOUNTING_ENTRY == 'C'), 'D4R', t.TRANSACTION))
     p = t.pivot_table(index=['REF_AREA', 'TIME_PERIOD'], columns='TRANSACTION', values='OBS_VALUE', aggfunc='first')
     p.index.names = ['iso', 'year']
     return p
+
+
+def oecd_s11():
+    cols = ['REF_AREA', 'SECTOR', 'ACCOUNTING_ENTRY', 'TRANSACTION', 'INSTR_ASSET', 'UNIT_MEASURE',
+            'PRICE_BASE', 'TIME_PERIOD', 'OBS_VALUE']
+    path = RAW('econ', 'oecd-sna-sector-accounts', 'DF_TABLE14_all.csv.gz')
+    head = pd.read_csv(path, nrows=0).columns
+    use = [c for c in head if c.split(':')[0] in cols]
+    t = pd.read_csv(path, usecols=use)
+    t.columns = [c.split(':')[0] for c in t.columns]
+    for c in ['REF_AREA', 'SECTOR', 'ACCOUNTING_ENTRY', 'TRANSACTION', 'INSTR_ASSET', 'UNIT_MEASURE', 'PRICE_BASE']:
+        t[c] = t[c].str.split(':').str[0]
+    return s11_pivot(t)
 
 
 def eurostat_s11(iso2):
@@ -187,14 +206,18 @@ def eurostat_s11(iso2):
         for line in f:
             parts = line.rstrip('\n').split('\t')
             freq, unit, direct, item, sector, geo = parts[0].split(',')
-            if sector != 'S11' or unit != 'CP_MNAC' or direct != 'PAID':
+            if sector != 'S11' or unit != 'CP_MNAC':
                 continue
-            if item not in ('D42', 'B2A3G', 'B1G', 'B9', 'P51G'):
+            if direct == 'PAID' and item in ('D42', 'B2A3G', 'B1G', 'B9', 'P51G'):
+                name = item
+            elif direct == 'RECV' and item == 'D4':
+                name = 'D4R'
+            else:
                 continue
             for y, v in zip(years, parts[1:]):
                 v = re.sub(r'[^0-9.\-eE]', '', v.strip())
                 if v:
-                    rows.append((iso2.get(geo), y, item, float(v)))
+                    rows.append((iso2.get(geo), y, name, float(v)))
     e = pd.DataFrame(rows, columns=['iso', 'year', 'item', 'v']).dropna()
     p = e.pivot_table(index=['iso', 'year'], columns='item', values='v', aggfunc='first')
     return p
@@ -227,10 +250,11 @@ def nfc_indicators(iso2, countries):
     out = []
     ok = os_ > 0
     out.append(frame(iso[ok], yr[ok], payout[ok].values, FIN, 'nfc-payout', LAG['sna']))
-    va = p['B1G']
-    okv = va > 0
-    out.append(frame(iso[okv], yr[okv], (p['B9'] / va)[okv].values, FIN, 'nfc-net-lending', LAG['sna']))
+    # all four over the same denominator, gross operating surplus: Japan has no
+    # S11 value added (B1G) in Table 0800, and it is one of the comparisons
+    out.append(frame(iso[ok], yr[ok], (p['B9'] / os_)[ok].values, FIN, 'nfc-net-lending', LAG['sna']))
     out.append(frame(iso[ok], yr[ok], (p['P51G'] / os_)[ok].values, FIN, 'nfc-inv-profit', LAG['sna']))
+    out.append(frame(iso[ok], yr[ok], (p['D4R'] / os_)[ok].values, FIN, 'nfc-property-income', LAG['sna']))
     return out
 
 
@@ -307,6 +331,11 @@ def icsd():
                     usecols=['COUNTRY', 'INDICATOR', 'TIME_PERIOD', 'OBS_VALUE'])
     p = t.pivot_table(index=['COUNTRY', 'TIME_PERIOD'], columns='INDICATOR', values='OBS_VALUE', aggfunc='first')
     out = []
+    # current prices. ICSD gives PPP investment only in volume terms
+    # (P51G_PUPVT_Q_*), so the investment split leaves PPPs out; the capital
+    # split has them. The constant-price % of GDP forms are not used: at 2017
+    # prices they misstate past shares where the investment deflator moved
+    # (China's 1995 private investment reads 4.5% of GDP).
     for name, base in [('public-k-share', 'CAPSTCK'), ('gov-inv-share', 'P51G')]:
         g = p[f'{base}_S13_V_XDC']
         pv = p[f'{base}_PS_V_XDC']
@@ -315,6 +344,25 @@ def icsd():
         s = (g / tot)[(tot > 0) & g.notna() & pv.notna()]
         out.append(frame(s.index.get_level_values(0), s.index.get_level_values(1), s.values, INV, name, LAG['imf']))
     return out
+
+
+def current_account():
+    """Current account / GDP (%), WDI BN.CAB.XOKA.GD.ZS (8a's regime list)."""
+    w = json.load(open(RAW('slow', 'worldbank', 'BN.CAB.XOKA.GD.ZS.json')))[1]
+    d = pd.DataFrame([(x['countryiso3code'], int(x['date']), x['value']) for x in w
+                      if x['value'] is not None and x['countryiso3code']], columns=['iso', 'year', 'v'])
+    return frame(d.iso, d.year, d.v, INV, 'current-account', LAG['wdi'])
+
+
+def household_share():
+    """Household consumption / GDP (%), GMD hcons_GDP (8a: loads negatively
+    on the regime), forecast rows dropped. GMD is a 2026 vintage compiled
+    from WDI, WEO and national sources: known +1, as WDI."""
+    import pyreadstat
+    g, _ = pyreadstat.read_dta(RAW('slow', 'fiscal', 'GMD_2026_09.dta'),
+                               usecols=['ISO3', 'year', 'hcons_GDP', 'forecast_hcons_GDP'])
+    g = g[(g.forecast_hcons_GDP == 0) & (g.year >= 1960)]
+    return frame(g.ISO3, g.year, g.hcons_GDP, INV, 'hh-cons-share', LAG['wdi'])
 
 
 def pwt():
@@ -331,7 +379,7 @@ def pwt():
 def coverage(d):
     lines = ['indicator coverage (countries, data years, rows; known = data year + lag)', '']
     for (c, i), g in d.groupby(['concept', 'indicator']):
-        lines.append(f'{c:18s} {i:18s} {g.iso.nunique():4d} countries  {g.year.min()}-{g.year.max()}  '
+        lines.append(f'{c:18s} {i:20s} {g.iso.nunique():4d} countries  {g.year.min()}-{g.year.max()}  '
                      f'{len(g):6d} rows  lag {int((g.known - g.year).iloc[0])}')
     lines.append('')
     lines.append('countries with at least 3 indicators of the concept in some data year:')
@@ -352,6 +400,8 @@ def build():
     parts += fin_va(countries)
     parts += wid(iso2)
     parts += icsd()
+    parts.append(current_account())
+    parts.append(household_share())
     parts += pw
     d = pd.concat(parts, ignore_index=True)
     d = d[d.iso.isin(countries)].sort_values(['iso', 'concept', 'indicator', 'year'])
@@ -374,6 +424,19 @@ def selftest():
     new = pd.DataFrame({'iso': ['USA'], 'year': [2018], 'data_year': [2015], 'variable': [v], 'value': [0.07]})
     d = structure_rows(new, v, {'USA'})
     assert list(d.year) == [2015] and list(d.known) == [2018], d
+    # the S11 pivot takes P51G on total fixed assets (N11G), not a breakdown
+    # by asset, and D4 received as D4R
+    toy = pd.DataFrame({
+        'REF_AREA': ['ITA'] * 7, 'TIME_PERIOD': [2015] * 7, 'SECTOR': ['S11'] * 7,
+        'UNIT_MEASURE': ['XDC'] * 7, 'PRICE_BASE': ['V'] * 7,
+        'TRANSACTION': ['P51G', 'P51G', 'P51G', 'B2A3G', 'D4', 'D4', 'D42'],
+        'ACCOUNTING_ENTRY': ['D', 'D', 'D', 'D', 'C', 'D', 'D'],
+        'INSTR_ASSET': ['N111G', 'N11G', 'N112G', '_Z', '_Z', '_Z', '_Z'],
+        'OBS_VALUE': [2.0, 150.0, 30.0, 300.0, 40.0, 60.0, 140.0]})
+    pv = s11_pivot(toy)
+    assert pv.loc[('ITA', 2015), 'P51G'] == 150.0, pv
+    assert pv.loc[('ITA', 2015), 'D4R'] == 40.0, pv
+    assert pv.loc[('ITA', 2015), 'D42'] == 140.0, pv
     if os.path.exists(OUT):
         t = pd.read_csv(OUT)
         assert (t.known >= t.year).all(), t[t.known < t.year].head()

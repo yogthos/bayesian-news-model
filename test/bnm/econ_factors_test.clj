@@ -175,3 +175,108 @@
       (is (< (Math/abs ((:loading (ef/fit-rows rs {:anchors ["junk" "b"]})) "junk")) 0.2))
       (is (pos? ((:loading (ef/fit-rows rs {:anchors ["junk" "b"]})) "b")))
       (is (neg? ((:loading (ef/fit-rows rs {:anchors ["junk" "b"]})) "a"))))))
+
+;; ---------------------------------------------------------------- scaling tails
+
+(deftest skewed-indicator-keeps-its-top
+  (testing "a skewed indicator's upper tail below the 99th percentile is not clipped flat"
+    ;; 300 values: most near 0, a long right tail (an index like the IMF FD
+    ;; index, where the rich economies sit many MADs above the median)
+    (let [xs (vec (for [i (range 300)] (if (< i 200) (* 0.001 i) (* 0.01 (- i 150)))))
+          obs (mapv (fn [x] {"s" x}) (conj xs 1.0e6))
+          stats (#'ef/moments obs ["s"] 4.0)
+          z (fn [x] (get (#'ef/standardise {"s" x} stats 4.0) "s"))
+          top (map z [1.2 1.3 1.4 1.45])]
+      (is (apply < top) "distinct values far above 4 MAD stay distinct")
+      (is (< (z 1.0e6) (* 1.05 (z 1.5))) "the wild value is held near the 99th percentile")))
+  (testing "a symmetric indicator is still clipped at 4 robust SDs"
+    (let [xs (vec (for [i (range 400)] (- (* 0.01 i) 2.0)))
+          obs (mapv (fn [x] {"s" x}) (conj xs 1.0e6 -1.0e6))
+          stats (#'ef/moments obs ["s"] 4.0)
+          z (fn [x] (get (#'ef/standardise {"s" x} stats 4.0) "s"))]
+      (is (= (z 1.0e6) (z 1.0e5)))
+      (is (= (z -1.0e6) (z -1.0e5))))))
+
+;; ---------------------------------------------------------------- balanced panel
+
+(deftest balanced-panel-fit
+  (let [;; "c" and "d" only for odd countries, as the NFC accounts cover a subset
+        sparse (vec (remove (fn [{:keys [iso indicator]}]
+                              (and (even? (parse-long (subs iso 1))) (#{"c" "d"} indicator)))
+                            rows))
+        bal (ef/fit-rows sparse {:anchors ["a"] :balanced ["c" "d"]})
+        full (ef/fit-rows rows {:anchors ["a"]})]
+    (testing "only the country-years holding every balanced indicator train the fit"
+      (is (= (* 20 21) (:n bal)))
+      (is (= ["c" "d"] (:balanced bal))))
+    (testing "the loadings match the full fit's"
+      (doseq [j (keys truth)]
+        (is (close? 0.08 ((:loading full) j) ((:loading bal) j)) j)))
+    (testing "a country without the balanced indicators is still scored from what it has"
+      (let [s (ef/score bal {"a" 11.0 "b" 9.0})]
+        (is (= 2 (:k s)))
+        (is (pos? (:f s)))))
+    (testing "the expanding fit is balanced in every year"
+      (let [res (ef/expanding sparse (range 1995 2000) {:anchors ["a"] :balanced ["c" "d"]})]
+        (doseq [[y fit] (:fits res)]
+          (is (= (* 20 (- y 1991)) (:n fit)) y))))))
+
+;; ---------------------------------------------------------------- index
+
+(def signs {"a" 1 "b" -1 "c" 1 "d" 1})
+
+(deftest index-construction
+  (let [fit (ef/fit-rows rows {:method :index :signs signs})
+        x (fn [i] (into {} (for [r rows :when (and (= (:iso r) (countries i)) (= 2000 (:year r)))]
+                            [(:indicator r) (:value r)])))
+        s (mapv #(:f (ef/score fit (x %))) (range 40))]
+    (testing "an equal-weight index of signed, standardised indicators orders the countries"
+      (is (= :index (:method fit)))
+      (is (> (corr s (map level (range 40))) 0.98)))
+    (testing "the sign prior is applied: a high b reads low"
+      (is (neg? (:f (ef/score fit {"b" 11.0}))))
+      (is (pos? (:f (ef/score fit {"a" 11.0})))))
+    (testing "the index is in SD units over the training rows"
+      (let [all (for [[_ o] (ef/observations rows)] (:f (ef/score fit o)))
+            n (count all) m (/ (reduce + all) n)
+            sd (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) all)) (dec n)))]
+        (is (close? 1e-6 0.0 m))
+        (is (close? 1e-6 1.0 sd))))
+    (testing "equal weights: each indicator counts the same"
+      (let [z (fn [j v] (:f (ef/score fit {j v})))]
+        (is (close? 1e-9 (+ (z "a" 11.0) (z "c" 10.6)) (* 2 (:f (ef/score fit {"a" 11.0 "c" 10.6})))))))
+    (testing "no indicators, or too few, no score"
+      (is (nil? (ef/score fit {})))
+      (is (nil? (ef/score fit {"zzz" 1.0})))
+      (is (nil? (ef/score (assoc fit :min-k 2) {"a" 11.0})))
+      (is (= 2 (:k (ef/score (assoc fit :min-k 2) {"a" 11.0 "b" 9.0})))))
+    (testing "an indicator without a sign is not used"
+      (let [f2 (ef/fit-rows rows {:method :index :signs (dissoc signs "d")})]
+        (is (nil? (get-in f2 [:signs "d"])))
+        (is (= 3 (:k (ef/score f2 (x 3)))))))
+    (testing "the index has no posterior SD"
+      (is (nil? (:sd (ef/score fit (x 3))))))))
+
+(deftest index-is-causal
+  (let [years (range 1995 2014)
+        opts {:method :index :signs signs}
+        base (ef/expanding rows years opts)
+        later (into (mapv (fn [r] (if (>= (:known r) 2008) (update r :value * 5.0) r)) rows)
+                    (for [y (range 2008 2011) [j _] truth]
+                      {:iso "NEW" :year y :known (+ y 2) :indicator j :value 99.0}))
+        more (ef/expanding later years opts)
+        upto (fn [res] (filter #(< (:year %) 2008) (:scores res)))]
+    (is (seq (upto base)))
+    (is (= (upto base) (upto more)))
+    (is (= (select-keys (:fits base) (range 1995 2008))
+           (select-keys (:fits more) (range 1995 2008))))
+    (is (not= (:scores base) (:scores more)))
+    (testing "the 1995 index is scaled on rows known by 1995 only"
+      (is (= (count (distinct (map (juxt :iso :year) (filter #(<= (:known %) 1995) rows))))
+             (:n (get (:fits base) 1995)))))))
+
+(deftest index-stock-rows
+  (let [res (ef/expanding rows (range 1995 1998) {:method :index :signs signs})
+        out (ef/stock-rows "financialisation" res)]
+    (is (= #{"econ/financialisation" "econ/financialisation-n"} (set (map :variable out))))
+    (is (every? #(< (Math/abs (double (:value %))) 1.0e300) out))))

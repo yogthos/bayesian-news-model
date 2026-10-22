@@ -10,11 +10,16 @@ data/derived/econ/econ-factors-check.txt.
   2. Not just income: the cross-country correlation of each factor with log
      GDP per head (PWT, the value known by the same year), and the ranks of
      the residual of the factor on log income.
+  2b. Krein's ranking: the US and UK against Germany, Japan, Korea and
+     China on each financialisation candidate (the NFC index, its
+     one-factor fit, market size, depth).
   3. H3 as registered: the investment regime known in 2009 (data to about
      2007) separates CHN, KOR, TWN, VNM from USA, GBR, AUS, CAN at equal
      income: the groups' mean residual (on log income) differs by more than
      1 SD of the factor, and |corr with log income| < 0.5. Bootstrap over
-     countries (2,000 draws) for the interval.
+     countries (2,000 draws) for the interval. Run on econ/investment-regime
+     and, for comparison, on econ/investment-regime-index (an equal-weight
+     index of 8a's priors) and econ/public-capital (the earlier spec).
   4. Is the regime learned or labelled? k-means (k=3, 100 starts, seed 0)
      on the two factors (country means over years known 1997-2021, i.e.
      data about 1995-2019) against the doc's income-dominated k-means
@@ -36,7 +41,9 @@ D = lambda *p: os.path.join(ROOT, 'data', *p)
 OUT = D('derived', 'econ', 'econ-factors-check.txt')
 FOCUS = ['USA', 'GBR', 'CAN', 'AUS', 'FRA', 'DEU', 'JPN', 'ITA', 'KOR', 'CHN', 'TWN', 'VNM', 'IND', 'BRA', 'RUS', 'SGP']
 FACTORS = ['econ/financialisation', 'econ/investment-regime']
-REPORTED = FACTORS + ['econ/financial-depth']
+REPORTED = FACTORS + ['econ/financialisation-cfa', 'econ/market-size', 'econ/financial-depth',
+                      'econ/investment-regime-index', 'econ/public-capital']
+KREIN_HIGH, KREIN_LOW = ['USA', 'GBR'], ['DEU', 'JPN', 'KOR', 'CHN']
 lines = []
 
 
@@ -78,10 +85,36 @@ def section_ranks(st, ind):
                         + (f'  partial rank {rr[iso]:3d}/{len(r)} (resid {r[iso]:+.2f})' if iso in r.index else ''))
 
 
-def h3(st, ind, rng):
+def section_krein(st, ind):
+    """The US and UK against Germany, Japan, Korea and China on each
+    financialisation candidate: Krein's claim is that the first two rank
+    above the rest."""
+    say('\n-- Krein ranking: USA, GBR against DEU, JPN, KOR, CHN (rank among the countries scored; '
+        'mean over years known 1997-2021 and at 2009, 2019)')
+    for v in ['econ/financialisation', 'econ/financialisation-cfa', 'econ/market-size', 'econ/financial-depth']:
+        f = st[st.variable == v]
+        if f.empty:
+            continue
+        for label, g in [('mean 1997-2021', f[f.year.between(1997, 2021)].groupby('iso').value.mean()),
+                         ('2009', f[f.year == 2009].set_index('iso').value),
+                         ('2019', f[f.year == 2019].set_index('iso').value)]:
+            rk = ranks(g)
+            hi = [i for i in KREIN_HIGH if i in g.index]
+            lo = [i for i in KREIN_LOW if i in g.index]
+            ok = bool(hi and lo) and min(g[hi]) > max(g[lo])
+            say(f'{v} {label} (n {len(g)}): '
+                + '  '.join(f'{i} {g[i]:+.2f} ({rk[i]})' for i in hi + lo)
+                + f'  -> US and UK above all of {lo}: {ok}')
+    a = st[st.variable.isin(['econ/financialisation', 'econ/market-size', 'econ/financial-depth'])
+           & st.year.between(1997, 2021)].pivot_table(index=['iso', 'year'], columns='variable', values='value').dropna()
+    say(f'country-year correlations, years known 1997-2021 (n {len(a)}):')
+    say(a.corr().round(2).to_string())
+
+
+def h3(st, ind, rng, variable='econ/investment-regime'):
     y = 2009
     inc = income_known(ind, y)
-    f = st[(st.variable == 'econ/investment-regime') & (st.year == y)].set_index('iso').value
+    f = st[(st.variable == variable) & (st.year == y)].set_index('iso').value
     r, j = residual(f, inc)
     sd = j.f.std()
     A, B = ['CHN', 'KOR', 'TWN', 'VNM'], ['USA', 'GBR', 'AUS', 'CAN']
@@ -100,7 +133,7 @@ def h3(st, ind, rng):
         rr = lambda k: (j.f[k] - np.polyval(bfit, j.x[k])).mean()
         boot.append((rr(aa) - rr(bb)) / s.f.std())
     lo, hi = np.percentile(boot, [5, 95])
-    say(f'\n-- H3, investment regime known {y} (data to about 2007), n {len(j)}')
+    say(f'\n-- H3, {variable} known {y} (data to about 2007), n {len(j)}')
     say(f'groups {a} vs {b}')
     say(f'raw mean gap {raw:+.2f} SD; at equal income (residual on log income) {gap:+.2f} SD, 90% bootstrap [{lo:+.2f}, {hi:+.2f}]')
     say(f'|corr with log income| {abs(c):.2f}')
@@ -185,7 +218,10 @@ def main():
     pd.set_option('display.width', 200)
     say('econ-factors validation (descriptive); factors in SD units of the training panel')
     section_ranks(st, ind)
+    section_krein(st, ind)
     h3(st, ind, rng)
+    h3(st, ind, np.random.default_rng(0), 'econ/investment-regime-index')
+    h3(st, ind, np.random.default_rng(0), 'econ/public-capital')
     section_clusters(st, ind, rng)
     open(OUT, 'w').write('\n'.join(lines) + '\n')
     print('to', OUT)
