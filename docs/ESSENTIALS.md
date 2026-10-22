@@ -461,13 +461,13 @@ drops to zero.
 | PV cells and modules, LEDs | together in 854140 | 854142/854143 PV and 854141 LED (HS2022+) |
 | integrated circuits | 854211-854280 (broken at revisions) | 854231-854239 (HS2007+) |
 | rare-earth metals | 280530 | the same |
-| rare-earth compounds | 284610 cerium, 284690 other | finer in HS2022 (2846 split) |
+| rare-earth compounds | 284610 cerium, 284690 other | not split further in HS2022 (still 284610, 284690) |
 | permanent magnets | 850511 | the same |
 | cobalt | 260500 ore, 282200 oxides, 810510 mattes and unwrought | 810520/810530 (HS2002+) |
 | nickel | 750110 matte, 750120 intermediates (HPAL), 283324 sulphate | |
 | graphite | 250410, 250490 natural; 380110 artificial | |
 | polysilicon | 280461 (Si ≥ 99.99%) | |
-| gallium, germanium | 8112.91 (with In, Nb, Re); 811230 germanium, lost after 2017 | still not separable in HS6; use USGS |
+| gallium, germanium | 8112.91 (with In, Nb, Re); 811230 germanium only in HS92-HS02 | gallium not separable in any HS edition; use USGS |
 | N, P, K | 281410 ammonia, 310210 urea, 251010 phosphate rock, 310420 KCl | |
 | copper | 260300 ore, 740311 cathode, 741022 foil (battery anodes) | |
 
