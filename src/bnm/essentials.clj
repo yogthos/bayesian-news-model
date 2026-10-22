@@ -7,7 +7,18 @@
   window Y-7..Y of log(share of world trade value) and of log(tonnes);
   the score is the smaller of the two, so a price spike (value up, tonnes
   flat) or a quantity artefact (tonnes up, value flat) does not count as a
-  rise. A missing year is no trade: share 0, tonnes 0.
+  rise. A missing year is no trade: share 0, tonnes 0. BACI leaves the
+  quantity blank for some flows, so a year's world tonnes cover only part
+  of its value (:tonnes-cover, from scripts/baci.py): they are scaled up
+  by 1 / cover (the uncovered flows at the covered unit value), else a
+  coverage that rises over the window reads as a tonnes rise (cobalt
+  oxides 2010-14 have 64-87%). A year with a row but no tonnes, or with a
+  cover under :min-cover, is unknown for the tonnes trend, not zero: the
+  slope is taken over the other years. With fewer than :min-tonnes-years known
+  years in the window there is no tonnes trend, so no guard against a price
+  spike: the product is flagged :tonnes-gap and not ranked. Theil-Sen
+  already shrugs off two bad points of eight (28 pairwise slopes, 13 touch
+  them), which is why 6 of 8 is the floor; it was set a priori, not fitted.
 
   Eligible: a window of 8 data years, a mean share over Y-2..Y of at least
   5 ppm of world trade, and no revision step. HS revisions (1996, 2002,
@@ -17,8 +28,28 @@
   half of the window's whole change. Once the revision year leaves the
   window it is ranked again.
 
-  Eligible products are ranked per edition and year, 1 the fastest riser;
-  :pct is rank / number ranked (top 1%: pct <= 0.01).
+  One rank per data year: the eligible products of :rank-edition (HS92,
+  the only edition that runs 1995-2024) are ranked, 1 the fastest riser;
+  :pct is rank / number ranked (top 1%: pct <= 0.01). That is the rank the
+  model reads. Rows of later editions (HS12 from 2012, HS17 from 2017) are
+  sub-node detail for codes HS92 lumps (850760 Li-ion inside 850780,
+  870380 battery cars inside 870390): they are scored the same way and get
+  :detail-rank and :detail-n within their own edition, never :rank. Their
+  ranks are not comparable with HS92's (different product sets and
+  windows) and a product is never counted twice.
+
+  Thresholds and what was chosen when (PRINCIPLES 9). The 8-year window,
+  the 5 ppm floor and the revision filter (a jump above 0.5 in log carrying
+  more than half the window's change) come from the exploratory scan of
+  docs/ESSENTIALS.md section 6, run before the registered targets were
+  written; the targets themselves (lithium, cobalt in the top 1% by 2018-19)
+  were then set from that scan's observed ranks. So the targets are
+  in-sample checks of this code, not validation. No record says the
+  thresholds were searched, but they were fixed by someone who had seen
+  the lithium and cobalt ranks; tools/bnm/essentials_check.clj prints the
+  targets under other thresholds, and the held-out test is the precision
+  against the EU 2023 and USGS 2022 critical lists (`precision`), which
+  played no part in any choice.
 
   Rows are hs6-world.csv's (scripts/baci.py): {:hs edition :year data
   year :known year known :hs6 :share :tonnes}. BACI for year Y is known in
@@ -35,7 +66,10 @@
    :min-share 5e-6    ; mean share of world trade over the last 3 years
    :eps 1e-9          ; log(share + eps): a product's absence is not -inf
    :jump 0.5          ; a revision step is a log jump above this...
-   :carry 0.5})       ; ...carrying more than this share of the window's change
+   :carry 0.5         ; ...carrying more than this share of the window's change
+   :min-cover 0.5     ; a year's tonnes count when they cover this share of its value
+   :min-tonnes-years 6 ; years with known tonnes needed for a tonnes trend
+   :rank-edition "HS92"})
 
 (defn median
   "The median of `xs` (the mean of the middle two when even), nil if empty."
@@ -58,53 +92,68 @@
 
 (defn- revision-step?
   "Whether a revision year in the window carries the change of `logs`
-  ({year log-value}) over the window years `ys`."
+  ({year log-value}, unknown years absent) over the window years `ys`.
+  A revision year counts when it and the year before are both known."
   [logs ys {:keys [jump carry]}]
-  (let [lo (first ys) hi (peek ys)
-        total (+ 1e-9 (Math/abs (- (logs hi) (logs lo))))
-        jumps (for [r revisions :when (and (< lo r) (<= r hi))]
-                (Math/abs (- (logs r) (logs (dec r)))))]
-    (boolean (when (seq jumps)
-               (let [m (apply max jumps)]
-                 (and (> m jump) (> (/ m total) carry)))))))
+  (let [known (filterv #(contains? logs %) ys)]
+    (boolean
+     (when (>= (count known) 2)
+       (let [lo (first known) hi (peek known)
+             total (+ 1e-9 (Math/abs (- (logs hi) (logs lo))))
+             jumps (for [r revisions
+                         :when (and (< lo r) (<= r hi) (contains? logs r) (contains? logs (dec r)))]
+                     (Math/abs (- (logs r) (logs (dec r)))))]
+         (when (seq jumps)
+           (let [m (apply max jumps)]
+             (and (> m jump) (> (/ m total) carry)))))))))
 
 (defn- score-product
   "The rise entry of one product at data year `y`, from its rows by year
   `by-year` (already cut to years <= y)."
-  [by-year y {:keys [window min-share eps] :as opts}]
+  [by-year y {:keys [window min-share eps min-cover min-tonnes-years] :as opts}]
   (let [ys (vec (range (- y (dec window)) (inc y)))
         share (fn [t] (double (or (:share (by-year t)) 0.0)))
-        tonnes (fn [t] (double (or (:tonnes (by-year t)) 0.0)))
+        ;; tonnes of year t: 0 without a row (no trade), nil when unknown
+        tonnes (fn [t] (if-let [r (by-year t)]
+                         (let [q (:tonnes r) c (:tonnes-cover r)]
+                           (when (and q (or (nil? c) (>= c min-cover)))
+                             (/ (double q) (double (or c 1.0)))))
+                         0.0))
         ls (into {} (for [t ys] [t (Math/log (+ (share t) eps))]))
-        lt (into {} (for [t ys] [t (Math/log (+ (tonnes t) 1.0))]))
+        lt (into {} (for [t ys :let [q (tonnes t)] :when q] [t (Math/log (+ q 1.0))]))
+        gap (< (count lt) min-tonnes-years)
         ss (theil-sen (map (juxt identity ls) ys))
-        st (theil-sen (map (juxt identity lt) ys))
+        st (when-not gap (theil-sen (sort-by first lt)))
         level (/ (reduce + (map share (subvec ys (- window 3)))) 3.0)
-        step (or (revision-step? ls ys opts) (revision-step? lt ys opts))]
-    {:share-slope ss :tonnes-slope st :score (min ss st)
-     :level level :revision-step step
-     :eligible (and (>= level min-share) (not step))}))
+        step (or (revision-step? ls ys opts) (and (not gap) (revision-step? lt ys opts)))]
+    {:share-slope ss :tonnes-slope st :score (when st (min ss st))
+     :level level :revision-step step :tonnes-gap gap
+     :eligible (and (>= level min-share) (not step) (not gap))}))
 
 (defn- rank-group
-  "Rank the eligible entries of one edition, best score first."
-  [entries]
+  "Rank the eligible entries of one edition, best score first, as :rank
+  :n :pct when `ranked?`, else as :detail-rank :detail-n."
+  [entries ranked?]
   (let [scores (sort > (keep #(when (:eligible %) (:score %)) entries))
-        n (count scores)]
-    (for [e entries]
-      (if (:eligible e)
-        (let [r (inc (count (take-while #(> % (:score e)) scores)))]
-          (assoc e :rank r :n n :pct (/ (double r) n)))
-        (assoc e :rank nil :n n :pct nil)))))
+        n (count scores)
+        rank-of (fn [e] (when (:eligible e)
+                          (inc (count (take-while #(> % (:score e)) scores)))))]
+    (for [e entries :let [r (rank-of e)]]
+      (if ranked?
+        (assoc e :rank r :n n :pct (when r (/ (double r) n)))
+        (assoc e :rank nil :n nil :pct nil :detail-rank r :detail-n n)))))
 
 (defn rise
   "Rise entries at data year `y` of every product in `rows` with a row in
-  the window, ranked per edition: {:hs :hs6 :year :known :score
-  :share-slope :tonnes-slope :level :revision-step :eligible :rank :n
-  :pct}, sorted by edition and rank (unranked last). Reads only rows with
-  :year <= y. Empty before a full window of data years exists."
+  the window: {:hs :hs6 :year :known :score :share-slope :tonnes-slope
+  :level :revision-step :tonnes-gap :eligible :rank :n :pct}, ranked on
+  :rank-edition; other editions' entries carry :detail-rank :detail-n
+  instead (see the namespace doc). Sorted by edition and rank (unranked
+  last). Reads only rows with :year <= y. Empty before a full window of
+  data years exists."
   ([rows y] (rise rows y {}))
   ([rows y opts]
-   (let [{:keys [window] :as o} (merge defaults opts)
+   (let [{:keys [window rank-edition] :as o} (merge defaults opts)
          lo (- y (dec window))
          seen (filter #(<= (:year %) y) rows)
          first-year (into {} (for [[hs rs] (group-by :hs seen)]
@@ -118,8 +167,8 @@
                     (assoc (score-product (into {} (map (juxt :year identity)) rs) y o)
                            :hs hs :hs6 hs6 :year y :known known))))
           (group-by :hs)
-          (mapcat (fn [[_ es]] (rank-group es)))
-          (sort-by (juxt :hs #(or (:rank %) Long/MAX_VALUE) :hs6))
+          (mapcat (fn [[hs es]] (rank-group es (= hs rank-edition))))
+          (sort-by (juxt :hs #(or (:rank %) (:detail-rank %) Long/MAX_VALUE) :hs6))
           vec))))
 
 (defn rise-known
@@ -131,3 +180,35 @@
      (if (empty? kn)
        []
        (rise kn (reduce max (map :year kn)) opts)))))
+
+;; ---------------------------------------------------------------- held-out precision
+
+(defn- log-choose [n k]
+  (if (or (neg? k) (> k n))
+    Double/NEGATIVE_INFINITY
+    (reduce + 0.0 (for [i (range k)] (- (Math/log (- n i)) (Math/log (inc i)))))))
+
+(defn hypergeometric-tail
+  "P(X >= x) for X the labelled count in `k` draws without replacement from
+  `n` items of which `m` are labelled."
+  [n m k x]
+  (let [den (log-choose n k)]
+    (min 1.0 (reduce + 0.0 (for [i (range (max x 0) (inc (min m k)))]
+                             (Math/exp (- (+ (log-choose m i) (log-choose (- n m) (- k i))) den)))))))
+
+(defn precision
+  "Precision of the top `k` ranked `entries` (those with a :rank, ties
+  broken by :hs6) against the set `labels` of hs6 codes, and what a random
+  k drawn from the ranked products would give: {:k :hits :precision :n
+  (products ranked) :labeled (labelled among them) :base (the expected
+  precision of a random k) :p (P(hits or more) by chance, hypergeometric)}.
+  Labels outside the ranked set (ineligible, absent) do not count."
+  [entries labels k]
+  (let [ranked (sort-by (juxt :rank :hs6) (filter :rank entries))
+        n (count ranked)
+        k (min k n)
+        m (count (filter #(contains? labels (:hs6 %)) ranked))
+        hits (count (filter #(contains? labels (:hs6 %)) (take k ranked)))]
+    {:k k :hits hits :precision (if (pos? k) (/ (double hits) k) 0.0)
+     :n n :labeled m :base (if (pos? n) (/ (double m) n) 0.0)
+     :p (hypergeometric-tail n m k hits)}))

@@ -128,8 +128,78 @@
           (is (nil? (:rank (first (filter #(= "900003" (:hs6 %)) (ess/rise q (max 2002 (min 2024 (+ rev 2))))))))
               (str rev)))))))
 
-(deftest editions-rank-separately
+(deftest one-rank-per-year-on-hs92
   (let [hs12 (map #(assoc % :hs "HS12") (grower "850760" 1e-4 1e5 0.9 0.9 (range 2012 2025)))
-        r (ess/rise (into panel hs12) 2020)]
-    (is (= 1 (:rank (first (filter #(= "850760" (:hs6 %)) r)))))
-    (is (= 1 (:rank (first (filter #(and (= "HS92" (:hs %)) (= "000005" (:hs6 %))) r)))) "HS92's own fastest")))
+        r (ess/rise (into panel hs12) 2020)
+        li (first (filter #(= "850760" (:hs6 %)) r))
+        hs92 (filter #(= "HS92" (:hs %)) r)]
+    (testing "the rank is HS92's alone"
+      (is (nil? (:rank li)) "a later edition's code has no rank of its own")
+      (is (= 1 (:rank (first (filter #(= "000005" (:hs6 %)) hs92)))) "HS92's own fastest")
+      (is (= (count (filter :rank r)) (count (filter :rank hs92))))
+      (is (every? #(= (count (filter :rank hs92)) (:n %)) (filter :rank r))))
+    (testing "later editions carry a detail rank within their own edition"
+      (is (= 1 (:detail-rank li)))
+      (is (= 1 (:detail-n li)))
+      (is (every? #(nil? (:detail-rank %)) hs92)))
+    (testing "another edition can be chosen as the ranked one"
+      (is (= 1 (:rank (first (filter #(= "850760" (:hs6 %)) (ess/rise (into panel hs12) 2020 {:rank-edition "HS12"})))))))))
+
+;; ---------------------------------------------------------------- tonnes gaps
+
+(defn- gappy
+  "`grower` rows with the tonnes of the years in `gaps` blanked (BACI has
+  no quantity for them), and the years in `covers` ({year cover}) carrying
+  :tonnes-cover with tonnes counted only for that share of the value."
+  [hs6 gs gt gaps covers]
+  (for [r (grower hs6 1e-4 1e5 gs gt years)]
+    (cond-> r
+      (contains? gaps (:year r)) (assoc :tonnes nil)
+      (contains? covers (:year r)) (-> (assoc :tonnes-cover (covers (:year r)))
+                                       (update :tonnes * (covers (:year r)))))))
+
+(deftest missing-tonnes-are-unknown-not-zero
+  (let [p (vec (concat panel
+                       (gappy "800001" 0.20 0.20 #{2009 2010} {})
+                       (gappy "800002" 0.30 0.05 #{2003 2004} {})
+                       (gappy "800003" 0.20 0.20 #{2004 2006 2008} {})
+                       (gappy "800004" 0.30 0.05 #{} {2003 0.4 2004 0.3 2005 0.45})
+                       (gappy "800006" 0.30 0.05 #{} {2003 0.6 2004 0.7 2005 0.8})))
+        by (into {} (map (juxt :hs6 identity)) (ess/rise p 2010))]
+    (testing "two blank years at the end of the window are not a collapse"
+      (is (close? 0.20 (:tonnes-slope (by "800001")) 1e-6))
+      (is (:rank (by "800001")))
+      (is (not (:tonnes-gap (by "800001")))))
+    (testing "two blank years at the start are not a rise"
+      (is (close? 0.05 (:score (by "800002")) 1e-6)))
+    (testing "fewer than six years of tonnes: no tonnes trend, not ranked, flagged"
+      (is (:tonnes-gap (by "800003")))
+      (is (nil? (:tonnes-slope (by "800003"))))
+      (is (nil? (:rank (by "800003")))))
+    (testing "partly covered tonnes are scaled up to the year's value"
+      (is (close? 0.05 (:tonnes-slope (by "800006")) 1e-6) "an undercount early is not a rise")
+      (is (not (:tonnes-gap (by "800006")))))
+    (testing "a year whose tonnes cover under half its value is a gap"
+      (is (:tonnes-gap (by "800004")))
+      (is (nil? (:rank (by "800004")))))
+    (testing "a year without a row is still no trade, known zero tonnes"
+      (let [late (vec (concat panel (grower "800005" 1e-4 1e5 0.1 0.1 (range 2006 2025))))
+            e (first (filter #(= "800005" (:hs6 %)) (ess/rise late 2010)))]
+        (is (not (:tonnes-gap e)))
+        (is (:rank e))))))
+
+;; ---------------------------------------------------------------- held-out precision
+
+(deftest precision-against-labels
+  (let [entries (for [[i c] (map-indexed vector "abcdefghij")]
+                  {:hs6 (str c) :rank (inc i) :eligible true})
+        unranked {:hs6 "z" :rank nil :eligible false}
+        r (ess/precision (conj (vec entries) unranked) #{"a" "c" "z" "q"} 3)]
+    (is (= 3 (:k r)))
+    (is (= 2 (:hits r)))
+    (is (close? (/ 2.0 3) (:precision r) 1e-12))
+    (is (= 10 (:n r)) "only ranked products are drawn from")
+    (is (= 2 (:labeled r)) "labels outside the ranked set do not count")
+    (is (close? 0.2 (:base r) 1e-12) "a random k's expected precision")
+    (is (close? (/ 8.0 120) (:p r) 1e-12) "hypergeometric P(X >= 2), N 10, K 2, k 3")
+    (is (close? 1.0 (:p (ess/precision entries #{"j"} 3)) 1e-12) "no hits: p is 1")))
