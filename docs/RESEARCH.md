@@ -256,4 +256,8 @@ results do not move. Provinces carry a place's political identity, and much
 of GDELT's sub-national geocoding resolves to province centroids anyway (type
 4 locations), so a geometric grid adds no information and splits the signal.
 The inference-path work (bnm-7u4.2), conditional on a win, is not done, and
-dodeca stays a research-tooling dependency.
+dodeca stays a research-tooling dependency. Since then space itself has moved to cells
+(principle 11, bnm-3ka.10): dodeca is a main dependency and `bnm.cells` the
+spatial API, while which unit inference reads is still open; the comparison is
+to be rerun once cells carry assets, resources, gridded output, night lights
+and population (bnm-3ka.11).

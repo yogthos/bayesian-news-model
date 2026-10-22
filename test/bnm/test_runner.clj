@@ -28,6 +28,7 @@
             [bnm.world3-test]
             [bnm.assimilate-test]
             [bnm.material-test]
+            [bnm.cell-assets-test]
             [bnm.cells-test]
             [bnm.geo-test]
             [bnm.network-test]
@@ -103,6 +104,7 @@
     bnm.world3-test
     bnm.assimilate-test
     bnm.material-test
+    bnm.cell-assets-test
     bnm.cells-test
     bnm.geo-test
     bnm.network-test

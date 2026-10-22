@@ -97,6 +97,18 @@ Scoring (`bnm.eval`) follows the early-warning literature (see [docs/RESEARCH.md
 - for escalation: Brier skill against climatology, ROC AUC, average precision, and precision and recall among the top 10 per period, by stratum;
 - per period, the places the model most expected to escalate, beside those that did and the onsets (`forecasts/`).
 
+### Space
+
+Located quantities are kept on A5 equal-area cells (`bnm.cells`, resolution 6, about 8,300 km²), one entry per country where a cell crosses a border; countries, provinces and regions aggregate them ([docs/PRINCIPLES.md](docs/PRINCIPLES.md), 11).
+
+```sh
+python -I scripts/cells.py           # crosswalk: cell -> country, province, area share (data/derived/cells)
+python -I scripts/cell-assets.py     # plant and resource sources read into one form
+jolt -A:tools -M -m bnm.cell-assets  # assets on cells: data/derived/cells/assets.csv
+```
+
+The crosswalk is drawn from Natural Earth's current borders (public domain) and Marine Regions' EEZs (CC BY 4.0) under `data/raw/geo/`; `bnm.cells/country-in-year` reads a cell's country for a past year (the USSR, Yugoslavia, Sudan before 2011, the two Germanys).
+
 ## Tests
 
 ```sh
