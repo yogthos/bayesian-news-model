@@ -1,0 +1,252 @@
+(ns bnm.stages
+  "Stage concentration and processing displacement as stocks (beads
+  bnm-1pq.4, bnm-3ka.3; docs/ESSENTIALS.md section 8 step 3,
+  docs/ECONOMIC-CHARACTER.md 7d).
+
+  Reads data/derived/supply/stages.csv (scripts/minerals.py: commodity,
+  stage, iso, year, quantity, unit, source, known; one source per commodity
+  and stage) and stage-plants.csv (plant capacities), and writes
+  data/derived/stocks/stages.csv: iso,year,variable,value,top, the year a
+  value is known at.
+
+  Per commodity <c> and stage <s> (mine, smelter, refinery, chemical), at
+  iso WLD:
+    stages/<c>-<s>-hhi          Herfindahl index of country shares of world
+                                output
+    stages/<c>-<s>-top-share    the largest country's share; its iso is in
+                                the column top
+    stages/<c>-<s>-world        world output, in the stage's unit
+    stages/<c>-<s>-count        producing countries (bookkeeping)
+    stages/<c>-<s>-state-year   the data year read (bookkeeping)
+    stages/<c>-d                processing displacement, mine against the
+                                last stage of the chain:
+                                D = 1 - sum_c min(s_mine, s_proc), 0 when
+                                each country processes its own ore's share,
+                                1 when none does
+    stages/<c>-d-<a>-<b>        D between stages a and b (mine against each
+                                later stage, and each processing step
+                                against the next)
+    stages/<c>-state-year       the data year D is read for (bookkeeping)
+    stages/<c>-<s>-plant-hhi    Herfindahl index across plants by capacity
+    stages/<c>-<s>-plant-count  plants (bookkeeping)
+    stages/<c>-<s>-plant-coverage  the stage's world output share in the
+                                countries with a plant listed
+  and per country:
+    stages/<c>-<s>-share        the country's share of world output
+
+  Causal: at year K only rows known by K are read, from the latest data
+  year that has any; D reads the latest data year both stages have. A
+  stage whose data were last known more than :stale years before K is not
+  written. The source lag is the table's known column (BGS: data year + 2)."
+  (:require [bnm.csv :as csv]
+            [clojure.java.io :as io]
+            [clojure.string :as str]))
+
+(def in-path "data/derived/supply/stages.csv")
+(def plants-path "data/derived/supply/stage-plants.csv")
+(def out-path "data/derived/stocks/stages.csv")
+
+(def default-stale "Years past its known year a stage's data are still read." 3)
+
+;; ---------------------------------------------------------------- measures
+
+(defn shares
+  "{iso share} of world output from {iso quantity}; non-producers dropped."
+  [qs]
+  (let [qs (into {} (filter (fn [[_ q]] (and q (pos? q)))) qs)
+        tot (reduce + 0.0 (vals qs))]
+    (if (pos? tot) (update-vals qs #(/ (double %) tot)) {})))
+
+(defn hhi
+  "Herfindahl-Hirschman index of a share map (0-1)."
+  [sh]
+  (reduce + 0.0 (map #(* % %) (vals sh))))
+
+(defn top
+  "[iso share] of the largest share; ties to the first iso."
+  [sh]
+  (when (seq sh)
+    (first (sort-by (fn [[iso s]] [(- s) iso]) sh))))
+
+(defn displacement
+  "Dissimilarity of two share maps: 1 - sum over countries of the smaller
+  share. 0 when each country processes its own ore's share, 1 when none
+  does."
+  [a b]
+  (- 1.0 (reduce + 0.0 (for [iso (into (set (keys a)) (keys b))]
+                         (min (get a iso 0.0) (get b iso 0.0))))))
+
+(def stage-order {"mine" 0 "smelter" 1 "refinery" 2 "chemical" 3})
+
+(def chain-order
+  "Stage order where it differs from mine, smelter, refinery, chemical:
+  alumina is refined before aluminium is smelted."
+  {"aluminium" {"mine" 0 "refinery" 1 "smelter" 2 "chemical" 3}})
+
+(defn chain
+  "The commodity's stages present, upstream first."
+  [commodity stages]
+  (vec (sort-by (get chain-order commodity stage-order) stages)))
+
+;; ---------------------------------------------------------------- the table
+
+(defn check-units
+  "nil when every commodity and stage has one unit; throws otherwise
+  (shares within a stage need one unit; across stages they need not)."
+  [rows]
+  (doseq [[[c s] us] (reduce (fn [acc r] (update acc [(:commodity r) (:stage r)] (fnil conj #{}) (:unit r)))
+                             {} rows)
+          :when (> (count us) 1)]
+    (throw (ex-info (str "stages: " c " " s " has several units " (pr-str us)) {:commodity c :stage s :units us}))))
+
+(defn read-rows
+  "Rows of a scripts/minerals.py table as maps; numbers parsed."
+  [path]
+  (for [m (csv/read-maps path \,)]
+    (cond-> (assoc m
+                   :known (parse-long (:known m))
+                   :iso (:iso m))
+      (:year m) (assoc :year (parse-long (:year m)))
+      (:quantity m) (assoc :quantity (parse-double (:quantity m)))
+      (:capacity m) (assoc :capacity (parse-double (:capacity m))))))
+
+(defn- index
+  "{[commodity stage] {year [rows]}}."
+  [rows]
+  (reduce (fn [acc r] (update-in acc [[(:commodity r) (:stage r)] (:year r)] (fnil conj []) r)) {} rows))
+
+(defn as-of
+  "The stage's data known by k: {:year y :known kn :q {iso quantity}} for
+  the latest data year with any row known by k (only those rows), or nil."
+  [by-year k]
+  (some (fn [y]
+          (let [rs (filter #(<= (:known %) k) (get by-year y))]
+            (when (seq rs)
+              {:year y :known (apply max (map :known rs))
+               :q (reduce (fn [m r] (update m (:iso r) (fnil + 0.0) (:quantity r))) {} rs)})))
+        (sort > (keys by-year))))
+
+(defn- as-of-year
+  "{iso quantity} of the stage's data year y known by k, or nil."
+  [by-year y k]
+  (let [rs (filter #(<= (:known %) k) (get by-year y))]
+    (when (seq rs)
+      (reduce (fn [m r] (update m (:iso r) (fnil + 0.0) (:quantity r))) {} rs))))
+
+(defn- wld [k v x & [t]]
+  (cond-> {:iso "WLD" :year k :variable v :value (double x)} t (assoc :top t)))
+
+(defn- stage-stocks [c s snap k]
+  (let [sh (shares (:q snap))
+        [ti ts] (top sh)
+        p (str "stages/" c "-" s)]
+    (when (seq sh)
+      (concat
+       [(wld k (str p "-hhi") (hhi sh))
+        (wld k (str p "-top-share") ts ti)
+        (wld k (str p "-world") (reduce + 0.0 (vals (:q snap))))
+        (wld k (str p "-count") (count sh))
+        (wld k (str p "-state-year") (:year snap))]
+       (for [[iso v] (sort sh)]
+         {:iso iso :year k :variable (str p "-share") :value v})))))
+
+(defn- pairs
+  "Stage pairs D is written for: mine against each later stage, and each
+  processing step against the next."
+  [ch]
+  (distinct
+   (concat (when (= "mine" (first ch)) (for [b (rest ch)] ["mine" b]))
+           (partition 2 1 (remove #{"mine"} ch)))))
+
+(defn- d-stocks [c ch idx k stale]
+  (let [last-y (fn [st] (some-> (as-of (idx [c st]) k) :year))
+        common (fn [a b]
+                 ;; the latest data year both stages have known by k, fresh enough
+                 (let [ya (set (keep #(when (as-of-year (idx [c a]) % k) %) (keys (idx [c a]))))
+                       yb (set (keep #(when (as-of-year (idx [c b]) % k) %) (keys (idx [c b]))))
+                       ys (filter ya yb)]
+                   (when (seq ys) (apply max ys))))
+        fresh? (fn [st y] (let [rs (filter #(<= (:known %) k) (get (idx [c st]) y))]
+                            (and (seq rs) (<= (- k (apply max (map :known rs))) stale))))
+        ds (for [[a b] (pairs ch)
+                 :let [y (common a b)]
+                 :when (and y (fresh? a y) (fresh? b y))
+                 :let [sa (shares (as-of-year (idx [c a]) y k))
+                       sb (shares (as-of-year (idx [c b]) y k))]
+                 :when (and (seq sa) (seq sb))]
+             [[a b] y (displacement sa sb)])
+        main (when (and (= "mine" (first ch)) (> (count ch) 1))
+               (some (fn [[ab y d]] (when (= ab ["mine" (peek ch)]) [y d])) ds))]
+    (concat
+     (for [[[a b] _ d] ds] (wld k (str "stages/" c "-d-" a "-" b) d))
+     (when-let [[y d] main]
+       [(wld k (str "stages/" c "-d") d)
+        (wld k (str "stages/" c "-state-year") y)]))))
+
+(defn stocks
+  "Stock rows {:iso :year :variable :value [:top]} from stage rows, each
+  year from the first a value is known to the last. Throws on mixed units."
+  ([rows] (stocks rows {}))
+  ([rows {:keys [stale] :or {stale default-stale}}]
+   (check-units rows)
+   (let [rows (filter #(and (:quantity %) (:known %) (:year %)) rows)
+         idx (index rows)
+         ks (range (apply min (map :known rows)) (inc (+ stale (apply max (map :known rows)))))
+         by-c (group-by first (keys idx))]
+     (vec
+      (for [[c cs] (sort by-c)
+            :let [ch (chain c (map second cs))]
+            k ks
+            r (concat
+               (mapcat (fn [s]
+                         (let [snap (as-of (idx [c s]) k)]
+                           (when (and snap (<= (- k (:known snap)) stale))
+                             (stage-stocks c s snap k))))
+                       ch)
+               (d-stocks c ch idx k stale))]
+        r)))))
+
+;; ---------------------------------------------------------------- plants
+
+(defn plant-stocks
+  "Plant concentration rows at the plants' known year (a snapshot): HHI by
+  capacity, plant count, and coverage, the stage's latest world output
+  share known then in the countries with a plant listed. Coverage is
+  written only for stages in `rows`."
+  [plants rows]
+  (let [idx (index (filter :quantity rows))]
+    (vec
+     (for [[[c s] ps] (sort (group-by (juxt :commodity :stage) plants))
+           :let [k (apply max (map :known ps))
+                 sh (shares (reduce (fn [m p] (update m (:facility p) (fnil + 0.0) (:capacity p))) {} ps))
+                 snap (some-> (idx [c s]) (as-of k))
+                 out-sh (some-> snap :q shares)
+                 isos (set (map :iso ps))
+                 p (str "stages/" c "-" s)]
+           :when (seq sh)
+           r (cond-> [(wld k (str p "-plant-hhi") (hhi sh))
+                      (wld k (str p "-plant-count") (count sh))]
+               (seq out-sh) (conj (wld k (str p "-plant-coverage")
+                                       (reduce + 0.0 (keep (fn [[iso v]] (when (isos iso) v)) out-sh)))))]
+       r))))
+
+;; ---------------------------------------------------------------- write
+
+(defn- fmt [x]
+  (if (== x (Math/rint x)) (str (long x) ".0") (str x)))
+
+(defn write-stocks [path out]
+  (io/make-parents path)
+  (with-open [w (io/writer path)]
+    (.write w "iso,year,variable,value,top\n")
+    (doseq [r (sort-by (juxt :variable :iso :year) out)]
+      (.write w (str (str/join "," [(:iso r) (:year r) (:variable r) (fmt (:value r)) (or (:top r) "")]) "\n")))))
+
+(defn -main [& _]
+  (let [rows (read-rows in-path)
+        plants (when (.exists (io/file plants-path)) (read-rows plants-path))
+        out (concat (stocks rows) (plant-stocks plants rows))]
+    (write-stocks out-path out)
+    (println (str out-path ": " (count out) " rows, "
+                  (count (distinct (map :variable out))) " variables, "
+                  (count (filter #(= "WLD" (:iso %)) out)) " at WLD"))))
