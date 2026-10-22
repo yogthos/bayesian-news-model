@@ -1,12 +1,15 @@
 (ns bnm.econ-structure-run
-  "Writes data/derived/stocks/econ-structure.csv from bnm.econ-structure over
-  scripts/econ-structure.py's data/derived/econ/structure-inputs.csv (bead
-  bnm-3ka.1), and prints spot checks.
+  "Writes data/derived/stocks/econ-structure.csv from bnm.econ-structure
+  over scripts/econ-structure.py's data/derived/econ/structure-inputs.csv
+  (bead bnm-3ka.1), and prints spot checks.
 
-  Columns iso,year,variable,value,known,source: year is the data year,
-  known the first year the value could be read (unlike the other stock
-  tables, whose year is the year known), source the benchmark, the spliced
-  segment (\"lrwiod*oecd\") or the bare spine segment.
+  The stock follows the stocks convention: iso,year,variable,value with
+  year the year known (as bnm.states/read-states reads it), each year the
+  latest data year known by then; data_year is that data year and source
+  the benchmark, the spliced segment (\"lrwiod*oecd\") or the bare spine
+  segment. The full panel by data year (iso,year,variable,value,known,
+  source; year the data year, back-casts included) goes to
+  data/derived/econ/econ-structure-panel.csv.
 
     python -I scripts/econ-structure.py
     jolt -A:tools run -m bnm.econ-structure-run"
@@ -17,6 +20,7 @@
 
 (def in-path "data/derived/econ/structure-inputs.csv")
 (def out-path "data/derived/stocks/econ-structure.csv")
+(def panel-path "data/derived/econ/econ-structure-panel.csv")
 
 (defn- read-inputs [path]
   (with-open [r (io/reader path)]
@@ -31,11 +35,13 @@
 (defn -main [& _]
   (let [rows (read-inputs in-path)
         out (vec (es/series rows))]
-    (with-open [w (io/writer out-path)]
+    (with-open [w (io/writer panel-path)]
       (.write w "iso,year,variable,value,known,source\n")
       (doseq [{:keys [iso year variable value known source]} out]
         (.write w (str iso "," year "," variable "," value "," known "," source "\n"))))
-    (println (count rows) "input rows," (count out) "rows to" out-path)
+    (let [stock (vec (es/stock-rows out))]
+      (es/write-stock! out-path stock)
+      (println (count rows) "input rows," (count out) "panel rows to" panel-path "," (count stock) "stock rows to" out-path))
     (println "sources:" (into (sorted-map) (frequencies (map :source out))))
     (doseq [iso ["USA" "GBR" "DEU" "JPN" "KOR" "CHN" "FRA"]
             :let [g (into {} (for [r out :when (= iso (:iso r))] [[(:variable r) (:year r)] r]))]]

@@ -1,5 +1,6 @@
 (ns bnm.econ-structure-test
   (:require [bnm.econ-structure :as es]
+            [bnm.states :as states]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b] (and a b (< (Math/abs (- (double a) (double b))) 1e-9)))
@@ -79,3 +80,31 @@
   (is (= (count out) (count (distinct (map (juxt :iso :year :variable) out)))))
   (is (every? #(< (:year %) (:known %)) out))
   (is (every? #(< 0.0 (:value %) 1.0) out)))
+
+(def stock (es/stock-rows out))
+
+(deftest stock-rows-are-by-the-year-known
+  (testing "one row per country, known year and variable"
+    (is (= (count stock) (count (distinct (map (juxt :iso :year :variable) stock))))))
+  (testing "each known year reads the latest data year known by then"
+    ;; AAA: OECD 1995 known 1997; LR-WIOD's back-cast (known 1998) never
+    ;; becomes the latest; 1998 reads OECD 1996
+    (let [at (fn [y] (first (filter #(and (= "AAA" (:iso %)) (= y (:year %)) (= fin (:variable %))) stock)))]
+      (is (nil? (at 1996)))
+      (is (= 1995 (:data-year (at 1997))))
+      (is (= 1996 (:data-year (at 1998))))
+      (is (close? 0.04 (:value (at 1998))))
+      (is (= 2002 (:data-year (at 2004))) "OECD 2002, known 2004")
+      (is (= 2004 (:data-year (at 2007))) "WIOD 2016 2004 spliced, known 2007")))
+  (is (every? #(<= (+ (:data-year %) 1) (:year %)) stock)))
+
+(deftest read-states-sees-nothing-before-it-is-known
+  (let [f (java.io.File/createTempFile "econ-structure" ".csv")]
+    (es/write-stock! (.getPath f) stock)
+    (let [s (states/read-states [(.getPath f)])
+          first-known (reduce (fn [m r] (update m [(:variable r) (:iso r)] (fnil min Long/MAX_VALUE) (:known r))) {} out)]
+      (is (seq s))
+      (doseq [[v by-iso] s [iso byy] by-iso]
+        (is (<= (get first-known [v iso]) (first (keys byy))) (str v " " iso)))
+      (is (close? 0.057 (get-in s [fin "USA" 1991])) "BEA 1990, known 1991")
+      (is (nil? (get-in s [fin "USA" 1990]))))))

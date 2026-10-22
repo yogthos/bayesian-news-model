@@ -26,7 +26,8 @@
 
   The benchmarks are current vintages (BEA's historical NAICS series is the
   2021 vintage, its current release 2026, OECD's 2026): the lag dates a
-  value, it does not undo the revisions since.")
+  value, it does not undo the revisions since."
+  (:require [clojure.java.io]))
 
 (def lags {"bea" 1 "oecd" 2 "euklems" 2 "lrwiod" 3 "wiod16" 3 "icio2023" 3})
 (def benchmarks ["bea" "oecd" "euklems"])
@@ -105,3 +106,27 @@
                         {:value s :known (+ y (lags g)) :source g}))]
         :when row]
     (assoc row :iso iso :year y :variable variable)))
+
+(defn stock-rows
+  "The series by the year known, as the other stock tables: per country
+  and variable, each year from the first known to the last, the value of
+  the latest data year known by then. Rows {:iso :year :variable :value
+  :data-year :source}, year the year known. A back-cast known after a later
+  data year never becomes the latest, so it is not in the stock (it stays
+  in the data-year panel)."
+  [series]
+  (for [[[iso variable] rs] (sort-by key (group-by (juxt :iso :variable) series))
+        :let [by-known (sort-by :known rs)
+              k0 (:known (first by-known)) k1 (:known (last by-known))]
+        y (range k0 (inc k1))
+        :let [r (last (sort-by :year (filter #(<= (:known %) y) by-known)))]
+        :when r]
+    {:iso iso :year y :variable variable :value (:value r) :data-year (:year r) :source (:source r)}))
+
+(defn write-stock!
+  "Writes stock rows as iso,year,variable,value,data_year,source."
+  [path rows]
+  (with-open [w (clojure.java.io/writer path)]
+    (.write w "iso,year,variable,value,data_year,source\n")
+    (doseq [{:keys [iso year variable value data-year source]} rows]
+      (.write w (str iso "," year "," variable "," value "," data-year "," source "\n")))))

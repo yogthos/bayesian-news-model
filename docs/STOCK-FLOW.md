@@ -788,11 +788,15 @@ benchmarks (the US 1.05 to 1999, 1.12 in WIOD 2016, 1.19 in ICIO):
 io-spine2.py puts all of ISIC4 J58 in PAPER, software publishing
 included, which ISIC3 classed outside manufacturing.
 
-The stock is data/derived/stocks/econ-structure.csv
-(iso,year,variable,value,known,source; year is the data year, known the
-year it could be read): econ/finance-va-share and
-econ/manufacturing-va-share, from bnm.econ-structure
-(tools/bnm/econ_structure_run.clj). A year with a benchmark takes it (BEA,
+bnm.econ-structure (tools/bnm/econ_structure_run.clj) builds the
+series by data year, econ/finance-va-share and
+econ/manufacturing-va-share, into data/derived/econ/
+econ-structure-panel.csv (iso,year,variable,value,known,source; year the
+data year, known the year it could be read). The stock,
+data/derived/stocks/econ-structure.csv, follows the stocks convention
+(iso,year,variable,value,data_year,source; year the year known): each
+year holds the latest data year known by then, so a back-cast published
+after later years never becomes a stock value. A year with a benchmark takes it (BEA,
 then OECD, then EU KLEMS; known a year on for BEA, two for the others).
 A spine year without one takes the spine share times the benchmark's ratio
 to that spine segment over the nearest five overlap years, using only
