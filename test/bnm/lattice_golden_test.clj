@@ -66,7 +66,11 @@
 
 (defn snapshot [r]
   {:forecasts (mapv (juxt :scale :place :origin :p) (:forecasts r))
-   :inputs (mapv (fn [{:keys [scale place origin x o reads]}] [scale place origin (vec x) o (count reads)]) (:trace r))
+   :inputs (mapv (fn [{:keys [scale place origin x o]}] [scale place origin (vec x) o]) (:trace r))
+   ;; what each node read and when: the causality guard
+   :reads (mapv (fn [{:keys [scale place origin reads]}]
+                  [scale place origin (mapv (juxt :dir :scale :place :origin :known-at) reads)])
+                (:trace r))
    :principal (into (sorted-map) (for [[k byo] (:book r) [o e] byo :when (:principal e)] [[k o] (:principal e)]))
    :strain (into (sorted-map) (for [[k byo] (:book r) [o e] byo] [[k o] [(:strain e) (:f e) (:q e)]]))})
 

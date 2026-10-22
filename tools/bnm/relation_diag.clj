@@ -51,14 +51,16 @@
         prior (map (comp logit first val) (take 5 (rest past)))
         lag (:known-lag cj 12)
         resolved (first (filter (fn [[o [_ y]]] (and (some? y) (<= (+ o 24 lag) t))) past))
-        known (when (get-in cj [:from place]) (subseq (get-in cj [:onsets place] (sorted-set)) <= (- t lag)))]
-    {:level level
-     :destab (when (and level (>= (count prior) 3)) (- level (/ (reduce + prior) (count prior))))
+        ;; as the world run reads them: nothing before the catalogue covers the place
+        covered? (when-let [f (get-in cj [:from place])] (<= f t))
+        known (when covered? (subseq (get-in cj [:onsets place] (sorted-set)) <= (- t lag)))]
+    {:level (when covered? level)
+     :destab (when (and covered? level (>= (count prior) 3)) (- level (/ (reduce + prior) (count prior))))
      :surprise (when-let [[_ [p y]] resolved] (- (if y 1.0 0.0) p))
-     :e1 (when (get-in cj [:from place]) (rl/excursion cj place t 12.0))
-     :e5 (when (get-in cj [:from place]) (rl/excursion cj place t 60.0))
-     :post1 (when (get-in cj [:from place]) (if (some #(> % (- t lag 12)) known) 1.0 0.0))
-     :post3 (when (get-in cj [:from place]) (if (some #(> % (- t lag 36)) known) 1.0 0.0))}))
+     :e1 (when covered? (rl/excursion cj place t 12.0))
+     :e5 (when covered? (rl/excursion cj place t 60.0))
+     :post1 (when covered? (if (some #(> % (- t lag 12)) known) 1.0 0.0))
+     :post3 (when covered? (if (some #(> % (- t lag 36)) known) 1.0 0.0))}))
 
 (defn- loglik [beta rows]
   (reduce + (for [{:keys [x y o]} rows :let [p (lg/predict beta x o)]]
@@ -136,7 +138,9 @@
             :let [fk (years k) fj (years j) cj (cats j)
                   places (vec (sort (keys fk)))
                   other (zipmap places (concat (rest places) [(first places)]))
-                  base (for [place places [o [p y]] (fk place)
+                  ;; the places on the gazetteer's tree only, so raw and own forms
+                  ;; are tested on the same rows
+                  base (for [place places :when (tree place) [o [p y]] (fk place)
                              :when (and (some? y) (= 11 (mod o 12)) (<= (* 12 1960) o (+ 11 (* 12 to))))]
                          [place o p y])
                   ;; every place's forms at every origin, then their own parts

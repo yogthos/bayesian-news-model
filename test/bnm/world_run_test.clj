@@ -1,7 +1,7 @@
 (ns bnm.world-run-test
   (:require [bnm.factors]
             [bnm.world-run :as wr]
-            [clojure.test :refer [deftest is]]))
+            [clojure.test :refer [deftest is testing]]))
 
 (deftest the-placebo-reads-another-country
   (let [src (wr/placebo-source ["CCC" "AAA" "BBB"])]
@@ -56,3 +56,29 @@
     (is (= (:x (rel :year "AAA" 131)) (:x (rel :half-decade "AAA" 131))) "a second read at the origin")
     (is (= [(get-in want ["BBB" :own])] (:x (rel :year "BBB" 131))))
     (is (not= [1.0] (:x (rel :year "AAA" 131))) "not the raw input")))
+
+(deftest own-parts-by-scale-with-their-reads
+  ;; each scale its own factor model (a :destab-own at the half-decade
+  ;; reads the half-decade's book, whatever was read first); the reads
+  ;; behind an own part recorded; a region reads its countries' mean of
+  ;; the raw form (the common level), not their own parts
+  (let [par {"AAA" "Reg" "BBB" "Reg" "CCC" "Reg2" "DDD" "Reg2" "Reg" "world" "Reg2" "world"}
+        cs ["AAA" "BBB" "CCC" "DDD"]
+        cat {:onsets {} :from (zipmap cs (repeat 0)) :known-lag 12}
+        book (into {} (for [[i c] (map-indexed vector cs) [sc k] [[:year 1.0] [:half-decade -5.0]]]
+                        [[sc c] (into (sorted-map) (for [n (range 8)] [(+ 11 (* 12 n)) {:f (* k (+ n (* 0.3 i) (if (odd? (+ n i)) 0.5 0.0)))}]))]))
+        mk #(wr/with-relations {:scales [{:name :year} {:name :half-decade}] :parent par}
+                               ["bank"] (atom {"bank" book}) {"bank" cat} {"bank" #{:year :half-decade}}
+                               {"bank" {:form :destab-own :sign 1}} identity)
+        a (:relations (mk)) b (:relations (mk))
+        ts [59 71 83 95]]
+    (doseq [t ts] (a :year "AAA" t) (a :half-decade "AAA" t))
+    (doseq [t ts] (b :half-decade "AAA" t) (b :year "AAA" t))
+    (is (= (:x (a :half-decade "AAA" 95)) (:x (b :half-decade "AAA" 95))) "the order of reads does not matter")
+    (is (not= (:x (a :half-decade "AAA" 95)) (:x (a :year "AAA" 95))) "the scales differ")
+    (is (some #(and (= "BBB" (:place %)) (= :half-decade (:scale %))) (:reads (a :half-decade "AAA" 95)))
+        "the cross-section's reads recorded")
+    (is (every? #(< (:origin %) 95) (:reads (a :half-decade "AAA" 95))))
+    (testing "a region: its countries' mean of the raw form"
+      (let [raw (fn [c] (:x (bnm.relations/raw-input :destab {:kind "bank" :book book :catalogue cat} :year c 95)))]
+        (is (< (Math/abs (- (first (:x (a :year "Reg" 95))) (/ (+ (raw "AAA") (raw "BBB")) 2.0))) 1e-12))))))

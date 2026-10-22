@@ -64,7 +64,7 @@
         spiked (update-in panel ["R2-3" 70] + 50.0)
         a (f/decompose panel parent {:discount 0.99})
         b (f/decompose spiked parent {:discount 0.99})]
-    (is (= (get-in a ["R2-3" 70 :common]) (get-in b ["R2-3" 70 :common])))
+    (is (< (Math/abs (- (get-in a ["R2-3" 70 :common]) (get-in b ["R2-3" 70 :common]))) 1e-9))
     (is (< (Math/abs (- 50.0 (- (get-in b ["R2-3" 70 :own]) (get-in a ["R2-3" 70 :own])))) 1e-9))
     (testing "and reaches the others only through the factors, a little"
       (is (< (Math/abs (- (get-in b ["R2-4" 70 :common]) (get-in a ["R2-4" 70 :common]))) 10.0)))))
@@ -108,10 +108,28 @@
         (is (thrown? clojure.lang.ExceptionInfo (f/observe st 5 {"R1-0" 1.0})))))))
 
 (deftest a-flat-start-does-not-set-the-scale
-  ;; an indicator all zero at first: its scale waits for a cross-section
-  ;; that varies, so the first countries' priors are not pinned near zero
+  ;; an indicator all zero at first: no model is made until a cross-section
+  ;; varies (its scale sets the priors), so no country's prior is unscaled;
+  ;; until then each value is its own level
   (let [par {"A" "X" "B" "X" "C" "Y" "D" "Y" "X" "world" "Y" "world"}
-        [_ st] (f/observe (f/online par {}) 0 {"A" 0.0 "B" 0.0 "C" 0.0 "D" 0.0})
-        [_ st] (f/observe st 1 {"A" 1.0 "B" 0.0 "C" 0.0 "D" 0.0})]
+        [p0 st0] (f/observe (f/online par {}) 0 {"A" 0.0 "B" 0.0 "C" 0.0 "D" 0.0})
+        [_ st] (f/observe st0 1 {"A" 1.0 "B" 0.0 "C" 0.0 "D" 0.0})]
+    (is (= {:level 0.0 :common 0.0 :own 0.0} (select-keys (p0 "A") [:level :common :own])))
+    (is (empty? (:models st0)) "no model before the scale is known")
     (is (< (Math/abs (- 0.25 (:scale st))) 1e-12))
-    (is (> (aget ^doubles (get-in st [:models "A" :c]) 0) 0.01) "A's level not pinned (the 1e-6 floor left it near 1e-5)")))
+    (is (= #{"A" "B" "C" "D"} (set (keys (:models st)))) "made once the scale is known")))
+
+(deftest an-entrant-does-not-move-the-others
+  ;; a country entering with a level far from the others': the means are
+  ;; of departures from each country's own level, so the others' common
+  ;; parts do not jump when it arrives
+  (let [{:keys [panel]} (world 6)
+        late (assoc panel "R1-new" (into (sorted-map) (for [t (range 60 120)] [t 1000.0])))
+        par (assoc parent "R1-new" "R1")
+        a (f/decompose panel par {:discount 0.99})
+        b (f/decompose late par {:discount 0.99})]
+    ;; (from raw means the region's moved by about 110 and another's by 20;
+    ;; what is left is the entrant's level being learned)
+    (doseq [t [60 61 70]]
+      (is (< (Math/abs (- (get-in a ["R1-2" t :common]) (get-in b ["R1-2" t :common]))) 1.0) (str "its region's, at " t))
+      (is (< (Math/abs (- (get-in a ["R2-2" t :common]) (get-in b ["R2-2" t :common]))) 1.0) (str "another region's, at " t)))))

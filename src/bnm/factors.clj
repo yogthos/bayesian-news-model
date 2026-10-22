@@ -37,11 +37,6 @@
 (defn- ancestors-of [parent place]
   (vec (take-while some? (rest (iterate parent place)))))
 
-(defn- members
-  "{place #{countries}}: every place above the countries, its countries."
-  [parent countries]
-  (reduce (fn [acc c] (reduce #(update %1 %2 (fnil conj #{}) c) acc (ancestors-of parent c))) {} countries))
-
 (defn- sums
   "{place [sum count]} of the countries' values at t."
   [panel parent t]
@@ -63,65 +58,62 @@
             [t (into {} (for [p (keys s) :let [mp (mean p) up (parent p)]]
                           [p (if up (- mp (or (mean up) mp)) mp)]))]))))
 
-(defn- left-out-mean
-  "Place p's countries' mean at t from the sums, country c (value x) left
-  out if it is one of them; nil where no other has a value."
-  [s mem c x p]
-  (let [[sm n] (s p) mine? (contains? (mem p) c)]
-    (cond (nil? n) nil
-          mine? (when (> n 1) (/ (- sm x) (dec n)))
-          :else (/ sm n))))
-
 (defn online
   "A factor model to feed one period at a time (observe): for a world run
   stepping through time, or any stream. `parent` the place tree, :discount
   (0.99) as decompose's."
   [parent {:keys [discount] :or {discount 0.99}}]
-  {:parent parent :discount discount :models {} :scale nil :last-t nil :anc {}})
+  {:parent parent :discount discount :models {} :scale nil :last-t nil})
 
 (defn- factor-of
-  "A place's factor for country c (value x) from the sums: its countries'
-  mean less its parent's, c left out of both; the root's, its mean."
-  [s mem parent c x p]
-  (when-let [mp (left-out-mean s mem c x p)]
-    (if-let [up (parent p)]
-      (when-let [mu (left-out-mean s mem c x up)] (- mp mu))
-      mp)))
+  "A place's factor for a country with departure dc from the sums of
+  departures: its countries' mean less its parent's, the country left out
+  of both; the root's, its mean; nil where no other country has a value."
+  [s parent dc p]
+  (let [mean (fn [q] (let [[sm n] (s q)] (when (and n (> n 1)) (/ (- sm dc) (dec n)))))]
+    (when-let [mp (mean p)]
+      (if-let [up (parent p)]
+        (when-let [mu (mean up)] (- mp mu))
+        mp))))
 
 (defn observe
   "[{country {:level :common :own :by-level}} state'] for the countries'
   values `xs` ({country value}) at period t, after every earlier one: each
   country's parts under its level and loadings learned from the periods
-  before, which then learn from this one."
+  before, which then learn from this one. The factors are means of
+  departures from each country's own level (learned before t; a country
+  new at t departs by nothing), so a country entering with a level far
+  from the others' does not move theirs. Until a cross-section varies (its
+  variance scales every prior) no model is made and each value is its own
+  level."
   [{:keys [parent discount models scale last-t] :as st} t xs]
   (when (and last-t (<= (compare t last-t) 0))
     (throw (ex-info "bnm.factors/observe: periods must come in order" {:t t :last-t last-t})))
   (let [cs (sort (keys xs))
-        ;; the scale of the series, from its first cross-section that varies
         scale (or scale (when (> (count cs) 1)
                           (let [v (vals xs) mx (/ (reduce + v) (count v))
                                 var (/ (reduce + (map #(* (- % mx) (- % mx)) v)) (dec (count v)))]
                             (when (> var 1e-9) var))))
         anc (fn [c] (ancestors-of parent c))
-        panel (into {} (for [[c x] xs] [c {t x}]))
-        mem (members parent cs)
-        s (sums panel parent t)
-        model-of (fn [c]
-                   (let [sc (or scale 1.0)]
-                     (d/linear {:mean (into [0.0] (repeat (count (anc c)) 1.0))
-                                :var (into [(* 10.0 sc)] (repeat (count (anc c)) 1.0))
-                                :discount discount :s0 (* 0.1 sc) :n0 1.0})))
-        ;; members must count every country seen, for the left-out means
-        step (for [c cs :let [x (double (xs c))]]
-               (let [fs (mapv #(or (factor-of s mem parent c x %) 0.0) (anc c))
-                     mdl (or (models c) (model-of c))
-                     [a & bs] (d/means mdl)
-                     parts (mapv * bs fs)
-                     common (reduce + 0.0 parts)]
-                 [c {:level a :common common :own (- x a common) :by-level (zipmap (anc c) parts)}
-                  (d/step mdl [{:x (into [1.0] fs) :y x}])]))]
-    [(into {} (for [[c p _] step] [c p]))
-     (assoc st :models (into models (for [[c _ m] step] [c m])) :scale scale :last-t t)]))
+        level (fn [c] (if-let [m (models c)] (first (d/means m)) (double (xs c))))
+        dep (into {} (for [c cs] [c (- (double (xs c)) (level c))]))
+        s (sums (into {} (for [[c v] dep] [c {t v}])) parent t)]
+    (if-not scale
+      [(into {} (for [c cs] [c {:level (double (xs c)) :common 0.0 :own 0.0 :by-level (zipmap (anc c) (repeat 0.0))}]))
+       (assoc st :last-t t)]
+      (let [step (for [c cs :let [x (double (xs c))]]
+                   (let [fs (mapv #(or (factor-of s parent (dep c) %) 0.0) (anc c))
+                         mdl (or (models c)
+                                 (d/linear {:mean (into [x] (repeat (count (anc c)) 1.0))
+                                            :var (into [(* 10.0 scale)] (repeat (count (anc c)) 1.0))
+                                            :discount discount :s0 (* 0.1 scale) :n0 1.0}))
+                         [a & bs] (d/means mdl)
+                         parts (mapv * bs fs)
+                         common (reduce + 0.0 parts)]
+                     [c {:level a :common common :own (- x a common) :by-level (zipmap (anc c) parts)}
+                      (d/step mdl [{:x (into [1.0] fs) :y x}])]))]
+        [(into {} (for [[c p _] step] [c p]))
+         (assoc st :models (into models (for [[c _ m] step] [c m])) :scale scale :last-t t)]))))
 
 (defn decompose
   "{country {t {:level :common :own :by-level {place part}}}} of `panel`

@@ -80,3 +80,16 @@
       (is (= 0.0 (:x (in :destab "A" 40))) "fewer than three before it: unknown")
       (is (= 0.0 (:x (in :destab "B" 72)))))
     (is (thrown? clojure.lang.ExceptionInfo (in :level "A" 72)) "the level is not a link's form")))
+
+(deftest raw-inputs-know-what-they-do-not-know
+  ;; raw-input's nil where the value is unknown (not covered yet, no state
+  ;; issued, too few to destabilize against); edge-input reads it as 0
+  (let [cat {:onsets {"A" (sorted-set)} :from {"A" 0 "C" 500} :known-lag 12}
+        book {[:year "A"] (sorted-map 11 {:f -2.0})}
+        p {:kind "bank" :book book :catalogue cat}]
+    (is (nil? (:x (rl/raw-input :post3 p :year "C" 400))))
+    (is (nil? (:x (rl/raw-input :destab p :year "A" 40))))
+    (is (nil? (:x (rl/raw-input :level p :year "A" 5))))
+    (is (= -2.0 (:x (rl/raw-input :level p :year "A" 12))))
+    (is (= 0.0 (:x (rl/edge-input :destab p :year "A" 40))))
+    (is (= 0.0 (:x (rl/edge-input :post3 p :year "C" 400))))))

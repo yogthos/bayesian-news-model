@@ -37,50 +37,53 @@
     {:x [f (excursion catalogue place t 12.0) (excursion catalogue place t 60.0) (* f (double (or moderator 0.0)))]
      :reads (if e [{:dir :relation :kind kind :scale scale :place place :origin o}] [])}))
 
-(declare raw-input)
-
-(defn edge-input
-  "{:x value :reads [...]} of what a parent ({:kind :book :catalogue})
-  passes along one edge, in the edge's `form`, for `place` at `scale` and
-  origin t (months), 0 where its catalogue does not yet cover the place:
-  :post1, :post3, an onset of the parent known in the last one or three
-  years (a post-crisis regime, Bussiere & Fratzscher 2006); :e1, :e5, its
-  onsets as excursions over a year or five; :destab, its state at its
-  latest origin before t less its mean over the five origins before that
-  (at least three), the parent destabilized against its own past. Never
-  its level, which carries the place's lasting risk the child already sees
-  (docs/WORLD-MODEL.md, trial 43)."
-  [form parent scale place t]
-  (when (= :level form)
-    (throw (ex-info "bnm.relations/edge-input: the level is no link's form" {:form form})))
-  (raw-input form parent scale place t))
-
 (defn raw-input
-  "edge-input's forms and the parent's :level (its latest state before t),
-  which passes only as its own part (bnm.factors), never raw."
+  "{:x value :reads [...]} of what a parent ({:kind :book :catalogue})
+  passes along one edge in `form`, for `place` at `scale` and origin t
+  (months); :x nil where it is not known: before the parent's catalogue
+  covers the place, before any state is issued, with too few to
+  destabilize against. The forms: :post1, :post3, an onset of the parent
+  known in the last one or three years (a post-crisis regime, Bussiere &
+  Fratzscher 2006); :e1, :e5, its onsets as excursions over a year or
+  five; :destab, its state at its latest origin before t less its mean
+  over the five origins before that (at least three), the parent
+  destabilized against its own past; :level, its latest state, which
+  passes only as its own part (bnm.factors), never raw."
   [form {:keys [kind book catalogue]} scale place t]
   (let [{:keys [onsets from known-lag]} catalogue
         lag (or known-lag 12)
         f (get from place)
         covered? (and f (<= f t))
-        recent (fn [months] (if (seq (subseq (get onsets place (sorted-set)) > (- t lag months) <= (- t lag))) 1.0 0.0))]
-    (case form
-      :post1 {:x (if covered? (recent 12) 0.0) :reads []}
-      :post3 {:x (if covered? (recent 36) 0.0) :reads []}
-      :e1 {:x (if covered? (excursion catalogue place t 12.0) 0.0) :reads []}
-      :e5 {:x (if covered? (excursion catalogue place t 60.0) 0.0) :reads []}
-      :level (let [[o e] (some-> (get book [scale place]) (rsubseq < t) first)]
-               (if (and covered? e)
+        recent (fn [months] (if (seq (subseq (get onsets place (sorted-set)) > (- t lag months) <= (- t lag))) 1.0 0.0))
+        none {:x nil :reads []}]
+    (if-not covered?
+      (if (#{:post1 :post3 :e1 :e5 :destab :level} form) none
+          (throw (ex-info (str "bnm.relations/raw-input: no form " form) {:form form})))
+      (case form
+        :post1 {:x (recent 12) :reads []}
+        :post3 {:x (recent 36) :reads []}
+        :e1 {:x (excursion catalogue place t 12.0) :reads []}
+        :e5 {:x (excursion catalogue place t 60.0) :reads []}
+        :level (if-let [[o e] (some-> (get book [scale place]) (rsubseq < t) first)]
                  {:x (double (:f e)) :reads [{:dir :relation :kind kind :scale scale :place place :origin o}]}
-                 {:x 0.0 :reads []}))
-      :destab (let [past (some-> (get book [scale place]) (rsubseq < t))
-                    [o e] (first past)
-                    prior (map (comp :f val) (take 5 (rest past)))]
-                (if (and covered? e (>= (count prior) 3))
-                  {:x (- (double (:f e)) (/ (reduce + prior) (count prior)))
-                   :reads [{:dir :relation :kind kind :scale scale :place place :origin o}]}
-                  {:x 0.0 :reads []}))
-      (throw (ex-info (str "bnm.relations/edge-input: no form " form) {:form form})))))
+                 none)
+        :destab (let [past (some-> (get book [scale place]) (rsubseq < t))
+                      [o e] (first past)
+                      prior (map (comp :f val) (take 5 (rest past)))]
+                  (if (and e (>= (count prior) 3))
+                    {:x (- (double (:f e)) (/ (reduce + prior) (count prior)))
+                     :reads [{:dir :relation :kind kind :scale scale :place place :origin o}]}
+                    none))
+        (throw (ex-info (str "bnm.relations/raw-input: no form " form) {:form form}))))))
+
+(defn edge-input
+  "raw-input's {:x :reads} along an edge, an unknown value read as 0
+  (docs/WORLD-MODEL.md, trial 43); never the parent's level, which carries
+  the place's lasting risk the child already sees."
+  [form parent scale place t]
+  (when (= :level form)
+    (throw (ex-info "bnm.relations/edge-input: the level is no link's form" {:form form})))
+  (update (raw-input form parent scale place t) :x #(or % 0.0)))
 
 (defn- latest-f [book scale place t]
   (some-> (get book [scale place]) (rsubseq < t) first val :f))
