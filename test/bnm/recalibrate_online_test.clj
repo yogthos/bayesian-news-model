@@ -50,6 +50,78 @@
     (is (= (at-t (:forecasts (ro/run-online {"k" rows} o)))
            (at-t (:forecasts (ro/run-online {"k" flipped} o)))))))
 
+(defn- p-at
+  "The forecasts of kind `k` at origin t, by country."
+  [out k t]
+  (into {} (for [r (get-in out [:forecasts k]) :when (= t (:t r))] [(:c r) (:p r)])))
+
+(defn- flip-origin [rows t'] (mapv #(if (= t' (:t %)) (update % :y not) %) rows))
+
+(deftest which-origins-the-forecast-at-1990-has-seen
+  ;; origins are the ends of years (month 12 t + 11). Origin t' asks about
+  ;; an onset in (Dec t', Dec t' + 2]: origin 1988's window is Jan 1989 to
+  ;; Dec 1990, closed at the Dec 1990 origin; with lag L it is known L
+  ;; years later. So at origin 1990 the newest origin seen is 1990 - 2 - L.
+  (let [rows (synthetic 11 150 (constantly [-0.5 0.7]))
+        o (assoc opts :pool 0.0)]
+    (doseq [[lag newest] [[0 1988] [1 1987] [2 1986]]]
+      (let [o (assoc o :lag lag)
+            base (p-at (ro/run-online {"k" rows} o) "k" 1990)]
+        (is (not= base (p-at (ro/run-online {"k" (flip-origin rows newest)} o) "k" 1990))
+            (str "lag " lag ": origin " newest " is known at 1990"))
+        (is (= base (p-at (ro/run-online {"k" (flip-origin rows (inc newest))} o) "k" 1990))
+            (str "lag " lag ": origin " (inc newest) " is not"))))))
+
+(deftest each-kind-waits-its-own-lag
+  (let [rows (synthetic 12 150 (constantly [-0.5 0.7]))
+        o (assoc opts :pool 0.0 :lag 1 :lags {"slow" 2})
+        a (ro/run-online {"fast" rows "slow" rows} o)
+        b (ro/run-online {"fast" (flip-origin rows 1987) "slow" (flip-origin rows 1987)} o)]
+    (is (not= (p-at a "fast" 1990) (p-at b "fast" 1990)) "lag 1: origin 1987 known at 1990")
+    (is (= (p-at a "slow" 1990) (p-at b "slow" 1990)) "lag 2: not yet")))
+
+(deftest lags-from-the-catalogues
+  ;; a catalogue's :known-lag is months after the window closes; at
+  ;; year-end origins that is ceil(months / 12) years, never less than the
+  ;; floor asked for. No :known-lag: the lattice's 12 months.
+  (let [cats {"a" {:known-lag 3} "b" {:known-lag 18} "c" {:known-lag 12} "d" {}}]
+    (is (= {"a" 1 "b" 2 "c" 1 "d" 1} (ro/kind-lags cats 0)))
+    (is (= {"a" 1 "b" 2 "c" 1 "d" 1} (ro/kind-lags cats 1)))
+    (is (= {"a" 3 "b" 3 "c" 3 "d" 3} (ro/kind-lags cats 3)))))
+
+(deftest a-kind-without-outcomes-is-the-base
+  ;; no evidence, no recalibration: the base passes through unchanged,
+  ;; however long the run (its prior is not discounted year after year
+  ;; into a forecast pulled toward a half)
+  (let [rows (synthetic 13 100 (constantly [-0.5 0.7]))
+        none (mapv #(assoc % :y nil) (synthetic 14 100 (constantly [0.0 1.0])))]
+    (doseq [o [(assoc opts :pool 0.0) opts (assoc opts :pool 1.0 :revert 0.9) (assoc opts :revert 1.0)]]
+      (let [out (ro/run-online {"k" rows "z" none} o)]
+        (is (every? #(close? (:p %) (expit (:L %)) 1e-12) (get-in out [:forecasts "z"])))
+        (is (every? (fn [[a b]] (and (close? a 0.0 1e-12) (close? b 1.0 1e-12))) (vals (get-in out [:trace "z"]))))))))
+
+(deftest a-kind-without-outcomes-does-not-dilute-the-pool
+  (let [rows (synthetic 15 100 (constantly [-0.8 0.6]))
+        none (mapv #(assoc % :y nil) (synthetic 16 100 (constantly [0.0 1.0])))
+        o (assoc opts :pool 1.0 :revert 0.9)]
+    (is (= (:forecasts (ro/run-online {"k" rows} o))
+           (dissoc (:forecasts (ro/run-online {"k" rows "z" none} o)) "z")))))
+
+(deftest the-years-before-a-kind-starts-change-nothing
+  ;; a late start (protest and violence from 1980): the years before its
+  ;; first outcome neither move it nor the others
+  (let [rows (synthetic 17 100 (constantly [-0.8 0.6]))
+        late (mapv #(assoc % :kind "late") (synthetic 18 100 (constantly [-0.3 0.8])))
+        blank (mapv #(if (< (:t %) 1985) (assoc % :y nil) %) late)
+        cut (filterv #(>= (:t %) 1985) late)]
+    (doseq [o [(assoc opts :pool 0.0) opts]]
+      (let [a (ro/run-online {"k" rows "late" blank} o)
+            b (ro/run-online {"k" rows "late" cut} o)]
+        (is (= (get-in a [:forecasts "k"]) (get-in b [:forecasts "k"])))
+        (is (= (get-in b [:forecasts "late"]) (filterv #(>= (:t %) 1985) (get-in a [:forecasts "late"]))))
+        (is (every? #(close? (:p %) (expit (:L %)) 1e-12) (filter #(< (:t %) 1987) (get-in a [:forecasts "late"])))
+            "the base until its first window has closed")))))
+
 (deftest a-drifting-recalibration-is-recovered
   ;; b drifts from 0.3 to 1.1 and a from -2 to 0 over sixty years
   (let [ab (fn [t] (let [s (/ (- t 1960) 59.0)] [(+ -2.0 (* 2.0 s)) (+ 0.3 (* 0.8 s))]))
@@ -119,12 +191,37 @@
     (is (= 2024 (apply max (map :t rows))) "every later origin is forecast, its outcome unknown")
     (is (every? #(nil? (:y %)) (filter #(> (+ 2 (:t %)) 2002) rows)))))
 
+(deftest a-base-that-is-not-a-number-is-no-row
+  (let [rows (ro/rows-of {:cells (for [c ["A" "B" "C" "D"] t [1990]] [c t])
+                          :kind "k" :from 1960 :to 2002
+                          :base {"A" -2.0 "B" ##NaN "C" ##Inf "D" nil}
+                          :outcome (fn [_ _] true)})]
+    (is (= ["A"] (map :c rows)))))
+
+(deftest the-base-is-read-without-its-outcomes
+  ;; the year node's countries at year-end origins; the outcome column is
+  ;; never parsed (it runs to the catalogue's end), a p that is not a
+  ;; number in (0, 1) is no forecast, and p is held off 0 and 1
+  (let [f (java.io.File/createTempFile "forecasts" ".tsv")]
+    (spit f (str "year\tUSA\t23891\t0.25\tgarbage\n"
+                 "year\tUSA\t23903\t0\t\n"
+                 "year\tFRA\t23903\tNaN\ttrue\n"
+                 "year\tFRA\t23891\t\tfalse\n"
+                 "year\tFRA\t23890\t0.5\tfalse\n"
+                 "year\tr/europe\t23903\t0.5\ttrue\n"
+                 "quarter-lead\tUSA\t23903\t0.5\ttrue\n"))
+    (let [b (ro/read-base (str f))]
+      (is (= #{"USA"} (set (keys b))))
+      (is (close? (m/logit 0.25) (get-in b ["USA" 1990]) 1e-12))
+      (is (close? (m/logit 1e-6) (get-in b ["USA" 1991]) 1e-9)))
+    (.delete f)))
+
 (deftest forecasts-in-the-lattice-format
   (let [s (ro/forecast-lines [{:c "USA" :t 2000 :p 0.25 :y true} {:c "FRA" :t 2001 :p 0.5 :y nil}])]
     (is (= ["year\tUSA\t24011\t0.25\ttrue" "year\tFRA\t24023\t0.5\t"] (str/split-lines s)))))
 
 (deftest options-from-the-command-line
   (let [o (ro/parse-opts [])]
-    (is (= ["t44-world-norel" 1981 2002 1960] ((juxt :run :from :to :learn-from) o))))
+    (is (= ["t44-world-norel" 1981 2002 1960 1] ((juxt :run :from :to :learn-from :lag) o))))
   (let [o (ro/parse-opts ["--from" "2003" "--to" "2022" "--run" "x"])]
     (is (= ["x" 2003 2022 1960] ((juxt :run :from :to :learn-from) o)))))

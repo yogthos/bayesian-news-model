@@ -7,7 +7,10 @@
 
   with (a_t, b_t) a state learned only from origins whose outcomes are in
   by the origin: the forecast at t has seen the windows (t', t' + 2] with
-  t' + 2 + lag <= t, nothing else. A fixed recalibration fitted on
+  t' + 2 + lag <= t, nothing else. The lag is per kind: --lag (1, an
+  onset known a year after it happens, Principle 7) or the catalogue's
+  own :known-lag in whole years if longer (18 months, so 2 years, for
+  the annual economic catalogues, conflict and war). A fixed recalibration fitted on
   1960-2002 lost out of sample (docs/PHASE-CHANGES.md, T2/T8): the base's
   miscalibration drifts, so the recalibration has to drift with it.
 
@@ -16,8 +19,10 @@
   forecast). Each year its mean reverts toward the prior's, the identity
   (a, b) = (0, 1): m <- target + phi (m - target), the shrinkage; then it
   is discounted (C / delta, the random walk's noise) and updated with the
-  year's newly resolved rows. The discount is not chosen: dynamic model averaging over a small
-  grid of discounts weighs them by how well each forecast the rows as they
+  year's newly resolved rows. A kind with no resolved row yet (food
+  prices before 2004, protest and violence before 1980) is the base
+  unchanged, outside the pool, its state waiting undiscounted. The
+  discount is not chosen: dynamic model averaging over a small grid of discounts weighs them by how well each forecast the rows as they
   resolved (Raftery, Karny & Ettler 2010). With :pool w > 0 the reversion
   target is pooled across kinds, (1 - w) identity + w the kinds' mean
   state at the start of the year: a hierarchical prior over kinds. On the
@@ -42,14 +47,13 @@
 
     jolt -A:tools -M -m bnm.recalibrate-online [--run t44-world-norel]
       [--from 1981] [--to 2002] [--learn-from 1960] [--revert 0.95]
-      [--pool 0.5] [--lag 0] [--draws 1000] [--block 2] [--seed 1]
+      [--pool 0.5] [--lag 1] [--draws 1000] [--block 2] [--seed 1]
       [--out data/runs/sequencing/recalibrate-online-design.tsv]
       [--out-run t44-world-norel-online]"
   (:require [augur.dynamic :as d]
             [augur.math :as m]
             [bnm.kinds :as kinds]
             [bnm.lattice-banking :as lb]
-            [bnm.relation-diag :as rd]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -62,7 +66,7 @@
   before an outcome counts as known, and the pooling weight."
   []
   {:discounts [0.9 0.95 0.98 1.0] :forget 0.99 :revert 0.95
-   :prior-var [1.0 0.25] :centre -2.5 :lag 0 :pool 0.5})
+   :prior-var [1.0 0.25] :centre -2.5 :lag 1 :pool 0.5})
 
 (defn- identity-mean [{:keys [centre]}] [(double centre) 1.0])
 
@@ -106,18 +110,33 @@
 
 (defn- x-of [{:keys [centre]} L] [1.0 (- (double L) (double centre))])
 
+(defn kind-lags
+  "{kind lag}: the years after a window closes before its outcome counts
+  as known, per kind. A catalogue's :known-lag is months (the lattice's
+  :known-at = window end + known-lag; 12 where absent); at year-end
+  origins that is ceil(months / 12) years, and never less than `floor`."
+  [cats floor]
+  (into {} (for [[k c] cats]
+             [k (max (long floor) (long (Math/ceil (/ (double (get c :known-lag 12)) 12.0))))])))
+
 (defn run-online
   "`by-kind` {kind [{:c :t :L :y}]}, :y nil where unknown. Year by year
-  from the first origin to the last: each kind's state reverts (toward
-  the identity, or the pooled target), is discounted and learns from the
-  rows of origin t - 2 - lag (their windows closed by t), then forecasts
-  the rows of origin t. {:forecasts {kind [row + :p :raw]} :trace {kind {t
-  [a b]}} :weights {kind {t {discount weight}}}}, the trace and weights as
-  they stood for the forecasts at t. Optional :start {kind state}."
-  [by-kind {:keys [lag pool start] :as opts}]
+  from the first origin to the last: each kind learns from the rows of
+  origin t - 2 - lag (their windows (t', t' + 2] closed by t and known
+  `lag` years later; :lags {kind lag} over :lag), first reverting toward
+  the identity, or the pooled target, and discounting; then it forecasts
+  the rows of origin t. A kind that has learned nothing yet (no :start,
+  no resolved row) is the base: its state waits, undiscounted, for its
+  first outcome, and it is not in the pool, which is the mean of the
+  other kinds' states as they stood at the start of the year. {:forecasts
+  {kind [row + :p :raw]} :trace {kind {t [a b]}} :weights {kind {t
+  {discount weight}}}}, the trace and weights as they stood for the
+  forecasts at t. Optional :start {kind state}."
+  [by-kind {:keys [lag lags pool start] :as opts}]
   (let [ks (vec (sort (keys by-kind)))
         idx (into {} (for [k ks] [k (group-by :t (by-kind k))]))
-        ts (mapcat #(map :t %) (vals by-kind))]
+        ts (mapcat #(map :t %) (vals by-kind))
+        lag-of (fn [k] (long (get lags k (or lag 0))))]
     (if (empty? ts)
       {:forecasts {} :trace {} :weights {}}
       (let [t0 (apply min ts) t1 (apply max ts)
@@ -125,28 +144,33 @@
             pool (double (or pool 0.0))]
         (loop [t t0
                states (into {} (for [k ks] [k (or (get start k) (initial opts))]))
+               seen (set (filter #(get start %) ks))
                out {:forecasts (zipmap ks (repeat [])) :trace (zipmap ks (repeat {})) :weights (zipmap ks (repeat {}))}]
           (if (> t t1)
             out
-            (let [pooled (when (pos? pool)
-                           (let [ms (map mean-of (vals states))]
+            (let [pooled (when (and (pos? pool) (seq seen))
+                           (let [ms (map #(mean-of (states %)) (sort seen))]
                              (mapv #(/ % (count ms)) (reduce #(mapv + %1 %2) ms))))
                   target (if pooled (mapv #(+ (* (- 1.0 pool) %1) (* pool %2)) id pooled) id)
-                  learn-t (- t 2 (long lag))
+                  learned (into {} (for [k ks]
+                                     [k (vec (for [r (get-in idx [k (- t 2 (lag-of k))]) :when (some? (:y r))]
+                                               {:x (x-of opts (:L r)) :y (:y r)}))]))
+                  seen (into seen (filter #(seq (learned %)) ks))
                   states (into {} (for [k ks]
-                                    (let [rows (for [r (get-in idx [k learn-t]) :when (some? (:y r))]
-                                                 {:x (x-of opts (:L r)) :y (:y r)})]
-                                      [k (d/step (revert (states k) target opts) rows)])))
+                                    [k (if (seen k)
+                                         (d/step (revert (states k) target opts) (learned k))
+                                         (states k))]))
                   out (reduce (fn [out k]
                                 (let [st (states k)
-                                      fs (for [r (get-in idx [k t])]
-                                           (assoc r :p (d/predict st (x-of opts (:L r))) :raw (m/expit (:L r))))]
+                                      fs (for [r (get-in idx [k t])
+                                               :let [raw (m/expit (:L r))]]
+                                           (assoc r :p (if (seen k) (d/predict st (x-of opts (:L r))) raw) :raw raw))]
                                   (-> out
                                       (update-in [:forecasts k] into fs)
-                                      (assoc-in [:trace k t] (ab opts (mean-of st)))
+                                      (assoc-in [:trace k t] (if (seen k) (ab opts (mean-of st)) [0.0 1.0]))
                                       (assoc-in [:weights k t] (d/weights st)))))
                               out ks)]
-              (recur (inc t) states out))))))))
+              (recur (inc t) states seen out))))))))
 
 ;; --- scores -------------------------------------------------------------------------
 
@@ -186,26 +210,46 @@
 
 ;; --- data ---------------------------------------------------------------------------
 
+(defn- finite? [x] (and (number? x) (not (NaN? x)) (not (infinite? x))))
+
 (defn rows-of
   "Rows {:kind :c :t :L :y} for cells [c t] with t >= `from` where the base
-  is known; :y the outcome only where the window (t, t + 2] ends by `to`
-  (else nil: never asked)."
+  is a finite log odds; :y the outcome only where the window (t, t + 2]
+  ends by `to` (else nil: never asked)."
   [{:keys [cells kind from to base outcome]}]
   (vec (for [[c t] cells
              :when (>= t from)
-             :let [L (base c t)] :when (some? L)]
+             :let [L (base c t)] :when (finite? L)]
          {:kind kind :c c :t t :L (double L)
           :y (when (<= (+ t 2) to) (outcome c t))})))
 
+(defn read-base
+  "{country {year L}}: the log odds of a run's year-node forecasts at the
+  year-end origins (month 12 t + 11), countries only, p held to [1e-6, 1 -
+  1e-6]; a p that is not a number in [0, 1] is no forecast. The outcome
+  column is never parsed: the run wrote it to the catalogue's end, and
+  the outcomes here come from the catalogue, cut at --to."
+  [file]
+  (with-open [r (io/reader file)]
+    (reduce (fn [acc l]
+              (let [[s place o p] (str/split l #"\t" 5)
+                    o (some-> o parse-long)
+                    p (some-> p parse-double)]
+                (if (and (= s "year") (= 3 (count place)) o (= 11 (mod o 12))
+                         (finite? p) (<= 0.0 p 1.0))
+                  (assoc-in acc [place (quot o 12)] (m/logit (max 1e-6 (min (- 1.0 1e-6) p))))
+                  acc)))
+            {} (line-seq r))))
+
 (defn frames-of
   "{kind rows}: the run's year-node forecasts (countries) and outcomes from
-  the kind's catalogue, as bnm.calibration-regime reads them."
+  the kind's catalogue (as the lattice's :target computes them, its
+  current vintage)."
   [run cats ks from to]
-  (into {} (for [k ks :let [yr (rd/read-year run k)]]
-             [k (rows-of {:cells (for [[c byo] yr [o _] byo :when (= 11 (mod o 12))] [c (quot o 12)])
+  (into {} (for [k ks :let [yr (read-base (str "data/runs/" run "/" k "/forecasts.tsv"))]]
+             [k (rows-of {:cells (for [[c byt] yr [t _] byt] [c t])
                           :kind k :from from :to to
-                          :base (fn [c t] (when-let [[p _] (get-in yr [c (+ (* 12 t) 11)])]
-                                            (m/logit (max 1e-6 (min (- 1.0 1e-6) p)))))
+                          :base (fn [c t] (get-in yr [c t]))
                           :outcome (fn [c t] (let [o (+ (* 12 t) 11)] (#'lb/onset-in? (cats k) c o o (+ o 24))))})])))
 
 (defn forecast-lines
@@ -229,7 +273,7 @@
         run (or (:run o) "t44-world-norel")]
     {:run run
      :from (n :from 1981) :to (n :to 2002) :learn-from (n :learn-from 1960)
-     :revert (x :revert (:revert (defaults))) :pool (x :pool (:pool (defaults))) :lag (n :lag 0)
+     :revert (x :revert (:revert (defaults))) :pool (x :pool (:pool (defaults))) :lag (n :lag 1)
      :draws (n :draws 1000) :block (n :block 2) :seed (n :seed 1)
      :out (or (:out o) (str "data/runs/sequencing/recalibrate-online-" (n :from 1981) "-" (n :to 2002) ".tsv"))
      :out-run (or (:out-run o) (str run "-online"))}))
@@ -241,7 +285,8 @@
         ks (vec (sort (filter #(and (cats %) (.exists (io/file (str "data/runs/" run "/" % "/forecasts.tsv"))))
                               (apply concat (vals groups)))))
         frames (frames-of run cats ks learn-from to)
-        base (assoc (defaults) :revert revert :pool pool :lag lag)
+        lags (kind-lags (select-keys cats ks) lag)
+        base (assoc (defaults) :revert revert :pool pool :lag lag :lags lags)
         variants (concat [["online" base]
                           ["online-unpooled" (assoc base :pool 0.0)]
                           ["online-no-reversion" (assoc base :revert 1.0)]]
@@ -252,7 +297,7 @@
         say (fn [s] (println s) (flush) (.append buf (str s "\n")))
         iv (fn [[a b]] (format "[%+.5f, %+.5f]" a b))]
     (say (str "# T8 online: " run "'s year node recalibrated as it runs; learned from " learn-from
-              " (windows closed by each origin, lag " lag "), scored origins " from "-" (- to 2) " (windows to " to ")"))
+              " (windows closed by each origin, lag at least " lag ", per kind " (pr-str (into (sorted-map) lags)) "), scored origins " from "-" (- to 2) " (windows to " to ")"))
     (say (str "# filter: " (pr-str base) "; DMA over the discounts; "
               block "-year block bootstrap, " draws " draws, seed " seed))
     (say "table\tvariant\tscope\tn\tonsets\tlog-raw\tlog-online\tlog gain [90%]\tbrier-raw\tbrier-online\tbrier change [90%]\ttop10-raw\ttop10-online")
