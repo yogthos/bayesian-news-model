@@ -288,14 +288,52 @@ registered before scoring, placebos) is what the field lacks.
 
 bnm.hypergraph sets each triple of kinds' joint onsets (a country's
 three-year window, the design years 1960-2002) against what their pairs
-imply with no three-way term (the log-linear model [AB][BC][AC], fitted
-by iterative proportional fitting). Of 115 triples with five or more
-joint windows, three have their interval (countries resampled, 90%)
-above one: banking crises, growth collapses and market crashes (lift
-1.12); conflict onsets, fiscal consolidations and inflation crises
-(1.55); coups, growth collapses and violence surges (1.30). About six
-would by chance. Joint crises in these catalogues are what their pairs
-imply: the pairwise links (docs/WORLD-MODEL.md) carry the joint
-structure, and no polycrisis term is added to the event lattice.
-Recipes as hyperedges (critical inputs needed together) remain the
-production side's form (bnm.hypergraph/availability).
+imply with no three-way term: the log-linear model [AB][BC][AC], fitted
+by iterative proportional fitting. With the pair margins fixed the 2x2x2
+table has one degree of freedom, so the test is G² on 1 df against that
+fit and the effect size is the three-way log ratio of odds ratios (0.5
+added to every cell when one is empty). The lift, observed over fitted
+all-three count, is kept only as a description: the fit's margins contain
+the triple's own count, which pulls it toward one (a table with no A-B
+window without C has an infinite ratio of odds ratios and a lift of
+1.08). "Joint" means joint onsets within the window: a crisis already
+running when the window opens counts as absent.
+
+Triples are kept when the fit expects five or more all-three windows (a
+rule on the pairs, not on the triple's own count, which would favour
+high lifts): 106 of them at the 1960 window phase. Both tails, G²
+p < 0.05: one above (coups, growth collapses and violence surges, log
+ratio 1.10) and six below, seven against 5.3 expected by chance; the
+country-resampled 90% interval of the log ratio picks the same seven. After
+Benjamini-Hochberg across the 106, one survives at q < 0.10: conflict
+onsets, coups and war onsets, below (log ratio -1.57, q 0.02). That
+triple holds a nested pair: most war onsets are conflict onsets that
+escalated (65% of the time together in a window), so its three-way term
+is near-definitional. Seven pairs nest at 50% or more on ten or more
+joint onsets (banking crises and market crashes, violence surges with
+war onsets, with protest surges and with conflict onsets, conflict and
+war onsets, growth collapses and market crashes, currency and inflation
+crises); without triples holding one, 71 remain, four reach p < 0.05
+against 3.6 expected, and none survives the correction. At the 1961 and
+1962 phases nothing survives either, the conflict-coup-war triple
+included (6 and 5 at p < 0.05, about 5 expected). The three triples the
+first pass flagged above one do not hold up: banking crises, growth
+collapses and market crashes (p 0.16; it holds two nested pairs), and
+conflict onsets, fiscal consolidations and inflation crises (expected
+under five, now not tested); only coups, growth collapses and violence
+surges remains nominal, and it does not survive the correction.
+
+No triple survives multiplicity correction apart from a near-definitional
+one that does not survive a shift of the window phase. That is not proof
+the pairs carry everything: at this power (the median triple's standard
+error) a three-way log ratio of odds ratios smaller than about 1.6, a
+factor of five in the odds ratio, would go undetected. What can be said
+is that no large polycrisis term is visible, so none is added to the
+event lattice and the pairwise links (docs/WORLD-MODEL.md) remain the
+joint structure. Recipes as hyperedges (critical inputs needed together)
+remain the production side's form (bnm.hypergraph/availability): a
+critical recipe is Leontief, a substitutable one the share-weighted mean
+(perfect substitutes with no reallocation, the CES limit sigma ->
+infinity), and a CES recipe with elasticity sigma lies between (Cobb-Douglas
+at 1). A shock given at a node with a recipe caps it, and a cycle of
+recipes is refused.
