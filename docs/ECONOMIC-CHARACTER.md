@@ -1083,3 +1083,172 @@ SFI, GPPD, GAEZ.
 - Singer, J. D., Bremer, S. & Stuckey, J. (1972). "Capability
   Distribution, Uncertainty, and Major Power War, 1820-1965." In Russett
   (ed.), Peace, War, and Numbers. Sage.
+
+## Results: product migration (bnm-3ka.2)
+
+Scripts: scripts/migration.py (panel, capital intensities),
+scripts/migration-h12.py (H1/H2), bnm.migration and
+tools/bnm/migration_run.clj (migration/* stocks). Full output:
+data/derived/econ/migration-h12.txt, one row per regression in
+migration-h12.csv.
+
+**The proxies are placeholders.** fin-va (the spine's finance share of
+VA), mcap (WDI market cap / GDP) and credit (the credit gap) stand in for
+the financialisation factor until bnm-3ka.5 lands. A first cut of
+econ/financialisation was read from data/derived/stocks/econ-factors.csv
+(uncommitted, written 2026-10-22 14:08, still changing between runs); its
+row below is provisional.
+
+### The panel
+
+BACI HS92 exports 1995-2020, summed over importers, as each exporter's
+share of each HS6 product's world exports. The sample has 2.92M
+exporter x product x window rows (five-year windows from 1995 to 2015),
+4,991 products and 231 exporters. Shares sum to one per product-year
+(asserted in the script and in migration_run). k is the product's 1995
+EXIOBASE capital intensity, standardised over products. The regression
+is
+
+    dshare_ipw = b (z_iw x k_p) + c (log income_iw x k_p) + a_iw + g_pw + e
+
+with exporter-window and product-window fixed effects. These absorb the
+proxy's main effect, so b is identified only off z x k. It asks whether
+high-z exporters lose more in capital-intensive products than in their
+other products. That is the 8e design, and fit now refuses a regressor
+the effects absorb. Each regressor is read at a known year no later
+than t0 (audited in the output). k comes from the v3.8.2 vintage (known
+2021): it is a fixed product attribute, not a value anyone held in 1995.
+
+### H1/H2 (k = CFC/VA)
+
+b is per SD of the proxy per SD of k, in pp of world share over five
+years. se is two-way clustered. p(t) is t against t(G-1); p(wild) is
+the wild cluster bootstrap by exporter. G_eff is the effective number of
+exporter clusters, 1 / sum of squared variance shares.
+
+| test | b | se | p(t) | p(wild) | exporters | G_eff (top) |
+|---|---|---|---|---|---|---|
+| H1 fin-va | +0.0094 | 0.0073 | 0.20 | 0.32 | 44 | 2.6 (BRA 61%) |
+| H1 mcap | +0.0074 | 0.0027 | 0.007 | 0.11 | 97 | 6.0 (HKG 33%) |
+| H1 credit | +0.0022 | 0.0032 | 0.49 | 0.50 | 149 | 6.1 (CHN 34%) |
+| H1 econ/financialisation (provisional) | +0.0049 | 0.0031 | 0.12 | 0.09 | 171 | 5.1 (CHN 35%) |
+| H2 inv | +0.0056 | 0.0057 | 0.33 | (0.008, invalid) | 185 | 1.4 (BMU 84%) |
+| core exporters: fin-va | +0.0079 | 0.0073 | 0.29 | 0.39 | 38 | 2.6 (BRA 60%) |
+| core: mcap | +0.0066 | 0.0108 | 0.54 | 0.55 | 69 | 5.5 |
+| core: credit | +0.0032 | 0.0042 | 0.44 | 0.48 | 64 | 6.2 |
+| core: econ/financialisation | +0.0067 | 0.0053 | 0.21 | 0.20 | 73 | 4.4 |
+| core: inv | +0.237 | 0.083 | 0.005 | 0.011 | 75 | 5.4 (CHN 38%) |
+
+The core exporters are those with at least 0.1% of world goods exports
+at t0, with Hong Kong and Singapore (entrepots) left out.
+
+- H1 is not supported. No proxy, including the provisional
+  econ/financialisation, has the predicted negative sign in any
+  specification. The significant wrong-signed mcap coefficient is not
+  robust: its two-way t (2.8) shrinks to p(wild) 0.11, and it rests on
+  Hong Kong's re-exports. In the core sample it is +0.0066 (p 0.54).
+  Without Germany and Japan the results are unchanged, and fin-va is
+  positive in every window.
+- H2 inv, on the full panel, is positive and not distinguishable from
+  zero. Its variance is 84% Bermuda: a tiny exporter with an extreme
+  investment share and large pp swings in thin products. That makes the
+  full-sample wild p of 0.008 meaningless, since the bootstrap fails
+  with one dominant cluster. In the core sample, H2 is positive and
+  significant: +0.24 (p(wild) 0.011), and +6.9 on the symmetric growth
+  outcome (p(wild) 0.04). This is the one result that survives, and it
+  is H2's, not H1's.
+- Placebos (each country takes the proxy of the nearest other country
+  in log income, same window) are all near zero. The mapping never
+  assigns a country to itself; windows with one country are dropped and
+  ties break alphabetically. 61-68% of pairs are mutual, and the donor
+  changes between windows for 70-93% of countries. Own and donor
+  proxies are uncorrelated (|r| <= 0.10), so the placebo is not a
+  disguised copy.
+
+### Controls
+
+Each exporter's own slope on k, pooling the windows with the
+product-window means taken out (product-clustered), with t in brackets:
+Germany -0.17 (-5.8), UK -0.14 (-7.6), France -0.08 (-3.2), Japan -0.08
+(-3.2), the US -0.07 (-1.8), Switzerland -0.04 (-4.0), Italy +0.05
+(+2.7); China +0.19 (+3.8), Taiwan +0.13 (+8.4), Korea +0.12 (+7.6).
+The rich manufacturing exporters lost capital-intensive share as fast
+as the financialised ones. The migration is from rich countries to East
+Asia, not from financialised countries to others.
+
+### Sensitivity to the capital-intensity measure
+
+The same model, with k swapped. Each cell is b x 1000 with p(wild) in
+brackets.
+
+| k | fin-va | mcap | credit | inv |
+|---|---|---|---|---|
+| CFC/VA, world sum (base) | +9.4 (0.32) | +7.4 (0.11) | +2.2 (0.50) | +5.6 (G_eff 1.4) |
+| CFC/VA, median over 49 regions | +8.1 (0.26) | +9.1 (0.12) | +1.4 (0.81) | +3.1 (0.26) |
+| CFC/VA, emerging regions pooled | +8.1 (0.46) | +5.5 (0.10) | +0.6 (0.82) | +6.0 (G_eff 1.6) |
+| gross capital share of VA | +4.5 (0.77) | +8.3 (0.10) | -1.7 (0.64) | -5.9 (0.72) |
+| log CFC per worker | +11.6 (0.39) | +7.1 (0.21) | +3.4 (0.44) | +10.1 (G_eff 1.6) |
+| KLEMS log K per worker | +9.4 (0.47) | +9.0 (0.22) | +1.9 (0.53) | -0.6 (0.98) |
+| KLEMS capital compensation share | +9.7 (0.35) | +9.4 (0.11) | +1.0 (0.73) | +1.4 (0.85) |
+| base, symmetric growth outcome | +431 (0.56) | +372 (0.12) | +286 (0.09) | -214 (0.99) |
+| base, log change (both ends > 0) | +0.9 (0.91) | +8.5 (0.14) | +6.7 (0.02) | +2.5 (0.99) |
+| base, no China | +9.4 (0.30) | +7.3 (0.11) | +0.3 (0.93) | +4.2 (G_eff 1.5) |
+| base, manufactures (HS 28-96) | +7.8 (0.29) | +11.5 (0.12) | +1.8 (0.63) | +2.3 (0.46) |
+
+The H1 null holds under every k. Read the inv column with care: with
+G_eff below 2, neither the clustered t nor the bootstrap holds. The
+measures agree only loosely. Spearman rank correlations over goods
+products against the base CFC/VA are 0.58 (regional median), 0.71
+(emerging pool), 0.54 (capital share), 0.58 (CFC per worker), 0.49
+(KLEMS K per worker) and 0.51 (KLEMS capital share). Over the 16 KLEMS
+goods industries, CFC/VA against KLEMS K per worker is 0.53.
+
+### Caveats
+
+- CFC/VA is a weak capital-intensity measure. CFC depends on each
+  country's depreciation convention and service lives. Resource rents
+  inflate VA, so crude oil, mining and refining rank low: mining (B)
+  and refining (C19) are near the bottom on CFC/VA and near the top on
+  KLEMS K per worker. Agricultural staples (wheat, rice, cereals)
+  rank high. The world sum is 65% US, Japan and western Europe in 1995
+  VA, so it carries rich-country technology. The regional median and
+  the emerging pool remove that weighting, and the H1/H2 signs do not
+  change. KLEMS covers only Europe, the US and Japan, at 16 industries.
+- Few effective clusters. Exporters number 44-185, but one or two of
+  them carry most of the variance (G_eff 1.4-6 in most full-sample
+  rows). The two-way clustered t overstates precision: compare mcap's
+  t of 2.8 with its p(wild) of 0.11. The bootstrap is itself unreliable
+  below G_eff of about 5 (MacKinnon & Webb 2017).
+- The pp outcome is dominated by large exporters (China's mean change
+  in the top third of k is +2.3pp) and by small ones' swings in thin
+  products. The symmetric growth and log-change outcomes give the same
+  H1 signs.
+- Processing trade. Gross export shares overstate where capital-intensive
+  production moved. On EXIOBASE production VA shares in computers and
+  telecom equipment, 1995-2022, China's export share rose 30.5pp but
+  its VA share rose 21.3pp, and Taiwan's rose 6.5pp against 0.9pp. The
+  US export share fell 13.1pp while its VA share rose 2.6pp. Across all
+  high-k products, the export and VA changes have the same signs for
+  China, the US, Germany, the UK and Japan; Japan's VA loss (-18pp) is
+  larger than its export loss (-8pp). EXIOBASE 3.8 years after 2011
+  are nowcasts, and the VA here is production VA, not VA embodied in
+  exports. A TiVA-style decomposition (Leontief inverse on the pxp
+  tables) is the proper check and is not done.
+- Known years. All regressors are known by t0 (assuming the spine
+  is known 2 years after the data year, WDI 1 year and PWT 3 years).
+  Every source is a later vintage, revised since. For split HS6 codes,
+  the concordance weights for 1995-2011 look ahead.
+- The proxies vary across few countries: fin-va covers 25 exporters
+  before 2005 and 44 after, with a source break at 2000 and 2015.
+
+### Fixes in this review
+
+- Python helpers are covered by self-tests (python -I
+  scripts/migration.py --selftest, scripts/migration-h12.py --selftest):
+  classification, concordance rows, HS6 intensity, shares, the
+  NACE->KLEMS map, the FE fit (recovery, absorption refused), the wild
+  bootstrap, the placebo map and the cluster diagnostic.
+- bnm.migration: classify put a NaN intensity in the high class, a NaN
+  intensity poisoned a country's weighted mean, and tercile-cuts threw
+  on no values. All three are fixed and tested, with tests for the
+  shares summing to one over exporters and for the stale cutoff.
