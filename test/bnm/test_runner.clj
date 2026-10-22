@@ -59,7 +59,8 @@
             [bnm.credit-run-test]
             [bnm.horizon-profile-test]
             [bnm.attribution-test]
-            [bnm.calibration-regime-test]))
+            [bnm.calibration-regime-test]
+            [bnm.concordance-test]))
 
 (def namespaces
   '[bnm.time-test
@@ -121,7 +122,8 @@
     bnm.credit-run-test
     bnm.horizon-profile-test
     bnm.attribution-test
-    bnm.calibration-regime-test])
+    bnm.calibration-regime-test
+    bnm.concordance-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
