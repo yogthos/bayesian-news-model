@@ -28,6 +28,7 @@
             [bnm.world3-test]
             [bnm.assimilate-test]
             [bnm.material-test]
+            [bnm.geo-test]
             [bnm.network-test]
             [bnm.energy-pilot-test]
             [bnm.archetypes-test]
@@ -60,7 +61,10 @@
             [bnm.horizon-profile-test]
             [bnm.attribution-test]
             [bnm.stages-test]
-            [bnm.calibration-regime-test]))
+            [bnm.calibration-regime-test]
+            [bnm.recalibrate-online-test]
+            [bnm.concordance-test]
+            [bnm.essentials-test]))
 
 (def namespaces
   '[bnm.time-test
@@ -91,6 +95,7 @@
     bnm.world3-test
     bnm.assimilate-test
     bnm.material-test
+    bnm.geo-test
     bnm.network-test
     bnm.energy-pilot-test
     bnm.archetypes-test
@@ -123,7 +128,10 @@
     bnm.horizon-profile-test
     bnm.attribution-test
     bnm.stages-test
-    bnm.calibration-regime-test])
+    bnm.calibration-regime-test
+    bnm.recalibrate-online-test
+    bnm.concordance-test
+    bnm.essentials-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
