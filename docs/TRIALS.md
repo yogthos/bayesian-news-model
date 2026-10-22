@@ -56,3 +56,4 @@ the count is the number of lines below.
 | T1 | horizon profile of named states | 2026-10 | five named states (credit gap, youth bulge, technology gap; food import exposure, reserves), year-demeaned, onset at t+h for h 1-5, slow rising (a) and fast at short leads (b), permutation nulls |
 | T2 | calibration by stock regime | 2026-10 | the base recalibrated per kind with a regime level and slope shift shared within the financial (credit gap, reserves) and social (youth bulge, anocracy) groups |
 | T8 | plain recalibration | 2026-10 | the base recalibrated per kind (a_k, b_k from 1960-2002) against the raw base on 2003-2020 |
+| T4 | total-effect attribution | 2026-10 | 13 states on their own against coverage-matched placebo states, where vs when, and their increment over the recalibrated base |

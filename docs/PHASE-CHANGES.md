@@ -1199,6 +1199,39 @@ shared within a group, a_k and b_k per kind.
    gap x house prices (banking; directional, c > 0, about 30 onsets) and
    food import share x the world grain price gap (protest).
 
+## Pre-registered, 22 October 2026: what the stock-flow states explain on their own (trial T4)
+
+Registered before any outcome after 2002 is read for this test. T1 found
+the slow states say where rather than when, and the base, which knows each
+country's history, holds most of where. T4 asks the drivers' question:
+how much of the forecasts' skill the states explain on their own, against
+placebo states that keep each country's own data coverage (coverage
+follows income, so where the data are is not credited to the states).
+tools/bnm/attribution (docs/T4-ATTRIBUTION.md): logits at the year node
+(an onset within (t, t+2]), fitted on origins 1960-2000, scored on
+origins 2002-2020 (outcome years 2003-2022), the design's ten kinds
+(banking, conflict, coups, currency, fiscal consolidations, growth
+collapses, inflation, market crashes, sovereign defaults, war), within
+mode (each kind-year at M0's level), the base recalibrated per kind,
+ridge penalties fixed on the design rotation, 1,000 two-year block
+bootstrap draws with the fits held fixed. The 13 states: credit gap, Keen
+debt gap, debt service, reserves; youth bulge, elite overproduction,
+anocracy; food import exposure, arable land, grain use, power capacity,
+the fuel price gap; the technology gap.
+
+**Tests**, pooled with kinds equally weighted, one-sided 5% (the lower
+end of the 90% interval):
+1. (primary) skill(S) - skill(P'), log score, P' the coverage-matched
+   placebo: > 0 (design years +0.0021 [+0.0012, +0.0031]);
+2. where minus when, of S - P', log score: > 0 (design +0.0020
+   [+0.0013, +0.0027]);
+3. the states over the recalibrated base, skill(B'S) - skill(B'): equivalent
+   to nothing if the upper ends are below +0.0006 Brier and +0.002 log
+   (design +0.00005 Brier, +0.0008 log);
+4. for the record: S - P' per group (financial, social, material,
+   technology), Holm over the four; the shares of the base's skill (S,
+   P', the indicators alone); the Shapley split; the raw-offset base.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
