@@ -19,17 +19,29 @@
 (defn leontief
   "{[r s] L}: (I - A)^-1 of the coefficients `a` ({[r s] share of s's
   output paid to r}) over `sectors`, by the Neumann series I + A + A^2 +
-  ... (a productive economy's A has spectral radius below 1)."
+  ... (a productive economy's A has spectral radius below 1), on arrays."
   [a sectors]
-  (let [ss (vec sectors)
-        mul (fn [x] (into {} (for [r ss s ss] [[r s] (reduce + 0.0 (for [k ss] (* (get x [r k] 0.0) (get a [k s] 0.0))))])))
-        id (into {} (for [r ss s ss] [[r s] (if (= r s) 1.0 0.0)]))]
-    (loop [term id total id k 0]
-      (let [term' (mul term)
-            size (reduce + 0.0 (map #(Math/abs (double %)) (vals term')))]
-        (cond (< size 1e-12) (merge-with + total term')
-              (> k 500) (throw (ex-info "bnm.energy-pilot/leontief: the series does not converge" {}))
-              :else (recur term' (merge-with + total term') (inc k)))))))
+  (let [ss (vec sectors) n (count ss)
+        am (double-array (* n n))
+        _ (doseq [i (range n) j (range n)] (aset am (+ (* i n) j) (double (get a [(ss i) (ss j)] 0.0))))
+        mul (fn [^doubles x]
+              (let [out (double-array (* n n))]
+                (dotimes [i n]
+                  (dotimes [k n]
+                    (let [xik (aget x (+ (* i n) k))]
+                      (when-not (zero? xik)
+                        (dotimes [j n]
+                          (aset out (+ (* i n) j) (+ (aget out (+ (* i n) j)) (* xik (aget am (+ (* k n) j))))))))))
+                out))
+        total (double-array (* n n))]
+    (dotimes [i n] (aset total (+ (* i n) i) 1.0))
+    (loop [term (aclone total) k 0]
+      (let [^doubles term' (mul term)
+            size (loop [i 0 s 0.0] (if (< i (* n n)) (recur (inc i) (+ s (Math/abs (aget term' i)))) s))]
+        (dotimes [i (* n n)] (aset total i (+ (aget total i) (aget term' i))))
+        (cond (< size 1e-12) (into {} (for [i (range n) j (range n)] [[(ss i) (ss j)] (aget total (+ (* i n) j))]))
+              (> k 2000) (throw (ex-info "bnm.energy-pilot/leontief: the series does not converge" {}))
+              :else (recur term' (inc k)))))))
 
 (defn shock
   "Refined products' log price change less the log of the output-weighted
