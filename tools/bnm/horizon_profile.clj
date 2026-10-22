@@ -27,15 +27,21 @@
   Each state is also read at another country (the next in sorted order
   of those with the state that year): the placebo, on the same rows.
 
-  The pooled slope test, specified before it is run: per state, its
+  The horizon statistics, specified before they are run. Per state, its
   kinds' rows pooled (one coefficient), its fitted coefficient per SD at
-  each h (the table's pooled coef); the state's slope is the mean
-  at h = 4, 5 less the mean at h = 1, 2; the statistic is the mean over
-  states of slope x direction (the expected sign, times +1 for a slow
-  state, -1 for a fast one). Its null: country labels permuted within
-  each state's countries (each country reads another's series whole), the
-  statistic recomputed, one-sided p = (1 + #{null >= observed}) / (1 +
-  draws); and, for the record, the statistic on the placebo reads.
+  each h (the table's pooled coef); skill is s x coef, s the state's
+  expected sign; c12 and c45 the mean coefficients at h = 1, 2 and 4, 5.
+  - (a) slow states: the mean over them of s (c45 - c12); theory: > 0,
+    skill rises with lead;
+  - (b) fast states: the mean over them of s c12; theory: > 0, right-
+    signed at short leads. For the record, their decline s (c12 - c45),
+    read as consistent with theory only when (b) > 0: a wrong-signed
+    coefficient that grows counts against the fast hypothesis, never for
+    it.
+  Their null: country labels permuted within each state's countries (each
+  country reads another's series whole), the statistics recomputed,
+  one-sided p = (1 + #{null >= observed}) / (1 + draws); and, for the
+  record, the statistics on the placebo reads.
 
   Design years only: origins from 1960, and no outcome after `to` (2002),
   so at lead h the last origin is 2002 - h.
@@ -67,12 +73,6 @@
    {:name "fuel-price-gap" :kinds ["growth_collapse" "sovereign_default" "currency_crisis"] :sign 1 :speed :slow :lead [2 4]}
    {:name "reserves" :kinds ["currency_crisis" "sovereign_default"] :sign -1 :speed :fast :lead [1 2]}
    {:name "anocracy" :kinds ["coup" "conflict_onset" "violence_surge"] :sign 1 :speed :slow :lead [2 5]}])
-
-(defn direction
-  "+1 when the state's coefficient should grow in its expected sign with
-  lead (a slow state), -1 when it should shrink (a fast one)."
-  [{:keys [sign speed]}]
-  (* (long sign) (if (= speed :slow) 1 -1)))
 
 ;; --- reading ---------------------------------------------------------------------
 
@@ -157,11 +157,31 @@
   [cs]
   (- (/ (+ (cs 4) (cs 5)) 2.0) (/ (+ (cs 1) (cs 2)) 2.0)))
 
-(defn slope-stat
-  "The mean over states of their slope times their direction."
-  [coefs dirs]
-  (let [ss (for [[s cs] coefs] (* (dirs s) (state-slope cs)))]
-    (/ (reduce + ss) (count ss))))
+(defn- c12 [cs] (/ (+ (cs 1) (cs 2)) 2.0))
+
+(defn- mean-of [xs] (if (seq xs) (/ (reduce + xs) (count xs)) Double/NaN))
+
+(defn slow-stat
+  "(a): the mean over the slow states of `coefs` ({state {h coef}}) of
+  s x (c45 - c12), s the expected sign (`specs`, {state {:sign :speed}})."
+  [coefs specs]
+  (mean-of (for [[st cs] coefs :let [{:keys [sign speed]} (specs st)] :when (= speed :slow)]
+             (* sign (state-slope cs)))))
+
+(defn fast-stats
+  "(b) for the fast states of `coefs`: {:short the mean of s x c12, :decline
+  the mean of s x (c12 - c45), :consistent? whether the decline reads as
+  theory's (both > 0; a wrong-signed coefficient that grows is not)}."
+  [coefs specs]
+  (let [fs (for [[st cs] coefs :let [{:keys [sign speed]} (specs st)] :when (= speed :fast)] [sign cs])
+        short (mean-of (for [[sg cs] fs] (* sg (c12 cs))))
+        decline (mean-of (for [[sg cs] fs] (* sg (- (state-slope cs)))))]
+    {:short short :decline decline :consistent? (and (pos? short) (pos? decline))}))
+
+(defn- stats
+  "[(a) (b) decline] of a {state {h coef}}."
+  [coefs specs]
+  (let [{:keys [short decline]} (fast-stats coefs specs)] [(slow-stat coefs specs) short decline]))
 
 (defn placebo-read
   "The state of `panel` ({iso {year value}}) read at another country: the
@@ -324,8 +344,8 @@
                 (swap! placebo-pooled assoc-in [label name h] (:coef fb)))
               (say (format "%s\t%s\t%d\t%s\t%d\t%d\t%+.3f\t%.2f\t%+.2f\t%+.3f\t%.2f\t%+.2f"
                            name kd h label (:n fa) (:pos fa) (:coef fa) (:lr fa) (:z fa) (:coef fb) (:lr fb) (:z fb)))))))
-      ;; the slope test
-      (let [dirs (into {} (for [s named] [(:name s) (direction s)]))
+      ;; the horizon statistics
+      (let [specs (into {} (for [st named] [(:name st) st]))
             g (m/rng seed)
             null-of (fn [label]
                       (vec (for [_ (range draws)]
@@ -336,24 +356,30 @@
                                                                          :let [rs (vec (mapcat #(kind-rows read % h) kinds))
                                                                                rs (if (= label "none") (total-offsets rs) rs)]]
                                                                      [h (if (seq rs) (coef rs) 0.0)]))]))]
-                               (slope-stat coefs dirs)))))]
-        (say "# slope test: per state, the pooled coef at h 4,5 less at h 1,2; the statistic the mean over states of that times direction")
-        (say "slope\tstate\toffset\tdirection\tslope\tplacebo-slope\th1\th2\th3\th4\th5")
-        (doseq [label ["base" "none"] {:keys [name]} named
+                               (stats coefs specs)))))]
+        (say "# per state: skill s*coef (s the expected sign); slow states' s*(c45 - c12), fast states' s*c12 and s*(c12 - c45); c12, c45 the pooled coef's mean at h 1,2 and 4,5")
+        (say "skill	state	offset	speed	sign	s*c12	s*(c45-c12)	placebo s*c12	placebo s*(c45-c12)	h1	h2	h3	h4	h5")
+        (doseq [label ["base" "none"] {:keys [name sign speed]} named
                 :let [cs (get-in @pooled [label name]) pc (get-in @placebo-pooled [label name])]
                 :when (= 5 (count cs))]
-          (say (format "slope\t%s\t%s\t%+d\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f"
-                       name label (dirs name) (state-slope cs) (if (= 5 (count pc)) (state-slope pc) Double/NaN)
+          (say (format "skill\t%s\t%s\t%s\t%+d\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f"
+                       name label (clojure.core/name speed) sign (* sign (c12 cs)) (* sign (state-slope cs))
+                       (if (= 5 (count pc)) (* sign (c12 pc)) Double/NaN) (if (= 5 (count pc)) (* sign (state-slope pc)) Double/NaN)
                        (cs 1) (cs 2) (cs 3) (cs 4) (cs 5))))
         (doseq [label ["base" "none"]
-                :let [obs (slope-stat (get @pooled label) dirs)
-                      plc (slope-stat (get @placebo-pooled label) dirs)
+                :let [obs (stats (get @pooled label) specs)
+                      plc (stats (get @placebo-pooled label) specs)
                       null (null-of label)
-                      p (/ (+ 1.0 (count (filter #(>= % obs) null))) (+ 1.0 draws))
-                      mean (/ (reduce + null) (count null))
-                      sd (Math/sqrt (/ (reduce + (map #(* (- % mean) (- % mean)) null)) (count null)))]]
-          (say (format "pooled-slope\t%s\tstatistic %+.4f\tplacebo %+.4f\tnull mean %+.4f sd %.4f\tp %.3f (%d permutations of country labels)"
-                       label obs plc mean sd p draws))))
+                      consistent? (:consistent? (fast-stats (get @pooled label) specs))]
+                [i stat-name] [[0 "(a) slow: mean s*(c45-c12)"] [1 "(b) fast: mean s*c12"] [2 "fast decline, record: mean s*(c12-c45)"]]
+                :let [o (obs i)
+                      ns (map #(nth % i) null)
+                      p (/ (+ 1.0 (count (filter #(>= % o) ns))) (+ 1.0 draws))
+                      mean (mean-of ns)
+                      sd (Math/sqrt (mean-of (map #(* (- % mean) (- % mean)) ns)))]]
+          (say (format "statistic\t%s\t%s\tobserved %+.4f\tplacebo %+.4f\tnull mean %+.4f sd %.4f\tp %.3f (%d permutations of country labels)%s"
+                       label stat-name o (plc i) mean sd p draws
+                       (if (= i 2) (if consistent? "\tconsistent with theory ((b) > 0)" "\tnot counted: (b) <= 0 or decline <= 0") "")))))
     (io/make-parents out)
     (spit out (str buf))
     (println "wrote" out)))

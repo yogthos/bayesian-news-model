@@ -162,21 +162,29 @@ each of its kinds and the kinds pooled, and each lead h = 1..5:
 - **placebo**: the same state read at the next country, in sorted order,
   of those with the state that year, on the same rows.
 
-**The pooled slope test (specified before the run):**
+**The horizon statistics (specified before the run).** Skill is s ×
+coef, where s is the state's expected sign. c12 and c45 are the pooled
+coefficient's means at h = 1, 2 and at h = 4, 5.
 
 - For each state, pool its kinds' rows into one coefficient at each h
   (the table's `pooled` rows).
-- The state's slope is the mean coefficient at h = 4, 5 less the mean at
-  h = 1, 2.
-- The statistic is the mean over states of slope × direction. Direction
-  is the expected sign × (+1 for a slow state, −1 for a fast one).
+- **(a) slow states:** the mean over the seven slow states of
+  s × (c45 − c12). Theory says > 0: skill rises with lead.
+- **(b) fast states:** the mean over the three fast states (debt service,
+  food import exposure, reserves) of s × c12. Theory says > 0: the
+  coefficient is right-signed at short leads.
+- **The fast states' decline**, s × (c12 − c45), is reported for the
+  record. It counts as consistent with theory only when (b) > 0 as well,
+  so a wrong-signed coefficient that grows with lead counts against the
+  fast hypothesis, never for it. (The first version of this test used a
+  single statistic, slope × sign × speed, which counted exactly that case
+  in favour. This replaces it.)
 - The null permutes country labels within each state's countries, so
-  each country reads another's whole series, and recomputes the
-  statistic. 200 draws, seed 1. One-sided p = (1 + #{null ≥ observed}) /
-  201.
-- For the record, the statistic on the placebo reads.
-- The base-offset statistic is the primary one. The total-effect
-  statistic is reported beside it.
+  each country reads another's whole series, and recomputes all three.
+  200 draws, seed 1. One-sided p = (1 + #{null ≥ observed}) / 201.
+- For the record, the statistics on the placebo reads.
+- The base-offset statistics are primary. The total-effect ones are
+  reported beside them.
 
     jolt -A:tools -M -m bnm.credit-run
     jolt -A:tools -M -m bnm.horizon-profile --draws 200 --seed 1
@@ -213,29 +221,44 @@ each of its kinds and the kinds pooled, and each lead h = 1..5:
 | reserves | -0.259 (-2.41) | -0.192 (-1.86) | -0.199 (-1.73) | -0.262 (-2.11) | -0.271 (-2.04) | -1.43 -1.14 -1.30 -1.21 -0.40 |
 | anocracy | -0.041 (-1.21) | -0.065 (-1.66) | -0.029 (-0.63) | -0.044 (-0.94) | -0.017 (-0.37) | -0.58 -0.63 -0.93 -1.47 -1.55 |
 
-**Slope per state** (mean coef at h = 4, 5 less at h = 1, 2; the
-direction is the expected sign × speed, so slope × direction > 0 is the
-hypothesis):
+**Skill per state** (s × coef; c12, c45 the means at h = 1, 2 and 4, 5):
 
-| State | Direction | Slope, base | Slope, none | Placebo slope, base |
-|---|---|---|---|---|
-| credit-gap | +1 | -0.008 | -0.038 | -0.002 |
-| keen-debt-gap | +1 | +0.113 | +0.160 | -0.037 |
-| debt-service | -1 | -0.114 | -0.120 | -0.053 |
-| food-import-exposure | -1 | -0.100 | +0.103 | +0.114 |
-| youth-bulge | +1 | -0.078 | -0.080 | +0.010 |
-| elite-overproduction | +1 | +0.181 | +0.085 | -0.298 |
-| technology-gap | +1 | -0.107 | -0.117 | +0.029 |
-| fuel-price-gap | +1 | +0.060 | +0.030 | +0.049 |
-| reserves | +1 | -0.017 | -0.041 | +0.048 |
-| anocracy | +1 | +0.023 | +0.023 | -0.054 |
+| State | Speed | s | s·c12, base | s·(c45 − c12), base | s·c12, none | s·(c45 − c12), none | placebo s·c12, base | placebo s·(c45 − c12), base |
+|---|---|---|---|---|---|---|---|---|
+| credit-gap | slow | + | +0.137 | -0.008 | +0.113 | -0.038 | -0.010 | -0.002 |
+| keen-debt-gap | slow | + | +0.037 | +0.113 | -0.021 | +0.160 | +0.144 | -0.037 |
+| youth-bulge | slow | + | -0.027 | -0.078 | +0.186 | -0.080 | -0.096 | +0.010 |
+| elite-overproduction | slow | + | +0.056 | +0.181 | -0.172 | +0.085 | +0.485 | -0.298 |
+| technology-gap | slow | + | +0.046 | -0.107 | +0.725 | -0.117 | -0.075 | +0.029 |
+| fuel-price-gap | slow | + | +0.130 | +0.060 | +0.049 | +0.030 | +0.155 | +0.049 |
+| anocracy | slow | + | -0.004 | +0.023 | -0.053 | +0.023 | +0.001 | -0.054 |
+| debt-service | fast | + | -0.126 | -0.114 | +0.018 | -0.120 | -0.062 | -0.053 |
+| food-import-exposure | fast | + | +0.067 | -0.100 | +0.280 | +0.103 | -0.329 | +0.114 |
+| reserves | fast | − | +0.222 | +0.017 | +0.225 | +0.041 | +0.093 | -0.048 |
 
-**Pooled slope test** (200 permutations of country labels, seed 1):
+**The statistics** (200 permutations of country labels, seed 1):
 
-| Offset | Statistic | Placebo | Null mean (sd) | One-sided p |
-|---|---|---|---|---|
-| base (primary) | +0.038 | -0.032 | +0.008 (0.033) | 0.189 |
-| none | +0.004 | -0.051 | -0.014 (0.027) | 0.234 |
+| Offset | Statistic | Observed | Placebo | Null mean (sd) | One-sided p |
+|---|---|---|---|---|---|
+| base (primary) | (a) slow: s·(c45 − c12) | +0.026 | -0.043 | +0.018 (0.034) | 0.403 |
+| base (primary) | (b) fast: s·c12 | +0.054 | -0.099 | -0.176 (0.092) | 0.015 |
+| base | fast decline, record: s·(c12 − c45) | +0.066 | -0.004 | -0.014 (0.077) | 0.164, counted ((b) > 0) |
+| none | (a) slow | +0.009 | -0.049 | +0.008 (0.030) | 0.448 |
+| none | (b) fast | +0.175 | +0.053 | -0.001 (0.076) | 0.005 |
+| none | fast decline, record | -0.008 | -0.056 | -0.065 (0.052) | 0.144, not counted (decline ≤ 0) |
+
+**The (b) null under the base offset is not centred on zero** (mean
+−0.18). In permutations, debt service (−0.25) and food import exposure
+(−0.37) take negative coefficients on their own. Both carry a world
+component that a permutation of countries keeps: world real rates, and
+the world grain price gap. Against the base, the years when that
+component is high are years the base over-predicts. So "(b) = +0.054,
+p 0.015" says that the country-specific part is right-signed relative to
+that time component. It does not say the raw short-lead coefficient is
+clearly right-signed: debt service's is negative. Year effects, or a
+year-demeaned state, would take the time component out before
+registration. That is a design choice for the trial, so it is not made
+here.
 
 Full table, per kind as well: data/runs/sequencing/horizon-t1-design.tsv.
 
@@ -244,13 +267,23 @@ Full table, per kind as well: data/runs/sequencing/horizon-t1-design.tsv.
 These are design years, for development: the readings below shape the
 list, they are not the test.
 
-- **No rising profile overall.** The pooled slope statistic leans the
-  hypothesis's way against the base (+0.038, p 0.19) and is flat for the
-  total effect (p 0.23). Six of ten states lean the right way against
-  the base. One of the six is the debt-service proxy, and it only "falls"
-  because its wrong-signed coefficient grows more negative with lead:
-  the statistic's direction does not check the sign. Forty design years cannot separate a
+- **Slow states: no rising profile.** (a) is +0.026 against the base
+  (p 0.40) and +0.009 for the total effect (p 0.45). Three of the seven
+  slow states rise (the Keen debt gap, elite overproduction, the fuel
+  price gap), three fall (the credit gap, the youth bulge, the technology
+  gap) and one is flat (anocracy). Forty design years cannot separate a
   slope of a few hundredths of a log odds ratio per SD from none.
+- **Fast states: right-signed at short leads overall, mostly reserves.**
+  (b) is positive with both offsets (+0.054 against the base, p 0.015;
+  +0.175 total, p 0.005). Reserves carry most of it (+0.22 with either
+  offset), and food import exposure carries the total effect. The
+  debt-service proxy is wrong-signed against the base (−0.13), and under
+  the new statistic its growing negative coefficient counts against the
+  fast hypothesis, not for it. Neither reserves nor food exposure fades
+  with lead: the decline is +0.07 against the base, carried by debt
+  service's wrong-signed growth and food exposure's noise (reserves
+  −0.02), and −0.01 for the total effect. See the null-centring
+  caveat above.
 - **Rising, as theory says:** Keen's debt gap (both offsets: about 0 at
   h = 1-2 to +0.16 at h = 5) and the fuel price gap (+0.14 to +0.21
   against the base). The fuel gap's placebo rises as much: the oil

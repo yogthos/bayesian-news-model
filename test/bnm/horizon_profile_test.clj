@@ -98,17 +98,33 @@
     (is (close? (Math/log (/ 0.1 0.9)) (:o (first (filter #(= "a" (:kind %)) t))) 1e-9))
     (is (close? 0.0 (:o (first (filter #(= "b" (:kind %)) t))) 1e-9))))
 
-(deftest the-slope-statistic
-  ;; per state, the mean coefficient at h = 4, 5 less that at h = 1, 2, in
-  ;; the expected direction (sign, and + for a slow state, - for a fast
-  ;; one); the statistic is the mean over states
-  (is (= 1 (hp/direction {:sign 1 :speed :slow})))
-  (is (= -1 (hp/direction {:sign 1 :speed :fast})))
-  (is (= 1 (hp/direction {:sign -1 :speed :fast})))
-  (let [coefs {"s" {1 0.0 2 0.1 3 0.2 4 0.3 5 0.4} "f" {1 0.4 2 0.4 3 0.2 4 0.0 5 0.0}}
-        dirs {"s" 1 "f" -1}]
-    (is (close? 0.3 (hp/state-slope (coefs "s")) 1e-12))
-    (is (close? (/ (+ 0.3 0.4) 2.0) (hp/slope-stat coefs dirs) 1e-12))))
+(deftest the-horizon-statistics
+  ;; skill is s * coef, s the expected sign. (a) slow states: the mean of
+  ;; s * [coef(h 4,5) - coef(h 1,2)], > 0 when skill rises with lead.
+  ;; (b) fast states: the mean of s * coef(h 1,2), > 0 when right-signed
+  ;; at short leads; their decline s * [coef(h 1,2) - coef(h 4,5)] is for
+  ;; the record and counts only when (b) is positive
+  (let [specs {"slow" {:sign 1 :speed :slow} "slow-neg" {:sign -1 :speed :slow}
+               "fast" {:sign 1 :speed :fast} "fast-wrong" {:sign 1 :speed :fast}}]
+    (testing "a slow state whose right-signed effect rises with h gives (a) > 0"
+      (let [coefs {"slow" {1 0.0 2 0.1 3 0.2 4 0.3 5 0.4} "slow-neg" {1 0.0 2 -0.1 3 -0.2 4 -0.3 5 -0.4}}]
+        (is (close? 0.3 (hp/slow-stat coefs specs) 1e-12))
+        (is (pos? (hp/slow-stat (select-keys coefs ["slow-neg"]) specs)) "a negative sign, more negative with lead")))
+    (testing "a fast state's wrong-signed coefficient growing with h counts against it"
+      (let [coefs {"fast-wrong" {1 -0.1 2 -0.1 3 -0.2 4 -0.3 5 -0.3}}
+            r (hp/fast-stats coefs specs)]
+        (is (neg? (:short r)) "(b) < 0: wrong-signed at short leads")
+        (is (pos? (:decline r)) "its 'decline' looks like theory's: the wrong sign growing")
+        (is (false? (:consistent? r)))))
+    (testing "a right-signed fast state that fades is consistent"
+      (let [r (hp/fast-stats {"fast" {1 0.4 2 0.4 3 0.2 4 0.0 5 0.0}} specs)]
+        (is (close? 0.4 (:short r) 1e-12))
+        (is (close? 0.4 (:decline r) 1e-12))
+        (is (true? (:consistent? r)))))
+    (testing "only states of the right speed enter each statistic"
+      (let [coefs {"slow" {1 0.0 2 0.0 3 0.0 4 1.0 5 1.0} "fast" {1 0.4 2 0.4 3 0.2 4 0.0 5 0.0}}]
+        (is (close? 1.0 (hp/slow-stat coefs specs) 1e-12))
+        (is (close? 0.4 (:short (hp/fast-stats coefs specs)) 1e-12))))))
 
 (deftest a-permutation-keeps-the-countries-values
   ;; country labels shuffled: each country reads another's series whole
