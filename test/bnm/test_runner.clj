@@ -68,6 +68,7 @@
             [bnm.concordance-test]
             [bnm.essentials-test]
             [bnm.power-audit-test]
+            [bnm.ews-reframed-test]
             [bnm.migration-test]))
 
 (def namespaces
@@ -139,6 +140,7 @@
     bnm.concordance-test
     bnm.essentials-test
     bnm.power-audit-test
+    bnm.ews-reframed-test
     bnm.migration-test])
 
 (defn -main [& _]
