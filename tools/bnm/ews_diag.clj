@@ -35,12 +35,13 @@
         [v ind (if (neg? coef) -1 1)]))))
 
 (defn rows
-  "[[real placebo] ...] for kind `k`'s design-year origins: each country's
-  logit row with the indicator at the country and at its placebo, kept
-  only where both are known, so real and placebo are fitted on the same
-  rows. `x-of` (fn [country origin]) the indicator or nil."
+  "[[real placebo] ...] for a kind's design-year origins (`years` {country
+  (sorted-map origin [p y])}): each country's logit row with the
+  indicator at the country and at its placebo, kept only where both are
+  known, so real and placebo are fitted on the same rows. `x-of` (fn
+  [country origin]) the indicator or nil."
   [years cs other x-of to]
-  (for [c cs [o [p y]] years
+  (for [c cs [o [p y]] (get years c)
         :when (and (some? y) (= 11 (mod o 12)) (<= (* 12 1960) o (+ 11 (* 12 to))))
         :let [a (x-of c o) b (x-of (other c) o)]
         :when (and (some? a) (some? b))

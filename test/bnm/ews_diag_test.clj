@@ -20,7 +20,7 @@
   (let [o (fn [y] (+ 11 (* 12 y)))
         years (sorted-map (o 1980) [0.1 true] (o 1981) [0.2 false] (o 1982) [0.3 nil])
         x {["A" (o 1980)] 1.0 ["B" (o 1980)] 2.0 ["A" (o 1981)] 3.0}
-        rs (vec (ed/rows years ["A"] {"A" "B"} (fn [c o] (x [c o])) 2002))]
+        rs (vec (ed/rows {"A" years "B" (sorted-map (o 1980) [0.5 false])} ["A"] {"A" "B"} (fn [c o] (x [c o])) 2002))]
     (is (= 1 (count rs)) "1981's placebo unknown, 1982 unresolved")
     (is (= [[1.0 1.0] [1.0 2.0]] (map :x (first rs))))))
 
