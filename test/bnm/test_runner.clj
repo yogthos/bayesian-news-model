@@ -54,7 +54,9 @@
             [bnm.ingest-test]
             [bnm.fstats-test]
             [bnm.vol-test]
-            [bnm.normal-test]))
+            [bnm.normal-test]
+            [bnm.credit-run-test]
+            [bnm.horizon-profile-test]))
 
 (def namespaces
   '[bnm.time-test
@@ -111,7 +113,9 @@
     bnm.ingest-test
     bnm.fstats-test
     bnm.vol-test
-    bnm.normal-test])
+    bnm.normal-test
+    bnm.credit-run-test
+    bnm.horizon-profile-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
