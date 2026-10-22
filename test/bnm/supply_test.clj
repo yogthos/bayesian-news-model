@@ -419,7 +419,8 @@
         cut (sup/outage g {["MX" "C_GASE"] 0.4 ["R" "C_GASE"] 0.4} {:at :use})
         loss #(- 1.0 (get-in cut [:products [% "C_STEL"]] 1.0))
         d (sup/dri-share "MX")]
-    (is (< 0.2 d 0.5) "Mexico: about a third of its steel from gas DRI")
+    (is (close? (/ 5854.0 18101.0) d 1e-3) "Mexico: DRI over crude steel, worldsteel 2011")
+    (is (close? (/ 20056.0 23002.0) (sup/dri-share "WM") 1e-3) "the Middle East: the same")
     (is (nil? (sup/dri-share "R")))
     (is (close? (* d 0.4) (loss "MX") 1e-6) "the DRI part of the output loses the cut")
     (is (< (loss "R") 0.05) "elsewhere the gas is heat, a small part of it")
@@ -470,3 +471,71 @@
           (let [l (- 1.0 (get-in (sup/outage g {["R" "C_GASE"] 0.4} {:at :use :energy-sigma s}) [:products ["R" "C_PAPE"]]))]
             (is (<= (- floor 1e-6) l) (str "sigma " s))
             (is (< l 0.4) (str "sigma " s))))))))
+
+;; ------------------------------------------------------------ stocks and time
+
+(defn- month-of [path t] (nth path (dec t)))
+
+(defn- avail [m k] (get-in m [:products k] 1.0))
+
+(deftest an-outage-drains-a-stock-before-it-cuts-a-flow
+  (testing "no stocks: every month is the steady state, outage"
+    (let [cut {["AA" "CRUD"] 0.5}
+          o (sup/outage toy cut)
+          p (sup/outage-path toy cut {} {:months 3})]
+      (is (= 3 (count p)))
+      (doseq [m p [k v] (:products o)]
+        (is (close? v (avail m k) 1e-6) (str "month " (:month m) " " k)))))
+  (testing "a stock of crude where it is used holds the refinery whole until
+            it is drawn down at the shortfall, then the cut passes on"
+    ;; BB's crude: 0.8 from AA, cut by half: short 0.4 of a month's use a
+    ;; month; 3 months of stock last 7.5 months
+    (let [cut {["AA" "CRUD"] 0.5}
+          p (sup/outage-path toy cut {["BB" "CRUD"] 3.0} {:months 10})
+          gsl #(avail (month-of p %) ["BB" "GSL"])]
+      (doseq [t (range 1 8)]
+        (is (close? 1.0 (gsl t) 1e-6) (str "month " t ": the stock covers it")))
+      (is (close? 0.8 (gsl 8) 1e-6) "month 8: the last 0.2 of a month's use, drawn")
+      (is (close? 0.6 (gsl 9) 1e-6) "then the flow alone")
+      (is (close? 0.5 (avail (month-of p 1) ["AA" "CRUD"]) 1e-9) "the cut itself is not buffered: AA holds none")
+      (is (close? (- 3.0 0.4) (get-in (month-of p 1) [:stocks ["BB" "CRUD"]]) 1e-6) "stock left after month 1")
+      (is (close? 0.4 (get-in (month-of p 1) [:drawn ["BB" "CRUD"]]) 1e-6) "drawn at the shortfall")
+      (is (close? 0.0 (get-in (month-of p 9) [:stocks ["BB" "CRUD"]]) 1e-9))
+      (testing "and once the stock is gone the path agrees with outage, the steady-state limit"
+        (doseq [[k v] (:products (sup/outage toy cut))]
+          (is (close? v (avail (month-of p 10) k) 1e-6) (str k))))))
+  (testing "a cut where a product is used drains the stock there first"
+    (let [cut {["CC" "GAS"] 0.4}
+          p (sup/outage-path toy cut {["CC" "GAS"] 2.0} {:at :use :months 7})
+          nf #(avail (month-of p %) ["CC" "C_NFER"])]
+      (doseq [t (range 1 6)] (is (close? 1.0 (nf t) 1e-6) (str "month " t)))
+      (is (close? 0.6 (nf 6) 1e-6) "2 months of stock at 0.4 a month: five months, then the cut")
+      (is (close? (get-in (sup/outage toy cut {:at :use}) [:products ["CC" "C_WHEA"]])
+                  (avail (month-of p 7) ["CC" "C_WHEA"]) 1e-6))))
+  (testing "a stock larger than the horizon's shortfall: nothing lost in the horizon"
+    (let [p (sup/outage-path toy {["AA" "CRUD"] 0.5} {["BB" "CRUD"] 18.0} {:months 24})]
+      (is (every? #(close? 1.0 (avail % ["BB" "PLA"]) 1e-6) p))
+      (is (close? (- 18.0 (* 24 0.4)) (get-in (last p) [:stocks ["BB" "CRUD"]]) 1e-6))))
+  (testing "a partial stock downstream adds to one upstream: each drains only what reaches it"
+    ;; naphtha stock at BB: the plastics hold on while crude's stock lasts
+    ;; and then for as long as their own naphtha lasts
+    (let [cut {["AA" "CRUD"] 0.5}
+          p (sup/outage-path toy cut {["BB" "CRUD"] 0.6 ["BB" "NAP"] 0.4} {:months 6})
+          pla #(avail (month-of p %) ["BB" "PLA"])]
+      (is (close? 1.0 (pla 1) 1e-6) "crude covers month 1 and half of 2")
+      (is (close? 1.0 (pla 2) 1e-6) "naphtha covers the rest of 2 (0.2 of 0.4 drawn) ...")
+      (is (close? 0.8 (pla 3) 1e-6) "... and 0.2 in month 3")
+      (is (close? 0.6 (pla 4) 1e-6))))
+  (testing "stocks on nodes the graph does not use are ignored, not an error"
+    (is (= 2 (count (sup/outage-path toy {["AA" "CRUD"] 0.5} {["ZZ" "NONE"] 5.0} {:months 2}))))))
+
+(deftest stocks-load-from-csv
+  (let [f (java.io.File/createTempFile "stocks" ".csv")]
+    (spit f (str "region,product,months,year,known,basis,source\n"
+                 "DE,C_GASE,1.5,2011,2026,data,GIE x fill\n"
+                 "US,C_NUCF,18,2011,2026,prior,refuelling cycle\n"))
+    (let [rows (sup/stock-rows (str f))]
+      (is (= 2 (count rows)))
+      (is (= {:region "DE" :product "C_GASE" :months 1.5 :year 2011 :known 2026 :basis "data" :source "GIE x fill"}
+             (first rows)))
+      (is (= {["DE" "C_GASE"] 1.5 ["US" "C_NUCF"] 18.0} (sup/stocks rows))))))

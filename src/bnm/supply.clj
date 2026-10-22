@@ -23,7 +23,10 @@
     outage      a cut of a product in a region propagated through the
                 recipes as a bnm.hypergraph (critical inputs cap their
                 output, the substitutable ones pass on a CES loss, imports
-                are not reallocated), solved by hypergraph/propagate.
+                are not reallocated), solved by hypergraph/propagate;
+    outage-path the same month by month with stocks (months of use at
+                a region's use of a product): a stock drains at the
+                shortfall before the cut passes on; outage is its limit.
 
   One year (2011) of structure: recipes do not change in it, and the
   value shares of 1995 and 2022 are kept to see how they moved."
@@ -162,10 +165,15 @@
 
 (def dri-share
   "{region share}: the part of a region's steel made from gas-based
-  direct-reduced iron, where it is large: Mexico about 0.3 (5.9 Mt of DRI
-  against 18 Mt of crude steel in 2011), the Middle East about 0.8 (Iran,
-  Saudi Arabia, Qatar, the Emirates and Oman: some 21 Mt of DRI against
-  25 Mt), from the worldsteel yearbook's 2011 figures, rounded. EXIOBASE
+  direct-reduced iron, where it is large: DRI over crude steel in 2011,
+  worldsteel's Steel Statistical Yearbook 2012 (table 42, DRI; table 1,
+  crude steel; data/raw/material/worldsteel): Mexico 5,854 kt over
+  18,101 kt, 0.32; the Middle East 20,056 kt (Iran 10,368, Saudi Arabia
+  5,153, Oman 1,400 estimated, Qatar 1,335, the Emirates 1,800) over
+  23,002 kt, 0.87 (0.81 without Oman's, an estimate from a country with
+  no crude steel row, its DRI exported). The shares had been remembered
+  as 0.3 and 0.8 (bnm-1pq.24); Midrex's World Direct Reduction
+  Statistics, the other free source, could not be downloaded. EXIOBASE
   has one steel product and its gas rows cannot tell a shaft furnace's
   reductant from a reheating furnace's fuel (0.017 t of gas per t of
   steel in the Middle East, 0.019 in Mexico, no more than Spain's), so
@@ -173,7 +181,7 @@
   the energy bundle. Gas DRI elsewhere (Venezuela and Trinidad in WL,
   Egypt and Libya in WF, Russia, India's few gas plants) is a smaller
   part of its region's steel and stays heat."
-  {"MX" 0.3 "WM" 0.8})
+  {"MX" (/ 5854.0 18101.0) "WM" (/ 20056.0 23002.0)})
 
 (def uncalorific-fuels
   "The fuels a carrier is made from that have no ncv to read their
@@ -653,6 +661,24 @@
      (reduce-kv (fn [h [r j] mix] (hg/recipe h [:industry r j] (into {} (for [[p x] mix] [[:make r p] x])) :substitutable))
                 h (:makes g)))))
 
+(defn- cut-hypergraph
+  "[h given]: the hypergraph for `outage`'s options (built, or :hypergraph)
+  with a [:use region product] node for a cut at :use where it has none,
+  and the cuts as given availabilities."
+  [g cuts {:keys [at sigma] esig :energy-sigma :or {at :make sigma default-sigma esig energy-sigma} :as opts}]
+  (let [h (or (:hypergraph opts) (hypergraph g sigma 1e-3 esig))
+        tag (case at :make :make :use :use)
+        h (reduce (fn [h [r p]] (if (and (= tag :use) (not (get-in h [:recipes [:use r p]])))
+                                  (hg/recipe h [:use r p] {[:make r p] 1.0} :substitutable)
+                                  h))
+                  h (keys cuts))]
+    [h (into {} (for [[[r p] x] cuts] [[tag r p] (- 1.0 (double x))]))]))
+
+(defn- pick
+  "{[region code] availability}: the nodes tagged `k` below 1 (by more than 1e-9)."
+  [a k]
+  (into {} (for [[[t & ks] v] a :when (and (= t k) (< v (- 1.0 1e-9)))] [(vec ks) v])))
+
 (defn outage
   "Cut `cuts` ({[region product] fraction}, 0.5 a cut of half) and
   propagate: {:products {[region product] availability} :industries
@@ -666,17 +692,80 @@
   (with those); :tol (default 1e-6) for
   hypergraph/propagate."
   ([g cuts] (outage g cuts {}))
-  ([g cuts {:keys [at sigma tol] esig :energy-sigma :or {at :make sigma default-sigma esig energy-sigma tol 1e-6} :as opts}]
-   (let [h (or (:hypergraph opts) (hypergraph g sigma 1e-3 esig))
-         tag (case at :make :make :use :use)
-         h (reduce (fn [h [r p]] (if (and (= tag :use) (not (get-in h [:recipes [:use r p]])))
-                                   (hg/recipe h [:use r p] {[:make r p] 1.0} :substitutable)
-                                   h))
-                   h (keys cuts))
-         given (into {} (for [[[r p] x] cuts] [[tag r p] (- 1.0 (double x))]))
-         a (hg/propagate h given {:tol tol})
-         pick (fn [k] (into {} (for [[[t & ks] v] a :when (and (= t k) (< v (- 1.0 1e-9)))] [(vec ks) v])))]
-     {:products (pick :make) :industries (pick :industry) :settled (meta a)})))
+  ([g cuts {:keys [tol] :or {tol 1e-6} :as opts}]
+   (let [[h given] (cut-hypergraph g cuts opts)
+         a (hg/propagate h given {:tol tol})]
+     {:products (pick a :make) :industries (pick a :industry) :settled (meta a)})))
+
+;; ------------------------------------------------------ stocks and time
+
+(def ^:private prepared @#'hg/prepared)
+(def ^:private rule @#'hg/rule)
+
+(defn- settle
+  "hypergraph/propagate's chaotic iteration from `x` ({node value}, at or
+  above the greatest fixed point), the queue seeded with `seeds`, every
+  stocked node n (`stock` {node months}) at min(1, its recipe + its
+  stock): a month's use drawn from the stock covers the shortfall, up to
+  what is left. [settled {node value}, updates done]."
+  [prep users given stock x seeds tol max-updates]
+  (let [value (fn [x n] (let [r (rule (prep n) #(get x %) (get given n))]
+                          (if-let [s (stock n)] (min 1.0 (+ r s)) r)))]
+    (loop [x (transient x) queue (into clojure.lang.PersistentQueue/EMPTY seeds) queued (set seeds) k 0]
+      (if-let [n (peek queue)]
+        (do (when (>= k max-updates)
+              (throw (ex-info (str "bnm.supply/outage-path did not settle in " k " updates") {:updates k :node n})))
+            (let [v (value x n) queue (pop queue) queued (disj queued n)]
+              (if (> (Math/abs (- (get x n) v)) tol)
+                (let [fresh (remove queued (users n))]
+                  (recur (assoc! x n v) (into queue fresh) (into queued fresh) (inc k)))
+                (recur x queue queued (inc k)))))
+        [(persistent! x) k]))))
+
+(defn outage-path
+  "The outage month by month with stocks (bnm-1pq.23): an outage drains a
+  stock before it cuts a flow. `stocks` {[region product] months}: what a
+  region holds of a product, in months of its normal use, at [:use region
+  product] (what the region uses of it, all origins). Each month t = 1..H
+  (:months, default 24) a stocked node supplies its inflow (its recipe,
+  the cut applied) plus what it draws from its stock, at most the
+  shortfall and at most what is left: min(1, inflow + stock); the stock
+  falls by what was drawn, and only once it is empty does the cut pass
+  downstream whole. The cut holds every month and nothing refills a
+  stock. [{:month t :products {[region product] availability}
+  :industries {[region code] availability} :stocks {[region product]
+  months left} :drawn {[region product] months drawn in t} :updates n}],
+  products and industries below 1 as in `outage`, whose answer is the
+  limit once every stock the cut reaches is empty (and, with no stocks,
+  every month's). Stocks on nodes the graph does not use are ignored.
+
+  Each month's operator is below the last's (stocks only fall), so a
+  month is solved from the last month's answer, at or above its greatest
+  fixed point: only what the stocks running short move is recomputed.
+  Options as for `outage`, and :months."
+  ([g cuts stocks] (outage-path g cuts stocks {}))
+  ([g cuts stocks {:keys [tol months] :or {tol 1e-6 months 24} :as opts}]
+   (let [[h given] (cut-hypergraph g cuts opts)
+         prep (prepared (:recipes h))
+         users (reduce-kv (fn [m out {:keys [ins]}] (reduce #(update %1 %2 (fnil conj []) out) m ins)) {} prep)
+         nodes (distinct (concat (keys given) (keys prep) (keys users)))
+         max-updates (max 1000000 (* 2000 (count nodes)))
+         x0 (into {} (for [n nodes] [n (if (prep n) 1.0 (double (get given n 1.0)))]))
+         seeds0 (distinct (concat (filter prep (keys given)) (mapcat users (remove prep (keys given)))))
+         s0 (into {} (for [[[r p] m] stocks :let [n [:use r p]] :when (and (prep n) (pos? m))] [n (double m)]))
+         inflow (fn [x n] (rule (prep n) #(get x %) (get given n)))
+         key-of (fn [[_ r p]] [r p])]
+     (loop [t 1 x x0 s s0 seeds seeds0 out []]
+       (if (> t months)
+         out
+         (let [[x k] (settle prep users given s x seeds tol max-updates)
+               drawn (into {} (for [[n m] s :let [d (min m (max 0.0 (- (get x n) (inflow x n))))] :when (> d 1e-12)] [n d]))
+               s' (reduce-kv (fn [s n d] (assoc s n (max 0.0 (- (s n) d)))) s drawn)]
+           (recur (inc t) x s' (keys drawn)
+                  (conj out {:month t :products (pick x :make) :industries (pick x :industry)
+                             :stocks (into {} (for [[n m] s'] [(key-of n) m]))
+                             :drawn (into {} (for [[n d] drawn] [(key-of n) d]))
+                             :updates k}))))))))
 
 ;; ---------------------------------------------------------------- loading
 
@@ -709,3 +798,19 @@
                       (fn [m] {:region (:region m) :product (:product m) :user (:user m) :kind (:kind m)
                                :quantity (num (:quantity m)) :share (num (:share m))
                                :value-share (num (:value_share m)) :value-rough (num (:value_rough m))}))})))
+
+(defn stock-rows
+  "The rows of a stocks CSV (data/derived/supply/stocks.csv, written by
+  scripts/supply-stocks.py): {:region :product :months :year :known :basis
+  :source}, months the stock over a month of the region's normal use of
+  the product, year the year it describes, known the year it is known,
+  basis data (a series) or prior (a cited figure)."
+  [path]
+  (read-rows path (fn [m] {:region (:region m) :product (:product m) :months (num (:months m))
+                           :year (parse-long (:year m)) :known (parse-long (:known m))
+                           :basis (:basis m) :source (:source m)})))
+
+(defn stocks
+  "{[region product] months} from stock rows, the positive ones."
+  [rows]
+  (into {} (for [{:keys [region product months]} rows :when (and months (pos? months))] [[region product] months])))
