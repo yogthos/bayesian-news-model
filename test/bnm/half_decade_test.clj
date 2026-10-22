@@ -221,3 +221,17 @@
     (is (close? 2.0 (v {:credit-gap 20.0 :house 0.1} :credit-x-house) 1e-12))
     (is (= 0.0 (v {:credit-gap 20.0} :credit-x-house)) "missing: the training mean, zero")
     (is (= 0.0 (v {} :equity)))))
+
+(deftest both-runs-complete-on-a-synthetic-panel
+  ;; the registered command cannot be tried on the real test era before
+  ;; registration: run both paths end to end on synthetic data instead
+  (let [jst (synthetic-jst isos 31)
+        opts {:eras hd/default-eras :test-era hd/default-test-era :draws 3 :boot 20 :block 5 :seed 1 :prior 1.0}
+        quiet (fn [& _])
+        dev (hd/run-dev jst opts quiet)
+        test (hd/run-test jst (assoc opts :confirm true) quiet)
+        sections (fn [rs] (frequencies (map :section rs)))]
+    (is (= {"joint" 5 "joint-null" 1 "term" 6 "horizon" 5 "horizon-rise" 1} (sections dev)))
+    (is (= {"joint" 1 "joint-null" 1 "term" 6 "horizon" 5 "horizon-rise" 1} (sections test)))
+    (is (every? #(< (Math/abs (double (:dlog %))) Double/POSITIVE_INFINITY) (filter :dlog test)))
+    (is (thrown? Exception (hd/run-test jst opts quiet)) "not without the registration")))

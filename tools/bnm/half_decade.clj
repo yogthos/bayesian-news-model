@@ -46,7 +46,7 @@
 
     jolt -A:tools -M -m bnm.half-decade [--eras pre-WWI:1870-1913,...] [--test-era 1996-2020]
       [--draws 200] [--boot 1000] [--block 5] [--seed 1] [--prior 1.0] [--power 1,1.2,1.35,1.5,2]
-      [--power-draws 100] [--out data/runs/sequencing/t5-dev]
+      [--power-draws 100] [--power-perms 50] [--out data/runs/sequencing/t5-dev]
     jolt -A:tools -M -m bnm.half-decade --mode test --confirm-registered yes [...]"
   (:require [augur.logit :as lg]
             [augur.math :as m]
@@ -537,34 +537,48 @@
      x]))
 
 (defn power
-  "Share of draws in which the synthetic state's pooled log gain has its
-  90% interval above 0, in development (leave one era out) and in a test
-  on the test era's rows (simulated outcomes); and the mean gains."
-  [jst opts ors draws say]
+  "Per OR, the share of draws in which the synthetic state's pooled log
+  gain passes: its 90% bootstrap interval above 0, and, separately, its
+  one-sided permutation p (whole country series of the state, `perms`
+  draws) at most 0.05; in development (leave one era out) and in a test on
+  the test era's rows (simulated outcomes); with the mean gains."
+  [jst opts ors draws perms say]
   (let [g (m/rng (+ 1000 (:seed opts 1)))
         {:keys [eras test-era]} opts
         dev-jst (mask-outcomes jst (:from test-era))
         ;; the development years' annual onset rate, the simulation's level
         cs (countries dev-jst)
         rate (let [cy (for [[_ c] cs y (:covered c)] (if ((:onsets c) y) 1.0 0.0))] (mean cy))
-        model {:name "synthetic" :terms [:synthetic] :against []}
-        o (assoc opts :boot 200)]
+        o (assoc opts :boot 200)
+        pooled (fn [held p0 p1] (mean (map :dlog (row-gains (recs held p0 p1 o)))))]
     (say "")
-    (say (format "Power: a synthetic own state, OR per SD on the annual hazard, year shocks sd 0.76, onset rate %.3f; %d draws" rate draws))
-    (say (format "  %-6s %-28s %-28s" "OR" "development: power, mean gain" "test era: power, mean gain"))
+    (say (format "Power: a synthetic own state, OR per SD on the annual hazard, year shocks sd 0.76, onset rate %.3f; %d draws, %d permutations"
+                 rate draws perms))
+    (say (format "  %-6s %-40s %-40s" "OR" "development: boot, perm, mean gain" "test era: boot, perm, mean gain"))
     (vec (for [or* ors]
            (let [res (for [_ (range draws)]
                        (let [[sim x] (simulate-jst dev-jst (:from test-era) rate (Math/log or*) g)
-                             syn (fn [rows] (mapv #(assoc-in % [:states :synthetic] (x [(:iso %) (dec (:year %))])) rows))
-                             dev (syn (dev-rows sim opts))
-                             dg (row-gains (loeo-scores dev model o))
+                             syn (fn [rows perm] (mapv #(assoc-in % [:states :synthetic] (x [(perm (:iso %) (:iso %)) (dec (:year %))])) rows))
+                             dev0 (dev-rows sim opts)
+                             isos (vec (sort (distinct (map :iso dev0))))
+                             ps (for [_ (range perms)] (zipmap isos (shuffle-with g isos)))
+                             held (held-rows dev0 o)
+                             d0 (loeo-preds dev0 [] o)
+                             dev-stat (fn [perm] (pooled held d0 (loeo-preds (syn dev0 perm) [:synthetic] o)))
+                             dg (row-gains (recs held d0 (loeo-preds (syn dev0 {}) [:synthetic] o) o))
                              {:keys [train score]} (test-rows sim (assoc opts :confirm true))
-                             tg (row-gains (test-scores (syn train) (syn score) model o))
-                             hit (fn [gs] (if (> (first (block-bootstrap gs #(mean (map :dlog %)) 200 (:block opts) g)) 0.0) 1.0 0.0))]
-                         [(hit dg) (mean (map :dlog dg)) (hit tg) (mean (map :dlog tg))]))
+                             t0 (fit-predict train score [] o)
+                             test-stat (fn [perm] (pooled score t0 (fit-predict (syn train perm) (syn score perm) [:synthetic] o)))
+                             tg (row-gains (recs score t0 (fit-predict (syn train {}) (syn score {}) [:synthetic] o) o))
+                             boot (fn [gs] (if (> (first (block-bootstrap gs #(mean (map :dlog %)) 200 (:block opts) g)) 0.0) 1.0 0.0))
+                             perm-hit (fn [obs stat] (if (<= (perm-p obs (mapv stat ps)) 0.05) 1.0 0.0))
+                             dobs (mean (map :dlog dg)) tobs (mean (map :dlog tg))]
+                         [(boot dg) (perm-hit dobs dev-stat) dobs (boot tg) (perm-hit tobs test-stat) tobs]))
                  col (fn [i] (mean (map #(nth % i) res)))
-                 r {:or or* :dev-power (col 0) :dev-gain (col 1) :test-power (col 2) :test-gain (col 3)}]
-             (say (format "  %-6.2f %5.2f  %s              %5.2f  %s" or* (:dev-power r) (f4 (:dev-gain r)) (:test-power r) (f4 (:test-gain r))))
+                 r {:or or* :dev-boot (col 0) :dev-perm (col 1) :dev-gain (col 2)
+                    :test-boot (col 3) :test-perm (col 4) :test-gain (col 5)}]
+             (say (format "  %-6.2f %5.2f %5.2f  %s                  %5.2f %5.2f  %s" or*
+                          (:dev-boot r) (:dev-perm r) (f4 (:dev-gain r)) (:test-boot r) (:test-perm r) (f4 (:test-gain r))))
              r)))))
 
 ;; --- main -----------------------------------------------------------------------
@@ -583,44 +597,60 @@
      :prior (num "--prior" 1.0 parse-double)
      :power (when-let [s (get m "--power")] (mapv parse-double (str/split s #",")))
      :power-draws (num "--power-draws" 100 parse-long)
+     :power-perms (num "--power-perms" 50 parse-long)
      :demean (= "yes" (get m "--demean"))
      :jst (get m "--jst" "data/raw/slow/jst/jst.csv")
      :out (get m "--out")}))
+
+(defn- tables [cs eras opts]
+  (let [t0 (state-table cs eras)]
+    (if (:demean opts) (demeaned-table t0 (into state-names [:synthetic])) t0)))
+
+(defn run-dev
+  "The development run on the JST rows `jst`, masked from the test era on:
+  the analysis records, and the power check's when :power is set."
+  [jst opts say]
+  (let [{:keys [eras test-era]} opts
+        ;; the masked data, the only thing development reads
+        table (tables (countries (mask-outcomes jst (:from test-era))) eras opts)
+        rows (with-table (dev-rows jst opts) table)]
+    (say (format "rows %d, onsets within five years %d, countries %d; origins %d-%d"
+                 (count rows) (count (filter :y5 rows)) (count (distinct (map :iso rows)))
+                 (apply min (map :year rows)) (apply max (map :year rows))))
+    (say "per era: " (str/join "; " (for [e eras :let [rs (filter #(= (:era %) (:name e)) rows)]]
+                                      (format "%s %d rows, %d positive, %d onset years" (:name e) (count rs) (count (filter :y5 rs))
+                                              (count (distinct (for [r rs [i y] (map-indexed vector (:yh r)) :when y] [(:iso r) (+ (:year r) i 1)])))))))
+    (vec (concat (run-analysis rows table opts say)
+                 (when (:power opts)
+                   (map #(assoc % :section "power") (power jst opts (:power opts) (:power-draws opts) (:power-perms opts) say)))))))
+
+(defn run-test
+  "The registered test: fitted on every development row, scored on the
+  test era's. Reads the test era, so needs :confirm."
+  [jst opts say]
+  (let [{:keys [eras test-era]} opts
+        {:keys [train score]} (test-rows jst opts)
+        table (tables (countries jst) (conj (vec eras) test-era) opts)]
+    (say (format "training rows %d (%d positive); test rows %d, origins %d-%d"
+                 (count train) (count (filter :y5 train)) (count score)
+                 (apply min (map :year score)) (apply max (map :year score))))
+    (run-analysis (with-table train table) table (assoc opts :score-rows score :score-table table) say)))
 
 (defn -main [& args]
   (let [opts (parse-opts args)
         {:keys [mode eras test-era]} opts
         out-base (or (:out opts) (str "data/runs/sequencing/t5-" (name mode)))
         text (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append text s) (.append text "\n")))
-        jst (mh/read-jst (:jst opts))
-        names (into state-names [:synthetic])]
+        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append text s) (.append text "\n")))]
     (validate-eras! eras test-era)
+    (when (and (= mode :test) (not (:confirm opts)))
+      (throw (ex-info "the test era is read only after registration: pass --confirm-registered yes" {})))
     (say (str "T5, the half-decade on JST, mode " (name mode) "; eras " (str/join ", " (map #(str (:name %) " " (:from %) "-" (:to %)) eras))
               "; test era " (:from test-era) "-" (:to test-era) (when (:demean opts) "; states demeaned by year")))
-    (let [results
-          (case mode
-            :dev (let [;; the masked data, the only thing development reads
-                       cs (countries (mask-outcomes jst (:from test-era)))
-                       table0 (state-table cs eras)
-                       table (if (:demean opts) (demeaned-table table0 names) table0)
-                       rows (with-table (dev-rows jst opts) table)]
-                   (say (format "rows %d, onsets within five years %d, countries %d; origins %d-%d"
-                                (count rows) (count (filter :y5 rows)) (count (distinct (map :iso rows)))
-                                (apply min (map :year rows)) (apply max (map :year rows))))
-                   (say "per era: " (str/join "; " (for [e eras :let [rs (filter #(= (:era %) (:name e)) rows)]]
-                                                     (format "%s %d rows, %d positive, %d onset years" (:name e) (count rs) (count (filter :y5 rs))
-                                                             (count (distinct (for [r rs [i y] (map-indexed vector (:yh r)) :when y] [(:iso r) (+ (:year r) i 1)])))))))
-                   (concat (run-analysis rows table opts say)
-                           (when (:power opts) (map #(assoc % :section "power") (power jst opts (:power opts) (:power-draws opts) say)))))
-            :test (let [{:keys [train score]} (test-rows jst opts)
-                        cs (countries jst)
-                        table0 (state-table cs (conj (vec eras) test-era))
-                        table (if (:demean opts) (demeaned-table table0 names) table0)]
-                    (say (format "training rows %d (%d positive); test rows %d, origins %d-%d"
-                                 (count train) (count (filter :y5 train)) (count score)
-                                 (apply min (map :year score)) (apply max (map :year score))))
-                    (run-analysis (with-table train table) table (assoc opts :score-rows score :score-table table) say)))]
+    (let [jst (mh/read-jst (:jst opts))
+          results (case mode
+                    :dev (run-dev jst opts say)
+                    :test (run-test jst opts say))]
       (io/make-parents (str out-base ".txt"))
       (spit (str out-base ".txt") (str text))
       (spit (str out-base ".edn") (pr-str (vec results)))
