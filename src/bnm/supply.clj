@@ -160,6 +160,27 @@
 
 (def crude-like #{"C_COIL" "C_GASL" "C_OGPL" "C_REFF"})
 
+(def dri-share
+  "{region share}: the part of a region's steel made from gas-based
+  direct-reduced iron, where it is large: Mexico about 0.3 (5.9 Mt of DRI
+  against 18 Mt of crude steel in 2011), the Middle East about 0.8 (Iran,
+  Saudi Arabia, Qatar, the Emirates and Oman: some 21 Mt of DRI against
+  25 Mt), from the worldsteel yearbook's 2011 figures, rounded. EXIOBASE
+  has one steel product and its gas rows cannot tell a shaft furnace's
+  reductant from a reheating furnace's fuel (0.017 t of gas per t of
+  steel in the Middle East, 0.019 in Mexico, no more than Spain's), so
+  this part of the output goes with the gas one for one, the rest with
+  the energy bundle. Gas DRI elsewhere (Venezuela and Trinidad in WL,
+  Egypt and Libya in WF, Russia, India's few gas plants) is a smaller
+  part of its region's steel and stays heat."
+  {"MX" 0.3 "WM" 0.8})
+
+(def uncalorific-fuels
+  "The fuels a carrier is made from that have no ncv to read their
+  tonnes by: wood and crops in biomass power, uranium ore in nuclear
+  fuel. A carrier is critical on these by their value share."
+  #{"C_FORE" "C_WOOD" "C_OTCR" "C_ORAN"})
+
 (def heat-critical
   "The heat per tonne, TJ, at which a heat output that is not a
   manufactured good (a material, an ore, a coal product) has its energy
@@ -198,10 +219,11 @@
   output's value, or a feedstock (`feedstock?`): critical; else, and
   always for a yield input in a crop (a yield response) and for
   equipment in a raw product (its capital's upkeep), substitutable. An
-  energy carrier in TJ (electricity, steam) is critical on its fuel
-  alone: the other goods a power station buys, at any share, are upkeep
-  (EXIOBASE's industry mix gives Bulgaria's wind power chemicals at 18%
-  of its value and steam at 13%)."
+  energy carrier in TJ (electricity, steam, nuclear fuel) is critical on
+  its fuel alone: by the feedstock test, or by value share for the
+  `uncalorific-fuels`; the other goods a power station buys, at any
+  share, are upkeep (EXIOBASE's industry mix gives Bulgaria's wind power
+  chemicals at 18% of its value and steam at 13%)."
   [products {:keys [input output phys share]}]
   (let [{g :group :as ip} (products input)
         op (products output)
@@ -209,7 +231,7 @@
     (if (and g (not= g "service")
              (not (and (yield-inputs input) (crops output)))
              (not (and (equipment input) (= "raw" (:group op))))
-             (or (and (not carrier?) (>= (or share 0.0) critical-share))
+             (or (and (or (not carrier?) (uncalorific-fuels input)) (>= (or share 0.0) critical-share))
                  (feedstock? ip op input output phys)))
       :critical
       :substitutable)))
@@ -430,8 +452,10 @@
   "The hypergraph `h` with the pools of output [s p]'s critical inputs
   `ins` as nodes: [:pool s p carrier] the share-weighted mean of its
   members; [:energy s p] the heat fuels' CES (elasticity `esigma`,
-  weights their heat, electricity as its pool); and the critical recipe's
-  inputs {node weight}."
+  weights their heat, electricity as its pool); [:dri s p] for steel in
+  a `dri-share` region, the share-weighted mean of the gas used there
+  and the rest of the output ([:dri-other s p], primary, never cut); and
+  the critical recipe's inputs {node weight}."
   [h s p ins w esigma]
   (let [crit (for [[i r] ins :when (= :critical (:kind r))] [i r])
         pools (group-by (comp :pool second) crit)
@@ -451,10 +475,15 @@
                                         (when-let [em (elec :electricity)]
                                           [[[:pool s p :electricity] (hw (reduce + 0.0 (map (comp #(or % 0.0) :heat second) em)))]])))
                        :ces esigma)
+            h)
+        dri (when (= p "C_STEL") (dri-share s))
+        h (if dri
+            (hg/recipe h [:dri s p] {[:use s "C_GASE"] dri [:dri-other s p] (- 1.0 dri)} :substitutable)
             h)]
     [h (into {} (concat (for [[i r] (pools nil)] [[:use s i] (w (:share r))])
                         (for [k (keys pools) :when (and k (not= k :energy))] [[:pool s p k] 1.0])
-                        (when (pools :energy) [[[:energy s p] 1.0]])))]))
+                        (when (pools :energy) [[[:energy s p] 1.0]])
+                        (when dri [[[:dri s p] 1.0]])))]))
 
 (defn- critical-hypergraph
   "The recipes' critical rows alone as a bnm.hypergraph: [:make region
@@ -466,7 +495,7 @@
                        (let [[h crit] (critical-inputs h s p ins #(max 1e-6 (double (or % 0.0))) energy-sigma)]
                          (if (seq crit) (hg/recipe h [:make s p] crit :critical) h)))
                      (hg/hypergraph) (:recipes g))
-        used (distinct (for [[[s _] ins] (:recipes g) [i r] ins :when (= :critical (:kind r))] [s i]))]
+        used (distinct (for [[_ ins] (:recipes h) i (keys (:inputs ins)) :when (= :use (first i))] (vec (rest i))))]
     (reduce (fn [h [s i]] (hg/recipe h [:use s i] (into {} (for [[o t] (origins g s i) :when (pos? t)] [[:make o i] t]))
                                      :substitutable))
             h used)))

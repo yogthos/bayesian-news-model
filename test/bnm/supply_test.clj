@@ -379,3 +379,94 @@
       (is (close? 0.6 (get-in o [:products ["R" "C_GASD"]]) 1e-6))
       (is (nil? (get-in o [:products ["R" "C_POWN"]]))))))
 
+
+(deftest a-carrier-is-critical-on-its-fuel-even-without-a-calorific-value
+  ;; a carrier's other goods are upkeep, but wood and crops are the fuel
+  ;; of biomass power and uranium ore that of nuclear fuel: with no ncv to
+  ;; read them by, their value share decides
+  (let [g (sup/graph {:products [{:code "C_FORE" :unit "tonnes" :group "raw"}
+                                 {:code "C_ORAN" :unit "tonnes" :group "raw"}
+                                 {:code "C_COPO" :unit "tonnes" :group "raw"}
+                                 {:code "C_CHEM" :unit "tonnes" :group "material"}
+                                 {:code "C_POWB" :unit "TJ" :group "energy"}
+                                 {:code "C_NUCF" :unit "TJ" :group "energy"}
+                                 {:code "C_POWS" :unit "TJ" :group "energy"}]
+                      :recipes [{:region "R" :output "C_POWB" :input "C_FORE" :phys 13.5 :share 0.06}
+                                {:region "R" :output "C_POWB" :input "C_CHEM" :phys 0.01 :share 0.08}
+                                {:region "R" :output "C_NUCF" :input "C_ORAN" :phys 0.002 :share 0.1}
+                                {:region "R" :output "C_POWS" :input "C_COPO" :phys 0.001 :share 0.06}]})]
+    (is (= :critical (sup/classify g "R" "C_POWB" "C_FORE")) "wood into biomass power")
+    (is (= :critical (sup/classify g "R" "C_NUCF" "C_ORAN")) "uranium ore into nuclear fuel")
+    (is (= :substitutable (sup/classify g "R" "C_POWB" "C_CHEM")) "upkeep")
+    (is (= :substitutable (sup/classify g "R" "C_POWS" "C_COPO")) "an ore is no fuel of solar power")
+    (is (close? 0.6 (get-in (sup/outage g {["R" "C_ORAN"] 0.4}) [:products ["R" "C_NUCF"]]) 1e-6))))
+
+(deftest direct-reduction-gas-is-a-reductant
+  ;; EXIOBASE has one steel product: the gas of a direct-reduction shaft,
+  ;; its reductant, is not told from a reheating furnace's. Where gas-based
+  ;; DRI makes a large part of the steel (sup/dri-share), that part of the
+  ;; output goes with the gas one for one; elsewhere the gas is heat
+  (let [ps [{:code "C_GASE" :unit "tonnes" :group "raw"}
+            {:code "C_COKE" :unit "tonnes" :group "energy"}
+            {:code "C_IRON" :unit "tonnes" :group "raw"}
+            {:code "C_POWC" :unit "TJ" :group "energy"}
+            {:code "C_STEL" :unit "tonnes" :group "material"}]
+        rs (fn [r] [{:region r :output "C_STEL" :input "C_COKE" :phys 0.08 :share 0.1}
+                    {:region r :output "C_STEL" :input "C_IRON" :phys 0.5 :share 0.1}
+                    {:region r :output "C_STEL" :input "C_GASE" :phys 0.02 :share 0.002}
+                    {:region r :output "C_STEL" :input "C_POWC" :phys 0.001 :share 0.01}])
+        g (sup/graph {:products ps :recipes (concat (rs "MX") (rs "R"))})
+        cut (sup/outage g {["MX" "C_GASE"] 0.4 ["R" "C_GASE"] 0.4} {:at :use})
+        loss #(- 1.0 (get-in cut [:products [% "C_STEL"]] 1.0))
+        d (sup/dri-share "MX")]
+    (is (< 0.2 d 0.5) "Mexico: about a third of its steel from gas DRI")
+    (is (nil? (sup/dri-share "R")))
+    (is (close? (* d 0.4) (loss "MX") 1e-6) "the DRI part of the output loses the cut")
+    (is (< (loss "R") 0.05) "elsewhere the gas is heat, a small part of it")
+    (is (close? (* d 0.4) (- 1.0 (get-in (sup/outage g {["MX" "C_GASE"] 0.4} {:at :use}) [:products ["MX" "C_STEL"]])) 1e-6))
+    (testing "and in the critical recipes alone (exposure): the DRI part"
+      (let [e (:exposure (first (filter #(= ["MX" "C_STEL"] [(:region %) (:product %)])
+                                        (:products (sup/downstream g "MX" "C_GASE")))))]
+        (is (close? d e 1e-6))))))
+
+(deftest energy-bundle-branches
+  (let [ps [{:code "C_GASE" :unit "tonnes" :group "raw"}
+            {:code "C_FOIL" :unit "tonnes" :group "energy"}
+            {:code "C_COIL" :unit "tonnes" :group "raw"}
+            {:code "C_POWC" :unit "TJ" :group "energy"}
+            {:code "C_PAPE" :unit "tonnes" :group "material"}
+            {:code "C_MACH" :unit "tonnes" :group "manufactured"}]
+        row (fn [g o i] (first (filter #(and (= o (:output %)) (= i (:input %))) (sup/recipe-rows g))))]
+    (testing "critical when the fuels' shares add to 5%, none of them alone,
+              their heat under 2 GJ/t, in a material and a manufactured good"
+      (doseq [o ["C_PAPE" "C_MACH"]]
+        (let [g (sup/graph {:products ps
+                            :recipes [{:region "R" :output o :input "C_GASE" :phys 0.01 :share 0.03}
+                                      {:region "R" :output o :input "C_FOIL" :phys 0.005 :share 0.03}]})]
+          (is (= :critical (sup/classify g "R" o "C_GASE")) o)
+          (is (= :critical (sup/classify g "R" o "C_FOIL")) o)
+          (is (= :energy (:pool (row g o "C_GASE")))))))
+    (testing "the electricity pool joins the bundle as one member; a bundle
+              below every threshold leaves it as it was"
+      (let [g (sup/graph {:products ps
+                          :recipes [{:region "R" :output "C_MACH" :input "C_GASE" :phys 0.001 :share 0.001}
+                                    {:region "R" :output "C_MACH" :input "C_POWC" :phys 0.0001 :share 0.01}]})]
+        (is (= :substitutable (sup/classify g "R" "C_MACH" "C_GASE")))
+        (is (= :electricity (:pool (row g "C_MACH" "C_POWC"))))))
+    (testing "crude is no heat fuel: its row stays out of the bundle"
+      (let [g (sup/graph {:products ps
+                          :recipes [{:region "R" :output "C_PAPE" :input "C_COIL" :phys 0.2 :share 0.01}
+                                    {:region "R" :output "C_PAPE" :input "C_GASE" :phys 0.1 :share 0.001}]})]
+        (is (nil? (:pool (row g "C_PAPE" "C_COIL"))))
+        (is (= :critical (sup/classify g "R" "C_PAPE" "C_COIL")) "a feedstock by the rule")))
+    (testing "no fuel is bought beyond its normal use: whatever sigma, the
+              bundle loses at least the cut fuel's heat share times the cut"
+      (let [g (sup/graph {:products ps
+                          :recipes [{:region "R" :output "C_PAPE" :input "C_GASE" :phys 0.1 :share 0.001}
+                                    {:region "R" :output "C_PAPE" :input "C_FOIL" :phys 0.1 :share 0.001}]})
+            hg (* 0.1 0.048) ho (* 0.1 0.0404)
+            floor (* 0.4 (/ hg (+ hg ho)))]
+        (doseq [s [0.1 0.5 1.0 2.0 20.0]]
+          (let [l (- 1.0 (get-in (sup/outage g {["R" "C_GASE"] 0.4} {:at :use :energy-sigma s}) [:products ["R" "C_PAPE"]]))]
+            (is (<= (- floor 1e-6) l) (str "sigma " s))
+            (is (< l 0.4) (str "sigma " s))))))))
