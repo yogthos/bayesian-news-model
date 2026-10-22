@@ -11,9 +11,10 @@ Reads data/raw/io/lrwiod/ and writes data/derived/io/:
   lrwiod-flows.csv    country,year,from,to,value
       the domestic intermediate flows between the 23 sectors;
   lrwiod-prices.csv   country,year,sector,price_change
-      each sector's gross output in current prices over the same in the
-      previous year's prices (the inter-country tables), the year's
-      price change, from which relative prices and elasticities follow.
+      each sector's sales in current prices over the same in the previous
+      year's prices (the previous-years'-prices tables, which carry both),
+      the year's price change, from which relative prices and elasticities
+      follow.
 
 Run with python3 -I scripts/io-spine.py (stdlib only).
 """
@@ -48,14 +49,19 @@ def national():
     return acc, flows
 
 
-def gross_output(path):
-    """{(country, year, sector): row sum} of an inter-country table."""
-    go = collections.defaultdict(float)
+def price_changes(path):
+    """{(country, year, sector): current over previous year's prices} of each
+    supplying sector's sales, from the previous-years'-prices file, which
+    carries both (columns value and pyp)."""
+    cur = collections.defaultdict(float)
+    pyp = collections.defaultdict(float)
     with open(path, newline="") as f:
         for d in csv.DictReader(f):
-            if d["row_isic3"] in SEC:
-                go[(d["row_country"], d["year"], d["row_isic3"])] += float(d["value"])
-    return go
+            if d["row_isic3"] in SEC and d["pyp"] and d["value"]:
+                k = (d["row_country"], d["year"], d["row_isic3"])
+                cur[k] += float(d["value"])
+                pyp[k] += float(d["pyp"])
+    return {k: cur[k] / pyp[k] for k in pyp if pyp[k] > 0}
 
 
 def main():
@@ -71,15 +77,13 @@ def main():
         w = csv.writer(f)
         w.writerow(["country", "year", "from", "to", "value"])
         w.writerows(sorted(flows))
-    cur = gross_output(os.path.join(RAW, "lr_wiod_wiot_final_filled.csv"))
-    pyp = gross_output(os.path.join(RAW, "lr_wiod_wiot_pyp_final.csv"))
+    pc = price_changes(os.path.join(RAW, "lr_wiod_wiot_pyp_final.csv"))
     with open(os.path.join(OUT, "lrwiod-prices.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["country", "year", "sector", "price_change"])
-        for k in sorted(pyp):
-            if pyp[k] > 0 and k in cur:
-                w.writerow(list(k) + [cur[k] / pyp[k]])
-    print("sectors", len(acc), "flows", len(flows), "prices", len(pyp), file=sys.stderr)
+        for k in sorted(pc):
+            w.writerow(list(k) + [pc[k]])
+    print("sectors", len(acc), "flows", len(flows), "prices", len(pc), file=sys.stderr)
 
 
 if __name__ == "__main__":
