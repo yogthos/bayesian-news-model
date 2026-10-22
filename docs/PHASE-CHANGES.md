@@ -1473,6 +1473,14 @@ which is why the same states added nothing over it at the year node (T1,
 T2, T3, T45). The financial cycle is real in the record where it is
 measured; the event model already has it.
 
+**Results, 23 October 2026 (trial T6).** Origins 2003-2020: (primary)
+calm duration, financial group, post-crisis rows out: +0.106 (z 0.90,
+placebo z 1.02, permutation p 0.94): fails. Financial log variance is
+positive in the test years (all rows +0.294, z 1.91; post-crisis out
++0.282, p 0.35), the sign the design years lacked; with its placebo as
+strong (z 1.71), it is not specific to the country. Early warnings, as
+reframed, do not carry onsets in either period.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
