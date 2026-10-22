@@ -847,3 +847,36 @@ relations: each kind on its own, as in trials 39-41 but all from 1870).
    whether both happened; paired Brier, edges weighed equally.
 3. for the record: the quarter nodes against named on the six kinds named
    forecasts (bnm.paired), as trial 41.
+
+**Results, 21 October 2026 (trial 42).**
+1. **Relations against none** (primary), year nodes 2003-2022, pooled over
+   the thirteen kinds: Brier -0.00133 [-0.00229 -0.00047], log score
+   -0.00292 [-0.00535 -0.00052]: **a loss**. Per kind, only banking crises
+   lean to a gain (+0.00087 [-0.00006 +0.00246]); market crashes (-0.0134),
+   coups (-0.00094) and inflation crises (-0.00031) lose significantly;
+   the rest are level. Coups lose on the design years as well (-0.0038,
+   1980-2002), so the loss is the design's, not the period's.
+2. **Joint forecasts against independence**: Brier -0.00005 [-0.00007
+   -0.00002], log -0.0035: the simulated joints are slightly worse than the
+   product of the marginals.
+3. For the record, the quarters against named (six kinds): Brier -0.00002
+   [-0.00019 +0.00015], level, as trial 41's.
+
+What the world learned. The relation groups never win weight on their
+own (their models' weights stay near zero); the relations act through the
+all-inputs model, which carries every kind's year node, and there they
+add 4 coefficients per parent plus the coupling. The artificial system
+built from them gives plausible transmissions (an onset's effect on
+another kind's chance of one within three years, averaged over
+countries): banking crises on inflation crises +0.18, growth collapses on
+protest surges +0.06, inflation crises on coups +0.05, protest surges on
+coups +0.03, growth collapses on conflict +0.01; and the principal
+contradiction of coups, protest surges and sovereign defaults in most
+countries in 2022 is the growth-collapse relation. But a relation that
+moves a forecast is not one that improves it: out of sample they cost.
+Likely causes, to be designed against on 1980-2002 before another test:
+the parent's state is a level that carries the parent's structural risk,
+which the child's own gauges already hold (poverty, regime), so it
+double-counts; the onset kernels and moderated terms quadruple the
+coefficients per parent; and the relations enter the all-inputs model,
+where a noisy coefficient cannot be refused.
