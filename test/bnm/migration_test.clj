@@ -26,10 +26,15 @@
   (is (= "mid" (mig/classify 0.15 [0.1 0.2])))
   (is (= "high" (mig/classify 0.25 [0.1 0.2])))
   (is (nil? (mig/classify nil [0.1 0.2])))
+  (is (nil? (mig/classify ##NaN [0.1 0.2])) "an unknown intensity has no class, not high")
   (testing "terciles: a third of the values at or below each cut"
     (let [[lo hi] (mig/tercile-cuts (map double (range 1 10)))]
       (is (= 3 (count (filter #(<= % lo) (range 1 10)))))
-      (is (= 6 (count (filter #(<= % hi) (range 1 10))))))))
+      (is (= 6 (count (filter #(<= % hi) (range 1 10)))))))
+  (testing "numpy's linear quantiles"
+    (is (= [2.0 3.0] (mig/tercile-cuts [1.0 4.0 2.5 3.0 2.0 1.5 3.5])))
+    (is (= [5.0 5.0] (mig/tercile-cuts [5.0])))
+    (is (nil? (mig/tercile-cuts [])))))
 
 (deftest shares-sum-to-one
   (let [s (mig/world-shares rows)]
@@ -39,6 +44,13 @@
 
 (deftest country-aggregates
   (let [a (mig/country-years rows)]
+    (testing "export and capital-intensive shares sum to one over exporters each year"
+      (doseq [[_ g] (group-by (comp second key) a)]
+        (is (close? 1.0 (reduce + (map (comp :export-share val) g))))
+        (is (close? 1.0 (reduce + (keep (comp :ci-share val) g))))))
+    (testing "an unknown intensity drops out of the weighted mean"
+      (let [b (mig/country-years (conj rows (assoc (r "P_LO" 1995 "USA" 1000.0) :cap-intensity ##NaN :cap-class nil)))]
+        (is (close? (get-in a [["USA" 1995] :cap-intensity]) (get-in b [["USA" 1995] :cap-intensity])))))
     (testing "share of world exports in capital-intensive products"
       (is (close? 0.6 (get-in a [["USA" 1995] :ci-share])))
       (is (close? 0.2 (get-in a [["USA" 2005] :ci-share])))
@@ -61,7 +73,11 @@
       (is (nil? (val-of out "USA" 2006 "migration/ci-share-d10")))
       (is (close? -0.4 (val-of out "USA" 2007 "migration/ci-share-d10"))))
     (testing "after the data end the last known value carries, changes too"
-      (is (close? 0.2 (val-of out "USA" 2009 "migration/ci-share"))))))
+      (is (close? 0.2 (val-of out "USA" 2009 "migration/ci-share"))))
+    (testing "but not past `stale` years after its data year"
+      (let [late (mig/stock-rows rows (range 2005 2015))]
+        (is (close? 0.2 (val-of late "USA" 2009 "migration/ci-share")))
+        (is (nil? (val-of late "USA" 2010 "migration/ci-share")))))))
 
 (deftest causality
   (testing "a row known later never changes an earlier output"

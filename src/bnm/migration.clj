@@ -34,17 +34,18 @@
   mid (at most hi) or high; nil where x is unknown. scripts/migration.py
   applies the same rule."
   [x [lo hi]]
-  (when x
+  (when (and x (not (Double/isNaN (double x))))
     (cond (<= x lo) "low" (<= x hi) "mid" :else "high")))
 
 (defn tercile-cuts
   "The 1/3 and 2/3 quantiles of `xs` (linear interpolation, numpy's and
-  pandas' default)."
+  pandas' default); nil for no values."
   [xs]
-  (let [v (vec (sort xs)) n (count v)
-        q (fn [p] (let [h (* p (dec n)) i (long (Math/floor h)) f (- h i)]
-                    (if (>= (inc i) n) (v i) (+ (v i) (* f (- (v (inc i)) (v i)))))))]
-    [(q (/ 1.0 3)) (q (/ 2.0 3))]))
+  (when (seq xs)
+    (let [v (vec (sort xs)) n (count v)
+          q (fn [p] (let [h (* p (dec n)) i (long (Math/floor h)) f (- h i)]
+                      (if (>= (inc i) n) (v i) (+ (v i) (* f (- (v (inc i)) (v i)))))))]
+      [(q (/ 1.0 3)) (q (/ 2.0 3))])))
 
 (defn world-shares
   "`rows` with :share, each exporter's share of the product-year's world
@@ -67,7 +68,8 @@
                                 (update :ctot acc k value)
                                 (update :known assoc! k known))
                       hi? (-> (update :whi acc year value) (update :chi acc k value))
-                      cap-intensity (-> (update :kv acc k (* value cap-intensity)) (update :kw acc k value)))))
+                      (and cap-intensity (not (Double/isNaN (double cap-intensity))))
+                      (-> (update :kv acc k (* value cap-intensity)) (update :kw acc k value)))))
                 (zipmap [:whi :wtot :chi :ctot :kv :kw :known] (repeatedly #(transient {})))
                 rows)
         [whi wtot chi ctot kv kw known] (map persistent! [whi wtot chi ctot kv kw known])]
