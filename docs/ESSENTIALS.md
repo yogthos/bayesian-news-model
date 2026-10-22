@@ -42,7 +42,7 @@ data/raw/material/{baci,usgs-myb,oecd-export-restrictions-irm,owid-energy}.
   its place in the graph (it is an input to a growing technology) and how
   concentrated its supply is.
 - **Rare earths are a concentration story, not a demand-growth story, in
-  trade.** China mined 93-97% of rare earths in 2000-2005 (HHI 0.88-0.95,
+  trade.** China mined about 88-91% of rare earths in 2000-02 (the US still mined 5 kt at Mountain Pass) and 93-98% in 2003-05 (HHI 0.88-0.95,
   USGS). It has restricted their export since at least 2009 (OECD). Trade in
   rare-earth compounds barely ranks until 2024 (35th). Permanent magnets,
   where most rare-earth value now goes, rise from about 700th (2012) to 69th

@@ -87,7 +87,7 @@ regime.py, divergence.py, wid_beta.py, cinc.py, xsec.py).
 - **Processing moved away from the resource, and toward China.** The
   dissimilarity D between mine and processing country shares (0 means each
   country processes its own ore; 1 means none does), from BGS 1975-2023:
-  cobalt 0.21 (1975), 0.43 (2000), 0.90 (2023), with China's refined share
+  cobalt 0.36 (1975; 0.21 before BGS's 1972-75 ore-content rows were repaired), 0.43 (2000), 0.90 (2023), with China's refined share
   going from 0 to 80% while its mine share never passed 7%; copper refining 0.31 to
   0.55, China 3% to 47% (mine 8%); alumina from bauxite 0.39 to 0.48 and
   aluminium 0.76 to 0.69 (China 2% to 59%); tin 0.23 to 0.49; nickel 0.32
@@ -616,7 +616,7 @@ processing share). "Non-resource" is the processing share in countries
 with under 1% of the resource stage.
 
     pair                     1975   1990   2000   2010   2020   2023   China proc. 1975 -> 2023
-    cobalt (mine -> refined)  0.21   0.30   0.43   0.73   0.86   0.90   0% -> 80% (mine ~1%)
+    cobalt (mine -> refined)  0.36   0.30   0.43   0.73   0.86   0.90   0% -> 80% (mine ~1%)
     bauxite -> alumina        0.39   0.36   0.31   0.33   0.52   0.48   2% -> 59%
     bauxite -> aluminium      0.76   0.69   0.70   0.66   0.74   0.69   2% -> 59%
     iron ore -> crude steel   0.47   0.51   0.53   0.38   0.54   0.51   4% -> 54%
