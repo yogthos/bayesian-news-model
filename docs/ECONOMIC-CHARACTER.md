@@ -1253,3 +1253,117 @@ goods industries, CFC/VA against KLEMS K per worker is 0.53.
   intensity poisoned a country's weighted mean, and tercile-cuts threw
   on no values. All three are fixed and tested, with tests for the
   shares summing to one over exporters and for the stale cutoff.
+
+## Results: the economic-character factors, second pass (bnm-3ka.4, bnm-3ka.5)
+
+src/bnm/econ_factors.clj, tools/bnm/econ_factors_run.clj; validation in
+data/derived/econ/econ-factors-check.txt, loadings (including the
+balanced-panel diagnostics) in econ-factors-loadings.csv.
+
+**What the first econ/financialisation was.** After the FD control it
+loaded market cap at 1.0 with noise at the floor (a Heywood case: the
+factor is that one indicator). It is kept, with the NFC measures left out,
+as econ/market-size. With them in, the controlled fit jumps to investment
+over profit instead and changes sign between years.
+
+**Balanced panel.** On the 749 country-years (41 countries) that hold
+every candidate, the fit without a control is depth, not Krein: FD index
++1.00, market cap +0.78, turnover +0.71, credit +0.69, private wealth
++0.62, finance VA +0.35, NFC property income +0.36, payouts +0.26, net
+lending +0.09, investment over profit +0.08 (the prior says negative).
+With the FD control the factor goes back to market cap (+1.00, noise at
+the floor), and every NFC measure loads under 0.2. So the collapse is not
+a coverage artefact. Payouts and net lending do not move with market size
+or the finance share on the countries that have all of them. Spearman
+correlations on the NFC panel (1,477 country-years): payout against
+market cap 0.26 and against finance VA 0.14; net lending against both
+about 0.1.
+
+**The NFC measures do not form one factor either.** A one-factor fit on
+the balanced NFC panel (financialisation-cfa) takes net lending at 1.00
+with noise at the floor and investment over profit at -0.66, which is
+mechanical: B9 is saving less investment, and both are over the same
+operating surplus (Spearman -0.54). Payouts load 0.03-0.14 and property
+income 0.01-0.10. The rule set before fitting was to keep the factor only
+if every indicator held its prior sign in every fit from 2000, with no
+noise at the floor. It failed, so econ/financialisation is an equal-weight
+index of the four standardised ratios: payouts (D42, plus net buybacks for
+the US from Z.1) up, net lending up, investment over operating surplus
+down, property income received up. Each is standardised robustly over the
+rows known by the year, and at least two are needed. It covers 48
+countries, mostly from 1995 (known 1997).
+
+**Ranking.** Krein's ordering does not hold on the index. Means over years
+known 1997-2021, rank of 48: GBR +1.20 (6), DEU +1.12 (8), USA +0.41
+(27), JPN -0.23 (37), KOR -0.61 (42), CHN -1.31 (48). The UK and US are
+above Japan, Korea and China, but Germany ranks with the UK and above the
+US. The top is France, Luxembourg, Sweden, the Netherlands and Belgium.
+Two things drive that, and both are measurement:
+- The sector accounts are not consolidated. Dividends paid between
+  non-financial companies, to holding companies inside S11, count as
+  payouts and as property income. France's property income received is
+  0.68 of operating surplus against a median of 0.14.
+- Outside the US, buybacks are missing. Even with them, the US payout
+  ratio (0.32) is at the panel median, under the UK (0.44) and Germany
+  (0.47).
+
+A firm-level payout measure (Worldscope or Compustat, dividends plus
+buybacks over earnings, consolidated) would fix both. It is paid data. The
+index has a +0.37 to +0.41 correlation with log income. Its country-year
+correlation is 0.35 with depth and 0.01 with market size.
+
+**H1 rerun on the index.** The script's econ/financialisation hook reads
+the new measure by that name. The old one is econ/market-size, so
+migration-h12.py was run unchanged. The coefficient is now negative, the
+predicted sign, but not significant: b -0.0131 (se 0.0088, p(t) 0.14,
+p(wild) 0.19, 48 exporters, G_eff 4.8, Korea 41% of the variance). The
+other runs: without DEU and JPN -0.0160 (p(wild) 0.085), symmetric growth
+-0.62 (0.10), core exporters -0.0161 (0.15). The placebo is +0.0077
+(0.80), but own and donor values correlate 0.37, so it is a weaker check
+than for the old proxies. H1 is still not supported. The sign has turned,
+with few effective clusters and a measure whose ranking fails the face
+check above.
+
+**Regime.** The old factor (now econ/public-capital) was the ICSD public
+capital share: noise at the floor, investment share +0.97. ICSD builds
+its capital stocks from its investment flows (perpetual inventory), so
+the two are one series twice, and as a pair they took the factor.
+Investment over GDP loaded -0.17, against the prior. On ICSD itself: one
+vintage (the 2021 release, as published on the IMF portal in 2025), data
+to 2019 for 162 of 171 countries, no linearly interpolated stretches in
+the public or private investment shares. The known year (data + 2)
+predates the dataset's existence for the early years, as with every
+later-vintage source here. The constant-price % of GDP forms misstate past
+shares (China's private investment reads 4.5% of GDP in 1995), so the
+current-price split is used. The new spec keeps one ICSD measure (the
+public share of investment) and adds 8a's household consumption share
+(GMD) and the current account (WDI). Fitted on it, the factor is mostly
+the household share: -0.73 at 2009, then -1.00 with noise at the floor
+from 2015. Investment +0.48 and public wealth +0.39 now load with their
+prior signs. The ICSD share does not load (-0.02).
+
+**H3 rerun** (known 2009, groups CHN KOR TWN VNM against USA GBR AUS CAN):
+
+| measure | gap at equal income (SD) | 90% bootstrap | abs corr with log income | H3 |
+|---|---|---|---|---|
+| econ/investment-regime (the spec set first) | +1.33 | [+0.70, +2.05] | 0.60 | fails (income) |
+| econ/investment-regime-index (equal weight of 8a's priors, set before H3 was run) | +1.89 | [+1.15, +2.70] | 0.44 | passes |
+| econ/public-capital (the old factor) | +0.86 | [-0.19, +1.97] | 0.33 | fails (gap) |
+
+The pre-set measure fails, on the income correlation rather than the gap.
+The index passes, but it was specified after the factor's loadings were
+seen, so it is a sensitivity, not a confirmation. Read H3 as: the
+separation at equal income is there on 8a's priors, but no single factor
+carries it without also carrying income.
+
+**Fixes in this pass.**
+- OECD Table 0800 breaks P51G down by asset, and the pivot took an
+  arbitrary row: Italy's investment over profit was 0.01. Now N11G (total
+  fixed assets).
+- The 4-MAD clip flattened the top of skewed indicators. On the FD index
+  the rich countries all sat at the clip, and financial-depth scores tied
+  at +2.72-2.73 across a dozen countries. The clip now widens to the
+  1st/99th percentiles where those lie further out.
+- Net lending is over operating surplus, not value added: Japan has no
+  S11 B1G in the table and was missing.
+- An index row has no posterior SD, so econ/<index>-sd is not written.
