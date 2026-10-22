@@ -71,6 +71,7 @@
             [bnm.ews-reframed-test]
             [bnm.migration-test]
             [bnm.half-decade-test]
+            [bnm.recipes-test]
             [bnm.econ-structure-test]))
 
 (def namespaces
@@ -145,6 +146,7 @@
     bnm.ews-reframed-test
     bnm.migration-test
     bnm.half-decade-test
+    bnm.recipes-test
     bnm.econ-structure-test])
 
 (defn -main [& _]

@@ -1,0 +1,532 @@
+;; Physics and literature priors on recipe coefficients (docs/ESSENTIALS.md
+;; section 4, step 5 of section 8; bead bnm-1pq.6), read by bnm.recipes.
+;;
+;; Each recipe is one coefficient: input per unit of output, in :unit. Its
+;; prior is a central value :mean and a 90% range [:lo :hi]; on :scale :log
+;; (the default) the mean is the median and the range sets the log sd,
+;; (ln hi - ln lo) / 3.29; on :scale :logit (shares) the same on the log
+;; odds. :floor is the thermodynamic or stoichiometric minimum, with
+;; :floor-basis saying why; 0 where physics sets none (the posterior is
+;; then only kept positive). The prior holds at :ref-year; :drift is a
+;; yearly change of the log (a learning or chemistry trend) applied from
+;; :drift-from on (flat before it), :step the log sd of the coefficient's
+;; random walk per year. :sources say which observations update it
+;; (bnm.recipes/observations); a recipe with none keeps its prior (and
+;; drift). :regions lists where it is filtered: EXIOBASE region codes (ISO
+;; alpha-2 for countries, WA WE WF WL WM for the rest of the world) and
+;; WLD; :exio-all means every EXIOBASE region with data.
+;;
+;; Unit conventions (marked per recipe):
+;;   t     metric tonne; kt = 1e3 t; Mt = 1e6 t.
+;;   GJ    net (lower) calorific value unless marked gross. Fuels in
+;;         tonnes convert at the IPCC 2006 defaults in bnm.supply/ncv
+;;         (natural gas 48.0 GJ/t, other bituminous coal 25.8, coking coal
+;;         28.2, lignite 11.9). UNSD reports natural gas in TJ gross: x 0.9
+;;         to net.
+;;   MWh   electricity, 3.6 GJ; 1 TJ = 277.8 MWh.
+;;   per GW   per GW of installed (nameplate) capacity, DC for PV.
+;;   per kWh  per kWh of Li-ion cell capacity.
+;;   NH3   per t of ammonia; EXIOBASE's N-fertiliser tonnage is read as t
+;;         of NH3 equivalent (docs/ESSENTIALS.md 4 does the same: 0.64 t
+;;         of gas per t in Germany); this unit assumption is part of the
+;;         source's error.
+;;
+;; Sources (implemented in bnm.recipes; :sd0 is the observation's log sd
+;; before the data teach it):
+;;   :exio      EXIOBASE hybrid 2011 physical coefficient of :output from
+;;              :inputs ({code factor}; :conv :ncv turns tonnes of fuel to
+;;              TJ first), times :factor; known 2014. With :price, also
+;;              each other pxp year's value-share-implied coefficient:
+;;              a(2011) x s(y)/s(2011) x [P_out(y)/P_out(2011)] /
+;;              [P_in(y)/P_in(2011)], s the summed value share of
+;;              :share-inputs, P the BACI HS92 world unit values of the
+;;              listed HS6 codes; known y + 3.
+;;   :exio-ammonia  the same for ammonia, split by route (gas reforming,
+;;              coal gasification) with the prior route intensities.
+;;   :exio-power-share  fossil share of electricity output, EXIOBASE 2011.
+;;   :stage     ratio of world stage outputs, data/derived/supply/
+;;              stages.csv (:num stage over :den stage), :adjust scaling
+;;              a country's :num quantity, times :factor.
+;;   :bf-coal   UNSD coking coal into coke ovens, attributed to blast
+;;              furnaces by coke into them over coke made, plus coal
+;;              injected, over pig iron (stages.csv), per country.
+;;   :unsd-heat-rate  UNSD fuel into electricity and CHP plants, less the
+;;              fuel of their heat (heat out / 0.9), over electricity from
+;;              that fuel, x 3.6; known year + 2.
+;;   :unsd-ratio  ratio of two UNSD series (:num / :den).
+;;   :fao-nutrient  FAOSTAT agricultural use of a nutrient x :factor (the
+;;              share of wheat, maize and rice, and the element's mass
+;;              fraction) over their production (FAOSTAT food balances,
+;;              rice milled); known + 2.
+;;   :screen    an observation more than :screen-sds predictive sds (the
+;;              prior's and the source's :sd0 together, on the filter's
+;;              scale) from the prior is a flag (a unit or routing error,
+;;              PRINCIPLES 10), counted and not used.
+
+{:start 1995
+ :end 2025
+ ;; the filter runs from :from, so the 1990s data known by 1995 inform it
+ :from 1990
+ :screen-sds 4.0
+ :literature
+ {:iea-minerals "IEA (2021). The Role of Critical Minerals in Clean Energy Transitions. Paris. https://www.iea.org/reports/the-role-of-critical-minerals-in-clean-energy-transitions"
+  :iea-ammonia "IEA (2021). Ammonia Technology Roadmap. Paris. https://www.iea.org/reports/ammonia-technology-roadmap"
+  :iea-cement "IEA & WBCSD-CSI (2018). Technology Roadmap: Low-Carbon Transition in the Cement Industry. https://www.iea.org/reports/technology-roadmap-low-carbon-transition-in-the-cement-industry"
+  :worldbank "Hund, K., La Porta, D., Fabregas, T.P., Laing, T. & Drexhage, J. (2020). Minerals for Climate Action: The Mineral Intensity of the Clean Energy Transition. World Bank."
+  :watari "Watari, T., McLellan, B.C., Giurco, D., Dominish, E., Yamasue, E. & Nansai, K. (2019). Total material requirement for the global energy transition to 2050. Resources, Conservation and Recycling 148:91-103. https://doi.org/10.1016/j.resconrec.2019.05.015"
+  :worrell "Worrell, E., Price, L., Neelis, M., Galitsky, C. & Zhou, N. (2008). World Best Practice Energy Intensity Values for Selected Industrial Sectors. LBNL-62806. https://doi.org/10.2172/927032"
+  :fruehan "Fruehan, R.J., Fortini, O., Paxton, H.W. & Brindle, R. (2000). Theoretical Minimum Energies to Produce Steel for Selected Conditions. US DOE / Energetics. https://doi.org/10.2172/769470"
+  :pavel "Pavel, C.C., Lacal-Arantegui, R., Marmier, A. et al. (2017). Substitution strategies for reducing the use of rare earths in wind turbines. Resources Policy 52:349-357. https://doi.org/10.1016/j.resourpol.2017.04.010"
+  :itrpv "VDMA (yearly). International Technology Roadmap for Photovoltaic (ITRPV), editions 2010-2024."
+  :ipcc-ncv "IPCC (2006). Guidelines for National Greenhouse Gas Inventories, vol. 2, table 1.2 (net calorific values; as bnm.supply/ncv)."
+  :cassman "Cassman, K.G., Dobermann, A. & Walters, D.T. (2002). Agroecosystems, nitrogen-use efficiency, and nitrogen management. Ambio 31(2):132-140. https://doi.org/10.1579/0044-7447-31.2.132"
+  :lassaletta "Lassaletta, L., Billen, G., Grizzetti, B., Anglade, J. & Garnier, J. (2014). 50 year trends in nitrogen use efficiency of world cropping systems. Environmental Research Letters 9:105011. https://doi.org/10.1088/1748-9326/9/10/105011"
+  :heffer "Heffer, P., Gruere, A. & Roberts, T. (2017). Assessment of Fertilizer Use by Crop at the Global Level 2014-2014/15. IFA and IPNI, Paris."
+  :cordell "Cordell, D., Drangert, J.-O. & White, S. (2009). The story of phosphorus. Global Environmental Change 19(2):292-305. https://doi.org/10.1016/j.gloenvcha.2008.10.009"
+  :smil "Smil, V. (2001). Enriching the Earth. MIT Press."
+  :xu "Xu, C., Dai, Q., Gaines, L., Hu, M., Tukker, A. & Steubing, B. (2020). Future material demand for automotive lithium-based batteries. Communications Materials 1:99. https://doi.org/10.1038/s43246-020-00095-x"
+  :usgs-iron "USGS Mineral Commodity Summaries, Iron Ore (yearly): China's production is reported as crude ore; its usable ore is about a quarter to a third of it."
+  :icsg "ICSG (yearly). The World Copper Factbook: secondary (scrap) refined copper is about 15-18% of refined output."
+  :iai "International Aluminium Institute statistics (yearly): primary aluminium smelting power consumption; alumina production by use."}
+
+ :recipes
+ [;; ------------------------------------------------------------ ammonia
+  {:id "ammonia/gas"
+   :group "fertiliser"
+   :unit "t natural gas (48.0 GJ/t net) per t NH3, steam methane reforming (feed and fuel)"
+   :mean 0.67 :lo 0.58 :hi 0.80
+   :floor 0.43 :floor-basis "about 20.6 GJ/t: NH3's LHV of 18.6 GJ/t plus the separation work (IEA 2021), at 48 GJ/t"
+   :step 0.02 :ref-year 2011
+   :regions :exio-all :exclude ["CN"]
+   :sources [{:kind :exio-ammonia :route :gas :sd0 0.25
+              :price {:out ["310210" "281410"] :in ["271121" "271111"]}}]
+   :cite [:iea-ammonia :worrell :smil]
+   :note "Best practice about 28 GJ/t; average gas plants 32-36 (section 4)."}
+  {:id "ammonia/coal"
+   :group "fertiliser"
+   :unit "t coal (25.8 GJ/t net, other bituminous) per t NH3, coal gasification (feed and fuel)"
+   :mean 1.94 :lo 1.74 :hi 2.13
+   :floor 0.80 :floor-basis "the same 20.6 GJ/t minimum at 25.8 GJ/t"
+   :step 0.02 :ref-year 2011
+   :regions ["CN"]
+   :sources [{:kind :exio-ammonia :route :coal :sd0 0.25
+              :price {:out ["310210" "281410"] :in ["270112"]}}]
+   :cite [:iea-ammonia :worrell]
+   :note "Coal gasification uses about 45-55 GJ/t (section 4)."}
+  {:id "ammonia/coal-share"
+   :group "fertiliser"
+   :unit "share of NH3 output made from coal (route mixture weight)"
+   :scale :logit
+   :mean 0.78 :lo 0.65 :hi 0.88
+   :floor 0.0 :floor-basis "none (a share)"
+   :step 0.15 :ref-year 2011
+   :regions ["CN"]
+   :sources [{:kind :exio-ammonia :route :coal-share :sd0 0.5
+              :price {:out ["310210" "281410"] :in ["270112"]}}]
+   :cite [:iea-ammonia]
+   :note "China makes most of its ammonia from coal, most of the rest of the world from gas."}
+  {:id "urea/ammonia"
+   :group "fertiliser"
+   :unit "t NH3 per t urea"
+   :mean 0.575 :lo 0.567 :hi 0.59
+   :floor 0.5667 :floor-basis "stoichiometry: 2 NH3 + CO2 -> CO(NH2)2 + H2O, 34.06/60.06"
+   :step 0.002 :ref-year 2011
+   :regions ["WLD"]
+   :sources []
+   :cite [:worrell]}
+
+  ;; -------------------------------------------------------------- steel
+  {:id "steel-bf/iron-ore"
+   :group "steel"
+   :unit "t iron ore (gross weight, 60-65% Fe) per t hot metal (pig iron)"
+   :mean 1.57 :lo 1.50 :hi 1.65
+   :floor 1.35 :floor-basis "Fe balance: 0.945 t Fe in hot metal over 0.70 Fe in pure hematite"
+   :step 0.01 :ref-year 2011
+   :regions ["WLD"]
+   :sources [{:kind :stage :commodity "iron" :num "mine" :den "smelter"
+              :adjust {"CHN" 0.27} :sd0 0.15}]
+   :cite [:worrell :fruehan :usgs-iron]
+   :note "The world ratio includes ore for direct reduction (about 5-8% of iron) and stock changes; China's crude ore is scaled to usable ore."}
+  {:id "steel-bf/coal"
+   :group "steel"
+   :unit "t coal per t hot metal: coking coal for the blast furnace's coke plus coal injected"
+   :mean 0.65 :lo 0.55 :hi 0.80
+   :floor 0.35 :floor-basis "the 9.8 GJ/t absolute minimum for hot metal (Fruehan et al. 2000) at 28.2 GJ/t"
+   :step 0.01 :ref-year 2011
+   :regions ["WLD" "CN" "JP" "KR" "IN" "RU" "DE" "US" "BR" "UA" "FR" "GB" "IT"]
+   :sources [{:kind :bf-coal :sd0 0.15}]
+   :cite [:fruehan :worrell]
+   :note "0.35-0.5 t coke per t hot metal, about 0.45-0.65 t coking coal, plus 0.1-0.2 t injected coal (section 4)."}
+  {:id "steel-eaf/scrap"
+   :group "steel"
+   :unit "t steel scrap per t EAF crude steel (scrap-only charge)"
+   :mean 1.09 :lo 1.05 :hi 1.12
+   :floor 1.0 :floor-basis "Fe mass balance: no more steel out than metal in"
+   :step 0.005 :ref-year 2011
+   :regions ["WLD"]
+   :sources []
+   :cite [:worrell]}
+  {:id "steel-eaf/electricity"
+   :group "steel"
+   :unit "MWh per t EAF crude steel"
+   :mean 0.45 :lo 0.35 :hi 0.55
+   :floor 0.20 :floor-basis "liquid steel's enthalpy at 1600 C, about 0.36 MWh/t (Fruehan et al. 2000), less the up to about 40% oxy-fuel and carbon injection can supply"
+   :step 0.01 :ref-year 2011
+   :regions ["WLD"]
+   :sources []
+   :cite [:fruehan :worrell]}
+
+  ;; ------------------------------------------------------------- cement
+  {:id "cement/clinker"
+   :group "cement"
+   :unit "t clinker per t cement"
+   :mean 0.77 :lo 0.65 :hi 0.92
+   :floor 0.05 :floor-basis "EN 197-1 CEM III/C, the lowest clinker content of a standard cement (not thermodynamic)"
+   :step 0.01 :ref-year 2011
+   :regions :exio-all
+   :sources [{:kind :exio :output "C_CMNT" :inputs {"C_SDCL" 1.0 "C_STON" 1.0}
+              :factor 0.645 :sd0 0.25
+              :share-inputs ["C_SDCL" "C_STON"]
+              :price {:out ["252329" "252390"] :in ["252100"]}}]
+   :cite [:iea-cement]
+   :note "Raw materials (sand, clay and stone in EXIOBASE) per t cement over 1.55 t limestone per t clinker."}
+  {:id "clinker/heat"
+   :group "cement"
+   :unit "GJ fuel (net) per t clinker"
+   :mean 3.5 :lo 2.9 :hi 4.2
+   :floor 1.75 :floor-basis "the thermodynamic minimum of clinker formation, about 1.7-1.8 GJ/t"
+   :step 0.01 :ref-year 2011
+   :regions :exio-all
+   :sources [{:kind :exio :output "C_CMNT" :conv :ncv
+              :inputs {"C_ANTH" 1.0 "C_COKC" 1.0 "C_OTBC" 1.0 "C_SUBC" 1.0 "C_LIBC" 1.0
+                       "C_PETC" 1.0 "C_GASE" 1.0 "C_FOIL" 1.0 "C_DOIL" 1.0 "C_BKBP" 1.0
+                       "C_PATF" 1.0 "C_COKE" 1.0}
+              :factor 1298.7 :sd0 0.3}]
+   :cite [:iea-cement :worrell]
+   :note "EXIOBASE fossil fuels into cement (TJ per t cement) x 1000 / 0.77 (the prior clinker ratio); waste fuels are not counted, so it reads low where they are used."}
+  {:id "cement/electricity"
+   :group "cement"
+   :unit "kWh per t cement"
+   :mean 105.0 :lo 90.0 :hi 120.0
+   :floor 50.0 :floor-basis "no thermodynamic floor of consequence; best grinding (roller mills and presses) runs about 60-70 kWh/t"
+   :step 0.01 :ref-year 2011
+   :regions :exio-all
+   :sources [{:kind :exio :output "C_CMNT"
+              :inputs {"C_POWC" 1.0 "C_POWG" 1.0 "C_POWN" 1.0 "C_POWH" 1.0 "C_POWW" 1.0 "C_POWP" 1.0
+                       "C_POWB" 1.0 "C_POWS" 1.0 "C_POWE" 1.0 "C_POWO" 1.0 "C_POWM" 1.0 "C_POWZ" 1.0}
+              :factor 277778.0 :sd0 0.3}]
+   :cite [:iea-cement]}
+
+  ;; ---------------------------------------------------------- aluminium
+  {:id "aluminium/alumina"
+   :group "aluminium"
+   :unit "t alumina (Al2O3) per t primary aluminium"
+   :mean 1.93 :lo 1.92 :hi 1.95
+   :floor 1.889 :floor-basis "stoichiometry: Al2O3 / 2 Al = 101.96 / 53.96"
+   :step 0.002 :ref-year 2011
+   :regions ["WLD"]
+   :sources [{:kind :stage :commodity "aluminium" :num "refinery" :den "smelter" :factor 0.94 :sd0 0.05}]
+   :cite [:iai]
+   :note "World alumina over primary aluminium x 0.94: about 6% of alumina is non-metallurgical."}
+  {:id "alumina/bauxite"
+   :group "aluminium"
+   :unit "t bauxite (dry) per t alumina"
+   :mean 2.6 :lo 2.2 :hi 3.0
+   :floor 1.53 :floor-basis "pure gibbsite: Al2O3 is 65.4% of Al(OH)3"
+   :step 0.01 :ref-year 2011
+   :regions ["WLD"]
+   :sources [{:kind :stage :commodity "aluminium" :num "mine" :den "refinery" :sd0 0.1}]
+   :cite [:iai]}
+  {:id "aluminium/electricity"
+   :group "aluminium"
+   :unit "MWh (AC) per t primary aluminium"
+   :mean 14.5 :lo 13.0 :hi 15.5
+   :floor 6.3 :floor-basis "Hall-Heroult with a carbon anode, the thermodynamic minimum"
+   :step 0.01 :ref-year 2011
+   :regions ["CN" "NO" "CA" "RU" "AU" "IN" "WM"]
+   :sources [{:kind :exio :output "C_ALUM"
+              :inputs {"C_POWC" 1.0 "C_POWG" 1.0 "C_POWN" 1.0 "C_POWH" 1.0 "C_POWW" 1.0 "C_POWP" 1.0
+                       "C_POWB" 1.0 "C_POWS" 1.0 "C_POWE" 1.0 "C_POWO" 1.0 "C_POWM" 1.0 "C_POWZ" 1.0}
+              :factor 277.778 :sd0 0.25}]
+   :cite [:iai :worrell]
+   :note "EXIOBASE's aluminium product includes alumina refining, casting and some secondary metal: read only where primary smelting dominates."}
+  {:id "aluminium/anode"
+   :group "aluminium"
+   :unit "t carbon anode per t primary aluminium"
+   :mean 0.42 :lo 0.40 :hi 0.45
+   :floor 0.334 :floor-basis "stoichiometry: 2 Al2O3 + 3 C -> 4 Al + 3 CO2, 36/108"
+   :step 0.005 :ref-year 2011
+   :regions ["WLD"]
+   :sources []
+   :cite [:worrell :iai]}
+
+  ;; ------------------------------------------------------------- copper
+  {:id "copper/mined"
+   :group "copper"
+   :unit "t copper mined (Cu content) per t primary refined copper"
+   :mean 1.03 :lo 1.01 :hi 1.06
+   :floor 1.0 :floor-basis "Cu mass balance"
+   :step 0.005 :ref-year 2011
+   :regions ["WLD"]
+   :sources [{:kind :stage :commodity "copper" :num "mine" :den "refinery" :factor 1.2048 :sd0 0.1}]
+   :cite [:icsg]
+   :note "World mine over refinery output / (1 - 0.17), the secondary share."}
+
+  ;; -------------------------------------------------------- polysilicon
+  {:id "polysilicon/electricity"
+   :group "solar"
+   :unit "MWh per t polysilicon (kWh/kg), Siemens process"
+   :mean 65.0 :lo 50.0 :hi 90.0
+   :floor 9.0 :floor-basis "the enthalpy of reducing SiO2 to Si, 32.4 MJ/kg; purification needs more"
+   :drift -0.04 :drift-from 2005 :step 0.02 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:itrpv]
+   :note "About 120 kWh/kg around 2005 to about 65 in 2020."}
+
+  ;; ------------------------------------------------------ Li-ion cells
+  {:id "li-ion/lithium"
+   :group "battery"
+   :unit "kg lithium (Li content) per kWh of cell capacity"
+   :mean 0.12 :lo 0.09 :hi 0.16
+   :floor 0.065 :floor-basis "Faraday: one Li per electron, 1 kWh at 4.0 V = 9.33 mol"
+   :step 0.02 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:iea-minerals :xu :worldbank]}
+  {:id "li-ion/cobalt"
+   :group "battery"
+   :unit "kg cobalt per kWh of cell capacity (fleet chemistry mix)"
+   :mean 0.25 :lo 0.15 :hi 0.40
+   :floor 0.0 :floor-basis "none: LFP cells hold no cobalt"
+   :drift -0.10 :drift-from 2015 :step 0.04 :ref-year 2015
+   :regions ["WLD"]
+   :sources []
+   :cite [:iea-minerals :xu]
+   :note "NMC111 about 0.39 kg/kWh, NMC622 0.2, NMC811 and NCA about 0.1, LFP 0; the shift to NMC811 and LFP after 2015 is the drift."}
+  {:id "li-ion/nickel"
+   :group "battery"
+   :unit "kg nickel per kWh of cell capacity (fleet chemistry mix)"
+   :mean 0.55 :lo 0.35 :hi 0.80
+   :floor 0.0 :floor-basis "none: LFP cells hold no nickel"
+   :step 0.03 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:iea-minerals :xu]}
+  {:id "li-ion/graphite"
+   :group "battery"
+   :unit "kg graphite per kWh of cell capacity"
+   :mean 1.0 :lo 0.8 :hi 1.3
+   :floor 0.6 :floor-basis "LiC6: 6 C per cycled Li, 9.33 mol Li per kWh at 4.0 V = 0.67 kg, less about 10% silicon blended in the anode"
+   :step 0.02 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:iea-minerals :xu]}
+
+  ;; ---------------------------------------------------------------- EVs
+  {:id "ev/battery"
+   :group "vehicles"
+   :unit "kWh of battery per battery-electric car"
+   :mean 55.0 :lo 40.0 :hi 75.0
+   :floor 0.0 :floor-basis "none"
+   :step 0.03 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:iea-minerals]}
+  {:id "ev/copper"
+   :group "vehicles"
+   :unit "kg copper per battery-electric car"
+   :mean 53.0 :lo 40.0 :hi 83.0
+   :floor 0.0 :floor-basis "none"
+   :step 0.02 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:iea-minerals :worldbank]
+   :note "IEA: 53 kg against about 22 for an internal-combustion car."}
+
+  ;; ----------------------------------------------------- wind and solar
+  {:id "wind-onshore/steel"
+   :group "wind"
+   :unit "t steel per GW (tower, nacelle and foundation rebar)"
+   :mean 130000.0 :lo 100000.0 :hi 180000.0
+   :floor 0.0 :floor-basis "none"
+   :step 0.02 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:worldbank :watari]}
+  {:id "wind-onshore/copper"
+   :group "wind"
+   :unit "t copper per GW"
+   :mean 2900.0 :lo 2000.0 :hi 4000.0
+   :floor 0.0 :floor-basis "none"
+   :step 0.02 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:iea-minerals :watari]}
+  {:id "wind-offshore/copper"
+   :group "wind"
+   :unit "t copper per GW (array and export cables included)"
+   :mean 8000.0 :lo 6000.0 :hi 10500.0
+   :floor 0.0 :floor-basis "none"
+   :step 0.02 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:iea-minerals]}
+  {:id "wind-onshore/rare-earths"
+   :group "wind"
+   :unit "t rare earths (Nd, Pr, Dy, Tb) per GW, fleet mix of drivetrains"
+   :mean 14.0 :lo 5.0 :hi 40.0
+   :floor 0.0 :floor-basis "none: geared induction generators use none"
+   :step 0.05 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:iea-minerals :pavel]}
+  {:id "wind-offshore/rare-earths"
+   :group "wind"
+   :unit "t rare earths per GW, mostly direct-drive permanent magnets"
+   :mean 239.0 :lo 150.0 :hi 300.0
+   :floor 0.0 :floor-basis "none"
+   :step 0.03 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:iea-minerals :pavel]
+   :note "0.6-0.7 t NdFeB per MW direct drive, about 30% rare earth."}
+  {:id "pv/silicon"
+   :group "solar"
+   :unit "t silicon per GW (= g/W x 1000)"
+   :mean 3200.0 :lo 2500.0 :hi 4000.0
+   :floor 500.0 :floor-basis "a 50 um wafer with no kerf loss at 22% efficiency: 0.53 g/W"
+   :drift -0.09 :drift-from 2004 :step 0.03 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:itrpv :iea-minerals]
+   :note "About 16 g/W in 2004 to about 3 g/W (section 2)."}
+  {:id "pv/silver"
+   :group "solar"
+   :unit "t silver per GW (= mg/W)"
+   :mean 15.0 :lo 10.0 :hi 20.0
+   :floor 0.0 :floor-basis "none: copper plating can replace silver"
+   :drift -0.12 :drift-from 2008 :step 0.04 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:itrpv]}
+  {:id "pv/copper"
+   :group "solar"
+   :unit "t copper per GW"
+   :mean 2800.0 :lo 2000.0 :hi 4000.0
+   :floor 0.0 :floor-basis "none"
+   :step 0.02 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:iea-minerals]}
+  {:id "pv/steel"
+   :group "solar"
+   :unit "t steel per GW (mounting structures, utility scale)"
+   :mean 50000.0 :lo 30000.0 :hi 80000.0
+   :floor 0.0 :floor-basis "none"
+   :step 0.02 :ref-year 2020
+   :regions ["WLD"]
+   :sources []
+   :cite [:worldbank :watari]}
+
+  ;; -------------------------------------------------------------- grain
+  {:id "grain/n-applied"
+   :group "food"
+   :unit "kg N (synthetic fertiliser) applied per t of wheat, maize and rice (milled equivalent)"
+   :mean 25.0 :lo 15.0 :hi 45.0
+   :floor 0.0 :floor-basis "none: fixation, manure and soil N can carry a crop"
+   :step 0.02 :ref-year 2011
+   :regions :fao
+   :sources [{:kind :fao-nutrient :nutrient "N" :factor 0.50 :sd0 0.3}]
+   :cite [:cassman :lassaletta :heffer :smil]
+   :yield-response {:form "Mitscherlich: Y = Ymax (1 - exp(-c (N + N0)))"
+                    :c "about 0.01-0.02 per kg N/ha"
+                    :note "concave: N is critical at the margin, not Leontief in total (section 4)"}
+   :note "About 17 kg N/t removed at a cereal NUE of about 0.4 of all N inputs, synthetic N about 0.6 of the inputs (Lassaletta et al. 2014): about 25 kg/t. Observed as FAO N use x 0.50 (wheat, maize and rice's share of N use, about 18 + 16 + 16%, IFA) over their production (FAOSTAT food balances)."}
+  {:id "grain/n-removed"
+   :group "food"
+   :unit "kg N in harvested grain per t (cereal mix)"
+   :mean 18.0 :lo 13.0 :hi 23.0
+   :floor 11.0 :floor-basis "rice's protein of about 7% (N x 5.95), the lowest of the cereals"
+   :step 0.005 :ref-year 2011
+   :regions ["WLD"]
+   :sources []
+   :cite [:cassman :lassaletta]}
+  {:id "grain/p-applied"
+   :group "food"
+   :unit "kg P (fertiliser) applied per t of wheat, maize and rice (milled equivalent)"
+   :mean 3.5 :lo 2.0 :hi 6.0
+   :floor 0.0 :floor-basis "none: soil P carries over"
+   :step 0.02 :ref-year 2011
+   :regions :fao
+   :sources [{:kind :fao-nutrient :nutrient "P2O5" :factor 0.1831 :sd0 0.4}]
+   :cite [:cordell :heffer]
+   :note "FAO P2O5 use x 0.436 (P in P2O5) x 0.42 (wheat, maize and rice's share, approximate, IFA). Grain removes 3-4 kg P/t."}
+  {:id "grain/k-applied"
+   :group "food"
+   :unit "kg K (fertiliser) applied per t of wheat, maize and rice (milled equivalent)"
+   :mean 4.0 :lo 2.0 :hi 8.0
+   :floor 0.0 :floor-basis "none"
+   :step 0.02 :ref-year 2011
+   :regions :fao
+   :sources [{:kind :fao-nutrient :nutrient "K2O" :factor 0.2822 :sd0 0.5}]
+   :cite [:heffer]
+   :note "FAO K2O use x 0.830 (K in K2O) x 0.34 (wheat, maize and rice's share, approximate, IFA). Grain removes 4-6 kg K/t."}
+
+  ;; ----------------------------------------------------- power and fuels
+  {:id "power/coal-heat-rate"
+   :group "power"
+   :unit "GJ coal (net) per MWh electricity"
+   :mean 10.0 :lo 8.8 :hi 11.5
+   :floor 5.46 :floor-basis "Carnot between 600 C steam and 25 C: 66% efficiency"
+   :step 0.01 :ref-year 2011
+   :regions :unsd
+   :sources [{:kind :unsd-heat-rate :fuel "coal" :sd0 0.2}
+             {:kind :exio :output "C_POWC" :conv :ncv
+              :inputs {"C_ANTH" 1.0 "C_COKC" 1.0 "C_OTBC" 1.0 "C_SUBC" 1.0 "C_LIBC" 1.0
+                       "C_PEAT" 1.0 "C_BKBP" 1.0 "C_PATF" 1.0 "C_COKE" 1.0}
+              :factor 3.6 :sd0 0.2}]
+   :cite [:worrell :ipcc-ncv]}
+  {:id "power/gas-heat-rate"
+   :group "power"
+   :unit "GJ natural gas (net) per MWh electricity"
+   :mean 7.5 :lo 6.3 :hi 9.5
+   :floor 4.33 :floor-basis "Carnot between a 1500 C turbine inlet and 25 C: 83% efficiency"
+   :step 0.01 :ref-year 2011
+   :regions :unsd
+   :sources [{:kind :unsd-heat-rate :fuel "gas" :gross->net 0.9 :sd0 0.2}
+             {:kind :exio :output "C_POWG" :conv :ncv :inputs {"C_GASE" 1.0} :factor 3.6 :sd0 0.2}]
+   :cite [:worrell :ipcc-ncv]}
+  {:id "power/oil-heat-rate"
+   :group "power"
+   :unit "GJ oil (net) per MWh electricity"
+   :mean 10.5 :lo 9.0 :hi 12.5
+   :floor 4.33 :floor-basis "Carnot as for gas (oil can fire a combined cycle)"
+   :step 0.01 :ref-year 2011
+   :regions :unsd
+   :sources [{:kind :unsd-heat-rate :fuel "oil" :sd0 0.25}
+             {:kind :exio :output "C_POWP" :conv :ncv :inputs {"C_FOIL" 1.0 "C_DOIL" 1.0 "C_COIL" 1.0}
+              :factor 3.6 :sd0 0.25}]
+   :cite [:worrell :ipcc-ncv]}
+  {:id "power/fossil-share"
+   :group "power"
+   :unit "share of gross electricity generation from fossil fuels (mixture weight of the pooled power recipe)"
+   :scale :logit
+   :mean 0.6 :lo 0.15 :hi 0.95
+   :floor 0.0 :floor-basis "none (a share)"
+   :step 0.15 :ref-year 2011
+   :regions :unsd
+   :sources [{:kind :unsd-ratio :num "elec_fossil" :den "elec_total" :sd0 0.15}
+             {:kind :exio-power-share :sd0 0.3}]
+   :cite [:ipcc-ncv]
+   :note "Observed by UNSD (known + 2) and EXIOBASE 2011; OWID is held out for validation."}
+  {:id "refinery/feed"
+   :group "refining"
+   :unit "t refinery intake (crude, NGL, feedstocks) per t gross refinery output"
+   :mean 1.03 :lo 1.00 :hi 1.06
+   :floor 0.99 :floor-basis "mass balance: output cannot exceed intake, less about 1% of mass that hydrogen from gas adds"
+   :step 0.005 :ref-year 2011
+   :regions :unsd
+   :sources [{:kind :unsd-ratio :num "refinery_in" :den "refinery_out" :sd0 0.03}]
+   :cite [:worrell]
+   :note "Fuel and losses are about 4-8% (section 4); own fuel is in gross output."}]}
