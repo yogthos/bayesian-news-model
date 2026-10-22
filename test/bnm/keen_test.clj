@@ -119,6 +119,44 @@
         (let [dc' (keen/critical-debt (assoc p :r 0.06) st rk4)]
           (is (and dc' (< dc' dc)) (str dc " -> " dc')))))))
 
+;; The bad basin is Keen's debt crisis: debt diverging. Employment can
+;; collapse without it, as in a rentier economy whose low wage share and
+;; unemployment far below its window's mean send the convex Phillips curve,
+;; and the wage share, past 1 (Trinidad and Tobago's 2010 calibration).
+;; Each is its own probability. (The wage share passing 1 does not by itself
+;; mark a path as off the model: G&CL's own path to the bad equilibrium
+;; passes it within two years.)
+
+(def rentier
+  (merge (keen/from-raw keen/gcl)
+         {:alpha 0.0533 :beta 0.0027 :delta 0.0415 :nu 5.857 :r 0.02
+          :ustar 0.1196 :phi-slope 1.756 :pistar 0.5472 :kappa-slope 2.503}))
+
+(deftest debt-crisis-and-employment-collapse-are-separate
+  (let [st {:omega 0.268 :lambda 0.954 :d 0.267}
+        opts {:years 20.0 :dt 0.1}]
+    (testing "employment collapses while debt stays bounded"
+      (is (number? (keen/blowup-year rentier st (assoc opts :criterion :employment))))
+      (is (< (apply max (map #(nth % 3) (keen/path rentier st opts))) (:d-max keen/diverge-defaults)))
+      (is (nil? (keen/blowup-year rentier st opts)) "not a debt crisis (the default criterion)")
+      (is (number? (keen/blowup-year rentier st (assoc opts :criterion :either))))
+      (is (< (keen/blowup-year rentier st (assoc opts :criterion :wage))
+             (keen/blowup-year rentier st (assoc opts :criterion :employment)))
+          "the wage share passes 1 first"))
+
+    (testing "G&CL's bad equilibrium is a debt crisis"
+      (let [p (keen/from-raw keen/gcl) s {:omega 0.75 :lambda 0.7 :d 0.1}
+            t (keen/blowup-year p s rk4)
+            [_ _ _ d] (last (take-while #(<= (first %) t) (keen/path p s rk4)))]
+        (is (number? t))
+        (is (> d (:d-max keen/diverge-defaults)) "crossed on debt")
+        (is (< (keen/blowup-year p s (assoc rk4 :criterion :employment)) t) "after employment collapsed")
+        (is (< (keen/blowup-year p s (assoc rk4 :criterion :wage)) 2.0) "the wage share passes 1 early")))
+    (testing "critical-debt follows the criterion"
+      (is (nil? (keen/critical-debt rentier {:omega 0.268 :lambda 0.954} (assoc opts :d-hi 0.5)))
+          "no debt in [0, 0.5] tips the rentier into a debt crisis")
+      (is (= 0.0 (keen/critical-debt rentier {:omega 0.268 :lambda 0.954} (assoc opts :criterion :employment)))))))
+
 ;; ---------------------------------------------------------------------------
 ;; The engine's model and the fast path the diagnostics use agree.
 
@@ -158,18 +196,23 @@
                                  :lambda (+ (at :lambda y) (* 0.003 (m/normal! g)))
                                  :d (+ (at :d y) (* 0.01 (m/normal! g)))}]))
         exog (select-keys truth [:alpha :beta :delta :nu :r :kappa0])
-        cal (keen/calibrate-window obs exog {:members 80 :iterations 8 :seed 3 :dt 0.1
-                                             :calibrate [:ustar :phi-slope :pistar :kappa-slope]
-                                             :noise {:omega 0.005 :lambda 0.005 :d 0.02}
-                                             :prior-shift {:ustar 0.01 :pistar 0.03 :phi-slope -0.5 :kappa-slope 0.5}})
-        post (:params cal)
-        lr (fn [k] (Math/abs (Math/log (/ (post k) (truth k)))))]
-    (is (< (lr :ustar) 0.2) (str "ustar " (:ustar post) " vs " (:ustar truth)))
-    (is (close? (:pistar post) (:pistar truth) 0.015) (str "pistar " (:pistar post) " vs " (:pistar truth)))
-    (is (< (lr :phi-slope) 0.35) (str "phi-slope " (:phi-slope post) " vs " (:phi-slope truth)))
-    (is (< (lr :kappa-slope) 0.35) (str "kappa-slope " (:kappa-slope post) " vs " (:kappa-slope truth)))
-    (is (= 80 (count (:members cal))))
-    (is (every? #(contains? % :ustar) (:members cal)) "members in natural units, as parameter maps")))
+        ;; at the ensemble size and number of ES-MDA iterations the run uses,
+        ;; on two seeds (4 iterations recovered the slopes on one, not both)
+        {:keys [members iterations]} keen/run-defaults]
+    (doseq [seed [3 4]
+            :let [cal (keen/calibrate-window obs exog {:members members :iterations iterations :seed seed :dt 0.1
+                                                       :calibrate [:ustar :phi-slope :pistar :kappa-slope]
+                                                       :noise {:omega 0.005 :lambda 0.005 :d 0.02}
+                                                       :prior-shift {:ustar 0.01 :pistar 0.03 :phi-slope -0.5 :kappa-slope 0.5}})
+                  post (:params cal)
+                  lr (fn [k] (Math/abs (Math/log (/ (post k) (truth k)))))]]
+      (testing (str "seed " seed)
+        (is (< (lr :ustar) 0.2) (str "ustar " (:ustar post) " vs " (:ustar truth)))
+        (is (close? (:pistar post) (:pistar truth) 0.015) (str "pistar " (:pistar post) " vs " (:pistar truth)))
+        (is (< (lr :phi-slope) 0.35) (str "phi-slope " (:phi-slope post) " vs " (:phi-slope truth)))
+        (is (< (lr :kappa-slope) 0.35) (str "kappa-slope " (:kappa-slope post) " vs " (:kappa-slope truth)))
+        (is (= members (count (:members cal))))
+        (is (every? #(contains? % :ustar) (:members cal)) "members in natural units, as parameter maps")))))
 
 ;; ---------------------------------------------------------------------------
 ;; Causality and output.
@@ -210,8 +253,48 @@
       (is (not= (filter #(= (:year %) (inc cut)) rows) (filter #(= (:year %) (inc cut)) rows'))))
     (testing "the model's diagnostics appear once calibrated"
       (let [vs (set (map :variable (filter #(= 1995 (:year %)) rows)))]
-        (doseq [v ["omega" "lambda" "d" "profit-share" "bad-basin-prob" "minsky" "gap-d" "d-bar" "calibrated"]]
-          (is (vs v) v))))))
+        (doseq [v ["omega" "lambda" "d" "profit-share" "bad-basin-prob" "employment-collapse-prob" "wage-explosion-prob"
+                   "minsky" "gap-d" "d-bar" "calibrated"]]
+          (is (vs (str "keen/" v)) v))))))
+
+;; Debt from one source at a time, chosen at each year end from what was
+;; known then: the first source with :d-min-years known data years. Whether
+;; a source will one day have that many cannot choose it earlier.
+
+(defn- two-source-panel
+  "The synthetic panel with debt from two sources: :d-a (preferred) from
+  1977, :d-b (10% higher) from 1960, each data year known the next."
+  []
+  (let [p (synthetic-panel)
+        d (:d p)]
+    (-> (dissoc p :d)
+        (assoc :d-a (into (sorted-map) (filter #(>= (key %) 1977) d))
+               :d-b (update-vals d (fn [[a x]] [a (* 1.1 x)]))))))
+
+(def two-source (assoc fast :d-sources [:d-a :d-b] :d-min-years 20))
+
+(deftest debt-source-chosen-from-what-was-known
+  (let [panel (two-source-panel)
+        rows (keen/country-rows "SYN" panel two-source)
+        at (fn [rs y v] (some #(when (and (= y (:year %)) (= (str "keen/" v) (:variable %))) (:value %)) rs))]
+    (testing ":d-a has 20 known data years (1977-1996) from the end of 1997"
+      (is (= 2.0 (at rows 1996 "d-source")))
+      (is (= 1.0 (at rows 1997 "d-source")))
+      (is (= 1.0 (at rows 2001 "d-source"))))
+    (testing "the debt read is the chosen source's"
+      (let [t (long (at rows 1996 "state-year"))]
+        (is (close? (at rows 1996 "d") (second (get-in panel [:d-b t])) 1e-12)))
+      (let [t (long (at rows 1997 "state-year"))]
+        (is (close? (at rows 1997 "d") (second (get-in panel [:d-a t])) 1e-12))))
+    (testing "a change of source recalibrates (between the every-5 origins)"
+      (is (= 1995.0 (at rows 1996 "calibrated")))
+      (is (= 1997.0 (at rows 1997 "calibrated"))))
+    (testing "a source's later data cannot choose it earlier"
+      (let [cut 1996
+            short (update panel :d-a #(into (sorted-map) (filter (fn [e] (< (key e) cut)) %)))
+            rows' (keen/country-rows "SYN" short two-source)
+            upto (fn [rs] (vec (filter #(<= (:year %) cut) rs)))]
+        (is (= (upto rows) (upto rows')))))))
 
 (deftest output-schema
   (let [rows (keen/country-rows "SYN" (synthetic-panel) fast)
@@ -221,8 +304,20 @@
                       (number? (:value %)) (keen/finite? (:value %)))
                 rows))
     (is (= (count rows) (count (distinct (map (juxt :iso :year :variable) rows)))) "one value per iso, year and variable")
-    (is (every? #(re-matches #"[A-Z]{3},\d{4},[a-z\-]+,-?[0-9.Ee\-]+" %) (rest lines)) (str (take 3 (rest lines))))
+    (is (every? #(re-matches #"[A-Z]{3},\d{4},keen/[a-z][a-z\-]*,-?[0-9.Ee\-]+" %) (rest lines)) (str (take 3 (rest lines))))
+    (is (every? #(re-matches #"keen/[a-z]+(-[a-z]+)*" %) keen/variables) "prefixed, kebab-case")
     (testing "probabilities and flags in range"
       (doseq [{:keys [variable value]} rows]
-        (when (#{"bad-basin-prob"} variable) (is (<= 0.0 value 1.0)))
-        (when (#{"minsky" "minsky-observed" "good-stable"} variable) (is (#{0.0 1.0} (double value))))))))
+        (when (#{"keen/bad-basin-prob" "keen/employment-collapse-prob" "keen/wage-explosion-prob"} variable)
+          (is (<= 0.0 value 1.0)))
+        (when (#{"keen/minsky" "keen/minsky-observed" "keen/good-stable"} variable) (is (#{0.0 1.0} (double value))))))))
+
+(deftest a-failed-calibration-is-reported-and-counted
+  (let [failures (atom 0)
+        err (java.io.StringWriter.)
+        rows (with-redefs [keen/calibrate-window (fn [& _] (throw (ex-info "boom" {})))]
+               (binding [*err* err]
+                 (keen/country-rows "SYN" (synthetic-panel) (assoc fast :failures failures))))]
+    (is (pos? @failures))
+    (is (re-find #"SYN at 1970: boom" (str err)) (str err))
+    (is (not-any? #(= "keen/calibrated" (:variable %)) rows) "no model without a calibration")))

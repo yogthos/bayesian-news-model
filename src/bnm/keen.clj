@@ -28,12 +28,18 @@
   The good equilibrium is (w, l, d) = (1 - pi* - r d*, l*, d*), d* = (nu
   (alpha + beta + delta) - pi*)/(alpha + beta); the bad one has w, l -> 0,
   d -> infinity, and its basin is the high-debt side of a surface the
-  diagnostics measure (blowup-year, critical-debt).
+  diagnostics measure (blowup-year, critical-debt). The bad basin is the
+  debt crisis: debt diverging. Employment collapsing, and the wage share
+  passing 1, are measured apart: they also happen without debt diverging,
+  as in a rentier economy whose low measured wage share and falling
+  unemployment set off the Phillips curve (see diverge-defaults).
 
   country-rows: a country's panel ({var {data-year [year-known value]}})
   read year by year, each year end y seeing data years before y published
-  by y (known); calibrated every few years on a window ending at y - 1 and
-  carried forward between; one row per year and diagnostic."
+  by y (known); debt from one source at a time, chosen from what y shows
+  (choose-d); calibrated every few years on a window ending at y - 1, and
+  whenever the debt source changes, and carried forward between; one row
+  per year and diagnostic, each variable prefixed keen/."
   (:require [bnm.assimilate :as as]
             [bnm.stockflow :as sf]))
 
@@ -43,7 +49,10 @@
 (def gcl
   "Grasselli & Costa Lima (2012), the baseline: Phi with phi0 = 0.04/(1 -
   0.04^2), phi1 = 0.04^3/(1 - 0.04^2); kappa0 = -0.0065, kappa1 = e^-5,
-  kappa2 = 20."
+  kappa2 = 20. The run holds kappa0 at G&CL's value (a fixed choice, not
+  fitted to any data): it is investment's floor as profits vanish, which
+  annual data near the good equilibrium do not identify, and it keeps
+  kappa0/nu - delta < r, so the bad equilibrium is stable, G&CL (70)."
   {:alpha 0.025 :beta 0.02 :delta 0.01 :nu 3.0 :r 0.03
    :phi0 (/ 0.04 (- 1.0 (* 0.04 0.04))) :phi1 (/ (Math/pow 0.04 3) (- 1.0 (* 0.04 0.04)))
    :kappa0 -0.0065 :kappa1 (Math/exp -5.0) :kappa2 20.0})
@@ -231,22 +240,44 @@
         a1 (- tr) a2 (+ (minor 0 1) (minor 0 2) (minor 1 2)) a3 (- det)]
     (and (pos? a1) (pos? a3) (> (* a1 a2) a3))))
 
-(def diverge-defaults {:years 20.0 :dt 0.1 :d-max 10.0 :lambda-min 0.5 :d-hi 8.0})
+(def diverge-defaults
+  "Where a path has left for the bad equilibrium. Fixed choices, set from
+  G&CL and the design years (data known by 2002) only, never tuned on
+  later years: :d-max 10, about four times the highest private debt ratio
+  known by 2002 (the Netherlands' 2.57, BIS), where G&CL's bad equilibrium
+  has d -> infinity; :lambda-min 0.5, below the lowest employment rate
+  known by 2002 (North Macedonia's 0.61), where G&CL's has l -> 0; :years
+  20, the calibration window's length, so the model is run no further
+  ahead than it was fitted back; :omega-max 1, wages equal to output.
+  :criterion :debt (the bad basin, Keen's debt crisis: d above :d-max or
+  no longer finite), :employment (l below :lambda-min or no longer
+  finite), :wage (w above :omega-max or no longer finite: a wage
+  explosion, which G&CL's own paths show too, so a diagnostic rather than
+  a domain bound) or :either (any of them)."
+  {:years 20.0 :dt 0.1 :d-max 10.0 :lambda-min 0.5 :omega-max 1.0 :d-hi 8.0 :criterion :debt})
 
 (defn blowup-year
   "Years until the path from `state` under p crosses into the bad basin
-  (d above :d-max or l below :lambda-min, or no longer finite) within
-  :years, or nil."
+  within :years, or nil; by :criterion (diverge-defaults), the debt
+  crisis by default."
   [p state opts]
-  (let [{:keys [d-max lambda-min] :as o} (merge diverge-defaults opts)]
-    (first (keep (fn [[t w l d]] (when (or (not (finite? w)) (not (finite? l)) (not (finite? d))
-                                           (> d d-max) (< l lambda-min))
-                                   t))
-                 (path p state o)))))
+  (let [{:keys [criterion d-max lambda-min omega-max] :as o} (merge diverge-defaults opts)
+        d-max (double d-max) lambda-min (double lambda-min) omega-max (double omega-max)
+        debt? (fn [d] (or (not (finite? d)) (> (double d) d-max)))
+        employment? (fn [l] (or (not (finite? l)) (< (double l) lambda-min)))
+        wage? (fn [w] (or (not (finite? w)) (> (double w) omega-max)))]
+    (loop [[[t w l d] & more] (path p state o)]
+      (when t
+        (case criterion
+          :debt (if (debt? d) t (recur more))
+          :employment (if (employment? l) t (recur more))
+          :wage (if (wage? w) t (recur more))
+          :either (if (or (debt? d) (employment? l) (wage? w)) t (recur more)))))))
 
 (defn critical-debt
   "The least debt ratio from which, at the state's w and l, the path
-  crosses into the bad basin within :years (bisection on [0, :d-hi]); 0
+  crosses into the bad basin (by :criterion) within :years (bisection on
+  [0, :d-hi]); 0
   when even no debt does, nil when even :d-hi does not."
   [p {:keys [omega lambda]} opts]
   (let [{:keys [d-hi] :as o} (merge diverge-defaults opts)
@@ -323,13 +354,21 @@
 ;; ---------------------------------------------------------------------------
 ;; A country year by year
 
+(def prefix "keen/")
+
 (def variables
-  "What country-rows writes."
-  #{"omega" "lambda" "d" "state-year" "profit-share" "minsky-observed"
-    "dd-dt" "dpi-dt" "minsky" "model-omega" "model-lambda" "model-d" "gap-omega" "gap-lambda" "gap-d"
-    "bad-basin-prob" "years-to-blowup" "d-critical" "d-distance"
-    "omega-bar" "lambda-bar" "d-bar" "d-gap" "good-stable"
-    "lstar" "phi-slope" "pistar" "kappa-slope" "r" "alpha" "beta" "nu" "delta" "calibrated"})
+  "What country-rows writes, each name with `prefix`. d-source is the
+  debt source's place in :d-sources, from 1; bad-basin-prob the share of
+  the ensemble in a debt crisis within :years, employment-collapse-prob
+  the share whose employment collapses, wage-explosion-prob the share
+  whose wage share passes 1 (blowup-year's criteria); years-to-blowup and
+  d-critical by the debt criterion."
+  (into #{} (map #(str prefix %))
+        ["omega" "lambda" "d" "d-source" "state-year" "profit-share" "minsky-observed"
+         "dd-dt" "dpi-dt" "minsky" "model-omega" "model-lambda" "model-d" "gap-omega" "gap-lambda" "gap-d"
+         "bad-basin-prob" "employment-collapse-prob" "wage-explosion-prob" "years-to-blowup" "d-critical" "d-distance"
+         "omega-bar" "lambda-bar" "d-bar" "d-gap" "good-stable"
+         "l-star" "phi-slope" "pi-star" "kappa-slope" "r" "alpha" "beta" "nu" "delta" "calibrated"]))
 
 (defn known
   "{var {data-year value}}: what `panel` ({var {data-year [year-known
@@ -338,9 +377,29 @@
   (into {} (for [[v s] panel]
              [v (into (sorted-map) (for [[yr [avail x]] s :when (and (< yr y) (<= avail y) (some? x))] [yr x]))])))
 
+(defn choose-d
+  "[index series] of the debt source at a year end from what `k` (known)
+  shows: the first of `sources` (keys of k, by preference) with at least
+  `min-years` known data years, else the one with the most (the earlier on
+  a tie); nil when none has any. Counting only known years, a source that
+  will one day be long enough is not chosen before it is."
+  [k sources min-years]
+  (let [cands (map-indexed (fn [i s] [i (get k s {})]) sources)]
+    (or (first (filter #(>= (count (second %)) min-years) cands))
+        (let [best (apply max-key #(count (second %)) (reverse cands))]
+          (when (seq (second best)) best)))))
+
 (def run-defaults
-  {:members 50 :iterations 4 :window 20 :min-years 10 :every 5 :dt 0.1 :years 20.0
-   :from 1950 :to 2026 :seed 1 :max-lag 5 :delta 0.05 :kappa0 -0.0065})
+  "members and iterations as calibration-recovers-synthetic-parameters
+  needs them (4 iterations recover the slopes on one seed, not another; 50
+  members are the fewest that recover them on every seed tried, with 30 or
+  40 failing some); delta the centre of its prior, a typical depreciation
+  rate (PWT's average is about 4%-5%); kappa0 G&CL's (see gcl). :d-sources,
+  when given, are panel keys holding debt series by preference, chosen
+  each year by choose-d with :d-min-years. :failures, an atom, counts the
+  calibrations that failed."
+  {:members 50 :iterations 8 :window 20 :min-years 10 :every 5 :dt 0.1 :years 20.0
+   :from 1950 :to 2026 :seed 1 :max-lag 5 :delta 0.05 :kappa0 -0.0065 :d-min-years 20})
 
 (defn- exog-at
   "The parameters held at year end y: r, alpha, beta as the window's means
@@ -356,7 +415,11 @@
   (let [s {:omega (get-in k [:omega yr]) :lambda (get-in k [:lambda yr]) :d (get-in k [:d yr])}]
     (when (every? some? (vals s)) s)))
 
-(defn- try-calibrate [k y {:keys [window min-years seed] :as opts}]
+(defn- try-calibrate
+  "The model calibrated at year end y, or nil: too few full years, or the
+  calibration failed, which is printed to stderr (the country, the year and
+  why) and counted in the :failures atom when given."
+  [iso k y src {:keys [window min-years seed failures] :as opts}]
   (let [obs (into (sorted-map)
                   (for [yr (range (- y window) y)
                         :let [o (into {} (for [v [:omega :lambda :d] :let [x (get-in k [v yr])] :when (some? x)] [v x]))]
@@ -364,8 +427,12 @@
                     [yr o]))
         full (count (filter #(= 3 (count (val %))) obs))]
     (when (>= full min-years)
-      (try (assoc (calibrate-window obs (exog-at k y opts) (assoc opts :seed (+ seed y))) :origin y)
-           (catch Exception _ nil)))))
+      (try (assoc (calibrate-window obs (exog-at k y opts) (assoc opts :seed (+ seed y))) :origin y :d-source src)
+           (catch Exception e
+             (when failures (swap! failures inc))
+             (binding [*out* *err*]
+               (println "bnm.keen: calibration failed for" iso "at" (str y ":") (or (ex-message e) (str e))))
+             nil)))))
 
 (defn- diagnostics
   "{variable value} of the calibrated model at the state of data year t."
@@ -376,15 +443,17 @@
         step (when prev
                (let [[_ w l d] (last (path p prev {:years 1.0 :dt (:dt opts)}))]
                  {:omega w :lambda l :d d}))
-        blow (blowup-year p state opts)
-        share (/ (count (filter #(blowup-year % state opts) (:members cal))) (double (count (:members cal))))
-        dc (critical-debt p state opts)
+        o (assoc opts :criterion :debt)
+        blow (blowup-year p state o)
+        share (fn [o] (/ (count (filter #(blowup-year % state o) (:members cal))) (double (count (:members cal)))))
+        dc (critical-debt p state o)
         eq (good-equilibrium p)]
     (cond-> {"dd-dt" (:dd rt) "dpi-dt" (:dpi rt) "minsky" (if (minsky? rt) 1.0 0.0)
-             "bad-basin-prob" share
+             "bad-basin-prob" (share o) "employment-collapse-prob" (share (assoc opts :criterion :employment))
+             "wage-explosion-prob" (share (assoc opts :criterion :wage))
              "omega-bar" (:omega eq) "lambda-bar" (:lambda eq) "d-bar" (:d eq) "d-gap" (- (:d state) (:d eq))
              "good-stable" (if (good-stable? p) 1.0 0.0)
-             "lstar" (- 1.0 (:ustar p)) "phi-slope" (:phi-slope p) "pistar" (:pistar p) "kappa-slope" (:kappa-slope p)
+             "l-star" (- 1.0 (:ustar p)) "phi-slope" (:phi-slope p) "pi-star" (:pistar p) "kappa-slope" (:kappa-slope p)
              "r" (:r p) "alpha" (:alpha p) "beta" (:beta p) "nu" (:nu p) "delta" (:delta p) "calibrated" (double (:origin cal))}
       step (merge {"model-omega" (:omega step) "model-lambda" (:lambda step) "model-d" (:d step)
                    "gap-omega" (- (:omega state) (:omega step)) "gap-lambda" (- (:lambda state) (:lambda step))
@@ -397,12 +466,17 @@
   from :from to :to, each year end seeing only what was known then (see
   the namespace). Options: run-defaults."
   [iso panel opts]
-  (let [{:keys [from to every max-lag] :as opts} (merge run-defaults opts)]
+  (let [{:keys [from to every max-lag d-sources d-min-years] :as opts} (merge run-defaults opts)]
     (loop [y from cal nil out (transient [])]
       (if (> y to)
         (persistent! out)
         (let [k (known panel y)
-              cal (if (or (nil? cal) (>= (- y (:origin cal)) every)) (or (try-calibrate k y opts) cal) cal)
+              [src d] (when (seq d-sources) (choose-d k d-sources d-min-years))
+              k (if (seq d-sources) (assoc k :d (or d {})) k)
+              same? (and cal (= src (:d-source cal)))
+              cal (if (and same? (< (- y (:origin cal)) every))
+                    cal
+                    (or (try-calibrate iso k y src opts) (when same? cal)))
               t (first (for [yr (range (dec y) (- y max-lag 1) -1) :when (state-of k yr)] yr))
               state (when t (state-of k t))
               r-now (:r (exog-at k y opts))
@@ -411,10 +485,11 @@
               vs (when state
                      (cond-> {"omega" (:omega state) "lambda" (:lambda state) "d" (:d state)
                               "state-year" (double t) "profit-share" (pi-of state)}
+                       src (assoc "d-source" (double (inc src)))
                        earlier (assoc "minsky-observed" (if (and (> (:d state) (:d earlier)) (< (pi-of state) (pi-of earlier))) 1.0 0.0))
                        cal (merge (diagnostics cal k t state opts))))
               rows (for [[v x] (sort-by key vs) :when (and (number? x) (finite? x))]
-                     {:iso iso :year y :variable v :value (double x)})]
+                     {:iso iso :year y :variable (str prefix v) :value (double x)})]
           (recur (inc y) cal (reduce conj! out rows)))))))
 
 (defn csv-lines
