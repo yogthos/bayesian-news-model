@@ -24,7 +24,7 @@ contradiction may name an archetype. Selection pressure decides what
 enters a forecast: model averaging adopts a stock-flow input only where
 the node forecasts better with it, in a nested comparison, checked against
 a placebo. Every piece is designed on the design years and tested as
-registered. The checklist is bead bnm-62z.1 (epic bnm-62z).
+registered. The checklist is docs/PRINCIPLES.md (epic bnm-62z).
 
 ## What the store already holds
 
