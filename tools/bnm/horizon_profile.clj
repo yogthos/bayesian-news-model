@@ -50,11 +50,16 @@
   one-sided p = (1 + #{null >= observed}) / (1 + draws); and, for the
   record, the statistics on the placebo reads.
 
-  Design years only: origins from 1960, and no outcome after `to` (2002),
-  so at lead h the last origin is 2002 - h.
+  By default the design years only: origins from 1960, and no outcome
+  after 2002, so at lead h the last origin is 2002 - h.
 
-    jolt -A:tools -M -m bnm.horizon-profile [--run t44-world-norel] [--to 2002]
-      [--draws 200] [--seed 1] [--out data/runs/sequencing/horizon-t1-design.tsv]"
+    jolt -A:tools -M -m bnm.horizon-profile [--run t44-world-norel] [--from 1960] [--to 2002]
+      [--states credit-gap,reserves,...] [--draws 200] [--seed 1]
+      [--out data/runs/sequencing/horizon-t1-design.tsv]
+
+  --from is the first origin year, --to the last outcome year (at lead h
+  the last origin is to - h); --states a subset of `named` by name, over
+  which the statistics and their null are computed."
   (:require [augur.logit :as lg]
             [augur.math :as m]
             [bnm.kinds :as kinds]
@@ -190,6 +195,30 @@
   [coefs specs]
   (let [{:keys [short decline]} (fast-stats coefs specs)] [(slow-stat coefs specs) short decline]))
 
+(defn horizon-stats
+  "[(a) (b) decline] over `states` (entries of `named`) only."
+  [coefs states]
+  (let [specs (into {} (for [st states] [(:name st) st]))]
+    (stats (select-keys coefs (keys specs)) specs)))
+
+(defn parse-opts
+  "The command line as {:run :from :to :draws :seed :out :states}; :states
+  the entries of `named` given by --states (comma-separated names), all
+  by default. An unknown name is an error."
+  [args]
+  (let [{:keys [run from to draws seed out states]} (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
+        by-name (into {} (for [st named] [(:name st) st]))
+        picked (when states (mapv str/trim (str/split states #",")))]
+    (when-let [bad (seq (remove by-name picked))]
+      (throw (ex-info (str "unknown states: " (str/join ", " bad) "; known: " (str/join ", " (map :name named))) {:unknown bad})))
+    {:run (or run "t44-world-norel")
+     :from (or (some-> from parse-long) 1960)
+     :to (or (some-> to parse-long) 2002)
+     :draws (or (some-> draws parse-long) 200)
+     :seed (or (some-> seed parse-long) 1)
+     :out (or out "data/runs/sequencing/horizon-t1-design.tsv")
+     :states (if picked (mapv by-name picked) named)}))
+
 (defn demean-by-year
   "`panel` ({iso {year value}}) less each year's mean over the countries
   with the state that year, scaled to unit spread over all its values:
@@ -232,7 +261,9 @@
 
 ;; --- the states from disk -------------------------------------------------------
 
-(def years (range 1950 2011))
+(def years
+  "Year ends at which the slow-store states are tabulated as known."
+  (range 1950 2027))
 
 (defn- table->recs
   "{var {iso {year [year value]}}} from stock tables (by the year known)."
@@ -310,19 +341,15 @@
      :base (fn [c t] (when-let [[p _] (get-in yr [c (+ (* 12 t) 11)])] (annual-logit p 24)))}))
 
 (defn coverage
-  "{:countries :rows :from :to} of a state on the design years 1960-to."
-  [panel to]
-  (let [cy (for [[iso byy] panel [y _] byy :when (<= 1960 y to)] [iso y])]
+  "{:countries :rows :from :to} of a state on the years from-to."
+  [panel from to]
+  (let [cy (for [[iso byy] panel [y _] byy :when (<= from y to)] [iso y])]
     {:countries (count (distinct (map first cy))) :rows (count cy)
      :from (when (seq cy) (apply min (map second cy))) :to (when (seq cy) (apply max (map second cy)))}))
 
 (defn -main [& args]
-  (let [{:keys [run to draws seed out]} (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
-        run (or run "t44-world-norel")
-        to (or (some-> to parse-long) 2002)
-        draws (or (some-> draws parse-long) 200)
-        seed (or (some-> seed parse-long) 1)
-        out (or out "data/runs/sequencing/horizon-t1-design.tsv")
+  (let [{:keys [run from to draws seed out states]} (parse-opts args)
+        named states
         cats (kinds/catalogues)
         raw-panels (state-panels)
         ks (distinct (mapcat :kinds named))
@@ -335,17 +362,17 @@
         frame (memoize (fn [kind h]
                          (let [{:keys [cells base]} (bases kind)]
                            (rows {:cells cells :outcome (fn [c t h] (outcome (cats kind) c t h)) :offset base
-                                  :read (constantly 0.0) :h h :from 1960 :to to :kind kind}))))
+                                  :read (constantly 0.0) :h h :from from :to to :kind kind}))))
         kind-rows (fn [read kind h]
                     (vec (for [r (frame kind h) :let [x (read (:c r) (:t r))] :when (some? x)]
                            (assoc r :x [1.0 (double x)]))))
         h-range (range 1 6)
         pooled (atom {})
         placebo-pooled (atom {})]
-    (say (str "# horizon profile, run " run ", origins 1960-" (- to 1) ", outcomes in year t+h <= " to))
+    (say (str "# horizon profile, run " run ", states " (str/join "," (map :name named)) ", origins " from "-" (- to 1) ", outcomes in year t+h <= " to))
     (say "# offset base: the year node's 24-month forecast at t as a yearly hazard, the same at every h (an extrapolation past h = 2); none: each kind's own rate")
     (say "# coverage, design years: state\tcountries\tcountry-years\tfrom\tto")
-    (doseq [{:keys [name]} named] (let [c (coverage (raw-panels name) to)] (say (format "#  %s\t%d\t%d\t%s\t%s" name (:countries c) (:rows c) (:from c) (:to c)))))
+    (doseq [{:keys [name]} named] (let [c (coverage (raw-panels name) from to)] (say (format "#  %s\t%d\t%d\t%s\t%s" name (:countries c) (:rows c) (:from c) (:to c)))))
     (doseq [[design panels] [["demeaned" (update-vals raw-panels demean-by-year)] ["raw" raw-panels]]]
       (reset! pooled {}) (reset! placebo-pooled {})
       (say (str "# design " design (if (= design "raw") ": the states as read (for the record; world components kept)"
@@ -384,7 +411,7 @@
                                                                          :let [rs (vec (mapcat #(kind-rows read % h) kinds))
                                                                                rs (if (= label "none") (total-offsets rs) rs)]]
                                                                      [h (if (seq rs) (coef rs) 0.0)]))]))]
-                               (stats coefs specs)))))]
+                               (horizon-stats coefs named)))))]
         (say "# per state: skill s*coef (s the expected sign); slow states' s*(c45 - c12), fast states' s*c12 and s*(c12 - c45); c12, c45 the pooled coef's mean at h 1,2 and 4,5")
         (say "skill	state	offset	speed	sign	s*c12	s*(c45-c12)	placebo s*c12	placebo s*(c45-c12)	h1	h2	h3	h4	h5")
         (doseq [label ["base" "none"] {:keys [name sign speed]} named
@@ -395,8 +422,8 @@
                        (if (= 5 (count pc)) (* sign (c12 pc)) Double/NaN) (if (= 5 (count pc)) (* sign (state-slope pc)) Double/NaN)
                        (cs 1) (cs 2) (cs 3) (cs 4) (cs 5))))
         (doseq [label ["base" "none"]
-                :let [obs (stats (get @pooled label) specs)
-                      plc (stats (get @placebo-pooled label) specs)
+                :let [obs (horizon-stats (get @pooled label) named)
+                      plc (horizon-stats (get @placebo-pooled label) named)
                       null (null-of label)
                       consistent? (:consistent? (fast-stats (get @pooled label) specs))]
                 [i stat-name] [[0 "(a) slow: mean s*(c45-c12)"] [1 "(b) fast: mean s*c12"] [2 "fast decline, record: mean s*(c12-c45)"]]

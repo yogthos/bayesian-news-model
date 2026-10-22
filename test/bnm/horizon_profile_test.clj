@@ -180,3 +180,55 @@
                             (/ (reduce + vs) 20.0)))]
     (is (> (null-mean panel) 0.2) "raw: the world component survives permutation")
     (is (< (Math/abs (null-mean (hp/demean-by-year panel))) 0.05) "demeaned: centred on zero")))
+
+(deftest options-from-the-command-line
+  (let [o (hp/parse-opts [])]
+    (is (= 1960 (:from o)))
+    (is (= 2002 (:to o)))
+    (is (= (map :name hp/named) (map :name (:states o))) "all ten by default"))
+  (let [o (hp/parse-opts ["--from" "2003" "--to" "2022" "--states" "credit-gap,reserves"])]
+    (is (= 2003 (:from o)))
+    (is (= 2022 (:to o)))
+    (is (= ["credit-gap" "reserves"] (map :name (:states o)))))
+  (is (thrown? Exception (hp/parse-opts ["--states" "credit-gap,no-such-state"])) "a misspelt name is an error"))
+
+(deftest from-drops-earlier-origins
+  (let [{:keys [cells offset read outcome]} (synthetic 3 0.0 1)
+        rs (hp/rows {:cells cells :outcome outcome :offset offset :read read :h 2 :from 1975 :to 2002 :kind "k"})]
+    (is (= 1975 (apply min (map :t rs))))
+    (is (= 2000 (apply max (map :t rs))))))
+
+(deftest a-subset-of-states-sets-what-the-statistics-pool
+  (let [coefs {"credit-gap" {1 0.0 2 0.0 3 0.0 4 0.4 5 0.4}
+               "youth-bulge" {1 0.4 2 0.4 3 0.0 4 0.0 5 0.0}
+               "reserves" {1 -0.2 2 -0.2 3 0.0 4 0.0 5 0.0}
+               "debt-service" {1 -0.2 2 -0.2 3 0.0 4 0.0 5 0.0}}
+        pick (fn [s] (:states (hp/parse-opts ["--states" s])))
+        [a b] (hp/horizon-stats coefs (pick "credit-gap,youth-bulge,reserves,debt-service"))
+        [a' b'] (hp/horizon-stats coefs (pick "credit-gap,reserves"))]
+    (is (close? 0.0 a 1e-12) "credit gap rises, the youth bulge falls")
+    (is (close? 0.4 a' 1e-12) "the credit gap alone")
+    (is (close? 0.0 b 1e-12) "reserves right-signed, debt service wrong")
+    (is (close? 0.2 b' 1e-12) "reserves alone")))
+
+(deftest the-registered-years-read-nothing-outside-them
+  ;; --from 2003 --to 2022: no origin before 2003, no outcome after 2022
+  (let [g (m/rng 9)
+        cs (mapv #(format "C%02d" %) (range 20))
+        y (into {} (for [c cs s (range 1990 2030)] [[c s] (< (m/next-double! g) 0.1)]))
+        outcomes (atom []) reads (atom [])
+        outcome (fn [c t h] (swap! outcomes conj (+ t h)) (get y [c (+ t h)]))
+        read (fn [c t] (swap! reads conj t) (m/normal! g))
+        cells (for [c cs t (range 1990 2025)] [c t])]
+    (doseq [h (range 1 6)]
+      (hp/rows {:cells cells :outcome outcome :offset (fn [_ _] -2.0) :read read :h h :from 2003 :to 2022 :kind "k"}))
+    (is (= 2003 (apply min @reads)))
+    (is (= 2021 (apply max @reads)))
+    (is (<= 2004 (apply min @outcomes)))
+    (is (= 2022 (apply max @outcomes)))))
+
+(deftest the-states-are-read-through-the-registered-years
+  ;; the slow-store states are tabulated as known over hp/years: through
+  ;; 2021 at least, the last origin of a run to 2022
+  (is (= 1950 (first hp/years)))
+  (is (<= 2021 (last hp/years))))

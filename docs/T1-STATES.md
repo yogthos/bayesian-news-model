@@ -191,6 +191,17 @@ coefficient's means at h = 1, 2 and at h = 4, 5.
     jolt -A:tools -M -m bnm.credit-run
     jolt -A:tools -M -m bnm.horizon-profile --draws 200 --seed 1
 
+Options: `--from` sets the first origin year (default 1960). `--to` sets
+the last outcome year (default 2002), so at lead h the last origin is
+to − h. `--states` takes a comma-separated subset of the names above
+(default all ten); (a), (b) and their null are computed over that subset
+only. `--out` sets the output file. For the registered trial, for
+example:
+
+    jolt -A:tools -M -m bnm.horizon-profile --from 2003 --to 2022 \
+      --states <the registered subset> --draws 200 --seed 1 \
+      --out data/runs/sequencing/horizon-t1-registered.tsv
+
 ## Design-year profile
 
 Two designs, on the same rows and with the same null:
