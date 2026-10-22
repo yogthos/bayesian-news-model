@@ -540,13 +540,13 @@ Value added shares, %; the 2000 and 2015 rows start a new source:
       JPN            4.5   5.2   5.9   6.0 |  5.7   6.2   4.7 |  4.3   4.3
       KOR            2.0   5.8   5.8   6.9 |  5.7   6.5   5.6 |  5.8   5.7
       CHN            5.7   1.6   5.5   4.6 |  4.1   3.3   6.1 |  8.2   7.7
-    manufacturing
-      USA           24.0  18.7  15.8  15.0 | 13.7  12.5  11.6 | 11.3  10.4
-      GBR           32.9  23.8  20.2  18.6 | 15.0  11.7  10.3 | 10.2   9.4
-      DEU           30.3  25.4  23.6  19.6 | 20.1  19.9  20.2 | 20.2  18.3
-      JPN           28.3  24.6  22.0  19.2 | 17.5  17.6  16.3 | 19.0  18.6
-      KOR           15.0  21.8  23.1  22.4 | 22.1  21.4  22.6 | 21.0  18.3
-      CHN           22.7  31.8  28.5  31.2 | 28.4  27.7  25.4 | 24.6  24.0
+    manufacturing (the twelve spine sectors, ELEC included)
+      USA           26.7  21.4  18.4  17.6 | 16.4  14.5  13.4 | 13.2  12.3
+      GBR           36.5  26.8  22.8  21.3 | 16.9  12.7  11.3 | 11.1  10.3
+      DEU           34.9  29.7  28.1  22.6 | 23.6  23.0  23.2 | 23.2  21.1
+      JPN           31.3  28.2  26.8  23.3 | 21.6  21.1  19.2 | 22.0  21.2
+      KOR           15.5  24.4  27.3  27.6 | 29.7  29.0  31.1 | 29.5  26.9
+      CHN           24.8  34.7  30.9  34.1 | 32.2  32.5  29.6 | 29.1  28.1
 
 The US and UK finance shares rise within each source. Germany's and
 Japan's do not after 2005, and China's doubles after 2005. Real estate
@@ -554,37 +554,64 @@ and business services (BUS) rise everywhere (US 15 to 28, Germany 10 to
 25, Korea 5 to 20): the service shift is general. At the 1999/2000 join
 the US finance level jumps by a ratio of 1.63 (spine-overlap.csv flags it).
 LR-WIOD's US finance value added is about half BEA's finance and
-insurance, probably from its treatment of FISIM. Step 0 below checks the
-finance rows against OECD/BEA before any level is used. China's 1965-1980
-rows are back-cast (the backcast column) and not to be read.
+insurance (0.44-0.60, 1965-1999). Step 0 (bead bnm-3ka.1,
+docs/STOCK-FLOW.md "Finance rows") found it in the source, not our
+scripts: LR-WIOD builds the US from BEA's pre-2003 make-use tables, which
+leave FISIM with its users, while its other US industries match BEA.
+WIOD 2016 and ICIO match BEA, so the jump is the definition changing. Use
+data/derived/stocks/econ-structure.csv (finance and manufacturing shares
+spliced to BEA, OECD and EU KLEMS) for levels across the joins. The
+spine's manufacturing runs above the national accounts' (US 1.05 in
+LR-WIOD, 1.12 in WIOD 2016, 1.19 in ICIO), since PAPER holds all of
+ISIC4 J58, software publishing included. China's 1965-1980 rows are
+back-cast (the backcast column) and not to be read.
+
+An earlier version of these tables left ELEC (electrical and optical
+equipment) out of manufacturing (a bug in the scratchpad's
+spine_shares.py and xsec.py); the manufacturing rows here include it.
 
 Share of the 25 fixed countries' manufacturing value added (current USD):
 
             1965  1980  1990  1995  2000  2005  2010  2014  2020
-      USA   46.6  28.6  27.5  26.0  31.8  28.6  23.2  22.7  22.1
-      JPN    6.9  14.6  20.1  23.7  18.3  13.9  11.8   8.2   9.0
-      DEU    9.1  11.2  10.5  10.0   8.0   9.0   8.2   8.0   6.8
-      CHN    4.2   5.2   3.2   5.1   7.7  10.9  22.1  29.6  33.9
-      KOR    0.1   0.7   1.6   2.4   2.5   3.0   3.0   3.3   2.9
+      USA   46.8  29.0  27.7  26.4  32.2  28.7  23.5  22.8  22.4
+      JPN    6.9  14.8  21.2  24.9  19.2  14.5  12.1   8.3   8.8
+      DEU    9.5  11.6  10.8   9.9   8.0   9.0   8.1   7.9   6.7
+      CHN    4.1   5.0   3.0   4.9   7.4  11.1  22.3  29.8  34.1
+      KOR    0.1   0.7   1.7   2.6   2.9   3.6   3.6   3.9   3.6
 
 Exchange rates move these (the dollar's 1985 peak, the yen's 1995 peak).
 The real-volume version (spine-volumes.csv) is the next check.
 
 ### 7b. Does finance predict deindustrialisation across countries? (xsec.py)
 
-WIOD 2016 only (one source, 2000-2014, 43 countries). OLS with HC1
-standard errors, outcome the change in percentage points:
+2000-2014, the 43 WIOD 2016 countries. OLS with HC1 standard errors,
+outcome the change in percentage points:
 
     d manufacturing ~ finance 2000 + log GDP pc 2000 + manufacturing 2000
-      all 43:       finance -0.080 (t -1.29), log income -0.39 (t -0.97)
-      without LUX:  finance -0.006 (t -0.04), log income -0.44 (t -1.08)
-    d heavy (CHEM, METAL, MACH, TRANSEQ) ~ same
-      all 43:       finance -0.084 (t -2.02), log income -0.51 (t -2.13)
-      without LUX:  finance -0.112 (t -0.85), log income -0.50 (t -2.14)
-    d manufacturing ~ d finance + ...: -0.19 (t -0.75)
+      (a) WIOD 2016, manufacturing without ELEC (the first version)
+        all 43:       finance -0.080 (t -1.29), log income -0.39 (t -0.97)
+        without LUX:  finance -0.006 (t -0.04), log income -0.44 (t -1.08)
+      (b) WIOD 2016, ELEC included
+        all 43:       finance +0.009 (t +0.08), log income -0.88 (t -1.60)
+        without LUX:  finance +0.210 (t +0.87), log income -1.00 (t -1.73)
+      (c) corrected shares (econ-structure, data years; OECD for 35,
+          BEA for the US, WIOD 2016 spliced or as is for 6)
+        all 43:       finance +0.031 (t +0.26), log income -1.16 (t -1.87)
+        without LUX:  finance +0.238 (t +0.88), log income -1.29 (t -1.94)
+    d heavy (CHEM, METAL, MACH, TRANSEQ) ~ same, WIOD 2016
+        all 43:       finance -0.084 (t -2.02), log income -0.51 (t -2.13)
+        without LUX:  finance -0.112 (t -0.85), log income -0.50 (t -2.14)
+    d manufacturing ~ d finance + ...: (a) -0.19 (t -0.75), (b) -0.34
+      (t -1.05), (c) -0.69 (t -1.98)
 
-No support for K1 through the finance sector's size. With n = 42 and
-14 years, only a large effect would show. Krein's mechanism runs through
+The -0.08 of the first version came partly from a bug: the scratchpad's
+xsec.py (and spine_shares.py) listed eleven manufacturing sectors and left
+out ELEC, so the outcome missed electrical and optical equipment. With
+ELEC, and on the corrected shares, the
+coefficient is about zero. No support for K1 through the finance sector's
+size. With n = 42 and 14 years, only a large effect would show. The
+change in finance is weakly negative on the corrected shares (t -2.0),
+the one hint, and a co-movement, not a cause. Krein's mechanism runs through
 non-financial firms' payouts and hurdle rates, which this regression does
 not see.
 
