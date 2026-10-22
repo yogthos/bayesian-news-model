@@ -62,6 +62,7 @@
             [bnm.attribution-test]
             [bnm.stages-test]
             [bnm.calibration-regime-test]
+            [bnm.interactions-test]
             [bnm.recalibrate-online-test]
             [bnm.concordance-test]
             [bnm.essentials-test]))
@@ -129,6 +130,7 @@
     bnm.attribution-test
     bnm.stages-test
     bnm.calibration-regime-test
+    bnm.interactions-test
     bnm.recalibrate-online-test
     bnm.concordance-test
     bnm.essentials-test])
