@@ -1138,6 +1138,33 @@ On the design years (1960-2002) the same statistics over these five
 states are reported alongside. There, over all ten, (a) was level (p
 0.36) and (b) passed (p 0.02, food import exposure most).
 
+**Results, 22 October 2026 (trial T1).** Origins 2003-2021, the five
+states year-demeaned, 200 permutations:
+1. **(a) slow states' skill rising with the lead** (primary): +0.100,
+   null +0.006 (sd 0.094), p 0.154: level. With no offset (the total
+   effect) +0.131, p 0.070. On the design years over the same five it
+   went the other way: -0.093 (p 1.0).
+2. **(b) fast states right-signed at short leads**: +0.078, null -0.007
+   (sd 0.069), p 0.109: level (design years +0.359, p 0.010).
+3. Per state (s c12 / s(c45 - c12), against the base): the credit gap
+   +0.127 / -0.095, largest at leads 1-3, banking crises carrying it
+   (z 1.3-1.5 at every lead); the youth bulge +0.115 / +0.035, flat;
+   the technology gap +0.409 / +0.359, its rise on only four origin years
+   (CHAT ends 2006: 577 country-years); food import exposure -0.027 /
+   +0.063, gone (it carried (b) on the design years at +0.50); reserves
+   +0.183, fading to nothing at lead 5, as a trigger should. None passes
+   Holm on its own.
+
+Neither hypothesis holds out of sample. Slow states do not gain with the
+lead: where they carry anything it is about as much at every lead, the
+total effect (no offset) larger than the increment over the base. They
+say where, not when (Ward, Greenhill & Bakke 2010), and the base, which
+knows each country's history, already holds most of where. Of the fast
+states reserves behaved as a trigger in both periods; food import
+exposure did not survive the change of period. Next (bnm-3qu): the
+total-effect attribution (T4), which asks the drivers' question the
+increment cannot, and the base's calibration by stock regime (T2).
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
