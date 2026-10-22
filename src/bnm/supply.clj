@@ -51,14 +51,41 @@
   (Atalay 2017; Boehm, Flaaen & Pandalai-Nayar 2019)."
   0.2)
 
-(defn- kind-of [products {:keys [input output phys share]}]
+(defn pool
+  "The carrier an input belongs to with its substitutes, or nil:
+  :electricity for electricity by source (EXIOBASE's C_POW* in TJ), one
+  carrier to its users whatever made it."
+  [code unit]
+  (when (and (= unit "TJ") (re-matches #"C_POW[A-Z]" code)) :electricity))
+
+(defn- kind-of
+  "A row's kind: a good (not a service) at critical-share or more of the
+  output's value, or a feedstock: a raw material or fuel converted into an
+  energy carrier or material at `feedstock` tonnes per tonne or more."
+  [products {:keys [input output phys share]}]
   (let [{g :group u :unit} (products input)
-        ou (:unit (products output))]
+        {og :group ou :unit} (products output)]
     (if (and g (not= g "service")
              (or (>= (or share 0.0) critical-share)
-                 (and (= u "tonnes") (= ou "tonnes") (>= (or phys 0.0) feedstock))))
+                 (and (#{"raw" "energy"} g) (#{"energy" "material"} og)
+                      (= u "tonnes") (= ou "tonnes") (>= (or phys 0.0) feedstock))))
       :critical
       :substitutable)))
+
+(defn- pooled
+  "Rows `rs` with the pooled inputs (`pool`) of each recipe classified
+  together: all critical when their shares add to critical-share, else all
+  substitutable; each tagged with its :pool."
+  [products rs]
+  (let [pool-of #(pool % (get-in products [% :unit]))
+        tot (reduce (fn [m {:keys [region output input share]}]
+                      (if-let [k (pool-of input)] (update m [region output k] (fnil + 0.0) (or share 0.0)) m))
+                    {} rs)]
+    (mapv (fn [{:keys [region output input] :as r}]
+            (if-let [k (pool-of input)]
+              (assoc r :pool k :kind (if (>= (tot [region output k]) critical-share) :critical :substitutable))
+              r))
+          rs)))
 
 ;; ------------------------------------------------------------ the graph
 
@@ -73,7 +100,7 @@
   the way in."
   [{:keys [products recipes trade supply use]}]
   (let [ps (into {} (for [p products] [(:code p) (dissoc p :code)]))
-        rs (mapv #(assoc % :kind (kind-of ps %)) recipes)
+        rs (pooled ps (mapv #(assoc % :kind (kind-of ps %)) recipes))
         g (graph* ps rs trade supply use)]
     (assoc g :critical-h (delay (critical-hypergraph g)))))
 
@@ -177,6 +204,21 @@
           :when (keep? t row)]
       [s p])))
 
+(defn- critical-inputs
+  "The hypergraph `h` with the pools of output [s p]'s critical inputs
+  `ins` as nodes [:pool s p carrier] (the share-weighted mean of their
+  members), and the critical recipe's inputs {node weight}."
+  [h s p ins w]
+  (let [crit (for [[i r] ins :when (= :critical (:kind r))] [i r])
+        pools (group-by (comp :pool second) crit)
+        h (reduce-kv (fn [h k members]
+                       (if k
+                         (hg/recipe h [:pool s p k] (into {} (for [[i r] members] [[:use s i] (w (:share r))])) :substitutable)
+                         h))
+                     h pools)]
+    [h (into {} (concat (for [[i r] (pools nil)] [[:use s i] (w (:share r))])
+                        (for [k (keys pools) :when k] [[:pool s p k] 1.0])))]))
+
 (defn- critical-hypergraph
   "The recipes' critical rows alone as a bnm.hypergraph: [:make region
   product] the minimum of its critical inputs' [:use ...], each the
@@ -184,7 +226,7 @@
   input are primary (untouched)."
   [g]
   (let [h (reduce-kv (fn [h [s p] ins]
-                       (let [crit (into {} (for [[i r] ins :when (= :critical (:kind r))] [[:use s i] 1.0]))]
+                       (let [[h crit] (critical-inputs h s p ins #(max 1e-6 (double (or % 0.0))))]
                          (if (seq crit) (hg/recipe h [:make s p] crit :critical) h)))
                      (hg/hypergraph) (:recipes g))
         used (distinct (for [[[s _] ins] (:recipes g) [i r] ins :when (= :critical (:kind r))] [s i]))]
@@ -306,15 +348,21 @@
   input shares); a recipe with no critical input is the bundle itself.
   [:use region product] is the share-weighted mean of its origins' [:make
   ...] (imports not reallocated); [:industry region code] the mean of what
-  it makes, by output share."
+  it makes, by output share. Substitutable inputs with a share below
+  `min-input` (default 1e-3) are left with value added: a CES bundle
+  barely feels them, and they are half the rows."
   ([g] (hypergraph g default-sigma))
-  ([g sigma]
+  ([g sigma] (hypergraph g sigma 1e-3))
+  ([g sigma min-input]
    (let [w #(max 1e-6 (double (or % 0.0)))
          h (reduce-kv
             (fn [h [s p] ins]
-              (let [crit (into {} (for [[i r] ins :when (= :critical (:kind r))] [[:use s i] (w (:share r))]))
-                    subs (into {} (for [[i r] ins :when (= :substitutable (:kind r))] [[:use s i] (w (:share r))]))
-                    va (max 0.01 (- 1.0 (reduce + 0.0 (map #(or (:share %) 0.0) (vals ins)))))
+              (let [[h crit] (critical-inputs h s p ins w)
+                    critical? (into #{} (for [[i r] ins :when (= :critical (:kind r))] [:use s i]))
+                    subs (into {} (for [[i r] ins :when (and (= :substitutable (:kind r)) (>= (or (:share r) 0.0) min-input))]
+                                    [[:use s i] (w (:share r))]))
+                    va (max 0.01 (- 1.0 (reduce + 0.0 (for [[i r] ins :when (or (critical? [:use s i]) (subs [:use s i]))]
+                                                         (or (:share r) 0.0)))))
                     bundle (assoc subs [:factors s] va)]
                 (if (seq crit)
                   (-> h
@@ -322,7 +370,7 @@
                       (hg/recipe [:make s p] (assoc crit [:bundle s p] 1.0) :critical))
                   (hg/recipe h [:make s p] bundle :ces sigma))))
             (hg/hypergraph) (:recipes g))
-         used (distinct (for [[[s _] ins] (:recipes g) i (keys ins)] [s i]))
+         used (distinct (for [[n ins] (:recipes h) i (keys (:inputs ins)) :when (= :use (first i))] (vec (rest i))))
          h (reduce (fn [h [s i]] (hg/recipe h [:use s i] (into {} (for [[o t] (origins g s i) :when (pos? t)] [[:make o i] t]))
                                             :substitutable))
                    h used)]

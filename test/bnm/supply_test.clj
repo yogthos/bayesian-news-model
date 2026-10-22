@@ -56,6 +56,27 @@
   (testing "fuel for transport, fertiliser for wheat: goods above the share"
     (is (= :critical (sup/classify toy "BB" "TRN" "GSL")))
     (is (= :critical (sup/classify toy "CC" "WHE" "NFE"))))
+  (testing "tonnes per tonne make a feedstock only where raw materials or
+            fuels are converted into energy or materials: elsewhere the
+            hybrid tonnage of a fuel is not an ingredient"
+    (let [g (sup/graph {:products [{:code "GAS" :unit "tonnes" :group "raw"}
+                                   {:code "BEV" :unit "tonnes" :group "manufactured"}]
+                        :recipes [{:region "R" :output "BEV" :input "GAS" :phys 0.5 :share 0.002}]})]
+      (is (= :substitutable (sup/classify g "R" "BEV" "GAS")))))
+  (testing "electricity by source is one carrier: critical together when
+            their shares add to the threshold, and pooled"
+    (let [g (sup/graph {:products [{:code "C_POWC" :unit "TJ" :group "energy"}
+                                   {:code "C_POWG" :unit "TJ" :group "energy"}
+                                   {:code "ALU" :unit "tonnes" :group "material"}
+                                   {:code "SRV" :unit "Meuro" :group "service"}]
+                        :recipes [{:region "R" :output "ALU" :input "C_POWC" :phys 0.03 :share 0.03}
+                                  {:region "R" :output "ALU" :input "C_POWG" :phys 0.02 :share 0.03}
+                                  {:region "R" :output "ALU" :input "SRV" :phys 0.1 :share 0.2}]})
+          o (sup/outage g {["R" "C_POWG"] 1.0})]
+      (is (= :critical (sup/classify g "R" "ALU" "C_POWC")))
+      (is (= :critical (sup/classify g "R" "ALU" "C_POWG")))
+      (is (close? 0.5 (get-in o [:products ["R" "ALU"]]) 1e-6)
+          "gas power gone: half the electricity, half the aluminium, not none")))
   (testing "services substitute (CES)"
     (is (= :substitutable (sup/classify toy "BB" "GSL" "SRV")))
     (is (= :substitutable (sup/classify toy "BB" "TRN" "SRV"))))
@@ -162,4 +183,19 @@
           (is (ps "C_GASE"))))
       (testing "N fertiliser needs natural gas"
         (is ((products-of (sup/upstream g "DE" "C_NFER")) "C_GASE"))
-        (is ((products-of (sup/upstream g "US" "C_NFER")) "C_GASE"))))))
+        (is ((products-of (sup/upstream g "US" "C_NFER")) "C_GASE")))
+      (let [h (sup/hypergraph g)
+            loss (fn [m k] (- 1.0 (get m k 1.0)))]
+        (testing "a gas cut in Europe hits N fertiliser, then agriculture, less"
+          (let [europe ["AT" "BE" "BG" "CZ" "DE" "DK" "ES" "FI" "FR" "GR" "HU" "IE" "IT" "NL" "PL" "PT" "RO"
+                        "SE" "SK" "GB" "NO" "CH" "WE"]
+                o (:products (sup/outage g (into {} (for [r europe] [[r "C_GASE"] 0.4])) {:at :use :hypergraph h}))]
+            (doseq [r ["DE" "FR" "PL"]]
+              (is (< 0.35 (loss o [r "C_NFER"])) r)
+              (is (< 0.0 (loss o [r "C_WHEA"]) (loss o [r "C_NFER"])) r))
+            (is (< (loss o ["US" "C_NFER"]) 0.1) "America barely")))
+        (testing "a Middle East crude cut hits Asian refining hardest"
+          (let [o (:industries (sup/outage g {["WM" "C_COIL"] 0.5} {:hypergraph h}))
+                mean (fn [rs] (/ (reduce + (map #(loss o [% "A_REFN"]) rs)) (count rs)))]
+            (is (> (mean ["CN" "IN" "JP" "KR" "ID" "WA"]) (mean ["DE" "FR" "GB" "IT" "ES" "NL" "US" "CA" "BR" "MX"])))
+            (is (> (loss o ["JP" "A_REFN"]) (loss o ["US" "A_REFN"])))))))))
