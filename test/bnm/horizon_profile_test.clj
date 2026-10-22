@@ -1,0 +1,134 @@
+(ns bnm.horizon-profile-test
+  (:require [augur.math :as m]
+            [bnm.horizon-profile :as hp]
+            [clojure.test :refer [deftest is testing]]))
+
+(defn- close? [a b eps] (< (Math/abs (- (double a) (double b))) eps))
+
+(deftest a-value-is-read-as-known
+  ;; records {data-year [year-known value]}: at year end Y the latest data
+  ;; year published by Y, no older than max-age; nothing published later
+  (let [recs {1990 [1991 1.0] 1991 [1992 2.0] 1992 [1995 3.0]}
+        k (hp/as-known recs (range 1985 2001) 3)]
+    (is (nil? (k 1990)) "1990's value is out in 1991")
+    (is (= 1.0 (k 1991)))
+    (is (= 2.0 (k 1993)))
+    (is (= 2.0 (k 1994)) "1992's is not out until 1995")
+    (is (= 3.0 (k 1995)))
+    (is (nil? (k 1996)) "1992 is more than three years old at the end of 1996")))
+
+(deftest the-outcome-is-the-onset-year-t-plus-h
+  ;; origin t is the end of year t (month 12t + 11); lead h asks for an
+  ;; onset in year t + h exactly, months (12(t+h-1)+11, 12(t+h)+11]
+  (let [cat {:onsets {"AAA" (sorted-set (+ (* 12 1975) 4))}
+             :from {"AAA" (* 12 1950)} :through {"AAA" (* 12 2010)}}]
+    (is (= [false false true false false] (mapv #(hp/outcome cat "AAA" 1972 %) [1 2 3 4 5])))
+    (is (= [true false false false false] (mapv #(hp/outcome cat "AAA" 1974 %) [1 2 3 4 5])))
+    (is (= [false false false false false] (mapv #(hp/outcome cat "AAA" 1975 %) [1 2 3 4 5]))
+        "an onset in the origin's own year is not ahead of it")
+    (testing "not at risk while a crisis runs, as the lattice's target"
+      (let [busy (assoc cat :busy {"AAA" (into (sorted-set) (range (* 12 1973) (* 12 1974)))})]
+        (is (nil? (hp/outcome busy "AAA" 1972 2)) "in a crisis before the year opens")
+        (is (nil? (hp/outcome busy "AAA" 1972 3)))
+        (is (false? (hp/outcome busy "AAA" 1972 1)))))
+    (testing "outside the catalogue's cover"
+      (is (nil? (hp/outcome cat "AAA" 2009 2))))))
+
+(deftest the-base-s-two-year-window-as-a-yearly-hazard
+  ;; the year node forecasts an onset within 24 months; a constant hazard
+  ;; gives the year's chance 1 - (1 - p)^(1/2)
+  (is (close? (Math/log (/ 0.1 0.9)) (hp/annual-logit 0.19 24) 1e-9)))
+
+(defn- synthetic
+  "60 countries x 43 years; x iid N(0,1) by country and year; the onset in
+  year s at country c has log odds -2.5 + b x(c, s - lag), so x at origin
+  t drives the onset in year t + lag only."
+  [seed b lag]
+  (let [g (m/rng seed)
+        cs (mapv #(format "C%02d" %) (range 60))
+        x (into {} (for [c cs t (range 1950 2010)] [[c t] (m/normal! g)]))
+        y (into {} (for [c cs s (range 1960 2010)
+                         :let [e (+ -2.5 (* b (x [c (- s lag)])))]]
+                     [[c s] (< (m/next-double! g) (/ 1.0 (+ 1.0 (Math/exp (- e)))))]))]
+    {:cells (for [c cs t (range 1960 2003)] [c t])
+     :x x :y y
+     :outcome (fn [c t h] (get y [c (+ t h)]))
+     :offset (fn [_ _] (Math/log (/ 0.076 0.924)))
+     :read (fn [c t] (get x [c t]))}))
+
+(deftest an-effect-at-lag-three-peaks-at-h-three
+  (let [{:keys [cells outcome offset read]} (synthetic 11 1.0 3)
+        prof (into {} (for [h (range 1 6)]
+                        [h (hp/fit (hp/rows {:cells cells :outcome outcome :offset offset :read read
+                                             :h h :from 1960 :to 2002 :kind "k"}))]))]
+    (is (= 3 (key (apply max-key (comp :coef val) prof))))
+    (is (close? 1.0 (:coef (prof 3)) 0.25))
+    (is (every? #(< (Math/abs (:coef (prof %))) 0.2) [1 2 4 5]))
+    (is (> (:z (prof 3)) 5.0))))
+
+(deftest outcomes-after-the-design-years-are-not-read
+  ;; with lead h, origins stop at to - h: no outcome after `to` is touched
+  (let [{:keys [cells offset read y]} (synthetic 3 0.0 1)
+        seen (atom 0)
+        outcome (fn [c t h] (swap! seen max (+ t h)) (get y [c (+ t h)]))]
+    (doseq [h (range 1 6)]
+      (let [rs (hp/rows {:cells cells :outcome outcome :offset offset :read read :h h :from 1960 :to 2002 :kind "k"})]
+        (is (= 2002 (apply max (map :g rs))) "clusters are the outcome years")
+        (is (= (- 2002 h) (apply max (map :t rs))))))
+    (is (<= @seen 2002))))
+
+(deftest the-state-is-never-read-after-the-origin
+  ;; bait: the state in year s is the outcome of year s itself. Read at the
+  ;; origin it is unrelated to the onset h years on; read at t + h it would
+  ;; predict perfectly
+  (let [{:keys [cells outcome offset y]} (synthetic 5 0.0 1)
+        reads (atom 0)
+        read (fn [c t] (swap! reads max t) (if (get y [c t]) 1.0 0.0))]
+    (doseq [h (range 1 6)]
+      (let [r (hp/fit (hp/rows {:cells cells :outcome outcome :offset offset :read read :h h :from 1960 :to 2002 :kind "k"}))]
+        (is (< (Math/abs (:coef r)) 0.2) (str "h " h))))
+    (is (<= @reads 2001) "the latest origin with an outcome by 2002 is 2001")))
+
+(deftest the-total-effect-offset-is-each-kind-s-rate
+  ;; without the base, the offset is the kind's own rate in the rows, so
+  ;; kinds pooled keep their own levels
+  (let [rows (concat (for [i (range 10)] {:kind "a" :y (< i 1) :o 9.0})
+                     (for [i (range 10)] {:kind "b" :y (< i 5) :o 9.0}))
+        t (hp/total-offsets rows)]
+    (is (close? (Math/log (/ 0.1 0.9)) (:o (first (filter #(= "a" (:kind %)) t))) 1e-9))
+    (is (close? 0.0 (:o (first (filter #(= "b" (:kind %)) t))) 1e-9))))
+
+(deftest the-slope-statistic
+  ;; per state, the mean coefficient at h = 4, 5 less that at h = 1, 2, in
+  ;; the expected direction (sign, and + for a slow state, - for a fast
+  ;; one); the statistic is the mean over states
+  (is (= 1 (hp/direction {:sign 1 :speed :slow})))
+  (is (= -1 (hp/direction {:sign 1 :speed :fast})))
+  (is (= 1 (hp/direction {:sign -1 :speed :fast})))
+  (let [coefs {"s" {1 0.0 2 0.1 3 0.2 4 0.3 5 0.4} "f" {1 0.4 2 0.4 3 0.2 4 0.0 5 0.0}}
+        dirs {"s" 1 "f" -1}]
+    (is (close? 0.3 (hp/state-slope (coefs "s")) 1e-12))
+    (is (close? (/ (+ 0.3 0.4) 2.0) (hp/slope-stat coefs dirs) 1e-12))))
+
+(deftest a-permutation-keeps-the-countries-values
+  ;; country labels shuffled: each country reads another's series whole
+  (let [read (fn [c t] (when (#{"A" "B" "C"} c) (+ (* 100 (int (first c))) t)))
+        p (hp/permuted read ["A" "B" "C"] (m/rng 1))]
+    (is (= (set (for [c ["A" "B" "C"]] (p c 2000))) (set (for [c ["A" "B" "C"]] (read c 2000)))))
+    (is (every? #(= (- (p % 2001) (p % 2000)) 1) ["A" "B" "C"]))))
+
+(deftest the-placebo-reads-another-country-known-that-year
+  ;; the next country, in sorted order, among those with the state that
+  ;; year: so a sparse state keeps every row it has
+  (let [panel {"A" {2000 1.0 2001 1.1} "B" {2001 2.1} "C" {2000 3.0 2001 3.1} "D" {1999 4.0}}
+        p (hp/placebo-read panel)]
+    (is (= 3.0 (p "A" 2000)) "B has no 2000: C is next")
+    (is (= 1.0 (p "C" 2000)) "wrapping round")
+    (is (= 2.1 (p "A" 2001)))
+    (is (nil? (p "D" 1999)) "alone that year")
+    (is (nil? (p "B" 2000)) "no value of its own")))
+
+(deftest the-coefficient-is-the-fitted-one-per-sd
+  (let [{:keys [cells outcome offset read]} (synthetic 21 0.8 2)
+        rs (hp/rows {:cells cells :outcome outcome :offset offset :read read :h 2 :from 1960 :to 2002 :kind "k"})]
+    (is (close? (:coef (hp/fit rs)) (hp/coef rs) 1e-6))))
