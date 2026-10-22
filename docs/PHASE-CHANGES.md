@@ -1261,6 +1261,36 @@ country's history they add nothing, as the design years said. The
 drivers are real for where conflict happens; for when anything happens,
 and for the economic kinds at all, these states do not carry it.
 
+**Results, 22 October 2026 (trials T2 and T8).** Origins 2003-2020,
+everything fitted on 1960-2002, 200 permutations:
+1. **T2 primary, the regime's slope shift d > 0**: financial +0.146 (p
+   0.124), social +0.124 (p 0.134): neither passes. The financial
+   group's level shift c (record) is large, +0.420 (z 5.6, permutation p
+   0.005): in the top fifth of credit gaps (and the bottom of reserves)
+   onsets come more often than the recalibrated base says, but its
+   placebo moves too (+0.286, z 2.2), so part of it is not the state.
+2. **T2, the regime against the plain recalibration**, log per row:
+   financial -0.00050 [-0.00070, -0.00031], social +0.00024 [+0.00017,
+   +0.00031]: passes for the social group only, and by little.
+3. **T8, the plain recalibration against the raw base**, log per row:
+   financial +0.0036 [-0.0046, +0.0120], social -0.0089 [-0.0106,
+   -0.0068]; pooled by rows about -0.0036: fails. What the base got
+   wrong in 1960-2002 it does not get wrong the same way in 2003-2022;
+   the social kinds' raw base is better calibrated now than the
+   recalibration fitted on its early years (their slopes were set in
+   1960-80, when the base had little history to learn from).
+4. For the record: credit gap x house prices raises banking crises
+   beyond the base (zone c +1.14, z 4.8, p 0.050, 36 onsets, the sign
+   Greenwood et al. report); food import share x grain prices level.
+   Terciles: financial d_top > d_bottom p 0.045, social 0.20.
+
+The states do not act as gauges of the base's calibration, and a fixed
+recalibration does not transfer across eras: the base's miscalibration
+is not stable, so any recalibration has to be learned as the base runs
+(online, from past origins only: bnm-3qu.9). The one state effect that
+keeps showing, the credit gap's level shift with house prices, is the
+financial cycle the literature names, on too few onsets to stand alone.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
