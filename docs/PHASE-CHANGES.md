@@ -997,3 +997,37 @@ Links and warnings apply at the year and half-decade nodes (the quarters
 drop relations). The tests stand as registered with t44-world-norel as
 the bench; the linked kinds are those with a parent or a warning. For
 the record, the gauge fix alone: t44-world-norel against t42-world-norel.
+
+## Pre-registered, 22 October 2026: the energy pilot (trial P1)
+
+Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
+does a sector's place in the supply chain tell how an energy price shock
+hits its output, beyond its own trend? On the input-output spine
+(data/derived/io: LR-WIOD 1965-2000, WIOD 2016 2000-2014, 21 sectors,
+real output from scripts/io-volumes.py, national-currency prices).
+
+- The shock at country c in year t: the change in refined products'
+  price relative to all sectors' (output-weighted), e = ln p_REF - ln p.
+- Exposure of sector s, from the table three years before (as known): its
+  direct energy cost share a_REF,s and its supply-chain share, the Leontief
+  inverse's L_REF,s less a_REF,s (energy embodied in its other inputs).
+- Outcome: the sector's real output growth in the shock year and the two
+  after (horizons 0, 1, 2).
+- Models, each estimated only on years before the shock tested:
+  (A) the trend: the sector's own mean growth plus an AR(1) term pooled
+  across sectors; (H) Hulten's benchmark: (A) less L_REF,s e (unit
+  elasticity, the price passed to output one for one); (N) the network:
+  (A) plus b1 a_REF,s e + b2 (L_REF,s - a_REF,s) e, b1 and b2 by least
+  squares per horizon on the training years.
+- Shocks: 1974, 1979, 1990, 2008 (each tested with the models fitted on
+  the years before it: leave-the-future-out).
+
+**Tests**, the squared error of predicted real output growth over the
+countries, sectors and horizons of the four shocks, paired by
+country-sector, intervals by resampling countries:
+1. (primary) N against A, pooled over the shocks: does the supply chain
+   add to the trend?
+2. N against H: does an estimated pass-through beat unit elasticity?
+3. for the record, per shock, and the energy-intensive sectors (METAL,
+   CHEM, MINR, PAPER, TRANSP) alone.
+The 2022 shock cannot be tested: the spine has no prices after 2014.
