@@ -87,7 +87,28 @@ do). Writes data/derived/supply/:
                   hydrocarbons and refinery feedstocks in; refinery-all:
                   against every tonne of hydrocarbon, petroleum product,
                   additive and biofuel the refinery industry takes in
-                  (natural gas, product backflows, blending components).
+                  (natural gas, product backflows, blending components);
+                  refinery-unscaled, refinery-all-unscaled: the same
+                  before the scaling below.
+  scaling.csv     region,products,kind,exiobase_kt,unsd_kt,target_kt,
+                  fitted_kt,source
+                  naphtha, LPG, bitumen, other products, and jet and other
+                  kerosene together, run 1.5-3 times UNSD's 2011 figures in
+                  the hybrid tables (their refinery output carries what the
+                  refinery industry also takes in: gas processing, product
+                  backflows). Each is scaled to UNSD (data/derived/supply/
+                  oil-products.csv, from scripts/oil-products.py, which
+                  runs first): its origin-by-destination uses (every
+                  industry and final demand) fitted by biproportional
+                  scaling to production by origin (flow 01; kind
+                  production) and use by destination (total energy supply,
+                  GA; kind use; not for kerosene, whose bunkers GA leaves
+                  out), a region's supply scaled with its uses, so supply
+                  still equals use. source unsd where both figures exceed
+                  100 kt; median, the median ratio, for an origin without
+                  one; a destination without one is left free. Every table
+                  above is written after the scaling; without
+                  oil-products.csv nothing is scaled.
 
     python -I scripts/product-graph.py [data-root]
 """
@@ -112,6 +133,17 @@ ENERGY_PREFIX = ("p10.e", "p10.g", "p23", "p40", "p24.e", "p24.f", "p24.g", "p24
 MATERIAL_PREFIX = ("p17", "p20", "p21", "p24", "p26", "p27", "p37")
 REFINERY_IN = ["C_COIL", "C_GASL", "C_OGPL", "C_REFF"]
 REFINERY_EXTRA = ["C_ADDC", "C_BIOG", "C_BIOD", "C_OBIO"]
+# refined products whose hybrid tonnages run 1.5-3 times UNSD's 2011
+# production, scaled to it; jet and other kerosene together (countries
+# split them differently: Spain reports its jet as kerosene)
+SCALED = [["C_NAPT"], ["C_LPGA"], ["C_BITU"], ["C_NSPP"], ["C_KJET", "C_KERO"]]
+SCALE_MIN_KT = 100.0
+ISO3 = {"AU": "AUS", "AT": "AUT", "BE": "BEL", "BR": "BRA", "BG": "BGR", "CA": "CAN", "CN": "CHN", "CY": "CYP",
+        "CZ": "CZE", "DK": "DNK", "EE": "EST", "FI": "FIN", "FR": "FRA", "DE": "DEU", "GR": "GRC", "HU": "HUN",
+        "HR": "HRV", "IN": "IND", "ID": "IDN", "IE": "IRL", "IT": "ITA", "JP": "JPN", "LV": "LVA", "LT": "LTU",
+        "LU": "LUX", "MT": "MLT", "MX": "MEX", "NL": "NLD", "NO": "NOR", "PL": "POL", "PT": "PRT", "RO": "ROU",
+        "RU": "RUS", "SK": "SVK", "SI": "SVN", "ZA": "ZAF", "KR": "KOR", "ES": "ESP", "SE": "SWE", "CH": "CHE",
+        "TR": "TUR", "GB": "GBR", "US": "USA"}
 
 
 def group(code, unit):
@@ -192,6 +224,109 @@ def unit_split(vd, pr, punit, units):
                 for u in units}
 
 
+def unsd_2011(flow):
+    """{(iso3, exiobase code): kt} of UNSD's 2011 figures for `flow` (01
+    production, GA total energy supply), or None without oil-products.csv."""
+    path = os.path.join(OUT, "oil-products.csv")
+    if not os.path.exists(path):
+        return None
+    o = pd.read_csv(path, dtype={"flow": str, "iso": str})
+    o = o[(o["year"] == 2011) & (o["flow"] == flow)]
+    return o.groupby(["iso", "exiobase"])["value"].sum().to_dict()
+
+
+def targets(regions, pcode, x, un, grp):
+    """{region: (exiobase kt, unsd kt or None, target kt, source)} for the
+    products `grp` together: x (R, P) EXIOBASE's tonnes (production or
+    use), un UNSD's kt. Target UNSD's where both are above SCALE_MIN_KT;
+    else the median ratio over those regions times EXIOBASE's (the
+    rest-of-world regions, small or unreported producers)."""
+    ix = [pcode.index(c) for c in grp]
+    own = {}
+    for s, reg in enumerate(regions):
+        e = x[s, ix].sum() / 1000.0
+        u = sum(un.get((ISO3[reg], c), 0.0) for c in grp) if reg in ISO3 else None
+        own[reg] = (e, u)
+    ok = {r: u / e for r, (e, u) in own.items() if u is not None and e > SCALE_MIN_KT and u > SCALE_MIN_KT}
+    med = float(np.median(list(ok.values())))
+    return {r: (e, u, u if r in ok else e * med, "unsd" if r in ok else "median") for r, (e, u) in own.items() if e > 0}
+
+
+def scale_to_unsd(regions, pcode, V4, U4, Y4):
+    """Scale V4, U4, Y4 in place, each group of SCALED to UNSD's 2011
+    figures: for a product the origin-by-destination matrix of its uses
+    (every industry and final demand) is fitted by biproportional scaling
+    (RAS) to production by origin (UNSD's flow 01) and, for the
+    non-kerosene products, to use by destination (UNSD's total energy
+    supply, GA); a region's supply is scaled with its row, so its supply
+    still equals its uses. Origins without a UNSD figure take the median
+    ratio; destinations without one are free (they take up what the
+    production and use totals leave). Returns [(region, group, kind, exiobase kt, unsd kt,
+    target kt, fitted kt, source)], or None without oil-products.csv."""
+    prod_un = unsd_2011("01")
+    if prod_un is None:
+        return None
+    use_un = unsd_2011("GA")
+    R = len(regions)
+    report = []
+    for grp in SCALED:
+        ix = [pcode.index(c) for c in grp]
+        q = np.stack([V4[r, :, r, :].sum(axis=1) for r in range(R)])
+        M0 = sum(U4[:, p, :, :].sum(axis=2) + Y4[:, p, :, :].sum(axis=2) for p in ix)  # (origin, dest) tonnes
+        use = np.zeros((R, len(pcode)))
+        for p in ix:
+            use[:, p] = U4[:, p, :, :].sum(axis=(0, 2)) + Y4[:, p, :, :].sum(axis=(0, 2))
+        rt = targets(regions, pcode, q, prod_un, grp)
+        ct = targets(regions, pcode, use, use_un, grp) if grp != ["C_KJET", "C_KERO"] else {}
+        rows = np.array([rt[r][2] * 1000.0 if r in rt else 0.0 for r in regions])
+        # destinations without a UNSD figure are left free: they take up
+        # the difference between the production and use targets' totals
+        cols = np.array([ct[r][2] * 1000.0 if r in ct and ct[r][3] == "unsd" else np.nan for r in regions])
+        M = M0.copy()
+        for _ in range(200):
+            with np.errstate(invalid="ignore", divide="ignore"):
+                rs = M.sum(axis=1)
+                M *= np.where(rs > 0, rows / rs, 0.0)[:, None]
+                cs = M.sum(axis=0)
+                M *= np.where(np.isfinite(cols) & (cs > 0), cols / cs, 1.0)[None, :]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            f = np.where(M0 > 0, M / M0, 1.0)  # (origin, dest)
+            fv = np.where(M0.sum(axis=1) > 0, M.sum(axis=1) / M0.sum(axis=1), 1.0)
+        for p in ix:
+            U4[:, p, :, :] *= f[:, :, None]
+            Y4[:, p, :, :] *= f[:, :, None]
+            for r in range(R):
+                V4[r, p, r, :] *= fv[r]
+        fitted_rows = M.sum(axis=1) / 1000.0
+        fitted_cols = M.sum(axis=0) / 1000.0
+        for k, reg in enumerate(regions):
+            if reg in rt:
+                e, u, t, src = rt[reg]
+                report.append((reg, grp, "production", e, u, t, fitted_rows[k], src))
+            if reg in ct:
+                e, u, t, src = ct[reg]
+                report.append((reg, grp, "use", e, u, t, fitted_cols[k], src))
+    return report
+
+
+def refinery_balance(regions, prod, punit, pcode, ind, Vd, Ud):
+    """{(region, check): (in, out, (out - in) / in)} for the refinery
+    industry, as balances.csv has it."""
+    refn = [j for j, (c, _) in enumerate(ind) if c == "A_REFN"][0]
+    refin = [pcode.index(c) for c in REFINERY_IN]
+    refout = [p for p in range(len(prod)) if prod[p][3].startswith("p23.20") and punit[p] == "tonnes"]
+    refall = [p for p in range(len(prod)) if punit[p] == "tonnes"
+              and (prod[p][3].startswith(("p11", "p23.20")) or pcode[p] in REFINERY_EXTRA)]
+    out = {}
+    for s, reg in enumerate(regions):
+        cout = Vd[s][refout, refn].sum()
+        for name, idx in [("refinery", refin), ("refinery-all", refall)]:
+            cin = Ud[s][idx, refn].sum()
+            if cin > 0 or cout > 0:
+                out[(reg, name)] = (cin, cout, (cout - cin) / cin if cin > 0 else np.nan)
+    return out
+
+
 def fmt(v):
     return "" if v is None or not np.isfinite(v) else f"{v:.6g}"
 
@@ -222,6 +357,35 @@ def main():
     del V, U, Y
     off = V4.sum() - sum(V4[r, :, r, :].sum() for r in range(R))
     print(f"supply off the regional diagonal: {off:.3g} (should be 0)")
+
+    # light and non-fuel refined products scaled to UNSD's 2011 figures
+    # (scale_to_unsd): supply still equals uses; the refinery's inputs are
+    # not touched (the excess is what its refinery industry also takes in:
+    # gas processing, product backflows), so the refinery balance moves
+    # toward its crude
+    before = refinery_balance(regions, prod, punit, pcode, ind, np.stack([V4[r, :, r, :] for r in range(R)]),
+                              U4.sum(axis=0).transpose(1, 0, 2))
+    scaling = scale_to_unsd(regions, pcode, V4, U4, Y4)
+    if scaling is None:
+        print("no oil-products.csv: refined products not scaled to UNSD (run scripts/oil-products.py first)")
+    else:
+        with open(os.path.join(OUT, "scaling.csv"), "w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["region", "products", "kind", "exiobase_kt", "unsd_kt", "target_kt", "fitted_kt", "source"])
+            for reg, grp, kind, e, u, t, fit, src in scaling:
+                w.writerow([reg, "+".join(grp), kind, fmt(e), fmt(u) if u is not None else "", fmt(t), fmt(fit), src])
+        for grp in SCALED:
+            for kind in ["production", "use"]:
+                rs = [x for x in scaling if x[1] == grp and x[2] == kind]
+                if not rs:
+                    continue
+                un = [x for x in rs if x[7] == "unsd"]
+                off = np.array([x[6] / x[5] - 1 for x in un if x[5] > 0])
+                print(f"scaled {'+'.join(grp)} {kind}: {len(un)} regions to UNSD (EXIOBASE/UNSD median "
+                      f"{np.median([x[3] / x[4] for x in un]):.2f}), {len(rs) - len(un)} at the median ratio; "
+                      f"world {sum(x[3] for x in rs) / 1000:.0f} -> {sum(x[6] for x in rs) / 1000:.0f} Mt; "
+                      f"fitted to UNSD within {np.abs(off).max():.1%} (median {np.median(np.abs(off)):.1%})")
+
     Vd = np.stack([V4[r, :, r, :] for r in range(R)])  # (R, P, I)
     q = Vd.sum(axis=2)  # (R, P) production
     Ud = U4.sum(axis=0).transpose(1, 0, 2).copy()  # (dest, P, I)
@@ -378,22 +542,20 @@ def main():
     print(f"trade: {ntr} rows")
 
     # balances
-    refn = [j for j, (c, _) in enumerate(ind) if c == "A_REFN"][0]
-    refin = [pcode.index(c) for c in REFINERY_IN]
-    refout = [p for p in range(P) if prod[p][3].startswith("p23.20") and punit[p] == "tonnes"]
-    refall = [p for p in range(P) if punit[p] == "tonnes"
-              and (prod[p][3].startswith(("p11", "p23.20")) or pcode[p] in REFINERY_EXTRA)]
+    after = refinery_balance(regions, prod, punit, pcode, ind, Vd, Ud)
     rows = []
     for s, reg in enumerate(regions):
         used = T[s].sum(axis=1)  # (P,) every use of s's output
         for p in range(P):
             if q[s, p] > 0:
                 rows.append([reg, "product:" + pcode[p], used[p], q[s, p], punit[p], (q[s, p] - used[p]) / q[s, p]])
-        cout = Vd[s][refout, refn].sum()
-        for name, idx in [("refinery", refin), ("refinery-all", refall)]:
-            cin = Ud[s][idx, refn].sum()
-            if cin > 0 or cout > 0:
-                rows.append([reg, name, cin, cout, "tonnes", (cout - cin) / cin if cin > 0 else np.nan])
+        for name in ["refinery", "refinery-all"]:
+            if (reg, name) in after:
+                cin, cout, res = after[(reg, name)]
+                rows.append([reg, name, cin, cout, "tonnes", res])
+                if scaling is not None:
+                    rows.append([reg, name + "-unscaled", before[(reg, name)][0], before[(reg, name)][1], "tonnes",
+                                 before[(reg, name)][2]])
     with open(os.path.join(OUT, "balances.csv"), "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["region", "check", "input", "output", "unit", "residual"])
@@ -408,8 +570,10 @@ def main():
     print(f"product balances off by more than 1%, by group: {bygroup}")
     print(f"product balances: {len(prodres)}; |residual| median {np.median(prodres):.3g}, "
           f"90th pct {np.percentile(prodres, 90):.3g}, above 1%: {(prodres > 0.01).sum()}")
-    for name in ["refinery", "refinery-all"]:
+    for name in ["refinery-unscaled", "refinery", "refinery-all-unscaled", "refinery-all"]:
         rs = [r for r in rows if r[1] == name and r[2] > 1e6]
+        if not rs:
+            continue
         res = np.array([r[5] for r in rs])
         print(f"{name}: {len(rs)} regions refining over 1 Mt; residual (out - in) / in median {np.median(res):+.3f}, "
               f"range {res.min():+.3f} to {res.max():+.3f}")
