@@ -67,7 +67,8 @@
             [bnm.recalibrate-online-test]
             [bnm.concordance-test]
             [bnm.essentials-test]
-            [bnm.power-audit-test]))
+            [bnm.power-audit-test]
+            [bnm.migration-test]))
 
 (def namespaces
   '[bnm.time-test
@@ -137,7 +138,8 @@
     bnm.recalibrate-online-test
     bnm.concordance-test
     bnm.essentials-test
-    bnm.power-audit-test])
+    bnm.power-audit-test
+    bnm.migration-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
