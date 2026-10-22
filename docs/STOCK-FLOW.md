@@ -168,6 +168,50 @@ boundary).
   Sheet (monthly, 1960-); avoid the full IEA balances.
 - Causally, at date t only the table for t - 3 is known.
 
+### Material base sources (scripts/material.py, tools/bnm/material.clj)
+
+Written to data/derived/material/; each source's licence and what it
+feeds:
+
+| source | licence, attribution | feeds |
+|---|---|---|
+| Our World in Data grapher: oil, gas, coal proved reserves | OWID's processing CC BY 4.0 ("Our World in Data"); oil and coal from the Energy Institute Statistical Review, under EI's own terms (free use with attribution, not CC BY); gas reserves are EIA's (public domain) | endowments.csv |
+| FAOSTAT land use (Inputs_LandUse) | CC BY 4.0, "FAO. FAOSTAT" | endowments.csv |
+| FAOSTAT detailed trade matrix | CC BY 4.0, "FAO. FAOSTAT" | cereal-trade.csv, cereal-trade-coverage.csv |
+| EIA international energy data (INTL bulk) | US government work, public domain; credit "U.S. Energy Information Administration" | capacity.csv (power_*) |
+| WRI Global Power Plant Database v1.3 | CC BY 4.0, "Global Energy Observatory, Google, KTH Royal Institute of Technology in Stockholm, Enipedia, World Resources Institute. 2019. Global Power Plant Database. Published on Resource Watch and Google Earth Engine" (README citation) | capacity.csv (plants_*), plant-cells.csv, concentration.csv |
+| OWID energy data (owid-energy-data.csv) | OWID CC BY 4.0; production from the Energy Institute (EI terms, as above) | production.csv |
+
+How they may be read:
+- every value is as published now (revised); readers lag it, a year at
+  least, trade 1-2 years;
+- the power plant database is a snapshot (capacity data mostly
+  2017-2019, published 2021) with no retired plants and a third of the
+  world's capacity undated (plants_undated_*): its yearly plants_* series
+  is survivors only. Never read it causally before 2021; it gives the
+  fuel split and the concentration (plant-cells.csv, concentration.csv,
+  vintage 2021) at the snapshot, and history comes from EIA's power_*;
+- EIA's capacity series nest: total = fossil + nuclear + renewable +
+  pumped storage; renewable = hydro + non-hydro; non-hydro = wind + solar
+  + geothermal + biomass + tide; sum leaves only;
+- cereal trade is the importer's report, else (for that importer, year
+  and item) the exporters' mirror ("mirror_pair" fills a pair a
+  reporting importer left out; an importer's own figures stand even when
+  exporters report more); where the coverage file says "none" a
+  flow is unknown, not zero. Rice is milled equivalent, wheat includes
+  flour as grain (x 1.37);
+- historical entities keep their own codes (succession.csv: SUN, YUG,
+  CSK, SCG, SDF for Sudan before 2011, BLX, ANT, ETP, DDR, DEW); Kosovo is
+  XKX everywhere; regions and the world are dropped.
+
+Not yet held (beads bnm-62z.19-.21): mineral reserves and deposits (USGS
+MCS/MRDS, BGS), uranium, oil and gas fields (PRIO PETRODATA), GAEZ
+suitability, water (WRI Aqueduct), lootable resources (DIADATA, GEMDATA,
+PRIO-GRID); refineries, LNG, smelters, rare-earth separation, steel,
+fertilizer, cement, fabs, and GEM's trackers (CC BY 4.0) with
+commissioning and retirement dates, which would give capacity as a stock
+with flows; bilateral trade beyond cereals (BACI or UN Comtrade).
+
 ## The record, and the pitfalls
 
 Formal out-of-sample tests are rare. World3 was compared to data by eye

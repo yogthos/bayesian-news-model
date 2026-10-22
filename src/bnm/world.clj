@@ -19,7 +19,8 @@
   window's chance scaled to a year under a constant hazard. Everything else
   a node reads is held where it last was: the experiment isolates the
   relations."
-  (:require [augur.math :as m]))
+  (:require [augur.math :as m]
+            [clojure.string :as str]))
 
 (defn- year-p
   "The chance of an onset in a year from the log odds for a window of
@@ -37,12 +38,14 @@
         m (when onset (+ 6.0 (* 12.0 (dec onset))))
         known? (and m (<= (+ m (double (or lag 12))) t))
         within (fn [w] (if (and known? (> m (- t (double (or lag 12)) w))) 1.0 0.0))]
-    (case form
+    ;; an own part (bnm.factors) moves as its raw form: a simulated onset is
+    ;; the place's own, not what its region shares
+    (case (keyword (str/replace (name form) #"-own$" ""))
       :post1 (within 12.0)
       :post3 (within 36.0)
       :e1 (if known? (Math/exp (- (/ (- t m) 12.0))) 0.0)
       :e5 (if known? (Math/exp (- (/ (- t m) 60.0))) 0.0)
-      :destab (double dj))))
+      (:destab :level) (double dj))))
 
 (defn- one-draw
   "One path: {[kind place] first-year-of-onset or nil}, in years from 1."

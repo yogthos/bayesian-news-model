@@ -275,7 +275,16 @@
         finished (into {} (for [[k s] results] [k (lt/finish s)]))]
     (if (= "true" smoke)
       (let [fails (into {} (for [[k r] (sort-by key finished)]
-                             (do (println "==" k) [k (smoke/checks (specs k) r k end)])))]
+                             (do (println "==" k) [k (smoke/checks (specs k) r k end)])))
+            ;; the artificial world runs on what was learned: a small joint simulation
+            fails (if (or (= "true" without-relations) (empty? edges))
+                    fails
+                    (try (w/joints (world-of specs results parents graph cats end) edges {:horizon 3 :draws 20 :seed 1})
+                         (println "  ok   the artificial world simulates its edges")
+                         fails
+                         (catch Exception e
+                           (println "  FAIL the artificial world:" (ex-message e))
+                           (assoc fails "world" [(str "the artificial world: " (ex-message e))]))))]
         (doseq [[k fs] fails] (println k (if (empty? fs) "all checks passed" (str (count fs) " failed: " (str/join "; " fs)))))
         (System/exit (if (every? empty? (vals fails)) 0 1)))
       (do

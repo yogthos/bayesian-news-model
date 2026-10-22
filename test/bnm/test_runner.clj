@@ -29,6 +29,7 @@
             [bnm.assimilate-test]
             [bnm.material-test]
             [bnm.network-test]
+            [bnm.energy-pilot-test]
             [bnm.lattice-banking-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -77,6 +78,7 @@
     bnm.assimilate-test
     bnm.material-test
     bnm.network-test
+    bnm.energy-pilot-test
     bnm.lattice-banking-test
     bnm.political-gauges-test
     bnm.reconcile-test

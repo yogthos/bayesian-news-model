@@ -48,3 +48,11 @@
     (is (= 2 (count rows)) "one per place")
     (is (every? #(> (:joint %) (* (:pj %) (:pk %))) rows) "the relation makes them co-occur")
     (is (every? #(<= (:joint %) (min (:pj %) (:pk %))) rows))))
+
+(deftest every-link-form-can-be-simulated
+  ;; whatever form the rule may choose (bnm.relation-diag/link-forms), the
+  ;; artificial world can move it: an own part moves as its raw form does
+  ;; (a simulated onset is the place's own, not what the region shares)
+  (doseq [f [:post1 :post3 :e1 :e5 :destab :level-own :destab-own :e1-own :e5-own :post3-own]]
+    (is (number? (w/edge-change {:form f :lag 6} 2 1 0.1)) (str f)))
+  (is (= (w/edge-change {:form :post3 :lag 6} 2 1 0.0) (w/edge-change {:form :post3-own :lag 6} 2 1 0.0))))
