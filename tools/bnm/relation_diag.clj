@@ -16,12 +16,13 @@
     rotated by one in sorted order): a placebo. A form that gains on its
     placebo absorbs what differs between countries, not what j does.
 
-    jolt -A:tools -M -m bnm.relation-diag --run t42-world-norel [--to 2002]
+    jolt -A:tools -M -m bnm.relation-diag --run t42-world-norel [--to 2002] [--graph-out path]
 
   Prints a table and writes data/runs/<run>/relation-diag.tsv, and the
   edges kept, each with its form (choose-form), to
   data/runs/sequencing/graph-t43.edn."
   (:require [augur.logit :as lg]
+            [bnm.factors :as fac]
             [bnm.kinds :as kinds]
             [bnm.relations :as rl]
             [bnm.world-run :as wr]
@@ -80,24 +81,45 @@
 
 (def form-names [:level :destab :surprise :e1 :e5 :post1 :post3])
 
-(def link-forms "The forms the lattice can read along an edge." #{:post1 :post3 :e1 :e5 :destab})
+(def own-forms
+  "The forms again as their own part at the place (bnm.factors): less what
+  the world's and the region's countries share at t."
+  [:level :destab :e1 :e5 :post3])
+
+(defn with-own
+  "Each place's forms {place {t forms}} with their own parts added as
+  :<form>-own, decomposed across the places at each t."
+  [by-place tree]
+  (reduce (fn [acc f]
+            (let [panel (into {} (for [[p byt] by-place :when (tree p)]
+                                   [p (into (sorted-map) (for [[t fs] byt :let [v (f fs)] :when v] [t (double v)]))]))
+                  parts (fac/decompose panel tree {:discount 0.99})
+                  k (keyword (str (name f) "-own"))]
+              (reduce (fn [acc [p byt]] (reduce (fn [acc [t {:keys [own]}]] (assoc-in acc [p t k] own)) acc byt)) acc parts)))
+          by-place own-forms))
+
+(def link-forms
+  "The forms the lattice can read along an edge: each raw, and as its own
+  part (bnm.factors), never the raw level."
+  #{:post1 :post3 :e1 :e5 :destab :level-own :destab-own :e1-own :e5-own :post3-own})
 
 (defn choose-form
   "An edge's form from its design-year results {form {:lr :coef
   :placebo-lr}} and its sign: of the forms the lattice reads, those that
   gain past the child's forecast (LR >= 3.84) in the edge's direction and
-  at least twice their placebo's; :post3 when among them, else the one
-  that gains most; nil, no edge, without any."
+  at least twice their placebo's; the post-crisis regime (:post3 or its
+  own part, the larger) when among them, else the one that gains most;
+  nil, no edge, without any."
   [results sign]
   (let [ok (for [[f {:keys [lr coef placebo-lr]}] results
                  :when (and (link-forms f) (>= lr 3.84) (= (pos? coef) (pos? sign)) (>= lr (* 2.0 placebo-lr)))]
              [f lr])]
-    (cond (empty? ok) nil
-          (some #(= :post3 (first %)) ok) :post3
-          :else (first (apply max-key second ok)))))
+    (if-let [post (seq (filter #(#{:post3 :post3-own} (first %)) ok))]
+      (first (apply max-key second post))
+      (when (seq ok) (first (apply max-key second ok))))))
 
 (defn -main [& args]
-  (let [{:keys [run to]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run to graph-out]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         run (or run "t42-world-norel")
         to (or (some-> to parse-long) 2002)
         cats (kinds/catalogues)
@@ -105,6 +127,7 @@
         ks (set (map first (keys graph)))
         ks (into ks (map second (keys graph)))
         years (into {} (pmap (fn [k] [k (read-year run k)]) ks))
+        tree (fac/place-tree (set (mapcat keys (vals years))))
         out (StringBuilder.)
         results (atom {})
         say (fn [s] (println s) (.append out (str s "\n")))]
@@ -116,12 +139,17 @@
                   base (for [place places [o [p y]] (fk place)
                              :when (and (some? y) (= 11 (mod o 12)) (<= (* 12 1960) o (+ 11 (* 12 to))))]
                          [place o p y])
+                  ;; every place's forms at every origin, then their own parts
+                  origins (sort (set (map second base)))
+                  fv (with-own (into {} (for [place places]
+                                          [place (into (sorted-map) (for [o origins] [o (forms (fj place) cj place o)]))]))
+                               tree)
                   rows-of (fn [placebo?]
                             (for [[place o p y] base
                                   :let [src (if placebo? (other place) place)]]
-                              [(forms (fj src) cj src o) {:y y :o (logit p) :w 1.0}]))
+                              [(get-in fv [src o]) {:y y :o (logit p) :w 1.0}]))
                   real (vec (rows-of false)) fake (vec (rows-of true))]
-            f form-names
+            f (into form-names (map #(keyword (str (name %) "-own")) own-forms))
             :let [pick (fn [rs] (for [[fs r] rs :let [v (f fs)] :when v] (assoc r :x [1.0 (double v)])))
                   a (pick real) b (pick fake)]
             :when (>= (count (filter :y a)) 5)]
@@ -137,4 +165,4 @@
                                     [edge (assoc e :form f)]))]
       (println "kept" (count kept) "of" (count graph) "edges:")
       (doseq [[[j k] e] kept] (println (format "  %s>%s %s" j k (name (:form e)))))
-      (spit "data/runs/sequencing/graph-t43.edn" (pr-str kept)))))
+      (spit (or graph-out "data/runs/sequencing/graph-t43.edn") (pr-str kept)))))

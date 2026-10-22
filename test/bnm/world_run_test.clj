@@ -1,5 +1,6 @@
 (ns bnm.world-run-test
-  (:require [bnm.world-run :as wr]
+  (:require [bnm.factors]
+            [bnm.world-run :as wr]
             [clojure.test :refer [deftest is]]))
 
 (deftest the-placebo-reads-another-country
@@ -36,3 +37,22 @@
   (let [sp {:scales [{:name :year}] :prior nil}]
     (is (= sp (wr/with-relations sp [] (atom {}) {} {} {} identity))
         "a kind without a parent is the world without relations")))
+
+(deftest an-own-part-along-an-edge
+  ;; a form's own part (bnm.factors): the parent's input at each country
+  ;; less what the world's and the region's countries share at t, its
+  ;; factor model stepped once per origin
+  (let [par {"AAA" "Reg" "BBB" "Reg" "CCC" "Reg2" "DDD" "Reg2" "Reg" "world" "Reg2" "world"}
+        cat {:onsets {"AAA" (sorted-set 100)} :from {"AAA" 0 "BBB" 0 "CCC" 0 "DDD" 0} :known-lag 12}
+        sp (wr/with-relations {:scales [{:name :year} {:name :half-decade}] :parent par}
+                              ["bank"] (atom {"bank" {}}) {"bank" cat} {"bank" #{:year}}
+                              {"bank" {:form :post3-own :sign 1}} identity)
+        rel (:relations sp)
+        raw (fn [t] (into {} (for [c ["AAA" "BBB" "CCC" "DDD"]] [c (if (and (= c "AAA") (< 112 t 148)) 1.0 0.0)])))
+        want (loop [[t & ts] [107 119 131] st (bnm.factors/online par {:discount 0.99}) out nil]
+               (if t (let [[parts st] (bnm.factors/observe st t (raw t))] (recur ts st parts)) out))]
+    (doseq [t [107 119]] (rel :year "AAA" t))
+    (is (= [(get-in want ["AAA" :own])] (:x (rel :year "AAA" 131))))
+    (is (= (:x (rel :year "AAA" 131)) (:x (rel :half-decade "AAA" 131))) "a second read at the origin")
+    (is (= [(get-in want ["BBB" :own])] (:x (rel :year "BBB" 131))))
+    (is (not= [1.0] (:x (rel :year "AAA" 131))) "not the raw input")))

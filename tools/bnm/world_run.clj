@@ -28,7 +28,8 @@
   year end from 2003, for each edge and country, the simulated chances of
   each onset and of both within three years, from what the world had
   learned by then)."
-  (:require [bnm.kinds :as kinds]
+  (:require [bnm.factors :as fac]
+            [bnm.kinds :as kinds]
             [bnm.lattice :as lt]
             [bnm.lattice-banking :as lb]
             [bnm.lattice-political :as lp]
@@ -65,8 +66,11 @@
   averaging sets the node with it against the node without it. A link's
   coefficient starts at its edge's sign (mean 0.2 for an exciting edge,
   -0.2 for an inhibiting one, variance 0.1, in the input's spreads).
-  Above the countries a place reads the mean of its countries' inputs. A
-  kind without a parent is left as it is.
+  Above the countries a place reads the mean of its countries' inputs. An
+  edge whose form ends in -own passes the raw form's own part at the
+  country (bnm.factors: less what the world's and the region's countries
+  share at t), its factor model stepped once per origin. A kind without
+  a parent is left as it is.
   `source` maps the place to the one whose parents it reads (identity, or
   the placebo's other country)."
   [sp parents books cats scales-of edges source]
@@ -77,7 +81,31 @@
         leaves (remove (set (vals par)) (keys par))
         below (reduce (fn [m c] (reduce #(update %1 %2 (fnil conj []) c) m (take-while some? (iterate par c))))
                       {} leaves)
-        members (fn [place] (get below place [place]))]
+        members (fn [place] (get below place [place]))
+        ;; an own form (:post3-own, ...): the raw form's own part at each
+        ;; country (bnm.factors), its factor model stepped once per origin
+        ;; over the countries the parent's catalogue covers then
+        own? (fn [form] (.endsWith (name form) "-own"))
+        base-of (fn [form] (keyword (subs (name form) 0 (- (count (name form)) 4))))
+        owns (atom {})
+        own-at (fn [bs j form scale t]
+                 (let [k [j form]]
+                   (or (get-in @owns [k :by-t t])
+                       (let [{:keys [st]} (get @owns k)
+                             cat (cats j)
+                             xs (into {} (for [c leaves :let [f (get-in cat [:from c])] :when (and f (<= f t))]
+                                           [c (:x (rl/raw-input (base-of form) {:kind j :book (bs j) :catalogue cat}
+                                                                (if (contains? (scales-of j) scale) scale :year) c t))]))
+                             [parts st'] (fac/observe (or st (fac/online par {:discount 0.99})) t xs)
+                             by-t (into {} (for [[c {:keys [own]}] parts] [c own]))]
+                         (swap! owns assoc k {:st st' :by-t {t by-t}})
+                         by-t))))
+        input (fn [bs j scale place t]
+                (let [form (:form (edges j))]
+                  (if (own? form)
+                    {:x (double (get (own-at bs j form scale t) place 0.0)) :reads []}
+                    (rl/edge-input form {:kind j :book (bs j) :catalogue (cats j)}
+                                   (if (contains? (scales-of j) scale) scale :year) place t))))]
     (if (empty? parents)
       sp
     (assoc sp
@@ -87,9 +115,7 @@
                               ;; 1980) is read at its year node
                               ms (members place)
                               ins (for [j parents]
-                                    (let [rs (map #(rl/edge-input (:form (edges j)) {:kind j :book (bs j) :catalogue (cats j)}
-                                                                  (if (contains? (scales-of j) scale) scale :year) (source %) t)
-                                                  ms)]
+                                    (let [rs (map #(input bs j scale (source %) t) ms)]
                                       {:x (/ (reduce + 0.0 (map :x rs)) (count ms)) :reads (mapcat :reads rs)}))]
                           {:x (mapv :x ins) :reads (vec (mapcat :reads ins))}))
            :relation-width (into {} (for [{n :name} (:scales sp)] [n (count parents)]))

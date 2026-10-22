@@ -37,6 +37,8 @@
     {:x [f (excursion catalogue place t 12.0) (excursion catalogue place t 60.0) (* f (double (or moderator 0.0)))]
      :reads (if e [{:dir :relation :kind kind :scale scale :place place :origin o}] [])}))
 
+(declare raw-input)
+
 (defn edge-input
   "{:x value :reads [...]} of what a parent ({:kind :book :catalogue})
   passes along one edge, in the edge's `form`, for `place` at `scale` and
@@ -48,6 +50,14 @@
   (at least three), the parent destabilized against its own past. Never
   its level, which carries the place's lasting risk the child already sees
   (docs/WORLD-MODEL.md, trial 43)."
+  [form parent scale place t]
+  (when (= :level form)
+    (throw (ex-info "bnm.relations/edge-input: the level is no link's form" {:form form})))
+  (raw-input form parent scale place t))
+
+(defn raw-input
+  "edge-input's forms and the parent's :level (its latest state before t),
+  which passes only as its own part (bnm.factors), never raw."
   [form {:keys [kind book catalogue]} scale place t]
   (let [{:keys [onsets from known-lag]} catalogue
         lag (or known-lag 12)
@@ -59,6 +69,10 @@
       :post3 {:x (if covered? (recent 36) 0.0) :reads []}
       :e1 {:x (if covered? (excursion catalogue place t 12.0) 0.0) :reads []}
       :e5 {:x (if covered? (excursion catalogue place t 60.0) 0.0) :reads []}
+      :level (let [[o e] (some-> (get book [scale place]) (rsubseq < t) first)]
+               (if (and covered? e)
+                 {:x (double (:f e)) :reads [{:dir :relation :kind kind :scale scale :place place :origin o}]}
+                 {:x 0.0 :reads []}))
       :destab (let [past (some-> (get book [scale place]) (rsubseq < t))
                     [o e] (first past)
                     prior (map (comp :f val) (take 5 (rest past)))]

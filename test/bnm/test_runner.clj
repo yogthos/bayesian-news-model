@@ -19,6 +19,8 @@
             [bnm.precursors-test]
             [bnm.paired-test]
             [bnm.lattice-test]
+            [bnm.lattice-golden-test]
+            [bnm.factors-test]
             [bnm.lattice-banking-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -57,6 +59,8 @@
     bnm.precursors-test
     bnm.paired-test
     bnm.lattice-test
+    bnm.lattice-golden-test
+    bnm.factors-test
     bnm.lattice-banking-test
     bnm.political-gauges-test
     bnm.reconcile-test

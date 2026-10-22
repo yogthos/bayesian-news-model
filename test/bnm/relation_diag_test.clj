@@ -1,6 +1,6 @@
 (ns bnm.relation-diag-test
   (:require [bnm.relation-diag :as rd]
-            [clojure.test :refer [deftest is]]))
+            [clojure.test :refer [deftest is testing]]))
 
 (deftest an-edge-s-form-from-the-design-years
   ;; a form qualifies when it gains past the child's forecast (LR >= 3.84)
@@ -14,4 +14,8 @@
     (is (= :e1 (rd/choose-form {:e1 (r 10.0 -0.2 1.0)} -1)) "an inhibiting edge, a negative coefficient")
     (is (nil? (rd/choose-form {:e1 (r 10.0 -0.2 1.0)} 1)) "the wrong direction")
     (is (nil? (rd/choose-form {:post3 (r 3.0 0.1 0.0)} 1)) "too little")
-    (is (nil? (rd/choose-form {:level (r 90.0 0.5 0.0) :surprise (r 30.0 0.5 0.0)} 1)))))
+    (is (nil? (rd/choose-form {:level (r 90.0 0.5 0.0) :surprise (r 30.0 0.5 0.0)} 1)))
+    (testing "own parts (bnm.factors) are forms too; the post-crisis regime is preferred in either"
+      (is (= :post3-own (rd/choose-form {:post3 (r 4.0 0.1 3.0) :post3-own (r 9.0 0.1 1.0) :level-own (r 20.0 0.2 1.0)} 1)))
+      (is (= :post3 (rd/choose-form {:post3 (r 12.0 0.1 1.0) :post3-own (r 9.0 0.1 1.0)} 1)) "the larger of the two")
+      (is (= :level-own (rd/choose-form {:level-own (r 20.0 0.2 1.0) :destab-own (r 10.0 0.2 1.0)} 1))))))
