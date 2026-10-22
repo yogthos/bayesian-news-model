@@ -998,6 +998,35 @@ drop relations). The tests stand as registered with t44-world-norel as
 the bench; the linked kinds are those with a parent or a warning. For
 the record, the gauge fix alone: t44-world-norel against t42-world-norel.
 
+**Results, 22 October 2026 (trial 44).**
+1. **Links and warnings against none** (primary), the ten linked kinds'
+   year nodes, 2003-2022: Brier -0.00001 [-0.00024 +0.00025], log
+   +0.00050 [-0.00073 +0.00200]: level. Per kind all are level on both
+   scores; the nearest to a loss is conflict onsets (Brier -0.00016
+   [-0.00041 +0.00004]). Food price shocks, market crashes and sovereign
+   defaults, with neither parent nor warning, match the bench exactly.
+2. **Joint forecasts against independence**, seven edges: Brier -0.00000
+   [-0.00006 +0.00006], level; log -0.00266 [-0.00504 -0.00095], a loss, as
+   in trial 43.
+3. **Against the placebo**: Brier +0.00011 [-0.00004 +0.00026], log
+   +0.00070 [-0.00009 +0.00147]: level, leaning to the real links.
+4. For the record, against t43-world on the six kinds both link: Brier
+   +0.00019 [-0.00017 +0.00054], level (protest surges +0.00123 [-0.00008
+   +0.00274]). The kinds unlinked in one of them differ, as they should:
+   the bench changed with the gauge fix.
+
+The gauge fix alone (t44-world-norel against t42-world-norel, all
+kinds): Brier -0.00048 [-0.00127 +0.00039], level; war onsets lose a
+little on Brier (-0.00021 [-0.00048 -0.00001]) and currency crises on log
+score (-0.00327 [-0.00659 -0.00016]). Reading WDI at its true date costs
+what the stale read had leaked.
+
+Taking own parts made the links honest (the placebo no longer matches
+them) but not useful: what one kind's onset says about another's at the
+place, beyond the base's own gauges, is too little to show in twenty
+years. The relations between events are not where the signal is; trial
+45 asks the slow stocks underneath them instead (docs/STOCK-FLOW.md).
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:

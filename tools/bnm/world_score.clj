@@ -42,6 +42,13 @@
               both (boolean (and (hit? cj) (hit? ck)))]]
     [y (parse-double joint) (* (parse-double pj) (parse-double pk)) both place (str j ">" k)]))
 
+(defn joint-path
+  "The run's joint forecasts file, or nil when it wrote none (a run
+  without relations)."
+  [run]
+  (let [f (str "data/runs/" run "/world-joint.tsv")]
+    (when (.exists (io/file f)) f)))
+
 (defn -main [& args]
   (let [{:keys [run bench reps graph placebo ews]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         reps (or (some-> reps parse-long) 400)
@@ -67,12 +74,14 @@
     (when placebo
       (let [{:keys [pooled]} (pd/world-pair run placebo ks "year" 2003 2022 reps 0.1)]
         (say (format "3. %s against its placebo %s, pooled  Brier %s  log %s" run placebo (fmt pooled) (fmt (:log pooled))))))
-    (let [cats (update-vals (kinds/catalogues) kinds/annual)
-          rows (with-open [r (io/reader (str "data/runs/" run "/world-joint.tsv"))] (vec (joint-rows (line-seq r) cats)))
-          opts {:reps reps :seed 1 :alpha 0.1 :per-block 1}]
-      (say (format "2. joint forecasts against independence, %d edge-country-years, %d with both onsets" (count rows) (count (filter #(nth % 3) rows))))
-      (say (format "   pooled (edges equally)  Brier %s  log %s" (fmt (sc/paired-loss-2way rows brier opts)) (fmt (sc/paired-loss-2way rows log-loss opts))))
-      (doseq [[e rs] (sort-by key (group-by #(nth % 5) rows))
-              :when (>= (count (filter #(nth % 3) rs)) 5)]
-        (say (format "   %-40s n=%5d both=%4d  Brier %s" e (count rs) (count (filter #(nth % 3) rs)) (fmt (sc/paired-loss-2way rs brier opts))))))
+    (if-not (joint-path run)
+      (say "2. no joint forecasts: the run has no relations")
+      (let [cats (update-vals (kinds/catalogues) kinds/annual)
+            rows (with-open [r (io/reader (joint-path run))] (vec (joint-rows (line-seq r) cats)))
+            opts {:reps reps :seed 1 :alpha 0.1 :per-block 1}]
+        (say (format "2. joint forecasts against independence, %d edge-country-years, %d with both onsets" (count rows) (count (filter #(nth % 3) rows))))
+        (say (format "   pooled (edges equally)  Brier %s  log %s" (fmt (sc/paired-loss-2way rows brier opts)) (fmt (sc/paired-loss-2way rows log-loss opts))))
+        (doseq [[e rs] (sort-by key (group-by #(nth % 5) rows))
+                :when (>= (count (filter #(nth % 3) rs)) 5)]
+          (say (format "   %-40s n=%5d both=%4d  Brier %s" e (count rs) (count (filter #(nth % 3) rs)) (fmt (sc/paired-loss-2way rs brier opts)))))))
     (spit (str "data/runs/" run "/world-score.txt") (str out))))
