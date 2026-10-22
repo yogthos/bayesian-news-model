@@ -10,28 +10,63 @@ from data/raw/material/ (never unzipped) and writes data/derived/supply/:
       the same for the HS2012 (2012-) and HS2017 (2017-) editions, when
       their zips are present in data/raw/material/baci-hs12 and baci-hs17.
       Each edition keeps its own codes: an HS12 850760 is not an HS92 code.
-  hs6-world.csv   hs,year,known,hs6,value,tonnes,share,exporters,hhi
+  hs6-world.csv   hs,year,known,hs6,value,tonnes,tonnes_cover,share,exporters,hhi
       per edition (hs = HS92, HS12, HS17), year and product: world value
-      and tonnes, share of that edition's world trade value in the year,
-      the number of exporters with positive value, and the exporters'
-      Herfindahl index of value shares (0-1).
+      and tonnes, the share of the value whose flows carry tonnes
+      (tonnes_cover: BACI leaves q blank for about 1-3% of flows, 1% of
+      value, so tonnes undercount where it is below 1), share of that
+      edition's world trade value in the year, the number of exporters with
+      positive value, and the exporters' Herfindahl index of value shares
+      (0-1). A run over some editions rewrites only their rows.
 
-Known: CEPII publishes BACI once a year, in January (V202601 was released
-2026-01-22 and runs to 2024), so the data for year Y are first known in the
-release of January Y+2: known = year + 2. Every edition of a release is
-reconciled again, so earlier years are revised as well; one vintage is used
-for all years, a known look-ahead in levels but not in timing.
+Known and vintage. CEPII publishes BACI once a year, in January (V202601
+was released 2026-01-22 and runs to 2024; V202102 came in February), so
+the data for year Y are first known in the release of January Y+2: known =
+year + 2. That is right for timing only. Every release re-reconciles all
+years (new mirror data, revised reporter filings, a re-estimated CIF/FOB
+model, re-imputed quantities), so V202601's 2016 is not what V201801 said
+about 2016: one vintage for all years is a look-ahead in levels. For the
+rise score, which is a ratio of trends of world shares, the revision is
+expected to be small next to 8-year changes, but that is an assumption,
+not a measurement. Older vintages are kept by CEPII under
+https://www.cepii.fr/DATA_DOWNLOAD/baci/legacy/<version>/ (HS92, zipped):
+V201901 (.../201901/trade_flows/BACI_HS92_V201901.zip, 2.00 GB, to 2017),
+V202001 (.../202001/trade_flows/, 2.54 GB), V202102 (2.35 GB), V202201
+(2.26 GB), V202401 (2.46 GB), V202401b (2.45 GB), V202501 (2.32 GB);
+the V202301 link on CEPII's page is dead (404). A vintage check scores
+year Y from the release of Y+2 (e.g. 2017 from V201901, 2022 from V202401)
+and compares ranks; not done yet.
 
-Countries: BACI's numeric codes become ISO3 through its own
-country_codes file. Code 490, "Other Asia, nes", is Taiwan: UN Comtrade does
-not list Taiwan and files its trade under 490 (the UN's "Other Asia, n.e.s.";
-BACI's own documentation does not say so), so it is written TWN rather than
-BACI's S19. Small amounts of other unallocated Asian trade may sit in it too. Former
-entities keep their successors' codes as BACI gives them (58
-Belgium-Luxembourg to 1998 as BEL, 280 West Germany as DEU, 736 Sudan to
-2011 as SDN; they never overlap with the successor in a year). Groups
-without an ISO code keep BACI's (ZA1 the Southern African Customs Union to
-1999, R20 EFTA n.e.s.).
+What the flows are. BACI reconciles each flow from the exporter's and the
+importer's declarations (mirror flows, importers weighted by reporting
+reliability, CIF values brought to FOB), so a flow is the reconciled
+estimate, not either filing. Re-exports are not removed: goods that pass
+through an entrepot (Hong Kong, Singapore, the Netherlands, Belgium, the
+UAE) appear as that entrepot's exports as well as their origin's. So
+"exporters" counts shippers, not producers, and the HHI is the
+concentration of shipping countries: it understates producer
+concentration where a hub re-exports (cobalt and rare earths through
+Belgium and the Netherlands, electronics through Hong Kong) and can
+overstate it where the hub is itself the main shipper. Production
+concentration (scripts/minerals.py) is the measure of supply; this one is
+corroboration.
+
+Countries: BACI's numeric codes become ISO3 through its own country_codes
+file. Code 490, "Other Asia, nes", is Taiwan: the file gives it no ISO3
+(S19) and has no 158/Taiwan entry; UN Comtrade does not list Taiwan and
+files partner trade with it under 490 (the UN M49 "Other Asia, n.e.s."),
+and in V202601 490 exports 170 bn USD in 2000 and 577 bn in 2024 with
+integrated circuits (854211) the largest at 231 bn, which is Taiwan's
+profile and size. It is written TWN rather than S19. Small amounts of
+other unallocated Asian trade may sit in it too. Former entities keep
+their successors' codes as BACI gives them (280 West Germany as DEU, 736
+Sudan to 2011 as SDN, 891 Serbia and Montenegro as SCG; they never overlap
+with the successor in a year). 58 Belgium-Luxembourg to 1998 is written
+BEL, which is lossy: Luxembourg's trade sits in BEL until 1998 and is
+apart (LUX) from 1999, so BEL steps down and LUX appears at 1999; a
+Belgium series or exporter count across 1998-99 is not like for like.
+Groups without an ISO code keep BACI's (ZA1 the Southern African Customs
+Union to 1999, R20 EFTA n.e.s.).
 
     python -I scripts/baci.py [--root data/raw/material]
                               [--out data/derived/supply]
@@ -56,6 +91,9 @@ EDITIONS = {  # edition -> (directory under root, bilateral file name)
 }
 
 ISO_OVERRIDE = {490: "TWN"}  # "Other Asia, nes" is Taiwan
+
+COLUMNS = ["hs", "year", "known", "hs6", "value", "tonnes", "tonnes_cover", "share",
+           "exporters", "hhi"]
 
 
 def iso_map(z):
@@ -100,8 +138,12 @@ def world(df, edition):
     by_ex = df[df.value > 0].groupby(["hs6", "exporter"]).value.sum()
     prod = by_ex.groupby(level="hs6").sum()
     sh = by_ex / by_ex.index.get_level_values("hs6").map(prod).values
+    df = df.assign(vq=df.value.where(df.tonnes.notna(), 0.0))
     g = df.groupby("hs6").agg(value=("value", "sum"),
-                              tonnes=("tonnes", lambda s: s.sum(min_count=1)))
+                              tonnes=("tonnes", lambda s: s.sum(min_count=1)),
+                              vq=("vq", "sum"))
+    g["tonnes_cover"] = np.where(g.value > 0, g.vq / g.value.where(g.value > 0), np.nan)
+    g = g.drop(columns="vq")
     g["share"] = g.value / total
     g["exporters"] = by_ex.groupby(level="hs6").size().reindex(g.index).fillna(0).astype(int)
     g["hhi"] = (sh ** 2).groupby(level="hs6").sum().reindex(g.index)
@@ -111,7 +153,7 @@ def world(df, edition):
     g.insert(0, "hs", edition)
     # the world total is the sum of the flows, to rounding
     assert abs(g.value.sum() - total) <= 1e-6 * total, (edition, year)
-    return g[["hs", "year", "known", "hs6", "value", "tonnes", "share", "exporters", "hhi"]]
+    return g[COLUMNS]
 
 
 def run(root, out, editions, bilateral):
@@ -144,8 +186,20 @@ def run(root, out, editions, bilateral):
         if bilateral and not first:
             os.replace(tmp, path)
             print(f"{path}: {rows} rows", file=sys.stderr)
-    w = pd.concat(worlds, ignore_index=True)
     wpath = os.path.join(out, "hs6-world.csv")
+    if not worlds:
+        print(f"no edition read; {wpath} left as it was", file=sys.stderr)
+        return
+    w = pd.concat(worlds, ignore_index=True)
+    done = set(w.hs)
+    if os.path.exists(wpath):  # keep the editions this run did not read
+        old = pd.read_csv(wpath, dtype={"hs6": str})
+        old = old[~old.hs.isin(done)].reindex(columns=COLUMNS)
+        if len(old):
+            w = pd.concat([old, w], ignore_index=True)
+    order = {e: i for i, e in enumerate(EDITIONS)}
+    w = w.sort_values(["hs", "year", "hs6"], key=lambda c: c.map(order) if c.name == "hs" else c,
+                      kind="stable")
     w.to_csv(wpath + ".part", index=False, float_format="%.10g")
     os.replace(wpath + ".part", wpath)
     print(f"{wpath}: {len(w)} rows", file=sys.stderr)
