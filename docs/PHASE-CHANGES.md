@@ -894,7 +894,9 @@ form chosen, by rule (a gain past the child's forecast in the edge's
 direction, at least twice the placebo's; the post-crisis regime when it
 qualifies); twelve of 22 edges kept; each link nested in the node's own
 model, so the averaging weighs the node with it against the node without
-it; no coupling, no moderator. All else as trial 42.
+it; no coupling, no moderator; above the countries a place reads the mean
+of its countries' inputs (the smoke found regions reading zeros); a kind
+without a parent gets no relations. All else as trial 42.
 
 Three runs: **t43-world**, **t43-world-placebo** (each country reading
 its parents at the next country in sorted order), and trial 42's
