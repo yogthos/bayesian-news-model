@@ -15,8 +15,7 @@
     jolt -A:tools -M -m bnm.state-diag --run t44-world-norel [--k 2] [--to 2002]
       [--states data/derived/stocks/food.csv,data/derived/stocks/keen.csv,...]
       [--out data/runs/sequencing/states-t45.edn]"
-  (:require [bnm.ews-diag :as ed]
-            [bnm.states :as states]
+  (:require [bnm.states :as states]
             [bnm.factors :as fac]
             [bnm.kinds :as kinds]
             [bnm.relation-diag :as rd]
@@ -35,6 +34,19 @@
          (take k)
          (mapv (fn [[s {:keys [coef]}]] [s (if (neg? coef) -1 1)])))))
 
+(defn rows
+  "[[real placebo] ...] for a kind's design-year origins (`years` {country
+  (sorted-map origin [p y])}): each country's logit row with the state as
+  `real` reads it and as `placebo` does ((fn [country origin])), kept
+  only where both are known, so both are fitted on the same rows."
+  [years cs real placebo to]
+  (for [c cs [o [p y]] (get years c)
+        :when (and (some? y) (= 11 (mod o 12)) (<= (* 12 1960) o (+ 11 (* 12 to))))
+        :let [a (real c o) b (placebo c o)]
+        :when (and (some? a) (some? b))
+        :let [r {:y y :o (Math/log (/ (max 1e-6 p) (max 1e-6 (- 1.0 p)))) :w 1.0}]]
+    [(assoc r :x [1.0 (double a)]) (assoc r :x [1.0 (double b)])]))
+
 (defn -main [& args]
   (let [{:keys [run to k states out]} (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
         run (or run "t44-world-norel")
@@ -42,7 +54,7 @@
         k (or (some-> k parse-long) 2)
         paths (if states (str/split states #",")
                   (filter #(.exists (io/file %))
-                          (concat (map #(str "data/derived/stocks/" % ".csv") ["food" "keen" "tension"])
+                          (concat (map #(str "data/derived/stocks/" % ".csv") ["food" "keen" "tension" "energy" "technology" "cycles"])
                                   ["data/derived/material/endowments.csv" "data/derived/material/capacity.csv"
                                    "data/derived/material/production.csv"])))
         st (states/read-states paths)
@@ -52,15 +64,21 @@
         tree (fac/place-tree places)
         cs (sort (filter tree places))
         other (zipmap cs (concat (rest cs) [(first cs)]))
-        own (states/own-parts st tree)
+        pairs (states/default-pairs st)
+        world (set (keys (states/world-series st)))
+        read (states/readers st tree pairs)
         results (atom {})
         buf (StringBuilder.)
         say (fn [s] (println s) (.append buf (str s "\n")))]
-    (say (format "states from %s: %d variables" (str/join ", " paths) (count st)))
+    (say (format "states from %s: %d variables, %d world, exposures %s" (str/join ", " paths) (count read) (count world) pairs))
     (say "kind\tstate\tn\tpos\tlr\tcoef\tplacebo-lr\tplacebo-coef")
-    (doseq [kd ks [v by-iso] (sort own)
-            ;; as known at the origin's year end
-            :let [rs (vec (ed/rows (get years kd) cs other (fn [c o] (get-in by-iso [c (quot o 12)])) to))
+    (doseq [kd ks [v f] (sort-by key read)
+            ;; as known at the origin's year end; the placebo another
+            ;; country's, or for a world series the same ten years before
+            :let [rs (vec (rows (get years kd) cs
+                                (fn [c o] (f c (quot o 12)))
+                                (if (world v) (fn [c o] (f c (- (quot o 12) 10))) (fn [c o] (f (other c) (quot o 12))))
+                                to))
                   a (mapv first rs) b (mapv second rs)]
             :when (>= (count (filter :y a)) 5)]
       (let [ra (rd/lr-test a) rb (rd/lr-test b)]

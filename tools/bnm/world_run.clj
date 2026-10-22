@@ -199,13 +199,17 @@
 (defn states-of
   "{kind [{:name :sign :at (fn [country t])}]} of each kind's chosen
   stock-flow states ({:paths [..] :states {kind [[name sign] ...]}},
-  bnm.state-diag): the state's own part at the country as known at the
-  last year ended by the origin."
+  bnm.state-diag), each read as the diagnostic read it (bnm.states/
+  readers: a world series' causal z, any other its own part at the
+  country, exposures included) as known at the last year ended by the
+  origin."
   [{:keys [paths] chosen :states} countries]
   (let [tree (fac/place-tree countries)
-        own (states/own-parts (select-keys (states/read-states paths) (distinct (map first (mapcat val chosen)))) tree)]
+        st (states/read-states paths)
+        read (states/readers st tree (states/default-pairs st))]
     (into {} (for [[k ss] chosen]
-               [k (vec (for [[n sign] ss] {:name n :sign sign :at (fn [c t] (get-in own [n c (lp/ended t)]))}))]))))
+               [k (vec (for [[n sign] ss :let [f (read n)] :when f]
+                         {:name n :sign sign :at (fn [c t] (f c (lp/ended t)))}))]))))
 
 (defn build-specs
   "{kind spec} for `ks` to month `end`."

@@ -39,3 +39,7 @@
         r (ep/evaluate rows [1974 1979 1990 2008])]
     (is (< (get-in r [:mse :network]) (get-in r [:mse :trend])))
     (is (< (get-in r [:mse :network]) (* 0.6 (get-in r [:mse :trend]))))))
+
+(deftest the-economy-s-exposure
+  ;; output-weighted supply-chain energy share across sectors
+  (is (< (Math/abs (- (ep/economy-exposure {"A" [0.1 0.3] "B" [0.0 0.1]} {"A" 3.0 "B" 1.0}) (/ (+ (* 3.0 0.3) (* 1.0 0.1)) 4.0))) 1e-12)))

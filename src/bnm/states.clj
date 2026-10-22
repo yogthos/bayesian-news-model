@@ -35,3 +35,57 @@
                      [v (update-vals (or parts {}) #(update-vals % :own))]))
                  states)))
 
+
+(defn world-series
+  "{variable (sorted-map year value)} of the states held only for the
+  world (iso WLD): a time signal common to every country."
+  [states]
+  (into {} (for [[v by-iso] states :when (and (get by-iso "WLD") (= 1 (count by-iso)))] [v (get by-iso "WLD")])))
+
+(defn world-z
+  "{variable {year z}}: each world series against its own past (an
+  expanding mean and spread, the year included), once five years are
+  known; causal."
+  [world]
+  (into {} (for [[v byy] world]
+             [v (loop [[[y x] & more] (seq byy) n 0 s 0.0 ss 0.0 out {}]
+                  (if (nil? y)
+                    out
+                    (let [n (inc n) s (+ s x) ss (+ ss (* x x))
+                          m (/ s n) sd (Math/sqrt (max 0.0 (- (/ ss n) (* m m))))]
+                      (recur more n s ss (cond-> out (and (>= n 5) (> sd 1e-12)) (assoc y (/ (- x m) sd)))))))])))
+
+(defn exposures
+  "{\"world*country\" {iso (sorted-map year value)}}: for each pair [world
+  country] of state names, the world series times the country's own (its
+  exposure to it: storage pressure times import dependence, say), a
+  country series."
+  [states pairs]
+  (into {} (for [[w c] pairs :let [ws (get-in states [w "WLD"])] :when ws]
+             [(str w "*" c) (into {} (for [[iso byy] (get states c) :when (not= iso "WLD")]
+                                       [iso (into (sorted-map) (for [[y x] byy :let [g (get ws y)] :when g] [y (* g x)]))]))])))
+
+(defn- item [name] (first (str/split (last (str/split name #"/")) #"[_-]")))
+
+(defn default-pairs
+  "[[world country] ...]: each world series with the country series of its
+  item that measure dependence on imports (a country's exposure to a world
+  pressure)."
+  [states]
+  (let [world (set (keys (world-series states)))]
+    (vec (for [w world c (keys states)
+               :when (and (not (world c)) (= (item w) (item c)) (re-find #"import" c) (re-find #"depend" c))]
+           [w c]))))
+
+(defn readers
+  "{variable (fn [iso year])}: how each state is read as known at a year:
+  a world series as its causal z-score (the same at every country), any
+  other its own part at the country (bnm.factors), exposures (`pairs`,
+  world times country) included."
+  [states tree pairs]
+  (let [world (world-series states)
+        wz (world-z world)
+        country (merge (apply dissoc states (keys world)) (exposures states pairs))
+        own (own-parts country tree)]
+    (merge (into {} (for [[v byy] wz] [v (fn [_ y] (get byy y))]))
+           (into {} (for [[v by-iso] own] [v (fn [c y] (get-in by-iso [c y]))])))))

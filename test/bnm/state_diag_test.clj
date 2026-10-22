@@ -21,3 +21,16 @@
     (is (= [["a" -1] ["b" 1]] (sd/choose results 2)))
     (is (= [["a" -1] ["b" 1] ["c" 1]] (sd/choose results 5)) "d: its placebo gains nearly as much")
     (is (empty? (sd/choose {"a" (r 3.0 0.1 0.0)} 2)))))
+
+(deftest world-states-and-exposures
+  ;; a world series (iso WLD) is read as its causal z-score; a product of a
+  ;; world series and a country's own (exposure to it) is a country series
+  (let [st {"w" {"WLD" (sorted-map 2000 1.0 2001 2.0 2002 3.0 2003 2.0 2004 1.0 2005 10.0)}
+            "c" {"AAA" (sorted-map 2002 0.5 2003 0.5) "BBB" (sorted-map 2003 0.1)}}]
+    (is (= #{"w"} (set (keys (bnm.states/world-series st)))))
+    (let [z (get (bnm.states/world-z (bnm.states/world-series st)) "w")]
+      (is (nil? (z 2000)) "too few to scale")
+      (is (> (z 2005) 1.0) "a jump above its past"))
+    (let [x (bnm.states/exposures st [["w" "c"]])]
+      (is (= 1.0 (get-in x ["w*c" "AAA" 2003])) "2.0 times 0.5")
+      (is (< (Math/abs (- 0.2 (get-in x ["w*c" "BBB" 2003]))) 1e-12)))))

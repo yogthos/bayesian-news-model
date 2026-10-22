@@ -8,9 +8,11 @@
   unit pass-through (H) and the estimated network pass-through (N), each
   fitted only on the years before the shock tested.
 
-    jolt -A:tools -M -m bnm.energy-pilot [--reps 400]
+    jolt -A:tools -M -m bnm.energy-pilot [--reps 400] [--states-only true]
 
-  Prints the tests and writes data/runs/energy-pilot/{rows.tsv,score.txt}."
+  Prints the tests and writes data/runs/energy-pilot/score.txt, and the
+  economies' energy states for the event lattice to
+  data/derived/stocks/energy.csv (states)."
   (:require [augur.math :as m]
             [augur.score :as sc]
             [clojure.java.io :as io]
@@ -124,9 +126,51 @@
                :when g]
            (let [[a ell] (ex s)] {:c c :s s :t t :h h :g g :lag lag :a a :ell ell :e e})))))
 
+(defn economy-exposure
+  "The output-weighted supply-chain energy share of an economy: `expo`
+  {sector [a L]}, `go` {sector output}."
+  [expo go]
+  (let [ss (filter go (keys expo))
+        total (reduce + 0.0 (map go ss))]
+    (when (pos? total) (/ (reduce + 0.0 (for [s ss] (* (go s) (second (expo s))))) total))))
+
+(defn states
+  "Rows [iso year variable value] for the event lattice (bnm.state-diag),
+  each as known at `year`: the energy shock of the year before
+  (energy/shock), the economy's exposure from the table three years
+  before (energy/exposure) and their product (energy/pass-through)."
+  []
+  (let [secs (read-csv "data/derived/io/spine-sectors.csv")
+        go (reduce (fn [acc d] (if (seq (d "go")) (assoc-in acc [[(d "country") (parse-long (d "year"))] (d "sector")] (parse-double (d "go"))) acc)) {} secs)
+        sectors (vec (sort (distinct (map #(% "sector") secs))))
+        flows (with-open [r (io/reader "data/derived/io/spine-flows.csv")]
+                (reduce (fn [acc l] (let [[c y f t v] (str/split l #",")] (assoc-in acc [[c (parse-long y)] [f t]] (parse-double v))))
+                        {} (rest (line-seq r))))
+        pcs (reduce (fn [acc d] (assoc-in acc [[(d "country") (parse-long (d "year"))] (d "sector")] (parse-double (d "price_change"))))
+                    {} (read-csv "data/derived/io/spine-prices.csv"))]
+    (for [[c y] (keys go)
+          :let [k (+ y 3)
+                g (go [c y])
+                fl (flows [c y])
+                a (when fl (into {} (for [[[f t] v] fl :let [gt (g t)] :when (and gt (pos? gt))] [[f t] (/ v gt)])))
+                l (when a (leontief a sectors))
+                ex (when l (economy-exposure (into {} (for [s sectors] [s [(get a ["REF" s] 0.0) (get l ["REF" s] 0.0)]])) g))
+                pc (pcs [c (- k 1)]) w (go [c (- k 2)])
+                e (when (and pc (pc "REF") w) (shock pc w))]
+          row (cond-> []
+                ex (conj [c k "energy/exposure" ex])
+                e (conj [c k "energy/shock" e])
+                (and ex e) (conj [c k "energy/pass-through" (* ex e)]))]
+      row)))
+
 (defn -main [& args]
-  (let [{:keys [reps]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [reps states-only]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         reps (or (some-> reps parse-long) 400)
+        _ (io/make-parents "data/derived/stocks/x")
+        _ (with-open [w (io/writer "data/derived/stocks/energy.csv")]
+            (.write w "iso,year,variable,value\n")
+            (doseq [[c y v x] (sort (states))] (.write w (str c "," y "," v "," x "\n"))))
+        _ (when (= "true" states-only) (System/exit 0))
         rs (rows)
         shocks [1974 1979 1990 2008]
         {:keys [rows mse]} (evaluate rs shocks)
