@@ -1050,6 +1050,42 @@ before any test year is scored (PRINCIPLES 9).
      is 370120 or 284190). Importer-exporter overlap of big trading
      countries does not single out recipes; the edges stay with the
      recipes and the sub-node parents.
+   - Bug hunt before accepting that (PRINCIPLES 10). Lithium carbonate ->
+     850780 in 2019 traced end to end: the overlap is the carbonate's
+     importers against 850780's exporters (Korea, China and Japan carry
+     0.47 of the 0.61), the windows are 2012-14 against 2017-19, and
+     850780 is in the downstream set. It ranks 33rd because 32 outputs
+     exported by the same three countries score higher (tankers 890120
+     first); its overlap fell from the early window (-0.02), so it is not
+     proposed. Its 39 placebos are unrelated goods of the same value
+     (yarn, nuts, horses, lamps; overlap 0.12-0.56), not substitutes, so
+     the test is not too strict. One bug: the downstream set dropped
+     products for a revision step in tonnes although it ranks value share
+     alone (850780 has a tonnes jump at 2007 and was out 2008-13). Fixed
+     (the set now filters on the value-share step); it changes little:
+     HS92 precision 0.248 -> 0.243 against a base of 0.213 -> 0.209, lift
+     1.16 either way, targets as before. recipes.csv has no diagonal, so
+     a pair within one parent (lithium hydroxide -> cathode salts 284190,
+     both C_CHEM) can never count; leaving those pairs out leaves the lift
+     at 1.16. The negative stands.
+   - Robustness. Placebos without the candidate's whole HS2 chapter:
+     lift 1.16, targets unchanged. Specialisation instead of value (each
+     country's flow over its total trade, countries under 1 bn USD out;
+     chosen after the failure above, PRINCIPLES 9): Li-ion -> 870390
+     becomes the top proposal in 2022-23 and lithium hydroxide proposes
+     850780 in 2017 (rank 8), but precision against the recipes falls
+     below base (0.185 vs 0.209, lift 0.88), so it is not adopted and its
+     hit is not evidence.
+   - At the sub-node level (pairs of sub-node codes, known when the
+     recipe priors link them: li-ion from lithium, cobalt, nickel and
+     graphite, cars from batteries and copper, PV from polysilicon and
+     copper), HS92 proposals hit 8 of 61 against a base of 0.038 (lift
+     3.4, p 0.001; 7 of 56 before the fix), but HS12 hits 3 of 42 (lift
+     1.6, p 0.29) and no target input's top proposal is a recipe link.
+     Lithium carbonate's and hydroxide's top outputs include cathode
+     salts 284190, accumulator parts 850790 and fluoride salts 282690
+     (LiPF6), one step upstream of the cell, which the targets (chemical
+     -> cell) skip; that is a reading of the targets, not a pass.
 8. **Essentiality R_i(Y, H).** Outage loss (bnm.supply, σ learned, import
    reallocation added) × disruption probability (stage concentration, OECD
    restrictions, the project's onset forecasts for supplying places,

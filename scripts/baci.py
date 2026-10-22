@@ -29,8 +29,10 @@ are thousand USD, tonnes metric tons (blank where BACI has none).
 
 A run over some editions rewrites only their rows in every output. The
 full bilateral files (hs6.csv, hs6-hs12.csv, hs6-hs17.csv: 13, 6.9 and
-4.3 GB) are written only with --full; nothing reads them, and the zips
-rebuild them in minutes.
+4.3 GB) are written only with --full, and the zips rebuild them in
+minutes. scripts/tech-trade.py still reads hs6.csv (850780) and
+hs6-hs17.csv (every 8703 code, with tonnes by country), which none of the
+three files above holds, so it needs a --full run until it is moved.
 
 Known and vintage. CEPII publishes BACI once a year, in January (V202601
 was released 2026-01-22 and runs to 2024; V202102 came in February), so
