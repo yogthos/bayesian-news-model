@@ -161,3 +161,41 @@
     (is (close? 12.0 (last (get-in r [:stocks :pool])) 1e-9) "in equilibrium: 3 a year for 4 years")
     (is (< (sf/imbalance r) 1e-9))
     (is (= 3.0 (get-in (sf/at m 0.0) [:flows :arrive])))))
+
+(deftest a-run-from-given-levels
+  ;; :levels starts the stocks where a previous run (or an estimate) left
+  ;; them: two runs back to back are one
+  (let [m (sf/model {:params {:r 0.3} :stocks {:s {:init 1.0}} :flows {:g {:to :s :rate (fn [v] (* (v :r) (v :s) (- 1.0 (/ (v :s) 10.0))))}}})
+        whole (sf/run m {:from 0.0 :to 10.0 :dt 0.5})
+        a (sf/run m {:from 0.0 :to 5.0 :dt 0.5})
+        b (sf/run m {:from 5.0 :to 10.0 :dt 0.5 :levels {:s (last (get-in a [:stocks :s]))}})]
+    (is (= (last (get-in whole [:stocks :s])) (last (get-in b [:stocks :s]))))))
+
+(deftest limits-cascade-until-they-hold
+  ;; a flow that reads a limited flow may itself need limiting: the limits
+  ;; are found again until none is broken
+  (let [m (sf/model {:stocks {:a {:init 1.0 :nonneg true} :b {:init 1.0 :nonneg true}}
+                     :flows {:f {:from :a :rate (fn [_] 5.0)}
+                             :g {:from :b :rate (fn [v] (- 6.0 (v :f)))}}})
+        r (sf/run m {:from 0.0 :to 1.0 :dt 0.5})]
+    (is (every? #(>= % 0.0) (get-in r [:stocks :b])))
+    (is (every? #(>= % 0.0) (get-in r [:stocks :a])))))
+
+(deftest overrides-name-parameters
+  (let [m (sf/model {:params {:k 1.0} :stocks {:s {:init 0.0}} :flows {:f {:to :s :rate (fn [v] (v :k))}}})]
+    (is (thrown? clojure.lang.ExceptionInfo (sf/run m {:from 0.0 :to 1.0 :dt 1.0 :params {:kk 5.0}})) "a misspelled one")
+    (is (thrown? clojure.lang.ExceptionInfo (sf/run m {:from 0.0 :to 1.0 :dt 1.0 :params {:s 99.0}})) "a stock's name")
+    (is (thrown? clojure.lang.ExceptionInfo (sf/at m 0.0 {:kk 5.0})))
+    (is (thrown? clojure.lang.ExceptionInfo (sf/model {:stocks {:s {}}})) "a stock without :init")))
+
+(deftest smooth3-is-three-smooths
+  (let [in {:aux {:x (fn [v] (if (< (v :t) 1.0) 0.0 (+ 1.0 (Math/sin (v :t)))))}}
+        a (sf/run (sf/combine (sf/model in) (sf/smooth-n :p :x 3.0 3)) {:from 0.0 :to 20.0 :dt 0.1})
+        b (sf/run (sf/combine (sf/model in) (sf/smooth :q1 :x 1.0) (sf/smooth :q2 :q1 1.0) (sf/smooth :q3 :q2 1.0))
+                  {:from 0.0 :to 20.0 :dt 0.1})]
+    (is (every? #(< (Math/abs %) 1e-12) (map - (get-in a [:aux :p]) (get-in b [:stocks :q3]))))))
+
+(deftest trend-times-may-be-names
+  (let [m (sf/combine (sf/model {:params {:tp 1.0 :th 5.0} :aux {:x (fn [v] (Math/exp (* 0.05 (v :t))))}})
+                      (sf/trend :gr :x :tp :th 0.05))]
+    (is (< (Math/abs (- 0.05 (last (get-in (sf/run m {:from 0.0 :to 40.0 :dt 0.1}) [:aux :gr])))) 0.01))))

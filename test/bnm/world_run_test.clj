@@ -1,5 +1,6 @@
 (ns bnm.world-run-test
   (:require [bnm.factors]
+            [bnm.lattice-political]
             [bnm.world-run :as wr]
             [clojure.test :refer [deftest is testing]]))
 
@@ -124,3 +125,25 @@
         sp (wr/with-relations {:scales [{:name :year}] :parent par} [] (atom {}) {} {} {}
                               (wr/placebo-source ["AAA" "BBB"]) {:warning warn})]
     (is (= [4.0] (:x ((:relations sp) :year "AAA" 23))))))
+
+(deftest a-warning-as-known-at-the-origin
+  ;; at a year-end origin the warning is the window ending that year, as
+  ;; known then; at an origin within a year, the last year ended
+  (let [w (wr/warnings {:window 3 :warnings {"k" ["s" :ac1 1]}}
+                       (fn [[c v]] (when (= v "s") ::series)) ["AAA"])]
+    (is (fn? (get-in w ["k" :at]))))
+  (is (= 2000 (bnm.lattice-political/ended (+ 11 (* 12 2000)))))
+  (is (= 1999 (bnm.lattice-political/ended (+ 5 (* 12 2000)))) "mid-year: the year before, ended")
+  (is (thrown? clojure.lang.ExceptionInfo (wr/warnings {"k" ["s" :ac1 1]} {} [])) "the old format refused"))
+
+(deftest parents-and-a-warning-together
+  (let [cat {:onsets {"AAA" (sorted-set 100)} :from {"AAA" 0} :known-lag 12}
+        sp (wr/with-relations {:scales [{:name :year}]} ["bank" "infl"] (atom {"bank" {} "infl" {}})
+                              {"bank" cat "infl" cat} {"bank" #{:year} "infl" #{:year}}
+                              {"bank" {:form :post3 :sign 1} "infl" {:form :post3 :sign -1}}
+                              identity {:warning {:sign -1 :at (fn [_ _] 7.0)}})]
+    (is (= {:rel/bank [0] :rel/infl [1] :rel/warning [2]} (get-in sp [:relation-groups :year])))
+    (is (= 3 (get-in sp [:relation-width :year])))
+    (is (= [1.0 1.0 7.0] (:x ((:relations sp) :year "AAA" 120))))
+    (is (= {4 [0.2 0.1] 5 [-0.2 0.1] 6 [-0.2 0.1]}
+           ((:prior sp) :year :country {:parts {:rel/bank [4] :rel/infl [5] :rel/warning [6]}})))))

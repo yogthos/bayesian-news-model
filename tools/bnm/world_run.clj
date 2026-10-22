@@ -175,13 +175,15 @@
   ({:window w :warnings {kind [series indicator sign]}}, bnm.ews-diag):
   the indicator of the country's own part of the series over the window
   ending at the origin's year, as known then."
-  [{:keys [window] ews :warnings} db countries]
+  [{:keys [window] ews :warnings :as spec} db countries]
+  (when-not (and window ews)
+    (throw (ex-info "bnm.world-run/warnings: {:window :warnings} expected (rerun bnm.ews-diag)" {:keys (keys spec)})))
   (let [tree (fac/place-tree countries)
         cs (filter tree countries)
         sigs (into {} (pmap (fn [v] [v (ews/own-indicators (ews/series-panel db cs v) tree window)])
                             (distinct (map first (vals ews)))))]
     (into {} (for [[k [v ind sign]] ews]
-               [k {:sign sign :at (fn [c t] (get-in sigs [v c (quot t 12) ind]))}]))))
+               [k {:sign sign :at (fn [c t] (get-in sigs [v c (lp/ended t) ind]))}]))))
 
 (defn build-specs
   "{kind spec} for `ks` to month `end`."

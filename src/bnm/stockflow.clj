@@ -53,6 +53,8 @@
         twice (for [[k c] (frequencies names) :when (> c 1)] k)]
     (when (seq twice) (throw (ex-info (str "bnm.stockflow: names defined twice " (vec twice)) {:names (vec twice)})))
     (when (some #{:t} names) (throw (ex-info "bnm.stockflow: :t is time" {})))
+    (doseq [[k {:keys [init]}] stocks :when (nil? init)]
+      (throw (ex-info (str "bnm.stockflow: stock " k " has no :init") {:stock k})))
     (doseq [[k {:keys [from to]}] flows
             s [from to] :when (and s (not (contains? stocks s)))]
       (throw (ex-info (str "bnm.stockflow: flow " k " names no stock " s) {:flow k :stock s})))
@@ -98,6 +100,7 @@
          start (fn [v] (* (if (some? init) (double init) (double (v input))) (/ (value-of v tau) n)))
          rate (fn [s] (fn [v] (/ (v s) (/ (value-of v tau) n))))
          last-out (if to name (stage (peek stocks) "out"))]
+     ;; checked when combined: its :to stock lives in the model it joins
      {:params {}
       :stocks (into {} (for [s stocks] [s {:init start}]))
       :flows (into {(stage name "in") {:to (first stocks) :rate (fn [v] (v input))}
@@ -139,10 +142,10 @@
   [name input tau-p tau-h init]
   (let [p (stage name "perceived") r (stage name "reference")]
     (model {:stocks {p {:init (fn [v] (double (v input))) :info true}
-                     r {:init (fn [v] (/ (double (v input)) (+ 1.0 (* init tau-h)))) :info true}}
-            :flows {(stage name "p-adjust") {:to p :rate (fn [v] (/ (- (v input) (v p)) (double tau-p)))}
-                    (stage name "r-adjust") {:to r :rate (fn [v] (/ (- (v p) (v r)) (double tau-h)))}}
-            :aux {name (fn [v] (/ (- (v p) (v r)) (* (v r) (double tau-h))))}})))
+                     r {:init (fn [v] (/ (double (v input)) (+ 1.0 (* init (value-of v tau-h))))) :info true}}
+            :flows {(stage name "p-adjust") {:to p :rate (fn [v] (/ (- (v input) (v p)) (value-of v tau-p)))}
+                    (stage name "r-adjust") {:to r :rate (fn [v] (/ (- (v p) (v r)) (value-of v tau-h)))}}
+            :aux {name (fn [v] (/ (- (v p) (v r)) (* (v r) (value-of v tau-h))))}})))
 
 (defn- resolver
   "A lookup of every name at time t: params, the `levels` given, and
@@ -173,38 +176,48 @@
   "Every flow's and auxiliary's value at t: flows draining a :nonneg stock
   (an outflow, or an inflow run backwards) scaled to what it holds, then
   everything resolved again with those flows pinned, so what reads them
-  sees what moved."
+  sees what moved; again until no stock is overdrawn (a flow reading a
+  limited one may itself need limiting)."
   [{:keys [stocks flows aux]} params t levels dt]
   (let [fns (merge aux (update-vals flows :rate))
-        v (resolver t params levels fns {})
-        raw (into {} (for [k (keys flows)] [k (v k)]))
-        drains (fn [k x] (let [{:keys [from to]} (flows k)] (if (neg? x) to from)))
-        scale (into {} (for [[s {:keys [nonneg]}] stocks :when nonneg
-                             :let [demand (reduce + 0.0 (for [[k x] raw :when (= s (drains k x))] (Math/abs (double x))))
-                                   room (/ (max 0.0 (levels s)) dt)]
-                             :when (> demand room)]
-                         [s (/ room demand)]))]
-    (if (empty? scale)
-      {:flows raw :aux (into {} (for [k (keys aux)] [k (v k)]))}
-      (let [limited (into {} (for [[k x] raw :let [s (scale (drains k x))] :when s] [k (* x s)]))
-            v2 (resolver t params levels fns limited)]
-        {:flows (into {} (for [k (keys flows)] [k (v2 k)]))
-         :aux (into {} (for [k (keys aux)] [k (v2 k)]))}))))
+        nonneg (keep (fn [[s {:keys [nonneg]}]] (when nonneg s)) stocks)
+        drains (fn [k x] (let [{:keys [from to]} (flows k)] (if (neg? x) to from)))]
+    (loop [limited {} pass 0]
+      (let [v (resolver t params levels fns limited)
+            fl (into {} (for [k (keys flows)] [k (v k)]))
+            scale (into {} (for [s nonneg
+                                 :let [demand (reduce + 0.0 (for [[k x] fl :when (= s (drains k x))] (Math/abs (double x))))
+                                       room (/ (max 0.0 (levels s)) dt)]
+                                 :when (> demand (* room (+ 1.0 1e-12)))]
+                             [s (/ room demand)]))]
+        (cond (empty? scale) {:flows fl :aux (into {} (for [k (keys aux)] [k (v k)]))}
+              (> pass (inc (count nonneg))) (throw (ex-info "bnm.stockflow: limits on non-negative stocks do not settle" {:t t}))
+              :else (recur (into limited (for [[k x] fl :let [s (scale (drains k x))] :when s] [k (* x s)])) (inc pass)))))))
+
+(defn- params-of
+  "The model's parameters with a run's overrides, each naming one."
+  [m overrides]
+  (when-let [bad (seq (remove (set (keys (:params m))) (keys overrides)))]
+    (throw (ex-info (str "bnm.stockflow: no parameters " (vec bad)) {:names (vec bad)})))
+  (merge (:params m) overrides))
 
 (defn at
   "{:stocks :flows :aux} of `m` at its start, time `t`: the initial
-  levels and what follows from them, :params overriding the model's."
+  levels and what follows from them, :params overriding the model's, the
+  limits on non-negative stocks those of a step of `dt` (1 by default)."
   ([m t] (at m t {}))
-  ([m t params]
-   (let [params (merge (:params m) params)
+  ([m t params] (at m t params 1.0))
+  ([m t params dt]
+   (let [params (params-of m params)
          levels (initial-levels m params (double t))]
-     (assoc (values m params (double t) levels 1.0) :stocks levels))))
+     (assoc (values m params (double t) levels (double dt)) :stocks levels))))
 
 (defn run
   "{:t [...] :stocks {name [...]} :aux {name [...]} :flows {name [...]}
   :outside [in out] :conserved #{stocks}} of `m` from :from to :to by
   Euler steps of :dt (the span a whole number of steps), :params
-  overriding the model's: each series at every time, flows and
+  overriding the model's, :levels the stocks' starting levels where given
+  (to continue a run, or start from an estimate): each series at every time, flows and
   auxiliaries from the stocks then; :outside the material that came in
   from and went out to the outside over the run, into or out of the
   conserved (material) stocks (for imbalance)."
@@ -214,13 +227,13 @@
         n (long (Math/round span))]
     (when-not (and (pos? dt) (>= to from) (< (Math/abs (- span n)) 1e-9))
       (throw (ex-info "bnm.stockflow/run: dt > 0 and the span a whole number of steps" (select-keys opts [:from :to :dt]))))
-    (let [params (merge (:params m) (:params opts))
+    (let [params (params-of m (:params opts))
           conserved (set (keep (fn [[k {:keys [info]}]] (when-not info k)) stocks))
           outside (fn [x f] (cond (and (nil? (:from f)) (conserved (:to f))) [x 0.0]
                                   (and (nil? (:to f)) (conserved (:from f))) [0.0 x]
                                   :else [0.0 0.0]))
           snap (fn [acc k m] (reduce (fn [acc [name x]] (update-in acc [k name] (fnil conj! (transient [])) x)) acc m))]
-      (loop [i 0 levels (initial-levels m params from) acc {} in 0.0 out 0.0]
+      (loop [i 0 levels (merge (initial-levels m params from) (:levels opts)) acc {} in 0.0 out 0.0]
         (let [t (+ from (* i dt))
               {fl :flows ax :aux} (values m params t levels dt)
               acc (-> (update acc :t (fnil conj! (transient [])) t)

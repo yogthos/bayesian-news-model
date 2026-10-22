@@ -167,6 +167,12 @@
       (let [k (- t (:known-lag cat))]
         (double (count (subseq (get-in cat [:onsets unit] (sorted-set)) > (- k months) <= k)))))))
 
+(defn ended
+  "The last year ended by month t (a year-end origin's own year): data
+  read as of its end are known at t."
+  [t]
+  (quot (- t 11) 12))
+
 (defn spec
   [{:keys [kind db cats annual wdi units end known start]}]
   (let [cat (cats kind)
@@ -192,13 +198,13 @@
         row (memoize (fn [u y] (pg/year-row annual wdi u y)))
         year-raw (fn [u t]
                    (when (in-system u t)
-                     (vec (concat (row u (dec (quot t 12)))
+                     (vec (concat (row u (dec (ended t)))
                                   (hist u t)
                                   (map #(count-known (cats %) u t 120) others)
                                   [(world3 t)]))))
         half-raw (fn [u t]
                    (when (in-system u t)
-                     (let [r (row u (dec (quot t 12)))
+                     (let [r (row u (dec (ended t)))
                            ix (zipmap pg/year-names (range))]
                        (vec (concat (map #(nth r (ix %)) (take 6 half-names)) (hist u t) [(world3 t)])))))
         fin (when (financial-kinds kind) (second (nm/financial db (nm/world-credit db units months))))

@@ -70,7 +70,9 @@
         long (pg/read-long)
         events (on/read-events "data/slow/events.tsv")
         years (range 1816 2003)
-        rows (into {} (for [[iso [a b]] states y years :when (<= a y b)] [[iso y] (pg/year-row annual wdi iso y)]))
+        ;; row y: the gauges as known at the end of year y, as an origin
+        ;; then reads them (nothing from after y's end)
+        rows (into {} (for [[iso [a b]] states y years :when (<= a y b)] [[iso y] (pg/year-row annual wdi iso (dec y))]))
         series (into {} (for [[i k] (map-indexed vector pg/year-names)]
                           [k (reduce (fn [acc [[iso y] r]] (if-let [x (nth r i)] (assoc-in acc [iso y] (double x)) acc)) {} rows)]))
         zs (update-vals series z-all)
