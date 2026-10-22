@@ -41,12 +41,14 @@
 
 (defn scales-for
   "The banking lattice's scales; without the half-decade for the kinds whose
-  catalogue starts in 1980 or later, too few origins for it to learn from.
+  catalogue starts in 1930 or later: fewer than fifteen five-year origins
+  before the test years, too few for it to learn from (currency crises'
+  half-decade nodes, from 1962, overfit in the smoke run).
   `first-year`, the catalogue's first covered year, for kinds beyond the
   political ones."
   ([kind] (scales-for kind (pg/long-from kind)))
   ([_ first-year]
-   (if (>= first-year 1980) (vec (remove #(= :half-decade (:name %)) lb/scales)) lb/scales)))
+   (if (>= first-year 1930) (vec (remove #(= :half-decade (:name %)) lb/scales)) lb/scales)))
 
 (defn first-year
   "A catalogue's first covered year, over its places."
@@ -57,6 +59,15 @@
   "bnm.named's political inputs and its political economy, in groups."
   {:food [0 1 2 3] :fragility [4 9 10] :energy [5 6] :economy [7 8] :climate [11 12]
    :events [13 14 15 16 17] :political-economy [18 19 20 21 22 23]})
+
+(def financial-kinds
+  "Kinds whose quarter nodes read bnm.named's financial inputs (credit,
+  asset prices, the curve, global credit and the VIX), as banking crises'
+  do, rather than the political ones."
+  #{"currency_crisis" "sovereign_default" "market_crash" "fiscal_consolidation"})
+
+(def financial-quarter-groups
+  {:credit [0 1 2 3] :assets [4 5 6 7 8 9 10] :curve [11] :global [12 13 14 15 16 17]})
 
 (def year-names
   (into pg/year-names [:since-last :own10 :own30 :others-1 :others-2 :others-3 :others-4 :world3]))
@@ -101,11 +112,17 @@
                               "inflation_crisis" (t [:urban-growth5 :growth3] [:inflation :growth3] [:participation :assembly]
                                                     [:soldiers-per-capita :spending-per-soldier3] [:population-growth3 :growth3]
                                                     [:top10 :bottom50] [:polyarchy :rule-of-law])
+                              ;; market crashes: their strain runs against the crashes on the design
+                              ;; years (r -0.12 in the smoke run): a protective signal, kept with a
+                              ;; negative prior (contradiction-sign)
                               "market_crash" (t [:working-age :growth3] [:polyarchy :rule-of-law])
                               "sovereign_default" (t [:inflation :growth3] [:population-growth3 :growth3] [:top10 :bottom50]
                                                      [:polyarchy :rule-of-law])
                               "food_price_shock" []}]
-               [k {:year pairs :quarter-lead q :quarter-w2 q}]))))
+               ;; the financial kinds' quarters: banking's (credit growth against the
+               ;; curve, the country's credit cycle against the world's)
+               (let [q (if (financial-kinds k) [[0 11] [0 12]] q)]
+                 [k {:year pairs :quarter-lead q :quarter-w2 q}])))))
 
 (def turns
   "Per kind, [stock flow window]: at the year, for coups, participation
@@ -116,8 +133,17 @@
   (let [q [[4 7 8] [14 7 8]]]
     (into {} (for [k (concat kinds ["currency_crisis" "inflation_crisis" "growth_collapse" "sovereign_default"
                                      "fiscal_consolidation" "market_crash" "food_price_shock"])]
-               [k {:year (if (= k "coup") [[(yi :participation) (yi :polyarchy) 3]] [])
-                   :quarter-lead q :quarter-w2 q}]))))
+               ;; the financial kinds' quarters: banking's turns, the credit gap
+               ;; stretched while house prices, the household boom or equity fall
+               (let [q (if (financial-kinds k) [[2 4 8] [2 5 8] [2 7 8]] q)]
+                 [k {:year (if (= k "coup") [[(yi :participation) (yi :polyarchy) 3]] [])
+                     :quarter-lead q :quarter-w2 q}])))))
+
+(def contradiction-sign
+  "The sign of the prior on each kind's contradiction summaries: more
+  strain, more risk (+1), unless the design years say strain goes with
+  fewer onsets (-1), a protective signal rather than none."
+  {"market_crash" -1})
 
 (def priors
   "What is known and the anatomy agrees with, {group {index [mean var]}}:
@@ -175,11 +201,16 @@
                      (let [r (row u (dec (quot t 12)))
                            ix (zipmap pg/year-names (range))]
                        (vec (concat (map #(nth r (ix %)) (take 6 half-names)) (hist u t) [(world3 t)])))))
-        raw {:quarter-lead (fn [u t] (when (in-system u t) (into (vec (pol u t)) (pe u t))))
-             :quarter-w2 (fn [u t] (when (in-system u t) (into (vec (pol u t)) (pe u t))))
+        fin (when (financial-kinds kind) (second (nm/financial db (nm/world-credit db units months))))
+        q-raw (if fin
+                (fn [u t] (when (in-system u t) (vec (fin u t))))
+                (fn [u t] (when (in-system u t) (into (vec (pol u t)) (pe u t)))))
+        raw {:quarter-lead q-raw
+             :quarter-w2 q-raw
              :year year-raw
              :half-decade half-raw}
-        widths (select-keys {:quarter-lead 24 :quarter-w2 24 :year (count year-names) :half-decade (count half-names)}
+        qw (if fin 18 24)
+        widths (select-keys {:quarter-lead qw :quarter-w2 qw :year (count year-names) :half-decade (count half-names)}
                             (map :name scales))
         table (into {} (for [{:keys [name] :as s} scales]
                          [name (into {} (for [t (origins s) u countries :let [v ((raw name) u t)] :when v] [[u t] v]))]))
@@ -213,9 +244,10 @@
                  (when (seq ys) {:y (boolean (some true? ys)) :known-at (+ hi known-lag)})))
      :gauges gauges
      :gauge-width widths
-     :gauge-groups {:quarter-lead quarter-groups :quarter-w2 quarter-groups :year year-groups :half-decade half-groups}
+     :gauge-groups (let [qg (if fin financial-quarter-groups quarter-groups)]
+                     {:quarter-lead qg :quarter-w2 qg :year year-groups :half-decade half-groups})
      :shrink 0.1
-     :contradiction-prior [0.3 0.25]
+     :contradiction-prior [(* 0.3 (contradiction-sign kind 1)) 0.25]
      :tensions (tensions kind)
      :turns (turns kind)
      ;; no resolution: unlike a banking crisis, after which credit falls

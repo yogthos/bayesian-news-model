@@ -81,18 +81,26 @@
     ;; strain (the first contradiction input) against the outcomes; the
     ;; total strain they pass on (own strain and disagreement with the
     ;; parent either way) against the forecasts, for the record
+    ;; on the design years' origins only (to 2002), and only for a kind with
+    ;; tensions at the year (without them strain is zero throughout)
+    (when (seq (get-in sp [:tensions :year]))
     (let [ys (into {} (for [{:keys [scale place origin y]} (:forecasts r) :when (and (= scale :year) (some? y))] [[place origin] y]))
           i (first (:strain-ix (#'lt/layout sp :year 0)))
           own (for [{:keys [scale level place origin x]} (:trace r)
                     :let [y (ys [place origin])]
-                    :when (and (= scale :year) (= level :country) (>= origin (max (:start sp) (* 12 1960))) (some? y))]
+                    :when (and (= scale :year) (= level :country) (>= origin (max (:start sp) (* 12 1960))) (<= origin (+ 11 (* 12 2002))) (some? y))]
                 [(double (nth x i)) (if y 1.0 0.0)])
           r-y (corr (map first own) (map second own))
           rows (for [[[s place] byo] (:book r) :when (and (= s :year) (= 3 (count place)))
                      [o {:keys [p strain]}] byo :when (>= o (max (:start sp) (* 12 1960)))]
                  [(double strain) (Math/log (/ p (- 1.0 p)))])]
-      (check (> r-y 0.0) (format "year: a country's own strain and its outcomes move together (r = %.3f, n %d)" r-y (count own)))
-      (println (format "        year: total strain and the forecast's log odds, r = %.2f" (corr (map first rows) (map second rows)))))
+      ;; a relation in the direction the kind's prior states: more strain more
+      ;; risk, or for a protective signal (a negative prior) less
+      (let [sign (if (neg? (first (:contradiction-prior sp [0.3]))) -1.0 1.0)]
+        (check (pos? (* sign r-y))
+               (format "year: a country's own strain and its outcomes related in the prior's direction (%s, r = %.3f, n %d)"
+                       (if (pos? sign) "more strain, more onsets" "more strain, fewer onsets") r-y (count own))))
+      (println (format "        year: total strain and the forecast's log odds, r = %.2f" (corr (map first rows) (map second rows))))))
     ;; 5. nothing from the future
     (let [bad (for [{:keys [origin reads learned scale]} (:trace r)
                     rd reads

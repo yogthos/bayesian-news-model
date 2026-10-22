@@ -13,7 +13,8 @@
   onsets as one- and five-year excursions, its state through the place's
   executive constraints (V-Dem's judicial and legislative constraints, the
   year before), and the coupling. A parent's state coefficient starts at
-  theory's sign (mean 0.2, variance 0.1).
+  its edge's sign (mean 0.2 for an exciting edge, -0.2 for an inhibiting
+  one, variance 0.1).
 
     jolt -A:tools -M -m bnm.world-run --out world [--end m] [--kinds a,b] [--without-relations true]
                                       [--smoke true]
@@ -68,7 +69,7 @@
 (defn with-relations
   "`sp` with its :relations: the parents' inputs from `books` (an atom of
   {kind book}, the state before t), the coupling over every other kind."
-  [sp kind parents all-kinds books cats moderator]
+  [sp kind parents all-kinds books cats moderator scales-of signs]
   (let [others (vec (remove #{kind} all-kinds))
         width (inc (* 4 (count parents)))
         groups (into {(keyword "rel" "coupling") [(* 4 (count parents))]}
@@ -79,7 +80,11 @@
            :relations (fn [scale place t]
                         (let [bs @books
                               m (get moderator [place (dec (quot t 12))] 0.0)
-                              ins (map #(rl/parent-inputs {:kind % :book (bs %) :catalogue (cats %)} scale place t m) parents)]
+                              ;; a parent without this scale (no half-decade for the kinds from
+                              ;; 1980) is read at its year node
+                              ins (map #(rl/parent-inputs {:kind % :book (bs %) :catalogue (cats %)}
+                                                          (if (contains? (scales-of %) scale) scale :year) place t m)
+                                       parents)]
                           {:x (vec (concat (mapcat :x ins) [(rl/coupling bs others scale place t #(cut % scale t))]))
                            :reads (vec (mapcat :reads ins))}))
            :relation-width (into {} (for [{n :name} (:scales sp)] [n width]))
@@ -88,7 +93,7 @@
            :prior (fn [scale level lay]
                     (merge (when prior (prior scale level lay))
                            (into {} (for [j parents :let [ix (get-in lay [:groups (keyword "rel" j)])] :when (seq ix)]
-                                      [(first ix) [0.2 0.1]])))))))
+                                      [(first ix) [(* 0.2 (get signs j 1)) 0.1]])))))))
 
 (defn build-specs
   "{kind spec} for `ks` to month `end`."
@@ -146,7 +151,11 @@
         specs0 (build-specs ks end cats)
         books (atom {})
         specs (into {} (for [[k sp] specs0]
-                         [k (cond-> (if (= "true" without-relations) sp (with-relations sp k (parents k) ks books cats moderator))
+                         [k (cond-> (if (= "true" without-relations) sp
+                                      (with-relations sp k (parents k) ks books cats moderator
+                                                      (into {} (for [[j sj] specs0] [j (set (map :name (:scales sj)))]))
+                                                      ;; each parent's edge sign: exciting or inhibiting
+                                                      (into {} (for [[[j k'] e] graph :when (= k' k)] [j (:sign e 1)]))))
                               (= "true" smoke) (assoc :trace :inputs))]))
         ;; the runner owns the books atom the relations read
         _ (println "running the world")

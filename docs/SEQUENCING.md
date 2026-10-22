@@ -11,38 +11,44 @@ data/runs/sequencing/graph.edn.
 
 The rule for an edge was fixed before any table was read: the lagged
 test's likelihood ratio 13.8 or more (p < 0.001, two degrees of freedom)
-with j's coefficients summing positive (**data**), or an edge the
-literature names with j above its calm rate in the three years before k
-(**theory**); an edge from a higher tier to a lower one needs the test.
+(**data**), or an edge the literature names with j above its calm rate in
+the three years before k (**theory**); an edge from a higher tier to a
+lower one needs the test. A tested edge is **exciting** when j's
+coefficients sum positive and **inhibiting** when they sum negative: as
+real a signal, of another type. (First fixed with exciting edges only, 21
+edges; amended the same day, before any training, to keep inhibiting ones,
+which adds inflation crises inhibiting banking crises: much less likely the
+year after, more likely over five.)
 On a synthetic world the test finds a true link at LR 160-240 and gives
 0.1-2.3 for an unrelated kind (test/bnm/sequencing_test.clj); with 156
 pairs at p < 0.001 about 0.16 false edges are expected.
 
-## The candidate graph: 21 edges
+## The candidate graph: 22 edges
 
-| edge | tiers | source | LR | rate before k (3 years) |
-|---|---|---|---|---|
-| growth_collapse → conflict_onset | wuli → renli | theory | 1.2 | 1.07 |
-| growth_collapse → coup | wuli → renli | theory | 2.4 | 1.96 |
-| growth_collapse → protest_surge | wuli → renli | theory | 3.7 | 2.33 |
-| growth_collapse → sovereign_default | wuli → shili | data | 21.0 | 2.10 |
-| inflation_crisis → coup | wuli → renli | theory | 10.5 | 3.75 |
-| banking_crisis → currency_crisis | shili → shili | data | 26.3 | 3.08 |
-| banking_crisis → growth_collapse | shili → wuli | data | 22.4 | 2.11 |
-| banking_crisis → inflation_crisis | shili → wuli | data | 35.4 | 4.69 |
-| banking_crisis → sovereign_default | shili → shili | data | 24.9 | 2.29 |
-| currency_crisis → banking_crisis | shili → shili | theory | 0.0 | 2.00 |
-| currency_crisis → inflation_crisis | shili → wuli | data | 19.5 | 5.37 |
-| sovereign_default → banking_crisis | shili → shili | theory | 1.1 | 1.55 |
-| sovereign_default → fiscal_consolidation | shili → shili | theory | 4.5 | 2.30 |
-| sovereign_default → inflation_crisis | shili → wuli | data | 19.6 | 5.62 |
-| conflict_onset → coup | renli → renli | data | 15.7 | 3.43 |
-| conflict_onset → violence_surge | renli → renli | data | 20.1 | 3.07 |
-| conflict_onset → war_onset | renli → renli | data | 17.9 | 12.71 |
-| coup → conflict_onset | renli → renli | theory | 7.3 | 3.46 |
-| protest_surge → coup | renli → renli | theory | 6.8 | 1.75 |
-| violence_surge → conflict_onset | renli → renli | theory | 4.3 | 2.28 |
-| violence_surge → war_onset | renli → renli | data | 15.4 | 3.01 |
+| edge | tiers | source | type | LR | rate before k (3 years) |
+|---|---|---|---|---|---|
+| growth_collapse → conflict_onset | wuli → renli | theory | exciting | 1.2 | 1.07 |
+| growth_collapse → coup | wuli → renli | theory | exciting | 2.4 | 1.96 |
+| growth_collapse → protest_surge | wuli → renli | theory | exciting | 3.7 | 2.33 |
+| growth_collapse → sovereign_default | wuli → shili | data | exciting | 21.0 | 2.10 |
+| inflation_crisis → banking_crisis | wuli → shili | data | inhibiting | 28.7 | 0.73 |
+| inflation_crisis → coup | wuli → renli | theory | exciting | 10.5 | 3.75 |
+| banking_crisis → currency_crisis | shili → shili | data | exciting | 26.3 | 3.08 |
+| banking_crisis → growth_collapse | shili → wuli | data | exciting | 22.4 | 2.11 |
+| banking_crisis → inflation_crisis | shili → wuli | data | exciting | 35.4 | 4.69 |
+| banking_crisis → sovereign_default | shili → shili | data | exciting | 24.9 | 2.29 |
+| currency_crisis → banking_crisis | shili → shili | theory | exciting | 0.0 | 2.00 |
+| currency_crisis → inflation_crisis | shili → wuli | data | exciting | 19.5 | 5.37 |
+| sovereign_default → banking_crisis | shili → shili | theory | exciting | 1.1 | 1.55 |
+| sovereign_default → fiscal_consolidation | shili → shili | theory | exciting | 4.5 | 2.30 |
+| sovereign_default → inflation_crisis | shili → wuli | data | exciting | 19.6 | 5.62 |
+| conflict_onset → coup | renli → renli | data | exciting | 15.7 | 3.43 |
+| conflict_onset → violence_surge | renli → renli | data | exciting | 20.1 | 3.07 |
+| conflict_onset → war_onset | renli → renli | data | exciting | 17.9 | 12.71 |
+| coup → conflict_onset | renli → renli | theory | exciting | 7.3 | 3.46 |
+| protest_surge → coup | renli → renli | theory | exciting | 6.8 | 1.75 |
+| violence_surge → conflict_onset | renli → renli | theory | exciting | 4.3 | 2.28 |
+| violence_surge → war_onset | renli → renli | data | exciting | 15.4 | 3.01 |
 
 ## What it says
 

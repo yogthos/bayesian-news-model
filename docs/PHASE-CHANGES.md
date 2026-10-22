@@ -812,3 +812,38 @@ kind's estimate on the same side; against named, it is level. Banking,
 where the year node itself gains (trial 39), is the one kind where the
 quarters do not: its year forecast for two years scaled to a quarter
 blunts what named's financial inputs time within the year.
+
+## Pre-registered, 21 October 2026: the world model (trial 42)
+
+Registered before the training runs. docs/WORLD-MODEL.md, bnm.world-run:
+thirteen kinds (banking, currency, sovereign and inflation crises, growth
+collapses, fiscal consolidations, food price shocks, market crashes,
+protest and violence surges, coups, conflict and war onsets), each its own
+lattice built as on its own (banking's, or the political lattice's with
+the financial kinds reading banking's quarterly gauges), all from 1870,
+stepped together month by month. At the year and half-decade each node
+reads, from before its origin, every parent in the sequencing graph
+(docs/SEQUENCING.md: 22 edges, 21 exciting, 1 inhibiting): the parent's
+state (its linear predictor), its onsets as one- and five-year excursions
+above the place's own rate, its state through the place's executive
+constraints, and how many kinds stand in their top fifth at the place; a
+group per parent in the model averaging, the state's prior at the edge's
+sign (0.2 or -0.2, variance 0.1). Each node records its principal
+contradiction. The quarters keep trial 41's design. The half-decade only
+for kinds covered from before 1930. Each kind's contradiction prior takes
+the sign its design years show (negative for market crashes). Smoke checks
+to 2008 pass for all thirteen (bnm.world-run --smoke).
+
+Two runs: **world** (with relations) and **world-norel** (the same, no
+relations: each kind on its own, as in trials 39-41 but all from 1870).
+
+**Tests**, one-sided 5%, 2003-2022:
+1. (primary) each kind's year node, world against world-norel, on its own
+   outcomes, pooled over the kinds with equal weights (bnm.world-score);
+   per kind for the record, Holm over thirteen;
+2. the world's joint forecasts: for each edge, country and year end from
+   2003, the simulated chance that both kinds have an onset within three
+   years against the product of the same two marginals (independence), on
+   whether both happened; paired Brier, edges weighed equally.
+3. for the record: the quarter nodes against named on the six kinds named
+   forecasts (bnm.paired), as trial 41.

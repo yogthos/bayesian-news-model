@@ -100,17 +100,25 @@
     ["war_onset" "growth_collapse"] ["conflict_onset" "growth_collapse"]})
 
 (defn edge?
-  "The rule fixed before any table was read: supported by the lagged test
-  (LR of 13.8 or more, p < 0.001 on two degrees of freedom, with j's
-  coefficients summing positive), or named by theory and j standing above
-  its calm rate in the three years before k; an edge from a higher tier to
-  a lower one needs the test."
+  "The rule: supported by the lagged test (LR of 13.8 or more, p < 0.001
+  on two degrees of freedom), in either direction, its sign the edge's
+  type (edge-sign); or named by theory and j standing above its calm rate
+  in the three years before k; an edge from a higher tier to a lower one
+  needs the test. (First fixed with the test's positive sign only; amended
+  21 October 2026, before any training, to keep inhibiting edges.)"
   [[j k] {:keys [lr coef]} rr-lead]
-  (let [tested (and (>= lr 13.8) (pos? (reduce + coef)))
+  (let [tested (>= lr 13.8)
         down? (> (kinds/tier-order (kinds/tiers j)) (kinds/tier-order (kinds/tiers k)))]
     (cond tested :data
           (and (not down?) (contains? theory [j k]) rr-lead (> rr-lead 1.0)) :theory
           :else nil)))
+
+(defn edge-sign
+  "+1 when j's past raises k's hazard (an exciting relation), -1 when it
+  lowers it (inhibiting: as real a signal, of another type): the sign of
+  j's coefficients' sum for a tested edge, theory's (+1) otherwise."
+  [source {:keys [coef]}]
+  (if (= source :data) (if (neg? (reduce + coef)) -1 1) 1))
 
 (defn -main [& _]
   (let [cats (update-vals (kinds/catalogues) kinds/annual)
@@ -136,7 +144,7 @@
                           (:n test) (:events test) (if rr-lead (format "%.2f" rr-lead) "") (if edge (name edge) "")))))
     (spit (str dir "/graph.edn")
           (pr-str (into (sorted-map) (for [{:keys [j k test rr-lead edge]} rows :when edge]
-                                       [[j k] {:source edge :lr (:lr test) :coef (:coef test) :rr-lead rr-lead}]))))
+                                       [[j k] {:source edge :sign (edge-sign edge test) :lr (:lr test) :coef (:coef test) :rr-lead rr-lead}]))))
     (println (format "%-20s %-20s %7s %7s %7s %6s  %s" "j" "k" "lr" "c1" "c5" "rr-3..-1" "edge"))
     (doseq [{:keys [j k test rr-lead edge]} (sort-by #(- (:lr (:test %))) rows)
             :when (or edge (>= (:lr test) 6.0))]
