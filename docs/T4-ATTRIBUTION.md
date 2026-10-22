@@ -29,7 +29,9 @@ the same rows:
 | M_S | the states (value and missing indicator each), ridge |
 | M_P | the placebo states: each country reads the next country's (sorted order, a fixed derangement as in bnm.state-diag) |
 | M_B' (primary base) | a + b logit p, b fitted on the fitted era |
-| M_B'S, M_B'P | M_B' plus the states, plus the placebo |
+| M_P' (primary placebo) | coverage-matched placebo: each country keeps its own missing indicators; the values are the next country's where both are known, else the running mean |
+| M_I | the missing indicators alone (coverage) |
+| M_B'S, M_B'P, M_B'P' | M_B' plus the states, plus each placebo |
 | M_B, M_BS, M_BP (record) | logit p as a raw offset (b = 1) |
 
 The recalibrated base is primary. On the design years the raw base's
@@ -67,7 +69,12 @@ Brier, per kind and pooled with kinds weighted equally:
   states = ½[skill(S) + skill(B'S) − skill(B')], history = skill(B'S) −
   states. The two add up to skill(B'S) (tested);
 - increment = skill(B'S) − skill(B'): what T1 and trial 45 measured;
-- states less placebo = skill(S) − skill(P): LIT-NEXT-STEPS' falsifier;
+- states less matched placebo = skill(S) − skill(P'): the primary
+  contrast. It credits coverage to the placebo as well, so it isolates
+  the states' values from where the data are. skill(S) − skill(P) is kept
+  for the record;
+- where less when = skill(S_where) − skill(S_when), and the same of
+  S − P' per subset, from the same bootstrap draws;
 - the same numbers for the placebo (P, B'P).
 
 Intervals are 90%, from 1,000 bootstrap draws of blocks of two
@@ -206,6 +213,39 @@ Pooled log score: skill(B') +0.0026 [−0.0015, +0.0060], skill(S)
 base's slope, fitted within years, does not carry its timing, so the
 base is level here and the share is undefined ([−6.2, 7.1]).
 
+### The coverage-matched placebo, the indicators and where less when
+
+Added after the first design run. Same rows, penalties chosen the same
+way (P'/all 1,000, I/all 300, B'P'/all 1,000). Within mode, recalibrated
+base, pooled over ten kinds:
+
+| Group | skill(P'), log | S − P', log | S − P', Brier | skill(I), log | skill(I), Brier |
+|---|---|---|---|---|---|
+| all | +0.0015 [+0.0010, +0.0020] | **+0.0021 [+0.0012, +0.0031]** | +0.00002 [−0.00026, +0.00028] | +0.0020 [+0.0010, +0.0029] | +0.00003 [−0.00023, +0.00028] |
+| financial | +0.0008 | −0.0000 [−0.0002, +0.0001] | −0.00004 [−0.00008, +0.00000] | +0.0009 | −0.00006 |
+| social | +0.0012 | +0.0002 [−0.0003, +0.0008] | +0.00003 [−0.00014, +0.00018] | +0.0019 | +0.00024 |
+| material | +0.0001 | +0.0022 [+0.0013, +0.0030] | +0.00041 [+0.00017, +0.00063] | −0.0000 | −0.00000 |
+| technology | +0.0007 | +0.0040 [+0.0028, +0.0051] | +0.00041 [+0.00005, +0.00075] | +0.0012 | +0.00010 |
+| where | +0.0019 | +0.0021 [+0.0014, +0.0028] | +0.00016 [−0.00003, +0.00036] | +0.0022 | −0.00009 |
+| when | +0.0007 | +0.0001 [−0.0001, +0.0004] | +0.00007 [+0.00000, +0.00012] | +0.0009 | +0.00003 |
+
+The matched placebo takes 0.21 [0.13, 0.29] of the base's log-score skill
+(the states 0.50) and the indicators alone take 0.27 [0.13, 0.41].
+Coverage carries much of the states' raw share. The values add +0.0021
+log over it, almost all from the material levels and the technology gap.
+The financial and social values add nothing past their coverage. On
+Brier the values' gain is level over all thirteen states, positive for
+material and technology.
+
+Where less when (pooled):
+
+| | log | Brier |
+|---|---|---|
+| skill(S_where) − skill(S_when), within | +0.0032 [+0.0025, +0.0038] | +0.00034 [+0.00014, +0.00054] |
+| the same of S − P', within | +0.0020 [+0.0013, +0.0027] | +0.00010 [−0.00010, +0.00029] |
+| skill(S_where) − skill(S_when), raw | +0.0052 [+0.0039, +0.0063] | +0.00072 [+0.00035, +0.00103] |
+| the same of S − P', raw | +0.0020 [+0.0006, +0.0032] | +0.00001 [−0.00042, +0.00038] |
+
 ## Reading
 
 These are design-year numbers, for development.
@@ -241,6 +281,11 @@ These are design-year numbers, for development.
   banking base already reads JST house prices and a stock-flow term for
   the JST countries (tools/bnm/macrohistory.clj), so a financial state's
   footprint there may be in the base already.
+- **Coverage.** The coverage-matched placebo and the indicators-only
+  model show that about half of the states' raw share is where the data
+  are. Past coverage, the values of the material levels and the
+  technology gap still explain "where" (S − P' +0.0021 log), and the
+  "when" states' values explain nothing.
 - **Caveats.** The missing indicators carry coverage, which follows
   income, so "where" includes "where the data are". The fits are held in
   the bootstrap, so the intervals are too narrow by the refit's
