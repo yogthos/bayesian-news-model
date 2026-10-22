@@ -8,7 +8,8 @@
   relations as offset, on the state's own part at the country
   (bnm.factors) as known at the origin, against the same read at another
   country (the placebo), on the same rows (bnm.ews-diag/rows). Each kind
-  keeps the states that pass (bnm.relation-diag/passes?, the threshold
+  keeps the states that pass (bnm.relation-diag/clustered-test, years as
+  clusters; bnm.relation-diag/passes?, the threshold
   corrected for every state tried), the strongest first, at most k, each
   with the design years' sign.
 
@@ -44,7 +45,7 @@
         :when (and (some? y) (= 11 (mod o 12)) (<= (* 12 1960) o (+ 11 (* 12 to))))
         :let [a (real c o) b (placebo c o)]
         :when (and (some? a) (some? b))
-        :let [r {:y y :o (Math/log (/ (max 1e-6 p) (max 1e-6 (- 1.0 p)))) :w 1.0}]]
+        :let [r {:y y :o (Math/log (/ (max 1e-6 p) (max 1e-6 (- 1.0 p)))) :w 1.0 :g (quot o 12)}]]
     [(assoc r :x [1.0 (double a)]) (assoc r :x [1.0 (double b)])]))
 
 (defn -main [& args]
@@ -81,7 +82,7 @@
                                 to))
                   a (mapv first rs) b (mapv second rs)]
             :when (>= (count (filter :y a)) 5)]
-      (let [ra (rd/lr-test a) rb (rd/lr-test b)]
+      (let [ra (rd/clustered-test a) rb (rd/clustered-test b)]
         (swap! results assoc-in [kd v] {:lr (:lr ra) :coef (:coef ra) :placebo-lr (:lr rb)})
         (say (format "%s\t%s\t%d\t%d\t%.2f\t%+.3f\t%.2f\t%+.3f" kd v (:n ra) (:pos ra) (:lr ra) (:coef ra) (:lr rb) (:coef rb)))))
     (spit (str "data/runs/" run "/state-diag.tsv") (str buf))

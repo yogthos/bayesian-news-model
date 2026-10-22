@@ -3,7 +3,7 @@
   each kind's own forecast? On the design years only (year-end origins
   1960-2002), for each kind, each series and each indicator, a logit of
   the kind's year outcome with its forecast from a run without relations
-  as offset (bnm.relation-diag/lr-test), on the indicator of the
+  as offset (bnm.relation-diag/clustered-test, years as clusters), on the indicator of the
   country's own part (bnm.factors) of the series over the 12 data years
   before the origin, and the same read at another country (a placebo).
 
@@ -45,7 +45,7 @@
         :when (and (some? y) (= 11 (mod o 12)) (<= (* 12 1960) o (+ 11 (* 12 to))))
         :let [a (x-of c o) b (x-of (other c) o)]
         :when (and (some? a) (some? b))
-        :let [r {:y y :o (Math/log (/ (max 1e-6 p) (max 1e-6 (- 1.0 p)))) :w 1.0}]]
+        :let [r {:y y :o (Math/log (/ (max 1e-6 p) (max 1e-6 (- 1.0 p)))) :w 1.0 :g (quot o 12)}]]
     [(assoc r :x [1.0 (double a)]) (assoc r :x [1.0 (double b)])]))
 
 (defn -main [& args]
@@ -70,7 +70,7 @@
             :let [rs (vec (rows (get years k) cs other (fn [c o] (get-in sigs [v c (quot o 12) ind])) to))
                   a (mapv first rs) b (mapv second rs)]
             :when (>= (count (filter :y a)) 5)]
-      (let [ra (rd/lr-test a) rb (rd/lr-test b)
+      (let [ra (rd/clustered-test a) rb (rd/clustered-test b)
             r {:lr (:lr ra) :coef (:coef ra) :placebo-lr (:lr rb)}]
         (swap! results assoc-in [k [v ind]] r)
         (say (format "%s\t%s\t%s\t%d\t%d\t%.2f\t%+.3f\t%.2f\t%+.3f" k v (name ind) (:n ra) (:pos ra) (:lr ra) (:coef ra) (:lr rb) (:coef rb)))))

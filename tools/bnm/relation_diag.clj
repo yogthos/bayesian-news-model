@@ -82,6 +82,28 @@
      :coef (* (aget ^doubles b1 1) sd)
      :n (count rows) :pos (count (filter :y rows))}))
 
+(defn clustered-test
+  "{:lr :coef :n :pos} as lr-test's, :lr a score statistic (chi-squared on
+  one degree of freedom) whose variance sums within each row's cluster :g
+  (the year): rows of one year share its shocks, and a series common to
+  every place in a year is as many observations as it has years, not
+  rows. The score at the offset-and-intercept fit, the input centred by
+  the fit's weights."
+  [rows]
+  (let [rows (vec rows)
+        r0 (mapv #(update % :x (fn [x] (subvec x 0 1))) rows)
+        b0 (lg/fit r0 1 {:prior 1e-4})
+        ps (mapv #(lg/predict b0 (:x %) (:o %)) r0)
+        xs (mapv #(double (nth (:x %) 1)) rows)
+        ws (mapv #(* % (- 1.0 %)) ps)
+        sw (reduce + ws)
+        xbar (if (pos? sw) (/ (reduce + (map * ws xs)) sw) 0.0)
+        terms (mapv (fn [r p x] [(:g r) (* (- x xbar) (- (if (:y r) 1.0 0.0) p))]) rows ps xs)
+        u (reduce + (map second terms))
+        v (reduce + (for [[_ ts] (group-by first terms) :let [s (reduce + (map second ts))]] (* s s)))
+        {:keys [coef n pos]} (lr-test rows)]
+    {:lr (if (pos? v) (/ (* u u) v) 0.0) :coef coef :n n :pos pos}))
+
 (def form-names [:level :destab :surprise :e1 :e5 :post1 :post3])
 
 (def own-forms
@@ -166,7 +188,7 @@
                   rows-of (fn [placebo?]
                             (for [[place o p y] base
                                   :let [src (if placebo? (other place) place)]]
-                              [(get-in fv [src o]) {:y y :o (logit p) :w 1.0}]))
+                              [(get-in fv [src o]) {:y y :o (logit p) :w 1.0 :g (quot o 12)}]))
                   real (vec (rows-of false)) fake (vec (rows-of true))]
             f (into form-names (map #(keyword (str (name %) "-own")) own-forms))
             ;; real and placebo on the same rows: where the form is known at both
@@ -175,7 +197,7 @@
                           [(assoc r :x [1.0 (double va)]) (assoc r :x [1.0 (double vb)])])
                   a (mapv first pairs) b (mapv second pairs)]
             :when (>= (count (filter :y a)) 5)]
-      (let [ra (lr-test a) rb (lr-test b)]
+      (let [ra (clustered-test a) rb (clustered-test b)]
         (swap! results assoc-in [[j k] f] {:lr (:lr ra) :coef (:coef ra) :placebo-lr (:lr rb)})
         (say (format "%s>%s\t%s\t%d\t%d\t%.2f\t%+.3f\t%.2f\t%+.3f%s" j k (name f) (:n ra) (:pos ra) (:lr ra) (:coef ra) (:lr rb) (:coef rb) ""))))
     (spit (str "data/runs/" run "/relation-diag.tsv") (str out))
