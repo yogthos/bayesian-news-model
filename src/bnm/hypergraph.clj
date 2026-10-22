@@ -74,45 +74,96 @@
     (into {} (for [n (distinct (concat (keys given) (keys recipes) (mapcat (comp keys :inputs) (vals recipes))))]
                [n (av [] n)]))))
 
+(defn- prepared
+  "Each recipe with its inputs in a vector and its shares normalised."
+  [recipes]
+  (into {} (for [[n {:keys [inputs kind sigma]}] recipes
+                 :let [tot (double (reduce + (vals inputs)))]]
+             [n {:ins (vec (keys inputs)) :ws (mapv #(/ (double %) tot) (vals inputs)) :kind kind :sigma sigma}])))
+
+(defn- rule
+  "A prepared recipe's value from availabilities looked up by `f`, capped
+  by the node's given value `g` (nil: none)."
+  [{:keys [ins ws kind sigma]} f g]
+  (let [xs (mapv f ins)
+        r (case kind
+            :critical (apply min xs)
+            :substitutable (reduce + (map * xs ws))
+            :ces (ces xs ws sigma))]
+    (if g (min (double g) r) r)))
+
+(defn node-value
+  "What `node`'s recipe in `h` gives from availabilities `x` ({node
+  availability}; a node missing from x at its `given` value, else 1),
+  capped by node's own `given` value: one step of the iteration
+  propagate runs."
+  [{:keys [recipes]} given x node]
+  (rule ((prepared {node (recipes node)}) node) #(get x % (get given % 1.0)) (get given node)))
+
+(defn residual
+  "The largest gap |node-value - availability| over `h`'s recipe nodes at
+  availabilities `x`: 0 at a fixed point."
+  [{:keys [recipes]} given x]
+  (let [prep (prepared recipes) f #(get x % (get given % 1.0))]
+    (reduce max 0.0 (for [[n p] prep] (Math/abs (- (rule p f (get given n)) (double (f n))))))))
+
 (defn propagate
   "availability where recipes may form cycles (an economy's do: power
-  needs coal, coal mines need power). {node availability}, 1 normal, from
-  the same rules, solved by iteration: every node starts at 1 (`given`
-  for a primary input) and a node is recomputed, first in first out,
-  whenever one of its inputs moves by more than :tol (default 1e-9).
-  Every rule is monotone, so from the top the values only fall and settle
-  at the largest fixed point: a cut round a loop caps the loop at the
-  cut, it does not spiral to zero. Throws past :max-updates (default
-  1e8) recomputations."
+  needs coal, coal mines need power): {node availability}, 1 normal, by
+  the same rules, solved by iteration.
+
+  Every rule (minimum, share-weighted mean, CES with positive weights,
+  each capped by its node's given value) is monotone and continuous, so
+  the system has a greatest fixed point (Knaster-Tarski), and iteration
+  from the top (each recipe node at max(1, the largest given value), each
+  primary input at its given value or 1) falls to it monotonically.
+  Fixed points are not unique in general: a loop of critical recipes
+  holds at any level up to what its cuts allow, and the greatest is the
+  one with no shortfall beyond what the cuts force. Because every
+  recomputation only lowers a node and never below the greatest fixed
+  point, any fair order reaches it: :order :fifo (default, first in first
+  out) or :lifo changes the work, not the answer (chaotic iteration of a
+  monotone operator, Cousot & Cousot 1977).
+
+  A node is recomputed whenever an input of it moves by more than :tol
+  (default 1e-9), so on return every recipe node is within tol of its
+  recipe (residual <= tol). The answer is never below the greatest fixed
+  point and above it by at most tol / (1 - g) on a loop of gain g < 1 (a
+  loop feeding itself 0.9 of its own value: 10 tol). The result's
+  metadata holds {:updates :residual :order}. Throws ex-info, with the
+  updates done and the residual then, past :max-updates (default 2000
+  per node, at least a million) recomputations. `given` values must be
+  finite and not negative."
   ([h given] (propagate h given {}))
-  ([{:keys [recipes]} given {:keys [tol max-updates] :or {tol 1e-9 max-updates 100000000}}]
-   (let [prep (into {} (for [[n {:keys [inputs kind sigma]}] recipes
-                             :let [tot (double (reduce + (vals inputs)))]]
-                         [n {:ins (vec (keys inputs)) :ws (mapv #(/ (double %) tot) (vals inputs))
-                             :kind kind :sigma sigma}]))
+  ([{:keys [recipes] :as h} given {:keys [tol max-updates order] :or {tol 1e-9 order :fifo}}]
+   (doseq [[n g] given]
+     (when-not (and (number? g) (not (Double/isNaN (double g))) (not (Double/isInfinite (double g))) (>= g 0.0))
+       (throw (ex-info (str "bnm.hypergraph/propagate: given " n " is " g ", not a finite availability")
+                       {:node n :given g}))))
+   (let [prep (prepared recipes)
          users (reduce-kv (fn [m out {:keys [ins]}] (reduce #(update %1 %2 (fnil conj []) out) m ins)) {} prep)
          nodes (distinct (concat (keys given) (keys recipes) (keys users)))
-         x (transient (into {} (for [n nodes] [n (if (prep n) 1.0 (double (get given n 1.0)))])))
-         start (distinct (concat (filter prep (keys given)) (mapcat users (remove prep (keys given)))))]
-     (loop [x x queue (into clojure.lang.PersistentQueue/EMPTY start) queued (set start) k 0]
+         max-updates (or max-updates (max 1000000 (* 2000 (count nodes))))
+         top (reduce max 1.0 (map double (vals given)))
+         x (transient (into {} (for [n nodes] [n (if (prep n) top (double (get given n 1.0)))])))
+         start (distinct (concat (filter prep (keys given)) (mapcat users (remove prep (keys given)))
+                                 (when (> top 1.0) (keys prep))))
+         empty-q (case order :fifo clojure.lang.PersistentQueue/EMPTY :lifo [])]
+     (loop [x x queue (into empty-q start) queued (set start) k 0]
        (if-let [n (peek queue)]
-         (let [{:keys [ins ws kind sigma]} (prep n)
-               xs (mapv #(get x %) ins)
-               r (case kind
-                   :critical (apply min xs)
-                   :substitutable (reduce + (map * xs ws))
-                   :ces (ces xs ws sigma))
-               v (if-let [g (get given n)] (min (double g) r) r)
-               old (get x n)
-               queue (pop queue)
-               queued (disj queued n)]
-           (when (> k max-updates)
-             (throw (ex-info "bnm.hypergraph/propagate did not settle" {:updates k :node n})))
-           (if (> (Math/abs (- old v)) tol)
-             (let [fresh (remove queued (users n))]
-               (recur (assoc! x n v) (into queue fresh) (into queued fresh) (inc k)))
-             (recur x queue queued (inc k))))
-         (persistent! x))))))
+         (do (when (>= k max-updates)
+               (let [x (persistent! x)]
+                 (throw (ex-info (str "bnm.hypergraph/propagate did not settle in " k " updates")
+                                 {:updates k :node n :pending (count queue) :residual (residual h given x)}))))
+             (let [v (rule (prep n) #(get x %) (get given n))
+                   queue (pop queue)
+                   queued (disj queued n)]
+               (if (> (Math/abs (- (get x n) v)) tol)
+                 (let [fresh (remove queued (users n))]
+                   (recur (assoc! x n v) (into queue fresh) (into queued fresh) (inc k)))
+                 (recur x queue queued (inc k)))))
+         (let [x (persistent! x)]
+           (with-meta x {:updates k :residual (residual h given x) :order order})))))))
 
 (def ^:private ks (vec (for [i [0 1] j [0 1] k [0 1]] [i j k])))
 

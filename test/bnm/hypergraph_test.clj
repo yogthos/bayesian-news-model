@@ -90,6 +90,95 @@
     (let [h (-> (hg/hypergraph) (hg/recipe :a {:b 1.0} :critical) (hg/recipe :b {:a 1.0} :critical))]
       (is (= {:a 1.0 :b 1.0} (hg/propagate h {}))))))
 
+(defn- uniforms
+  "A lazy stream of uniforms in (0, 1) from `seed` (Park-Miller)."
+  [seed]
+  (map #(/ (double %) 2147483647.0) (rest (iterate #(mod (* 16807 %) 2147483647) (inc seed)))))
+
+(defn- random-economy
+  "n recipe nodes and three primaries over a random graph with loops:
+  each node draws two or three inputs from every node, its kind and
+  sigma at random; a cut to some primaries and one recipe node."
+  [seed n]
+  (let [u (atom (uniforms seed))
+        r! (fn [] (let [x (first @u)] (swap! u rest) x))
+        pick (fn [xs] (nth xs (min (dec (count xs)) (long (* (r!) (count xs))))))
+        nodes (mapv #(keyword (str "n" %)) (range n))
+        prims [:p0 :p1 :p2]
+        h (reduce (fn [h node]
+                    (let [k (+ 2 (long (* 2 (r!))))
+                          ins (into {} (for [_ (range k)] [(pick (into nodes prims)) (+ 0.1 (r!))]))
+                          kind (pick [:critical :substitutable :ces :ces])]
+                      (if (= kind :ces)
+                        (hg/recipe h node ins :ces (pick [0.2 0.5 1.0 2.0]))
+                        (hg/recipe h node ins kind))))
+                  (hg/hypergraph) nodes)
+        given (merge (into {} (for [p prims :when (< (r!) 0.7)] [p (r!)]))
+                     {(pick nodes) (+ 0.3 (* 0.7 (r!)))})]
+    [h given]))
+
+(defn- jacobi
+  "The greatest fixed point by synchronous iteration from the top: every
+  recipe node recomputed from the previous sweep, until nothing moves."
+  [h given]
+  (let [top (reduce max 1.0 (vals given))
+        x0 (into {} (for [n (keys (hg/propagate h given))] [n (if ((:recipes h) n) top (get given n 1.0))]))]
+    (loop [x x0 i 0]
+      (let [x' (into x (for [n (keys (:recipes h))] [n (hg/node-value h given x n)]))]
+        (if (or (> i 20000) (< (reduce max 0.0 (for [[n v] x'] (Math/abs (- v (x n))))) 1e-14))
+          x'
+          (recur x' (inc i)))))))
+
+(deftest propagate-reaches-the-same-point-in-any-order
+  ;; every rule is monotone, so iteration from the top falls to the
+  ;; greatest fixed point whatever order the nodes are recomputed in:
+  ;; first in first out, last in first out, or all at once
+  (doseq [seed (range 1 31)]
+    (let [[h given] (random-economy seed 10)
+          fifo (hg/propagate h given {:tol 1e-13})
+          lifo (hg/propagate h given {:tol 1e-13 :order :lifo})
+          ref (jacobi h given)]
+      (is (= :lifo (:order (meta lifo))) "the order asked for")
+      (doseq [[n v] ref]
+        (is (close? v (fifo n) 1e-7) (str "seed " seed " " n " fifo"))
+        (is (close? v (lifo n) 1e-7) (str "seed " seed " " n " lifo"))))))
+
+(deftest propagate-settles-every-node-within-tol
+  (doseq [seed (range 1 11)]
+    (let [[h given] (random-economy seed 12)
+          p (hg/propagate h given {:tol 1e-9})]
+      (is (<= (hg/residual h given p) 1e-9) (str "seed " seed ": every node within tol of its recipe"))
+      (is (= (:residual (meta p)) (hg/residual h given p)) "the residual reported")
+      (is (pos? (:updates (meta p))) "and the work it took")))
+  (testing "never below the greatest fixed point: a slow loop stops above it"
+    ;; a feeds itself 0.9: the greatest fixed point is 0, approached as 0.9^k
+    (let [h (hg/recipe (hg/hypergraph) :a {:a 0.9 :b 0.1} :substitutable)
+          p (hg/propagate h {:b 0.0} {:tol 1e-6})]
+      (is (<= 0.0 (p :a) (/ 1e-6 (- 1 0.9))) "above it by at most tol / (1 - the loop's gain)"))))
+
+(deftest propagate-reports-what-does-not-settle
+  (let [h (hg/recipe (hg/hypergraph) :a {:a 0.999 :b 0.001} :substitutable)
+        e (try (hg/propagate h {:b 0.0} {:tol 1e-12 :max-updates 50}) nil
+               (catch clojure.lang.ExceptionInfo e e))]
+    (is (some? e) "throws, does not return a half-settled answer")
+    (is (= 50 (:updates (ex-data e))))
+    (is (< 1e-12 (:residual (ex-data e))) "how far off it was")))
+
+(deftest propagate-starts-from-the-top
+  (testing "a surge (given above 1) passes on as availability passes it"
+    (let [h (-> (hg/hypergraph)
+                (hg/recipe :y {:a 0.5 :b 0.5} :substitutable)
+                (hg/recipe :z {:y 0.5 :c 0.5} :ces 0.5))
+          given {:a 1.5 :c 0.8}
+          a (hg/availability h given)
+          p (hg/propagate h given)]
+      (doseq [[n x] a] (is (close? x (p n) 1e-9) (str n)))))
+  (testing "givens are availabilities: finite and not negative"
+    (doseq [bad [##NaN -0.5 ##Inf]]
+      (is (thrown? clojure.lang.ExceptionInfo
+                   (hg/propagate (hg/recipe (hg/hypergraph) :y {:a 1.0} :critical) {:a bad}))
+          (str bad)))))
+
 (deftest recipes-are-validated
   (doseq [[why f] [["unknown kind" #(hg/recipe (hg/hypergraph) :y {:a 1.0} :magic)]
                    ["no inputs" #(hg/recipe (hg/hypergraph) :y {} :critical)]
