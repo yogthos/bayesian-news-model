@@ -74,6 +74,46 @@
     (into {} (for [n (distinct (concat (keys given) (keys recipes) (mapcat (comp keys :inputs) (vals recipes))))]
                [n (av [] n)]))))
 
+(defn propagate
+  "availability where recipes may form cycles (an economy's do: power
+  needs coal, coal mines need power). {node availability}, 1 normal, from
+  the same rules, solved by iteration: every node starts at 1 (`given`
+  for a primary input) and a node is recomputed whenever one of its
+  inputs moves, until no node moves by more than :tol (default 1e-9).
+  Every rule is monotone, so from the top the values only fall and settle
+  at the largest fixed point: a cut round a loop caps the loop at the
+  cut, it does not spiral to zero. Throws past :max-updates (default
+  1e8) recomputations."
+  ([h given] (propagate h given {}))
+  ([{:keys [recipes]} given {:keys [tol max-updates] :or {tol 1e-9 max-updates 100000000}}]
+   (let [prep (into {} (for [[n {:keys [inputs kind sigma]}] recipes
+                             :let [tot (double (reduce + (vals inputs)))]]
+                         [n {:ins (vec (keys inputs)) :ws (mapv #(/ (double %) tot) (vals inputs))
+                             :kind kind :sigma sigma}]))
+         users (reduce-kv (fn [m out {:keys [ins]}] (reduce #(update %1 %2 (fnil conj []) out) m ins)) {} prep)
+         nodes (distinct (concat (keys given) (keys recipes) (keys users)))
+         x (transient (into {} (for [n nodes] [n (if (prep n) 1.0 (double (get given n 1.0)))])))
+         start (distinct (concat (filter prep (keys given)) (mapcat users (remove prep (keys given)))))]
+     (loop [x x stack (vec start) queued (set start) k 0]
+       (if-let [n (peek stack)]
+         (let [{:keys [ins ws kind sigma]} (prep n)
+               xs (mapv #(get x %) ins)
+               r (case kind
+                   :critical (apply min xs)
+                   :substitutable (reduce + (map * xs ws))
+                   :ces (ces xs ws sigma))
+               v (if-let [g (get given n)] (min (double g) r) r)
+               old (get x n)
+               stack (pop stack)
+               queued (disj queued n)]
+           (when (> k max-updates)
+             (throw (ex-info "bnm.hypergraph/propagate did not settle" {:updates k :node n})))
+           (if (> (Math/abs (- old v)) tol)
+             (let [fresh (remove queued (users n))]
+               (recur (assoc! x n v) (into stack fresh) (into queued fresh) (inc k)))
+             (recur x stack queued (inc k))))
+         (persistent! x))))))
+
 (def ^:private ks (vec (for [i [0 1] j [0 1] k [0 1]] [i j k])))
 
 (defn- cells

@@ -56,6 +56,40 @@
     (is (some? e) "an ex-info, not a stack or memory blow-up")
     (is (= #{:a :b :c} (set (:cycle (ex-data e)))) "naming the cycle")))
 
+(deftest propagate-agrees-with-availability-where-there-is-no-cycle
+  (let [h (-> (hg/hypergraph)
+              (hg/recipe :steel {:energy 0.4 :ore 0.6} :critical)
+              (hg/recipe :cars {:steel 0.7 :plastics 0.3} :substitutable)
+              (hg/recipe :transport {:cars 0.5 :fuel 0.5} :critical)
+              (hg/recipe :parts {:steel 0.5 :labour 0.5} :ces 0.5))
+        given {:energy 0.5 :fuel 0.9 :steel 0.8}
+        a (hg/availability h given)
+        p (hg/propagate h given)]
+    (is (= (set (keys a)) (set (keys p))) "the same nodes")
+    (doseq [[n x] a]
+      (is (close? x (p n) 1e-9) (str n)))))
+
+(deftest propagate-settles-a-cycle-at-its-largest-fixed-point
+  ;; coal mines need electricity, coal plants need coal: a cut in coal
+  ;; caps both at the cut, it does not spiral to zero
+  (let [h (-> (hg/hypergraph)
+              (hg/recipe :power {:coal 0.6 :labour 0.4} :critical)
+              (hg/recipe :coal {:power 0.3 :machines 0.7} :critical))
+        p (hg/propagate h {:coal 0.6})]
+    (is (close? 0.6 (p :coal) 1e-9))
+    (is (close? 0.6 (p :power) 1e-9))
+    (is (= 1.0 (p :labour)) "an untouched primary input"))
+  (testing "complements round a loop converge to the cut"
+    (let [h (-> (hg/hypergraph)
+                (hg/recipe :a {:b 0.5 :c 0.5} :ces 0.5)
+                (hg/recipe :c {:a 1.0} :substitutable))
+          p (hg/propagate h {:b 0.5})]
+      (is (close? 0.5 (p :a) 1e-6))
+      (is (close? 0.5 (p :c) 1e-6))))
+  (testing "nothing given, nothing lost"
+    (let [h (-> (hg/hypergraph) (hg/recipe :a {:b 1.0} :critical) (hg/recipe :b {:a 1.0} :critical))]
+      (is (= {:a 1.0 :b 1.0} (hg/propagate h {}))))))
+
 (deftest recipes-are-validated
   (doseq [[why f] [["unknown kind" #(hg/recipe (hg/hypergraph) :y {:a 1.0} :magic)]
                    ["no inputs" #(hg/recipe (hg/hypergraph) :y {} :critical)]
