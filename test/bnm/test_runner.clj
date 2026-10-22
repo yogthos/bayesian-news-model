@@ -28,6 +28,7 @@
             [bnm.world3-test]
             [bnm.assimilate-test]
             [bnm.material-test]
+            [bnm.geo-test]
             [bnm.network-test]
             [bnm.energy-pilot-test]
             [bnm.archetypes-test]
@@ -93,6 +94,7 @@
     bnm.world3-test
     bnm.assimilate-test
     bnm.material-test
+    bnm.geo-test
     bnm.network-test
     bnm.energy-pilot-test
     bnm.archetypes-test

@@ -158,10 +158,15 @@
   (-> s str/lower-case (str/replace #"[^a-z0-9]+" " ") str/trim))
 
 (defn resolve-name
-  "The ISO alpha-3 code for a country name, matched loosely. nil when unknown."
+  "The ISO alpha-3 code for a country name, matched loosely, with or without
+  a leading or trailing \"the\" (\"Netherlands\" for GeoNames' \"The
+  Netherlands\", \"Bahamas, The\"). nil when unknown."
   [s]
   (when (and s (not (str/blank? s)))
-    (get-in @registry [:names (name-key s)])))
+    (let [names (:names @registry)
+          k (name-key s)
+          bare (-> k (str/replace #"^the " "") (str/replace #" the$" ""))]
+      (or (names k) (names bare) (names (str "the " bare))))))
 
 ;; --- provinces --------------------------------------------------------------------------
 
