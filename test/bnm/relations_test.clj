@@ -16,23 +16,6 @@
             xs (for [t (range 600 2400)] (rl/excursion cat "A" t tau))]
         (is (< (Math/abs (/ (reduce + xs) (count xs))) 0.03) (str "lag " lag " tau " tau))))))
 
-(deftest dimensions-stressed-together
-  ;; how many kinds stand in their own top fifth across places at their
-  ;; latest origin before t
-  (let [mk (fn [fs] (into {} (for [[p f] fs] [[:year p] (sorted-map 11 {:f f})])))
-        books {"a" (mk {"P" 3.0 "Q" 0.0 "R" 0.1 "S" 0.2 "T" 0.3})
-               "b" (mk {"P" 2.0 "Q" 0.0 "R" 0.1 "S" 0.2 "T" 0.3})
-               "c" (mk {"P" 0.0 "Q" 5.0 "R" 0.1 "S" 0.2 "T" 0.3})}]
-    (is (= 2.0 (rl/coupling books ["a" "b" "c"] :year "P" 23)))
-    (is (= 1.0 (rl/coupling books ["a" "b" "c"] :year "Q" 23)))
-    (is (= 0.0 (rl/coupling books ["a" "b" "c"] :year "P" 11)) "nothing from before t")
-    (testing "the top fifth among the place's peers: a region's state sets no country's threshold"
-      (let [books (update books "a" assoc [:year "Africa"] (sorted-map 11 {:f 10.0}))
-            country? #(= 1 (count %))]
-        (is (= 2.0 (rl/coupling books ["a" "b" "c"] :year "P" 23 #(rl/stress-cut (books %) :year 23 country?))))
-        (is (= 1.0 (rl/coupling books ["a" "b" "c"] :year "P" 23 #(rl/stress-cut (books %) :year 23 (constantly true))))
-            "without the peers the region raises the cut")))))
-
 (deftest the-principal-contradiction
   ;; the candidate group contributing most to the log odds (coefficients
   ;; times inputs), by size; its signed contribution

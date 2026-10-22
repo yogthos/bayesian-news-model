@@ -51,13 +51,38 @@
     (is (= 2.5 (sh/inconsistency {:a 1.5 :b -1.0}))
         "the sum of the gaps' sizes")))
 
-(deftest errors-known-by-t-and-unrecorded-looks
+(deftest errors-known-by-t
   ;; the errors a cell's forecasts made, by when each became known: the
-  ;; latest known by t, recorded as feedback; and a look at a section that
-  ;; reads nothing into the node (its strain carried, say) records nothing
+  ;; latest known by t (inclusive), recorded as feedback
   (let [errors {[:year "a1"] (sorted-map 20 0.5 30 -0.25)}
         r (sh/reader book errors)]
     (is (= [20 0.5] (sh/latest-known r [:year "a1"] 29)))
+    (is (= [30 -0.25] (sh/latest-known r [:year "a1"] 30)) "known at t: readable at t")
     (is (nil? (sh/latest-known r [:year "a1"] 19)))
-    (is (= [11 {:s -1.0}] (sh/peek-before r [:year "a1"] 23)))
-    (is (= [{:dir :feedback :scale :year :place "a1" :known-at 20}] (sh/reads r)))))
+    (is (= [{:dir :feedback :scale :year :place "a1" :known-at 20}
+            {:dir :feedback :scale :year :place "a1" :known-at 30}] (sh/reads r)))))
+
+(deftest edges-of-the-base-and-empty-reads
+  (let [b (sh/base spec) r (sh/reader book)]
+    (is (empty? (sh/children b 1 "nowhere")))
+    (is (empty? (sh/over r :up [:month "a1"] 12 11)) "an empty period")
+    (is (empty? (sh/reads r)))))
+
+(deftest a-kind-s-reads-carry-the-kind
+  ;; another kind's book read through the sheaf: its reads name the kind
+  (let [r (sh/reader book {} {:kind "bank"})]
+    (sh/latest-before r :relation [:year "a1"] 23)
+    (is (= [{:dir :relation :kind "bank" :scale :year :place "a1" :origin 11}] (sh/reads r)))))
+
+(deftest a-reader-refuses-the-future
+  ;; given the node's origin, a read after it throws: the causality guard
+  ;; in the one place every read passes
+  (let [r (sh/reader book {[:year "a1"] (sorted-map 20 0.5 30 -0.25)} {:origin 11})]
+    (is (some? (sh/at r :up [:month "a1"] 11)) "at the origin")
+    (is (thrown? clojure.lang.ExceptionInfo (sh/over r :up [:month "a1"] 10 12)))
+    (is (thrown? clojure.lang.ExceptionInfo (sh/latest-known (sh/reader {} {[:year "a1"] (sorted-map 20 0.5)} {:origin 11}) [:year "a1"] 25)))))
+
+(deftest coboundary-through-edge-maps
+  ;; a neighbour's value carried to the section's terms by its edge's map
+  ;; (identity by default): a loading, a stock's integration
+  (is (= {:parent 1.0} (sh/coboundary 2.0 {:parent 0.5} {:parent #(* 2.0 %)}))))

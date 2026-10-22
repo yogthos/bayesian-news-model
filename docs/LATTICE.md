@@ -28,18 +28,22 @@ decade in a region. The invariants can differ by scale.
 
 ## The lattice as a sheaf
 
-Every read one node makes of another goes through bnm.sheaf. The places
-and time scales form a poset of cells [scale place] (a country under its
-region, a month under its year); a node's book is a section over its
-cell; its reads are restrictions along the poset, each recorded as it is
-made (a coarser scale's or an ancestor's section carried down from
-before t, finer scales' and children's carried up over the period, the
-coarser forecast carried down as an offset, resolved errors once known);
-reconciliation is the gluing; and the contradiction gaps are the
-coboundary, a section against what its neighbours say (Robinson 2017;
-Hansen & Ghrist 2019). New node kinds (stocks, sectors, factors) read and
-are read the same way. A golden snapshot (test/bnm/lattice_golden_test)
-pins the lattice's outputs and reads exactly.
+The reads between nodes go through bnm.sheaf. A node's book is a sheaf
+over time: its sections by origin, which a read restricts to an interval
+(the latest before t, a period, an origin), each recorded and refused if
+after the reading node's origin. The places and scales form the base, a
+poset of cells [scale place] (a country under its region, a month under
+its year): coarser and ancestor sections come down by restriction, finer
+and child sections come up aggregated, the coarser forecast comes down as
+an offset, resolved errors once known. Reconciliation is the gluing; the
+contradiction gaps are the coboundary, a section against the comparable
+cells above it, each neighbour carried by its edge's map (identity for
+now; a loading or a stock's integration later) (Robinson 2017; Hansen &
+Ghrist 2019). Another kind's book is read through a reader that names the
+kind (bnm.relations), so every read has one shape; the kinds as a
+further axis of the base come with the multilayer network (bead
+bnm-62z.16). A golden snapshot (test/bnm/lattice_golden_test) pins the
+lattice's outputs and reads exactly, in full and with groups dropped.
 
 ## What each node does
 

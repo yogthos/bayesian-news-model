@@ -82,12 +82,20 @@
   [snap]
   (into (sorted-map) (for [[k v] snap] [k {:n (count v) :hash (hash (pr-str v)) :head (vec (take 40 v))}])))
 
-(defn write! [] (spit path (pr-str (fingerprint (snapshot (lt/run (spec)))))))
+(def variants
+  "The spec as given, and with groups dropped at some scales (the paths a
+  dropped group skips)."
+  {:full identity
+   :ablated #(assoc % :without-at {:year #{:up :feedback} :quarter #{:down}})})
+
+(defn write! []
+  (spit path (pr-str (into (sorted-map) (for [[k f] variants] [k (fingerprint (snapshot (lt/run (f (spec)))))])))))
 
 (deftest the-lattice-as-it-was
-  (let [want (read-string (slurp (io/file path)))
-        got (fingerprint (snapshot (lt/run (spec))))]
-    (doseq [k (keys want)]
-      (is (= (:n (k want)) (:n (k got))) (str k ": count"))
-      (is (= (:head (k want)) (:head (k got))) (str k ": first rows"))
-      (is (= (:hash (k want)) (:hash (k got))) (str k ": differs")))))
+  (let [want (read-string (slurp (io/file path)))]
+    (doseq [[v f] variants
+            :let [got (fingerprint (snapshot (lt/run (f (spec)))))]
+            k (keys (want v))]
+      (is (= (:n (get-in want [v k])) (:n (k got))) (str v " " k ": count"))
+      (is (= (:head (get-in want [v k])) (:head (k got))) (str v " " k ": first rows"))
+      (is (= (:hash (get-in want [v k])) (:hash (k got))) (str v " " k ": differs")))))

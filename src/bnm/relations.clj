@@ -4,10 +4,9 @@
   edge-input): a parent's onsets known by t as a post-crisis regime or as
   an excursion above the place's own rate so far, or its state against
   its own past; its level only as its own part (bnm.factors). Every read
-  is from before t and recorded. Also the coupling of crises (how many
-  kinds are stressed together at a place) and the principal
-  contradiction."
-  (:require [clojure.core :as c]))
+  goes through the sheaf (bnm.sheaf, a reader naming the kind) and
+  recorded. Also the principal contradiction."
+  (:require [bnm.sheaf :as sh]))
 
 (defn excursion
   "The onsets of `cat` at `place` known by month t (onset + :known-lag <= t),
@@ -55,15 +54,16 @@
         :post3 {:x (recent 36) :reads []}
         :e1 {:x (excursion catalogue place t 12.0) :reads []}
         :e5 {:x (excursion catalogue place t 60.0) :reads []}
-        :level (if-let [[o e] (some-> (get book [scale place]) (rsubseq < t) first)]
-                 {:x (double (:f e)) :reads [{:dir :relation :kind kind :scale scale :place place :origin o}]}
-                 none)
-        :destab (let [past (some-> (get book [scale place]) (rsubseq < t))
-                      [o e] (first past)
-                      prior (map (comp :f val) (take 5 (rest past)))]
+        ;; the parent's book read through the sheaf, its reads naming the kind
+        :level (let [r (sh/reader book {} {:kind kind :origin t})]
+                 (if-let [[_ e] (sh/latest-before r :relation [scale place] t)]
+                   {:x (double (:f e)) :reads (sh/reads r)}
+                   none))
+        :destab (let [r (sh/reader book {} {:kind kind :origin t})
+                      [o e] (sh/latest-before r :relation [scale place] t)
+                      prior (when o (map (comp :f val) (take 5 (some-> (get book [scale place]) (rsubseq < o)))))]
                   (if (and e (>= (count prior) 3))
-                    {:x (- (double (:f e)) (/ (reduce + prior) (count prior)))
-                     :reads [{:dir :relation :kind kind :scale scale :place place :origin o}]}
+                    {:x (- (double (:f e)) (/ (reduce + prior) (count prior))) :reads (sh/reads r)}
                     none))
         (throw (ex-info (str "bnm.relations/raw-input: no form " form) {:form form}))))))
 
@@ -75,30 +75,6 @@
   (when (= :level form)
     (throw (ex-info "bnm.relations/edge-input: the level is no link's form" {:form form})))
   (update (raw-input form parent scale place t) :x #(or % 0.0)))
-
-(defn- latest-f [book scale place t]
-  (some-> (get book [scale place]) (rsubseq < t) first val :f))
-
-(defn stress-cut
-  "The top fifth's threshold of a kind's latest states issued before t at
-  `scale`, across the places `peer?` keeps (every place by default; a
-  country's peers are the countries, not the regions above them), or nil
-  with none."
-  ([book scale t] (stress-cut book scale t (constantly true)))
-  ([book scale t peer?]
-  (let [fs (sort (keep (fn [[[s p] _]] (when (and (= s scale) (peer? p)) (latest-f book scale p t))) book))]
-    (when (seq fs) (nth fs (int (Math/floor (* 0.8 (dec (count fs))))))))))
-
-(defn coupling
-  "How many of `kinds` (their books in `books`) have the place in their top
-  fifth across places of their latest states issued before t at `scale`;
-  `cut` (fn [kind]) gives each kind's threshold (stress-cut, computed once
-  per origin), by default computed here."
-  ([books kinds scale place t] (coupling books kinds scale place t #(stress-cut (books %) scale t)))
-  ([books kinds scale place t cut]
-   (double (count (filter (fn [k] (let [mine (latest-f (books k) scale place t) c (cut k)]
-                                    (and mine c (> mine c))))
-                          kinds)))))
 
 (defn principal
   "The principal contradiction: of the `candidates` among `groups` ({group
