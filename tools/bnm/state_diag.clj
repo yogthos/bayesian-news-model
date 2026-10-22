@@ -48,16 +48,26 @@
         :let [r {:y y :o (Math/log (/ (max 1e-6 p) (max 1e-6 (- 1.0 p)))) :w 1.0 :g (quot o 12)}]]
     [(assoc r :x [1.0 (double a)]) (assoc r :x [1.0 (double b)])]))
 
+(def material-lag
+  "Years after its data year a material table's value is known: FAOSTAT
+  land, EIA capacity and energy production are published a year or two
+  late (scripts/material.py)."
+  2)
+
+(defn default-paths
+  "The state tables that exist: the stocks by the year known, the material
+  base by data year, lagged ([path lag])."
+  []
+  (concat (filter #(.exists (io/file %)) (map #(str "data/derived/stocks/" % ".csv") ["food" "keen" "tension" "energy" "technology" "cycles"]))
+          (for [f ["endowments" "capacity" "production"] :let [p (str "data/derived/material/" f ".csv")] :when (.exists (io/file p))]
+            [p material-lag])))
+
 (defn -main [& args]
   (let [{:keys [run to k states out]} (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
         run (or run "t44-world-norel")
         to (or (some-> to parse-long) 2002)
         k (or (some-> k parse-long) 2)
-        paths (if states (str/split states #",")
-                  (filter #(.exists (io/file %))
-                          (concat (map #(str "data/derived/stocks/" % ".csv") ["food" "keen" "tension" "energy" "technology" "cycles"])
-                                  ["data/derived/material/endowments.csv" "data/derived/material/capacity.csv"
-                                   "data/derived/material/production.csv"])))
+        paths (if states (str/split states #",") (default-paths))
         st (states/read-states paths)
         ks (sort (keys kinds/tiers))
         years (into {} (pmap (fn [kd] [kd (rd/read-year run kd)]) ks))
@@ -71,7 +81,7 @@
         results (atom {})
         buf (StringBuilder.)
         say (fn [s] (println s) (.append buf (str s "\n")))]
-    (say (format "states from %s: %d variables, %d world, exposures %s" (str/join ", " paths) (count read) (count world) pairs))
+    (say (format "states from %s: %d variables, %d world, exposures %s" (str/join ", " (map #(if (vector? %) (str (first %) " (lag " (second %) ")") %) paths)) (count read) (count world) pairs))
     (say "kind\tstate\tn\tpos\tlr\tcoef\tplacebo-lr\tplacebo-coef")
     (doseq [kd ks [v f] (sort-by key read)
             ;; as known at the origin's year end; the placebo another

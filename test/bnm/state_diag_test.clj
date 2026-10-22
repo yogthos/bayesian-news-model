@@ -53,3 +53,16 @@
                  "WLD,2000,cycles/oil-wti-beta-sd,0.3\nAAA,2000,technology/gap-recent-count,3\n"
                  "AAA,2000,technology/gap-recent-break,1\nWLD,2000,cycles/oil-wti-beta,0.4\n"))
     (is (= #{"keen/d" "cycles/oil-wti-beta"} (set (keys (bnm.states/read-states [(.getPath f)])))))))
+
+(deftest data-years-lagged-to-when-known
+  ;; a table by data year (the material base) is read [path lag]: its value
+  ;; for 2000 known only at 2000 + lag
+  (let [f (java.io.File/createTempFile "material" ".csv")]
+    (spit f "iso,year,variable,value,unit,flag\nAAA,2000,arable_land,5.0,1000 ha,\n")
+    (let [s (bnm.states/read-states [[(.getPath f) 2]])]
+      (is (= 5.0 (get-in s ["arable_land" "AAA" 2002])))
+      (is (nil? (get-in s ["arable_land" "AAA" 2000]))))))
+
+(deftest material-tables-default-to-a-lag
+  (is (every? vector? (filter #(re-find #"material" (str %)) (sd/default-paths))))
+  (is (every? #(= 2 (second %)) (filter vector? (sd/default-paths)))))

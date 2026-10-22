@@ -16,9 +16,13 @@
 
 (defn read-states
   "{variable {iso (sorted-map year value)}} from long tables
-  iso,year,variable,value[,...]; empty values and bookkeeping left out."
+  iso,year,variable,value[,...]; empty values and bookkeeping left out.
+  A path is a table by the year its values are known, or [path lag] for
+  one by data year (the material base): a value known lag years after its
+  year."
   [paths]
-  (reduce (fn [acc path]
+  (reduce (fn [acc entry]
+            (let [[path lag] (if (vector? entry) entry [entry 0])]
             (with-open [r (io/reader path)]
               (let [[h & ls] (line-seq r)
                     ix (zipmap (str/split h #",") (range))]
@@ -27,9 +31,9 @@
                                 g #(nth f (ix %) "")
                                 v (g "value")]
                             (if (and (seq v) (seq (g "iso")) (not (bookkeeping? (g "variable"))))
-                              (update-in acc [(g "variable") (g "iso")] (fnil assoc (sorted-map)) (parse-long (g "year")) (parse-double v))
+                              (update-in acc [(g "variable") (g "iso")] (fnil assoc (sorted-map)) (+ lag (parse-long (g "year"))) (parse-double v))
                               acc)))
-                        acc ls))))
+                        acc ls)))))
           {} paths))
 
 (defn own-parts
