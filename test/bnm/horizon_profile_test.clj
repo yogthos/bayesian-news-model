@@ -148,3 +148,35 @@
   (let [{:keys [cells outcome offset read]} (synthetic 21 0.8 2)
         rs (hp/rows {:cells cells :outcome outcome :offset offset :read read :h 2 :from 1960 :to 2002 :kind "k"})]
     (is (close? (:coef (hp/fit rs)) (hp/coef rs) 1e-6))))
+
+(deftest a-state-demeaned-by-year
+  ;; less each year's mean over the countries with the state that year,
+  ;; then scaled to unit spread; a year with one country has no contrast
+  (let [d (hp/demean-by-year {"A" {2000 1.0 2001 5.0} "B" {2000 3.0 2001 7.0} "C" {1999 9.0}})]
+    (is (close? (- (get-in d ["A" 2000])) (get-in d ["B" 2000]) 1e-12))
+    (is (close? (get-in d ["A" 2000]) (get-in d ["A" 2001]) 1e-12) "the world's rise from 2000 to 2001 is gone")
+    (is (close? 1.0 (Math/abs (get-in d ["A" 2000])) 1e-12) "unit spread")
+    (is (nil? (get-in d ["C" 1999])))))
+
+(deftest demeaning-centres-the-permutation-null
+  ;; a state that is a world series plus country noise, outcomes driven
+  ;; by the world (a year effect the offset does not hold): permuting
+  ;; country labels keeps the world part, so the raw state's null is
+  ;; centred away from zero; demeaned by year it is centred on zero
+  (let [g (m/rng 31)
+        cs (mapv #(format "C%02d" %) (range 60))
+        w (into {} (map vector (range 1950 2010) (reductions + (repeatedly 60 #(m/normal! g)))))
+        panel (into {} (for [c cs] [c (into (sorted-map) (for [t (range 1950 2010)] [t (+ (w t) (* 0.5 (m/normal! g)))]))]))
+        wz (let [ws (vals w) mu (/ (reduce + ws) (count ws))
+                 sd (Math/sqrt (/ (reduce + (map #(* (- % mu) (- % mu)) ws)) (count ws)))]
+             (fn [t] (/ (- (w t) mu) sd)))
+        y (into {} (for [c cs s (range 1961 2010)]
+                     [[c s] (< (m/next-double! g) (/ 1.0 (+ 1.0 (Math/exp (- (+ -2.5 (* 0.8 (wz (dec s)))))))))]))
+        cells (for [c cs t (range 1960 2003)] [c t])
+        base {:cells cells :outcome (fn [c t h] (get y [c (+ t h)])) :offset (fn [_ _] -2.5) :h 1 :from 1960 :to 2002 :kind "k"}
+        null-mean (fn [p] (let [pg (m/rng 5)
+                                vs (for [_ (range 20)]
+                                     (hp/coef (hp/rows (assoc base :read (hp/permuted (fn [c t] (get-in p [c t])) cs pg)))))]
+                            (/ (reduce + vs) 20.0)))]
+    (is (> (null-mean panel) 0.2) "raw: the world component survives permutation")
+    (is (< (Math/abs (null-mean (hp/demean-by-year panel))) 0.05) "demeaned: centred on zero")))

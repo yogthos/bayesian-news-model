@@ -24,6 +24,13 @@
     between the two is attribution against increment
     (docs/LIT-NEXT-STEPS.md, 3b).
 
+  The primary design reads each state demeaned by year (demean-by-year:
+  less the year's cross-country mean over the countries with it, unit
+  spread): T1 asks about country-specific drivers, and a world component
+  (world rates, world prices) survives a permutation of country labels,
+  so it would shift the null. The raw states are run again for the
+  record, each line labelled by its design.
+
   Each state is also read at another country (the next in sorted order
   of those with the state that year): the placebo, on the same rows.
 
@@ -183,6 +190,23 @@
   [coefs specs]
   (let [{:keys [short decline]} (fast-stats coefs specs)] [(slow-stat coefs specs) short decline]))
 
+(defn demean-by-year
+  "`panel` ({iso {year value}}) less each year's mean over the countries
+  with the state that year, scaled to unit spread over all its values:
+  the within-year cross-section, what is the country's own. Causal: the
+  mean at year t uses only values known at t. A year with a single
+  country has no contrast and is dropped."
+  [panel]
+  (let [by-year (reduce (fn [m [c byy]] (reduce (fn [m [y x]] (update m y (fnil conj []) [c x])) m byy)) {} panel)
+        dm (for [[y cxs] by-year :when (> (count cxs) 1)
+                 :let [mu (/ (reduce + (map second cxs)) (count cxs))]
+                 [c x] cxs]
+             [c y (- x mu)])
+        n (count dm)
+        sd (when (pos? n) (Math/sqrt (/ (reduce + (map #(let [v (nth % 2)] (* v v)) dm)) n)))
+        sd (if (and sd (> sd 1e-12)) sd 1.0)]
+    (reduce (fn [m [c y v]] (assoc-in m [c y] (/ v sd))) {} dm)))
+
 (defn placebo-read
   "The state of `panel` ({iso {year value}}) read at another country: the
   next, in sorted order, of those with the state that year."
@@ -300,7 +324,7 @@
         seed (or (some-> seed parse-long) 1)
         out (or out "data/runs/sequencing/horizon-t1-design.tsv")
         cats (kinds/catalogues)
-        panels (state-panels)
+        raw-panels (state-panels)
         ks (distinct (mapcat :kinds named))
         bases (into {} (for [k ks] [k (cells-of run k)]))
         buf (StringBuilder.)
@@ -321,8 +345,12 @@
     (say (str "# horizon profile, run " run ", origins 1960-" (- to 1) ", outcomes in year t+h <= " to))
     (say "# offset base: the year node's 24-month forecast at t as a yearly hazard, the same at every h (an extrapolation past h = 2); none: each kind's own rate")
     (say "# coverage, design years: state\tcountries\tcountry-years\tfrom\tto")
-    (doseq [{:keys [name]} named] (let [c (coverage (panels name) to)] (say (format "#  %s\t%d\t%d\t%s\t%s" name (:countries c) (:rows c) (:from c) (:to c)))))
-    (say "state\tkind\th\toffset\tn\tpos\tcoef\tlr\tz\tplacebo-coef\tplacebo-lr\tplacebo-z")
+    (doseq [{:keys [name]} named] (let [c (coverage (raw-panels name) to)] (say (format "#  %s\t%d\t%d\t%s\t%s" name (:countries c) (:rows c) (:from c) (:to c)))))
+    (doseq [[design panels] [["demeaned" (update-vals raw-panels demean-by-year)] ["raw" raw-panels]]]
+      (reset! pooled {}) (reset! placebo-pooled {})
+      (say (str "# design " design (if (= design "raw") ": the states as read (for the record; world components kept)"
+                                       ": each state less its year's cross-country mean, unit spread (primary)")))
+    (say "design\tstate\tkind\th\toffset\tn\tpos\tcoef\tlr\tz\tplacebo-coef\tplacebo-lr\tplacebo-z")
     (doseq [{:keys [name kinds]} named
               :let [panel (panels name)
                     real (fn [c t] (get-in panel [c t]))
@@ -342,8 +370,8 @@
               (when (= kd "pooled")
                 (swap! pooled assoc-in [label name h] (:coef fa))
                 (swap! placebo-pooled assoc-in [label name h] (:coef fb)))
-              (say (format "%s\t%s\t%d\t%s\t%d\t%d\t%+.3f\t%.2f\t%+.2f\t%+.3f\t%.2f\t%+.2f"
-                           name kd h label (:n fa) (:pos fa) (:coef fa) (:lr fa) (:z fa) (:coef fb) (:lr fb) (:z fb)))))))
+              (say (format "%s\t%s\t%s\t%d\t%s\t%d\t%d\t%+.3f\t%.2f\t%+.2f\t%+.3f\t%.2f\t%+.2f"
+                           design name kd h label (:n fa) (:pos fa) (:coef fa) (:lr fa) (:z fa) (:coef fb) (:lr fb) (:z fb)))))))
       ;; the horizon statistics
       (let [specs (into {} (for [st named] [(:name st) st]))
             g (m/rng seed)
@@ -362,8 +390,8 @@
         (doseq [label ["base" "none"] {:keys [name sign speed]} named
                 :let [cs (get-in @pooled [label name]) pc (get-in @placebo-pooled [label name])]
                 :when (= 5 (count cs))]
-          (say (format "skill\t%s\t%s\t%s\t%+d\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f"
-                       name label (clojure.core/name speed) sign (* sign (c12 cs)) (* sign (state-slope cs))
+          (say (format "skill\t%s\t%s\t%s\t%s\t%+d\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f\t%+.3f"
+                       design name label (clojure.core/name speed) sign (* sign (c12 cs)) (* sign (state-slope cs))
                        (if (= 5 (count pc)) (* sign (c12 pc)) Double/NaN) (if (= 5 (count pc)) (* sign (state-slope pc)) Double/NaN)
                        (cs 1) (cs 2) (cs 3) (cs 4) (cs 5))))
         (doseq [label ["base" "none"]
@@ -377,9 +405,10 @@
                       p (/ (+ 1.0 (count (filter #(>= % o) ns))) (+ 1.0 draws))
                       mean (mean-of ns)
                       sd (Math/sqrt (mean-of (map #(* (- % mean) (- % mean)) ns)))]]
-          (say (format "statistic\t%s\t%s\tobserved %+.4f\tplacebo %+.4f\tnull mean %+.4f sd %.4f\tp %.3f (%d permutations of country labels)%s"
-                       label stat-name o (plc i) mean sd p draws
+          (say (format "statistic\t%s\t%s\t%s\tobserved %+.4f\tplacebo %+.4f\tnull mean %+.4f sd %.4f\tp %.3f (%d permutations of country labels)%s"
+                       design label stat-name o (plc i) mean sd p draws
                        (if (= i 2) (if consistent? "\tconsistent with theory ((b) > 0)" "\tnot counted: (b) <= 0 or decline <= 0") "")))))
+      )
     (io/make-parents out)
     (spit out (str buf))
     (println "wrote" out)))

@@ -179,6 +179,8 @@ coefficient's means at h = 1, 2 and at h = 4, 5.
   fast hypothesis, never for it. (The first version of this test used a
   single statistic, slope × sign × speed, which counted exactly that case
   in favour. This replaces it.)
+- Primary design: each state demeaned by year (see below); the raw
+  states for the record.
 - The null permutes country labels within each state's countries, so
   each country reads another's whole series, and recomputes all three.
   200 draws, seed 1. One-sided p = (1 + #{null ≥ observed}) / 201.
@@ -191,37 +193,96 @@ coefficient's means at h = 1, 2 and at h = 4, 5.
 
 ## Design-year profile
 
-**Offset base (increment over t44-world-norel).** Pooled coefficient (log odds ratio per SD) with its signed clustered statistic z in brackets; the placebo's z last.
+Two designs, on the same rows and with the same null:
+
+- **demeaned (primary):** each state less its year's cross-country mean,
+  taken over the countries that have it that year, then scaled to unit
+  spread. T1 asks about country-specific drivers. A world component
+  (world real rates, world prices) belongs to the world-series tests,
+  and permuting country labels cannot remove it: it shifted the raw
+  design's (b) null to −0.18. The demeaning is causal, because the mean
+  at t uses only values known at t. A test checks that it centres the
+  permutation null on synthetic data with a world component;
+- **raw (for the record):** the states as read.
+
+### Demeaned (primary)
+
+**Offset base.** Pooled coefficient (log odds ratio per SD) with its signed clustered z in brackets; the placebo's z last.
 
 | State | h=1 | h=2 | h=3 | h=4 | h=5 | placebo z, h=1..5 |
 |---|---|---|---|---|---|---|
-| credit-gap | +0.156 (+1.29) | +0.117 (+1.02) | +0.086 (+0.98) | +0.127 (+1.36) | +0.130 (+1.50) | +0.08 -0.38 -0.56 +0.22 -0.62 |
-| keen-debt-gap | +0.044 (+0.40) | +0.030 (+0.28) | +0.109 (+0.94) | +0.139 (+1.15) | +0.162 (+1.34) | +1.05 +1.37 +1.68 +1.34 +0.77 |
-| debt-service | -0.123 (-0.82) | -0.128 (-0.82) | -0.137 (-0.92) | -0.242 (-1.56) | -0.238 (-1.49) | -0.18 -0.40 -0.20 -0.42 -0.73 |
-| food-import-exposure | -0.107 (-0.27) | +0.240 (+0.55) | -0.115 (-0.58) | -0.006 (-0.06) | -0.060 (-0.52) | -1.45 -0.38 -1.33 -1.33 -1.19 |
-| youth-bulge | -0.019 (-0.31) | -0.034 (-0.50) | -0.070 (-1.03) | -0.098 (-1.40) | -0.112 (-1.92) | -1.24 -1.54 -1.79 -1.49 -1.12 |
-| elite-overproduction | -0.044 (-0.26) | +0.155 (+0.82) | +0.110 (+0.67) | +0.144 (+0.99) | +0.331 (+2.17) | +2.57 +3.34 +2.16 +1.26 +0.84 |
-| technology-gap | +0.073 (+0.76) | +0.018 (+0.18) | +0.009 (+0.07) | -0.044 (-0.37) | -0.078 (-0.57) | -1.55 -1.44 -0.90 -0.84 -0.48 |
-| fuel-price-gap | +0.137 (+1.14) | +0.124 (+1.40) | +0.127 (+1.77) | +0.167 (+2.04) | +0.214 (+2.21) | +1.38 +1.59 +1.59 +2.20 +1.75 |
-| reserves | -0.265 (-2.30) | -0.178 (-1.58) | -0.178 (-1.45) | -0.240 (-1.89) | -0.238 (-1.71) | -1.17 -0.86 -1.14 -0.95 -0.23 |
-| anocracy | +0.007 (+0.18) | -0.016 (-0.34) | +0.023 (+0.46) | +0.004 (+0.09) | +0.032 (+0.61) | +0.03 +0.01 -0.30 -0.98 -1.04 |
+| credit-gap | +0.171 (+1.47) | +0.139 (+1.22) | +0.086 (+1.02) | +0.111 (+1.26) | +0.107 (+1.27) | +0.25 -0.10 -0.59 -0.03 -1.03 |
+| keen-debt-gap | -0.071 (-0.78) | -0.111 (-1.27) | -0.057 (-0.62) | -0.045 (-0.45) | -0.011 (-0.12) | +0.42 +0.19 +0.37 -0.19 -0.59 |
+| debt-service | +0.102 (+0.79) | +0.086 (+0.69) | +0.080 (+0.67) | +0.008 (+0.07) | +0.017 (+0.20) | +1.02 +0.68 +1.06 +1.03 +0.70 |
+| food-import-exposure | +0.571 (+2.17) | +0.426 (+1.49) | +0.399 (+2.16) | +0.250 (+1.58) | +0.116 (+1.92) | -0.76 -0.14 -1.23 -1.54 -1.18 |
+| youth-bulge | +0.090 (+1.34) | +0.075 (+1.08) | +0.040 (+0.55) | +0.006 (+0.08) | -0.019 (-0.31) | +0.03 -0.18 -0.27 -0.13 +0.18 |
+| elite-overproduction | -0.190 (-1.15) | -0.045 (-0.26) | -0.028 (-0.17) | +0.071 (+0.41) | +0.205 (+1.44) | +1.88 +3.20 +1.74 +0.83 -0.01 |
+| technology-gap | +0.184 (+1.73) | +0.148 (+1.25) | +0.106 (+0.92) | +0.060 (+0.55) | -0.013 (-0.11) | -1.33 -0.89 -0.40 -0.20 -0.05 |
+| fuel-price-gap | -0.106 (-1.76) | -0.121 (-1.96) | -0.121 (-1.70) | -0.111 (-1.56) | -0.068 (-0.94) | -1.33 -1.24 -1.28 -0.84 -1.66 |
+| reserves | -0.255 (-2.22) | -0.186 (-1.73) | -0.190 (-1.68) | -0.252 (-1.99) | -0.265 (-1.98) | -1.02 -1.02 -1.30 -1.19 -0.65 |
+| anocracy | -0.029 (-0.80) | -0.055 (-1.24) | -0.013 (-0.28) | -0.029 (-0.63) | -0.001 (-0.02) | -0.81 -0.82 -1.08 -1.52 -1.62 |
 
-**Offset none (total effect).** Pooled coefficient (log odds ratio per SD) with its signed clustered statistic z in brackets; the placebo's z last.
+**Offset none (total effect).** Pooled coefficient (log odds ratio per SD) with its signed clustered z in brackets; the placebo's z last.
 
 | State | h=1 | h=2 | h=3 | h=4 | h=5 | placebo z, h=1..5 |
 |---|---|---|---|---|---|---|
-| credit-gap | +0.139 (+1.13) | +0.087 (+0.76) | +0.045 (+0.53) | +0.077 (+0.85) | +0.073 (+0.83) | -0.18 -0.74 -1.03 -0.35 -1.27 |
-| keen-debt-gap | -0.021 (-0.17) | -0.022 (-0.20) | +0.077 (+0.63) | +0.122 (+0.97) | +0.156 (+1.25) | +0.52 +0.86 +1.37 +1.13 +0.65 |
-| debt-service | +0.024 (+0.18) | +0.013 (+0.10) | -0.000 (-0.00) | -0.106 (-0.72) | -0.096 (-0.67) | +0.56 +0.30 +0.55 +0.37 +0.02 |
-| food-import-exposure | +0.237 (+1.91) | +0.323 (+2.48) | +0.303 (+2.00) | +0.419 (+2.10) | +0.347 (+2.10) | -0.75 +0.25 +0.18 +1.33 +1.69 |
-| youth-bulge | +0.192 (+2.97) | +0.179 (+2.79) | +0.147 (+2.34) | +0.117 (+1.92) | +0.093 (+1.78) | +0.24 +0.34 +0.31 +0.44 +0.72 |
-| elite-overproduction | -0.236 (-1.63) | -0.107 (-0.72) | -0.192 (-1.23) | -0.164 (-1.14) | -0.008 (-0.07) | +1.51 +2.81 +0.29 -0.73 -1.10 |
-| technology-gap | +0.754 (+5.80) | +0.695 (+5.61) | +0.684 (+5.44) | +0.626 (+5.23) | +0.590 (+4.68) | +0.33 +0.52 +1.08 +0.89 +1.00 |
-| fuel-price-gap | +0.054 (+0.65) | +0.044 (+0.71) | +0.044 (+0.83) | +0.066 (+1.05) | +0.093 (+1.38) | +1.10 +1.00 +0.87 +1.63 +1.17 |
-| reserves | -0.259 (-2.41) | -0.192 (-1.86) | -0.199 (-1.73) | -0.262 (-2.11) | -0.271 (-2.04) | -1.43 -1.14 -1.30 -1.21 -0.40 |
-| anocracy | -0.041 (-1.21) | -0.065 (-1.66) | -0.029 (-0.63) | -0.044 (-0.94) | -0.017 (-0.37) | -0.58 -0.63 -0.93 -1.47 -1.55 |
+| credit-gap | +0.177 (+1.45) | +0.135 (+1.15) | +0.076 (+0.88) | +0.098 (+1.09) | +0.093 (+1.04) | +0.26 -0.10 -0.64 -0.10 -1.11 |
+| keen-debt-gap | -0.036 (-0.35) | -0.078 (-0.82) | -0.015 (-0.14) | -0.001 (-0.01) | +0.026 (+0.26) | +0.70 +0.54 +0.73 +0.08 -0.36 |
+| debt-service | +0.077 (+0.50) | +0.058 (+0.38) | +0.057 (+0.39) | -0.032 (-0.25) | -0.016 (-0.14) | +0.86 +0.52 +0.94 +0.89 +0.51 |
+| food-import-exposure | +0.369 (+2.44) | +0.301 (+1.96) | +0.282 (+2.69) | +0.232 (+1.54) | +0.115 (+1.44) | -1.20 -0.50 -1.53 -1.77 -1.34 |
+| youth-bulge | +0.160 (+2.78) | +0.137 (+2.38) | +0.105 (+1.89) | +0.074 (+1.34) | +0.049 (+1.05) | -0.34 -0.43 -0.42 -0.25 +0.05 |
+| elite-overproduction | -0.211 (-1.45) | -0.083 (-0.56) | -0.066 (-0.47) | +0.026 (+0.20) | +0.129 (+1.15) | +1.82 +3.15 +1.56 +0.56 -0.31 |
+| technology-gap | +0.851 (+5.90) | +0.811 (+5.66) | +0.771 (+5.55) | +0.724 (+5.46) | +0.646 (+5.11) | -1.09 -0.33 +0.29 +0.51 +0.66 |
+| fuel-price-gap | -0.095 (-1.89) | -0.106 (-1.95) | -0.106 (-1.78) | -0.101 (-1.68) | -0.071 (-1.16) | -1.18 -1.00 -1.19 -0.74 -1.60 |
+| reserves | -0.225 (-2.12) | -0.173 (-1.72) | -0.185 (-1.69) | -0.248 (-2.02) | -0.271 (-2.05) | -0.90 -0.94 -1.17 -0.97 -0.38 |
+| anocracy | -0.000 (-0.01) | -0.023 (-0.58) | +0.014 (+0.30) | +0.000 (+0.01) | +0.024 (+0.48) | +0.47 +0.38 +0.05 -0.61 -0.85 |
 
 **Skill per state** (s × coef; c12, c45 the means at h = 1, 2 and 4, 5):
+
+| State | Speed | s | s·c12, base | s·(c45 − c12), base | s·c12, none | s·(c45 − c12), none | placebo s·c12, base | placebo s·(c45 − c12), base |
+|---|---|---|---|---|---|---|---|---|
+| credit-gap | slow | + | +0.155 | -0.046 | +0.156 | -0.061 | +0.007 | -0.038 |
+| keen-debt-gap | slow | + | -0.091 | +0.063 | -0.057 | +0.069 | +0.024 | -0.055 |
+| youth-bulge | slow | + | +0.083 | -0.089 | +0.149 | -0.087 | -0.004 | +0.005 |
+| elite-overproduction | slow | + | -0.118 | +0.255 | -0.147 | +0.225 | +0.353 | -0.275 |
+| technology-gap | slow | + | +0.166 | -0.142 | +0.831 | -0.147 | -0.045 | +0.038 |
+| fuel-price-gap | slow | + | -0.113 | +0.024 | -0.100 | +0.015 | -0.100 | +0.007 |
+| anocracy | slow | + | -0.042 | +0.027 | -0.012 | +0.024 | -0.037 | -0.052 |
+| debt-service | fast | + | +0.094 | -0.081 | +0.068 | -0.092 | +0.176 | -0.018 |
+| food-import-exposure | fast | + | +0.498 | -0.315 | +0.335 | -0.162 | -0.060 | -0.145 |
+| reserves | fast | − | +0.221 | +0.038 | +0.199 | +0.061 | +0.091 | -0.024 |
+
+**The statistics** (200 permutations of country labels, seed 1). The
+fast decline counts as consistent with theory only when (b) > 0 as well:
+
+| Offset | Statistic | Observed | Placebo | Null mean (sd) | One-sided p |
+|---|---|---|---|---|---|
+| base (primary) | (a) slow | +0.0130 | -0.0529 | +0.0031 (0.0345) | 0.363 |
+| base (primary) | (b) fast | +0.2709 | +0.0691 | +0.0016 (0.0969) | 0.020 |
+| base (primary) | fast decline (record) | +0.1195 | +0.0625 | +0.0128 (0.0829) | 0.114, counted |
+| none | (a) slow | +0.0055 | -0.0483 | +0.0051 (0.0289) | 0.468 |
+| none | (b) fast | +0.2007 | +0.0556 | -0.0033 (0.0862) | 0.020 |
+| none | fast decline (record) | +0.0644 | +0.0618 | +0.0062 (0.0688) | 0.194, counted |
+
+### Raw (for the record)
+
+**The statistics:**
+
+| Offset | Statistic | Observed | Placebo | Null mean (sd) | One-sided p |
+|---|---|---|---|---|---|
+| base | (a) slow | +0.0264 | -0.0434 | +0.0176 (0.0341) | 0.403 |
+| base | (b) fast | +0.0542 | -0.0993 | -0.1755 (0.0918) | 0.015 |
+| base | fast decline (record) | +0.0656 | -0.0044 | -0.0140 (0.0770) | 0.164, counted |
+| none | (a) slow | +0.0091 | -0.0492 | +0.0077 (0.0296) | 0.448 |
+| none | (b) fast | +0.1746 | +0.0531 | -0.0013 (0.0757) | 0.005 |
+| none | fast decline (record) | -0.0082 | -0.0555 | -0.0646 (0.0515) | 0.144, not counted |
+
+Under the base offset the raw (b) null is centred at −0.18. Debt
+service and food import exposure take negative coefficients on their
+own in permutations, through their world components. The demeaned
+design removes that, and its nulls centre within 0.015 of zero.
+
+**Skill per state, raw:**
 
 | State | Speed | s | s·c12, base | s·(c45 − c12), base | s·c12, none | s·(c45 − c12), none | placebo s·c12, base | placebo s·(c45 − c12), base |
 |---|---|---|---|---|---|---|---|---|
@@ -236,83 +297,45 @@ coefficient's means at h = 1, 2 and at h = 4, 5.
 | food-import-exposure | fast | + | +0.067 | -0.100 | +0.280 | +0.103 | -0.329 | +0.114 |
 | reserves | fast | − | +0.222 | +0.017 | +0.225 | +0.041 | +0.093 | -0.048 |
 
-**The statistics** (200 permutations of country labels, seed 1):
+The raw per-h tables are in the tsv (design `raw`).
 
-| Offset | Statistic | Observed | Placebo | Null mean (sd) | One-sided p |
-|---|---|---|---|---|---|
-| base (primary) | (a) slow: s·(c45 − c12) | +0.026 | -0.043 | +0.018 (0.034) | 0.403 |
-| base (primary) | (b) fast: s·c12 | +0.054 | -0.099 | -0.176 (0.092) | 0.015 |
-| base | fast decline, record: s·(c12 − c45) | +0.066 | -0.004 | -0.014 (0.077) | 0.164, counted ((b) > 0) |
-| none | (a) slow | +0.009 | -0.049 | +0.008 (0.030) | 0.448 |
-| none | (b) fast | +0.175 | +0.053 | -0.001 (0.076) | 0.005 |
-| none | fast decline, record | -0.008 | -0.056 | -0.065 (0.052) | 0.144, not counted (decline ≤ 0) |
-
-**The (b) null under the base offset is not centred on zero** (mean
-−0.18). In permutations, debt service (−0.25) and food import exposure
-(−0.37) take negative coefficients on their own. Both carry a world
-component that a permutation of countries keeps: world real rates, and
-the world grain price gap. Against the base, the years when that
-component is high are years the base over-predicts. So "(b) = +0.054,
-p 0.015" says that the country-specific part is right-signed relative to
-that time component. It does not say the raw short-lead coefficient is
-clearly right-signed: debt service's is negative. Year effects, or a
-year-demeaned state, would take the time component out before
-registration. That is a design choice for the trial, so it is not made
-here.
-
-Full table, per kind as well: data/runs/sequencing/horizon-t1-design.tsv.
+Full table, per kind as well: data/runs/sequencing/horizon-t1-design.tsv
+(first column the design).
 
 ## Reading
 
-These are design years, for development: the readings below shape the
-list, they are not the test.
+These are design years, for development. The readings below shape the
+list; they are not the test. They read the demeaned design.
 
-- **Slow states: no rising profile.** (a) is +0.026 against the base
-  (p 0.40) and +0.009 for the total effect (p 0.45). Three of the seven
-  slow states rise (the Keen debt gap, elite overproduction, the fuel
-  price gap), three fall (the credit gap, the youth bulge, the technology
-  gap) and one is flat (anocracy). Forty design years cannot separate a
-  slope of a few hundredths of a log odds ratio per SD from none.
-- **Fast states: right-signed at short leads overall, mostly reserves.**
-  (b) is positive with both offsets (+0.054 against the base, p 0.015;
-  +0.175 total, p 0.005). Reserves carry most of it (+0.22 with either
-  offset), and food import exposure carries the total effect. The
-  debt-service proxy is wrong-signed against the base (−0.13), and under
-  the new statistic its growing negative coefficient counts against the
-  fast hypothesis, not for it. Neither reserves nor food exposure fades
-  with lead: the decline is +0.07 against the base, carried by debt
-  service's wrong-signed growth and food exposure's noise (reserves
-  −0.02), and −0.01 for the total effect. See the null-centring
-  caveat above.
-- **Rising, as theory says:** Keen's debt gap (both offsets: about 0 at
-  h = 1-2 to +0.16 at h = 5) and the fuel price gap (+0.14 to +0.21
-  against the base). The fuel gap's placebo rises as much: the oil
-  cycle is common to exporters, so its profile is the world's, not the
-  country's.
-- **Level across h, the right sign:** the credit gap (+0.09 to +0.16 per
-  SD, z ≤ 1.5, placebo flat) and reserves (about −0.2 to −0.27, z −1.5 to
-  −2.3 at every h, the clearest country signal on the list, placebo about
-  half). Neither falls off with lead the way a trigger would. On these
-  data the credit gap is not the long-lead indicator Drehmann & Juselius
-  find, nor are reserves the short-lead one Kaminsky & Reinhart find. Both
-  read more like a level.
-- **Attribution against increment.** The technology gap is the largest
-  total effect on the list (+0.75 per SD, z 5.8, flat in h, placebo
-  null), and it is zero over the base. The base's country history already
-  holds where conflict and coups happen; this is the mediation case of
-  LIT-NEXT-STEPS 3b. The youth bulge is the same, smaller (+0.19, z 3.0,
-  falling with h, then slightly negative over the base). Food import
-  exposure has a total effect (+0.24 to +0.42, z 2-2.5) and none over the
-  base.
-- **Wrong-signed or noise:** the debt-service proxy is negative (more
-  r·d, fewer crises), on 36 onsets. Elite overproduction's placebo beats
-  it at short leads. Anocracy is null against both offsets.
+- **Slow states: no rising profile.** (a) is +0.013 against the base
+  (p 0.36; null mean +0.003) and +0.006 for the total effect (p 0.47).
+  Only the Keen debt gap (+0.06, from a negative start), elite
+  overproduction (+0.26, on 101 onsets, with a placebo as strong) and
+  anocracy (+0.03) rise. The credit gap, the youth bulge and the
+  technology gap all fall with lead: largest at h = 1, as triggers
+  would be. The fuel price gap is wrong-signed once demeaned (about
+  −0.11 at every h). Its raw positive profile was the world oil cycle.
+- **Fast states: right-signed at short leads.** (b) is +0.271 against
+  the base (p 0.020; null mean +0.002) and +0.201 for the total effect
+  (p 0.020). Food import exposure carries it: +0.57 at h = 1, falling
+  to +0.12 at h = 5, the trigger profile theory expects. Reserves add
+  +0.22, flat in h. Once demeaned, debt service is right-signed, if
+  small (+0.09, 36 onsets). The decline, counted because (b) > 0, is
+  +0.12 against the base (p 0.11). It comes from food exposure and debt
+  service; reserves don't fade.
+- **Increment against attribution.** The technology gap's total effect
+  is +0.85 per SD (z 5.9). Against the base it is +0.18 at h = 1, fading
+  to zero by h = 5. The youth bulge is the same, smaller (+0.16 total,
+  +0.09 against the base). Country history in the base holds most of
+  where these states point.
+- **Credit gap:** right-signed and level to falling (+0.17 at h = 1,
+  +0.11 at h = 5, z ≤ 1.5). On these data it does not have the long lead
+  of Drehmann & Juselius.
 
 The base offset is the 24-month forecast at t at every h, so at h ≥ 3
-the "increment" is over a forecast that does not cover the year. A state
-that predicts the base's own later forecast would show a rising increment
-for that reason alone. The total-effect profile does not carry this
-caveat, and there only the debt gap rises clearly.
+the increment is over a forecast that does not cover the year. The
+total-effect profile does not carry this caveat. Its reading is the
+same.
 
 ## Which states to cut first
 
@@ -327,7 +350,8 @@ results, so the list stays theory-led:
    rich countries dominate it, so coverage confounds it with the base rate.
 3. **fuel-price-gap**: there is no main-effect paper behind it (the
    literature is the interaction with a terms-of-trade fall, ranked trial
-   3), and its signal is the world oil cycle, as the placebo shows.
+   3), and its raw signal was the world oil cycle: demeaned by year it is
+   wrong-signed.
    Better tested as an interaction.
 4. **anocracy**: Vreeland's circularity, and the regime is mostly in the
    base already (political gauges); null here.
@@ -337,7 +361,8 @@ results, so the list stays theory-led:
 
 That leaves five, roughly one per domain: credit gap, reserves, food
 import exposure, youth bulge, technology gap. Two of them (youth,
-technology) are location variables whose increment the base absorbs.
+technology) are location variables; most of what they say, the base
+already holds (demeaned, a small increment at h = 1 that fades).
 They belong in the attribution test (ranked trial 4) more than in a
 horizon profile against the base. If the list must shrink further, the
 profile against the base rests on the credit gap, reserves and food
