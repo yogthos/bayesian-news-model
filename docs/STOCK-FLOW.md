@@ -350,3 +350,38 @@ inflow (the gap closed), with R&D and patent intensity as leading flows;
 causal (CHAT known two years after its data year, though it is a 2009
 compilation). The aggregate gap breaks when CHAT ends (about 2006-10);
 the inflow compares only technologies known in both years.
+
+## Commodity cycles' prices (bnm.cycles, October 2026)
+
+bnm.cycles-run reads each commodity's price from one source over its
+whole history, so the level does not jump where sources meet: the World
+Bank's Pink Sheet (CMO Historical Data Monthly, CC BY 4.0, downloaded
+2026-10-22 to data/raw/market/pinksheet, converted by scripts/pinksheet.py)
+for Brent, Dubai, coal, the three gas prices, aluminium, copper, iron ore,
+nickel, wheat, maize, rice, soybeans and sugar, monthly from 1960 (coal
+1970, Japan LNG 1977); FRED's WTISPLC for WTI (1946, longer than the Pink
+Sheet's 1982); the IMF index from the store for all-index. Each month is
+known the month after, as WTISPLC; the sheet is a current vintage, its
+history rarely revised, and its October 2026 edition rounds to about three
+significant figures (annual means within 3.4% of the January 2025
+edition's full precision). Where the store's FRED series overlap it (1992
+on; the run prints each pair), log annual means correlate at 0.998-1.000
+with levels within 5% for crude, European and US gas, coal, aluminium,
+copper, nickel and maize; Japan LNG correlates at 0.93, wheat 0.98 (the
+sheet's HRW 14% above), soybeans 0.995 (13% above), rice 0.98, sugar 0.998
+(the sheet in $/kg, the IMF in cents/lb). Iron ore correlates at 0.95: the
+sheet's is the annual contract price in US cents per dry metric ton unit
+before 2006 and the China spot price in $/t after, a seam that happens to
+land near the spot level (2005 65, 2006 69), while the IMF's series in the
+store jumps at its own seam (2007 37, 2009 80; the two agree from 2010).
+Rows now start in 1968 for most commodities (coal 1978, Japan LNG 1985), so
+the design years bnm.state-diag uses before 2003 see them. Caveats: the
+sheet's Brent before 1976 and Dubai before 1985 are Saudi Light prices
+(the two identical before 1976), and its US gas before Henry Hub trading
+(about 1990) is an older US price it does not name. On the design years
+(1968-2002, 35 rows each) the metals and grains keep some skill (dir-3y
+against the next three years' real price change 0.23-0.46 for copper,
+nickel, wheat, maize, rice, soybeans and sugar), crude and gas have none
+(-0.28 to -0.31, the 1970s shocks), aluminium and iron ore little
+(0.06-0.09), and the gap's reversion alone does as well or better almost
+everywhere.

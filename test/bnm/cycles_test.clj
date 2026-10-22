@@ -238,6 +238,46 @@
         (is (= {} (run/annual-prices es)))
         (is (= {1950 [1951 (/ (- 78.0 10.0) 11.0)]} (run/annual-prices es 11)))))))
 
+(deftest wide-monthly-csv-is-known-the-month-after
+  (let [path (tmp ["month,copper,rice"
+                   "1960-01,700.0,"
+                   "1960-02,710.0,100.0"
+                   "bad,1.0,1.0"
+                   "1960-03,,104.0"])
+        cs (run/read-wide-monthly-csv path)
+        m (fn [y mo] (+ (* 12 y) (dec mo)))]
+    (testing "each column's months, each out the month after; blank cells and rows without a month left out"
+      (is (= {"copper" [[(m 1960 1) (m 1960 2) 700.0] [(m 1960 2) (m 1960 3) 710.0]]
+              "rice" [[(m 1960 2) (m 1960 3) 100.0] [(m 1960 3) (m 1960 4) 104.0]]}
+             cs))))
+  (testing "a full year's mean is known the year after (December's value is out in January)"
+    (let [path (tmp (cons "month,x" (for [mo (range 1 13)] (format "1960-%02d,%d.0" mo mo))))]
+      (is (= {1960 [1961 6.5]} (run/annual-prices ((run/read-wide-monthly-csv path) "x"))))))
+  (testing "a missing file reads as nil"
+    (is (nil? (run/read-wide-monthly-csv "/nonexistent/pinksheet.csv")))))
+
+(deftest sources-agree-on-their-overlap
+  (let [a {2000 [2001 10.0] 2001 [2002 20.0] 2002 [2003 40.0] 2003 [2004 20.0]}
+        b {2001 [2002 10.0] 2002 [2003 20.0] 2003 [2004 10.0] 2004 [2005 5.0]}
+        {:keys [n corr ratio from to]} (run/agreement a b)]
+    (testing "over the data years both have: the correlation of the log means and their geometric mean ratio"
+      (is (= 3 n))
+      (is (= [2001 2003] [from to]))
+      (is (close? corr 1.0 1e-9))
+      (is (close? ratio 2.0 1e-9)))
+    (testing "fewer than three common years: no agreement"
+      (is (nil? (run/agreement (select-keys a [2000 2001]) b))))))
+
+(deftest one-source-per-commodity
+  (testing "each commodity's price from one source over its whole history, so the level does not jump"
+    (doseq [[c {:keys [price]}] run/commodities]
+      (is (or (= :wti price) (string? price) (and (vector? price) (= :pink (first price)))) c)))
+  (testing "the Pink Sheet where it reaches the design years; WTI from FRED's WTISPLC (1946, longer)"
+    (is (= :wti (get-in run/commodities ["oil-wti" :price])))
+    (doseq [c ["oil-brent" "oil-dubai" "coal" "gas-europe" "gas-asia" "gas-us" "aluminium" "copper" "iron-ore"
+               "nickel" "wheat" "maize" "rice" "soybeans" "sugar"]]
+      (is (= [:pink c] (get-in run/commodities [c :price])) c))))
+
 (deftest exposure-is-share-times-phase
   (let [phase {2010 0.4 2011 -0.2 2020 0.1}
         shares {"SAU" (sorted-map 2008 [2009 80.0] 2009 [2011 70.0])}
