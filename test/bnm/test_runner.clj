@@ -60,6 +60,7 @@
             [bnm.horizon-profile-test]
             [bnm.attribution-test]
             [bnm.calibration-regime-test]
+            [bnm.recalibrate-online-test]
             [bnm.concordance-test]
             [bnm.essentials-test]))
 
@@ -124,6 +125,7 @@
     bnm.horizon-profile-test
     bnm.attribution-test
     bnm.calibration-regime-test
+    bnm.recalibrate-online-test
     bnm.concordance-test
     bnm.essentials-test])
 
