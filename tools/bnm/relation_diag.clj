@@ -136,7 +136,7 @@
     (say (str "edge\tform\tn\tpos\tlr\tcoef\tplacebo-lr\tplacebo-coef"))
     (doseq [[[j k] e] (sort-by key graph)
             :let [fk (years k) fj (years j) cj (cats j)
-                  places (vec (sort (keys fk)))
+                  places (vec (sort (filter tree (keys fk))))
                   other (zipmap places (concat (rest places) [(first places)]))
                   ;; the places on the gazetteer's tree only, so raw and own forms
                   ;; are tested on the same rows

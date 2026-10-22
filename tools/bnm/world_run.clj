@@ -70,7 +70,7 @@
   edge whose form ends in -own passes the raw form's own part at the
   country (bnm.factors: less what the world's and the region's countries
   share at t), its factor model stepped once per origin and scale, and
-  above the countries the countries' mean of the raw form. A kind without
+  above the countries the countries' mean common part. A kind without
   a parent is left as it is.
   `source` maps the place to the one whose parents it reads (identity, or
   the placebo's other country)."
@@ -94,26 +94,33 @@
         owns (atom {})
         scale-for (fn [j scale] (if (contains? (scales-of j) scale) scale :year))
         raw-at (fn [bs j form scale c t] (rl/raw-input form {:kind j :book (bs j) :catalogue (cats j)} (scale-for j scale) c t))
+        leaf? (set leaves)
         own-at (fn [bs j form scale t]
                  (let [k [j form (scale-for j scale)]]
                    (or (get-in @owns [k :at t])
                        (let [raws (into {} (for [c leaves :let [r (raw-at bs j (base-of form) scale c t)] :when (some? (:x r))] [c r]))
                              [parts st'] (fac/observe (or (get-in @owns [k :st]) (fac/online par {:discount 0.99}))
                                                       t (update-vals raws :x))
-                             at {:own (into {} (for [[c {:keys [own]}] parts] [c own]))
-                                 :raw (update-vals raws :x)
-                                 :reads (vec (mapcat :reads (vals raws)))}]
+                             latest (reduce max Long/MIN_VALUE (keep :origin (mapcat :reads (vals raws))))
+                             at {:own (update-vals parts :own)
+                                 :common (update-vals parts :common)
+                                 :reads (update-vals raws :reads)
+                                 ;; one read standing for the cross-section the factors used
+                                 :summary (when (> latest Long/MIN_VALUE)
+                                            [{:dir :relation :kind j :scale (scale-for j scale) :place :cross-section :origin latest}])}]
                          (swap! owns assoc k {:st st' :at {t at}})
                          at))))
+        ;; an own edge at a country: its own part; above the countries (the
+        ;; members already through the placebo's source): their mean common
+        ;; part, what they share, never their levels
+        own-input (fn [bs j scale place t srcs]
+                    (let [{:keys [own common reads summary]} (own-at bs j (:form (edges j)) scale t)]
+                      (if (leaf? place)
+                        {:x (double (get own (first srcs) 0.0)) :reads (into (vec (get reads (first srcs))) summary)}
+                        (let [vs (keep common srcs)]
+                          {:x (if (seq vs) (/ (reduce + vs) (count vs)) 0.0) :reads (vec summary)}))))
         input (fn [bs j scale place t]
-                (let [form (:form (edges j))]
-                  (if (own? form)
-                    (let [{:keys [own raw reads]} (own-at bs j form scale t)]
-                      (if (contains? (set leaves) place)
-                        {:x (double (get own place 0.0)) :reads reads}
-                        (let [vs (keep raw (members place))]
-                          {:x (if (seq vs) (/ (reduce + vs) (count vs)) 0.0) :reads reads})))
-                    (rl/edge-input form {:kind j :book (bs j) :catalogue (cats j)} (scale-for j scale) place t))))]
+                (rl/edge-input (:form (edges j)) {:kind j :book (bs j) :catalogue (cats j)} (scale-for j scale) place t))]
     (if (empty? parents)
       sp
     (assoc sp
@@ -123,8 +130,8 @@
                               ;; 1980) is read at its year node
                               ms (members place)
                               ins (for [j parents]
-                                    (let [rs (if (and (own? (:form (edges j))) (not= ms [place]))
-                                               [(input bs j scale (source place) t)]
+                                    (let [rs (if (own? (:form (edges j)))
+                                               [(own-input bs j scale place t (map source ms))]
                                                (map #(input bs j scale (source %) t) ms))]
                                       {:x (/ (reduce + 0.0 (map :x rs)) (count rs)) :reads (mapcat :reads rs)}))]
                           {:x (mapv :x ins) :reads (vec (mapcat :reads ins))}))

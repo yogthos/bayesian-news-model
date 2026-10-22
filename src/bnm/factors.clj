@@ -68,9 +68,12 @@
 (defn- factor-of
   "A place's factor for a country with departure dc from the sums of
   departures: its countries' mean less its parent's, the country left out
-  of both; the root's, its mean; nil where no other country has a value."
+  of both (dc nil: a country not in the sums, nothing to leave out); the
+  root's, its mean; nil where no other country has a value."
   [s parent dc p]
-  (let [mean (fn [q] (let [[sm n] (s q)] (when (and n (> n 1)) (/ (- sm dc) (dec n)))))]
+  (let [mean (fn [q] (let [[sm n] (s q)]
+                       (cond (nil? dc) (when n (/ sm n))
+                             (and n (> n 1)) (/ (- sm dc) (dec n)))))]
     (when-let [mp (mean p)]
       (if-let [up (parent p)]
         (when-let [mu (mean up)] (- mp mu))
@@ -96,13 +99,15 @@
                             (when (> var 1e-9) var))))
         anc (fn [c] (ancestors-of parent c))
         level (fn [c] (if-let [m (models c)] (first (d/means m)) (double (xs c))))
-        dep (into {} (for [c cs] [c (- (double (xs c)) (level c))]))
+        ;; a country without a model yet departs by nothing and is left out
+        ;; of the means (it would shrink them by n/(n+1))
+        dep (into {} (for [c cs :when (models c)] [c (- (double (xs c)) (level c))]))
         s (sums (into {} (for [[c v] dep] [c {t v}])) parent t)]
     (if-not scale
       [(into {} (for [c cs] [c {:level (double (xs c)) :common 0.0 :own 0.0 :by-level (zipmap (anc c) (repeat 0.0))}]))
        (assoc st :last-t t)]
       (let [step (for [c cs :let [x (double (xs c))]]
-                   (let [fs (mapv #(or (factor-of s parent (dep c) %) 0.0) (anc c))
+                   (let [fs (mapv #(or (factor-of s parent (get dep c) %) 0.0) (anc c))
                          mdl (or (models c)
                                  (d/linear {:mean (into [x] (repeat (count (anc c)) 1.0))
                                             :var (into [(* 10.0 scale)] (repeat (count (anc c)) 1.0))

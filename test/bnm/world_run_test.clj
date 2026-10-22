@@ -76,9 +76,30 @@
     (doseq [t ts] (b :half-decade "AAA" t) (b :year "AAA" t))
     (is (= (:x (a :half-decade "AAA" 95)) (:x (b :half-decade "AAA" 95))) "the order of reads does not matter")
     (is (not= (:x (a :half-decade "AAA" 95)) (:x (a :year "AAA" 95))) "the scales differ")
-    (is (some #(and (= "BBB" (:place %)) (= :half-decade (:scale %))) (:reads (a :half-decade "AAA" 95)))
-        "the cross-section's reads recorded")
-    (is (every? #(< (:origin %) 95) (:reads (a :half-decade "AAA" 95))))
-    (testing "a region: its countries' mean of the raw form"
-      (let [raw (fn [c] (:x (bnm.relations/raw-input :destab {:kind "bank" :book book :catalogue cat} :year c 95)))]
-        (is (< (Math/abs (- (first (:x (a :year "Reg" 95))) (/ (+ (raw "AAA") (raw "BBB")) 2.0))) 1e-12))))))
+    (testing "the reads: the place's own and one for the cross-section, at its latest origin"
+      (let [rs (:reads (a :half-decade "AAA" 95))]
+        (is (some #(and (= "AAA" (:place %)) (= :half-decade (:scale %))) rs))
+        (is (some #(= :cross-section (:place %)) rs))
+        (is (<= (count rs) 2))
+        (is (every? #(< (:origin %) 95) rs))))
+    (testing "a region: its countries' mean common part (what they share), never a level"
+      (let [st (loop [[t & ts] [59 71 83 95] st (bnm.factors/online par {:discount 0.99}) out nil]
+                 (if t
+                   (let [xs (into {} (for [c cs :let [v (:x (bnm.relations/raw-input :destab {:kind "bank" :book book :catalogue cat} :year c t))] :when v] [c v]))
+                         [parts st] (bnm.factors/observe st t xs)] (recur ts st parts))
+                   out))]
+        (is (< (Math/abs (- (first (:x (a :year "Reg" 95))) (/ (+ (get-in st ["AAA" :common]) (get-in st ["BBB" :common])) 2.0))) 1e-12))))))
+
+(deftest own-parts-placebo-at-regions
+  ;; the placebo region reads its members' placebo sources, not itself
+  (let [par {"AAA" "Reg" "BBB" "Reg" "CCC" "Reg2" "DDD" "Reg2" "Reg" "world" "Reg2" "world"}
+        cs ["AAA" "BBB" "CCC" "DDD"]
+        cat {:onsets {} :from (zipmap cs (repeat 0)) :known-lag 12}
+        book (into {} (for [[i c] (map-indexed vector cs)]
+                        [[:year c] (into (sorted-map) (for [n (range 8)] [(+ 11 (* 12 n)) {:f (* (inc i) (+ n (if (odd? (+ n i)) 0.5 0.0)))}]))]))
+        mk (fn [src] (:relations (wr/with-relations {:scales [{:name :year}] :parent par}
+                                                     ["bank"] (atom {"bank" book}) {"bank" cat} {"bank" #{:year}}
+                                                     {"bank" {:form :destab-own :sign 1}} src)))
+        real (mk identity) fake (mk (wr/placebo-source cs))]
+    (doseq [t [59 71 83]] (real :year "AAA" t) (fake :year "AAA" t))
+    (is (not= (:x (real :year "Reg" 95)) (:x (fake :year "Reg" 95))))))
