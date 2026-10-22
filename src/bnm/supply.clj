@@ -40,10 +40,43 @@
   0.05)
 
 (def feedstock
-  "A good in tonnes going into a product in tonnes at this many tonnes per
-  tonne or more is a feedstock, critical whatever its value share (the
-  monetary tables route some feedstocks through other products)."
+  "A raw material or fuel going into an energy carrier or material at this
+  much per unit or more is a feedstock, critical whatever its value share
+  (the monetary tables route some feedstocks through other products):
+  tonnes per tonne, or for an energy carrier in TJ, TJ of the fuel's heat
+  (`ncv`) per TJ."
   0.1)
+
+(def ncv
+  "Net calorific values, TJ per tonne, of the fuels EXIOBASE's hybrid
+  tables count in tonnes: the IPCC 2006 Guidelines' defaults (vol. 2,
+  table 1.2). Other hydrocarbons and additives take crude's and
+  gasoline's; non-energy oil products the 40.2 TJ/Gg of lubricants."
+  {"C_ANTH" 0.0267 "C_COKC" 0.0282 "C_OTBC" 0.0258 "C_SUBC" 0.0189 "C_LIBC" 0.0119
+   "C_PEAT" 0.00976 "C_PATF" 0.0207 "C_BKBP" 0.0207 "C_COKE" 0.0282 "C_GCOK" 0.0282
+   "C_COTA" 0.028 "C_COIL" 0.0423 "C_GASE" 0.048 "C_GASL" 0.0442 "C_OGPL" 0.0423
+   "C_REFF" 0.043 "C_ADDC" 0.0443 "C_RGAS" 0.0495 "C_ETHA" 0.0464 "C_LPGA" 0.0473
+   "C_NAPT" 0.0445 "C_MGSL" 0.0443 "C_AGSL" 0.0443 "C_GJET" 0.0443 "C_KJET" 0.0441
+   "C_KERO" 0.0438 "C_DOIL" 0.043 "C_FOIL" 0.0404 "C_WHSP" 0.0402 "C_LUBR" 0.0402
+   "C_BITU" 0.0402 "C_PARW" 0.0402 "C_PETC" 0.0325 "C_NSPP" 0.0402 "C_CHAR" 0.0295
+   "C_BIOG" 0.027 "C_BIOD" 0.027 "C_OBIO" 0.0274 "C_MBIO" 0.0504 "C_COOG" 0.0387
+   "C_MGWG" 0.0387 "C_MBFG" 0.00247 "C_MOSG" 0.00706})
+
+(def fertilisers
+  "Inputs whose loss a crop answers with a yield response, not a recipe's
+  hard cap: substitutable (CES) in a crop's recipe whatever their value
+  share."
+  #{"C_NFER" "C_PFER"})
+
+(def crops
+  "EXIOBASE's crop products."
+  #{"C_PARI" "C_WHEA" "C_OCER" "C_FVEG" "C_OILS" "C_SUGB" "C_FIBR" "C_OTCR"})
+
+(def max-input-share
+  "The most an output's inputs can be worth together, a share of its
+  value: an output whose monetary coefficients add to 1 or more (a tiny
+  output, or the two releases disagreeing) has them scaled down to this."
+  0.99)
 
 (def default-sigma
   "The elasticity of substitution of a recipe's substitutable inputs among
@@ -58,19 +91,52 @@
   [code unit]
   (when (and (= unit "TJ") (re-matches #"C_POW[A-Z]" code)) :electricity))
 
+(defn- feedstock?
+  "A raw material or fuel converted into an energy carrier or material at
+  `feedstock` or more: tonnes per tonne into a product in tonnes; into an
+  energy carrier in TJ, the fuel's heat per TJ (tonnes at their `ncv`, or
+  TJ as they are)."
+  [{g :group u :unit} {og :group ou :unit} input phys]
+  (let [phys (or phys 0.0)]
+    (boolean
+     (and (#{"raw" "energy"} g)
+          (or (and (= u "tonnes") (= ou "tonnes") (#{"energy" "material"} og) (>= phys feedstock))
+              (and (= ou "TJ") (= og "energy") (not (pool input u))
+                   (>= (* phys (case u "TJ" 1.0 "tonnes" (get ncv input 0.0) 0.0)) feedstock)))))))
+
 (defn- kind-of
   "A row's kind: a good (not a service) at critical-share or more of the
-  output's value, or a feedstock: a raw material or fuel converted into an
-  energy carrier or material at `feedstock` tonnes per tonne or more."
+  output's value, or a feedstock (`feedstock?`): critical; else, and
+  always for fertiliser in a crop (a yield response), substitutable."
   [products {:keys [input output phys share]}]
-  (let [{g :group u :unit} (products input)
-        {og :group ou :unit} (products output)]
+  (let [{g :group :as ip} (products input)
+        op (products output)]
     (if (and g (not= g "service")
+             (not (and (fertilisers input) (crops output)))
              (or (>= (or share 0.0) critical-share)
-                 (and (#{"raw" "energy"} g) (#{"energy" "material"} og)
-                      (= u "tonnes") (= ou "tonnes") (>= (or phys 0.0) feedstock))))
+                 (feedstock? ip op input phys)))
       :critical
       :substitutable)))
+
+(defn- clean-shares
+  "Recipe rows `rs` with their value shares fit for use: a share above 1
+  (or below 0) dropped (:share nil, :share-flag :over-1), then an
+  output's remaining shares scaled to sum to max-input-share where they
+  add to 1 or more (:share-flag :scaled); :share-raw keeps the share as
+  read."
+  [rs]
+  (let [rs (mapv (fn [{:keys [share] :as r}]
+                   (cond (nil? share) r
+                         (or (> share 1.0) (neg? share)) (assoc r :share nil :share-raw share :share-flag :over-1)
+                         :else (assoc r :share-raw share)))
+                 rs)
+        tot (reduce (fn [m {:keys [region output share]}] (if share (update m [region output] (fnil + 0.0) share) m)) {} rs)]
+    (mapv (fn [{:keys [region output share] :as r}]
+            (let [t (tot [region output])]
+              (if (and share t (>= t 1.0))
+                (assoc r :share (* share (/ max-input-share t)) :share-flag :scaled)
+                r)))
+          rs)))
 
 (defn- pooled
   "Rows `rs` with the pooled inputs (`pool`) of each recipe classified
@@ -100,7 +166,7 @@
   the way in."
   [{:keys [products recipes trade supply use]}]
   (let [ps (into {} (for [p products] [(:code p) (dissoc p :code)]))
-        rs (pooled ps (mapv #(assoc % :kind (kind-of ps %)) recipes))
+        rs (pooled ps (mapv #(assoc % :kind (kind-of ps %)) (clean-shares recipes)))
         g (graph* ps rs trade supply use)]
     (assoc g :critical-h (delay (critical-hypergraph g)))))
 
@@ -132,12 +198,24 @@
   [g]
   (for [[[r o] ins] (:recipes g) [i row] ins] (assoc row :region r :output o :input i)))
 
+(defn share-flags
+  "{flag rows}: the recipe rows whose value share was dropped (:over-1)
+  or scaled (:scaled) by the graph (`clean-shares`)."
+  [g]
+  (frequencies (keep :share-flag (recipe-rows g))))
+
 (defn users
   "The direct uses of `product` in `region`: industries and final demand,
-  largest first."
+  largest first. :value-share the use's value over the user's output
+  value, nil where that comes out above 1 (rough prices: monetary output
+  over hybrid supply), the ratio then flagged as :value-rough."
   [g region product]
   (->> (get-in g [:use [region product]])
-       (map #(assoc (select-keys % [:region :user :kind :quantity :share]) :value-share (:value-share %)))
+       (map (fn [{vs :value-share rough :value-rough :as u}]
+              (let [rough (or rough (when (and vs (> vs 1.0)) vs))]
+                (cond-> (assoc (select-keys u [:region :user :kind :quantity :share])
+                               :value-share (when (and vs (<= vs 1.0)) vs))
+                  rough (assoc :value-rough rough)))))
        (sort-by (comp - :share))
        vec))
 
@@ -380,7 +458,9 @@
 (defn outage
   "Cut `cuts` ({[region product] fraction}, 0.5 a cut of half) and
   propagate: {:products {[region product] availability} :industries
-  {[region code] availability}}, the nodes below 1 (by more than 1e-9).
+  {[region code] availability} :settled {:updates :residual :order}}, the
+  nodes below 1 (by more than 1e-9), and how hypergraph/propagate
+  settled.
   Options: :at :make (default; the product's output in the region) or
   :use (what the region can use of it, all origins); :sigma the
   substitutable inputs' elasticity (default-sigma); :hypergraph one built
@@ -397,7 +477,7 @@
          given (into {} (for [[[r p] x] cuts] [[tag r p] (- 1.0 (double x))]))
          a (hg/propagate h given {:tol tol})
          pick (fn [k] (into {} (for [[[t & ks] v] a :when (and (= t k) (< v (- 1.0 1e-9)))] [(vec ks) v])))]
-     {:products (pick :make) :industries (pick :industry)})))
+     {:products (pick :make) :industries (pick :industry) :settled (meta a)})))
 
 ;; ---------------------------------------------------------------- loading
 
@@ -429,4 +509,4 @@
       :use (read-rows (f "use.csv")
                       (fn [m] {:region (:region m) :product (:product m) :user (:user m) :kind (:kind m)
                                :quantity (num (:quantity m)) :share (num (:share m))
-                               :value-share (num (:value_share m))}))})))
+                               :value-share (num (:value_share m)) :value-rough (num (:value_rough m))}))})))

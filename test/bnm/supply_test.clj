@@ -1,6 +1,8 @@
 (ns bnm.supply-test
+  "bnm.supply on synthetic graphs. The checks on the EXIOBASE graph itself
+  (validation, the gas and crude shocks) are in tools/bnm/supply_check.clj:
+  jolt -A:tools -M -m bnm.supply-check."
   (:require [bnm.supply :as sup]
-            [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b tol] (< (Math/abs (- (double a) (double b))) tol))
@@ -14,8 +16,8 @@
               {:code "GSL" :name "gasoline" :unit "tonnes" :group "energy"}
               {:code "NAP" :name "naphtha" :unit "tonnes" :group "energy"}
               {:code "PLA" :name "plastics" :unit "tonnes" :group "material"}
-              {:code "NFE" :name "N fertiliser" :unit "tonnes" :group "material"}
-              {:code "WHE" :name "wheat" :unit "tonnes" :group "raw"}
+              {:code "C_NFER" :name "N fertiliser" :unit "tonnes" :group "material"}
+              {:code "C_WHEA" :name "wheat" :unit "tonnes" :group "raw"}
               {:code "TRN" :name "transport" :unit "Meuro" :group "service"}
               {:code "SRV" :name "services" :unit "Meuro" :group "service"}]
    :recipes [{:region "BB" :output "GSL" :input "CRUD" :phys 1.05 :share 0.6}
@@ -29,10 +31,10 @@
              {:region "BB" :output "TRN" :input "SRV" :phys 0.3 :share 0.3}
              {:region "AA" :output "CRUD" :input "SRV" :phys 1e-5 :share 0.1}
              {:region "CC" :output "GAS" :input "SRV" :phys 1e-5 :share 0.1}
-             {:region "CC" :output "NFE" :input "GAS" :phys 0.7 :share 1e-5}
-             {:region "CC" :output "NFE" :input "SRV" :phys 1e-4 :share 0.2}
-             {:region "CC" :output "WHE" :input "NFE" :phys 0.05 :share 0.08}
-             {:region "CC" :output "WHE" :input "SRV" :phys 1e-4 :share 0.3}]
+             {:region "CC" :output "C_NFER" :input "GAS" :phys 0.7 :share 1e-5}
+             {:region "CC" :output "C_NFER" :input "SRV" :phys 1e-4 :share 0.2}
+             {:region "CC" :output "C_WHEA" :input "C_NFER" :phys 0.05 :share 0.08}
+             {:region "CC" :output "C_WHEA" :input "SRV" :phys 1e-4 :share 0.3}]
    :trade [{:product "CRUD" :origin "AA" :dest "BB" :share 0.8}
            {:product "CRUD" :origin "BB" :dest "BB" :share 0.2}]
    :supply [{:region "BB" :industry "REFN" :product "GSL" :industry-share 0.7}
@@ -40,8 +42,8 @@
             {:region "BB" :industry "PLAS" :product "PLA" :industry-share 1.0}
             {:region "BB" :industry "TRAN" :product "TRN" :industry-share 1.0}
             {:region "AA" :industry "COIL" :product "CRUD" :industry-share 1.0}
-            {:region "CC" :industry "NFER" :product "NFE" :industry-share 1.0}
-            {:region "CC" :industry "WHEA" :product "WHE" :industry-share 1.0}]
+            {:region "CC" :industry "NFER" :product "C_NFER" :industry-share 1.0}
+            {:region "CC" :industry "WHEA" :product "C_WHEA" :industry-share 1.0}]
    :use [{:region "BB" :product "GSL" :user "TRAN" :kind "industry" :quantity 60.0 :share 0.6 :value-share 0.15}
          {:region "BB" :product "GSL" :user "F_HOUS" :kind "final" :quantity 40.0 :share 0.4}]})
 
@@ -52,10 +54,28 @@
     (is (= :critical (sup/classify toy "BB" "GSL" "CRUD"))))
   (testing "a mass feedstock, tonnes per tonne, whatever its value share"
     (is (= :critical (sup/classify toy "BB" "PLA" "NAP")))
-    (is (= :critical (sup/classify toy "CC" "NFE" "GAS"))))
-  (testing "fuel for transport, fertiliser for wheat: goods above the share"
-    (is (= :critical (sup/classify toy "BB" "TRN" "GSL")))
-    (is (= :critical (sup/classify toy "CC" "WHE" "NFE"))))
+    (is (= :critical (sup/classify toy "CC" "C_NFER" "GAS"))))
+  (testing "fuel for transport: a good above the share"
+    (is (= :critical (sup/classify toy "BB" "TRN" "GSL"))))
+  (testing "fertiliser for a crop is a yield response, not a recipe: CES
+            whatever its share (a crop loses far less than the fertiliser)"
+    (is (= :substitutable (sup/classify toy "CC" "C_WHEA" "C_NFER"))))
+  (testing "fuel burnt into electricity or heat: a feedstock by energy, the
+            fuel's heat per unit of output (IPCC default net calorific
+            values) at 0.1 or more, whatever the monetary table makes of it"
+    (let [g (sup/graph {:products [{:code "C_GASE" :unit "tonnes" :group "raw"}
+                                   {:code "C_LIBC" :unit "tonnes" :group "raw"}
+                                   {:code "C_NUCF" :unit "TJ" :group "energy"}
+                                   {:code "C_POWG" :unit "TJ" :group "energy"}
+                                   {:code "C_POWN" :unit "TJ" :group "energy"}]
+                        :recipes [;; 27.8 t of gas per TJ: 1.3 TJ of gas
+                                  {:region "R" :output "C_POWG" :input "C_GASE" :phys 27.8 :share 4.5e-6}
+                                  ;; 4.5 t of lignite: 0.05 TJ, a trace
+                                  {:region "R" :output "C_POWG" :input "C_LIBC" :phys 4.5 :share 2e-4}
+                                  {:region "R" :output "C_POWN" :input "C_NUCF" :phys 3.0 :share 0.01}]})]
+      (is (= :critical (sup/classify g "R" "C_POWG" "C_GASE")))
+      (is (= :substitutable (sup/classify g "R" "C_POWG" "C_LIBC")))
+      (is (= :critical (sup/classify g "R" "C_POWN" "C_NUCF")) "TJ of fuel per TJ")))
   (testing "tonnes per tonne make a feedstock only where raw materials or
             fuels are converted into energy or materials: elsewhere the
             hybrid tonnage of a fuel is not an ingredient"
@@ -80,7 +100,7 @@
   (testing "services substitute (CES)"
     (is (= :substitutable (sup/classify toy "BB" "GSL" "SRV")))
     (is (= :substitutable (sup/classify toy "BB" "TRN" "SRV"))))
-  (is (= {:critical 6 :substitutable 7} (frequencies (map :kind (sup/recipe-rows toy))))))
+  (is (= {:critical 5 :substitutable 8} (frequencies (map :kind (sup/recipe-rows toy))))))
 
 (deftest downstream-follows-recipes-and-trade
   (let [d (sup/downstream toy "AA" "CRUD")
@@ -94,7 +114,7 @@
     (is (close? 0.8 (:exposure (p ["BB" "TRN"])) 1e-9))
     (is (close? (* 0.8 0.6 0.02) (:dependence (p ["BB" "PLA"])) 1e-9) "a small value share, a hard dependence")
     (is (= 2 (:depth (p ["BB" "TRN"]))))
-    (is (nil? (p ["CC" "WHE"])) "nothing reaches CC")
+    (is (nil? (p ["CC" "C_WHEA"])) "nothing reaches CC")
     (is (nil? (p ["AA" "CRUD"])) "not the product itself")
     (is (= #{["BB" "REFN"] ["BB" "PLAS"] ["BB" "TRAN"]} (set (keys i))) "the industries making what it reaches")
     (is (close? (+ (* 0.7 0.48) (* 0.3 0.48)) (:dependence (i ["BB" "REFN"])) 1e-9)
@@ -121,7 +141,7 @@
     (is (= 2 (:depth (p ["AA" "CRUD"]))))
     (is (close? (* 0.02 0.6 0.8) (:dependence (p ["AA" "CRUD"])) 1e-9) "the value side, alongside")
     (is (pos? (:quantity (p ["BB" "SRV"]))) "services, in M EUR"))
-  (let [p (into {} (map (juxt (juxt :region :product) identity) (sup/upstream toy "CC" "NFE")))]
+  (let [p (into {} (map (juxt (juxt :region :product) identity) (sup/upstream toy "CC" "C_NFER")))]
     (is (close? 0.7 (:quantity (p ["CC" "GAS"])) 1e-9) "gas in N fertiliser"))
   (testing "a cycle sums every round: x = a + a x"
     (let [g (sup/graph {:products [{:code "C" :unit "tonnes" :group "raw"} {:code "E" :unit "TJ" :group "energy"}]
@@ -139,11 +159,17 @@
     (is (close? 0.6 (get-in o [:products ["BB" "PLA"]]) 1e-6) "naphtha a feedstock: plastics follow")
     (is (close? 0.6 (get-in o [:products ["BB" "TRN"]]) 1e-6) "no fuel, no transport")
     (is (close? 0.6 (get-in o [:industries ["BB" "REFN"]]) 1e-6))
-    (is (nil? (get-in o [:products ["CC" "WHE"]])) "CC untouched, not listed"))
+    (is (nil? (get-in o [:products ["CC" "C_WHEA"]])) "CC untouched, not listed")
+    (is (<= (:residual (:settled o)) 1e-6) "settled to the tolerance, and says so")
+    (is (pos? (:updates (:settled o)))))
   (testing "a cut where a product is used, not where it is made"
     (let [o (sup/outage toy {["CC" "GAS"] 0.4} {:at :use})]
-      (is (close? 0.6 (get-in o [:products ["CC" "NFE"]]) 1e-6))
-      (is (close? 0.6 (get-in o [:products ["CC" "WHE"]]) 1e-6) "fertiliser critical for wheat")))
+      (is (close? 0.6 (get-in o [:products ["CC" "C_NFER"]]) 1e-6))
+      (let [w (/ 0.08 (+ 0.08 0.3 (- 1 0.08 0.3)))
+            ces (Math/pow (+ (* w (Math/pow 0.6 -4.0)) (- 1 w)) -0.25)]
+        (is (close? ces (get-in o [:products ["CC" "C_WHEA"]]) 1e-6)
+            "wheat: a yield response to 40% less fertiliser, about 10% less")
+        (is (< 0.85 ces 0.95)))))
   (testing "a substitutable input passes on a CES loss, less than the cut:
             it substitutes with the others and with labour and capital
             (value added, one less the input shares)"
@@ -156,46 +182,38 @@
              (get-in (sup/outage toy {["BB" "SRV"] 0.5} {:sigma 1.0}) [:products ["BB" "TRN"]]))
           "more substitution, less loss"))))
 
-;; ---- the real graph, when scripts/product-graph.py has written it
+(deftest value-shares-above-one-are-left-out-and-flagged
+  ;; the monetary tables put a few coefficients above 1 and some outputs'
+  ;; inputs above their value (tiny outputs, rough releases): such a share
+  ;; is no share, and an output's shares are scaled to sum below 1
+  (let [g (sup/graph {:products [{:code "A" :unit "tonnes" :group "material"}
+                                 {:code "B" :unit "tonnes" :group "material"}
+                                 {:code "C" :unit "tonnes" :group "material"}
+                                 {:code "Y" :unit "tonnes" :group "manufactured"}
+                                 {:code "Z" :unit "tonnes" :group "manufactured"}]
+                      :recipes [{:region "R" :output "Y" :input "A" :share 1.5}
+                                {:region "R" :output "Y" :input "B" :share 0.2}
+                                {:region "R" :output "Z" :input "B" :share 0.9}
+                                {:region "R" :output "Z" :input "C" :share 0.3}]})
+        row (fn [o i] (first (filter #(and (= o (:output %)) (= i (:input %))) (sup/recipe-rows g))))]
+    (is (nil? (:share (row "Y" "A"))) "a share above 1 is not used")
+    (is (= 1.5 (:share-raw (row "Y" "A"))) "kept as read")
+    (is (= :over-1 (:share-flag (row "Y" "A"))))
+    (is (= :substitutable (sup/classify g "R" "Y" "A")) "nor does it make the input critical")
+    (is (close? 0.2 (:share (row "Y" "B")) 1e-12) "the rest of the recipe as it was")
+    (is (close? 0.99 (+ (:share (row "Z" "B")) (:share (row "Z" "C"))) 1e-12) "inputs worth 1.2 of the output: scaled to 0.99")
+    (is (close? 3.0 (/ (:share (row "Z" "B")) (:share (row "Z" "C"))) 1e-9) "in proportion")
+    (is (= :scaled (:share-flag (row "Z" "B"))))
+    (is (= {:over-1 1 :scaled 2} (sup/share-flags g)))
+    (let [d (into {} (map (juxt :product :dependence) (:products (sup/downstream g "R" "A"))))]
+      (is (nil? (d "Y")) "no dependence through it"))))
 
-(def dir "data/derived/supply")
-
-(def real (delay (when (.exists (io/file dir "recipes.csv")) (sup/load-graph dir))))
-
-(defn- products-of [rows] (set (map :product rows)))
-(defn- industries-of [rows] (set (map :industry rows)))
-
-(deftest validation-on-exiobase
-  (if-not @real
-    (println "bnm.supply-test: no" dir "- validation skipped (python -I scripts/product-graph.py)")
-    (let [g @real]
-      (testing "crude's downstream: the refined products, plastics, transport and chemicals"
-        (let [d (sup/downstream g "US" "C_COIL")
-              ps (products-of (:products d))
-              is' (industries-of (:industries d))]
-          (doseq [p ["C_MGSL" "C_KJET" "C_DOIL" "C_NAPT" "C_PLAS"]]
-            (is (ps p) p))
-          (is (some #{"A_TLND" "A_TAIR" "A_TWAS"} is') "transport")
-          (is (some #{"A_CHEM" "A_PLAS"} is') "chemicals")))
-      (testing "basic plastics need naphtha or crude, and natural gas"
-        (let [ps (products-of (sup/upstream g "DE" "C_PLAS"))]
-          (is (some #{"C_NAPT" "C_COIL"} ps))
-          (is (ps "C_GASE"))))
-      (testing "N fertiliser needs natural gas"
-        (is ((products-of (sup/upstream g "DE" "C_NFER")) "C_GASE"))
-        (is ((products-of (sup/upstream g "US" "C_NFER")) "C_GASE")))
-      (let [h (sup/hypergraph g)
-            loss (fn [m k] (- 1.0 (get m k 1.0)))]
-        (testing "a gas cut in Europe hits N fertiliser, then agriculture, less"
-          (let [europe ["AT" "BE" "BG" "CZ" "DE" "DK" "ES" "FI" "FR" "GR" "HU" "IE" "IT" "NL" "PL" "PT" "RO"
-                        "SE" "SK" "GB" "NO" "CH" "WE"]
-                o (:products (sup/outage g (into {} (for [r europe] [[r "C_GASE"] 0.4])) {:at :use :hypergraph h}))]
-            (doseq [r ["DE" "FR" "PL"]]
-              (is (< 0.35 (loss o [r "C_NFER"])) r)
-              (is (< 0.0 (loss o [r "C_WHEA"]) (loss o [r "C_NFER"])) r))
-            (is (< (loss o ["US" "C_NFER"]) 0.1) "America barely")))
-        (testing "a Middle East crude cut hits Asian refining hardest"
-          (let [o (:industries (sup/outage g {["WM" "C_COIL"] 0.5} {:hypergraph h}))
-                mean (fn [rs] (/ (reduce + (map #(loss o [% "A_REFN"]) rs)) (count rs)))]
-            (is (> (mean ["CN" "IN" "JP" "KR" "ID" "WA"]) (mean ["DE" "FR" "GB" "IT" "ES" "NL" "US" "CA" "BR" "MX"])))
-            (is (> (loss o ["JP" "A_REFN"]) (loss o ["US" "A_REFN"])))))))))
+(deftest rough-value-shares-of-use-are-flagged
+  (let [g (sup/graph {:products [{:code "P" :unit "tonnes" :group "material"}]
+                      :use [{:region "R" :product "P" :user "I1" :kind "industry" :quantity 5.0 :share 0.5 :value-share 1.7}
+                            {:region "R" :product "P" :user "I2" :kind "industry" :quantity 5.0 :share 0.5 :value-share 0.1}]})
+        u (into {} (map (juxt :user identity) (sup/users g "R" "P")))]
+    (is (nil? (:value-share (u "I1"))) "above 1: no value share")
+    (is (= 1.7 (:value-rough (u "I1"))) "the rough ratio, flagged")
+    (is (= 0.1 (:value-share (u "I2"))))
+    (is (nil? (:value-rough (u "I2"))))))
