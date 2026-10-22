@@ -1,6 +1,6 @@
 (ns bnm.food-run
   "Writes data/derived/stocks/food.csv (iso,year,variable,value; year the
-  year a value is known at, a data year's values known the year after;
+  year a value is known at, a data year's values known two years after;
   variables in bnm.food's docstring) from
 
     data/raw/material/faostat-fbs/fbs-cereals.csv   FAOSTAT Food Balance
@@ -26,19 +26,21 @@
 (def out-path "data/derived/stocks/food.csv")
 
 (def ^:private fbs-field
-  {"production" :production "imports" :imports "exports" :exports "supply" :use})
+  {"production" :production "imports" :imports "exports" :exports "supply" :use "stock_change" :stock-change})
 
 (defn- lines [path]
   (with-open [r (io/reader path)] (vec (rest (line-seq r)))))
 
 (defn read-fbs
-  "{[iso year item] {:production :imports :exports :use}}; the world's own
-  rows (WLD) left out, the world being the countries' sum."
+  "{[iso year item] {:production :imports :exports :use :stock-change
+  :method}}, the world's own rows (WLD) among them: FAO's world totals."
   [path]
   (reduce (fn [acc l]
-            (let [[iso y item el v] (str/split l #"," -1)]
+            (let [[iso y item el v _ method] (str/split l #"," -1)]
               (if-let [k (fbs-field el)]
-                (if (= iso food/world) acc (assoc-in acc [[iso (parse-long y) item] k] (parse-double v)))
+                (-> acc
+                    (assoc-in [[iso (parse-long y) item] k] (parse-double v))
+                    (assoc-in [[iso (parse-long y) item] :method] method))
                 acc)))
           {} (lines path)))
 
@@ -109,30 +111,31 @@
         mt (fn [x] (if x (format "%.1f" (/ (double x) 1e6)) "-"))]
     (println (count rows) "rows," (count (distinct (map :iso rows))) "places,"
              (apply min (map :year rows)) "-" (apply max (map :year rows)) "->" out-path)
-    (println "\nworld (year known; data year one before):  stocks-to-use  pressure  stock Mt  use Mt")
+    (println "\nworld (year known; data year two before):  stocks-to-use  pressure  stock Mt  use Mt  stock-gap  change/use")
     (doseq [item ["wheat" "maize" "rice" "grains"]]
       (println " " item)
-      (doseq [y [1975 1990 2000 2002 2005 2007 2008 2009 2010 2011 2012 2015 2020 2024]]
-        (println "   " y (f (g "WLD" y (str item "_stocks_to_use"))) (f (g "WLD" y (str item "_storage_pressure")))
-                 (mt (g "WLD" y (str item "_stock"))) (mt (g "WLD" y (str item "_use"))))))
+      (doseq [y [1975 1976 1990 1997 2000 2002 2005 2007 2008 2009 2010 2011 2012 2013 2015 2020 2025]]
+        (println "   " y (f (g "WLD" y (str "food/" item "-stocks-to-use"))) (f (g "WLD" y (str "food/" item "-storage-pressure")))
+                 (mt (g "WLD" y (str "food/" item "-stock"))) (mt (g "WLD" y (str "food/" item "-use")))
+                 "gap" (f (g "WLD" y (str "food/" item "-stock-gap"))) "chg/use" (f (g "WLD" y (str "food/" item "-stock-change-to-use"))))))
     (println "\nwheat import dependence / supplier HHI by year known:")
     (doseq [iso ["EGY" "DZA" "YEM" "LBN" "TUN" "IDN" "BGD" "JPN" "CHN" "IND" "USA" "RUS"]]
       (println " " iso (str/join " " (for [y [1995 2000 2005 2008 2011 2015 2020 2024]]
-                                      (str y ":" (f (g iso y "wheat_import_dependence")) "/" (f (g iso y "wheat_supplier_hhi")))))))
+                                      (str y ":" (f (g iso y "food/wheat-import-dependence")) "/" (f (g iso y "food/wheat-supplier-hhi")))))))
     (println "\ngrains import dependence by year known:")
     (doseq [iso ["EGY" "SAU" "JPN" "KOR" "NGA" "MEX" "BRA" "CHN"]]
-      (println " " iso (str/join " " (for [y [1995 2005 2011 2020]] (str y ":" (f (g iso y "grains_import_dependence")))))))
+      (println " " iso (str/join " " (for [y [1995 2005 2011 2020]] (str y ":" (f (g iso y "food/grains-import-dependence")))))))
     (when (.exists (io/file series-path))
       (println "\nsign check: world storage pressure known at y against the change in the mean log price from y-1 to y")
       (let [prices (annual-log-prices series-path)]
         (doseq [item ["wheat" "maize" "rice"]
                 :let [p (prices item)
                       pairs (for [y (range 1993 2030)
-                                  :let [x (g "WLD" y (str item "_storage_pressure"))]
+                                  :let [x (g "WLD" y (str "food/" item "-storage-pressure"))]
                                   :when (and x (p y) (p (dec y)))]
                               [x (- (p y) (p (dec y)))])
                       level (for [y (range 1992 2030)
-                                  :let [x (g "WLD" y (str item "_storage_pressure"))]
+                                  :let [x (g "WLD" y (str "food/" item "-storage-pressure"))]
                                   :when (and x (p y))]
                               [x (p y)])]]
           (println " " item "n" (count pairs) "corr(pressure, d log price)" (f (corr pairs))
@@ -142,9 +145,11 @@
   (let [fbs (read-fbs fbs-path)
         trade (read-trade trade-path)
         coverage (read-coverage coverage-path)
+        imports (food/imports-of trade coverage {})
         rows (food/food-rows {:fbs fbs
-                              :imports (food/imports-of trade coverage {})
-                              :exports (food/exports-of trade coverage {})
+                              :imports imports
+                              :hhi-imports (food/imports-of trade coverage {:pairs false})
+                              :exports (food/exports-from imports coverage)
                               :production (read-crops series-path)}
                              {})]
     (write-rows out-path rows)

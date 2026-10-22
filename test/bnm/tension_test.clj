@@ -1,5 +1,6 @@
 (ns bnm.tension-test
   (:require [bnm.tension :as tn]
+            [bnm.tension-run :as tr]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b tol] (< (Math/abs (- (double a) (double b))) tol))
@@ -27,6 +28,15 @@
     (is (close? 0.03 (:expected late) 2e-3))
     (is (close? 0.0 (:tension late) 2e-3))
     (is (nil? (pr 1950)) "the first years are burn-in: nothing")))
+
+(deftest progress-starts-from-the-first-years-growth
+  ;; TREND and SMOOTH start from the growth of the first :burn years (known
+  ;; by the first year read), not from none: no start-up gap
+  (let [pr (tn/progress (tn/chain [(recs (path (repeat 40 0.03)) 0)] {}) {})
+        first-y (first (keys pr))]
+    (is (= 1953 first-y))
+    (is (close? 0.03 (:perceived (pr first-y)) 4e-3))
+    (is (close? 0.0 (:tension (pr first-y)) 2e-3) "no start-up gap")))
 
 (deftest a-j-curve-raises-the-gap
   ;; Davies: a long rise and then a sharp reversal; perceived progress turns
@@ -100,6 +110,13 @@
     (is (= (tr 2001) (tr 2002) (tr 2004)) "no target: no adjustment")
     (is (> (tr 2005) (tr 2004)))))
 
+(deftest trust-ends-when-its-target-is-stale
+  (let [target (into (sorted-map) (for [y (range 1990 2001)] [y 1.0]))
+        tr (tn/trust target {:tau-trust 4.0 :stale 3 :to 2010})]
+    (is (some? (tr 2003)) "held while the target is no older than :stale")
+    (is (nil? (tr 2004)) "then unknown")
+    (is (nil? (tr 2010)))))
+
 (deftest trust-targets-inequality-and-spending
   (let [ys (range 1980 2020)
         ineq (into {} (for [y ys] [y (if (< y 2010) 1.0 (+ 1.0 (* 0.01 (mod y 3)) (* 0.1 (- y 2009))))]))
@@ -120,6 +137,22 @@
     (is (every? #(<= -3.0 % 3.0) (vals z)))
     (is (= 3.0 ((tn/zscore (assoc xs 2000 1e6) {:min-n 10 :clip 3.0}) 2000)) "clipped")
     (is (empty? (tn/zscore (zipmap (range 1960 2000) (repeat 1.0)) {:min-n 10})) "no spread: no score")))
+
+(deftest held-values-are-scored-once
+  ;; {known-year [data-year value]}: a data year read again while it is the
+  ;; latest (held) keeps its score and does not count twice
+  (let [xs (into (sorted-map) (for [y (range 1960 1990)] [y [y (Math/sin y)]]))
+        held (-> xs (assoc 1990 [1989 (Math/sin 1989)] 1991 [1989 (Math/sin 1989)]) (assoc 1992 [1992 (Math/sin 1992)]))
+        once (assoc xs 1992 [1992 (Math/sin 1992)])
+        z (tn/zscore held {:min-n 10})]
+    (is (= (z 1989) (z 1990) (z 1991)) "a held value keeps its score")
+    (is (= ((tn/zscore once {:min-n 10}) 1992) (z 1992)) "and is counted once")))
+
+(deftest changes-per-data-year
+  (let [r (recs {2000 1.0 2003 2.0 2005 4.0 2008 7.0} 1)
+        r (assoc r 2005 [2009 4.0])]
+    (is (= {2005 [2009 3.0] 2008 [2009 5.0]} (tn/change-recs [r] 5)) "known when both ends are")
+    (is (= {2005 [2009 3.0]} (tn/change-recs [(recs {2000 1.0} 1) (dissoc r 2008)] 5)) "both ends from one source")))
 
 (deftest no-component-dominates-psi
   ;; Turchin's EMP grows as e^2 and swamps a product; standardized and
@@ -161,7 +194,7 @@
      :tertiary (recs (f #(+ 5.0 (* 0.4 (- % 1950)) (Math/cos (* 2 %)))) 1)
      :top10 (recs (f #(+ 0.4 (* 0.02 (Math/sin (* 0.5 %))))) 2)
      :bottom50 (recs (f #(+ 0.15 (* 0.01 (Math/cos (* 0.7 %))))) 2)
-     :spending (recs (f #(+ 30.0 (Math/sin (* 0.3 %)))) 2)
+     :spending [(recs (f #(+ 8.0 (* 0.02 (- % 1950)) (* 0.05 (Math/sin (* 0.3 %))))) 2)]
      :balance (recs (f #(- (* 3 (Math/sin (* 0.4 %))) 2.0)) 2)}))
 
 (def opts {:from 1950 :to 2018})
@@ -171,10 +204,11 @@
         rows (tn/rows "AAA" st)]
     (is (seq rows))
     (doseq [[iso y v x] rows]
-      (is (= "AAA" iso)) (is (integer? y)) (is (contains? (set tn/variables) v) v)
+      (is (= "AAA" iso)) (is (integer? y)) (is (contains? (set (map #(str tn/prefix %) tn/variables)) v) v)
       (is (and (double? x) (== x x) (< (Math/abs x) 1e300)) [y v x]))
     (is (= (count rows) (count (set (map #(subvec % 0 3) rows)))) "one value per country, year and variable")
-    (is (every? (set (map #(nth % 2) rows)) tn/variables) "every variable present with full data")
+    (is (every? (set (map #(nth % 2) rows)) (map #(str tn/prefix %) tn/variables)) "every variable present with full data")
+    (is (every? #(re-matches #"tension/[a-z0-9-]+" (nth % 2)) rows) "prefixed, kebab-case")
     (is (= "iso,year,variable,value" tn/header))))
 
 (deftest nothing-is-read-before-it-is-known
@@ -185,9 +219,10 @@
             :let [c (-> (country)
                         (update :income #(mapv (partial cut-at y) %))
                         (update :urban #(mapv (partial cut-at y) %))
-                        (update :debt #(mapv (partial cut-at y) %)))
+                        (update :debt #(mapv (partial cut-at y) %))
+                        (update :spending #(mapv (partial cut-at y) %)))
                   c (reduce #(update %1 %2 (partial cut-at y)) c
-                            [:labour-share :working-age :tertiary :top10 :bottom50 :spending :balance])
+                            [:labour-share :working-age :tertiary :top10 :bottom50 :balance])
                   part (tn/country-stocks c (assoc opts :to y))]]
       (is (= (full y) (part y)) (str "year " y)))))
 
@@ -200,13 +235,69 @@
     (is (nil? (get-in st [y "sfd"])))
     (is (nil? (get-in st [y "psi"])) "Psi needs all three")
     (is (some? (get-in st [y "mmp"])) "MMP from what it has")
-    (is (some? (get-in st [y "tension"])))
-    (is (not-any? #(= "psi" (nth % 2)) (tn/rows "AAA" st)) "nil is left out, never written as 0"))
+    (is (some? (get-in st [y "progress-gap"])))
+    (is (not-any? #(= "tension/psi" (nth % 2)) (tn/rows "AAA" st)) "nil is left out, never written as 0"))
   (let [st (tn/country-stocks {:income []} opts)]
     (is (empty? (tn/rows "AAA" st)) "no data, no rows")))
 
 (deftest the-reversal-shows-in-the-country
   ;; the synthetic income falls 2006-2009 (data years): known a year later
   (let [st (tn/country-stocks (country) opts)]
-    (is (> (get-in st [2009 "tension"]) (+ 0.03 (get-in st [2004 "tension"]))))
+    (is (> (get-in st [2009 "progress-gap"]) (+ 0.03 (get-in st [2004 "progress-gap"]))))
     (is (> (get-in st [2009 "mmp-stagnation"]) (get-in st [2004 "mmp-stagnation"])))))
+
+;; ---------------------------------------------------------------- review fixes
+
+(deftest trending-levels-give-no-constant-offset
+  ;; urbanization, the youth proxy, debt and the wage share trending steadily
+  ;; (with noise) are no stress in themselves: their scores average about 0
+  (let [ys (range 1950 2016)
+        f (fn [g] (into (sorted-map) (for [y ys] [y (g y)])))
+        c (assoc (country)
+                 :urban [(recs (f #(+ (Math/log 0.2) (* 0.02 (- % 1950)) (* 0.02 (Math/sin (* 1.7 %))))) 1)]
+                 :working-age (recs (f #(+ 50.0 (* 0.25 (- % 1950)) (Math/sin (* 2.3 %)))) 1)
+                 :debt [(recs (f #(+ 20.0 (* 1.5 (- % 1950)) (* 3 (Math/sin (* 1.3 %))))) 2)]
+                 :labour-share (recs (f #(- 0.65 (* 0.002 (- % 1950)) (* 0.01 (Math/sin (* 1.9 %))))) 2))
+        st (tn/country-stocks c opts)
+        mean (fn [v] (let [xs (keep #(get-in st [% v]) (range 1990 2016))] (/ (reduce + xs) (count xs))))]
+    (doseq [v ["mmp-urban" "mmp-youth" "sfd-debt" "mmp-wage"]]
+      (is (< (Math/abs (mean v)) 0.6) (str v " mean " (mean v))))))
+
+(deftest trust-follows-real-spending-per-head
+  ;; spending cut per head (austerity) lowers the trust target, whatever
+  ;; spending's share of a shrinking GDP does
+  (let [ys (range 1960 2016)
+        lvl (into (sorted-map) (for [y ys] [y (+ 8.0 (* 0.02 (- y 1960)) (* 0.01 (Math/sin y)) (if (>= y 2010) (* -0.05 (- y 2009)) 0.0))]))
+        c (assoc (country) :spending [(recs lvl 2)])
+        st (tn/country-stocks c opts)]
+    (is (< (get-in st [2015 "trust-target"]) (get-in st [2009 "trust-target"])))))
+
+(deftest sub-indices-need-their-core-and-count-parts
+  (let [st (tn/country-stocks (assoc (country) :top10 {}) opts)
+        full (tn/country-stocks (country) opts)]
+    (is (nil? (get-in st [2010 "emp"])) "EMP needs the top share")
+    (is (= 4.0 (get-in full [2010 "mmp-parts"])))
+    (is (= 2.0 (get-in full [2010 "emp-parts"])))
+    (is (= 2.0 (get-in full [2010 "sfd-parts"])))
+    (let [nodebt (tn/country-stocks (assoc (country) :debt []) opts)]
+      (is (= 1.0 (get-in nodebt [2010 "sfd-parts"])))
+      (is (some? (get-in nodebt [2010 "sfd"])) "the deficit alone is SFD's core"))))
+
+(deftest no-years-before-the-floor
+  (let [lv (path (repeat 400 0.005))
+        lv (into (sorted-map) (map (fn [[y v]] [(- y 300) v]) lv))
+        st (tn/country-stocks {:income [(recs lv 2)]} {})]
+    (is (seq st))
+    (is (>= (apply min (keys st)) 1800))))
+
+(deftest wdi-publication
+  (is (= 2001 (tr/wdi-known "economy/gdp_per_capita" 2000 2001)) "as its availability date")
+  (is (= 2002 (tr/wdi-known "people/tertiary_enrolment" 2000 2001)) "two years after its data year at the earliest")
+  (is (= 2002 (tr/wdi-known "debt/government_gdp" 2000 2001)))
+  (is (= 2003 (tr/wdi-known "debt/government_gdp" 2000 2003))))
+
+(deftest countries-only
+  (is (tr/country-iso? "EGY"))
+  (is (tr/country-iso? "XKX"))
+  (is (tr/country-iso? "SUN") "historical states kept")
+  (is (not-any? tr/country-iso? ["IBD" "LDC" "OED" "UVK" "WLD"])))

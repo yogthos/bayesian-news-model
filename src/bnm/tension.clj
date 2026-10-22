@@ -6,36 +6,52 @@
   Tension (Earth4All, Davies 1962): perceived progress is the TREND of
   real income per head (bnm.stockflow/trend: income smoothed over tau-p
   against that smoothed again over tau-h), expected progress a slow
-  SMOOTH of perceived progress over tau-e, and the tension their gap,
-  expected less perceived: a long rise then a reversal (the J-curve)
-  opens it. Earth4All's STE = 1 + PESTF (gap) leaves PESTF to be
-  estimated where the stock is wired; here it is the gap itself. Social
+  SMOOTH of perceived progress over tau-e, and the progress gap, expected
+  less perceived: a long rise then a reversal (the J-curve) opens it. Both
+  start from the growth of a segment's first :burn years, which are known
+  by the first year read. Earth4All's STE = 1 + PESTF (gap) leaves PESTF to
+  be estimated where the stock is wired; here it is the gap itself. Social
   trust is a slow stock smoothed over tau-trust toward a target set by
-  inequality (down) and public spending (up), each standardized within the
-  country.
+  inequality (its five-year change, down) and real government spending
+  per head (its five-year growth, up; not spending's share of GDP, which
+  rises when GDP falls), each standardized within the country; trust is
+  unknown once its target is older than :stale.
 
   Structural-demographic stress (Goldstone 1991; Turchin 2013), measured,
   not simulated, each component standardized within the country on its
-  own past (an expanding z-score, clipped):
+  own past (an expanding z-score, clipped). Levels that trend (urban share,
+  the youth proxy, debt, the labour share) enter as five-year changes, so a
+  steady trend is no stress in itself:
   - mass mobilization potential (MMP): income stagnation (five-year growth
-    of income per head, negated), the wage (the labour share, negated:
-    Turchin's w^-1), urbanization (log urban share), the youth bulge (a
-    proxy: the population outside working age ten years before, the
-    children then being the 10-24s now; no age-group shares are held);
+    of income per head, negated), the wage (the labour share's five-year
+    log change, negated: Turchin's w^-1), urbanization (five-year change
+    of the log urban share), the youth bulge (a proxy: the five-year change
+    in the share of the population outside working age ten years before,
+    the children then being the 10-24s now; it includes the over-65s, as
+    the store holds no 0-14 share, WDI SP.POP.0014.TO.ZS);
   - elite mobilization potential (EMP): credentials (log tertiary
     enrolment growth against income growth over five years: Turchin's
     elite overproduction), the top decile's income share over five years;
-  - state fiscal distress (SFD): government debt to GDP, the deficit.
-  Each of MMP, EMP and SFD is the mean of its parts' scores, standardized
-  again, and Psi their weighted sum: the product Psi = MMP EMP SFD in logs,
-  each term on one scale, so none dominates (Stachowiak & Pasek 2024: EMP
-  grows as e^2 and swamps the product). The weights are not set here:
-  unit by default, to be estimated where the stocks are wired (principle
-  2).
+  - state fiscal distress (SFD): government debt to GDP over five years,
+    the deficit.
+  Each of MMP, EMP and SFD is the mean of the scores of the parts present,
+  standardized again, only where its core part is known (MMP stagnation,
+  EMP the top share, SFD the deficit); <sub>-parts counts the parts
+  averaged, so a change of composition can be seen. Psi is their weighted
+  sum, an additive index of the three standardized scores (not a product:
+  the scores are not logs of anything, and adding them keeps any one from
+  swamping the rest, Stachowiak & Pasek 2024). The weights are not set
+  here: unit by default, to be estimated where the stocks are wired
+  (principle 2).
 
   Every input is a record map {data-year [known-year value]}: a value is
   read at year Y only when known by Y's end. Outputs at Y use nothing
-  known after Y."
+  known after Y. A score is computed once per data year: a value held
+  (read again while still the latest) keeps its score and is not counted
+  twice. The data are the current vintages: revisions after first
+  publication (Greece's 2009 deficit, rebased national accounts, FAO's
+  balances) are not undone, a look-ahead no publication lag removes.
+  Years before :floor (1800) are not computed."
   (:require [bnm.stockflow :as sf]))
 
 (def defaults
@@ -49,12 +65,17 @@
    :min-n 10       ; years of history before a score
    :clip 3.0       ; scores clipped to +-3 deviations
    :stale 3        ; how old (in data years) a level may be at Y
-   :hold 0})       ; years a chain may go without a new data year
+   :hold 0         ; years a chain may go without a new data year
+   :span 5         ; years of the changes that stand in for trending levels
+   :floor 1800})   ; no year before
 
 (def variables
-  ["perceived-progress" "expected-progress" "tension" "trust-target" "trust"
+  "Variables in output order; written with `prefix`."
+  ["perceived-progress" "expected-progress" "progress-gap" "trust-target" "trust"
    "mmp-stagnation" "mmp-wage" "mmp-urban" "mmp-youth" "emp-credentials" "emp-top" "sfd-debt" "sfd-deficit"
-   "mmp" "emp" "sfd" "psi"])
+   "mmp" "emp" "sfd" "mmp-parts" "emp-parts" "sfd-parts" "psi"])
+
+(def prefix "tension/")
 
 (def header "iso,year,variable,value")
 
@@ -129,18 +150,22 @@
 (defn progress
   "{year {:perceived :expected :tension}} from `segments` of a log income
   index: per segment, perceived progress the TREND of income (tau-p,
-  tau-h, starting at no growth), expected progress perceived progress
-  smoothed over tau-e, the tension expected less perceived; each read
-  after the year's step, the first :burn years of a segment left out."
+  tau-h), expected progress perceived progress smoothed over tau-e, both
+  starting at the growth of the segment's first :burn years (known by the
+  first year read), the tension (the progress gap) expected less
+  perceived; each read after the year's step, the first :burn years of a
+  segment left out."
   [segments opts]
   (let [{:keys [tau-p tau-h tau-e burn]} (merge defaults opts)]
     (into (sorted-map)
           (for [seg segments :when (> (count seg) burn)
-                :let [xs (into (sorted-map) (for [[y l] seg] [y (Math/exp l)]))
+                :let [ls (vec (vals seg))
+                      g0 (if (pos? burn) (- (Math/exp (/ (- (ls burn) (ls 0)) burn)) 1.0) 0.0)
+                      xs (into (sorted-map) (for [[y l] seg] [y (Math/exp l)]))
                       at (fn [t] (val (or (first (rsubseq xs <= (long (Math/floor t)))) (first xs))))
                       m (sf/combine (sf/model {:aux {:income (fn [v] (at (v :t)))}})
-                                    (sf/trend :perceived :income tau-p tau-h 0.0)
-                                    (sf/smooth :expected :perceived tau-e 0.0))
+                                    (sf/trend :perceived :income tau-p tau-h g0)
+                                    (sf/smooth :expected :perceived tau-e g0))
                       levels (run-by-year m xs)]
                 [y lv] (drop burn levels)
                 :let [p (:perceived-perceived lv) r (:perceived-reference lv)
@@ -151,31 +176,54 @@
 (defn trust
   "{year trust}: a stock smoothed over tau-trust toward `target` ({year
   target}), from its first target in equilibrium; where the target is
-  unknown it holds."
+  unknown it holds, and once the latest target is older than :stale years
+  trust is unknown (none)."
   [target opts]
-  (let [{:keys [tau-trust to]} (merge defaults opts)]
+  (let [{:keys [tau-trust to stale]} (merge defaults opts)]
     (if (empty? target)
       {}
       (let [y0 (first (keys target)) y1 (or to (last (keys target)))
             m (sf/combine (sf/model {:aux {:target (fn [v] (or (get target (long (v :t))) (v :trust)))}})
-                          (sf/smooth :trust :target tau-trust))]
-        (update-vals (run-by-year m (into (sorted-map) (for [y (range y0 (inc y1))] [y 0.0]))) :trust)))))
+                          (sf/smooth :trust :target tau-trust))
+            fresh? (fn [y] (some #(contains? target %) (range (- y stale) (inc y))))]
+        (into (sorted-map)
+              (filter (comp fresh? key))
+              (update-vals (run-by-year m (into (sorted-map) (for [y (range y0 (inc y1))] [y 0.0]))) :trust))))))
 
 ;; ---------------------------------------------------------------- scores
 
 (defn zscore
   "{year score}: each value against the mean and deviation of the values
   up to its year (the country's own past, nothing later), once there are
-  :min-n; clipped to +-:clip; none where the values do not vary."
+  :min-n; clipped to +-:clip; none where the values do not vary. A value
+  may be [data-year x]: a data year already scored (held, read again while
+  still the latest) keeps its score and is not counted again."
   [xs opts]
   (let [{:keys [min-n clip]} (merge defaults opts)]
-    (loop [[[y x] & more] (sort-by key xs) n 0 s 0.0 ss 0.0 out (sorted-map)]
+    (loop [[[y e] & more] (sort-by key xs) seen {} n 0 s 0.0 ss 0.0 out (sorted-map)]
       (if (nil? y)
         out
-        (let [n (inc n) s (+ s x) ss (+ ss (* x x))
-              m (/ s n) vr (when (> n 1) (/ (- ss (* n m m)) (dec n)))
-              z (when (and (>= n min-n) vr (> vr 1e-12)) (max (- clip) (min clip (/ (- x m) (Math/sqrt vr)))))]
-          (recur more n s ss (cond-> out z (assoc y z))))))))
+        (let [[d x] (if (vector? e) e [[::year y] e])]
+          (if (contains? seen d)
+            (recur more seen n s ss (if-let [z (seen d)] (assoc out y z) out))
+            (let [n (inc n) s (+ s x) ss (+ ss (* x x))
+                  m (/ s n) vr (when (> n 1) (/ (- ss (* n m m)) (dec n)))
+                  z (when (and (>= n min-n) vr (> vr 1e-12)) (max (- clip) (min clip (/ (- x m) (Math/sqrt vr)))))]
+              (recur more (assoc seen d z) n s ss (cond-> out z (assoc y z))))))))))
+
+(defn change-recs
+  "{data-year [known-year change]}: each data year's value less the one
+  `k` years before, both from the first of `sources` (record maps) that
+  has the two, known when both are."
+  [sources k]
+  (into (sorted-map)
+        (for [d (into (sorted-set) (mapcat keys sources))
+              :let [c (some (fn [s] (when-let [[ka a] (get s d)]
+                                      (when-let [[kb b] (get s (- d k))]
+                                        [(max ka kb) (- a b)])))
+                            sources)]
+              :when c]
+          [d c])))
 
 (defn- mean-of [xs] (let [xs (remove nil? xs)] (when (seq xs) (/ (reduce + xs) (count xs)))))
 
@@ -200,6 +248,10 @@
     (into (sorted-map) (for [[y a] mmp :let [b (get emp y) c (get sfd y)] :when (and b c)]
                          [y (+ (* (w :mmp) a) (* (w :emp) b) (* (w :sfd) c))]))))
 
+(def cores
+  "The part each sub-index needs to be read at all."
+  {"mmp" "mmp-stagnation" "emp" "emp-top" "sfd" "sfd-deficit"})
+
 ;; ---------------------------------------------------------------- the country
 
 (defn- index-at
@@ -209,70 +261,93 @@
   (into (sorted-map) (for [s segs [y x] s :let [b (get s (- y k))] :when b] [y (- x b)])))
 
 (defn- as-known
-  "{year f of the latest record known} for years from..to."
+  "{year [data-year x]}: x = (f y d v) of the latest record known at each
+  of `years` (data year d no older than :stale), tagged with its data year
+  so a held value is scored once."
   [recs years stale f]
-  (into (sorted-map) (for [y years :let [[d v] (latest recs y stale) x (when d (f y d v))] :when (some? x)] [y x])))
+  (into (sorted-map) (for [y years :let [[d v] (latest recs y stale) x (when d (f y d v))] :when (some? x)] [y [d x]])))
+
+(defn- sources [x] (cond (nil? x) [] (map? x) [x] :else (vec x)))
+
+(defn- map-recs
+  "Record map with each value through `f`, nil dropped."
+  [recs f]
+  (into (sorted-map) (for [[d [k v]] recs :let [x (f v)] :when (some? x)] [d [k x]])))
 
 (defn country-stocks
   "{year {variable value}} for one country from its records (see the
   namespace): :income, :urban and :debt are vectors of sources for
-  chain (income and urban share in logs, debt in % of GDP); :labour-share,
-  :working-age (% of population aged 15-64), :tertiary (gross enrolment,
-  %), :top10 and :bottom50 (income shares), :spending (government spending,
-  % of GDP) and :balance (% of GDP) are record maps. Variables unknown in a
-  year are absent. Options: defaults, :from and :to the known years."
+  chain (income and urban share in logs, debt in % of GDP); :spending a
+  vector of record maps (or one) of log real government spending per head;
+  :labour-share, :working-age (% of population aged 15-64), :tertiary
+  (gross enrolment, %), :top10 and :bottom50 (income shares) and :balance
+  (% of GDP) are record maps. Variables unknown in a year are absent.
+  Options: defaults, :from and :to the known years, :weights for Psi."
   [recs opts]
   (let [o (merge defaults opts)
-        {:keys [stale]} o
-        inc-segs (chain (:income recs) o)
-        all-ys (concat (mapcat keys inc-segs)
-                       (for [k [:labour-share :working-age :tertiary :top10 :bottom50 :spending :balance]
-                             [_ [y _]] (get recs k)] y)
-                       (for [k [:urban :debt] s (get recs k) [_ [y _]] s] y))]
+        {:keys [stale span floor]} o
+        rec-keys [:labour-share :working-age :tertiary :top10 :bottom50 :balance]
+        all-ys (concat (for [s (sources (:income recs)) [_ [y _]] s] y)
+                       (for [k rec-keys [_ [y _]] (get recs k)] y)
+                       (for [k [:urban :debt :spending] s (sources (get recs k)) [_ [y _]] s] y))]
     (if (empty? all-ys)
       {}
-      (let [from (or (:from opts) (apply min all-ys)) to (or (:to opts) (apply max all-ys))
-            years (range from (inc to))
-            o (assoc o :from from :to to)
-            inc-segs (chain (:income recs) o)
-            pr (progress inc-segs o)
-            g5 (index-at inc-segs 5)
-            k (fn [key] (get recs key {}))
-            ;; the parts, raw
-            stagnation (update-vals g5 #(- (/ % 5.0)))
-            wage (as-known (k :labour-share) years stale (fn [_ _ v] (some-> (ln v) -)))
-            urban (into (sorted-map) (apply concat (chain (:urban recs) o)))
-            youth (as-known (k :working-age) years stale
-                            (fn [y d _] (some->> (known (k :working-age) (- d 10) y) (- 100.0))))
-            tert (as-known (k :tertiary) years stale
-                           (fn [y d v] (when-let [a (ln v)] (when-let [b (ln (known (k :tertiary) (- d 5) y))] (- a b)))))
-            credentials (into (sorted-map) (for [[y t] tert :let [g (get g5 y)] :when g] [y (- t g)]))
-            top (as-known (k :top10) years stale (fn [y d v] (some->> (known (k :top10) (- d 5) y) (- v))))
-            debt (into (sorted-map) (apply concat (chain (:debt recs) o)))
-            deficit (as-known (k :balance) years stale (fn [_ _ v] (- v)))
-            ineq (as-known (k :top10) years stale
-                           (fn [y d v] (when-let [b (known (k :bottom50) d y)] (when (and (pos? v) (pos? b)) (Math/log (/ v b))))))
-            spend (as-known (k :spending) years stale (fn [_ _ v] v))
-            z #(zscore % o)
-            parts {"mmp-stagnation" (z stagnation) "mmp-wage" (z wage) "mmp-urban" (z urban) "mmp-youth" (z youth)
-                   "emp-credentials" (z credentials) "emp-top" (z top) "sfd-debt" (z debt) "sfd-deficit" (z deficit)}
-            sub (fn [prefix] (z (combine-scores (for [[n s] parts :when (.startsWith ^String n prefix)] s))))
-            subs {:mmp (sub "mmp-") :emp (sub "emp-") :sfd (sub "sfd-")}
-            target (trust-target ineq spend o)
-            tr (trust target o)
-            ps (psi subs (:weights o {}))
-            series (merge parts
-                          {"perceived-progress" (update-vals pr :perceived) "expected-progress" (update-vals pr :expected)
-                           "tension" (update-vals pr :tension) "trust-target" target "trust" tr
-                           "mmp" (:mmp subs) "emp" (:emp subs) "sfd" (:sfd subs) "psi" ps})]
-        (into (sorted-map)
-              (for [y years
-                    :let [row (into {} (for [[n s] series :let [x (get s y)] :when (some? x)] [n (double x)]))]
-                    :when (seq row)]
-                [y row]))))))
+      (let [from (max floor (or (:from opts) (apply min all-ys))) to (or (:to opts) (apply max all-ys))]
+        (if (> from to)
+          {}
+          (let [years (range from (inc to))
+                o (assoc o :from from :to to)
+                inc-segs (chain (:income recs) o)
+                pr (progress inc-segs o)
+                g5 (index-at inc-segs span)
+                k (fn [key] (get recs key {}))
+                known-change (fn [rs] (as-known (change-recs (sources rs) span) years stale (fn [_ _ v] v)))
+                ;; the parts, raw: changes where the level trends
+                stagnation (update-vals g5 #(- (/ % (double span))))
+                wage (known-change (map-recs (k :labour-share) #(some-> (ln %) -)))
+                urban (index-at (chain (:urban recs) o) span)
+                wa (k :working-age)
+                youth-recs (into (sorted-map) (for [[d [kd _]] wa
+                                                    :let [a (some-> (get wa (- d 10)) second) b (some-> (get wa (- d 10 span)) second)]
+                                                    :when (and a b)]
+                                                [d [kd (- b a)]]))
+                youth (as-known youth-recs years stale (fn [_ _ v] v))
+                tert (as-known (change-recs [(map-recs (k :tertiary) ln)] span) years stale (fn [_ _ v] v))
+                credentials (into (sorted-map) (for [[y [d t]] tert :let [g (get g5 y)] :when g] [y [[d y] (- t g)]]))
+                top (known-change (k :top10))
+                debt (index-at (chain (:debt recs) o) span)
+                deficit (as-known (k :balance) years stale (fn [_ _ v] (- v)))
+                ineq-recs (into (sorted-map) (for [[d [kt t]] (k :top10)
+                                                   :let [[kb b] (get (k :bottom50) d)]
+                                                   :when (and b (pos? t) (pos? b))]
+                                               [d [(max kt kb) (Math/log (/ t b))]]))
+                ineq (known-change ineq-recs)
+                spend (known-change (:spending recs))
+                z #(zscore % o)
+                parts {"mmp-stagnation" (z stagnation) "mmp-wage" (z wage) "mmp-urban" (z urban) "mmp-youth" (z youth)
+                       "emp-credentials" (z credentials) "emp-top" (z top) "sfd-debt" (z debt) "sfd-deficit" (z deficit)}
+                group (fn [p] (for [[n s] parts :when (.startsWith ^String n (str p "-"))] s))
+                sub (fn [p] (let [core (parts (cores p))]
+                              (z (into (sorted-map) (filter (comp #(contains? core %) key) (combine-scores (group p)))))))
+                counts (fn [p] (let [core (parts (cores p))]
+                                 (into (sorted-map) (for [y (keys core)] [y (double (count (filter #(contains? % y) (group p))))]))))
+                subs {:mmp (sub "mmp") :emp (sub "emp") :sfd (sub "sfd")}
+                target (trust-target ineq spend o)
+                tr (trust target o)
+                ps (psi subs (:weights o {}))
+                series (merge parts
+                              {"perceived-progress" (update-vals pr :perceived) "expected-progress" (update-vals pr :expected)
+                               "progress-gap" (update-vals pr :tension) "trust-target" target "trust" tr
+                               "mmp" (:mmp subs) "emp" (:emp subs) "sfd" (:sfd subs)
+                               "mmp-parts" (counts "mmp") "emp-parts" (counts "emp") "sfd-parts" (counts "sfd") "psi" ps})]
+            (into (sorted-map)
+                  (for [y years
+                        :let [row (into {} (for [[n s] series :let [x (get s y)] :when (some? x)] [n (double x)]))]
+                        :when (seq row)]
+                    [y row]))))))))
 
 (defn rows
   "[iso year variable value] of a country's stocks, in variables' order,
-  unknowns left out."
+  each variable with `prefix`, unknowns left out."
   [iso stocks]
-  (vec (for [[y row] stocks v variables :let [x (get row v)] :when (some? x)] [iso y v x])))
+  (vec (for [[y row] stocks v variables :let [x (get row v)] :when (some? x)] [iso y (str prefix v) x])))

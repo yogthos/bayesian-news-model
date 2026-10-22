@@ -12,9 +12,9 @@
 
 ;; ---------------------------------------------------------------- causality
 
-(deftest values-are-known-a-year-after-their-data-year
-  (is (= 1 food/lag))
-  (is (= 2008 (food/known-at 2007)) "FAOSTAT's year y-1 is known by the end of y"))
+(deftest values-are-known-two-years-after-their-data-year
+  (is (= 2 food/lag))
+  (is (= 2009 (food/known-at 2007)) "FAOSTAT's balances and trade matrix for y-2 are out by the end of y"))
 
 ;; ---------------------------------------------------------------- trade
 
@@ -44,6 +44,10 @@
       (is (nil? (get m ["EEE" 2000 "wheat"])))))
   (testing "without the pairs, an importer's own total stands"
     (is (= 10.0 (get-in (food/imports-of trade-rows coverage {:pairs false}) [["AAA" 2000 "wheat"] :total])))))
+
+(deftest exports-from-a-computed-import-map
+  (is (= (food/exports-of trade-rows coverage {})
+         (food/exports-from (food/imports-of trade-rows coverage {}) coverage))))
 
 (deftest exports-as-partners-report-them
   (let [e (food/exports-of trade-rows coverage {})]
@@ -77,15 +81,15 @@
                               :imports imports :exports exports}
                              {})]
     (testing "a balance sheet without production: none grown"
-      (is (= 1.0 (value rows "AAA" 2001 "wheat_import_dependence")))
-      (is (= 0.0 (value rows "AAA" 2001 "wheat_production"))))
+      (is (= 1.0 (value rows "AAA" 2002 "food/wheat-import-dependence")))
+      (is (= 0.0 (value rows "AAA" 2002 "food/wheat-production"))))
     (testing "no balance sheet: the crop statistics' production"
-      (is (close? 0.25 (value rows "BBB" 2001 "wheat_import_dependence") 1e-12))
-      (is (= 30.0 (value rows "BBB" 2001 "wheat_production")))
-      (is (nil? (value rows "BBB" 2001 "wheat_use")) "but no balance"))
+      (is (close? 0.25 (value rows "BBB" 2002 "food/wheat-import-dependence") 1e-12))
+      (is (= 30.0 (value rows "BBB" 2002 "food/wheat-production")))
+      (is (nil? (value rows "BBB" 2002 "food/wheat-use")) "but no balance"))
     (testing "neither: unknown"
-      (is (nil? (value rows "CCC" 2001 "wheat_import_dependence")))
-      (is (= 10.0 (value rows "CCC" 2001 "wheat_imports"))))))
+      (is (nil? (value rows "CCC" 2002 "food/wheat-import-dependence")))
+      (is (= 10.0 (value rows "CCC" 2002 "food/wheat-imports"))))))
 
 ;; ---------------------------------------------------------------- balance and stock
 
@@ -115,23 +119,24 @@
 
 (deftest synthetic-stock-behaviour
   (let [rows (food/food-rows {:fbs synthetic :imports {} :exports {}} {})
-        su (fn [y] (value rows "AAA" y "wheat_stocks_to_use"))
-        world (fn [y] (value rows food/world y "wheat_stocks_to_use"))
-        pressure (fn [y] (value rows food/world y "wheat_storage_pressure"))]
+        su (fn [y] (value rows "AAA" y "food/wheat-stocks-to-use"))
+        world (fn [y] (value rows food/world y "food/wheat-stocks-to-use"))
+        pressure (fn [y] (value rows food/world y "food/wheat-storage-pressure"))]
     (testing "the stock builds 10 a year, so stocks-to-use rises"
-      (is (close? (/ 10.0 90.0) (su 1996) 1e-12) "known in 1996: the end of 1995")
-      (is (close? (/ 80.0 90.0) (su 2003) 1e-12)))
-    (testing "the drought draws it down by 50, seen a year later"
-      (is (close? (/ 30.0 90.0) (su 2004) 1e-12))
-      (is (< (su 2004) (su 2003))))
+      (is (close? (/ 10.0 90.0) (su 1997) 1e-12) "known in 1997: the end of 1995")
+      (is (close? (/ 80.0 90.0) (su 2004) 1e-12)))
+    (testing "the drought draws it down by 50, seen two years later"
+      (is (close? (/ 30.0 90.0) (su 2005) 1e-12))
+      (is (< (su 2005) (su 2004))))
     (testing "the world is the sum of its countries"
-      (is (close? (su 2004) (world 2004) 1e-12)))
+      (is (close? (su 2005) (world 2005) 1e-12)))
     (testing "price-spike pressure rises as stocks-to-use falls"
-      (is (> (pressure 2004) (pressure 2003)))
-      (is (> (pressure 2004) (pressure 2005)) "and eases as stocks rebuild"))
+      (is (> (pressure 2005) (pressure 2004)))
+      (is (> (pressure 2005) (pressure 2006)) "and eases as stocks rebuild"))
     (testing "stock change and use are as the balance says"
-      (is (= -50.0 (value rows "AAA" 2004 "wheat_stock_change")))
-      (is (= 90.0 (value rows "AAA" 2004 "wheat_use"))))))
+      (is (= -50.0 (value rows "AAA" 2005 "food/wheat-stock-change")))
+      (is (close? (/ -50.0 90.0) (value rows "AAA" 2005 "food/wheat-stock-change-to-use") 1e-12) "the stationary candidate")
+      (is (= 90.0 (value rows "AAA" 2005 "food/wheat-use"))))))
 
 (deftest storage-pressure-is-convex-in-stocks-to-use
   (let [f #(food/storage-pressure % 0.2 0.25)]
@@ -169,7 +174,7 @@
         full (food/food-rows (inputs 3000) {})
         at (fn [rows y] (set (filter #(<= (:year %) y) rows)))]
     (is (seq full))
-    (is (= 1991 (apply min (map :year full))) "the first data year, 1990, is known in 1991")
+    (is (= 1992 (apply min (map :year full))) "the first data year, 1990, is known in 1992")
     (doseq [y [1993 1998 2003]]
       (testing (str "rows known by " y " from the data before " y " alone")
         (is (= (at full y) (at (food/food-rows (inputs y) {}) y)))))))
@@ -191,20 +196,99 @@
     (let [d (read-derived)
           g (fn [iso y v] (get d [iso y v]))]
       (testing "Egypt imports roughly half its wheat (FAO: 40-65% since the 1990s)"
-        (doseq [y (range 2000 2023) :let [x (g "EGY" y "wheat_import_dependence")] :when x]
+        (doseq [y (range 2000 2023) :let [x (g "EGY" y "food/wheat-import-dependence")] :when x]
           (is (< 0.3 x 0.75) (str "EGY " y " " x))))
       (testing "the United States, Russia and Argentina import little wheat"
-        (doseq [iso ["USA" "ARG"] y [2005 2015] :let [x (g iso y "wheat_import_dependence")] :when x]
+        (doseq [iso ["USA" "ARG"] y [2005 2015] :let [x (g iso y "food/wheat-import-dependence")] :when x]
           (is (< x 0.25) (str iso " " y " " x))))
       (testing "Japan buys almost all its maize, mostly from one supplier"
-        (is (< 0.95 (g "JPN" 2008 "maize_import_dependence") 1.01))
-        (is (> (g "JPN" 2008 "maize_supplier_hhi") 0.6) "the United States"))
+        (is (< 0.95 (g "JPN" 2008 "food/maize-import-dependence") 1.01))
+        (is (> (g "JPN" 2008 "food/maize-supplier-hhi") 0.6) "the United States"))
       (testing "world wheat stocks-to-use: low after 2007 (the 2007-08 spike), higher after 2010"
-        (is (< (g "WLD" 2008 "wheat_stocks_to_use") (g "WLD" 2011 "wheat_stocks_to_use")))
-        (is (< (g "WLD" 2008 "wheat_stocks_to_use") (g "WLD" 2002 "wheat_stocks_to_use"))
+        (is (< (g "WLD" 2009 "food/wheat-stocks-to-use") (g "WLD" 2003 "food/wheat-stocks-to-use"))
             "drawn down from 2001 to 2007")
-        (is (> (g "WLD" 2008 "wheat_storage_pressure") (g "WLD" 2011 "wheat_storage_pressure"))))
+        (is (> (g "WLD" 2009 "food/wheat-storage-pressure") 1.0) "pressure above its reference in the 2007-08 spike")
+        (is (> (g "WLD" 2009 "food/wheat-storage-pressure") (g "WLD" 2002 "food/wheat-storage-pressure"))))
+      (testing "world totals are FAO's own, not a sum over the countries that have a balance sheet"
+        (is (< 840e6 (g "WLD" 2025 "food/wheat-use") 880e6) "FAO world wheat supply 2023: 857 Mt"))
+      (testing "the method flag"
+        (is (= 0.0 (g "USA" 2011 "food/fbs-method")))
+        (is (= 1.0 (g "USA" 2012 "food/fbs-method")) "2010, the new method, known in 2012"))
       (testing "every value finite, ratios in range"
         (is (empty? (for [[k x] d :when (or (Double/isNaN x) (Double/isInfinite x))] k)))
-        (is (empty? (for [[[_ _ v :as k] x] d :when (and (str/ends-with? v "_hhi") (not (<= 0.0 x 1.0000001)))] k)))
-        (is (empty? (for [[[_ _ v :as k] x] d :when (and (str/ends-with? v "_stocks_to_use") (neg? x))] k)))))))
+        (is (empty? (for [[[_ _ v :as k] x] d :when (and (str/ends-with? v "-hhi") (not (<= 0.0 x 1.0000001)))] k)))
+        (is (empty? (for [[[_ _ v :as k] x] d :when (and (str/ends-with? v "-stocks-to-use") (neg? x))] k)))))))
+
+;; ---------------------------------------------------------------- review fixes
+
+(deftest supplier-concentration-without-mirror-pairs-and-small-imports
+  (let [fbs {["AAA" 2000 "wheat"] {:production 100000.0 :imports 15000.0 :exports 0.0 :use 115000.0}
+             ["SSS" 2000 "wheat"] {:production 1e6 :imports 50.0 :exports 0.0 :use 1e6}}
+        imports {["AAA" 2000 "wheat"] {:total 15000.0 :by {"XXX" 10000.0 "YYY" 5000.0}}
+                 ["SSS" 2000 "wheat"] {:total 5000.0 :by {"XXX" 5000.0}}}
+        rows (food/food-rows {:fbs fbs :imports imports
+                              :hhi-imports {["AAA" 2000 "wheat"] {:total 10000.0 :by {"XXX" 10000.0}}
+                                            ["SSS" 2000 "wheat"] {:total 5000.0 :by {"XXX" 5000.0}}}
+                              :exports {["AAA" 2000 "wheat"] 0.0 ["SSS" 2000 "wheat"] 0.0}}
+                             {})]
+    (is (= 1.0 (value rows "AAA" 2002 "food/wheat-supplier-hhi")) "the importer's own partners only")
+    (is (= 15000.0 (value rows "AAA" 2002 "food/wheat-imports")) "the total keeps the pairs")
+    (is (nil? (value rows "SSS" 2002 "food/wheat-supplier-hhi")) "under 1% of supply: no concentration read")))
+
+(deftest the-stock-change-given-is-the-stock-change
+  ;; the balance sheet's own stock change (its sign normalized) where given;
+  ;; the stock model closes with the discrepancy as a flow
+  (let [years {2000 {:production 100.0 :imports 10.0 :exports 5.0 :use 95.0 :stock-change 7.0}
+               2001 {:production 80.0 :imports 10.0 :exports 5.0 :use 95.0}}
+        r (food/stock-run years)]
+    (is (< (sf/imbalance r) 1e-9))
+    (is (= {2000 0.0 2001 7.0 2002 -3.0} (food/stock-path years)))))
+
+(deftest a-detrended-stock-is-causal-and-has-no-drift
+  ;; a stock that builds a steady 10 a year on noise: cumulative changes less
+  ;; their expanding linear trend, over use, average about 0 and use no
+  ;; later year
+  (let [ys (range 1980 2010)
+        fbs (into {} (for [y ys] [["AAA" y "wheat"] {:production (+ 100.0 (* 8.0 (Math/sin (* 1.3 y)))) :imports 0.0 :exports 0.0 :use 90.0}]))
+        rows (food/food-rows {:fbs fbs :imports {} :exports {}} {})
+        gap (fn [rs y] (value rs "AAA" y "food/wheat-stock-gap"))
+        gs (keep #(gap rows %) (range 1990 2012))
+        cut (food/food-rows {:fbs (into {} (filter (fn [[[_ y _] _]] (< y 1998)) fbs)) :imports {} :exports {}} {})]
+    (is (> (count gs) 15))
+    (is (< (Math/abs (/ (reduce + gs) (count gs))) 0.1) "no drift left")
+    (is (nil? (gap rows 1985)) "five years before a trend is fitted")
+    (is (= (gap rows 1999) (gap cut 1999)) "causal")))
+
+(deftest the-new-method-restarts-the-detrended-stock-and-is-flagged
+  (let [fbs (into {} (for [y (range 2000 2016)]
+                       [["AAA" y "wheat"] {:production 100.0 :imports 0.0 :exports 0.0 :use (if (>= y 2010) 80.0 95.0)
+                                            :method (if (>= y 2010) "new" "historic")}]))
+        rows (food/food-rows {:fbs fbs :imports {} :exports {}} {})]
+    (is (= 0.0 (value rows "AAA" 2011 "food/fbs-method")))
+    (is (= 1.0 (value rows "AAA" 2012 "food/fbs-method")))
+    (is (some? (value rows "AAA" 2011 "food/wheat-stock-gap")))
+    (is (nil? (value rows "AAA" 2012 "food/wheat-stock-gap")) "the trend refitted on the new method alone")
+    (is (some? (value rows "AAA" 2016 "food/wheat-stock-gap")))
+    (is (some? (value rows "AAA" 2012 "food/wheat-stocks-to-use")) "the lower bound runs on")))
+
+(deftest world-totals-from-fao-world-rows
+  (let [fbs {["AAA" 2000 "wheat"] {:production 100.0 :imports 0.0 :exports 0.0 :use 90.0}
+             ["WLD" 2000 "wheat"] {:production 300.0 :imports 0.0 :exports 0.0 :use 280.0}}
+        rows (food/food-rows {:fbs fbs :imports {} :exports {}} {})]
+    (is (= 280.0 (value rows "WLD" 2002 "food/wheat-use")))
+    (is (= 300.0 (value rows "WLD" 2002 "food/wheat-production")))
+    (is (= 90.0 (value rows "AAA" 2002 "food/wheat-use")))))
+
+(deftest pressure-against-a-rolling-reference
+  ;; world stocks-to-use drifting up: against the last ten years, a level
+  ;; reads as tight or loose for its time, not against 1960s levels
+  (let [rs (for [y (range 1970 2000)] {:iso "WLD" :year y :variable "food/wheat-stocks-to-use" :value (* 0.1 (Math/pow 1.03 (- y 1970)))})
+        p (into {} (map (juxt :year :value)) (food/pressure-rows rs 0.25))]
+    (is (nil? (p 1973)) "five years before a reference")
+    (is (some? (p 1974)))
+    (is (close? (p 1990) (p 1999) 1e-9) "a steady drift: steady pressure")
+    (is (> (p 1999) 0.9))))
+
+(deftest variables-are-prefixed-kebab-case
+  (let [rows (food/food-rows {:fbs synthetic :imports {} :exports {}} {})]
+    (is (every? #(re-matches #"food/[a-z0-9-]+" (:variable %)) rows))))
