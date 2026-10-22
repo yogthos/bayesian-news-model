@@ -21,6 +21,7 @@
             [bnm.lattice-test]
             [bnm.lattice-golden-test]
             [bnm.factors-test]
+            [bnm.sheaf-test]
             [bnm.lattice-banking-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -61,6 +62,7 @@
     bnm.lattice-test
     bnm.lattice-golden-test
     bnm.factors-test
+    bnm.sheaf-test
     bnm.lattice-banking-test
     bnm.political-gauges-test
     bnm.reconcile-test
