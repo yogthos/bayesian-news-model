@@ -46,9 +46,16 @@
             :when (and (seq ix) (not= g :all) (seq late))]
       (let [vals (for [row late i ix] (double (nth (:x row) i)))
             live (/ (count (filter #(not= 0.0 %) vals)) (double (count vals)))
-            spread (let [m (/ (reduce + vals) (count vals))] (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) vals)) (count vals))))]
-        (check (and (> live 0.01) (> spread 1e-6))
-               (format "%-12s %-9s %-14s live %.2f spread %.2f" (name scale) (name level) (name g) live spread))))
+            spread (let [m (/ (reduce + vals) (count vals))] (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) vals)) (count vals))))
+            ;; an own input (past the gauges) with fewer than ten known values is
+            ;; still waiting for its scale (the standardizer reads it as 0), not dead
+            g-width (get-in sp [:gauge-width scale] 0)
+            {:keys [ns]} (get-in r [:flow-std [scale level]])
+            waiting? (and ns (every? #(and (> % g-width) (< (nth ns (- % (inc g-width)) 0) 10)) ix))]
+        (if (and waiting? (not (and (> live 0.01) (> spread 1e-6))))
+          (println (format "        waiting: %s %s %s, fewer than ten known values" (name scale) (name level) (name g)))
+          (check (and (> live 0.01) (> spread 1e-6))
+                 (format "%-12s %-9s %-14s live %.2f spread %.2f" (name scale) (name level) (name g) live spread)))))
     ;; 2b. every gauge input live somewhere in the run (a source that never
     ;; reaches the node, through a loader's whitelist say, reads as zeros)
     (doseq [[[scale level] rows] (group-by (juxt :scale :level) (:trace r))

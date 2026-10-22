@@ -553,3 +553,10 @@
     (is (every? #(= 0.0 (nth (:x %) rel-ix)) even) "unknown: z = 0")
     (is (< (Math/abs (/ (reduce + (map #(nth (:x %) rel-ix) odd)) (count odd))) 0.3)
         "the known ones centred on their own mean, near 100, not dragged toward 0")))
+
+(deftest a-run-keeps-each-node-s-standardizer
+  ;; the counts of known values per input, so a check can tell an input
+  ;; still waiting for ten known values from a dead one
+  (let [r (lt/run (assoc (spec (world 1)) :end 60))]
+    (is (map? (:flow-std r)))
+    (is (vector? (get-in r [:flow-std [:month :country] :ns])))))

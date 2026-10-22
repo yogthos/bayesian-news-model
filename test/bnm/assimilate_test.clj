@@ -35,7 +35,7 @@
         post (as/assimilate logistic {:from 0.0 :dt 0.25 :members 200 :seed 4
                                       :priors {:r {:mean 0.2 :sd 0.5 :log true} :k {:mean 1000.0 :sd 0.5 :log true}}
                                       :observations obs :noise {:s 0.05}})]
-    (is (> (get-in post [:params :k :sd]) 200.0) "still wide")
+    (is (> (/ (get-in post [:params :k :log-sd]) 0.5) 0.8) "still near its prior's spread, in the log")
     (is (< (Math/abs (- 0.3 (get-in post [:params :r :mean]))) 0.05))))
 
 (deftest world3-s-capital-lifetime-from-its-history
@@ -113,4 +113,14 @@
   (is (thrown? clojure.lang.ExceptionInfo
                (as/calibrate logistic {:from 0.0 :dt 0.25 :members 10 :priors {:r {:mean 0.1 :sd 1.0 :log true}}
                                        :observations {1.0 {:s 1.0}}}))
-      "an observed name without its noise"))
+      "an observed name without its noise")
+  (is (thrown? clojure.lang.ExceptionInfo
+               (as/calibrate logistic {:from 0.0 :dt 0.25 :members 10 :priors {:r {:mean 0.1 :sd 1.0 :log true}}
+                                       :observations {1.1 {:s 1.0} 2.0 {:s 2.0}} :noise {:s 0.1}}))
+      "a time off the grid")
+  (is (thrown? clojure.lang.ExceptionInfo
+               (as/calibrate logistic {:from 0.0 :dt 0.25 :members 10 :priors {:r {:mean 0.1 :sd 1.0 :log true}}
+                                       :observations {} :noise {:s 0.1}})))
+  (is (thrown? clojure.lang.ExceptionInfo
+               (as/calibrate logistic {:from 0.0 :dt 0.25 :members 10 :iterations 0 :priors {:r {:mean 0.1 :sd 1.0 :log true}}
+                                       :observations {1.0 {:s 1.0}} :noise {:s 0.1}}))))

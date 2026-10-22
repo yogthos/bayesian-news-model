@@ -487,7 +487,7 @@
   [{:keys [st forecasts weights trace]}]
   {:forecasts forecasts :weights weights :trace trace
    :book (:book st) :models (:models st) :resets (:resets st)
-   :evidence (:evidence st)})
+   :evidence (:evidence st) :flow-std (:flow-std st)})
 
 (defn book
   "The book of a lattice state: {[scale place] (sorted-map origin entry)}."

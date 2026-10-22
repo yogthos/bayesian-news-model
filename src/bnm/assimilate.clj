@@ -37,7 +37,8 @@
   spread in the log, :log-sd."
   [prior thetas]
   (let [xs (sort (map #(natural prior %) thetas))]
-    (cond-> (assoc (moments xs) :median (nth xs (quot (count xs) 2)))
+    (cond-> (assoc (moments xs) :median (let [n (count xs) h (quot n 2)]
+                                          (if (odd? n) (nth xs h) (/ (+ (nth xs (dec h)) (nth xs h)) 2.0))))
       (:log prior) (assoc :log-sd (:sd (moments thetas))))))
 
 (defn- checked
@@ -49,8 +50,14 @@
   (let [sds (or noise-at (constantly noise))]
     (doseq [[t obs] observations n (keys obs) :when (nil? (get (sds t) n))]
       (throw (ex-info (str "bnm.assimilate: no noise for " n " at " t) {:name n :t t})))
+    (when (empty? observations) (throw (ex-info "bnm.assimilate: no observations" {})))
     (when-let [early (seq (filter #(< (double %) (double from)) (keys observations)))]
       (throw (ex-info "bnm.assimilate: observations before :from" {:times (vec early)})))
+    (when-let [off (seq (remove #(let [k (/ (- (double %) (double from)) (double (:dt opts)))] (< (Math/abs (- k (Math/round k))) 1e-9))
+                                (keys observations)))]
+      (throw (ex-info "bnm.assimilate: observation times off the dt grid from :from" {:times (vec off)})))
+    (when-let [na (:iterations opts)]
+      (when-not (and (integer? na) (pos? na)) (throw (ex-info "bnm.assimilate: :iterations a positive integer" {:iterations na}))))
     (assoc opts :members (or members 100) :sds sds)))
 
 (defn- value-at
