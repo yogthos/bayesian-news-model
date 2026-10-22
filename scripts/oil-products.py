@@ -15,10 +15,14 @@ product. Writes data/derived/supply/oil-products.csv:
              Svalbard NOR, Switzerland incl. Liechtenstein CHE, Kosovo
              XKX); dropped: Antarctic fisheries, the Pacific Islands trust
              territory (1990-91) and the two Yemens (1990)
-    known    year + 2: a year's figures are treated as known two years
-             later (UNSD publishes a year's balances about 18-24 months
-             after it ends, and revises them); read a value only from that
-             year on
+    known    year + 3: a year's figures are treated as known three years
+             later, read a value only from that year on. UNSD's database
+             fills a year in over the second and third years after it:
+             downloaded October 2026 it held 2023 for every country and
+             2024 for about half (600 production rows against 1,214 for
+             2023), so year + 2 would read figures before most countries
+             had them. The values are the current vintage, revised since
+             first release; the lag does not undo those revisions.
     product  the UNSD commodity code; exiobase the matching product code
              of the product graph (data/derived/supply/products.csv)
     flow     the UNSD transaction code, flow_name its label: 01
@@ -57,7 +61,7 @@ PRODUCTS = {
     "4680": "C_FOIL", "4691": "C_WHSP", "4692": "C_LUBR", "4693": "C_PARW", "4694": "C_PETC",
     "4695": "C_BITU", "4699": "C_NSPP",
 }
-KNOWN_LAG = 2
+KNOWN_LAG = 3
 # UNSD's areas that hold a country and its neighbours: the country's code
 AREAS = {"251": "FRA",  # France incl. Monaco
          "382": "ITA",  # Italy and San Marino

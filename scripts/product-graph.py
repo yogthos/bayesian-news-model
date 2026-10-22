@@ -31,7 +31,14 @@ do). Writes data/derived/supply/:
                   use tables: the inputs of the industries making the
                   product, each per unit of its output in the product's
                   unit, weighted by the industry's share of the product's
-                  supply; all origins together. share_<year>: the input's
+                  supply; all origins together. An industry making
+                  products in more than one unit (waste treatment and
+                  the secondary material it recovers, incineration and its
+                  electricity, pulp and its heat) has its inputs split
+                  between its units by the value of its output in each
+                  (rough prices, as for supply.csv; equal parts where a
+                  unit's output has no price), so no input is counted
+                  whole against each unit. share_<year>: the input's
                   value per unit of the output's value in the monetary pxp
                   table of that year (the technical coefficient, all
                   origins summed; blank where the output is not made that
@@ -56,15 +63,18 @@ do). Writes data/derived/supply/:
                   output value (at monetary output 2011 over hybrid supply,
                   rough where the releases disagree); industry shares of at
                   least 1e-3.
-  use.csv         region,product,user,kind,quantity,unit,share,value_share
+  use.csv         region,product,user,kind,quantity,unit,share,value_share,
+                  value_rough
                   use in the region of the product (all origins) by each
                   industry (kind industry, user its code) and final demand
                   category (kind final); share: of the product's total use
                   in the region; value_share: of the industry's output
                   value, the use valued at origin prices (monetary output
-                  2011 over hybrid supply; rough, as for supply.csv, and
-                  above 1 in about a thousand rows). Rows with share or
-                  value_share of at least 1e-4.
+                  2011 over hybrid supply; rough, as for supply.csv);
+                  blank where that ratio is above 1 (about a thousand
+                  rows, where the two releases disagree on a product's
+                  size), the ratio then in value_rough: flagged, not a
+                  share. Rows with share or value ratio of at least 1e-4.
   trade.csv       product,origin,dest,quantity,share
                   the product used in dest (by industries and final demand)
                   by origin, the MR tables' import shares (domestic
@@ -161,6 +171,27 @@ def read_pxp(year, regions, products):
     return {"A": A, "x": X}
 
 
+def unit_split(vd, pr, punit, units):
+    """{unit: (I,)} the share of each industry's inputs that goes with its
+    output in that unit: 1 for an industry making products in one unit; for
+    one making them in several, the value of its output in each (vd (P, I)
+    supply, pr (P,) prices), or equal parts where some unit's output has no
+    value. The shares of an industry add to 1."""
+    out = {}
+    val = {}
+    for u in units:
+        cols = [p for p in range(len(punit)) if punit[p] == u]
+        out[u] = vd[cols].sum(axis=0)  # physical output in u, (I,)
+        val[u] = (vd[cols] * pr[cols][:, None]).sum(axis=0)
+    has = {u: out[u] > 0 for u in units}
+    n = sum(has[u].astype(float) for u in units)
+    priced = np.all([~has[u] | (val[u] > 0) for u in units], axis=0)
+    vtot = sum(val[u] for u in units)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return {u: np.where(has[u], np.where(priced & (vtot > 0), val[u] / vtot, 1.0 / np.maximum(n, 1.0)), 0.0)
+                for u in units}
+
+
 def fmt(v):
     return "" if v is None or not np.isfinite(v) else f"{v:.6g}"
 
@@ -241,6 +272,7 @@ def main():
                     "share_1995", "share_2011", "share_2022", "physical"])
         for s, reg in enumerate(regions):
             M = np.zeros((I, P))
+            theta = unit_split(Vd[s], price[s], punit, units)  # {unit: (I,)}
             for u in units:
                 cols = [p for p in range(P) if punit[p] == u]
                 g = Vd[s][cols].sum(axis=0)  # (I,) output in unit u
@@ -248,7 +280,7 @@ def main():
                     if q[s, p] <= 0:
                         continue
                     with np.errstate(invalid="ignore", divide="ignore"):
-                        M[:, p] = np.where(g > 0, Vd[s, p] / q[s, p] / g, 0.0)
+                        M[:, p] = np.where(g > 0, Vd[s, p] / q[s, p] / g * theta[u], 0.0)
             a = Ud[s] @ M  # (input P, output P)
             for p in range(P):
                 if q[s, p] <= 0:
@@ -301,7 +333,7 @@ def main():
     vs_over = 0
     with open(os.path.join(OUT, "use.csv"), "w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["region", "product", "user", "kind", "quantity", "unit", "share", "value_share"])
+        w.writerow(["region", "product", "user", "kind", "quantity", "unit", "share", "value_share", "value_rough"])
         for s, reg in enumerate(regions):
             uval = np.einsum("rpj,rp->pj", U4[:, :, s, :], price)  # (P, I)
             outval = (Vd[s] * price[s][:, None]).sum(axis=0)  # (I,)
@@ -315,17 +347,18 @@ def main():
                         continue
                     sh = qty / tot[p]
                     vs = uval[p, j] / outval[j] if outval[j] > 0 else np.nan
-                    if vs > 1:
-                        vs_over += 1
                     if sh >= 1e-4 or (np.isfinite(vs) and vs >= 1e-4):
-                        w.writerow([reg, pcode[p], ind[j][0], "industry", fmt(qty), punit[p], fmt(sh), fmt(vs)])
+                        over = np.isfinite(vs) and vs > 1
+                        vs_over += over
+                        w.writerow([reg, pcode[p], ind[j][0], "industry", fmt(qty), punit[p], fmt(sh),
+                                    "" if over else fmt(vs), fmt(vs) if over else ""])
                         nuse += 1
                 for c in range(C):
                     qty = Yd[s, p, c]
                     if qty > 0 and qty / tot[p] >= 1e-4:
-                        w.writerow([reg, pcode[p], fd[c], "final", fmt(qty), punit[p], fmt(qty / tot[p]), ""])
+                        w.writerow([reg, pcode[p], fd[c], "final", fmt(qty), punit[p], fmt(qty / tot[p]), "", ""])
                         nuse += 1
-    print(f"use: {nuse} rows; {vs_over} industry inputs valued above the industry's output")
+    print(f"use: {nuse} rows; {vs_over} industry inputs valued above the industry's output (value_rough)")
 
     # trade: origins of what each region uses
     ntr = 0
