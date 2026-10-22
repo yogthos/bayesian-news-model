@@ -42,7 +42,7 @@
   only where both are known, so both are fitted on the same rows."
   [years cs real placebo to]
   (for [c cs [o [p y]] (get years c)
-        :when (and (some? y) (= 11 (mod o 12)) (<= (* 12 1960) o (+ 11 (* 12 to))))
+        :when (and (some? y) (rd/design-origin? o to))
         :let [a (real c o) b (placebo c o)]
         :when (and (some? a) (some? b))
         :let [r {:y y :o (Math/log (/ (max 1e-6 p) (max 1e-6 (- 1.0 p)))) :w 1.0 :g (quot o 12)}]]

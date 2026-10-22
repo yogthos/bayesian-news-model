@@ -1378,6 +1378,17 @@ Interactions as named do not carry onsets past the recalibrated base;
 the gauges help a little only averaged together, which is the opposite
 of one principal contradiction steering the rest.
 
+**Erratum, 23 October 2026 (trials 44, 45 and T0).** The design-year
+diagnostics that chose trial 44's links and warnings and trial 45's
+states (bnm.relation-diag, bnm.ews-diag, bnm.state-diag) kept year-end
+origins through 2002, whose outcomes (an onset within (t, t+2]) run to
+2004: origins 2001-2002 read two years of the test era. The power audit's
+year-shock spreads read the same rows. Fixed (bnm.relation-diag/
+design-origin?: the window must close by the end of `to`); the selections
+recorded above stand as run. Both trials were level against their
+benches, so the leak bought them nothing visible; it is recorded so their
+selections are not read as clean. Found by the T6 tool's author.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:

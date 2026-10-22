@@ -63,6 +63,13 @@
      :post1 (when covered? (if (some #(> % (- t lag 12)) known) 1.0 0.0))
      :post3 (when covered? (if (some #(> % (- t lag 36)) known) 1.0 0.0))}))
 
+(defn design-origin?
+  "A year-end origin (month o) is a design row for `to` when it is from
+  1960 and its window, an onset within (t, t+2], closes by the end of
+  `to`: the outcome is then known within the design years."
+  [o to]
+  (and (= 11 (mod o 12)) (<= (* 12 1960) o (+ 11 (* 12 (- to 2))))))
+
 (defn- loglik [beta rows]
   (reduce + (for [{:keys [x y o]} rows :let [p (lg/predict beta x o)]]
               (Math/log (Math/max 1e-12 (if y p (- 1.0 p)))))))
@@ -178,7 +185,7 @@
                   ;; the places on the gazetteer's tree only, so raw and own forms
                   ;; are tested on the same rows
                   base (for [place places :when (tree place) [o [p y]] (fk place)
-                             :when (and (some? y) (= 11 (mod o 12)) (<= (* 12 1960) o (+ 11 (* 12 to))))]
+                             :when (and (some? y) (design-origin? o to))]
                          [place o p y])
                   ;; every place's forms at every origin, then their own parts
                   origins (sort (set (map second base)))

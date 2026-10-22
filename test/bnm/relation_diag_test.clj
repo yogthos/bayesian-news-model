@@ -56,3 +56,12 @@
   (let [rows (mapv (fn [r] (let [x (nth (:x r) 1)] (assoc r :y (or (:y r) (> x 1.5)))))
                    (panel 7 (fn [g _ _ _] (augur.math/normal! g))))]
     (is (> (:lr (rd/clustered-test rows)) 20.0))))
+
+(deftest design-origins-never-see-past-to
+  ;; the year node's outcome is an onset within (t, t+2]: an origin is a
+  ;; design row only if its window closes by the end of `to`
+  (is (rd/design-origin? (+ 11 (* 12 2000)) 2002))
+  (is (not (rd/design-origin? (+ 11 (* 12 2001)) 2002)) "its window runs into 2003")
+  (is (not (rd/design-origin? (+ 11 (* 12 2002)) 2002)))
+  (is (not (rd/design-origin? (+ 11 (* 12 1959)) 2002)) "before 1960")
+  (is (not (rd/design-origin? (+ 5 (* 12 1990)) 2002)) "year ends only"))

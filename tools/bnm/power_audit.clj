@@ -336,9 +336,9 @@
         cs (vec (sort (filter tree places)))
         all-rows (into (sorted-map) (for [kd ks] [kd (year-rows (years kd) cs 1960 2022)]))
         ;; as state-diag: a kind needs five design-year onsets to be tried
-        rows (into (sorted-map) (filter (fn [[_ rs]] (>= (count (filter #(and (:y %) (<= (:t %) 2002)) rs)) 5)) all-rows))
+        rows (into (sorted-map) (filter (fn [[_ rs]] (>= (count (filter #(and (:y %) (<= (:t %) 2000)) rs)) 5)) all-rows))
         ks (vec (keys rows))
-        design (update-vals rows (fn [rs] (filterv #(<= (:t %) 2002) rs)))
+        design (update-vals rows (fn [rs] (filterv #(<= (:t %) 2000) rs)))
         sds (into (sorted-map) (pmap (fn [[kd rs]] [kd (year-shock-sd rs)]) design))
         buf (StringBuilder.)
         say (fn [s] (println s) (.append buf (str s "\n")))
@@ -346,7 +346,7 @@
         el #(format "%.0fs" (/ (- (System/currentTimeMillis) t0) 1000.0))]
     (say "section\tkind\ttype\tor\tshocks\tk_or_model\tscore\tn\tvalue\tmc_se\tmean_gain")
     (doseq [kd (remove (set ks) (keys all-rows))]
-      (say (format "skipped\t%s\t\t\t\t\t\t%d\t\t\t" kd (count (filter #(and (:y %) (<= (:t %) 2002)) (all-rows kd))))))
+      (say (format "skipped\t%s\t\t\t\t\t\t%d\t\t\t" kd (count (filter #(and (:y %) (<= (:t %) 2000)) (all-rows kd))))))
     (doseq [[kd s] sds]
       (say (format "year-shock-sd\t%s\t\t\t\t\t\t%d\t%.3f\t\t" kd (count (filter :y (design kd))) s)))
     ;; 1. the diagnostic, per kind, with and without year shocks
