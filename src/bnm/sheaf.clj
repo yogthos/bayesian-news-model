@@ -58,10 +58,11 @@
           (when-let [c (first (coarser b scale))] [[c place]])))
 
 (defn reader
-  "A reader of `book` ({[scale place] (sorted-map origin entry)}) that
-  records every read."
-  [book]
-  {:book book :reads (atom [])})
+  "A reader of `book` ({[scale place] (sorted-map origin entry)}) and of
+  the cells' resolved `errors` ({[scale place] (sorted-map known-at
+  error)}), recording every read."
+  ([book] (reader book {}))
+  ([book errors] {:book book :errors errors :reads (atom [])}))
 
 (defn- record! [{:keys [reads]} dir [scale place] origin]
   (swap! reads conj {:dir dir :scale scale :place place :origin origin}))
@@ -88,6 +89,20 @@
   (when-let [e (get-in (:book r) [cell t])]
     (record! r dir cell t)
     e))
+
+(defn peek-before
+  "latest-before without recording: a look at a section that passes
+  nothing into the node's inputs."
+  [r cell t]
+  (some-> (get (:book r) cell) (rsubseq < t) first))
+
+(defn latest-known
+  "[known-at error] of the cell's latest error known by t, or nil;
+  recorded as feedback."
+  [r [scale place :as cell] t]
+  (when-let [[k v] (some-> (get (:errors r) cell) (rsubseq <= t) first)]
+    (swap! (:reads r) conj {:dir :feedback :scale scale :place place :known-at k})
+    [k v]))
 
 (defn reads "Every read the reader made, in order." [r] @(:reads r))
 

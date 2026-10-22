@@ -26,6 +26,21 @@ what happens in its place at its scale, with its own inputs and its own
 weights: what matters to a week in one country need not matter to a
 decade in a region. The invariants can differ by scale.
 
+## The lattice as a sheaf
+
+Every read one node makes of another goes through bnm.sheaf. The places
+and time scales form a poset of cells [scale place] (a country under its
+region, a month under its year); a node's book is a section over its
+cell; its reads are restrictions along the poset, each recorded as it is
+made (a coarser scale's or an ancestor's section carried down from
+before t, finer scales' and children's carried up over the period, the
+coarser forecast carried down as an offset, resolved errors once known);
+reconciliation is the gluing; and the contradiction gaps are the
+coboundary, a section against what its neighbours say (Robinson 2017;
+Hansen & Ghrist 2019). New node kinds (stocks, sectors, factors) read and
+are read the same way. A golden snapshot (test/bnm/lattice_golden_test)
+pins the lattice's outputs and reads exactly.
+
 ## What each node does
 
 - **Target**, at its own scale and horizon:

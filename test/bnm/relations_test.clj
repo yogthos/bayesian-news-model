@@ -16,19 +16,6 @@
             xs (for [t (range 600 2400)] (rl/excursion cat "A" t tau))]
         (is (< (Math/abs (/ (reduce + xs) (count xs))) 0.03) (str "lag " lag " tau " tau))))))
 
-(deftest a-parent-s-state-from-before-t
-  (let [book {[:year "A"] (sorted-map 11 {:f -2.0 :q 0.3} 23 {:f -1.0 :q 0.2})}
-        cat {:onsets {"A" (sorted-set)} :from {"A" 0} :known-lag 12}
-        {:keys [x reads]} (rl/parent-inputs {:kind "bank" :book book :catalogue cat} :year "A" 23 0.5)]
-    (is (= -2.0 (first x)) "the latest issued before t, not at t")
-    (is (= 4 (count x)))
-    (is (= -1.0 (nth x 3)) "the state through the moderator")
-    (is (= [{:dir :relation :kind "bank" :scale :year :place "A" :origin 11}] reads))
-    (testing "none issued yet: zeros, nothing read"
-      (let [{:keys [x reads]} (rl/parent-inputs {:kind "bank" :book book :catalogue cat} :year "A" 11 0.5)]
-        (is (= [0.0 0.0 0.0 0.0] x))
-        (is (empty? reads))))))
-
 (deftest dimensions-stressed-together
   ;; how many kinds stand in their own top fifth across places at their
   ;; latest origin before t

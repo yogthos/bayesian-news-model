@@ -57,6 +57,7 @@
   seeds coefficients with what is known."
   (:require [augur.dynamic :as d]
             [bnm.relations :as rel]
+            [bnm.sheaf :as sh]
             [augur.math :as m]))
 
 (defn finer?
@@ -189,20 +190,16 @@
   [spec scale]
   (into (set (:without spec)) (get-in spec [:without-at scale])))
 
-(defn- children-of [spec level-ix place]
-  (when (pos? level-ix)
-    (let [[_ below] (nth (:levels spec) (dec level-ix))]
-      (filter #(= place (get (:parent spec) %)) below))))
+(defn- children-of [spec level-ix place] (sh/children (sh/base spec) level-ix place))
 
-(defn- ancestors-of [spec place]
-  (take-while some? (rest (iterate #(get (:parent spec) %) place))))
+(defn- ancestors-of [spec place] (sh/ancestors (sh/base spec) place))
 
 (defn- layout
   "The input layout of a node: {:width n :groups {group [index...]} :order}."
   [spec scale level-ix]
-  (let [names (map :name (:scales spec))
-        finer (take-while #(not= % scale) names)
-        coarser (rest (drop-while #(not= % scale) names))
+  (let [b (sh/base spec)
+        finer (sh/finer b scale)
+        coarser (sh/coarser b scale)
         kids? (pos? level-ix)
         n-anc (- (count (:levels spec)) level-ix 1)
         gw (get-in spec [:gauge-width scale] 0)
@@ -287,48 +284,30 @@
                                            :discount discount :inputs ix})]))
                 {:forget (:forget spec)})))
 
-(defn- issued
-  "Entries for [scale place] issued at origins in [lo, hi], oldest first."
-  [book scale place lo hi]
-  (when-let [byo (get book [scale place])]
-    (subseq byo >= lo <= hi)))
-
-(defn- last-error
-  "The last error of [scale place] known by t, as [known-at error]."
-  [errors scale place t]
-  (some-> (get errors [scale place]) (rsubseq <= t) first))
 
 (defn- inputs
   "The node's inputs for `place` at origin t, what it read, its own state
-  and its accumulated tensions after this period."
+  and its accumulated tensions after this period. Every read of another
+  node goes through the sheaf's restrictions (bnm.sheaf), which record
+  it."
   [spec {:keys [book errors tension resolutions]} scale scale-spec level-ix place t gauges]
   (let [{:keys [finer coarser]} (layout spec scale level-ix)
         per (:per scale-spec)
-        reads (transient [])
-        read! (fn [r] (conj! reads r))
+        r (sh/reader book errors)
         ;; up: finer scales over this period, children at this origin
-        finer-entries (for [f finer] [f (issued book f place (- t (dec per)) t)])
-        up-time (mapcat (fn [[f es]]
-                          (doseq [[o _] es] (read! {:dir :up :scale f :place place :origin o}))
+        finer-entries (for [f finer] [f (sh/over r :up [f place] (- t (dec per)) t)])
+        up-time (mapcat (fn [[_ es]]
                           (if (seq es) [(:s (val (last es))) (mean (map (comp :s val) es))] [0.0 0.0]))
                         finer-entries)
         kids (children-of spec level-ix place)
-        kid-entries (keep (fn [c] (when-let [e (get-in book [[scale c] t])] (read! {:dir :up :scale scale :place c :origin t}) e)) kids)
+        kid-entries (keep (fn [c] (sh/at r :up [scale c] t)) kids)
         up-space (when (pos? level-ix)
                    (if (seq kid-entries)
                      [(logit (- 1.0 (reduce * (map #(- 1.0 (:p %)) kid-entries)))) (mean (map :s kid-entries))]
                      [0.0 0.0]))
         ;; down: coarser scales before t, every ancestor at the previous origin
-        down-time (mapv (fn [c]
-                          (if-let [[o e] (last (issued book c place Long/MIN_VALUE (dec t)))]
-                            (do (read! {:dir :down :scale c :place place :origin o}) (:s e))
-                            nil))
-                        coarser)
-        down-space (mapv (fn [a]
-                           (if-let [e (get-in book [[scale a] (- t per)])]
-                             (do (read! {:dir :down :scale scale :place a :origin (- t per)}) (:s e))
-                             nil))
-                         (ancestors-of spec place))
+        down-time (mapv (fn [c] (some-> (sh/latest-before r :down [c place] t) second :s)) coarser)
+        down-space (mapv (fn [a] (:s (sh/at r :down [scale a] (- t per)))) (ancestors-of spec place))
         down (mapv #(or % 0.0) (concat down-time down-space))
         ;; the place's own state: its gauges' when the spec says, else its
         ;; last forecast's (never this one's, which these inputs make)
@@ -348,13 +327,15 @@
         parent-state (first down-space)
         relations (concat (when (seq (ancestors-of spec place)) [[:parent parent-state]])
                           (map vector coarser down-time))
-        rel' (into {} (for [[r other] relations
-                            :let [gap (if other (- own other) 0.0)]]
-                        [r {:gap gap
-                            :above (+ (Math/max 0.0 gap) (carry (get-in rel [r :above])))
-                            :below (+ (Math/max 0.0 (- gap)) (carry (get-in rel [r :below])))}]))
+        ;; the gaps are the coboundary: the place's state against each neighbour's
+        gaps (sh/coboundary own (into {} relations))
+        rel' (into {} (for [[k _] relations
+                            :let [gap (gaps k)]]
+                        [k {:gap gap
+                            :above (+ (Math/max 0.0 gap) (carry (get-in rel [k :above])))
+                            :below (+ (Math/max 0.0 (- gap)) (carry (get-in rel [k :below])))}]))
         ;; the strain each coarser scale has accumulated, carried down (from before t)
-        coarser-strain (map (fn [c] (or (some-> (last (issued book c place Long/MIN_VALUE (dec t))) val :strain) 0.0)) coarser)
+        coarser-strain (map (fn [c] (or (some-> (sh/peek-before r [c place] t) val :strain) 0.0)) coarser)
         ;; strain built at finer scales, re-accumulated at this one's pace:
         ;; months of local strain become years of it
         fin' (into {} (for [[f es] finer-entries
@@ -390,7 +371,7 @@
         exposure (when-let [f (:exposure spec)]
                    (let [e (f scale place t)] (for [dv down ev e] (* dv ev))))
         ;; feedback: errors of the coarser scales, the parent, the children, known by t
-        err (fn [s p] (when-let [[k v] (last-error errors s p t)] (read! {:dir :feedback :scale s :place p :known-at k}) v))
+        err (fn [s p] (second (sh/latest-known r [s p] t)))
         parent (get (:parent spec) place)
         feedback (concat (map #(or (err % place) 0.0) coarser)
                          (when parent [(or (err scale parent) 0.0)])
@@ -401,17 +382,19 @@
                     width (get-in spec [:relation-width scale] 0)]
                 (when (not= width (count x))
                   (throw (ex-info "bnm.lattice: :relations gave the wrong width" {:scale scale :width width :got (count x)})))
-                (update r :x #(mapv double %))))]
-    {:x (let [w (without spec scale)]
-          (vec (concat [1.0] (when-not (w :gauges) gauges)
-                       (when-not (w :up) (concat up-time up-space))
-                       (when-not (w :down) down)
-                       (when-not (w :contradiction) contradiction)
-                       (when-not (w :turn) turn)
-                       (when-not (w :exposure) exposure)
-                       (when-not (w :feedback) feedback)
-                       (when-not (w :relations) (:x rel)))))
-     :reads (into (persistent! reads) (when-not ((without spec scale) :relations) (:reads rel)))
+                (update r :x #(mapv double %))))
+        ;; built before the reads are taken: some restrictions are lazy
+        x (let [w (without spec scale)]
+            (vec (concat [1.0] (when-not (w :gauges) gauges)
+                         (when-not (w :up) (concat up-time up-space))
+                         (when-not (w :down) down)
+                         (when-not (w :contradiction) contradiction)
+                         (when-not (w :turn) turn)
+                         (when-not (w :exposure) exposure)
+                         (when-not (w :feedback) feedback)
+                         (when-not (w :relations) (:x rel)))))]
+    {:x x
+     :reads (into (sh/reads r) (when-not ((without spec scale) :relations) (:reads rel)))
      :stated stated
      :resolved resolved
      :strain strain-total
@@ -542,12 +525,13 @@
                                         ratio (when ds (/ (double (:horizon scale-spec)) (horizon-of (:from ds))))
                                         pool (:downscale-pool spec)]
                                     (fn [place t]
-                                      (if-let [[o-t {:keys [p f q]}] (when ds (some-> (get-in st [:book [(:from ds) place]]) (rsubseq < t) first))]
-                                        (let [os (if (:downscale-uncertainty spec) (offsets-under f q ratio) [[1.0 (window-log-odds p ratio)]])
-                                              known (when (and pool (:offset spec)) ((:offset spec) scale place t))
-                                              os (if known (mapv (fn [[w o]] [w (+ (* pool known) (* (- 1.0 pool) o))]) os) os)]
-                                          {:os os :read {:dir :downscale :scale (:from ds) :place place :origin o-t}})
-                                        {:os [[1.0 (offset-of place t)]]})))
+                                      (let [r (sh/reader (:book st))]
+                                        (if-let [[_ {:keys [p f q]}] (when ds (sh/latest-before r :downscale [(:from ds) place] t))]
+                                          (let [os (if (:downscale-uncertainty spec) (offsets-under f q ratio) [[1.0 (window-log-odds p ratio)]])
+                                                known (when (and pool (:offset spec)) ((:offset spec) scale place t))
+                                                os (if known (mapv (fn [[w o]] [w (+ (* pool known) (* (- 1.0 pool) o))]) os) os)]
+                                            {:os os :read (first (sh/reads r))})
+                                          {:os [[1.0 (offset-of place t)]]}))))
                        st (reduce (fn [st {:keys [place y p known-at]}]
                                     (update-in st [:errors [scale place]] (fnil assoc (sorted-map)) known-at
                                                (- (if y 1.0 0.0) p)))

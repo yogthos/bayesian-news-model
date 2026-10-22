@@ -50,3 +50,14 @@
   (testing "its size: the inconsistency of the section with its neighbours"
     (is (= 2.5 (sh/inconsistency {:a 1.5 :b -1.0}))
         "the sum of the gaps' sizes")))
+
+(deftest errors-known-by-t-and-unrecorded-looks
+  ;; the errors a cell's forecasts made, by when each became known: the
+  ;; latest known by t, recorded as feedback; and a look at a section that
+  ;; reads nothing into the node (its strain carried, say) records nothing
+  (let [errors {[:year "a1"] (sorted-map 20 0.5 30 -0.25)}
+        r (sh/reader book errors)]
+    (is (= [20 0.5] (sh/latest-known r [:year "a1"] 29)))
+    (is (nil? (sh/latest-known r [:year "a1"] 19)))
+    (is (= [11 {:s -1.0}] (sh/peek-before r [:year "a1"] 23)))
+    (is (= [{:dir :feedback :scale :year :place "a1" :known-at 20}] (sh/reads r)))))

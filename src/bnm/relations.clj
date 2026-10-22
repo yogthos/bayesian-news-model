@@ -1,11 +1,12 @@
 (ns bnm.relations
   "What one kind of event reads of the others at a place (docs/WORLD-MODEL.md):
-  each parent's state, its linear predictor at its latest origin before t
-  (its whole stress, whether or not it became an onset); its onsets known by
-  t as an excursion above the place's own rate so far; its state through a
-  moderator (a place's institutions buffering what reaches it); and how many
-  kinds are stressed together at the place (the coupling of crises). Every
-  read is from before t and recorded."
+  along each edge of the graph, one input in the edge's form (raw-input,
+  edge-input): a parent's onsets known by t as a post-crisis regime or as
+  an excursion above the place's own rate so far, or its state against
+  its own past; its level only as its own part (bnm.factors). Every read
+  is from before t and recorded. Also the coupling of crises (how many
+  kinds are stressed together at a place) and the principal
+  contradiction."
   (:require [clojure.core :as c]))
 
 (defn excursion
@@ -26,16 +27,6 @@
           level (* (Math/exp (- (/ (- t k) tau))) (/ (- 1.0 (Math/exp (- (/ n tau)))) (- 1.0 (Math/exp (/ -1.0 tau)))))]
       (if (< k f) 0.0 (- raw (* rate level))))
     0.0))
-
-(defn parent-inputs
-  "{:x [state onsets-1y onsets-5y state*moderator] :reads [...]} of a
-  parent ({:kind :book :catalogue}) for `place` at `scale` and origin t,
-  in months; the onset kernels at the year (12 months) and five years (60)."
-  [{:keys [kind book catalogue]} scale place t moderator]
-  (let [[o e] (some-> (get book [scale place]) (rsubseq < t) first)
-        f (if e (double (:f e)) 0.0)]
-    {:x [f (excursion catalogue place t 12.0) (excursion catalogue place t 60.0) (* f (double (or moderator 0.0)))]
-     :reads (if e [{:dir :relation :kind kind :scale scale :place place :origin o}] [])}))
 
 (defn raw-input
   "{:x value :reads [...]} of what a parent ({:kind :book :catalogue})
