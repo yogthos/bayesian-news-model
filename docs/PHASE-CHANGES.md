@@ -1102,6 +1102,42 @@ the base already knows. Next (bnm-62z.13): the states as gauges of the
 base's contradictions rather than as inputs to the year node, and the
 half-decade node, where slow stocks should matter most.
 
+## Pre-registered, 22 October 2026: the horizon profile of named states (trial T1 of bnm-3qu)
+
+Registered before any outcome after 2002 is read for these states. The
+power audit (trial 0) showed trial 45's screen could not find the effects
+the literature reports (OR 1.2 per SD found one time in seven); a named
+list of at most ten, pooled across kinds, finds OR 1.35 about 87% of the
+time. The question: do slow stocks' effects grow with the lead and fast
+triggers' fade (docs/LIT-NEXT-STEPS.md)?
+
+States (docs/T1-STATES.md): five of the ten examined, cut by the order
+fixed for coverage and proxy quality (debt service, elite overproduction,
+the fuel price gap, anocracy, the Keen debt gap out):
+- slow: the credit-to-GDP gap (banking crises, growth collapses; +), the
+  youth bulge (protest, violence and conflict onsets; +), the historical
+  technology gap (conflict onsets, coups; +);
+- fast: food import exposure (protest surges; +), reserves in months of
+  imports (currency crises, sovereign defaults; -).
+Each state is demeaned by year (the within-year cross-section: country
+drivers, not the world's) and standardized; its effect on the kind's
+onset in year t+h exactly, h = 1..5, pooled over its kinds, by the
+year-clustered score (tools/bnm/horizon-profile), with the base's year
+forecast (t44-world-norel) as offset.
+
+**Tests**, origins 2003-2022 (outcomes to 2022, so the last origin at lead
+h is 2022-h), one-sided 5%, nulls from 200 permutations of country labels:
+1. (primary) (a) slow: the mean over the slow states of s(c45 - c12) > 0,
+   s the expected sign, c12 and c45 the mean coefficient at leads 1-2
+   and 4-5;
+2. (b) fast: the mean over the fast states of s c12 > 0;
+3. for the record: each state's s c12 and s(c45 - c12), Holm over the
+   five; the same statistics with no offset (the total effect); the
+   placebos (the next country's state).
+On the design years (1960-2002) the same statistics over these five
+states are reported alongside. There, over all ten, (a) was level (p
+0.36) and (b) passed (p 0.02, food import exposure most).
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
