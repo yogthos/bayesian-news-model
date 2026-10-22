@@ -969,3 +969,31 @@ country), bench **t42-world-norel**.
 2. joint forecasts against independence over the sixteen edges;
 3. t44-world against t44-world-placebo, pooled as 1;
 4. for the record, t44-world against t43-world on the kinds both link.
+
+**Amended before any training, 22 October 2026 (trial 44).** Reviews of the
+design found and fixed: unknown inputs entered as 0, not neutral once
+standardized (they now enter as the input's running mean and do not
+move it); trend indicators computed from as few as two points; placebo
+rows not matched to the real rows; raw variances heavy-tailed (now log);
+the best of many candidates kept at a nominal threshold (now corrected,
+chi-squared at 5%/k for k candidates, Bonferroni); and, in the base, the
+year gauges reading WDI a year staler than published (the publication
+lag applied twice). The last changes the base, so trial 44 has its own
+bench, **t44-world-norel** (trial 43's design without relations, the
+gauges fixed), and both diagnostics were rerun on it (origins
+1960-2002):
+- links: seven of 22 edges (data/runs/sequencing/graph-t44.edn):
+  conflict onsets to violence surges and war onsets (post-crisis regime),
+  currency to inflation crises (its own part), growth collapses to
+  protest surges (destabilization), protest surges to coups, violence
+  surges to conflict and war onsets (post-crisis regime). The links to
+  coups seen before the correction do not pass it;
+- warnings: five kinds (data/runs/sequencing/ews-t44.edn, window 12),
+  all lowering risk: banking crises and fiscal consolidations (the log
+  variance of inflation's own part), currency crises (its autocorrelation
+  trend), growth collapses (the log variance of growth's own part), war
+  onsets (the trend of inflation's log variance).
+Links and warnings apply at the year and half-decade nodes (the quarters
+drop relations). The tests stand as registered with t44-world-norel as
+the bench; the linked kinds are those with a parent or a warning. For
+the record, the gauge fix alone: t44-world-norel against t42-world-norel.
