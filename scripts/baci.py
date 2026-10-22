@@ -1,23 +1,36 @@
 """BACI bilateral trade at HS6 as a panel (docs/ESSENTIALS.md section 8 step 1,
-bead bnm-1pq.2). Research tooling: reads the CEPII BACI V202601 zips straight
-from data/raw/material/ (never unzipped) and writes data/derived/supply/:
+beads bnm-1pq.2 and bnm-1pq.17). Research tooling: reads the CEPII BACI
+V202601 zips straight from data/raw/material/ (never unzipped) and writes
+data/derived/supply/, for every edition whose zip is present (HS92
+1995-2024, HS12 2012- in baci-hs12/, HS17 2017- in baci-hs17/). Each
+edition keeps its own codes: an HS12 850760 is not an HS92 code. Values
+are thousand USD, tonnes metric tons (blank where BACI has none).
 
-  hs6.csv         year,known,hs6,exporter,importer,value,tonnes,uv
-      HS92 bilateral flows, 1995-2024. value in thousand USD, tonnes in
-      metric tons (blank where BACI has none), uv = value / tonnes in
-      kUSD per tonne (= USD per kg; blank without tonnes).
-  hs6-hs12.csv, hs6-hs17.csv
-      the same for the HS2012 (2012-) and HS2017 (2017-) editions, when
-      their zips are present in data/raw/material/baci-hs12 and baci-hs17.
-      Each edition keeps its own codes: an HS12 850760 is not an HS92 code.
+  hs6-essentials.csv.gz  hs,year,known,hs6,exporter,importer,value,tonnes,uv
+      bilateral flows of the essentials codes only: every hs_code and hs6
+      of subnodes.csv, and every code of the broad critical-materials
+      mapping (eu-2023, usgs-2022 in tools/bnm/essentials_check.clj, read
+      from that file so the two cannot drift). uv = value / tonnes in kUSD
+      per tonne (= USD per kg; blank without tonnes).
+  hs6-country.csv.gz     hs,year,known,hs6,country,exports,imports
+      country x product totals: a country's exports and imports of the
+      product in the year (0 where it has flows one way only). Summed over
+      countries, exports and imports are each the world value.
+  hs2-pairs.csv.gz       hs,year,known,hs2,exporter,importer,value,tonnes
+      country-pair flows by HS2 chapter, for chokepoint routing (tonnes
+      blank where none of the pair's flows carries any).
   hs6-world.csv   hs,year,known,hs6,value,tonnes,tonnes_cover,share,exporters,hhi
-      per edition (hs = HS92, HS12, HS17), year and product: world value
-      and tonnes, the share of the value whose flows carry tonnes
-      (tonnes_cover: BACI leaves q blank for about 1-3% of flows, 1% of
-      value, so tonnes undercount where it is below 1), share of that
-      edition's world trade value in the year, the number of exporters with
-      positive value, and the exporters' Herfindahl index of value shares
-      (0-1). A run over some editions rewrites only their rows.
+      per edition, year and product: world value and tonnes, the share of
+      the value whose flows carry tonnes (tonnes_cover: BACI leaves q blank
+      for about 1-3% of flows, 1% of value, so tonnes undercount where it
+      is below 1), share of that edition's world trade value in the year,
+      the number of exporters with positive value, and the exporters'
+      Herfindahl index of value shares (0-1).
+
+A run over some editions rewrites only their rows in every output. The
+full bilateral files (hs6.csv, hs6-hs12.csv, hs6-hs17.csv: 13, 6.9 and
+4.3 GB) are written only with --full; nothing reads them, and the zips
+rebuild them in minutes.
 
 Known and vintage. CEPII publishes BACI once a year, in January (V202601
 was released 2026-01-22 and runs to 2024; V202102 came in February), so
@@ -70,10 +83,11 @@ Union to 1999, R20 EFTA n.e.s.).
 
     python -I scripts/baci.py [--root data/raw/material]
                               [--out data/derived/supply]
-                              [--editions HS92,HS12,HS17] [--world-only]
+                              [--editions HS92,HS12,HS17] [--world-only] [--full]
 """
 
 import argparse
+import gzip
 import os
 import re
 import sys
@@ -156,9 +170,75 @@ def world(df, edition):
     return g[COLUMNS]
 
 
-def run(root, out, editions, bilateral):
+SHAPES = {  # output file -> its columns
+    "hs6-essentials.csv.gz": ["hs", "year", "known", "hs6", "exporter", "importer", "value",
+                              "tonnes", "uv"],
+    "hs6-country.csv.gz": ["hs", "year", "known", "hs6", "country", "exports", "imports"],
+    "hs2-pairs.csv.gz": ["hs", "year", "known", "hs2", "exporter", "importer", "value", "tonnes"],
+}
+
+
+def essential_codes(subnodes, check):
+    """The HS6 codes of hs6-essentials: subnodes.csv's hs_code and hs6 (all
+    editions), and the codes of the broad critical-materials tables of the
+    check tool (the text from `(def eu-2023` to `(def subnode-lists`)."""
+    sn = pd.read_csv(subnodes, dtype=str)
+    codes = set(sn.hs_code.dropna()) | set(sn.hs6.dropna())
+    text = open(check).read()
+    lo, hi = text.index("(def eu-2023"), text.index("(def subnode-lists")
+    codes |= set(re.findall(r'"(\d{6})"', text[lo:hi]))
+    return {c.zfill(6) for c in codes if c.isdigit()}
+
+
+def shapes(df, edition, codes):
+    """The rows of one year's flows for each SHAPES file."""
+    year = int(df.year.iloc[0])
+    known = year + LAG
+    ess = df[df.hs6.isin(codes)].copy()
+    ess.insert(0, "hs", edition)
+    ess.insert(2, "known", known)
+    ess["uv"] = np.where(ess.tonnes > 0, ess.value / ess.tonnes, np.nan)
+    ex = df.groupby(["hs6", "exporter"]).value.sum().rename("exports")
+    im = df.groupby(["hs6", "importer"]).value.sum().rename("imports")
+    ex.index.names = im.index.names = ["hs6", "country"]
+    cty = pd.concat([ex, im], axis=1).fillna(0.0).reset_index()
+    cty.insert(0, "hs", edition)
+    cty.insert(1, "year", year)
+    cty.insert(2, "known", known)
+    g = df.assign(hs2=df.hs6.str[:2]).groupby(["hs2", "exporter", "importer"])
+    pairs = pd.concat([g.value.sum(), g.tonnes.sum(min_count=1)], axis=1).reset_index()
+    pairs.insert(0, "hs", edition)
+    pairs.insert(1, "year", year)
+    pairs.insert(2, "known", known)
+    total = df.value.sum()
+    for t in (cty.exports.sum(), cty.imports.sum(), pairs.value.sum()):
+        assert abs(t - total) <= 1e-6 * total, (edition, year)
+    return {"hs6-essentials.csv.gz": ess, "hs6-country.csv.gz": cty, "hs2-pairs.csv.gz": pairs}
+
+
+def keep_others(path, f, done):
+    """Copy the rows of `path` (gzip CSV with hs first) whose edition is not
+    in `done` to the open text file `f`."""
+    if not os.path.exists(path):
+        return
+    with gzip.open(path, "rt") as g:
+        next(g, None)
+        for line in g:
+            if line.split(",", 1)[0] not in done:
+                f.write(line)
+
+
+def run(root, out, editions, bilateral=True, codes=None, full=False,
+        subnodes=None, check=None):
+    """Read the editions' zips and write the outputs (see the module doc).
+    bilateral False writes hs6-world.csv only; `codes` defaults to
+    essential_codes(subnodes, check)."""
     os.makedirs(out, exist_ok=True)
+    if bilateral and codes is None:
+        codes = essential_codes(subnodes, check)
     worlds = []
+    files = {}
+    done = set()
     for ed in editions:
         d, fname = EDITIONS[ed]
         zips = [f for f in sorted(os.listdir(os.path.join(root, d)))
@@ -166,6 +246,7 @@ def run(root, out, editions, bilateral):
         if not zips:
             print(f"{ed}: no zip under {os.path.join(root, d)}, skipped", file=sys.stderr)
             continue
+        done.add(ed)
         z = zipfile.ZipFile(os.path.join(root, d, zips[-1]))
         iso = iso_map(z)
         path = os.path.join(out, fname)
@@ -176,6 +257,13 @@ def run(root, out, editions, bilateral):
             df = read_year(z, member, iso)
             worlds.append(world(df, ed))
             if bilateral:
+                for name, part in shapes(df, ed, codes).items():
+                    if name not in files:
+                        files[name] = gzip.open(os.path.join(out, name + ".part"), "wt", compresslevel=6)
+                        files[name].write(",".join(SHAPES[name]) + "\n")
+                    part[SHAPES[name]].to_csv(files[name], header=False, index=False,
+                                              float_format="%.10g")
+            if full:
                 df.insert(1, "known", df.year + LAG)
                 df["uv"] = np.where(df.tonnes > 0, df.value / df.tonnes, np.nan)
                 df.to_csv(tmp, mode="w" if first else "a", header=first, index=False,
@@ -183,9 +271,15 @@ def run(root, out, editions, bilateral):
                 first = False
                 rows += len(df)
             print(ed, year, len(df), file=sys.stderr, flush=True)
-        if bilateral and not first:
+        if full and not first:
             os.replace(tmp, path)
             print(f"{path}: {rows} rows", file=sys.stderr)
+    for name, f in files.items():
+        path = os.path.join(out, name)
+        keep_others(path, f, done)
+        f.close()
+        os.replace(path + ".part", path)
+        print(f"{path} written", file=sys.stderr)
     wpath = os.path.join(out, "hs6-world.csv")
     if not worlds:
         print(f"no edition read; {wpath} left as it was", file=sys.stderr)
@@ -211,13 +305,19 @@ def main():
     p.add_argument("--out", default="data/derived/supply")
     p.add_argument("--editions", default="HS92,HS12,HS17")
     p.add_argument("--world-only", action="store_true",
-                   help="write hs6-world.csv only, not the bilateral files")
+                   help="write hs6-world.csv only")
+    p.add_argument("--full", action="store_true",
+                   help="also write the full bilateral files (hs6.csv, hs6-hs12.csv, hs6-hs17.csv)")
+    p.add_argument("--subnodes", default="data/derived/supply/subnodes.csv")
+    p.add_argument("--check", default="tools/bnm/essentials_check.clj",
+                   help="the file holding the broad critical-materials mapping")
     a = p.parse_args()
     eds = [e.strip().upper() for e in a.editions.split(",") if e.strip()]
     bad = [e for e in eds if e not in EDITIONS]
     if bad:
         raise SystemExit(f"unknown editions {bad}; known: {sorted(EDITIONS)}")
-    run(a.root, a.out, eds, not a.world_only)
+    run(a.root, a.out, eds, bilateral=not a.world_only, full=a.full,
+        subnodes=a.subnodes, check=a.check)
 
 
 if __name__ == "__main__":
