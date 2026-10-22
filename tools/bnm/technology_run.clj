@@ -13,17 +13,29 @@
       inflows: R&D (% GDP), resident and nonresident patent applications
       and scientific articles per million people (population from the
       store, known when both are), high-tech share of manufactured
-      exports; world research output by field (OpenAlex, works per
-      million works) under iso WLD; US semiconductor production (FRED,
-      the December index) under USA.
+      exports. World series under iso WLD (bnm.states reads a series held
+      only for WLD as a time signal common to every country): research
+      output by field (OpenAlex, works per million works) and the
+      frontier's semiconductor production (FRED, US, the December index;
+      a USA-only series would be one country, too few for bnm.factors).
+      Values are the store's current vintage, each dated by its first
+      availability: later revisions (WDI's, and OpenAlex's field tagging,
+      a 2020s classifier applied to old works) are later knowledge read
+      early, which this cannot undo.
     data/raw/slow/chat/FinalCHAT_72909.csv  Comin & Hobijn's Cross-country
       Historical Adoption of Technology (NBER w15319, 2009; free for
       research), 1800-2008: telephones, cars, televisions, radios,
       computers and tractors per 100 people (CHAT's population, in
       thousands; radios are in thousands), electricity output in kWh per
       person. Known with a stated lag of 2 years after the data year (the
-      statistical yearbooks it compiles); the compilation itself is a 2009
-      vintage, so its revisions are later knowledge.
+      statistical yearbooks it compiles were out within about that); the
+      compilation itself is a 2009 vintage (data to 2008 at most, most series ending by
+      2002, every series stale by 2007 known), so its revisions and
+      interpolations are later knowledge read early.
+
+  Eras: CHAT's technologies (\"historical\", to about 2006 known: most series end by 2002) and the
+  slow store's (\"recent\", from about 1991) each have their own gap, so
+  neither jumps when CHAT ends; productivity-inflow chains across both.
 
   The frontier is the United States (Comin & Hobijn's benchmark)."
   (:require [bnm.geo :as geo]
@@ -44,7 +56,9 @@
 (def wdi-techs
   "Diffusion technologies from the slow store: name -> [variable cfg]."
   {"internet" ["technology/internet_users" {:cap 100.0 :saturation 100.0}]
-   "mobile" ["technology/mobile_subscriptions" {:cap 150.0}]
+   ;; subscriptions per 100 people: one each is full adoption, more (several
+   ;; SIMs) is not more adoption
+   "mobile" ["technology/mobile_subscriptions" {:cap 150.0 :saturation 100.0}]
    "electricity_access" ["energy/electricity_access" {:cap 100.0 :saturation 100.0}]})
 
 (def chat-techs
@@ -66,6 +80,8 @@
    "patents_nonresident_pm" ["technology/patents_nonresident" true]
    "articles_pm" ["technology/articles" true]
    "hightech_exports_share" ["technology/hightech_exports_share" false]})
+
+(def eras {"historical" (set (keys chat-techs)) "recent" (set (keys wdi-techs))})
 
 (def research-fields ["ai" "batteries" "internet" "machine_learning" "photovoltaics"
                       "quantum_computing" "robotics" "semiconductors"])
@@ -168,35 +184,41 @@
     (println "\ninternet: lag behind the USA (years) / adoption (share of 100%), by year known")
     (doseq [iso ["USA" "KOR" "SWE" "CHN" "BRA" "IND" "NGA"]]
       (println (format "  %s %s" iso (str/join " " (for [y [2000 2005 2010 2015 2020 2025]]
-                                                     (str y (f1 (v iso y "internet_lag")) "/" (str/trim (f2 (v iso y "internet_adoption")))))))))
+                                                     (str y (f1 (v iso y (tech/var-name "internet" "lag"))) "/" (str/trim (f2 (v iso y (tech/var-name "internet" "adoption"))))))))))
     (println "\nmobile lag (years):")
     (doseq [iso ["CHN" "IND" "NGA"]]
-      (println (format "  %s %s" iso (str/join " " (for [y [2000 2005 2010 2015 2020 2025]] (str y (f1 (v iso y "mobile_lag"))))))))
+      (println (format "  %s %s" iso (str/join " " (for [y [2000 2005 2010 2015 2020 2025]] (str y (f1 (v iso y (tech/var-name "mobile" "lag")))))))))
     (println "\nlag behind the USA (years), median over countries, by year known (n countries); the USA's speed and midpoint known 1997")
     (doseq [k (sort (keys (merge chat-techs wdi-techs)))]
       (println (format "  %-18s %s   USA speed %s midpoint %s" k
                        (str/join " " (for [y [1930 1950 1975 1997 2010 2025]
-                                           :let [ls (vec (sort (keep #(v % y (str k "_lag")) (set (map :iso rows)))))]]
+                                           :let [ls (vec (sort (keep #(v % y (tech/var-name k "lag")) (set (map :iso rows)))))]]
                                        (format "%d %5s (%3d)" y (if (seq ls) (format "%.0f" (double (ls (quot (count ls) 2)))) "-") (count ls))))
-                       (f2 (v "USA" 1997 (str k "_speed"))) (f1 (v "USA" 1997 (str k "_midpoint"))))))
-    (println "\nChina's catch-up: tech_gap  tech_lag  count  inflow  (and India, Nigeria)")
+                       (f2 (v "USA" 1997 (tech/var-name k "speed"))) (f1 (v "USA" 1997 (tech/var-name k "midpoint"))))))
+    (println "\ncatch-up: historical gap lag count break | recent gap lag count break | inflow")
     (doseq [iso ["CHN" "IND" "NGA" "KOR"]]
       (println " " iso)
-      (doseq [y [1960 1970 1980 1990 2000 2005 2010 2015 2020 2025]]
-        (println (format "    %d  %s  %s  %s  %s" y (f2 (v iso y "tech_gap")) (f1 (v iso y "tech_lag"))
-                         (f1 (v iso y "tech_count")) (f2 (v iso y "productivity_inflow"))))))
+      (doseq [y [1960 1970 1980 1990 2000 2005 2010 2012 2013 2015 2020 2025]]
+        (println (format "    %d  %s %s %s %s | %s %s %s %s | %s" y
+                         (f2 (v iso y "technology/gap-historical")) (f1 (v iso y "technology/lag-historical"))
+                         (f1 (v iso y "technology/gap-historical-count")) (f1 (v iso y "technology/gap-historical-break"))
+                         (f2 (v iso y "technology/gap-recent")) (f1 (v iso y "technology/lag-recent"))
+                         (f1 (v iso y "technology/gap-recent-count")) (f1 (v iso y "technology/gap-recent-break"))
+                         (f2 (v iso y "technology/productivity-inflow"))))))
     (println "\nleading inflows at 2022 known: R&D % GDP, resident patents per million, articles per million")
     (doseq [iso ["USA" "KOR" "CHN" "DEU" "JPN" "IND" "BRA" "NGA"]]
-      (println (format "  %s %s %s %s" iso (f2 (v iso 2022 "rd_intensity")) (f1 (v iso 2022 "patents_resident_pm"))
-                       (f1 (v iso 2022 "articles_pm")))))
-    (println "\nsign check: tech_gap against log GDP per capita (WDI, known the same year), across countries")
+      (println (format "  %s %s %s %s" iso (f2 (v iso 2022 "technology/rd-intensity")) (f1 (v iso 2022 "technology/patents-resident-pm"))
+                       (f1 (v iso 2022 "technology/articles-pm")))))
+    (println "\nsign check: each era's gap against log GDP per capita (WDI, known the same year), across countries")
     (let [gdp (into {} (for [[[iso var] es] store :when (= var "economy/gdp_per_capita")] [iso es]))]
-      (doseq [y [1995 2005 2015 2024]]
+      (doseq [era (sort (keys eras)) y [1975 1995 2005 2015 2024]]
         (let [pairs (vec (for [iso (set (map :iso rows))
-                               :let [g (v iso y "tech_gap") p (some-> (gdp iso) (tech/latest y 3))]
+                               :let [g (v iso y (tech/var-name "gap" era)) p (some-> (gdp iso) (tech/latest y 3))]
                                :when (and g p (pos? p))]
                            [g (Math/log p)]))]
-          (println (format "  %d  n %3d  corr %s" y (count pairs) (f2 (corr pairs)))))))))
+          (println (format "  %-10s %d  n %3d  corr %s" era y (count pairs) (f2 (corr pairs)))))))
+    (println "\nadoption above 1 (should be none):" (count (filter #(and (str/ends-with? (:variable %) "-adoption") (> (:value %) 1.0)) rows)))
+    (println "variables not technology/ kebab-case:" (vec (remove #(re-matches #"technology/[a-z0-9]+(-[a-z0-9]+)*" %) (keys by-var))))))
 
 (defn identification
   "The ensemble smoother's posterior for the frontier's internet curve, as
@@ -225,18 +247,18 @@
         _ (when (seq unmapped) (println "CHAT names not mapped:" (vec unmapped)))
         data (merge chat (into {} (for [[k [var _]] wdi-techs] [k (countries var)])))
         techs (merge (update-vals wdi-techs second) (update-vals chat-techs #(nth % 2)))
-        diffusion (tech/technology-rows {:techs techs :data data :frontier frontier :years years})
+        diffusion (tech/technology-rows {:techs techs :eras eras :data data :frontier frontier :years years})
         pop (countries "people/population")
         lead (reduce (fn [acc [out [var pm?]]]
                        (reduce (fn [acc [iso es]]
                                  (let [es (if pm? (tech/per-million es (get pop iso)) es)]
-                                   (if (seq es) (assoc-in acc [iso out] es) acc)))
+                                   (if (seq es) (assoc-in acc [iso (tech/var-name out)] es) acc)))
                                acc (countries var)))
                      {} leading)
-        world (merge {"WLD" (into {} (for [f research-fields :let [es (store ["world" (str "technology/research_" f)])] :when es]
-                                       [(str "research_" f) es]))}
-                     (when-let [es (store ["USA" "technology/semiconductor_production"])]
-                       {"USA" {"semiconductor_production" es}}))
+        world {"WLD" (merge (into {} (for [f research-fields :let [es (store ["world" (str "technology/research_" f)])] :when es]
+                                       [(tech/var-name "research" f) es]))
+                            (when-let [es (store ["USA" "technology/semiconductor_production"])]
+                              {(tech/var-name "frontier-semiconductor-production") es}))}
         rows (vec (sort-by (juxt :iso :year :variable)
                            (concat diffusion (tech/latest-rows lead years 3) (tech/latest-rows world years 1))))]
     (write-rows out-path rows)

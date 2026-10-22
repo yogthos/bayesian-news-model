@@ -17,35 +17,51 @@
   horizontal distance between the curves: for each recent observation, the
   years since the frontier first reached the country's level (the
   frontier's known path, interpolated; beyond its range its fitted
-  logistic, inverted), the median over the window. Negative: ahead.
+  logistic, inverted, censored `horizon` years out, see reach-time), the
+  median over the window. Negative: ahead.
 
   Data are entries {:t data-year :known year-known :x level}; at year Y
-  only entries with :known <= Y are read (as-of). Every output row's year
+  only entries with :known <= Y are read (as-of): the frontier's curve and
+  its fit, the ceiling used as saturation, the country's own fit, all
+  refitted each year on what was known by then. Every output row's year
   is the year it is known at.
 
-  Per country, technology <k> and year known:
-    <k>_level      the latest level known (data no older than :stale years)
-    <k>_adoption   level / saturation: the technology's fixed saturation
-                   where it has one (shares of population), else the
-                   frontier's fitted ceiling where identified, else the
-                   frontier's highest level known
-    <k>_lag        years behind the frontier (0 at the frontier)
-    <k>_speed      s of the country's own logistic, known data only
-    <k>_midpoint   tau of the same
-    <k>_ceiling    K of the same, only where identified (the data past
-                   half of it)
-  and across technologies:
-    tech_gap             the frontier's adoption less the country's,
-                         averaged with the frontier's adoption as weights
-                         (what matters at the frontier now counts most)
-    tech_lag             the mean lag, where known
-    tech_count           technologies in tech_gap
-    productivity_inflow  the gap closed since the year before, over the
-                         technologies known both years, the earlier
-                         year's weights: the inflow to productivity from
-                         catching up (negative: falling behind)."
+  Every variable is technology/<name>, kebab-case. Per country,
+  technology <k> and year known:
+    technology/<k>-level      the latest level known (data no older than
+                              :stale years)
+    technology/<k>-adoption   level / saturation, at most 1: the
+                              technology's fixed saturation where it has
+                              one (shares, subscriptions per person), else
+                              the frontier's identified ceiling, else the
+                              cap, else the frontier's highest level known
+    technology/<k>-lag        years behind the frontier (0 at the frontier)
+    technology/<k>-speed      s of the country's own logistic, known data
+    technology/<k>-midpoint   tau of the same
+    technology/<k>-ceiling    K of the same, only where identified
+  and across the technologies of each era <e> (:eras, sets of technologies
+  whose data run over the same years, so that an era's gap does not jump
+  when another source ends):
+    technology/gap-<e>        the frontier's adoption less the country's,
+                              averaged with the frontier's adoption as
+                              weights (what matters at the frontier now
+                              counts most)
+    technology/lag-<e>        the mean lag, where known
+    technology/gap-<e>-count  technologies in the gap
+    technology/gap-<e>-break  1 where the gap's technologies differ from
+                              the year before's (one entered or went
+                              stale), else 0: a level shift there is
+                              composition, not catch-up
+  and
+    technology/productivity-inflow  the gap closed since the year before,
+                              over the technologies known both years (a
+                              constant set across each pair of years), the
+                              earlier year's weights: the inflow to
+                              productivity from catching up (negative:
+                              falling behind)."
   (:require [bnm.assimilate :as asm]
-            [bnm.stockflow :as sf]))
+            [bnm.stockflow :as sf]
+            [clojure.string :as str]))
 
 (defn logistic
   "K / (1 + exp(-s (t - tau)))."
@@ -143,13 +159,22 @@
                   (> lam 1e8) p
                   :else (recur p (* lam 10.0) (inc k) cur))))))))
 
+(def ^:private identify-ratio
+  "How much worse (in squared error) the best fit with twice the ceiling
+  must be for the ceiling to count as identified."
+  1.5)
+
 (defn fit-logistic
   "The logistic through `obs` ([[t x]...]) by least squares in the level:
-  {:ceiling :speed :midpoint :sse :n :identified}, :identified when the
-  data reach half the ceiling. The ceiling is searched up to :cap (a
-  share's 100) or, without one, three times the highest level. nil with
-  fewer than :min-obs (5) points, no adoption, too little change (less
-  than a tenth of the highest level) or no rise."
+  {:ceiling :speed :midpoint :sse :n :identified}. The ceiling is searched
+  from the highest level seen (a stock's ceiling is not below what it
+  already holds) up to :cap (a share's 100) or, without one, three times
+  the highest level. :identified when the data reach half the ceiling,
+  the ceiling is off the search's upper bound, and doubling it (speed and
+  midpoint refitted) worsens the fit by identify-ratio: data still on the
+  exponential arm do not pin a ceiling. nil with fewer than :min-obs (5)
+  points, no adoption, too little change (less than a tenth of the
+  highest level) or no rise."
   [obs {:keys [cap min-obs] :or {min-obs 5}}]
   (let [obs (vec (sort-by first (filter (fn [[t x]] (and t x (finite? x))) obs)))
         xs (map #(double (second %)) obs)]
@@ -161,9 +186,15 @@
                 hi (if cap (max (double cap) (* 1.2 xmax)) (* 3.0 xmax))
                 start (profile obs lo (max hi (* 1.01 lo)))]
             (when start
-              (let [[K s tau] (polish obs start (* 0.5 xmax) hi)]
-                {:ceiling K :speed s :midpoint tau :sse (sse obs K s tau) :n (count obs)
-                 :identified (>= xmax (* 0.5 K))}))))))))
+              (let [[K s tau] (polish obs start lo hi)
+                    e (sse obs K s tau)
+                    K2 (min (* 2.0 K) hi)
+                    e2 (when (> K2 (* 1.05 K))
+                         (when-let [{:keys [speed midpoint]} (logit-fit obs K2)]
+                           (apply sse obs (polish obs {:ceiling K2 :speed speed :midpoint midpoint} K2 K2))))]
+                {:ceiling K :speed s :midpoint tau :sse e :n (count obs)
+                 :identified (boolean (and (>= xmax (* 0.5 K)) (< K (* 0.98 hi))
+                                           e2 (> e2 (+ (* identify-ratio e) 1e-12))))}))))))))
 
 ;; ---------------------------------------------------------------- the stock
 
@@ -204,20 +235,38 @@
   before or after, to place a level it was not seen at."
   25)
 
+(def reach-share
+  "The highest share of the frontier's identified ceiling its fitted
+  logistic is inverted at, ahead of its data."
+  0.9)
+
 (defn reach-time
   "The time the frontier ([[t x]] known) first reached level x: its path
-  interpolated; before its first point or beyond its highest, its fitted
-  logistic inverted (no earlier than its last point, no later than its
-  first, and no more than `horizon` years outside its data), else nil."
+  interpolated; before its first point, its fitted logistic inverted (no
+  later than its first point) and censored at `horizon` years before it;
+  beyond its highest, where the ceiling is identified, its fitted
+  logistic inverted at the level but no higher than reach-share of the
+  ceiling (near and above the ceiling the inverse runs off to infinity,
+  and a ceiling identified on a plateau is often passed later: US
+  internet at 74% in 2008), no earlier than its last point and censored
+  at `horizon` years after it; where it is not identified, the last point
+  (at least level with the frontier: an unidentified curve is no guide
+  ahead of its data). nil without a fit outside the data. Censoring keeps
+  the countries farthest from the frontier, either way, rather than
+  dropping them; monotone in the level."
   [frontier fit x]
   (let [fr (vec (sort-by first frontier)) x (double x)]
     (when (seq fr)
       (let [i (first (keep-indexed (fn [i [_ v]] (when (>= (double v) x) i)) fr))
             t0 (double (first (fr 0))) t1 (double (first (peek fr)))]
-        (cond (nil? i) (when-let [t (invert fit x)]
-                         (let [t (max t t1)] (when (<= t (+ t1 horizon)) t)))
-              (zero? i) (when-let [t (invert fit x)]
-                          (let [t (min t t0)] (when (>= t (- t0 horizon)) t)))
+        (cond (nil? i) (when fit
+                         (if (:identified fit)
+                           (min (+ t1 horizon)
+                                (max t1 (or (invert fit (min x (* reach-share (:ceiling fit)))) t1)))
+                           t1))
+              (zero? i) (when fit
+                          (when-let [t (invert fit x)]
+                            (max (- t0 horizon) (min t t0))))
               :else (let [[ta va] (fr (dec i)) [tb vb] (fr i)
                           ;; the highest level before i is below x; interpolate from the last point
                           va (double va) vb (double vb)]
@@ -265,10 +314,18 @@
 
 ;; ---------------------------------------------------------------- states and rows
 
-(defn- saturation [{fixed :saturation} fit fobs]
+(defn- saturation
+  "The level counted as full adoption: the technology's fixed saturation
+  (shares, subscriptions per person), else the frontier's identified
+  ceiling, else the cap (a share's 100), else the frontier's highest level
+  known."
+  [{fixed :saturation cap :cap} fit fobs]
   (or fixed
       (when (:identified fit) (:ceiling fit))
+      cap
       (when (seq fobs) (reduce max (map #(double (second %)) fobs)))))
+
+(defn- share [x sat] (min 1.0 (max 0.0 (/ (double x) sat))))
 
 (defn tech-state
   "A technology's state at a country in year y, or nil where its level is
@@ -280,8 +337,8 @@
           sat (when (and sat (pos? sat)) sat)
           flevel (latest fentries year stale)
           fit (fit-logistic cobs cfg)
-          adoption (when sat (/ level sat))
-          fadoption (when (and sat flevel) (/ flevel sat))]
+          adoption (when sat (share level sat))
+          fadoption (when (and sat flevel) (share flevel sat))]
       {:level level
        :adoption adoption
        :frontier-adoption fadoption
@@ -292,15 +349,20 @@
        :ceiling (when (:identified fit) (:ceiling fit))})))
 
 (defn aggregate
-  "{:tech_gap :tech_lag :tech_count} across a country's {tech state}."
-  [states]
-  (let [g (filter #(and (:gap %) (:frontier-adoption %)) (vals states))
-        w #(max 0.0 (double (:frontier-adoption %)))
+  "{:gap :lag :count :techs} across a country's {tech state}, over the
+  technologies in `era` (a set of names): the gap weighted by the
+  frontier's adoption, the mean lag where known, how many technologies
+  the gap is over and which."
+  [states era]
+  (let [st (select-keys states era)
+        g (filter #(and (:gap (val %)) (:frontier-adoption (val %))) st)
+        w #(max 0.0 (double (:frontier-adoption (val %))))
         sw (reduce + 0.0 (map w g))
-        lags (keep :lag (vals states))]
-    {:tech_gap (when (pos? sw) (/ (reduce + 0.0 (map #(* (w %) (:gap %)) g)) sw))
-     :tech_lag (when (seq lags) (/ (reduce + lags) (count lags)))
-     :tech_count (when (seq g) (double (count g)))}))
+        lags (keep :lag (vals st))]
+    {:gap (when (pos? sw) (/ (reduce + 0.0 (map #(* (w %) (:gap (val %))) g)) sw))
+     :lag (when (seq lags) (/ (reduce + lags) (count lags)))
+     :count (when (seq g) (double (count g)))
+     :techs (set (keys g))}))
 
 (defn inflow
   "The gap closed from `prev` to `cur` ({tech state}), over the
@@ -315,6 +377,12 @@
 
 (def ^:private state-vars
   [[:level "level"] [:adoption "adoption"] [:lag "lag"] [:speed "speed"] [:midpoint "midpoint"] [:ceiling "ceiling"]])
+
+(defn var-name
+  "technology/<parts joined by ->, kebab-case (bnm.states merges every
+  stock file by variable name; food/ and tension/ read the same way)."
+  [& parts]
+  (str "technology/" (str/join "-" (map #(str/replace (str/lower-case (str %)) #"[_\s]+" "-") parts))))
 
 (defn- row [iso year variable value]
   (when (and value (finite? value))
@@ -344,13 +412,25 @@
 
 (defn technology-rows
   "Rows {:iso :year :variable :value} (see the namespace) from `states`'
-  options, sorted by iso, year and variable; nothing written where unknown."
-  [opts]
-  (let [st (or (states opts) {})]
+  options and :eras {era #{tech}} (default one era \"all\" of every
+  technology), sorted by iso, year and variable; nothing written where
+  unknown."
+  [{:keys [techs eras] :as opts}]
+  (let [st (or (states opts) {})
+        eras (or eras {"all" (set (keys techs))})]
     (->> (for [[[iso y] by] st
-               r (concat (for [[k s] by [kw nm] state-vars] (row iso y (str k "_" nm) (kw s)))
-                         (for [[kw v] (aggregate by)] (row iso y (name kw) v))
-                         [(when-let [p (st [iso (dec y)])] (row iso y "productivity_inflow" (inflow p by)))])
+               r (concat (for [[k s] by [kw nm] state-vars] (row iso y (var-name k nm) (kw s)))
+                         (for [[era ts] eras
+                               :let [a (aggregate by ts)
+                                     p (some-> (st [iso (dec y)]) (aggregate ts))]
+                               r [(row iso y (var-name "gap" era) (:gap a))
+                                  (row iso y (var-name "lag" era) (:lag a))
+                                  (row iso y (var-name "gap" era "count") (:count a))
+                                  (when (:gap a)
+                                    (row iso y (var-name "gap" era "break")
+                                         (if (and p (:gap p) (not= (:techs p) (:techs a))) 1.0 0.0)))]]
+                           r)
+                         [(when-let [p (st [iso (dec y)])] (row iso y (var-name "productivity-inflow") (inflow p by)))])
                :when r]
            r)
          (sort-by (juxt :iso :year :variable))

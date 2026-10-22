@@ -40,6 +40,27 @@
       (is (some? f))
       (is (not (:identified f))))))
 
+(deftest fit-ceiling-honest
+  (testing "a plateau, then a late rise (US telephones known 1950): the ceiling not below the latest levels"
+    (let [obs (concat (for [t (range 1880 1946)] [t (tech/logistic 17.0 0.11 1915.0 t)])
+                      [[1946 22.0] [1947 24.0] [1948 26.0]])
+          f (tech/fit-logistic obs {:cap 100.0})]
+      (is (>= (:ceiling f) 26.0))))
+  (testing "the ceiling is never below the highest level seen (a dip, then a rise)"
+    (let [obs (for [t (range 1900 1951)]
+                [t (* (if (<= 1930 t 1936) 0.8 1.0) 0.5 (Math/exp (* 0.08 (- t 1900))))])
+          f (tech/fit-logistic obs {:cap 100.0})]
+      (is (>= (:ceiling f) (reduce max (map second obs))))))
+  (testing "still growing exponentially: the ceiling is not identified"
+    (let [obs (for [t (range 1900 1951)] [t (* 0.5 (Math/exp (* 0.08 (- t 1900))))])
+          f (tech/fit-logistic obs {:cap 100.0})]
+      (is (not (:identified f)))))
+  (testing "a ceiling at the search's bound is not identified"
+    (let [obs (map (juxt :t :x) (curve 100.0 0.3 1990.0 (range 1960 2001) 0 0.0))
+          f (tech/fit-logistic obs {:cap 100.0})]
+      (is (<= (:ceiling f) 120.0))
+      (is (not (and (:identified f) (>= (:ceiling f) (* 0.98 120.0)))) "at the bound means unidentified"))))
+
 (deftest fit-is-nil-without-data
   (is (nil? (tech/fit-logistic [] {})))
   (is (nil? (tech/fit-logistic [[2000 1.0] [2001 2.0] [2002 3.0]] {})) "too few points")
@@ -56,8 +77,8 @@
       (let [follower (map (juxt :t :x) (curve 90.0 0.25 2000.0 years 0 0.0))]
         (is (close? 15.0 (tech/lag leader lead-fit follower {}) 0.5))))
     (testing "a follower ahead of the leader: a negative lag"
-      (let [ahead (map (juxt :t :x) (curve 90.0 0.25 1980.0 (range 1960 1995) 0 0.0))
-            leader* (filter #(<= (first %) 1994) leader)
+      (let [ahead (map (juxt :t :x) (curve 90.0 0.25 1980.0 (range 1960 1986) 0 0.0))
+            leader* (filter #(<= (first %) 1988) leader)
             fit* (tech/fit-logistic leader* {:cap 100.0})]
         (is (close? -5.0 (tech/lag leader* fit* ahead {}) 1.0))))
     (testing "no adoption, no lag"
@@ -76,11 +97,20 @@
       (is (nil? (tech/reach-time [[1990 100.0] [1991 100.0]] nil 60.0))))
     (testing "the fit extrapolated no further than :horizon years beyond the frontier's data"
       (let [fr (for [t (range 1980 1991)] [t (tech/logistic 90.0 0.3 1995.0 t)])
-            fit {:ceiling 90.0 :speed 0.3 :midpoint 1995.0}]
+            fit {:ceiling 90.0 :speed 0.3 :midpoint 1995.0 :identified true}]
         (is (close? 1975.0 (tech/reach-time fr fit (tech/logistic 90.0 0.3 1995.0 1975.0)) 1e-6))
-        (is (nil? (tech/reach-time fr fit (tech/logistic 90.0 0.3 1995.0 1940.0))) "40 years before its data")
-        (is (close? 2010.0 (tech/reach-time fr fit (tech/logistic 90.0 0.3 1995.0 2010.0)) 1e-6))
-        (is (nil? (tech/reach-time fr fit (tech/logistic 90.0 0.3 1995.0 2030.0))) "40 years after")))))
+        (is (close? 1955.0 (tech/reach-time fr fit (tech/logistic 90.0 0.3 1995.0 1940.0)) 1e-6)
+            "40 years before its data: censored at the horizon, not dropped")
+        (is (close? 2000.0 (tech/reach-time fr fit (tech/logistic 90.0 0.3 1995.0 2000.0)) 1e-6))
+        (let [t90 (+ 1995.0 (/ (Math/log 9.0) 0.3))]
+          (is (close? t90 (tech/reach-time fr fit (tech/logistic 90.0 0.3 1995.0 2010.0)) 1e-6)
+              "near the ceiling: no later than when the fit reaches 90% of it")
+          (is (close? t90 (tech/reach-time fr fit 95.0) 1e-6)
+              "above the identified ceiling: the same bound, not infinity"))
+        (is (close? 2015.0 (tech/reach-time fr (assoc fit :speed 0.05) 80.0) 1e-6)
+            "a slow fit: censored at the horizon")
+        (is (close? 1990.0 (tech/reach-time fr (assoc fit :identified false) 80.0) 1e-6)
+            "beyond the data on an unidentified fit: no later than its last point (at least at the frontier)")))))
 
 ;; ---------------------------------------------------------------- causality
 
@@ -111,28 +141,64 @@
 
 ;; ---------------------------------------------------------------- schema
 
+(def eras {"recent" #{"web"} "historical" #{"cars"}})
+
+(defn- value-of [rows]
+  (let [ix (into {} (map (fn [r] [[(:iso r) (:year r) (:variable r)] (:value r)])) rows)]
+    (fn [iso y var] (ix [iso y var]))))
+
 (deftest rows-schema
-  (let [rows (tech/technology-rows {:techs techs :data (panel) :frontier "USA" :years (range 1990 2021)})
-        vars (set (map :variable rows))]
+  (let [rows (tech/technology-rows {:techs techs :eras eras :data (panel) :frontier "USA" :years (range 1990 2021)})
+        vars (set (map :variable rows))
+        v (value-of rows)]
     (is (seq rows))
     (is (every? #(and (string? (:iso %)) (integer? (:year %)) (string? (:variable %))
                       (double? (:value %)) (< (Math/abs (:value %)) Double/POSITIVE_INFINITY))
                 rows)
         "iso,year,variable,value; no missing values written")
     (is (= (count rows) (count (set (map (juxt :iso :year :variable) rows)))) "one value per iso, year, variable")
-    (doseq [v ["web_level" "web_adoption" "web_lag" "web_speed" "web_midpoint" "tech_gap" "tech_lag"
-               "tech_count" "productivity_inflow"]]
-      (is (contains? vars v) v))
+    (testing "every variable under technology/, kebab-case (bnm.states merges files by name)"
+      (is (every? #(re-matches #"technology/[a-z0-9]+(-[a-z0-9]+)*" %) vars) (pr-str (remove #(re-matches #"technology/[a-z0-9]+(-[a-z0-9]+)*" %) vars))))
+    (doseq [x ["technology/web-level" "technology/web-adoption" "technology/web-lag" "technology/web-speed"
+               "technology/web-midpoint" "technology/gap-recent" "technology/gap-historical"
+               "technology/lag-recent" "technology/gap-recent-count" "technology/gap-recent-break"
+               "technology/productivity-inflow"]]
+      (is (contains? vars x) x))
+    (is (not-any? #{"tech_gap" "technology/gap"} vars) "no gap across eras: its set breaks when an era's data end")
     (testing "the year is the year known: web data for 1990 known in 1991"
-      (is (= 1991 (reduce min (map :year (filter #(and (= "AAA" (:iso %)) (= "web_level" (:variable %))) rows))))))
+      (is (= 1991 (reduce min (map :year (filter #(and (= "AAA" (:iso %)) (= "technology/web-level" (:variable %))) rows))))))
     (testing "a follower lags, the frontier's lag is zero"
-      (let [v (fn [iso y var] (some #(when (and (= iso (:iso %)) (= y (:year %)) (= var (:variable %))) (:value %)) rows))]
-        (is (close? 10.0 (v "AAA" 2015 "web_lag") 1.5))
-        (is (close? 0.0 (v "USA" 2015 "web_lag") 1e-9))
-        (is (pos? (v "AAA" 2015 "tech_gap")))
-        (is (close? 0.0 (v "USA" 2015 "tech_gap") 1e-9))))
+      (is (close? 10.0 (v "AAA" 2015 "technology/web-lag") 1.5))
+      (is (close? 0.0 (v "USA" 2015 "technology/web-lag") 1e-9))
+      (is (pos? (v "AAA" 2015 "technology/gap-recent")))
+      (is (close? 0.0 (v "USA" 2015 "technology/gap-recent") 1e-9)))
+    (testing "adoption is a share: between 0 and 1"
+      (is (every? #(<= 0.0 (:value %) 1.0) (filter #(re-find #"-adoption$" (:variable %)) rows))))
     (testing "missing is absent: BBB has no cars, so no cars rows"
-      (is (empty? (filter #(and (= "BBB" (:iso %)) (= "cars_level" (:variable %))) rows))))))
+      (is (empty? (filter #(and (= "BBB" (:iso %)) (= "technology/cars-level" (:variable %))) rows))))))
+
+(deftest gap-breaks-flagged
+  (let [rows (tech/technology-rows {:techs techs :eras {"all" #{"web" "cars"}} :data (panel)
+                                    :frontier "USA" :years (range 1985 2021)})
+        v (value-of rows)]
+    (testing "a technology entering the era's set: a break"
+      (is (= 1.0 (v "AAA" 1991 "technology/gap-all-break")))
+      (is (= 2.0 (v "AAA" 1991 "technology/gap-all-count"))))
+    (is (= 0.0 (v "AAA" 2000 "technology/gap-all-break")) "the same set as the year before: none")
+    (testing "a technology leaving it (cars data end 2005, stale from 2010): a break"
+      (is (= 1.0 (v "AAA" 2010 "technology/gap-all-break")))
+      (is (= 1.0 (v "AAA" 2010 "technology/gap-all-count"))))))
+
+(deftest adoption-capped-at-saturation
+  (testing "subscriptions above one per person are full adoption, not more"
+    (let [data {"mobile" {"USA" (curve 110.0 0.3 2000.0 (range 1985 2021) 1 0.0)
+                          "ARE" (curve 200.0 0.3 2000.0 (range 1985 2021) 1 0.0)}}
+          rows (tech/technology-rows {:techs {"mobile" {:cap 150.0 :saturation 100.0}} :data data
+                                      :frontier "USA" :years (range 1990 2021)})
+          v (value-of rows)]
+      (is (= 1.0 (v "ARE" 2020 "technology/mobile-adoption")))
+      (is (= 1.0 (v "USA" 2020 "technology/mobile-adoption")))
+      (is (some? (v "ARE" 2020 "technology/mobile-lag")) "a level the frontier never reached still has a (censored) lag"))))
 
 ;; ---------------------------------------------------------------- aggregates
 
@@ -141,15 +207,20 @@
               "b" {:gap 0.2 :lag 10.0 :frontier-adoption 0.5}}
         cur {"a" {:gap 0.4 :lag 19.0 :frontier-adoption 1.0}
              "b" {:gap 0.2 :lag 11.0 :frontier-adoption 0.5}
-             "c" {:gap 0.9 :lag nil :frontier-adoption 0.1}}]
+             "c" {:gap 0.9 :lag nil :frontier-adoption 0.1}}
+        all #{"a" "b" "c"}]
     (testing "the gap weighted by the frontier's adoption"
-      (is (close? (/ (+ (* 1.0 0.4) (* 0.5 0.2) (* 0.1 0.9)) 1.6) (:tech_gap (tech/aggregate cur)) 1e-9))
-      (is (close? 15.0 (:tech_lag (tech/aggregate cur)) 1e-9) "lags averaged where known")
-      (is (= 3.0 (:tech_count (tech/aggregate cur)))))
+      (is (close? (/ (+ (* 1.0 0.4) (* 0.5 0.2) (* 0.1 0.9)) 1.6) (:gap (tech/aggregate cur all)) 1e-9))
+      (is (close? 15.0 (:lag (tech/aggregate cur all)) 1e-9) "lags averaged where known")
+      (is (= 3.0 (:count (tech/aggregate cur all))))
+      (is (= #{"a" "b" "c"} (:techs (tech/aggregate cur all)))))
+    (testing "only the era's technologies"
+      (is (close? 0.4 (:gap (tech/aggregate cur #{"a"})) 1e-9))
+      (is (nil? (:gap (tech/aggregate cur #{"z"})))))
     (testing "the inflow: the gap closed, over the technologies known both years"
       (is (close? (/ (+ (* 1.0 0.1) (* 0.5 0.0)) 1.5) (tech/inflow prev cur) 1e-9)))
     (is (nil? (tech/inflow {} cur)) "no common technology, no inflow")
-    (is (nil? (:tech_gap (tech/aggregate {}))))))
+    (is (nil? (:gap (tech/aggregate {} all))))))
 
 ;; ---------------------------------------------------------------- leading inflows
 
