@@ -1334,6 +1334,30 @@ recalibration can make it. Neither a fixed nor an online recalibration
 improves it in the test years, and the online one does no harm. The base
 stays as it is.
 
+## Pre-registered, 23 October 2026: named stock x trigger interactions and the principal contradiction (trial T3)
+
+Registered before any outcome after 2002 is read for this test. T7
+(docs/T3-PAIRS.md) fitted shallow boosted trees on the design years: out
+of era they never beat a logit with the same inputs, and their stable
+interactions were mostly not theory's. The pairs, chosen on the design
+years (three by T7's stated rule, the first named in advance from
+Greenwood et al. 2022): credit gap x house-price growth (banking, +);
+youth bulge x world grain gap (financial kinds, -); youth bulge x
+neighbourhood conflict (financial kinds, +); technology gap x grain gap
+(political kinds, +). tools/bnm/interactions, the year node over the
+recalibrated base, origins 2003-2020, every scale, centre and fit from
+1960-2002; on the design years none passed Holm (lowest p 0.055) and
+the argmax lost to the mean (tau-hat 0).
+
+**Tests**, one-sided 5%, 200 permutations of whole country series:
+1. (primary) each pair's gamma in its stated sign, Holm over the four;
+2. the principal contradiction: in the financial group, the argmax of
+   the gauges against their plain mean, log per test row, the lower end
+   of the 90% interval above 0; if not, the principal contradiction (one
+   dominant gauge) is falsified at this resolution;
+3. for the record: tau's profile on the test rows, the placebos, the
+   gauges against the states' and triggers' levels alone.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
