@@ -33,8 +33,12 @@ revisions are read early, which this cannot undo.
   First years after coverage breaks: refined copper from 1977 (1976
   partial), primary gallium from 2011 (no Chinese output reported before),
   platinum from 1997 (South Africa missing 1977-95).
-  Known oddities left in: Zaire's mined cobalt 1972-75 is 31-34 kt against
-  10-15 kt either side (it sets the 1975 displacement); China's natural
+  Repaired: Zaire's and Zambia's mined cobalt in 1972-75 is ore content in
+  BGS (31-34 kt for Zaire against 10-15 kt either side) where every other
+  year is recovered metal; those four years take the refined value
+  (BGS_REPAIR).
+  Known oddities left in: Russia's mined vanadium is missing in 2000-01
+  and steps up in 2002 (slag counted); China's natural
   graphite is a larger series than USGS's (2.2 Mt in 1995 against 0.94 Mt in
   1994, and 81% of the world in 2000 where MYB has 51%); germanium is a few
   tonnes and erratic.
@@ -48,10 +52,12 @@ USGS MCS (data/raw/material/usgs-mcs), machine-readable editions 2022-2026,
 data years 2020-2025. Chosen for lithium mine (lithium content): BGS's lithium
 changes unit and coverage in 2012 (gross mineral weight before, three partial
 lithium-content series after) and MYB mixes gross weight, carbonate equivalent
-and content by country. Each data year takes the latest edition that reports
-it, known = that edition's year (published each January), so a value is never
-read before the edition it comes from. US output is withheld ("W") and so
-missing. Editions before 2022 are PDF only (not parsed).
+and content by country. Every edition's value of a data year is written, known
+= that edition's year (published each January): the edition-year estimate of
+the year before is known at the edition year (lag 1), its revision a year
+later (lag 2); bnm.stages reads only the latest edition known (the source
+column names it). US output is withheld ("W") and so missing. Editions
+before 2022 are PDF only (not parsed).
 
 USGS MYB world production 1990-2022 (data/raw/material/usgs-myb) is not chosen
 for any stage: it starts in 1990 and its edition overlaps and subtotal rows
@@ -67,10 +73,16 @@ USGS DS140 (data/raw/material/usgs-ds140) is US supply and demand only, with
 no output by country, so it gives no shares and is not used.
 
 Plants: USGS MYB vol. III 2024 facilities, annual capacity by facility
-(currentness 2025-2026: known = the currentness year). Vol. III covers
-countries other than the United States, so US plants are missing. Active
-plants only, primary (secondary/scrap rows dropped), the stage's dominant
-content unit only, capacity shared across rows counted once.
+(currentness 2025-2026: known = the currentness year), which covers
+countries other than the United States, plus the USGS US facilities
+worksheet (same layout, 2026). Active plants only, primary (secondary/scrap
+rows dropped), the stage's dominant content unit only, capacity shared
+across rows counted once. Nickel's smelters, pig-iron and mixed-hydroxide
+plants are the refinery stage, as BGS's nickel smelter/refinery is (without
+them Indonesia had no plant). MYB 2024 has no Chinese copper smelter; those
+come from the USGS China GIS compilation (2023, known 2023, capacity in
+blister/anode metal). SFI (steel, cement, ethylene) and OGIM (oil and gas)
+have no plants of these stages.
 
 Run: scratchpad venv python -I scripts/minerals.py
 """
@@ -231,6 +243,34 @@ def bgs_rows():
         for (iso, y), q in x.groupby(["iso", "y"]).q.sum().items():
             if q > 0:
                 out.append((com, stage, iso, int(y), q, unit, "BGS", int(y) + BGS_LAG))
+    return bgs_repair(out)
+
+
+# commodity, stage -> (stage taken from, countries, years): BGS values
+# replaced by another stage's where the series changes definition
+BGS_REPAIR = {
+    # Zaire's and Zambia's mined cobalt is their recovered (refined) metal in
+    # every BGS year (1976 on, Zaire's mine and refined rows are equal),
+    # except 1972-75, where it is the cobalt contained in ore, about twice
+    # as much (Zaire 30.8-33.9 kt against 13.0-17.5 kt refined; Zambia 3.0-
+    # 5.2 kt against 1.9-2.1 kt). World mine output doubles in 1972 and
+    # halves in 1976 with it.
+    ("cobalt", "mine"): ("refinery", ("COD", "ZMB"), range(1972, 1976)),
+}
+
+
+def bgs_repair(rows):
+    q = {(c, s, i, y): v for c, s, i, y, v, *_ in rows}
+    out = []
+    for r in rows:
+        com, stage, iso, y = r[:4]
+        rep = BGS_REPAIR.get((com, stage))
+        if rep and iso in rep[1] and y in rep[2]:
+            src = q.get((com, rep[0], iso, y))
+            if src is None:
+                sys.exit(f"BGS repair: no {com} {rep[0]} for {iso} {y}")
+            r = (*r[:4], src, *r[5:])
+        out.append(r)
     return out
 
 
@@ -284,9 +324,11 @@ def mcs_rows():
         x["iso"] = x.country.map(usgs_iso)
         x["q"] = x.value.map(number)
         x = x[x.iso.notna()]
-        # each data year from the latest edition reporting it
-        latest = x.groupby("year").ed.max()
-        x = x[x.ed == x.year.map(latest)]
+        # every edition's value of a data year (the estimate, then each
+        # revision), known at that edition; bnm.stages reads the latest
+        # edition known by then and never sums editions
+        if x.duplicated(["ed", "iso", "year"]).any():
+            sys.exit(f"MCS {key}: several rows for an edition, country and year")
         for _, r in x.iterrows():
             if r.q is not None and r.q > 0:
                 out.append((com, stage, r.iso, int(r.year), r.q, unit, f"MCS{int(r.ed)}", int(r.ed)))
@@ -340,13 +382,26 @@ PLANT_COMMODITY = {"Cobalt": "cobalt", "Copper": "copper", "Nickel": "nickel", "
                    "Vanadium": "vanadium", "Magnesium": "magnesium", "Magnesite": "magnesium"}
 
 
-def plant_stage(level2, ftype, level3):
+# nickel plant forms that are chemicals (sulphate, chloride), not the BGS
+# smelter/refinery stage
+NI_CHEMICAL = re.compile(r"sulfate|chloride|chemical|compounds", re.I)
+
+
+def plant_stage(level2, ftype, level3, descriptor=None):
     if level2 == "Alumina":
         return "refinery"
     if level2 == "Aluminum":
         return "smelter"
     if level2 == "Magnesium":
         return "smelter"
+    if level2 == "Nickel" and not (isinstance(ftype, str) and ftype.startswith("Mines") and level3 != "Refinery"):
+        # BGS has one nickel processing stage, smelter/refinery: matte
+        # smelters, ferronickel and pig iron, mixed hydroxide (HPAL) and
+        # refineries all report to it
+        if level3 in ("Smelter", "Refinery") or (
+                not isinstance(level3, str) and not NI_CHEMICAL.search(str(descriptor or ""))):
+            return "refinery"
+        return None
     if isinstance(level3, str) and level3.lower() in ("mine", "smelter", "refinery"):
         return level3.lower()
     if level2 in ("Gallium", "Germanium"):
@@ -356,29 +411,79 @@ def plant_stage(level2, ftype, level3):
     return None
 
 
+def vol3_table():
+    """MYB vol. III 2024 facilities (countries other than the US) and the
+    USGS US facilities worksheet (2026, same layout) as one table."""
+    v3 = pd.read_csv(os.path.join(RAW, "usgs-myb", "2024-vol3", "2024MYBv3_Facilities_table.csv"),
+                     low_memory=False, encoding="utf-8-sig")
+    v3["known"] = pd.to_datetime(v3["Currentness Date"], errors="coerce").dt.year
+    v3["source"] = "MYB2024v3"
+    us = pd.read_excel(os.path.join(RAW, "usgs-us-facilities",
+                                    "Mines, smelters, refineries, and recycling facilities in the United States_worksheet.xlsx"),
+                       sheet_name=0)
+    us = us.rename(columns={"Global entry": "Global Entry", "Country (Short Form)": "Country (Short Form) or Locality",
+                            "GMAS Descriptor": "Descriptor"})
+    us["Country (Short Form) or Locality"] = "United States"
+    us["known"] = pd.to_numeric(us["Date Updated"], errors="coerce")
+    us["source"] = "USGS-US2026"
+    cols = ["Global Entry", "Country (Short Form) or Locality", "Facility Name", "Feature Type",
+            "Level 2 (Commodity)", "Level 3 (Type)", "Level 4 (Phase)", "Descriptor", "Commodity Unit",
+            "Annual Production Capacity", "Shared Capacity", "Facility Status", "known", "source"]
+    return pd.concat([v3[cols], us[cols]], ignore_index=True)
+
+
+# China compilation (USGS, 2023; from MYB 2019 vol. III and company
+# reports): fills a commodity-stage-country the 2024 table has no plant for.
+# Only China's copper smelters so far (MYB 2024 lists its copper refineries
+# but no smelter).
+CHN_GIS_FILL = {("Copper", "Smelted"): ("copper", "smelter")}
+CHN_GIS_KNOWN = 2023
+CHN_GIS_SCALE = {"kmt": 1000.0, "mt": 1.0}
+
+
+def chn_gis_rows():
+    """[(commodity, stage, facility, capacity t)] from the China compilation."""
+    import pyogrio.raw
+    path = f"/vsizip/{RAW}/usgs-gis-compilations/china/CHN_GIS.gdb.zip/CHN_GIS.gdb"
+    meta, _, _, fields = pyogrio.raw.read(path, layer="CHN_Mineral_Facilities", read_geometry=False)
+    d = pd.DataFrame({n: f for n, f in zip(meta["fields"], fields)})
+    d = d[(d.FeatureTyp == "Mineral Processing Plants") & (d.LocOpStat == "Assumed Active")]
+    out = []
+    for r in d.itertuples():
+        key = CHN_GIS_FILL.get((r.DsgAttr01, str(r.DsgAttr05).strip()))
+        scale = CHN_GIS_SCALE.get(str(r.DsgAttr07).strip())
+        if key and scale and r.DsgAttr06 and r.DsgAttr06 > 0:
+            out.append((*key, r.FeatureNam, float(r.DsgAttr06) * scale))
+    return out
+
+
 def plant_rows():
-    path = os.path.join(RAW, "usgs-myb", "2024-vol3", "2024MYBv3_Facilities_table.csv")
-    d = pd.read_csv(path, low_memory=False, encoding="utf-8-sig")
+    d = vol3_table()
     d = d[d["Facility Status"].str.lower().str.startswith("assumed active", na=False)]
     d = d[d["Level 4 (Phase)"].fillna("") != "Secondary"]
     d["commodity"] = d["Level 2 (Commodity)"].map(PLANT_COMMODITY)
-    d["stage"] = [plant_stage(a, b, c) for a, b, c in
-                  zip(d["Level 2 (Commodity)"], d["Feature Type"], d["Level 3 (Type)"])]
+    d["stage"] = [plant_stage(a, b, c, e) for a, b, c, e in
+                  zip(d["Level 2 (Commodity)"], d["Feature Type"], d["Level 3 (Type)"], d["Descriptor"])]
     d["iso"] = d["Country (Short Form) or Locality"].map(usgs_iso)
     d["cap"] = pd.to_numeric(d["Annual Production Capacity"], errors="coerce")
     d["facility"] = d["Facility Name"]
-    d["known"] = pd.to_datetime(d["Currentness Date"], errors="coerce").dt.year
     d = d[d.commodity.notna() & d.stage.notna() & d.iso.notna() & (d.cap > 0) & d.known.notna()]
     out = []
     for (com, stage), x in d.groupby(["commodity", "stage"]):
         # the stage's dominant unit, by number of plants
         unit = x["Commodity Unit"].value_counts().idxmax()
         x = x[x["Commodity Unit"] == unit]
-        # a capacity shared across rows (several products) counts once
+        # a capacity shared across rows (several products) counts once,
+        # with the largest row's own facility and country
         x = x.assign(key=x["Shared Capacity"].fillna(x["Global Entry"]))
-        x = x.sort_values("cap").groupby("key").last()
+        x = x.sort_values("cap").drop_duplicates("key", keep="last")
         for r in x.itertuples():
-            out.append((com, stage, r.iso, r.facility, r.cap, unit, "MYB2024v3", int(r.known)))
+            out.append((com, stage, r.iso, r.facility, r.cap, unit, r.source, int(r.known)))
+    have = {(c, s, i) for c, s, i, *_ in out}
+    units = {(c, s): u for c, s, i, f, q, u, *_ in out}
+    for com, stage, fac, cap in chn_gis_rows():
+        if (com, stage, "CHN") not in have and (com, stage) in units:
+            out.append((com, stage, "CHN", fac, cap, units[(com, stage)], "USGS-CHN-GIS2023", CHN_GIS_KNOWN))
     return out
 
 
@@ -410,9 +515,27 @@ def check(rows):
         assert len(unit[key]) == 1, (key, unit[key])
 
 
+def check_repairs(rows, plants):
+    """The repairs below hold in what is written."""
+    q = {(c, s, i, y): v for c, s, i, y, v, *_ in rows}
+    for iso in ("COD", "ZMB"):
+        for y in range(1972, 1976):
+            # mined cobalt is recovered metal, as in the years either side
+            assert q[("cobalt", "mine", iso, y)] <= 1.001 * q[("cobalt", "refinery", iso, y)], (iso, y)
+    # MCS: every edition's value of a data year, known at that edition
+    li = [(y, k) for c, s, i, y, v, u, src, k in rows if c == "lithium"]
+    assert all(k > y for y, k in li)
+    assert {k - y for y, k in li} == {1, 2}, {k - y for y, k in li}
+    have = {(c, s, i) for c, s, i, *_ in plants}
+    assert ("copper", "smelter", "CHN") in have, "China's copper smelters"
+    assert ("nickel", "refinery", "IDN") in have, "Indonesia's nickel smelters (BGS: smelter/refinery)"
+    assert not any(c == "nickel" and s == "smelter" for c, s, *_ in plants)
+
+
 def main():
     rows = bgs_rows() + mcs_rows()
     check(rows)
+    check_repairs(rows, plant_rows())
     write("stages.csv", ["commodity", "stage", "iso", "year", "quantity", "unit", "source", "known"], rows)
     write("stages-alt.csv", ["commodity", "stage", "iso", "year", "quantity", "unit", "source", "known"], myb_rows())
     write("stage-plants.csv", ["commodity", "stage", "iso", "facility", "capacity", "unit", "source", "known"],

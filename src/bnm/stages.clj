@@ -26,6 +26,9 @@
     stages/<c>-d-<a>-<b>        D between stages a and b (mine against each
                                 later stage, and each processing step
                                 against the next)
+    stages/<c>-non-resource     the last stage's share in countries with
+                                under 1% of the mine stage (7d), same
+                                data year as D
     stages/<c>-state-year       the data year D is read for (bookkeeping)
     stages/<c>-<s>-plant-hhi    Herfindahl index across plants by capacity
     stages/<c>-<s>-plant-count  plants (bookkeeping)
@@ -34,8 +37,15 @@
   and per country:
     stages/<c>-<s>-share        the country's share of world output
 
+  D compares shares, each stage's of its own world total, so stages whose
+  world totals differ (refined copper, lead and tin include scrap; stocks)
+  are comparable; the scrap refiners (Japan, Germany, the US) read as
+  processing without mining, which raises D. D is in [0, 1].
+
   Causal: at year K only rows known by K are read, from the latest data
-  year that has any; D reads the latest data year both stages have. A
+  year that has any, and of a data year only its latest edition known by K
+  (an MCS estimate, then its revision: vintage); state-year is that data
+  year, the row's year K. D reads the latest data year both stages have. A
   stage whose data were last known more than :stale years before K is not
   written. The source lag is the table's known column (BGS: data year + 2)."
   (:require [bnm.csv :as csv]
@@ -69,12 +79,35 @@
     (first (sort-by (fn [[iso s]] [(- s) iso]) sh))))
 
 (defn displacement
-  "Dissimilarity of two share maps: 1 - sum over countries of the smaller
-  share. 0 when each country processes its own ore's share, 1 when none
-  does."
+  "Dissimilarity of two stages' country distributions: 1 - sum over
+  countries of the smaller share. 0 when each country processes its own
+  ore's share, 1 when none does. a and b are {iso quantity} or {iso share}:
+  each is made shares of its own total first, so world totals that differ
+  between stages (refined copper and tin above mine output: scrap and
+  stocks) do not enter. A country that processes without mining, or mines
+  without processing, contributes its whole share to D. nil when either
+  stage has no output. Clamped to [0, 1] against rounding."
   [a b]
-  (- 1.0 (reduce + 0.0 (for [iso (into (set (keys a)) (keys b))]
-                         (min (get a iso 0.0) (get b iso 0.0))))))
+  (let [a (shares a) b (shares b)]
+    (when (and (seq a) (seq b))
+      (-> (- 1.0 (reduce + 0.0 (for [iso (into (set (keys a)) (keys b))]
+                                 (min (get a iso 0.0) (get b iso 0.0)))))
+          (max 0.0)
+          (min 1.0)))))
+
+(def resource-floor
+  "Mine share below which a country counts as having no resource (7d)."
+  0.01)
+
+(defn non-resource
+  "Processing share in countries with under 1% of the mine stage
+  (docs/ECONOMIC-CHARACTER.md 7d): the part of D from countries that
+  process ore they do not mine. a and b as in displacement; nil when either
+  stage has no output."
+  [a b]
+  (let [a (shares a) b (shares b)]
+    (when (and (seq a) (seq b))
+      (min 1.0 (reduce + 0.0 (for [[iso s] b :when (< (get a iso 0.0) resource-floor)] s))))))
 
 (def stage-order {"mine" 0 "smelter" 1 "refinery" 2 "chemical" 3})
 
@@ -115,23 +148,33 @@
   [rows]
   (reduce (fn [acc r] (update-in acc [[(:commodity r) (:stage r)] (:year r)] (fnil conj []) r)) {} rows))
 
+(defn vintage
+  "The rows of one data year as known by k: those known by k, from the
+  edition (source) of the latest of them. A later edition of the year
+  (MCS2026 after MCS2025) replaces the earlier one once it is known, and is
+  never added to it; rows of one source known at different years (a
+  country added later) are all kept."
+  [rs k]
+  (let [rs (filter #(<= (:known %) k) rs)]
+    (when (seq rs)
+      (let [src (:source (apply max-key :known (reverse rs)))]
+        (filter #(= src (:source %)) rs)))))
+
 (defn as-of
   "The stage's data known by k: {:year y :known kn :q {iso quantity}} for
-  the latest data year with any row known by k (only those rows), or nil."
+  the latest data year with any row known by k (its vintage then), or nil."
   [by-year k]
   (some (fn [y]
-          (let [rs (filter #(<= (:known %) k) (get by-year y))]
-            (when (seq rs)
-              {:year y :known (apply max (map :known rs))
-               :q (reduce (fn [m r] (update m (:iso r) (fnil + 0.0) (:quantity r))) {} rs)})))
+          (when-let [rs (seq (vintage (get by-year y) k))]
+            {:year y :known (apply max (map :known rs))
+             :q (reduce (fn [m r] (update m (:iso r) (fnil + 0.0) (:quantity r))) {} rs)}))
         (sort > (keys by-year))))
 
 (defn- as-of-year
   "{iso quantity} of the stage's data year y known by k, or nil."
   [by-year y k]
-  (let [rs (filter #(<= (:known %) k) (get by-year y))]
-    (when (seq rs)
-      (reduce (fn [m r] (update m (:iso r) (fnil + 0.0) (:quantity r))) {} rs))))
+  (when-let [rs (seq (vintage (get by-year y) k))]
+    (reduce (fn [m r] (update m (:iso r) (fnil + 0.0) (:quantity r))) {} rs)))
 
 (defn- wld [k v x & [t]]
   (cond-> {:iso "WLD" :year k :variable v :value (double x)} t (assoc :top t)))
@@ -159,28 +202,29 @@
            (partition 2 1 (remove #{"mine"} ch)))))
 
 (defn- d-stocks [c ch idx k stale]
-  (let [last-y (fn [st] (some-> (as-of (idx [c st]) k) :year))
-        common (fn [a b]
+  (let [common (fn [a b]
                  ;; the latest data year both stages have known by k, fresh enough
                  (let [ya (set (keep #(when (as-of-year (idx [c a]) % k) %) (keys (idx [c a]))))
                        yb (set (keep #(when (as-of-year (idx [c b]) % k) %) (keys (idx [c b]))))
                        ys (filter ya yb)]
                    (when (seq ys) (apply max ys))))
-        fresh? (fn [st y] (let [rs (filter #(<= (:known %) k) (get (idx [c st]) y))]
+        fresh? (fn [st y] (let [rs (vintage (get (idx [c st]) y) k)]
                             (and (seq rs) (<= (- k (apply max (map :known rs))) stale))))
         ds (for [[a b] (pairs ch)
                  :let [y (common a b)]
                  :when (and y (fresh? a y) (fresh? b y))
-                 :let [sa (shares (as-of-year (idx [c a]) y k))
-                       sb (shares (as-of-year (idx [c b]) y k))]
-                 :when (and (seq sa) (seq sb))]
-             [[a b] y (displacement sa sb)])
+                 :let [qa (as-of-year (idx [c a]) y k)
+                       qb (as-of-year (idx [c b]) y k)
+                       d (displacement qa qb)]
+                 :when d]
+             [[a b] y d (non-resource qa qb)])
         main (when (and (= "mine" (first ch)) (> (count ch) 1))
-               (some (fn [[ab y d]] (when (= ab ["mine" (peek ch)]) [y d])) ds))]
+               (some (fn [[ab y d nr]] (when (= ab ["mine" (peek ch)]) [y d nr])) ds))]
     (concat
      (for [[[a b] _ d] ds] (wld k (str "stages/" c "-d-" a "-" b) d))
-     (when-let [[y d] main]
+     (when-let [[y d nr] main]
        [(wld k (str "stages/" c "-d") d)
+        (wld k (str "stages/" c "-non-resource") nr)
         (wld k (str "stages/" c "-state-year") y)]))))
 
 (defn stocks

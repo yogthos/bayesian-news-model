@@ -15,7 +15,16 @@
             [clojure.string :as str]))
 
 (defn- by-year
-  "{iso quantity} of commodity c, stage s, data year y."
+  "{iso quantity} of commodity c, stage s, data year y: its latest edition."
+  [rows c s y]
+  (reduce (fn [m r] (update m (:iso r) (fnil + 0.0) (:quantity r)))
+          {} (stg/vintage (filter #(and (= c (:commodity %)) (= s (:stage %)) (= y (:year %))) rows)
+                          Long/MAX_VALUE)))
+
+(defn- by-year-sum
+  "{iso quantity} of commodity c, stage s, data year y, every row summed:
+  stages-alt.csv, one row per country-year, each from the latest MYB
+  edition that reports that country (editions differ by country)."
   [rows c s y]
   (reduce (fn [m r] (if (and (= c (:commodity r)) (= s (:stage r)) (= y (:year r)))
                       (update m (:iso r) (fnil + 0.0) (:quantity r))
@@ -24,9 +33,22 @@
 
 (defn- share [rows c s y iso] (get (stg/shares (by-year rows c s y)) iso))
 
+(defn- alt-share [rows c s y iso] (get (stg/shares (by-year-sum rows c s y)) iso))
+
 (defn- d [rows c a b y]
-  (let [sa (stg/shares (by-year rows c a y)) sb (stg/shares (by-year rows c b y))]
-    (when (and (seq sa) (seq sb)) (stg/displacement sa sb))))
+  (stg/displacement (by-year rows c a y) (by-year rows c b y)))
+
+(defn- world-breaks
+  "[[commodity stage year ratio]] where world output changes by a factor
+  over 1.6 from one data year to the next: coverage or definition breaks."
+  [rows]
+  (for [[[c s] rs] (sort (group-by (juxt :commodity :stage) rows))
+        :let [w (into (sorted-map) (for [y (distinct (map :year rs))]
+                                     [y (reduce + 0.0 (vals (by-year rs c s y)))]))]
+        [y q] w
+        :let [q0 (get w (dec y))]
+        :when (and q0 (pos? q0) (pos? q) (> (max (/ q q0) (/ q0 q)) 1.6))]
+    [c s y (/ q q0)]))
 
 (defn- f2 [x] (if x (format "%.2f" (double x)) "  - "))
 
@@ -61,7 +83,14 @@
       (target "every stock at or after its data are known (BGS lag 2, MCS edition year)"
               (every? #(>= (:year %) (+ 1 (long (:value %)))) sy)
               (str (count sy) " state-year rows; min lag "
-                   (apply min (map #(- (:year %) (long (:value %))) sy)) " years")))
+                   (apply min (map #(- (:year %) (long (:value %))) sy)) " years"))
+      (let [ds (filter #(re-find #"-(d|d-.+|non-resource)$" (:variable %)) out)]
+        (target "D and the non-resource share in [0, 1]" (every? #(<= 0.0 (:value %) 1.0) ds)
+                (str (count ds) " rows, " (f2 (apply min (map :value ds))) " to " (f2 (apply max (map :value ds)))))))
+
+    (println "\nWorld output breaks (factor over 1.6 year on year; coverage or definition, not repaired unless noted)")
+    (doseq [[c s y r] (world-breaks rows)]
+      (println (format "  %-12s %-9s %d  x%.2f" c s y (double r))))
 
     (println "\nDisplacement D by data year (mine against the last stage)")
     (println (str "  " (format "%-22s" "") (str/join " " (map #(format "%5d" %) years))))
@@ -72,12 +101,16 @@
       (println (str "  " (format "%-22s" (str c " " a "->" b)) (str/join " " (map #(format "%5s" (f2 (d rows c a b %))) years)))))
 
     (println "\nTargets")
-    (let [d75 (d rows "cobalt" "mine" "refinery" 1975) d23 (d rows "cobalt" "mine" "refinery" 2023)]
-      (target "cobalt D about 0.2 in 1975, about 0.9 in 2023 (7d: 0.21, 0.90)"
-              (and (within d75 0.15 0.27) (within d23 0.85 0.95))
-              (str (f2 d75) " -> " (f2 d23))))
+    (let [d75 (d rows "cobalt" "mine" "refinery" 1975) d23 (d rows "cobalt" "mine" "refinery" 2023)
+          d76 (/ (reduce + (map #(d rows "cobalt" "mine" "refinery" %) (range 1976 1981))) 5)]
+      ;; 7d's 0.21 for 1975 came from BGS's 1972-75 Zaire and Zambia ore
+      ;; content (twice their metal); with those years repaired 1975 is in
+      ;; line with 1976-80
+      (target "cobalt D in 1975 within 0.05 of its 1976-80 mean (no break), 0.85-0.95 in 2023 (7d: 0.90)"
+              (and d75 (< (Math/abs (- d75 d76)) 0.05) (within d23 0.85 0.95))
+              (str (f2 d75) " (1976-80 " (f2 d76) ") -> " (f2 d23) "; 7d's 0.21 was before the 1972-75 repair")))
     (let [s22 (share rows "cobalt" "refinery" 2022 "CHN") s23 (share rows "cobalt" "refinery" 2023 "CHN")
-          s24 (share rows "cobalt" "refinery" 2024 "CHN") m22 (when alt (share alt "cobalt" "refinery" 2022 "CHN"))]
+          s24 (share rows "cobalt" "refinery" 2024 "CHN") m22 (when alt (alt-share alt "cobalt" "refinery" 2022 "CHN"))]
       (target "China's refined cobalt share about 80% (2022-24, within 0.05)"
               (every? #(within % 0.75 0.85) [s22 s23 s24])
               (str "BGS 2022 " (f2 s22) ", 2023 " (f2 s23) ", 2024 " (f2 s24) "; MYB 2022 " (f2 m22))))
@@ -95,30 +128,35 @@
                     (str/join ", " (for [y [2010 2013 2014 2016 2019 2020 2023 2024]]
                                      (str y " " (f2 (share rows "nickel" "mine" y "IDN")) "/" (f2 (share rows "nickel" "refinery" y "IDN"))))))))
     (let [ss (for [y (range 2000 2006)] [y (share rows "rare-earths" "mine" y "CHN")])
-          ms (when alt (for [y (range 2000 2006)] [y (share alt "rare-earths" "mine" y "CHN")]))]
-      (target "China's rare-earth mine share 93-97% in 2000-05, within 0.02 (ESSENTIALS: 0.97 in 2005)"
-              (and (every? #(within (second %) 0.91 0.99) ss) (within (second (last ss)) 0.95 0.99))
+          ms (when alt (for [y (range 2000 2006)] [y (alt-share alt "rare-earths" "mine" y "CHN")]))
+          early (map second (take 3 ss)) late (map second (drop 3 ss))]
+      ;; USGS MCS 2005 and 2006 (rare earths): the US mined 5,000 t of
+      ;; bastnaesite concentrate (REO) a year at Mountain Pass through 2002
+      ;; and none in 2003-05; their world tables give China 92/99.1 kt
+      ;; (0.93) in 2003, 95/102 (0.93) in 2004, 98/105 (0.93) in 2005. With
+      ;; the US 5 kt, USGS's own China, CIS, India and Malaysia figures give
+      ;; 0.88-0.90 in 2000-02. "93-97% in 2000-05" holds only from 2003.
+      (target "China's rare-earth mine share 0.86-0.93 in 2000-02 (US Mountain Pass 5 kt a year, MCS 2005), 0.93-0.99 in 2003-05"
+              (and (every? #(within % 0.86 0.93) early) (every? #(within % 0.93 0.99) late))
               (str "BGS " (str/join ", " (map (fn [[y v]] (str y " " (f2 v))) ss))
-                   (when ms (str "; MYB " (str/join ", " (map (fn [[y v]] (str y " " (f2 v))) ms))))))
-      (when (some #(< (second %) 0.93) ss)
-        (println "        strictly, below the 93% floor in"
-                 (str/join ", " (for [[y v] ss :when (< v 0.93)] y)) "(BGS; MYB lower still in 2000-01)")))
-    (let [c22 (share rows "cobalt" "mine" 2022 "COD") m22 (when alt (share alt "cobalt" "mine" 2022 "COD"))]
+                   (when ms (str "; MYB " (str/join ", " (map (fn [[y v]] (str y " " (f2 v))) ms))
+                                 " (MYB 2000 counts Kyrgyzstan's 16.5 kt, a processor)")))))
+    (let [c22 (share rows "cobalt" "mine" 2022 "COD") m22 (when alt (alt-share alt "cobalt" "mine" 2022 "COD"))]
       (target "Congo's 2022 share of mined cobalt 0.73 (ESSENTIALS step 3, MYB; within 0.04 across sources)"
               (within c22 0.69 0.77) (str "BGS " (f2 c22) "; MYB " (f2 m22))))
-    (let [g22 (share rows "gallium" "refinery" 2022 "CHN") m22 (when alt (share alt "gallium" "refinery" 2022 "CHN"))]
+    (let [g22 (share rows "gallium" "refinery" 2022 "CHN") m22 (when alt (alt-share alt "gallium" "refinery" 2022 "CHN"))]
       (target "China's primary gallium 2022 0.98 (within 0.02)" (within g22 0.96 1.0)
               (str "BGS " (f2 g22) "; MYB " (f2 m22))))
     (let [hs (for [y [2000 2010 2022]]
                (let [sh (stg/shares (by-year rows "graphite" "mine" y))] [y (stg/hhi sh) (get sh "CHN")]))
           ms (when alt (for [y [2000 2010 2022]]
-                         (let [sh (stg/shares (by-year alt "graphite" "mine" y))] [y (stg/hhi sh) (get sh "CHN")])))]
+                         (let [sh (stg/shares (by-year-sum alt "graphite" "mine" y))] [y (stg/hhi sh) (get sh "CHN")])))]
       (println (str "  natural graphite HHI (China): BGS "
                     (str/join ", " (map (fn [[y h c]] (str y " " (f2 h) " (" (f2 c) ")")) hs))
                     "; MYB deduplicated " (str/join ", " (map (fn [[y h c]] (str y " " (f2 h) " (" (f2 c) ")")) ms))
                     "; ESSENTIALS section 5 table (MYB, details summed): 0.30 (0.51), 0.48 (0.67), 0.69 (0.83)")))
 
-    (println "\nPlants (MYB vol. III 2024, no US): HHI by capacity, plants, coverage of the stage's output")
+    (println "\nPlants (MYB vol. III 2024, USGS US facilities 2026, China copper smelters from USGS China GIS 2023): HHI by capacity, plants, coverage of the stage's output")
     (let [ps (stg/plant-stocks plants rows)
           key-of (fn [r] (let [[_ c s] (re-matches #"stages/(.+?)-(mine|smelter|refinery|chemical)-plant-.*" (:variable r))] [c s]))
           country-hhi (fn [c s]

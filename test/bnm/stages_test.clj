@@ -115,3 +115,55 @@
       ;; data year 2002 (known 2004): refinery A 0, C 70 -> C's share 1.0
       (is (close? 1.0 (value out "WLD" 2026 "stages/x-refinery-plant-coverage") 1e-12)))
     (is (empty? (filter #(< (:year %) 2026) out)) "plants are a 2026 snapshot")))
+
+;; ---------------------------------------------------------------- review fixes
+
+(deftest displacement-stays-in-the-unit-interval
+  (testing "rounding in the sum of the smaller shares cannot push D below 0 or above 1"
+    (let [rng (java.util.Random. 42)]
+      (doseq [_ (range 2000)]
+        (let [n (inc (.nextInt rng 12))
+              isos (map #(str "C" %) (range n))
+              qa (zipmap isos (repeatedly #(.nextDouble rng)))
+              qb (zipmap (shuffle isos) (repeatedly #(.nextDouble rng)))
+              sa (stg/shares qa)]
+          (doseq [d [(stg/displacement sa sa) (stg/displacement sa (stg/shares qb))
+                     (stg/displacement qa qb)]]
+            (is (<= 0.0 d 1.0) (str "D " d)))))))
+  (testing "quantities are made shares first: world totals may differ between stages"
+    ;; refined output above mine output (scrap): only the shares are compared
+    (is (close? 0.0 (stg/displacement {"A" 60.0 "B" 40.0} {"A" 120.0 "B" 80.0}) 1e-12))
+    (is (close? 0.7 (stg/displacement {"A" 60.0 "B" 40.0} {"A" 30.0 "C" 70.0}) 1e-12)))
+  (testing "a country that processes without mining adds to D, one that mines without processing too"
+    (is (close? 1.0 (stg/displacement {"A" 1.0} {"C" 1.0}) 1e-12)))
+  (testing "no D without output at both stages"
+    (is (nil? (stg/displacement {} {"A" 1.0})))
+    (is (nil? (stg/displacement {"A" 0.0} {"A" 1.0})))))
+
+(deftest non-resource-share
+  (testing "processing share in countries with under 1% of the mine stage, for the same pair and year as D"
+    (is (close? 0.7 (stg/non-resource {"A" 0.6 "B" 0.4} {"A" 0.3 "C" 0.7}) 1e-12))
+    (is (close? 0.75 (stg/non-resource {"A" 0.995 "B" 0.005} {"A" 0.25 "B" 0.75}) 1e-12) "B mines 0.5%: non-resource")
+    (let [out (stg/stocks synthetic)]
+      (is (close? 0.7 (value out "WLD" 2002 "stages/x-non-resource") 1e-12))
+      (is (close? 1.0 (value out "WLD" 2004 "stages/x-non-resource") 1e-12)))))
+
+(deftest editions-of-one-data-year
+  (testing "a later edition of a data year replaces the earlier one when it is known, never adds to it"
+    (let [rows (concat
+                ;; data year 2023: the 2024 edition's estimate, then the 2025 edition's revision
+                [(assoc (row "li" "mine" "A" 2023 50 :known 2024) :source "MCS2024")
+                 (assoc (row "li" "mine" "B" 2023 50 :known 2024) :source "MCS2024")
+                 (assoc (row "li" "mine" "A" 2023 60 :known 2025) :source "MCS2025")
+                 (assoc (row "li" "mine" "B" 2023 40 :known 2025) :source "MCS2025")])
+          out (stg/stocks rows)]
+      (is (close? 100.0 (value out "WLD" 2024 "stages/li-mine-world") 1e-12) "the estimate, at the edition year")
+      (is (close? 0.5 (value out "A" 2024 "stages/li-mine-share") 1e-12))
+      (is (close? 100.0 (value out "WLD" 2025 "stages/li-mine-world") 1e-12) "not 200: the revision replaces it")
+      (is (close? 0.6 (value out "A" 2025 "stages/li-mine-share") 1e-12))
+      (is (= 2023.0 (value out "WLD" 2024 "stages/li-mine-state-year")) "state-year is the data year")))
+  (testing "rows of one source known later (a country added) are added, not replaced"
+    (let [rows [(row "x" "mine" "A" 2000 60) (row "x" "mine" "B" 2000 40 :known 2003)]
+          out (stg/stocks rows)]
+      (is (close? 60.0 (value out "WLD" 2002 "stages/x-mine-world") 1e-12))
+      (is (close? 100.0 (value out "WLD" 2003 "stages/x-mine-world") 1e-12)))))
