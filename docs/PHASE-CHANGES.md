@@ -1069,6 +1069,39 @@ warning and its states at the next country), bench **t44-world-norel**.
 4. for the record, t45-world against t44-world on the kinds both link,
    and coups and fiscal consolidations (the kinds with states) per kind.
 
+**Results, 22 October 2026 (trial 45).**
+1. **Links, warning and states against none** (primary), the seven linked
+   kinds' year nodes, 2003-2022: Brier +0.00012 [-0.00021 +0.00050], log
+   +0.00107 [-0.00069 +0.00325]: level. Per kind, for the record:
+   banking crises lose (Brier -0.00059 [-0.00132 -0.00003]; their only
+   input is the inhibiting edge from inflation crises), not past Holm's
+   correction over seven kinds; the rest are level, coups (a state) at
+   -0.00004 [-0.00011 +0.00004] and fiscal consolidations (two states) at
+   +0.00044 [-0.00023 +0.00122]. The six unlinked kinds match the bench
+   exactly.
+2. **Joint forecasts against independence**, five edges: Brier -0.00002
+   [-0.00008 +0.00002], level; log -0.00399 [-0.00834 -0.00117], a loss,
+   as in trials 43 and 44.
+3. **Against the placebo**: Brier +0.00014 [-0.00009 +0.00035], log
+   +0.00088 [-0.00012 +0.00190]: level.
+4. For the record, against t44-world on the kinds trial 45 links: Brier
+   +0.00010 [-0.00010 +0.00034], level; fiscal consolidations +0.00059
+   [+0.00000 +0.00131], at the edge of a gain and not past Holm; banking
+   crises -0.00059 [-0.00147 -0.00001]. Violence surges and growth
+   collapses are identical (the same edge and the same warning).
+
+The stock-flow states do not show in the forecasts. Of the six models'
+outputs none passed the design years once years, not country-years, were
+counted; the three that did are slow levels (land, grain use, power
+capacity), whose own parts the event models' gauges largely hold already.
+The models describe the drivers (debt against its critical level, the
+commodity pipeline, technology gaps, food storage), and on their own
+terms they track them (docs/STOCK-FLOW.md); what they do not do, at a
+year's resolution over forty design years, is time the onsets past what
+the base already knows. Next (bnm-62z.13): the states as gauges of the
+base's contradictions rather than as inputs to the year node, and the
+half-decade node, where slow stocks should matter most.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
