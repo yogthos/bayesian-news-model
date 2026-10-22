@@ -1002,7 +1002,7 @@ before any test year is scored (PRINCIPLES 9).
    C_CHMF, C_CHEM, C_ELMA and C_MOTO.
    - Tests: sub-nodes sum to the parent in every region-year, and balances
      still close (median residual below 1e-6).
-5. **Priors and the recipe filter** (data/priors/recipes.edn; bnm.recipes).
+5. **Priors and the recipe filter** (resources/bnm/recipe-priors.edn; bnm.recipes).
    The section 4 table as distributions, and the DLM per coefficient with
    mixtures for steel routes, power sources and car drivetrains.
    - Tests:
