@@ -10,8 +10,14 @@
     x(t) = x(t-1) + drift(t) + w,   w ~ N(0, step^2)
     y    = x(t) + e,                e ~ N(0, V_source)
 
-  The prior is the file's: centre ln(mean), sd from the 90% range, drift
-  from a learning or chemistry trend. The state's variance never exceeds
+  The prior is the file's: centre ln(mean), sd from the 90% range. By
+  default the model is a local level, drift 0: the registered step-5 test
+  (ESSENTIALS 8) found drift learned from the 1995-2011 tables forecast
+  the 2022 shares worse than none (bnm-1pq.22), so no drift is learned.
+  A recipe drifts only where the priors file cites a technology
+  trajectory for it (:drift with :drift-cite and :drift-basis: PV silicon
+  and silver, battery cobalt, polysilicon electricity); a :drift without
+  a citation is refused. The state's variance never exceeds
   the prior's: without data a coefficient falls back to physics, not to
   ignorance. Each source's observation variance V is learned from the
   data (an inverse-gamma estimate updated by each standardized error, West
@@ -19,6 +25,11 @@
   regions. An observation further than :screen-sds prior sds from the
   prior is a flag (a unit or routing error, PRINCIPLES 10): counted, not
   used.
+
+  A source with :bias-sd (a country's reporting convention, the same every
+  year) carries a bias state per region, b ~ N(0, bias-sd^2), constant in
+  time: y = x + b + e. Its data then move x only so far, however many
+  years there are.
 
   The floor (the thermodynamic or stoichiometric minimum) bounds the
   coefficient below. The filter runs unconstrained and every reported
@@ -42,7 +53,8 @@
 
   The observation builders (`observations`) read data/derived/supply/:
   recipes.csv (EXIOBASE hybrid 2011), recipe-obs/ (scripts/recipe-obs.py:
-  pxp value shares 1995-2022, UNSD energy, FAOSTAT fertiliser),
+  pxp value shares 1995-2022, UNSD energy, FAOSTAT fertiliser, USGS
+  ammonia),
   hs6-world.csv (BACI unit values), stages.csv and production.csv."
   (:require [augur.math :as am]
             [bnm.stages :as stg]
@@ -53,7 +65,7 @@
 
 (def source-kinds
   #{:test :exio :exio-ammonia :exio-power-share :stage :bf-ore :bf-coal :unsd-heat-rate :unsd-ratio
-    :fao-nutrient})
+    :unsd-ammonia :fao-nutrient})
 
 (defn priors
   "The priors file, resources/bnm/recipe-priors.edn."
@@ -81,12 +93,22 @@
 (defn- prior-sd ^double [{:keys [scale lo hi]}]
   (/ (- (fwd scale hi) (fwd scale lo)) z90))
 
+(defn- drift
+  "The recipe's yearly drift on the filter's scale: 0 unless it cites a
+  technology trajectory (:drift-cite); an uncited :drift is an error."
+  ^double [{:keys [id drift drift-cite]}]
+  (cond
+    (nil? drift) 0.0
+    (seq drift-cite) (double drift)
+    :else (throw (ex-info (str id ": a :drift needs a :drift-cite (no default drift, bnm-1pq.22)")
+                          {:id id :drift drift}))))
+
 (defn- centre
-  "The prior's centre in year t: ln(mean) at :ref-year, moved by :drift a
-  year from :drift-from on."
-  ^double [{:keys [scale mean ref-year drift drift-from]} t]
+  "The prior's centre in year t: ln(mean) at :ref-year, moved by a cited
+  :drift a year from :drift-from on; flat otherwise."
+  ^double [{:keys [scale mean ref-year drift-from] :as p} t]
   (let [c #(if drift-from (max (long %) (long drift-from)) (long %))]
-    (+ (fwd scale mean) (* (double (or drift 0.0)) (- (c t) (c (or ref-year t)))))))
+    (+ (fwd scale mean) (* (drift p) (- (c t) (c (or ref-year t)))))))
 
 (defn prior-state
   "The prior in year t, untruncated: {:m :v} on the filter's scale."
@@ -123,6 +145,15 @@
 
 (def ^:private n0 1.0)
 
+(defn source-sd0
+  "A source's observation sd about the coefficient, before the data teach
+  it, for the screen: :sd0 (0.3 if absent) and, for a source with a
+  persistent bias, its :bias-sd, in quadrature. (The filter holds the bias
+  as a state and starts the source's noise at :sd0.)"
+  ^double [{:keys [sd0 bias-sd]}]
+  (let [s (double (or sd0 0.3)) b (double (or bias-sd 0.0))]
+    (Math/sqrt (+ (* s s) (* b b)))))
+
 (defn- visible
   "The observations known by year y (and of data years from the filter's
   first year on), the latest vintage of each [source region year]."
@@ -145,7 +176,7 @@
   dropped."
   [p obs sds]
   (let [v0 (Math/pow (prior-sd p) 2)
-        sd (fn [i] (Math/sqrt (+ v0 (Math/pow (double (or (:sd0 (get (:sources p) i)) 0.3)) 2))))]
+        sd (fn [i] (Math/sqrt (+ v0 (Math/pow (source-sd0 (get (:sources p) i)) 2))))]
     (keep (fn [o]
             (when-let [y (to-scale (:scale p) (:value o))]
               (assoc o :y y :flag (> (Math/abs (- y (centre p (:year o)))) (* sds (sd (:source o)))))))
@@ -153,9 +184,23 @@
 
 (defn- evolve [p st t]
   (let [v0 (:v (prior-state p t))
-        step (double (or (:step p) 0.02))]
-    {:m (+ (:m st) (- (centre p t) (centre p (dec t))))
-     :v (min v0 (+ (:v st) (* step step)))}))
+        step (double (or (:step p) 0.02))
+        dm (- (centre p t) (centre p (dec t)))]
+    (if-let [mu (:mu st)]
+      ;; with bias states: the coefficient (index 0) walks, the biases stay;
+      ;; the cap scales row and column 0 (a congruence: P stays a covariance)
+      (let [P (:P st)
+            v (+ (double (get-in P [0 0])) (* step step))
+            f (if (> v v0) (Math/sqrt (/ v0 v)) 1.0)
+            n (count mu)]
+        {:mu (update mu 0 + dm)
+         :P (vec (for [i (range n)]
+                   (vec (for [j (range n)]
+                     (cond (= 0 i j) (min v0 v)
+                           (or (zero? i) (zero? j)) (* f (double (get-in P [i j])))
+                           :else (get-in P [i j]))))))})
+      {:m (+ (:m st) dm)
+       :v (min v0 (+ (:v st) (* step step)))})))
 
 (defn- kalman
   "[state noise] after observing y with the source's noise {:s :n}."
@@ -168,6 +213,44 @@
         s' (max 1e-8 (+ s (* (/ s n') (- (/ (* e e) q) 1.0))))]
     [{:m (+ m (* k e)) :v (* v (/ s q))} {:s s' :n n'}]))
 
+(defn- kalman-biased
+  "[state noise] after observing y = x + b_j + e, j the source's bias state
+  (nil for an unbiased source), on the vector state {:mu :P}."
+  [{:keys [mu P]} j {:keys [s n]} y]
+  (let [h (if j [0 j] [0])
+        s (double s) n (double n)
+        q (+ s (reduce + (for [a h b h] (double (get-in P [a b])))))
+        e (- (double y) (reduce + (map #(double (mu %)) h)))
+        ph (vec (for [i (range (count mu))] (reduce + (map #(double (get-in P [i %])) h))))
+        n' (+ n 1.0)
+        s' (max 1e-8 (+ s (* (/ s n') (- (/ (* e e) q) 1.0))))]
+    [{:mu (vec (map-indexed (fn [i m] (+ (double m) (/ (* (ph i) e) q))) mu))
+      :P (vec (for [i (range (count mu))]
+                (vec (for [k (range (count mu))] (- (double (get-in P [i k])) (/ (* (ph i) (ph k)) q))))))}
+     {:s s' :n n'}]))
+
+(defn- bias-states
+  "{source index -> state index} of the sources read with a persistent bias
+  (:bias-sd): a country's reporting convention or product mix is the same
+  every year, so its bias is a state of the region, not fresh noise."
+  [p]
+  (into {} (map-indexed (fn [k i] [i (inc k)])
+                        (keep-indexed (fn [i s] (when (:bias-sd s) i)) (:sources p)))))
+
+(defn- init-state [p bi t]
+  (let [{:keys [m v]} (prior-state p t)]
+    (if (empty? bi)
+      {:m m :v v}
+      (let [n (inc (count bi))
+            d (into {0 v} (for [[i k] bi] [k (Math/pow (double (:bias-sd (get (:sources p) i))) 2)]))]
+        {:mu (vec (cons m (repeat (dec n) 0.0)))
+         :P (vec (for [a (range n)] (vec (for [b (range n)] (if (= a b) (d a) 0.0)))))}))))
+
+(defn- coefficient
+  "The coefficient's marginal {:m :v} of a state."
+  [st]
+  (if-let [mu (:mu st)] {:m (mu 0) :v (get-in (:P st) [0 0])} st))
+
 (defn- pass
   "States at year y from the observations known by y: {region state},
   the noise per source, and the counts."
@@ -175,16 +258,21 @@
   (let [vis (visible obs start y)
         used (remove :flag vis)
         at (group-by (juxt :region :year) used)
-        noise0 (vec (for [{:keys [sd0]} (:sources p)]
-                      (let [s (double (or sd0 0.3))] {:s (* s s) :n n0})))]
+        bi (bias-states p)
+        ;; a biased source's bias is a state, so its noise starts at :sd0
+        noise0 (vec (for [s (:sources p)]
+                      (let [s (double (or (:sd0 s) 0.3))] {:s (* s s) :n n0})))]
     (loop [t start
-           states (into {} (for [r regions] [r (prior-state p start)]))
+           states (into {} (for [r regions] [r (init-state p bi start)]))
            noise noise0]
       (let [[states noise]
             (reduce (fn [[sts nz] r]
                       (let [st (if (= t start) (sts r) (evolve p (sts r) t))
                             [st nz] (reduce (fn [[st nz] o]
-                                              (let [[st' nz'] (kalman st (nz (:source o)) (:y o))]
+                                              (let [i (:source o)
+                                                    [st' nz'] (if (:mu st)
+                                                                (kalman-biased st (bi i) (nz i) (:y o))
+                                                                (kalman st (nz i) (:y o)))]
                                                 [st' (assoc nz (:source o) nz')]))
                                             [st nz]
                                             (sort-by :source (at [r t])))]
@@ -226,7 +314,7 @@
     {:rows (vec (for [r regions
                       [y {:keys [states n flagged]}] passes]
                   (merge {:recipe (:id p) :region r :year y}
-                         (summary p (states r))
+                         (summary p (coefficient (states r)))
                          {:n-obs (get n r 0) :n-flagged (get flagged r 0)})))
      :noise (:noise (second (last passes)))
      :flags (count (filter :flag obs))}))
@@ -288,6 +376,13 @@
                      (assoc-in acc [(:iso m) (parse-long (:year m)) (:series m)] (num (:value m))))
                    {} (csv-rows (f "recipe-obs/unsd.csv")))
      :fao (csv-rows (f "recipe-obs/fao.csv"))
+     :nh3 (if (.exists (io/file (f "recipe-obs/nh3.csv")))
+            (reduce (fn [acc m]
+                      (update-in acc [(:iso m) (parse-long (:year m))] (fnil conj [])
+                                 {:edition (parse-long (:edition m)) :known (parse-long (:known m))
+                                  :value (num (:value m))}))
+                    {} (csv-rows (f "recipe-obs/nh3.csv")))
+            {})
      :iron (if (.exists (io/file (f "recipe-obs/iron.csv")))
              (reduce (fn [acc m]
                        (update-in acc [(:series m) (parse-long (:year m))] (fnil conj [])
@@ -513,6 +608,32 @@
                 (let [a (unsd-get data iso y (:num s)) b (unsd-get data iso y (:den s))]
                   (when (and a b (pos? a) (pos? b)) [a b (+ y unsd-lag)])))))
 
+;; Ammonia's gas from UNSD natural gas to non-energy use (feedstock), TJ
+;; gross x 0.9 to net, at 48 GJ/t, over USGS ammonia production (t NH3,
+;; recipe-obs/nh3.csv), per country. Non-energy gas also feeds methanol and
+;; other chemicals: countries where gas methanol is large beside ammonia
+;; are left out (:exclude), and what remains is taken as biased up by
+;; :bias on the log (divided out); what is left of the bias, sd :bias-sd,
+;; is a persistent state per region in the filter (`bias-states`). Each USGS edition is a vintage, known at
+;; the later of its own known year and UNSD's (year + 2); of editions
+;; known the same year, the latest.
+(defmethod source-obs :unsd-ammonia [p s data regions]
+  (let [iso2 (:iso2 data)
+        out (set (:exclude s))
+        b (Math/exp (double (or (:bias s) 0.0)))]
+    (for [[iso ys] (:nh3 data)
+          :let [r (iso2 iso)]
+          :when (and r (regions r) (not (out r)))
+          [y eds] ys
+          :let [g (unsd-get data iso y "gas_nonenergy")]
+          :when (and g (pos? g))
+          o (vals (into {} (for [e (sort-by :edition eds)
+                                 :let [k (max (+ y unsd-lag) (long (:known e)))]
+                                 :when (and (:value e) (pos? (:value e)))]
+                             [k {:region r :year y :known k
+                                 :value (/ (/ (* g 0.9 1000.0) gas-gj) (:value e) b)}])))]
+      o)))
+
 (defmethod source-obs :bf-coal [p s data regions]
   (let [pig (reduce (fn [acc m]
                       (if (and (= "iron" (:commodity m)) (= "smelter" (:stage m)))
@@ -543,6 +664,14 @@
 
 (defmethod source-obs :test [_ _ _ _] [])
 
+(defn with-regions
+  "The recipe with a named region set (:exio-all, :unsd, :fao) resolved to
+  its regions, so the regions without data keep their prior's rows."
+  [p data]
+  (if (keyword? (:regions p))
+    (assoc p :regions (vec (sort (region-set p data))))
+    p))
+
 (defn observations
   "Every observation of recipe p: {:region :year :known :value :source}."
   [p data]
@@ -561,7 +690,7 @@
         opts (select-keys pr [:start :end :screen-sds :from])]
     (into (sorted-map)
           (for [p (:recipes pr) :let [obs (observations p data)]]
-            [(:id p) (assoc (run p obs opts) :n-total (count obs))]))))
+            [(:id p) (assoc (run (with-regions p data) obs opts) :n-total (count obs))]))))
 
 (defn write-csv
   "data/derived/supply/recipes-filtered.csv: recipe,region,year,mean,sd,
@@ -574,47 +703,22 @@
       (.write w (str recipe "," region "," year "," (format "%.6g" (double mean)) ","
                      (format "%.6g" (double sd)) "," (format "%.6g" (double median)) "," n-obs "\n")))))
 
-;; ------------------------------------------- drift (registered test, step 5)
+;; ----------------------------------- the step-5 test's cells (recipes-check)
 
-(defn ols-drift
-  "The least-squares slope of [[year log-value]] and its variance:
-  {:slope :se2 :n}; nil under three points."
-  [pts]
-  (let [n (count pts)]
-    (when (>= n 3)
-      (let [xs (map (comp double first) pts) ys (map (comp double second) pts)
-            mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
-            sxx (reduce + (map #(Math/pow (- % mx) 2) xs))
-            b (/ (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys)) sxx)
-            rss (reduce + (map #(Math/pow (- %2 my (* b (- %1 mx))) 2) xs ys))]
-        {:slope b :se2 (/ (/ rss (- n 2)) sxx) :n n}))))
-
-(defn eb-drift
-  "Each fit's drift shrunk to the precision-weighted pooled slope mu by
-  empirical Bayes, tau^2 the DerSimonian-Laird between-cell variance:
-  drift = mu + tau^2/(tau^2 + se2) (slope - mu)."
-  [fits]
-  (let [k (count fits)
-        w (mapv #(/ 1.0 (max 1e-12 (:se2 %))) fits)
-        sw (reduce + w)
-        mu (/ (reduce + (map #(* %1 (:slope %2)) w fits)) sw)
-        q (reduce + (map #(* %1 (Math/pow (- (:slope %2) mu) 2)) w fits))
-        den (- sw (/ (reduce + (map #(* % %) w)) sw))
-        ;; one fit (or all weight on one): nothing to pool, keep the slopes
-        tau2 (if (or (< k 2) (<= den 0.0)) Double/POSITIVE_INFINITY (max 0.0 (/ (- q (dec k)) den)))]
-    (for [f fits]
-      (assoc f :drift (if (Double/isInfinite tau2)
-                        (:slope f)
-                        (+ mu (* (/ tau2 (+ tau2 (max 1e-12 (:se2 f)))) (- (:slope f) mu))))
-             :mu mu :tau2 tau2))))
+(def ^:private step5-sources
+  "Sources the registered step-5 test was run with that the recipes no
+  longer read: ammonia/gas's EXIOBASE gas route (bnm-1pq.20), kept so the
+  test's cells stay the registered ones."
+  {"ammonia/gas" [{:kind :exio-ammonia :route :gas}]})
 
 (defn share-cells
-  "The value shares the EXIOBASE-read recipes rest on: for each :exio or
-  :exio-ammonia source with inputs, each of its regions, {:recipe :region
-  :output :inputs :shares {year summed share}}."
+  "The value shares the EXIOBASE-read recipes rest on, as registered for
+  step 5: for each :exio or :exio-ammonia source with inputs (and
+  `step5-sources`), each of its regions, {:recipe :region :output :inputs
+  :shares {year summed share}}."
   [pr data]
   (for [p (:recipes pr)
-        s (:sources p)
+        s (concat (:sources p) (step5-sources (:id p)))
         :when (#{:exio :exio-ammonia} (:kind s))
         :let [output (or (:output s) "C_NFER")
               inputs (case (:route s)

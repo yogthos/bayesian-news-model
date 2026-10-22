@@ -53,6 +53,15 @@ data/derived/supply/recipe-obs/:
                                   the 2024 volume III country sum.
                   Volume I editions are known edition + 2, the 2024
                   volume III table in 2026.
+  nh3.csv         iso,year,edition,known,value
+                  USGS ammonia production by country, t of NH3 (USGS
+                  reports N content: x 17.031/14.007), every Minerals
+                  Yearbook edition kept (known edition + 2) and the 2024
+                  volume III table (2020-2024, known 2026). Aggregates,
+                  former states and the two German states are left out.
+                  USGS, BGS and UNSD carry no methanol series, so none is
+                  written (bnm.recipes leaves out countries with large gas
+                  methanol instead).
   fao.csv         iso,year,known,nutrient,element,tonnes
                   FAOSTAT Inputs_FertilizersNutrient: N, P2O5 and K2O,
                   agricultural use and production, tonnes of nutrient;
@@ -273,9 +282,61 @@ def iron():
             w.writerow([s, y, ed, k, f"{q:.6g}"])
 
 
+NH3_PER_N = 17.031 / 14.007
+USGS_NAMES = {"Korea, North": "PRK", "Korea, Republic of": "KOR", "Russia": "RUS", "Iran": "IRN",
+              "Syria": "SYR", "Vietnam": "VNM", "Venezuela": "VEN", "Taiwan": "TWN", "Turkey": "TUR",
+              "Czech Republic": "CZE", "Czechia": "CZE", "Myanmar (Burma)": "MMR", "Burma": "MMR",
+              "Bosnia and Herzegovina": "BIH", "Serbia": "SRB", "Libya": "LBY", "Bolivia": "BOL",
+              "Tanzania": "TZA", "Brunei": "BRN", "Laos": "LAO", "Moldova": "MDA"}
+NOT_COUNTRIES = ("World", "Soviet Union", "Czechoslovakia", "Yugoslavia", "Serbia and Montenegro",
+                 "Germany, ")
+
+
+def usgs_iso(name):
+    import pycountry
+    name = name.split("\n")[0].strip()
+    if not name or name.startswith(NOT_COUNTRIES):
+        return None
+    if name in USGS_NAMES:
+        return USGS_NAMES[name]
+    try:
+        return pycountry.countries.lookup(name).alpha_3
+    except LookupError:
+        return None
+
+
+def nh3():
+    rows = {}
+    with open(MYB, newline="", encoding="utf-8-sig") as fh:
+        for d in csv.DictReader(fh):
+            if d["COMMODITY"] != "Nitrogen" or d["COMMODITY_FORM"] != "Ammonia":
+                continue
+            if d["UNITS"] != "Thousand metric tons" or not re.fullmatch(r"[0-9.]+", d["QUANTITY"]):
+                continue
+            m = re.match(r"MYB_(\d{4})_", d["DATA_SOURCE"])
+            iso = usgs_iso(d["COUNTRY_OR_REGION"])
+            if not m or not iso:
+                continue
+            ed = int(m.group(1))
+            rows[(iso, int(d["YEAR"]), ed)] = (ed + MYB_LAG, float(d["QUANTITY"]) * 1000.0 * NH3_PER_N)
+    with open(MYB3, newline="", encoding="utf-8-sig") as fh:
+        for d in csv.DictReader(fh):
+            if (d["Level 2 (Commodity)"] != "Nitrogen" or d["Level 5 (Form)"] != "Ammonia"
+                    or d["Data Type"] != "Production" or d["Unit"] != "Metric tons" or not d["Value"]):
+                continue
+            iso = usgs_iso(d["Country (Short Form) or Locality"])
+            if iso:
+                rows[(iso, int(d["Time Period"]), 2024)] = (2026, float(d["Value"]) * NH3_PER_N)
+    with open(os.path.join(OUT, "nh3.csv"), "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["iso", "year", "edition", "known", "value"])
+        for (iso, y, ed), (k, q) in sorted(rows.items()):
+            w.writerow([iso, y, ed, k, f"{q:.6g}"])
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
-    what = sys.argv[2:] or ["unsd", "fao", "iron", "pxp"]
+    what = sys.argv[2:] or ["unsd", "fao", "iron", "nh3", "pxp"]
     if "unsd" in what:
         unsd()
         print("unsd.csv written", flush=True)
@@ -285,6 +346,9 @@ def main():
     if "iron" in what:
         iron()
         print("iron.csv written", flush=True)
+    if "nh3" in what:
+        nh3()
+        print("nh3.csv written", flush=True)
     if "pxp" in what:
         pxp_shares()
         print("pxp-shares.csv written", flush=True)

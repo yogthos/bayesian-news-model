@@ -7,10 +7,15 @@
 ;; (ln hi - ln lo) / 3.29; on :scale :logit (shares) the same on the log
 ;; odds. :floor is the thermodynamic or stoichiometric minimum, with
 ;; :floor-basis saying why; 0 where physics sets none (the posterior is
-;; then only kept positive). The prior holds at :ref-year; :drift is a
-;; yearly change of the log (a learning or chemistry trend) applied from
-;; :drift-from on (flat before it), :step the log sd of the coefficient's
-;; random walk per year. :sources say which observations update it
+;; then only kept positive). The prior holds at :ref-year; :step is the
+;; log sd of the coefficient's random walk per year. By default a recipe
+;; is a local level with no trend: the registered step-5 test found drift
+;; learned from the 1995-2011 tables forecast 2022 worse than none
+;; (bnm-1pq.22), so none is learned. Only a cited technology trajectory
+;; drifts: :drift, a yearly change of the log applied from :drift-from on
+;; (flat before it), with :drift-cite (keys of :literature) and
+;; :drift-basis (the numbers it comes from); bnm.recipes refuses a :drift
+;; without :drift-cite. :sources say which observations update it
 ;; (bnm.recipes/observations); a recipe with none keeps its prior (and
 ;; drift). :regions lists where it is filtered: EXIOBASE region codes (ISO
 ;; alpha-2 for countries, WA WE WF WL WM for the rest of the world) and
@@ -57,6 +62,17 @@
 ;;              fuel of their heat (heat out / 0.9), over electricity from
 ;;              that fuel, x 3.6; known year + 2.
 ;;   :unsd-ratio  ratio of two UNSD series (:num / :den).
+;;   :unsd-ammonia  UNSD natural gas to non-energy use (TJ gross x 0.9,
+;;              at 48 GJ/t) over USGS ammonia production (t NH3, every
+;;              Minerals Yearbook edition a vintage), per country; known at
+;;              the later of UNSD's year + 2 and the edition's. Countries in
+;;              :exclude are left out; the rest is divided by exp(:bias)
+;;              (other chemicals in non-energy gas). A source with
+;;              :bias-sd carries a persistent bias per region, a state of
+;;              the filter with prior N(0, :bias-sd^2) that does not walk:
+;;              a country's reporting convention and product mix are the
+;;              same every year, so its data cannot be averaged past it.
+;;              The screen uses :sd0 and :bias-sd in quadrature.
 ;;   :fao-nutrient  FAOSTAT agricultural use of a nutrient x :factor (the
 ;;              share of wheat, maize and rice, and the element's mass
 ;;              fraction) over their production (FAOSTAT food balances,
@@ -91,7 +107,10 @@
   :usgs-iron "USGS Mineral Commodity Summaries, Iron Ore (yearly): China's production is reported as crude ore; its usable ore is about a quarter to a third of it."
   :usgs-myb "USGS Minerals Yearbook World Production Data 1990-2022 and 2024 Minerals Yearbook vol. III: iron ore by country (China usable ore from the 2014 edition), world direct-reduced iron."
   :icsg "ICSG (yearly). The World Copper Factbook: secondary (scrap) refined copper is about 15-18% of refined output."
-  :iai "International Aluminium Institute statistics (yearly): primary aluminium smelting power consumption; alumina production by use."}
+  :iai "International Aluminium Institute statistics (yearly): primary aluminium smelting power consumption; alumina production by use."
+  :usgs-nitrogen "USGS Minerals Yearbook, Nitrogen (yearly editions 1994-2022, world production data release) and 2024 Minerals Yearbook vol. III: ammonia production by country, N content."
+  :unsd-energy "UN Statistics Division, Energy Statistics Database (UNdata DF_UNDATA_ENERGY): natural gas (3000), non-energy use (transaction 11)."
+  :methanol "Methanol Institute / MMSA methanol capacity listings: gas methanol plants in Norway (Tjeldbergodden, about 0.9 Mt/yr), the Netherlands (BioMCN Delfzijl, about 0.9 Mt/yr), the United States (about 1 Mt/yr in 2011, about 8 Mt/yr after the 2015-2019 build-out) and Russia (about 3-4 Mt/yr); outside EXIOBASE's countries Trinidad, Saudi Arabia, Iran, Malaysia, New Zealand, Libya and Bahrain."}
 
  :recipes
  [;; ------------------------------------------------------------ ammonia
@@ -102,10 +121,10 @@
    :floor 0.43 :floor-basis "about 20.6 GJ/t: NH3's LHV of 18.6 GJ/t plus the separation work (IEA 2021), at 48 GJ/t"
    :step 0.02 :ref-year 2011
    :regions :exio-all :exclude ["CN"]
-   :sources [{:kind :exio-ammonia :route :gas :sd0 0.25
-              :price {:out ["310210" "281410"] :in ["271121" "271111"]}}]
-   :cite [:iea-ammonia :worrell :smil]
-   :note "Best practice about 28 GJ/t; average gas plants 32-36 (section 4)."}
+   :sources [{:kind :unsd-ammonia :sd0 0.2 :bias 0.10 :bias-sd 0.20
+              :exclude ["NO" "NL" "US" "RU" "CN" "ZA" "JP"]}]
+   :cite [:iea-ammonia :worrell :smil :usgs-nitrogen :unsd-energy :methanol]
+   :note "Best practice about 28 GJ/t; average gas plants 32-36 (section 4). Observed as UNSD natural gas to non-energy use over USGS ammonia production, per country (bnm-1pq.20). EXIOBASE's gas per t of N fertiliser is not used: most regions make fertiliser from imported ammonia, so it read 0.27-0.34 against 0.67 and 61% of it was flagged, leaving the posterior at the prior. Non-energy gas also feeds methanol and other chemicals, and no held source has methanol production (UNSD, USGS and BGS carry none), so: countries with gas methanol large beside their ammonia are left out (NO, NL, US, RU; :methanol), and so are those whose ammonia is not made from gas (CN and ZA from coal, JP from naphtha, LPG and refinery hydrogen). For the rest the observation is taken as biased up by other chemicals (hydrogen for other syntheses, carbon black, small methanol): +0.10 on the log. Its sd, 0.20, also covers the other way round: a country that reports only the feedstock part of ammonia's gas as non-energy (about two thirds of it, the reformer's fuel going to the chemical industry's energy use) reads about 0.3-0.4 low on the log. The bias is per country and persistent (a filter state), so a country's data move its coefficient only part of the way. Mean and sd are a judgment set after seeing the raw ratios (0.4-1.0 in most kept countries; about 0.5 in Austria, Czechia, Finland and the UK, consistent with feedstock-only reporting; about 0.8 where the chemical industry's energy gas is small, as in Poland and Lithuania, consistent with feed and fuel both reported as non-energy), not fitted. Regions without such data (the rest-of-world regions, the excluded countries) keep the prior."}
   {:id "ammonia/coal"
    :group "fertiliser"
    :unit "t coal (25.8 GJ/t net, other bituminous) per t NH3, coal gasification (feed and fuel)"
@@ -284,6 +303,8 @@
    :mean 65.0 :lo 50.0 :hi 90.0
    :floor 9.0 :floor-basis "the enthalpy of reducing SiO2 to Si, 32.4 MJ/kg; purification needs more"
    :drift -0.04 :drift-from 2005 :step 0.02 :ref-year 2020
+   :drift-cite [:itrpv]
+   :drift-basis "ITRPV: Siemens-process electricity about 120 kWh/kg around 2005 to about 65 in 2020, ln(65/120)/15 = -0.041 a year"
    :regions ["WLD"]
    :sources []
    :cite [:itrpv]
@@ -305,6 +326,8 @@
    :mean 0.25 :lo 0.15 :hi 0.40
    :floor 0.0 :floor-basis "none: LFP cells hold no cobalt"
    :drift -0.10 :drift-from 2015 :step 0.04 :ref-year 2015
+   :drift-cite [:iea-minerals :xu]
+   :drift-basis "the fleet's move from NMC111 (about 0.39 kg/kWh) through NMC622 (0.2) to NMC811, NCA (about 0.1) and LFP (0) after 2015 (IEA 2021; Xu et al. 2020): about 0.25 kg/kWh in 2015 to about 0.1 by the mid 2020s, about -10% a year"
    :regions ["WLD"]
    :sources []
    :cite [:iea-minerals :xu]
@@ -402,6 +425,8 @@
    :mean 3200.0 :lo 2500.0 :hi 4000.0
    :floor 500.0 :floor-basis "a 50 um wafer with no kerf loss at 22% efficiency: 0.53 g/W"
    :drift -0.09 :drift-from 2004 :step 0.03 :ref-year 2020
+   :drift-cite [:itrpv :iea-minerals]
+   :drift-basis "ITRPV: silicon per watt about 16 g/W in 2004 to about 3 in 2020 (thinner wafers, less kerf, higher efficiency), ln(3.2/16)/16 = -0.10 a year; -0.09 taken"
    :regions ["WLD"]
    :sources []
    :cite [:itrpv :iea-minerals]
@@ -412,6 +437,8 @@
    :mean 15.0 :lo 10.0 :hi 20.0
    :floor 0.0 :floor-basis "none: copper plating can replace silver"
    :drift -0.12 :drift-from 2008 :step 0.04 :ref-year 2020
+   :drift-cite [:itrpv]
+   :drift-basis "ITRPV: silver paste per watt about 60-80 mg/W around 2008-2010 to about 15 in 2020 (less paste per cell, more watts per cell), about -12% a year"
    :regions ["WLD"]
    :sources []
    :cite [:itrpv]}

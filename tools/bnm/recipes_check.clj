@@ -75,6 +75,17 @@
                  (count bad) " below")))
   ;; ammonia
   (let [rows (filter #(and (= 2025 (:year %)) (pos? (:n-obs %))) (:rows (runs "ammonia/gas")))
+        p (rc/recipe pr "ammonia/gas")
+        prior-sd (/ (- (Math/log (:hi p)) (Math/log (:lo p))) 3.29)
+        z (map #(/ (- (:m %) (Math/log (:mean p))) prior-sd) rows)]
+    (println (str "    gas per t NH3, 2025, posterior from the prior's centre in prior sds: "
+                  (str/join " " (map (fn [r z] (str (:region r) " " (format "%+.2f" z))) (sort-by :mean rows)
+                                     (map second (sort-by first (map vector (map :mean rows) z)))))))
+    (target "ammonia gas moves with its data: mean |posterior - prior| over 0.5 prior sds where data exist (2025)"
+            (and (seq z) (> (/ (reduce + (map #(Math/abs %) z)) (count z)) 0.5))
+            (str (count rows) " regions with data; mean |z| "
+                 (if (seq z) (g (/ (reduce + (map #(Math/abs %) z)) (count z))) "-"))))
+  (let [rows (filter #(and (= 2025 (:year %)) (pos? (:n-obs %))) (:rows (runs "ammonia/gas")))
         in (filter #(<= 0.55 (:mean %) 0.75) rows)
         wide (filter #(<= 0.5 (:mean %) 0.9) rows)]
     (println (str "    gas per t NH3, 2025, by region: "
@@ -82,7 +93,7 @@
     (target "gas per t NH3 in 0.55-0.75 in gas-route regions (2025)"
             (>= (count in) (* 0.8 (count rows)))
             (str (count in) " of " (count rows) " regions; in the step-5 range 0.5-0.9: " (count wide)))
-    (doseq [r ["DE" "NL" "US" "RU"]]
+    (doseq [r ["DE" "PL" "GB" "GR"]]
       (println (str "    " r " 2014 " (ms (row runs "ammonia/gas" r 2014)) "  2025 " (ms (row runs "ammonia/gas" r 2025))))))
   (let [c (row runs "ammonia/coal" "CN" 2025) s (row runs "ammonia/coal-share" "CN" 2025)
         p (rc/recipe pr "ammonia/coal")]
@@ -138,6 +149,42 @@
     (println (format "  %-26s %6d %6d %6.1f%%%s" (:id p) n f (* 100.0 (/ f (double n)))
                      (if (> f (* 0.5 n)) "  <- mostly prior" "")))))
 
+;; The drift the step-5 test learns. It lives here, not in bnm.recipes: the
+;; test failed (drift forecast 2022 worse than none), so the model learns no
+;; drift (bnm-1pq.22); these fits only reproduce the registered test.
+
+(defn ols-drift
+  "The least-squares slope of [[year log-value]] and its variance:
+  {:slope :se2 :n}; nil under three points."
+  [pts]
+  (let [n (count pts)]
+    (when (>= n 3)
+      (let [xs (map (comp double first) pts) ys (map (comp double second) pts)
+            mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
+            sxx (reduce + (map #(Math/pow (- % mx) 2) xs))
+            b (/ (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys)) sxx)
+            rss (reduce + (map #(Math/pow (- %2 my (* b (- %1 mx))) 2) xs ys))]
+        {:slope b :se2 (/ (/ rss (- n 2)) sxx) :n n}))))
+
+(defn eb-drift
+  "Each fit's drift shrunk to the precision-weighted pooled slope mu by
+  empirical Bayes, tau^2 the DerSimonian-Laird between-cell variance:
+  drift = mu + tau^2/(tau^2 + se2) (slope - mu)."
+  [fits]
+  (let [k (count fits)
+        w (mapv #(/ 1.0 (max 1e-12 (:se2 %))) fits)
+        sw (reduce + w)
+        mu (/ (reduce + (map #(* %1 (:slope %2)) w fits)) sw)
+        q (reduce + (map #(* %1 (Math/pow (- (:slope %2) mu) 2)) w fits))
+        den (- sw (/ (reduce + (map #(* % %) w)) sw))
+        ;; one fit (or all weight on one): nothing to pool, keep the slopes
+        tau2 (if (or (< k 2) (<= den 0.0)) Double/POSITIVE_INFINITY (max 0.0 (/ (- q (dec k)) den)))]
+    (for [f fits]
+      (assoc f :drift (if (Double/isInfinite tau2)
+                        (:slope f)
+                        (+ mu (* (/ tau2 (+ tau2 (max 1e-12 (:se2 f)))) (- (:slope f) mu))))
+             :mu mu :tau2 tau2))))
+
 (defn- male [xs] (/ (reduce + (map #(Math/abs (double %)) xs)) (count xs)))
 
 (defn- forecast-test
@@ -147,10 +194,10 @@
   [cells group-fn]
   (let [base [1995 2000 2005 2008 2011]
         cells (filter #(and (every? (:shares %) base) (get (:shares %) 2022)) cells)
-        fits (keep (fn [c] (when-let [f (rc/ols-drift (map (fn [y] [y (Math/log (get (:shares c) y))]) base))]
+        fits (keep (fn [c] (when-let [f (ols-drift (map (fn [y] [y (Math/log (get (:shares c) y))]) base))]
                              (merge c f)))
                    cells)
-        fits (mapcat rc/eb-drift (vals (group-by group-fn fits)))
+        fits (mapcat eb-drift (vals (group-by group-fn fits)))
         err (fn [c d] (- (Math/log (get (:shares c) 2022)) (+ (Math/log (get (:shares c) 2011)) (* 11.0 d))))
         e0 (map #(err % 0.0) fits) e1 (map #(err % (:slope %)) fits) e2 (map #(err % (:drift %)) fits)
         d (map #(- (Math/abs %2) (Math/abs %1)) e0 e2)
@@ -183,9 +230,12 @@
               {:output output :input input :region region :shares sh})
         r2 (forecast-test all :output)]
     (show "recipe cells (primary)" r)
+    ;; registered and failed (bnm-1pq.6 review): the model carries no learned
+    ;; drift since (bnm-1pq.22); recorded here, not scored as a target
     (target "learned drift forecasts the 2022 shares better than 2011 constant (step 5, registered)"
-            (< (:eb r) (:none r))
-            (format "MALE %.3f with drift, %.3f without" (:eb r) (:none r)))
+            :na
+            (format "%s: MALE %.3f with drift, %.3f without; the filter is a local level, drift only where cited"
+                    (if (< (:eb r) (:none r)) "passed" "FAILED") (:eb r) (:none r)))
     (show "every input with a 2011 share of 1e-4 or more, outputs read by the recipes (secondary)" r2)))
 
 (defn -main [& _]

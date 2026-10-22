@@ -1,6 +1,7 @@
 (ns bnm.recipes-test
   (:require [augur.math :as am]
             [bnm.recipes :as rc]
+            [bnm.recipes-check :as rcc]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b tol] (and a b (< (Math/abs (- (double a) (double b))) tol)))
@@ -45,8 +46,8 @@
     (let [{:keys [m v]} (rc/prior-state p 2011)]
       (is (close? (Math/log 2.0) m 1e-12))
       (is (close? (/ (Math/log (/ 2.5 1.6)) 3.29) (Math/sqrt v) 1e-12))))
-  (testing "drift moves the centre from :drift-from on, flat before it"
-    (let [q (assoc p :drift -0.1 :drift-from 2005 :ref-year 2010)]
+  (testing "a cited drift moves the centre from :drift-from on, flat before it"
+    (let [q (assoc p :drift -0.1 :drift-cite [:test] :drift-from 2005 :ref-year 2010)]
       (is (close? (+ (Math/log 2.0) 0.5) (:m (rc/prior-state q 2000)) 1e-9) "flat before 2005")
       (is (close? (+ (Math/log 2.0) 0.5) (:m (rc/prior-state q 2005)) 1e-9))
       (is (close? (- (Math/log 2.0) 0.2) (:m (rc/prior-state q 2012)) 1e-9)))))
@@ -279,16 +280,107 @@
              (map (juxt :year :known :value) scaled))))))
 
 (deftest drift-learning
+  ;; the registered step-5 test's machinery (bnm.recipes-check), not the model's
   (testing "OLS slope and its variance on the log"
-    (let [f (rc/ols-drift [[1995 0.0] [2000 0.5] [2005 1.0] [2008 1.3] [2011 1.6]])]
+    (let [f (rcc/ols-drift [[1995 0.0] [2000 0.5] [2005 1.0] [2008 1.3] [2011 1.6]])]
       (is (close? 0.1 (:slope f) 1e-12))
       (is (close? 0.0 (:se2 f) 1e-12))))
   (testing "empirical Bayes shrinks noisy slopes to the pooled mean, none when they agree"
     (let [fits [{:slope 0.1 :se2 0.0001} {:slope -0.1 :se2 0.0001}
                 {:slope 0.5 :se2 1.0} {:slope -0.5 :se2 1.0}]
-          s (map :drift (rc/eb-drift fits))]
+          s (map :drift (rcc/eb-drift fits))]
       (is (close? 0.0 (reduce + s) 1e-9))
       (is (< (Math/abs (nth s 2)) 0.25) "the noisy one is shrunk")
       (is (close? 0.1 (first s) 0.01) "the sharp one is kept")))
   (testing "a lone fit keeps its own slope"
-    (is (= [0.3] (map :drift (rc/eb-drift [{:slope 0.3 :se2 0.01}]))))))
+    (is (= [0.3] (map :drift (rcc/eb-drift [{:slope 0.3 :se2 0.01}]))))))
+
+;; ------------------------------------------- no default drift (bnm-1pq.22)
+
+(def ^:private cited-drifts
+  #{"pv/silicon" "pv/silver" "li-ion/cobalt" "polysilicon/electricity"})
+
+(deftest a-recipe-without-a-cited-drift-has-zero-trend
+  (testing "the model learns no drift"
+    (is (nil? (resolve 'bnm.recipes/ols-drift)))
+    (is (nil? (resolve 'bnm.recipes/eb-drift))))
+  (testing "only the cited technology trajectories drift, each with its source"
+    (let [{:keys [recipes literature]} (rc/priors)]
+      (is (= cited-drifts (set (map :id (filter :drift recipes)))))
+      (doseq [r recipes :when (:drift r)]
+        (is (seq (:drift-cite r)) (:id r))
+        (is (every? literature (:drift-cite r)) (:id r))
+        (is (string? (:drift-basis r)) (:id r)))))
+  (testing "every other recipe in the file: a flat prior and a flat path without data"
+    (doseq [r (:recipes (rc/priors)) :when (not (cited-drifts (:id r)))
+            :let [rows (rc/filter-recipe (assoc r :regions ["WLD"] :sources [])
+                                         [] {:start 1990 :end 2025})
+                  ms (set (map :m rows))]]
+      (is (= (:m (rc/prior-state r 1990)) (:m (rc/prior-state r 2025))) (:id r))
+      (is (= 1 (count ms)) (:id r))))
+  (testing "between observations the state keeps its level: no trend from the data"
+    (let [obs [{:region "A" :year 2001 :known 2001 :value 2.3 :source 0}
+               {:region "A" :year 2003 :known 2003 :value 2.4 :source 0}]
+          ;; floor far below: the reported state is the filter's, untruncated
+          rows (rc/filter-recipe (assoc p :floor 0.001) obs opts)]
+      (doseq [y (range 2003 2011)]
+        (is (close? (:m (at rows "A" 2003)) (:m (at rows "A" y)) 1e-12) (str y)))))
+  (testing "a drift without a citation is refused, not applied"
+    (is (thrown? Exception (rc/prior-state (assoc p :drift -0.1) 2005))))
+  (testing "a cited drift still moves the prior"
+    (let [r (rc/recipe (rc/priors) "li-ion/cobalt")]
+      (is (< (:m (rc/prior-state r 2025)) (:m (rc/prior-state r 2015)))))))
+
+;; ------------------------------------- ammonia gas from UNSD (bnm-1pq.20)
+
+(deftest ammonia-gas-from-unsd-non-energy-gas
+  (let [nh3 (fn [ed known v] {:edition ed :known known :value v})
+        data {:iso2 {"DEU" "DE" "NOR" "NO" "PAK" "PK"}
+              :unsd {"DEU" {2010 {"gas_nonenergy" 80000.0} 2011 {"gas_nonenergy" 96000.0}}
+                     "NOR" {2010 {"gas_nonenergy" 50000.0}}
+                     "PAK" {2010 {"gas_nonenergy" 50000.0}}}
+              :nh3 {"DEU" {2010 [(nh3 2010 2012 3.0e6) (nh3 2011 2013 2.4e6)]
+                           2011 [(nh3 2011 2013 3.0e6)]}
+                    "NOR" {2010 [(nh3 2010 2012 0.5e6)]}
+                    "PAK" {2010 [(nh3 2010 2012 2.0e6)]}}}
+        s {:kind :unsd-ammonia :exclude ["NO"] :bias 0.1 :bias-sd 0.1 :sd0 0.3}
+        obs (rc/source-obs {} s data #{"DE" "NO" "WA"})
+        ;; TJ gross x 0.9 x 1000 / 48 GJ/t over t NH3, less the bias
+        v (fn [tj t] (/ (/ (* tj 0.9 1000.0) 48.0) t (Math/exp 0.1)))]
+    (testing "gas to non-energy use, gross to net, over USGS ammonia, the bias taken off"
+      (is (= #{["DE" 2010 2012 (v 80000.0 3.0e6)]
+               ["DE" 2010 2013 (v 80000.0 2.4e6)]
+               ["DE" 2011 2013 (v 96000.0 3.0e6)]}
+             (set (map (juxt :region :year :known :value) obs)))))
+    (testing "excluded countries (methanol) and countries outside the regions give none"
+      (is (not-any? #(#{"NO" "PK"} (:region %)) obs)))
+    (testing "the bias's sd widens the source's noise"
+      (is (close? (Math/sqrt 0.1) (rc/source-sd0 s) 1e-12))
+      (is (close? 0.3 (rc/source-sd0 {:sd0 0.3}) 1e-12))))
+  (testing "a persistent bias is a state: the data move the coefficient, but not all the way"
+    (let [q (assoc p :floor 0.001 :step 0.01)
+          obs (for [y (range 2000 2011)] {:region "A" :year y :known y :value 3.0 :source 0})
+          free (rc/run q obs opts)
+          biased (rc/run (assoc q :sources [{:kind :test :sd0 0.2 :bias-sd 0.2}]) obs opts)
+          f (at (:rows free) "A" 2010) b (at (:rows biased) "A" 2010)
+          m0 (Math/log 2.0)]
+      (is (< m0 (:m b) (:m f)) "moved, and less than without the bias")
+      (is (< (- (:m b) m0) (* 0.6 (- (Math/log 3.0) m0))) "an unknown country bias cannot be learned away")
+      (is (> (:v b) (:v f)))
+      (testing "the source's noise starts at :sd0, the bias held in the state"
+        (let [r (rc/run (assoc q :sources [{:kind :test :sd0 0.2 :bias-sd 0.2}]) [] opts)]
+          (is (close? 0.04 (:s (first (:noise r))) 1e-12))))))
+  (testing "the priors: ammonia gas reads UNSD, no EXIOBASE value shares"
+    (let [g (rc/recipe (rc/priors) "ammonia/gas")]
+      (is (= [:unsd-ammonia] (map :kind (:sources g))))
+      (is (pos? (:bias (first (:sources g))))))))
+
+(deftest named-region-sets-keep-their-prior-rows
+  (testing "a recipe on :exio-all has rows in every EXIOBASE region, data or not"
+    (let [data {:phys {["DE" "C_NFER" "C_GASE"] 1.0 ["CN" "C_NFER" "C_GASE"] 1.0
+                       ["WA" "C_NFER" "C_GASE"] 1.0 ["US" "C_CMNT" "C_GASE"] 1.0}}
+          q (rc/with-regions (assoc p :regions :exio-all :exclude ["CN"]) data)]
+      (is (= ["DE" "US" "WA"] (:regions q)))
+      (is (= #{"DE" "US" "WA"} (set (map :region (rc/filter-recipe q [] opts)))))))
+  (testing "a listed set is left as it is"
+    (is (= ["WLD"] (:regions (rc/with-regions (assoc p :regions ["WLD"]) {:phys {}}))))))
