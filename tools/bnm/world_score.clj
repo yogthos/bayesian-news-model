@@ -42,6 +42,16 @@
               both (boolean (and (hit? cj) (hit? ck)))]]
     [y (parse-double joint) (* (parse-double pj) (parse-double pk)) both place (str j ">" k)]))
 
+(defn linked-kinds
+  "The kinds with any relation input: the graph's children, the kinds
+  warned (bnm.ews-diag) and those with stock-flow states (bnm.state-diag);
+  nil without a graph."
+  [graph ews states]
+  (when graph
+    (-> (set (map second (keys graph)))
+        (into (keys (:warnings ews)))
+        (into (keys (:states states))))))
+
 (defn joint-path
   "The run's joint forecasts file, or nil when it wrote none (a run
   without relations)."
@@ -50,13 +60,12 @@
     (when (.exists (io/file f)) f)))
 
 (defn -main [& args]
-  (let [{:keys [run bench reps graph placebo ews]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run bench reps graph placebo ews states]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         reps (or (some-> reps parse-long) 400)
         all-ks (sort (filter #(.exists (io/file (str "data/runs/" run "/" % "/forecasts.tsv"))) (keys kinds/tiers)))
         ;; the kinds with any relation input: the graph's children and the kinds warned
-        _ (when (and ews (not graph)) (throw (ex-info "bnm.world-score: --ews needs --graph" {})))
-        linked (when graph (into (set (map second (keys (read-string (slurp graph)))))
-                                 (when ews (keys (:warnings (read-string (slurp ews)))))))
+        _ (when (and (or ews states) (not graph)) (throw (ex-info "bnm.world-score: --ews and --states need --graph" {})))
+        linked (when graph (linked-kinds (read-string (slurp graph)) (some-> ews slurp read-string) (some-> states slurp read-string)))
         ks (if linked (filter linked all-ks) all-ks)
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out (str s "\n"))))

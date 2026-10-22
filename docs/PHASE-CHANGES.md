@@ -1027,6 +1027,48 @@ place, beyond the base's own gauges, is too little to show in twenty
 years. The relations between events are not where the signal is; trial
 45 asks the slow stocks underneath them instead (docs/STOCK-FLOW.md).
 
+## Pre-registered, 22 October 2026: stock-flow states (trial 45)
+
+Registered before the training runs. Trial 44's diagnostics counted
+country-years as independent: a year's rows share its shocks, and a world
+series is the same at every country, so forty design years passed for
+thousands of observations (world series and their ten-year-shifted
+placebos alike reached likelihood ratios over 100). Links, warnings and
+states are now chosen by a score statistic whose variance sums within each
+year (bnm.relation-diag/clustered-test), the threshold Bonferroni-corrected
+for the candidates tried, each at least twice its placebo's. Rerun on
+t44-world-norel (origins 1960-2002):
+- links: five edges (data/runs/sequencing/graph-t45.edn): conflict onsets
+  to violence surges and war onsets, violence surges to war onsets (the
+  post-crisis regime), inflation crises to banking crises (inhibiting,
+  the year's excursion), growth collapses to protest surges (theory's
+  edge, its own part);
+- warnings: one (data/runs/sequencing/ews-t45.edn): growth collapses, the
+  log variance of GDP growth, lowering risk;
+- states (bead bnm-62z.13, data/runs/sequencing/states-t45.edn): of 4,530
+  kind-state candidates from the stock-flow models (food, Keen-Goodwin,
+  social tension, energy, technology, commodity cycles) and the material
+  base (read two years after its data year), three pass, all lowering
+  risk: coups, arable land's own part; fiscal consolidations, grain use's
+  and total power capacity's own parts. No world series passes.
+Each state is one more nested group at the year and half-decade nodes,
+its prior mean the design years' sign.
+
+Runs: **t45-world** (--graph graph-t45 --ews ews-t45 --states
+states-t45), **t45-world-placebo** (each country reading its parents, its
+warning and its states at the next country), bench **t44-world-norel**.
+
+**Tests**, one-sided 5%, 2003-2022:
+1. (primary) the linked kinds' year nodes (a parent, a warning or a
+   state: banking crises, coups, fiscal consolidations, growth collapses,
+   protest surges, violence surges, war onsets), t45-world against
+   t44-world-norel, pooled with equal weights; per kind for the record.
+   The unlinked kinds must match the bench exactly (a check);
+2. joint forecasts against independence over the five edges;
+3. t45-world against t45-world-placebo, pooled as 1;
+4. for the record, t45-world against t44-world on the kinds both link,
+   and coups and fiscal consolidations (the kinds with states) per kind.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:

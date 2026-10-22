@@ -13,3 +13,9 @@
 (deftest joint-path-only-when-the-run-wrote-one
   ;; a run without relations writes no joint forecasts: the joint test is skipped, not a crash
   (is (nil? (ws/joint-path "no-such-run-anywhere"))))
+
+(deftest linked-kinds-include-states
+  ;; a kind is linked when it has a parent, a warning or a stock-flow state
+  (is (= #{"b" "c" "d"}
+         (ws/linked-kinds {["a" "b"] {}} {:warnings {"c" []}} {:states {"d" [["x" 1]]}})))
+  (is (nil? (ws/linked-kinds nil nil nil))))
