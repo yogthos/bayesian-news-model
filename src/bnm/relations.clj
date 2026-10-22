@@ -60,8 +60,8 @@
                    {:x (double (:f e)) :reads (sh/reads r)}
                    none))
         :destab (let [r (sh/reader book {} {:kind kind :origin t})
-                      [o e] (sh/latest-before r :relation [scale place] t)
-                      prior (when o (map (comp :f val) (take 5 (some-> (get book [scale place]) (rsubseq < o)))))]
+                      [[_ e] & before] (sh/latest-n-before r :relation [scale place] t 6)
+                      prior (map (comp :f second) before)]
                   (if (and e (>= (count prior) 3))
                     {:x (- (double (:f e)) (/ (reduce + prior) (count prior))) :reads (sh/reads r)}
                     none))

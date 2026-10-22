@@ -87,6 +87,14 @@
     (record! r dir cell o :origin)
     [o e]))
 
+(defn latest-n-before
+  "[[origin entry] ...] of the cell's n latest sections strictly before t,
+  newest first; each recorded."
+  [r dir cell t n]
+  (let [es (take n (some-> (get (:book r) cell) (rsubseq < t)))]
+    (doseq [[o _] es] (record! r dir cell o :origin))
+    es))
+
 (defn over
   "[[origin entry] ...] of the cell's sections at origins in [lo, hi],
   oldest first; each recorded."

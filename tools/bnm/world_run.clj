@@ -13,10 +13,12 @@
   diag), each nested in the node's own model (with-relations).
 
     jolt -A:tools -M -m bnm.world-run --out world [--end m] [--kinds a,b] [--without-relations true]
-                                      [--smoke true] [--graph path] [--placebo true]
+                                      [--smoke true] [--graph path] [--placebo true] [--ews path]
 
   With --placebo, each country reads its parents at the next country in
-  sorted order: the links' placebo.
+  sorted order: the links' placebo. With --ews, each kind's early warning
+  (data/runs/sequencing/ews-t44.edn, bnm.ews-diag) is one more nested
+  group.
 
   Writes data/runs/<out>/<kind>/{forecasts,preds,weights}.tsv as the
   lattice tools do, principal.tsv (the principal contradiction of every
@@ -28,12 +30,16 @@
   year end from 2003, for each edge and country, the simulated chances of
   each onset and of both within three years, from what the world had
   learned by then)."
-  (:require [bnm.factors :as fac]
+  (:require [bnm.ews-diag :as ed]
+            [bnm.factors :as fac]
             [bnm.kinds :as kinds]
             [bnm.lattice :as lt]
             [bnm.lattice-banking :as lb]
             [bnm.lattice-political :as lp]
             [bnm.lattice-smoke :as smoke]
+            [bnm.named :as nm]
+            [bnm.slow-train :as st]
+            [bnm.stocks :as sk]
             [bnm.relations :as rl]
             [bnm.world :as w]
             [clojure.java.io :as io]
@@ -74,8 +80,10 @@
   a parent is left as it is.
   `source` maps the place to the one whose parents it reads (identity, or
   the placebo's other country)."
-  [sp parents books cats scales-of edges source]
-  (let [groups (into {} (for [[i j] (map-indexed vector parents)] [(keyword "rel" j) [i]]))
+  ([sp parents books cats scales-of edges source] (with-relations sp parents books cats scales-of edges source {}))
+  ([sp parents books cats scales-of edges source {:keys [warning]}]
+  (let [groups (cond-> (into {} (for [[i j] (map-indexed vector parents)] [(keyword "rel" j) [i]]))
+                 warning (assoc :rel/warning [(count parents)]))
         prior (:prior sp)
         ;; above the countries, a place reads the mean of its countries' inputs
         par (:parent sp)
@@ -121,7 +129,7 @@
                           {:x (if (seq vs) (/ (reduce + vs) (count vs)) 0.0) :reads (vec summary)}))))
         input (fn [bs j scale place t]
                 (rl/edge-input (:form (edges j)) {:kind j :book (bs j) :catalogue (cats j)} (scale-for j scale) place t))]
-    (if (empty? parents)
+    (if (and (empty? parents) (nil? warning))
       sp
     (assoc sp
            :relations (fn [scale place t]
@@ -134,15 +142,21 @@
                                                [(own-input bs j scale place t (map source ms))]
                                                (map #(input bs j scale (source %) t) ms))]
                                       {:x (/ (reduce + 0.0 (map :x rs)) (count rs)) :reads (mapcat :reads rs)}))]
-                          {:x (mapv :x ins) :reads (vec (mapcat :reads ins))}))
-           :relation-width (into {} (for [{n :name} (:scales sp)] [n (count parents)]))
+                          {:x (cond-> (mapv :x ins)
+                                ;; the kind's early warning: its countries' mean above them
+                                warning (conj (let [vs (keep #((:at warning) (source %) t) ms)]
+                                                (if (seq vs) (/ (reduce + vs) (double (count vs))) 0.0))))
+                           :reads (vec (mapcat :reads ins))}))
+           :relation-width (into {} (for [{n :name} (:scales sp)] [n (count groups)]))
            :relation-groups (into {} (for [{n :name} (:scales sp)] [n groups]))
            :relation-nest true
            :principal :auto
            :prior (fn [scale level lay]
                     (merge (when prior (prior scale level lay))
                            (into {} (for [j parents :let [ix (get-in lay [:parts (keyword "rel" j)])] :when (seq ix)]
-                                      [(first ix) [(* 0.2 (:sign (edges j) 1)) 0.1]]))))))))
+                                      [(first ix) [(* 0.2 (:sign (edges j) 1)) 0.1]]))
+                           (when-let [ix (seq (get-in lay [:parts :rel/warning]))]
+                             {(first ix) [(* 0.2 (:sign warning)) 0.1]}))))))))
 
 (defn placebo-source
   "The placebo's map from each country to the next in sorted order (the
@@ -153,6 +167,26 @@
   (let [cs (vec (sort countries))
         m (zipmap cs (conj (subvec cs 1) (first cs)))]
     (fn [place] (get m place place))))
+
+(defn warnings
+  "{kind {:sign :at (fn [country t])}} of each kind's early warning
+  ({kind [series indicator sign]}, bnm.ews-diag): the indicator of the
+  country's own part of the series over the window ending the data year
+  before the origin's."
+  [ews db countries]
+  (let [tree (fac/place-tree countries)
+        cs (filter tree countries)
+        sigs (into {} (pmap (fn [v]
+                              [v (ed/own-indicators
+                                  (into {} (for [c cs :let [byy (into (sorted-map)
+                                                                      (for [y (range 1950 2026)
+                                                                            :let [x (some-> (db [c v]) (sk/value (+ 11 (* 12 y)) {:stale 18}))]
+                                                                            :when x] [y (double x)]))]
+                                                 :when (seq byy)] [c byy]))
+                                  tree 12)])
+                            (distinct (map first (vals ews)))))]
+    (into {} (for [[k [v ind sign]] ews]
+               [k {:sign sign :at (fn [c t] (get-in sigs [v c (dec (quot t 12)) ind]))}]))))
 
 (defn build-specs
   "{kind spec} for `ks` to month `end`."
@@ -196,7 +230,7 @@
                                      [j {:form (:form (graph [j k])) :coef (nth eff i) :lag (:known-lag (cats j) 12)}]))}])))
 
 (defn -main [& args]
-  (let [{:keys [out end kinds without-relations smoke graph placebo]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [out end kinds without-relations smoke graph placebo ews]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         out (or out "world")
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
@@ -204,6 +238,10 @@
         ks (if kinds (str/split kinds #",") (sort (keys kinds/tiers)))
         graph (read-graph (or graph "data/runs/sequencing/graph-t43.edn"))
         parents (parents-of graph ks)
+        warn (when ews
+               (warnings (read-string (slurp ews))
+                         (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))
+                         (set (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats))))))
         _ (println "building" (count ks) "kinds")
         specs0 (build-specs ks end cats)
         books (atom {})
@@ -215,7 +253,8 @@
                                                       (into {} (for [[[j k'] e] graph :when (= k' k)] [j e]))
                                                       (if (= "true" placebo)
                                                         (placebo-source (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats))))
-                                                        identity)))
+                                                        identity)
+                                                      {:warning (get warn k)}))
                               (= "true" smoke) (assoc :trace :inputs))]))
         ;; the runner owns the books atom the relations read
         _ (println "running the world")

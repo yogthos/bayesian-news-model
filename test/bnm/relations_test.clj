@@ -46,7 +46,9 @@
     (is (= 0.0 (:x (in :post3 "B" 400))) "a place it never covers")
     (testing "destabilization: the latest state less its own recent mean"
       (is (= 1.0 (:x (in :destab "A" 72))))
-      (is (= [{:dir :relation :kind "bank" :scale :year :place "A" :origin 71}] (:reads (in :destab "A" 72))))
+      (is (= (for [o [71 59 47 35 23 11]] {:dir :relation :kind "bank" :scale :year :place "A" :origin o})
+             (:reads (in :destab "A" 72)))
+          "the latest state and the five it is set against, each read")
       (is (= 0.0 (:x (in :destab "A" 40))) "fewer than three before it: unknown")
       (is (= 0.0 (:x (in :destab "B" 72)))))
     (is (thrown? clojure.lang.ExceptionInfo (in :level "A" 72)) "the level is not a link's form")))

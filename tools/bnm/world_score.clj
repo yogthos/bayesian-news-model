@@ -15,7 +15,7 @@
      parents at another), pooled as 1.
 
     jolt -A:tools -M -m bnm.world-score --run world --bench world-norel [--reps 400]
-                                        [--graph path] [--placebo run]
+                                        [--graph path] [--ews path] [--placebo run]
 
   Prints and writes data/runs/<run>/world-score.txt."
   (:require [augur.score :as sc]
@@ -43,10 +43,12 @@
     [y (parse-double joint) (* (parse-double pj) (parse-double pk)) both place (str j ">" k)]))
 
 (defn -main [& args]
-  (let [{:keys [run bench reps graph placebo]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run bench reps graph placebo ews]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         reps (or (some-> reps parse-long) 400)
         all-ks (sort (filter #(.exists (io/file (str "data/runs/" run "/" % "/forecasts.tsv"))) (keys kinds/tiers)))
-        linked (when graph (set (map second (keys (read-string (slurp graph))))))
+        ;; the kinds with any relation input: the graph's children and the kinds warned
+        linked (when graph (into (set (map second (keys (read-string (slurp graph)))))
+                                 (when ews (keys (read-string (slurp ews))))))
         ks (if linked (filter linked all-ks) all-ks)
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out (str s "\n"))))

@@ -86,3 +86,9 @@
   ;; a neighbour's value carried to the section's terms by its edge's map
   ;; (identity by default): a loading, a stock's integration
   (is (= {:parent 1.0} (sh/coboundary 2.0 {:parent 0.5} {:parent #(* 2.0 %)}))))
+
+(deftest the-latest-n-before
+  ;; the n latest sections strictly before t, newest first, each recorded
+  (let [r (sh/reader book)]
+    (is (= [[11 {:s 2.0}] [10 {:s 1.0}]] (vec (sh/latest-n-before r :relation [:month "a1"] 12 2))))
+    (is (= [11 10] (map :origin (sh/reads r))))))

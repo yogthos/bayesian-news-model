@@ -914,3 +914,58 @@ its parents at the next country in sorted order), and trial 42's
 3. the links against their placebo: t43-world against t43-world-placebo,
    pooled as 1. A gain on 1 without one here would be the period's, not
    the links'.
+
+**Results, 22 October 2026 (trial 43).**
+1. **Links against none** (primary), the eight linked kinds' year nodes,
+   2003-2022: Brier -0.00012 [-0.00030 +0.00005], log -0.00081 [-0.00161
+   +0.00005]: level. Trial 42's loss (-0.00133) is gone, but nothing is
+   gained. Per kind all are level on Brier; protest surges lose on log
+   score (-0.00386 [-0.00716 -0.00051]). The five kinds without a parent
+   match the bench exactly (largest difference 0): the plumbing is sound.
+2. **Joint forecasts against independence**: Brier -0.00002 [-0.00004
+   +0.00001], level; log -0.00301, a loss.
+3. **The links against their placebo**: Brier -0.00006 [-0.00021
+   +0.00009], level.
+
+The bugs fixed and the links nested, they no longer cost; as passed (the
+raw post-crisis regime, excursions, destabilization) they carry what the
+period shares as much as what the parent did at the place: the
+diagnostic after trial 43 (bnm.relation-diag with bnm.factors' own parts)
+shows that taking each form's own part removes the placebo's gain and
+uncovers within-country links (growth collapses and inflation crises to
+coups among them). Trial 44 tests that.
+
+## Pre-registered, 22 October 2026: own parts and early warnings (trial 44)
+
+Registered before the training runs. Two changes on trial 43, chosen on
+the design years (1960-2002) against trial 42's world without relations:
+- links may pass a form's own part (bnm.factors: the parent's input at
+  the country less what the world's and the region's countries share at
+  t, loadings learned online); the rule (bnm.relation-diag/choose-form)
+  now chooses among raw and own forms, preferring the post-crisis regime;
+  sixteen of 22 edges kept (data/runs/sequencing/graph-t44.edn), three
+  new: conflict onsets, growth collapses and inflation crises to coups;
+- each kind may carry one early warning (bnm.ews: lag-1 autocorrelation,
+  variance and their trends over the 12 data years before the origin, of
+  the country's own part of GDP growth, inflation or food inflation),
+  chosen by the same gain and placebo rule, its sign the design years'
+  (theory's sign, more slowing down more risk, did not hold: the
+  warnings that pass mostly lower risk); ten kinds
+  (data/runs/sequencing/ews-t44.edn), one nested group each.
+Above the countries an own edge passes its members' mean common part.
+Also the code: the lattice's reads go through bnm.sheaf (outputs
+unchanged, pinned by a golden snapshot), augur v0.8.0.
+
+Runs: **t44-world** (--graph graph-t44 --ews ews-t44), **t44-world-
+placebo** (each country reading its parents and its warning at the next
+country), bench **t42-world-norel**.
+
+**Tests**, one-sided 5%, 2003-2022:
+1. (primary) the linked kinds' year nodes (every kind with a parent or a
+   warning: all but food price shocks and market crashes), t44-world
+   against t42-world-norel, pooled with equal weights; per kind for the
+   record, Holm. Food price shocks and market crashes must match the
+   bench exactly (a check);
+2. joint forecasts against independence over the sixteen edges;
+3. t44-world against t44-world-placebo, pooled as 1;
+4. for the record, t44-world against t43-world on the kinds both link.

@@ -22,7 +22,8 @@
   carries what the period and the place share; the common parts are what
   the region and world nodes carry."
   (:require [augur.dynamic :as d]
-            [bnm.geo :as geo]))
+            [bnm.geo :as geo]
+            [bnm.sheaf :as sh]))
 
 (defn place-tree
   "{place parent} of `countries` on the gazetteer: country, subregion,
@@ -34,8 +35,7 @@
                  kv [[c sub] [sub reg] [reg "world"]]]
              kv)))
 
-(defn- ancestors-of [parent place]
-  (vec (take-while some? (rest (iterate parent place)))))
+(defn- ancestors-of [parent place] (sh/ancestors {:parent parent} place))
 
 (defn- sums
   "{place [sum count]} of the countries' values at t."

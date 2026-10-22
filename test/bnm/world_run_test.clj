@@ -80,7 +80,7 @@
       (let [rs (:reads (a :half-decade "AAA" 95))]
         (is (some #(and (= "AAA" (:place %)) (= :half-decade (:scale %))) rs))
         (is (some #(= :cross-section (:place %)) rs))
-        (is (<= (count rs) 2))
+        (is (<= (count rs) 7) "its six states and the cross-section's one")
         (is (every? #(< (:origin %) 95) rs))))
     (testing "a region: its countries' mean common part (what they share), never a level"
       (let [st (loop [[t & ts] [59 71 83 95] st (bnm.factors/online par {:discount 0.99}) out nil]
@@ -103,3 +103,24 @@
         real (mk identity) fake (mk (wr/placebo-source cs))]
     (doseq [t [59 71 83]] (real :year "AAA" t) (fake :year "AAA" t))
     (is (not= (:x (real :year "Reg" 95)) (:x (fake :year "Reg" 95))))))
+
+(deftest a-warning-as-a-nested-group
+  ;; a kind's early warning (bnm.ews-diag) enters beside its links as one
+  ;; more nested group, its prior at the design years' sign; a region
+  ;; reads its countries' mean; a kind with a warning and no parent still
+  ;; gets it
+  (let [par {"AAA" "Reg" "BBB" "Reg" "Reg" "world"}
+        warn {:sign -1 :at (fn [c t] ({["AAA" 23] 2.0 ["BBB" 23] 4.0} [c t]))}
+        sp (wr/with-relations {:scales [{:name :year}] :parent par} [] (atom {}) {} {} {} identity {:warning warn})]
+    (is (= {:rel/warning [0]} (get-in sp [:relation-groups :year])))
+    (is (= [2.0] (:x ((:relations sp) :year "AAA" 23))))
+    (is (= [3.0] (:x ((:relations sp) :year "Reg" 23))))
+    (is (= [0.0] (:x ((:relations sp) :year "AAA" 35))) "unknown: 0")
+    (is (= {5 [-0.2 0.1]} ((:prior sp) :year :country {:parts {:rel/warning [5]}})))))
+
+(deftest the-placebo-reads-another-country-s-warning
+  (let [par {"AAA" "Reg" "BBB" "Reg" "Reg" "world"}
+        warn {:sign 1 :at (fn [c _] ({"AAA" 2.0 "BBB" 4.0} c))}
+        sp (wr/with-relations {:scales [{:name :year}] :parent par} [] (atom {}) {} {} {}
+                              (wr/placebo-source ["AAA" "BBB"]) {:warning warn})]
+    (is (= [4.0] (:x ((:relations sp) :year "AAA" 23))))))
