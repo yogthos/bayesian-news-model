@@ -61,3 +61,13 @@ mechanical ones are smoke checks (bnm.lattice-smoke).
     first suspected of a bug: trace each read, check it is live, compare a
     case that must match exactly (a kind with no parent against the world
     without links), and diagnose on the design years before redesigning.
+
+11. **Space is A5 cells.** Every located quantity (a mine, a field, a
+    plant, a gridded value, an event's coordinates) is keyed by its
+    equal-area A5 cell (dodeca, resolution 6, about 8,300 km², coarser
+    and finer by parent and children); a cell across a border is one
+    entry per country. Countries, provinces and regions are aggregations
+    of cells, never the storage. Which unit inference reads (cells or
+    provinces) is decided by trials: the 2026 pilot, with only event
+    coordinates to go on, found cells lost to provinces (docs/RESEARCH.md);
+    it is rerun once cells carry what is in them.
