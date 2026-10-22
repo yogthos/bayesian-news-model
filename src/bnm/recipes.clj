@@ -21,10 +21,19 @@
   used.
 
   The floor (the thermodynamic or stoichiometric minimum) bounds the
-  coefficient below. The prior is truncated at it, and since truncation
-  is a multiplication by an indicator, the posterior is the unconstrained
-  Gaussian posterior truncated at the floor: the filter runs unconstrained
-  and every reported state is truncated, by its moments (`truncate`).
+  coefficient below. The filter runs unconstrained and every reported
+  state is truncated at the floor, by its moments (`truncate`). That is
+  the exact posterior for a constraint on the reported year alone; the
+  physics holds every year, and conditioning on that too would also move
+  the path, so this is an approximation. It matters only where data push
+  the state toward the floor.
+
+  The variance cap (the state's variance never above the prior's) binds
+  only in long stretches without data; it caps uncertainty, not the mean,
+  which the data move freely. The screen is against the prior, not the
+  filter's prediction: a coefficient that really left its prior by more
+  than :screen-sds would have its data flagged, so a recipe whose data
+  are mostly flagged (recipes-check prints the share) is mostly prior.
 
   Causality: the posterior of year Y uses only the observations known by
   Y, each entering at its data year (the filter is rerun from the start
@@ -43,7 +52,7 @@
             [clojure.string :as str]))
 
 (def source-kinds
-  #{:test :exio :exio-ammonia :exio-power-share :stage :bf-coal :unsd-heat-rate :unsd-ratio
+  #{:test :exio :exio-ammonia :exio-power-share :stage :bf-ore :bf-coal :unsd-heat-rate :unsd-ratio
     :fao-nutrient})
 
 (defn priors
@@ -279,6 +288,13 @@
                      (assoc-in acc [(:iso m) (parse-long (:year m)) (:series m)] (num (:value m))))
                    {} (csv-rows (f "recipe-obs/unsd.csv")))
      :fao (csv-rows (f "recipe-obs/fao.csv"))
+     :iron (if (.exists (io/file (f "recipe-obs/iron.csv")))
+             (reduce (fn [acc m]
+                       (update-in acc [(:series m) (parse-long (:year m))] (fnil conj [])
+                                  {:edition (parse-long (:edition m)) :known (parse-long (:known m))
+                                   :value (num (:value m))}))
+                     {} (csv-rows (f "recipe-obs/iron.csv")))
+             {})
      :cereals (reduce (fn [acc m]
                         (if (= "production" (:element m))
                           (update-in acc [(:iso m) (parse-long (:year m))] (fnil + 0.0) (or (num (:value m)) 0.0))
@@ -324,16 +340,18 @@
 (defn- implied
   "The 2011 coefficient a, carried to each pxp year by the value share of
   `inputs` and the relative price: [{:year :known :value}], 2011 itself
-  included."
+  included. An earlier year's value is known only with 2011's (2014)."
   [data region output inputs price a]
   (let [s0 (share-sum data region output inputs hybrid-year)]
+    ;; every implied value carries a(2011), s(2011) and the 2011 prices:
+    ;; none is known before the hybrid table is
     (cons {:year hybrid-year :known (+ hybrid-year exio-lag) :value a}
           (when (and price (pos? s0))
             (for [y pxp-years :when (not= y hybrid-year)
                   :let [s (share-sum data region output inputs y)
                         rp (relative-price data price y)]
                   :when (and (pos? s) rp)]
-              {:year y :known (+ y exio-lag) :value (* a (/ s s0) rp)})))))
+              {:year y :known (+ (max y hybrid-year) exio-lag) :value (* a (/ s s0) rp)})))))
 
 (defn- phys-sum
   "Sum over inputs of phys x factor (x the fuel's NCV, TJ/t, when conv is
@@ -408,6 +426,51 @@
             :let [a (total nv) b (reduce + 0.0 (map :quantity dv))]
             :when (and (pos? a) (pos? b))]
         {:region "WLD" :year y :known k :value (* (/ a b) (double (or factor 1.0)))}))))
+
+(defn- iron-at
+  "The latest edition of an iron.csv series' year known by k, nil if none."
+  [data series y k]
+  (let [vs (filter #(<= (long (:known %)) k) (get-in data [:iron series y]))]
+    (when (seq vs) (apply max-key :edition vs))))
+
+(defmethod source-obs :bf-ore [p s data regions]
+  ;; World iron ore over pig iron, ore for direct reduction taken off:
+  ;; [BGS ore outside China + China's ore - DRI x :dri-ore] / pig iron.
+  ;; :china :usable is USGS's usable ore where it reports it (2010 on);
+  ;; :china :scaled the years before, BGS crude ore x the first published
+  ;; usable/crude ratio, known only once that ratio is.
+  (when (regions "WLD")
+    (let [rows (filter #(= "iron" (:commodity %)) (:stages data))
+          by (group-by (juxt :stage :year) rows)
+          usable (get-in data [:iron "china_usable"])
+          y0 (when (seq usable) (apply min (keys usable)))
+          ratio (when y0
+                  (let [u (apply min-key :edition (usable y0))
+                        c (filter #(= "CHN" (:iso %)) (by ["mine" y0]))]
+                    (when (seq c)
+                      (let [c0 (apply min-key :known c)]
+                        {:r (/ (:value u) (:quantity c0)) :known (max (:known u) (:known c0))}))))
+          dri-ore (double (or (:dri-ore s) 1.45))]
+      (for [y (sort (distinct (map :year rows)))
+            :let [mr (by ["mine" y]) sr (by ["smelter" y])
+                  scaled? (= :scaled (:china s))]
+            :when (and (seq mr) (seq sr) (if scaled? (and ratio (< y y0)) (contains? usable y)))
+            k (sort (distinct (concat (map :known mr) (map :known sr)
+                                      (map :known (get-in data [:iron "dri_world" y]))
+                                      (when-not scaled? (map :known (usable y))))))
+            :let [mv (stg/vintage mr k) sv (stg/vintage sr k)
+                  d (iron-at data "dri_world" y k)
+                  cu (when-not scaled? (iron-at data "china_usable" y k))
+                  chn (filter #(= "CHN" (:iso %)) mv)
+                  ex (reduce + 0.0 (map :quantity (remove #(= "CHN" (:iso %)) mv)))
+                  china (if scaled?
+                          (when (seq chn) (* (:r ratio) (reduce + 0.0 (map :quantity chn))))
+                          (:value cu))
+                  pig (reduce + 0.0 (map :quantity sv))]
+            :when (and (seq mv) d china (pos? pig))
+            :let [a (- (+ ex china) (* dri-ore (:value d)))]
+            :when (pos? a)]
+        {:region "WLD" :year y :known (if scaled? (max k (:known ratio)) k) :value (/ a pig)}))))
 
 (defn- unsd-get [data iso y k] (get-in data [:unsd iso y k]))
 
@@ -510,3 +573,58 @@
             {:keys [recipe region year mean sd median n-obs]} rows]
       (.write w (str recipe "," region "," year "," (format "%.6g" (double mean)) ","
                      (format "%.6g" (double sd)) "," (format "%.6g" (double median)) "," n-obs "\n")))))
+
+;; ------------------------------------------- drift (registered test, step 5)
+
+(defn ols-drift
+  "The least-squares slope of [[year log-value]] and its variance:
+  {:slope :se2 :n}; nil under three points."
+  [pts]
+  (let [n (count pts)]
+    (when (>= n 3)
+      (let [xs (map (comp double first) pts) ys (map (comp double second) pts)
+            mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
+            sxx (reduce + (map #(Math/pow (- % mx) 2) xs))
+            b (/ (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys)) sxx)
+            rss (reduce + (map #(Math/pow (- %2 my (* b (- %1 mx))) 2) xs ys))]
+        {:slope b :se2 (/ (/ rss (- n 2)) sxx) :n n}))))
+
+(defn eb-drift
+  "Each fit's drift shrunk to the precision-weighted pooled slope mu by
+  empirical Bayes, tau^2 the DerSimonian-Laird between-cell variance:
+  drift = mu + tau^2/(tau^2 + se2) (slope - mu)."
+  [fits]
+  (let [k (count fits)
+        w (mapv #(/ 1.0 (max 1e-12 (:se2 %))) fits)
+        sw (reduce + w)
+        mu (/ (reduce + (map #(* %1 (:slope %2)) w fits)) sw)
+        q (reduce + (map #(* %1 (Math/pow (- (:slope %2) mu) 2)) w fits))
+        den (- sw (/ (reduce + (map #(* % %) w)) sw))
+        ;; one fit (or all weight on one): nothing to pool, keep the slopes
+        tau2 (if (or (< k 2) (<= den 0.0)) Double/POSITIVE_INFINITY (max 0.0 (/ (- q (dec k)) den)))]
+    (for [f fits]
+      (assoc f :drift (if (Double/isInfinite tau2)
+                        (:slope f)
+                        (+ mu (* (/ tau2 (+ tau2 (max 1e-12 (:se2 f)))) (- (:slope f) mu))))
+             :mu mu :tau2 tau2))))
+
+(defn share-cells
+  "The value shares the EXIOBASE-read recipes rest on: for each :exio or
+  :exio-ammonia source with inputs, each of its regions, {:recipe :region
+  :output :inputs :shares {year summed share}}."
+  [pr data]
+  (for [p (:recipes pr)
+        s (:sources p)
+        :when (#{:exio :exio-ammonia} (:kind s))
+        :let [output (or (:output s) "C_NFER")
+              inputs (case (:route s)
+                       :gas ["C_GASE" "C_GASD"]
+                       :coal ammonia-coals
+                       :coal-share nil
+                       (or (:share-inputs s) (keys (:inputs s))))]
+        :when inputs
+        r (sort (region-set p data))
+        :let [sh (into (sorted-map) (for [y pxp-years :let [v (share-sum data r output inputs y)]
+                                         :when (pos? v)] [y v]))]
+        :when (seq sh)]
+    {:recipe (:id p) :region r :output output :inputs inputs :shares sh}))

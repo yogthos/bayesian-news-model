@@ -201,3 +201,94 @@
       (is (every? #(<= 0.5 (:mean %) 0.9) (:rows g)))
       (is (every? zero? (map :n-obs (:rows o))) "a zero cannot be a coefficient on the log")
       (is (every? #(<= 1.4 (:mean %) 1.7) (:rows o))))))
+
+;; ------------------------------------------------- review (bnm-1pq.6 audit)
+
+(deftest a-corrupted-future-observation-changes-nothing-before-it-is-known
+  (let [base [{:region "A" :year 2001 :known 2002 :value 2.1 :source 0}
+              {:region "A" :year 2004 :known 2005 :value 1.9 :source 0}
+              {:region "B" :year 2003 :known 2004 :value 2.2 :source 0}]
+        honest (conj base {:region "A" :year 2003 :known 2008 :value 2.0 :source 0})
+        ;; the same data year, a later vintage, wild but inside the screen;
+        ;; and a corrupted new vintage of a year already known
+        corrupt (conj base
+                      {:region "A" :year 2003 :known 2008 :value 3.9 :source 0}
+                      {:region "A" :year 2001 :known 2009 :value 3.9 :source 0}
+                      {:region "B" :year 2003 :known 2009 :value 1.55 :source 0})
+        r1 (rc/run p honest opts) r2 (rc/run p corrupt opts)]
+    (doseq [y (range 2000 2008) reg ["A" "B"]]
+      (is (= (at (:rows r1) reg y) (at (:rows r2) reg y)) (str reg " " y)))
+    (testing "and the shared noise known by 2007 is the same"
+      (is (= (:noise (rc/run p honest (assoc opts :end 2007)))
+             (:noise (rc/run p corrupt (assoc opts :end 2007))))))
+    (testing "the corrupted vintage replaces the earlier one when known"
+      (is (= 3 (:n-obs (at (:rows r2) "A" 2009))) "2001, 2003 and 2004, not a fourth")
+      (is (> (:median (at (:rows r2) "A" 2009)) (:median (at (:rows r1) "A" 2009)))))))
+
+(deftest the-hybrid-coefficient-is-not-used-before-it-is-known
+  (testing "a pxp year's implied coefficient carries a(2011): known no earlier than 2014"
+    (let [data {:shares {["A" "OUT"] {1995 {"IN" 0.1} 2011 {"IN" 0.1} 2019 {"IN" 0.12}}}
+                :prices {"o" {1995 [1.0 1.0] 2011 [1.0 1.0] 2019 [1.0 1.0]}
+                         "i" {1995 [1.0 1.0] 2011 [1.0 1.0] 2019 [1.0 1.0]}}}
+          obs (#'rc/implied data "A" "OUT" ["IN"] {:out ["o"] :in ["i"]} 2.0)
+          by (into {} (map (juxt :year :known) obs))]
+      (is (= {1995 2014 2011 2014 2019 2022} by)))))
+
+(deftest truncation-is-of-the-reported-state-only
+  (testing "rows are the unconstrained filter's state truncated at the floor (exact for the
+            constraint on that year's coefficient, an approximation to one on every year)"
+    (let [obs (for [y (range 2000 2011)] {:region "A" :year y :known y :value 1.3 :source 0})
+          q (assoc p :floor 0.001)
+          free (rc/filter-recipe q obs opts)
+          rows (rc/filter-recipe p obs opts)]
+      (doseq [y [2003 2010]]
+        (let [f (at free "A" y) r (at rows "A" y)]
+          (is (close? (:m (rc/truncate (select-keys f [:m :v]) (Math/log 1.5))) (:m r) 1e-9)))))))
+
+(deftest the-screen-is-against-the-prior-and-sd0
+  (testing "at :screen-sds predictive sds of the prior plus sd0: just inside is used, just outside flagged"
+    (let [sd (Math/sqrt (+ (Math/pow (/ (Math/log (/ 2.5 1.6)) 3.29) 2) 0.04))
+          inside (* 2.0 (Math/exp (* 3.9 sd))) outside (* 2.0 (Math/exp (* 4.1 sd)))
+          r (rc/run p [{:region "A" :year 2002 :known 2002 :value inside :source 0}
+                       {:region "B" :year 2002 :known 2002 :value outside :source 0}] opts)]
+      (is (= 1 (:flags r)))
+      (is (= 1 (:n-obs (at (:rows r) "A" 2005))))
+      (is (= 1 (:n-flagged (at (:rows r) "B" 2005)))))))
+
+(deftest blast-furnace-ore-from-usable-ore-less-dri
+  (let [st (fn [stage iso y q k] {:commodity "iron" :stage stage :iso iso :year y :quantity q :known k :source "BGS"})
+        data {:stages [(st "mine" "AUS" 2005 1000.0 2007) (st "mine" "CHN" 2005 600.0 2007)
+                       (st "smelter" "AUS" 2005 500.0 2007)
+                       (st "mine" "AUS" 2012 1000.0 2014) (st "mine" "CHN" 2012 600.0 2014)
+                       (st "smelter" "AUS" 2012 500.0 2014)]
+              :iron {"china_usable" {2010 [{:edition 2014 :known 2016 :value 200.0}]
+                                     2012 [{:edition 2014 :known 2016 :value 180.0}
+                                           {:edition 2016 :known 2018 :value 150.0}]}
+                     "dri_world" {2005 [{:edition 2007 :known 2009 :value 40.0}]
+                                  2012 [{:edition 2014 :known 2016 :value 60.0}]}}}
+        crude2010 {:stages (conj (:stages data) (st "mine" "CHN" 2010 800.0 2012))}
+        data (merge data crude2010)
+        usable (rc/source-obs {} {:kind :bf-ore :china :usable :dri-ore 1.5} data #{"WLD"})
+        scaled (rc/source-obs {} {:kind :bf-ore :china :scaled :dri-ore 1.5} data #{"WLD"})]
+    (testing "China's usable ore replaces its crude ore, each edition from its known year; DRI ore is taken off"
+      (is (= #{[2012 2016 (/ (- (+ 1000.0 180.0) 90.0) 500.0)]
+               [2012 2018 (/ (- (+ 1000.0 150.0) 90.0) 500.0)]}
+             (set (map (juxt :year :known :value) usable)))))
+    (testing "before USGS reports usable ore, crude ore at the first published ratio, known from then"
+      (is (= [[2005 2016 (/ (- (+ 1000.0 (* 600.0 (/ 200.0 800.0))) 60.0) 500.0)]]
+             (map (juxt :year :known :value) scaled))))))
+
+(deftest drift-learning
+  (testing "OLS slope and its variance on the log"
+    (let [f (rc/ols-drift [[1995 0.0] [2000 0.5] [2005 1.0] [2008 1.3] [2011 1.6]])]
+      (is (close? 0.1 (:slope f) 1e-12))
+      (is (close? 0.0 (:se2 f) 1e-12))))
+  (testing "empirical Bayes shrinks noisy slopes to the pooled mean, none when they agree"
+    (let [fits [{:slope 0.1 :se2 0.0001} {:slope -0.1 :se2 0.0001}
+                {:slope 0.5 :se2 1.0} {:slope -0.5 :se2 1.0}]
+          s (map :drift (rc/eb-drift fits))]
+      (is (close? 0.0 (reduce + s) 1e-9))
+      (is (< (Math/abs (nth s 2)) 0.25) "the noisy one is shrunk")
+      (is (close? 0.1 (first s) 0.01) "the sharp one is kept")))
+  (testing "a lone fit keeps its own slope"
+    (is (= [0.3] (map :drift (rc/eb-drift [{:slope 0.3 :se2 0.01}]))))))

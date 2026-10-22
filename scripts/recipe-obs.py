@@ -39,6 +39,20 @@ data/derived/supply/recipe-obs/:
                                    injected (0100, 084);
                     refinery_in    kt into refineries (GR, 086);
                     refinery_out   kt of gross refinery output (GR, O).
+  iron.csv        series,year,edition,known,value
+                  USGS Minerals Yearbook series for the blast-furnace ore
+                  recipe, every edition kept (a later one replaces an
+                  earlier one in bnm.recipes once known), t:
+                    china_usable  China's usable iron ore, gross weight:
+                                  MYB editions from 2014 on (2014-2015
+                                  label it usable ore; from 2016 the
+                                  country row is usable ore), and the 2024
+                                  volume III table (2020-2024);
+                    dri_world     world direct-reduced iron, gross weight:
+                                  the MYB world total of each edition, and
+                                  the 2024 volume III country sum.
+                  Volume I editions are known edition + 2, the 2024
+                  volume III table in 2026.
   fao.csv         iso,year,known,nutrient,element,tonnes
                   FAOSTAT Inputs_FertilizersNutrient: N, P2O5 and K2O,
                   agricultural use and production, tonnes of nutrient;
@@ -51,6 +65,7 @@ Run with the scratchpad venv (pandas, numpy, pycountry).
 import csv
 import io
 import os
+import re
 import sys
 import zipfile
 from importlib import util as _util
@@ -64,6 +79,9 @@ PXP = os.path.join(ROOT, "raw/exiobase/v3.8.2-pxp")
 UNSD = os.path.join(ROOT, "raw/material/unsd-energy/by-commodity")
 FAO = os.path.join(ROOT, "raw/material/faostat-fertilizers/Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip")
 OUT = os.path.join(ROOT, "derived/supply/recipe-obs")
+MYB = os.path.join(ROOT, "raw/material/usgs-myb/world-production-1990-2022/USGS_MYB_V1_Production_Data_Release.csv")
+MYB3 = os.path.join(ROOT, "raw/material/usgs-myb/2024-vol3/2024MYBv3_Production_table.csv")
+MYB_LAG = 2
 
 _spec = _util.spec_from_file_location("material", os.path.join(HERE, "material.py"))
 _material = _util.module_from_spec(_spec)
@@ -214,15 +232,59 @@ def fao():
         w.writerows(sorted(rows))
 
 
+def iron():
+    rows = {}
+    with open(MYB, newline="", encoding="utf-8-sig") as fh:
+        for d in csv.DictReader(fh):
+            if d["UNIT_DETAIL"] != "Gross weight" or not re.fullmatch(r"-?[0-9.]+", d["QUANTITY"]):
+                continue
+            m = re.match(r"MYB_(\d{4})_", d["DATA_SOURCE"])
+            if not m:
+                continue
+            ed = int(m.group(1))
+            q = float(d["QUANTITY"]) * 1000.0
+            ctry = d["COUNTRY_OR_REGION"].split("\n")[0].strip()
+            c, form, det = d["COMMODITY"], d["COMMODITY_FORM"], d["FORM_DETAIL"]
+            series = None
+            if c == "Iron ore" and form == "Mine" and ctry == "China" and q > 0:
+                if det == "Usable ore" or (det == "Unspecified" and ed >= 2016):
+                    series = "china_usable"
+            elif c == "Iron and steel" and form == "Direct-reduced iron" and ctry.startswith("World"):
+                series = "dri_world"
+            if series:
+                rows[(series, int(d["YEAR"]), ed)] = (ed + MYB_LAG, q)
+    dri = {}
+    with open(MYB3, newline="", encoding="utf-8-sig") as fh:
+        for d in csv.DictReader(fh):
+            if not d["Value"]:
+                continue
+            y = int(d["Time Period"])
+            if d["Level 2 (Commodity)"] == "Direct-reduced iron":
+                dri[y] = dri.get(y, 0.0) + float(d["Value"])
+            elif (d["Country (Short Form) or Locality"] == "China" and d["Level 2 (Commodity)"] == "Iron ore"
+                  and d["Descriptor"] == "Usable" and d["Commodity Unit"] == "Gross weight"):
+                rows[("china_usable", y, 2024)] = (2026, float(d["Value"]))
+    for y, q in dri.items():
+        rows[("dri_world", y, 2024)] = (2026, q)
+    with open(os.path.join(OUT, "iron.csv"), "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["series", "year", "edition", "known", "value"])
+        for (s, y, ed), (k, q) in sorted(rows.items()):
+            w.writerow([s, y, ed, k, f"{q:.6g}"])
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
-    what = sys.argv[2:] or ["unsd", "fao", "pxp"]
+    what = sys.argv[2:] or ["unsd", "fao", "iron", "pxp"]
     if "unsd" in what:
         unsd()
         print("unsd.csv written", flush=True)
     if "fao" in what:
         fao()
         print("fao.csv written", flush=True)
+    if "iron" in what:
+        iron()
+        print("iron.csv written", flush=True)
     if "pxp" in what:
         pxp_shares()
         print("pxp-shares.csv written", flush=True)
