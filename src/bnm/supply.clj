@@ -98,6 +98,79 @@
   (Atalay 2017; Boehm, Flaaen & Pandalai-Nayar 2019)."
   0.2)
 
+(def energy-sigma
+  "The elasticity of substitution among the heat fuels of an output's
+  energy bundle (gas, oil, coal, electricity, steam): the prior 0.5, half
+  the interfuel elasticities of the medium-run energy models (GTAP-E's 1
+  between gas and oil, 0.5 between coal and the rest; MIT EPPA's 1) for a
+  horizon of months, between Moll et al.'s (2023) glass furnace that
+  cannot switch overnight and the dual-fuel boilers and kilns their 36
+  cases of German firms switched in 2022. Held at their availability, the
+  other fuels cannot rise, so a bundle loses at least the cut fuel's share
+  of the heat times its cut whatever sigma: sigma moves the loss within
+  that (a 40% cut of half the heat: 20% linear, 25% at 0.5, 29% at 0.2)."
+  0.5)
+
+(def equipment
+  "Machinery, equipment and vehicles: in a farm's or a mine's recipe they
+  are its capital's replacement and repair, deferred in a short-run
+  shortage, so substitutable whatever their value share (machinery at 7%
+  of Germany's vegetables made them lose 14% under the gas cut)."
+  #{"C_FABM" "C_MACH" "C_OFMA" "C_ELMA" "C_RATV" "C_MEIN" "C_MOTO" "C_OTRE"})
+
+(def petrochemical
+  "Outputs whose fuels are all their feedstock (the rule as it is, no
+  energy bundle): N fertiliser, ammonia from gas, coal, naphtha or fuel
+  oil."
+  #{"C_NFER"})
+
+(def coals #{"C_ANTH" "C_COKC" "C_OTBC" "C_SUBC" "C_LIBC" "C_PEAT"})
+
+(def heat-outputs
+  "The energy and raw products made with process heat rather than by
+  converting a fuel: coal products (coke ovens, briquettes), the
+  steelworks' gases (their feedstock coke and coal), biofuels, and the
+  ores and quarrying (drying, calcining, haulage). Material and
+  manufactured goods are heat outputs too, but for `petrochemical`."
+  #{"C_COKE" "C_GCOK" "C_COTA" "C_PATF" "C_BKBP" "C_CHAR" "C_COOG" "C_MBFG" "C_MOSG"
+    "C_BIOG" "C_BIOD" "C_OBIO"
+    "C_ORAN" "C_IRON" "C_COPO" "C_NIKO" "C_ALUO" "C_PREO" "C_LZTO" "C_ONFO" "C_STON" "C_SDCL" "C_CHMF"})
+
+(def material-feedstock
+  "{output fuels}: the fuels a heat output is made from, critical one by
+  one by the rule (crude, NGL, other hydrocarbons and refinery feedstocks
+  are everywhere: no one burns them for heat). Steel: coke and coal
+  (reductants; gas in direct reduction, the Middle East's and Mexico's,
+  is counted as heat, which understates them); aluminium: petroleum coke
+  and coal tar (anodes); basic plastics: the oil and gas liquids (naphtha,
+  ethane, LPG, refinery gas, gas oil, fuel oil; Germany's 0.37 t of fuel
+  oil per t is its integrated sites'), its natural gas counted as the
+  crackers' heat (ethane from gas processing is a refinery product, a
+  feedstock where the tables record it); chemicals nec: the oil feedstocks (its gas,
+  hydrogen and methanol as well as heat and steam, is counted as heat:
+  Germany's ammonia is in N fertiliser); coal products and the
+  steelworks' gases: coal and coke."
+  (let [cokes (into coals #{"C_COKE" "C_GCOK"})]
+    (merge
+     {"C_STEL" (into cokes #{"C_CHAR" "C_PETC"})
+      "C_ALUM" #{"C_PETC" "C_COTA"}
+      "C_CHEM" #{"C_NAPT" "C_ETHA" "C_LPGA" "C_RGAS" "C_WHSP" "C_PARW" "C_COTA"}
+      "C_PLAS" #{"C_NAPT" "C_ETHA" "C_LPGA" "C_RGAS" "C_WHSP" "C_PARW" "C_DOIL" "C_FOIL" "C_KERO" "C_NSPP"}}
+     (into {} (for [o ["C_COKE" "C_GCOK" "C_COTA" "C_PATF" "C_BKBP" "C_COOG" "C_MBFG" "C_MOSG"]] [o cokes])))))
+
+(def crude-like #{"C_COIL" "C_GASL" "C_OGPL" "C_REFF"})
+
+(def heat-critical
+  "The heat per tonne, TJ, at which a heat output that is not a
+  manufactured good (a material, an ore, a coal product) has its energy
+  bundle critical whatever its fuels' tonnages and shares: 2 GJ/t, the
+  heat of 0.04 t of gas or 0.1 t of hard coal, as the feedstock rule
+  reads 0.1 t of one fuel. A kiln or a furnace stops without heat: cement
+  (3 GJ/t in Germany), glass (3.5), ceramics (7), paper (12). A
+  manufactured good's heat per tonne measures its weight, not its need,
+  so there the rule's thresholds alone decide."
+  0.002)
+
 (defn pool
   "The carrier an input belongs to with its substitutes, or nil:
   :electricity for electricity by source (EXIOBASE's C_POW* in TJ), one
@@ -123,13 +196,20 @@
 (defn- kind-of
   "A row's kind: a good (not a service) at critical-share or more of the
   output's value, or a feedstock (`feedstock?`): critical; else, and
-  always for a yield input in a crop (a yield response), substitutable."
+  always for a yield input in a crop (a yield response) and for
+  equipment in a raw product (its capital's upkeep), substitutable. An
+  energy carrier in TJ (electricity, steam) is critical on its fuel
+  alone: the other goods a power station buys, at any share, are upkeep
+  (EXIOBASE's industry mix gives Bulgaria's wind power chemicals at 18%
+  of its value and steam at 13%)."
   [products {:keys [input output phys share]}]
   (let [{g :group :as ip} (products input)
-        op (products output)]
+        op (products output)
+        carrier? (and (= "TJ" (:unit op)) (= "energy" (:group op)))]
     (if (and g (not= g "service")
              (not (and (yield-inputs input) (crops output)))
-             (or (>= (or share 0.0) critical-share)
+             (not (and (equipment input) (= "raw" (:group op))))
+             (or (and (not carrier?) (>= (or share 0.0) critical-share))
                  (feedstock? ip op input output phys)))
       :critical
       :substitutable)))
@@ -169,6 +249,54 @@
               r))
           rs)))
 
+(defn heat-output?
+  "Is `output` made with process heat (its fuels, but its
+  `material-feedstock`, an energy bundle)? A material or manufactured
+  good in tonnes, but for `petrochemical`, or one of `heat-outputs`."
+  [products output]
+  (let [{g :group u :unit} (products output)]
+    (boolean (and (= u "tonnes") (not (petrochemical output))
+                  (or (#{"material" "manufactured"} g) (heat-outputs output))))))
+
+(defn heat
+  "The heat a row's fuel gives per unit of output, TJ (phys at the fuel's
+  `ncv`, or phys for a carrier in TJ: electricity, steam), when `input`
+  is a heat fuel of `output` (a fuel, steam or electricity, not its
+  `material-feedstock` nor crude-like); else nil."
+  [products {:keys [input output phys]}]
+  (let [u (get-in products [input :unit])]
+    (when (and (heat-output? products output)
+               (not (crude-like input))
+               (not (get-in material-feedstock [output input]))
+               (or (ncv input) (= input "C_HWAT") (pool input u)))
+      (* (double (or phys 0.0)) (if (= u "TJ") 1.0 (get ncv input 0.0))))))
+
+(defn- energy-pooled
+  "Rows `rs` with the heat fuels (`heat`) of each heat output's recipe
+  tagged :pool :energy and :heat (TJ per unit), and classified together:
+  all critical when one of them is (by the rule, electricity as its pool),
+  their shares add to critical-share, or (but in a manufactured good)
+  their heat adds to heat-critical; else all substitutable as they were.
+  A row's kind by the rule alone is kept as :kind-rule."
+  [products rs]
+  (let [rs (mapv (fn [r] (if-let [q (heat products r)] (assoc r :energy? true :heat q) r)) rs)
+        crit (reduce (fn [m {:keys [region output kind share energy? heat]}]
+                       (if energy?
+                         (update m [region output] (fn [[c t q]] [(or c (= kind :critical)) (+ (or t 0.0) (or share 0.0))
+                                                                  (+ (or q 0.0) heat)]))
+                         m))
+                     {} rs)]
+    (mapv (fn [{:keys [region output energy? kind] :as r}]
+            (if energy?
+              (let [[c t q] (crit [region output])
+                    c (or c (>= t critical-share)
+                          (and (not= "manufactured" (get-in products [output :group])) (>= q heat-critical)))]
+                (-> (dissoc r :energy?)
+                    (assoc :kind-rule kind :kind (if c :critical :substitutable))
+                    (cond-> c (assoc :pool :energy :carrier (:pool r)))))
+              r))
+          rs)))
+
 ;; ------------------------------------------------------------ the graph
 
 (declare graph* critical-hypergraph)
@@ -182,7 +310,7 @@
   the way in."
   [{:keys [products recipes trade supply use]}]
   (let [ps (into {} (for [p products] [(:code p) (dissoc p :code)]))
-        rs (pooled ps (mapv #(assoc % :kind (kind-of ps %)) (clean-shares recipes)))
+        rs (energy-pooled ps (pooled ps (mapv #(assoc % :kind (kind-of ps %)) (clean-shares recipes))))
         g (graph* ps rs trade supply use)]
     (assoc g :critical-h (delay (critical-hypergraph g)))))
 
@@ -300,18 +428,33 @@
 
 (defn- critical-inputs
   "The hypergraph `h` with the pools of output [s p]'s critical inputs
-  `ins` as nodes [:pool s p carrier] (the share-weighted mean of their
-  members), and the critical recipe's inputs {node weight}."
-  [h s p ins w]
+  `ins` as nodes: [:pool s p carrier] the share-weighted mean of its
+  members; [:energy s p] the heat fuels' CES (elasticity `esigma`,
+  weights their heat, electricity as its pool); and the critical recipe's
+  inputs {node weight}."
+  [h s p ins w esigma]
   (let [crit (for [[i r] ins :when (= :critical (:kind r))] [i r])
         pools (group-by (comp :pool second) crit)
+        elec (group-by (comp :carrier second) (pools :energy))
+        hw #(max 1e-6 (double (or % 0.0)))
         h (reduce-kv (fn [h k members]
-                       (if k
+                       (if (and k (not= k :energy))
                          (hg/recipe h [:pool s p k] (into {} (for [[i r] members] [[:use s i] (w (:share r))])) :substitutable)
                          h))
-                     h pools)]
+                     h pools)
+        h (if-let [em (elec :electricity)]
+            (hg/recipe h [:pool s p :electricity] (into {} (for [[i r] em] [[:use s i] (w (:share r))])) :substitutable)
+            h)
+        h (if (pools :energy)
+            (hg/recipe h [:energy s p]
+                       (into {} (concat (for [[i r] (elec nil)] [[:use s i] (hw (:heat r))])
+                                        (when-let [em (elec :electricity)]
+                                          [[[:pool s p :electricity] (hw (reduce + 0.0 (map (comp #(or % 0.0) :heat second) em)))]])))
+                       :ces esigma)
+            h)]
     [h (into {} (concat (for [[i r] (pools nil)] [[:use s i] (w (:share r))])
-                        (for [k (keys pools) :when k] [[:pool s p k] 1.0])))]))
+                        (for [k (keys pools) :when (and k (not= k :energy))] [[:pool s p k] 1.0])
+                        (when (pools :energy) [[[:energy s p] 1.0]])))]))
 
 (defn- critical-hypergraph
   "The recipes' critical rows alone as a bnm.hypergraph: [:make region
@@ -320,7 +463,7 @@
   input are primary (untouched)."
   [g]
   (let [h (reduce-kv (fn [h [s p] ins]
-                       (let [[h crit] (critical-inputs h s p ins #(max 1e-6 (double (or % 0.0))))]
+                       (let [[h crit] (critical-inputs h s p ins #(max 1e-6 (double (or % 0.0))) energy-sigma)]
                          (if (seq crit) (hg/recipe h [:make s p] crit :critical) h)))
                      (hg/hypergraph) (:recipes g))
         used (distinct (for [[[s _] ins] (:recipes g) [i r] ins :when (= :critical (:kind r))] [s i]))]
@@ -440,20 +583,30 @@
   region product] a CES (elasticity `sigma`) of its substitutable inputs
   and [:factors region] (labour and capital, weighted by one less the
   input shares); a recipe with no critical input is the bundle itself.
-  [:use region product] is the share-weighted mean of its origins' [:make
+  The heat fuels of a heat output, when critical, are one critical input,
+  [:energy region product], their CES (elasticity `esigma`, default
+  energy-sigma; weights their heat). [:use region product] is the share-weighted mean of its origins' [:make
   ...] (imports not reallocated); [:industry region code] the mean of what
   it makes, by output share. Substitutable inputs with a share below
   `min-input` (default 1e-3) are left with value added: a CES bundle
-  barely feels them, and they are half the rows."
+  barely feels them, and they are half the rows. So is gas distribution
+  (C_GASD) in an electricity or heat carrier's recipe: the monetary
+  tables' route for the gas a power station buys, which its physical
+  fuel row already holds (EXIOBASE's industry mix gives France's nuclear
+  power gas distribution at 34% of its value, and with it a 26% loss
+  under the gas cut)."
   ([g] (hypergraph g default-sigma))
   ([g sigma] (hypergraph g sigma 1e-3))
-  ([g sigma min-input]
+  ([g sigma min-input] (hypergraph g sigma min-input energy-sigma))
+  ([g sigma min-input esigma]
    (let [w #(max 1e-6 (double (or % 0.0)))
          h (reduce-kv
             (fn [h [s p] ins]
-              (let [[h crit] (critical-inputs h s p ins w)
+              (let [[h crit] (critical-inputs h s p ins w esigma)
                     critical? (into #{} (for [[i r] ins :when (= :critical (:kind r))] [:use s i]))
-                    subs (into {} (for [[i r] ins :when (and (= :substitutable (:kind r)) (>= (or (:share r) 0.0) min-input))]
+                    carrier? (= ["TJ" "energy"] ((juxt :unit :group) (get-in g [:products p])))
+                    subs (into {} (for [[i r] ins :when (and (= :substitutable (:kind r)) (>= (or (:share r) 0.0) min-input)
+                                                             (not (and carrier? (= i "C_GASD"))))]
                                     [[:use s i] (w (:share r))]))
                     va (max 0.01 (- 1.0 (reduce + 0.0 (for [[i r] ins :when (or (critical? [:use s i]) (subs [:use s i]))]
                                                          (or (:share r) 0.0)))))
@@ -479,12 +632,13 @@
   settled.
   Options: :at :make (default; the product's output in the region) or
   :use (what the region can use of it, all origins); :sigma the
-  substitutable inputs' elasticity (default-sigma); :hypergraph one built
-  already by `hypergraph` (with that sigma); :tol (default 1e-6) for
+  substitutable inputs' elasticity (default-sigma); :energy-sigma the heat
+  fuels' (energy-sigma); :hypergraph one built already by `hypergraph`
+  (with those); :tol (default 1e-6) for
   hypergraph/propagate."
   ([g cuts] (outage g cuts {}))
-  ([g cuts {:keys [at sigma tol] :or {at :make sigma default-sigma tol 1e-6} :as opts}]
-   (let [h (or (:hypergraph opts) (hypergraph g sigma))
+  ([g cuts {:keys [at sigma tol] esig :energy-sigma :or {at :make sigma default-sigma esig energy-sigma tol 1e-6} :as opts}]
+   (let [h (or (:hypergraph opts) (hypergraph g sigma 1e-3 esig))
          tag (case at :make :make :use :use)
          h (reduce (fn [h [r p]] (if (and (= tag :use) (not (get-in h [:recipes [:use r p]])))
                                    (hg/recipe h [:use r p] {[:make r p] 1.0} :substitutable)

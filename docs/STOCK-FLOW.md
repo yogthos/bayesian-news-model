@@ -434,16 +434,50 @@ the rough prices, comes out above 1 in 1,029 rows; there it is blank and
 the ratio sits in value_rough, flagged, and `users` reports it as
 :value-rough, not a share.
 
+Light products scaled to UNSD. The hybrid tables' naphtha, LPG, bitumen
+and other products run 1.5-3 times UNSD's 2011 production (below), so
+the script scales them, with jet and other kerosene together, to UNSD
+(data/derived/supply/oil-products.csv; scaling.csv records each region's
+figures and fit): for each, the matrix of its uses by origin and
+destination (every industry and final demand) is fitted by
+biproportional scaling (RAS) to production by origin (UNSD flow 01) and
+to use by destination (total energy supply, GA; not for kerosene, whose
+bunkers GA leaves out), and each region's supply scaled with its row, so
+supply still equals use product by product. An origin without a UNSD
+figure (the five rest-of-world regions, producers under 100 kt) takes
+the median ratio; a destination without one is free and takes up what
+the two sets of totals leave. Scaling production alone would not do:
+the excess is not spread evenly over origins, and Germany's, Japan's and
+Korea's naphtha use, much of it imported, fell to 0.6 of UNSD's. World
+naphtha goes from 508 to 231 Mt (EXIOBASE/UNSD median 1.94 before),
+LPG 301 to 218 (1.24), bitumen 193 to 104 (1.90), other products 174 to
+165 (1.56; China's rises 2.5-fold to UNSD's 79 Mt), jet and kerosene
+326 to 318 (Spain's 9.6 Mt to UNSD's 6.7). Production fits UNSD within
+1% for naphtha and kerosene, within 5% for LPG, 9% for bitumen (Mexico)
+and 38% for other products (Indonesia: its uses all go to destinations
+with targets of their own); use fits UNSD exactly where it has a figure.
+Downstream, the naphtha in basic plastics falls by a third to two
+thirds: Germany 0.93 to 0.59 t/t, Japan 0.97 to 0.68, Korea 1.49 to
+1.00, France 0.75 to 0.32, China 1.09 to 0.33, the US 0.24 to 0.09; the
+Middle East's 0.38 to 0.05 (its use is free and absorbs the gap). Each
+stays a feedstock (0.1 t/t or more) but America's, whose plastics come
+from ethane and LPG.
+
 Balances: every good's supply equals its uses (intermediate and final, at
 home and abroad) to rounding (median residual 1e-9; the 922 region-
 products off by more than 1% are all services, mostly waste treatment).
 Refineries: their refined products out against crude, NGL, other
-hydrocarbons and refinery feedstocks in run 1-54% above (median +14%),
-because refineries also take natural gas (gas processing for ethane and
-LPG sits in the refinery industry), product backflows and blending
-components; against every hydrocarbon, product, additive and biofuel they
-take, output is 4.6% below input (median; -18% to +5%), the fuel and
-losses a refinery burns, as it should be.
+hydrocarbons and refinery feedstocks in ran 1-54% above before the
+scaling (median +14%), because refineries also take natural gas (gas
+processing for ethane and LPG sits in the refinery industry), product
+backflows and blending components; scaled, +5% (median; -13% to +48%,
+Croatia the outlier). Against every hydrocarbon, product, additive and
+biofuel they take, output was 4.5% below input (median; -18% to +5%)
+and is 12% below once scaled (-26% to -5%): the fuel and losses a
+refinery burns (6-8% in practice) plus what the scaling took off its
+output while leaving its intake, the gas and backflows that produced
+that excess, in place. The intake is not scaled because no figure says
+which of it the excess came from.
 
 ### Critical or substitutable (the rule)
 
@@ -480,6 +514,62 @@ of those countries' wheat, one for one with their gas-hit inputs. In the
 CES bundle (sigma 0.2, with the land, labour and capital of value added)
 a 40% fertiliser cut at an 8% share costs a crop about 10%.
 
+Fuel burnt for heat is not a feedstock. A kiln, furnace or boiler can
+burn less gas and more oil, coal or electricity, and the fuels of a heat
+output (a material or manufactured good, an ore or quarry product, a
+coal product, a steelworks gas, a biofuel: `supply/heat-output?`) other
+than its material feedstock are one input, an energy bundle: a CES of
+gas, oil products, coal, steam and electricity (as its pool), weights
+their heat at the IPCC values (TJ per unit of output), elasticity
+`supply/energy-sigma`. The bundle is critical, as one input, when one of
+its fuels is by the rule above, when their shares add to 5%, or, outside
+manufactured goods, when their heat reaches 2 GJ per tonne
+(`supply/heat-critical`: the heat of 0.04 t of gas or 0.1 t of hard
+coal, as the feedstock rule reads 0.1 t of one fuel; cement 3 GJ/t in
+Germany, glass 3.5, ceramics 7, paper 12); otherwise its fuels are
+substitutable one by one as before. The material feedstocks stay
+critical one by one (`supply/material-feedstock`): every fuel of N
+fertiliser (gas, coal, naphtha into ammonia: `supply/petrochemical`);
+the oil and gas liquids of basic plastics (naphtha, ethane, LPG,
+refinery gas, gas and fuel oil), its natural gas counted as the
+crackers' heat (ethane from gas processing is a refinery product, a
+feedstock where the tables record it); the oil feedstocks of chemicals
+nec, its gas counted as heat (Germany's ammonia is in N fertiliser);
+coke and coal in steel, coal products and the steelworks' gases;
+petroleum coke and coal tar in aluminium (anodes); crude, NGL, other
+hydrocarbons and refinery feedstocks everywhere. Gas used as the
+reductant in direct-reduction steel (the Middle East, Mexico) is
+counted as heat, which understates those.
+
+sigma: the prior is 0.5, half the medium-run interfuel elasticities of
+the energy models (GTAP-E 1 between gas and oil and 0.5 between coal and
+the rest; MIT EPPA 1) for a horizon of months: Moll, Schularick &
+Zachmann (2023) note a glass furnace cannot switch from gas to fuel oil
+overnight, and their appendix lists 36 German firms that switched
+boilers, kilns and furnaces to oil, LPG, coal or electricity in 2022. It
+is not learned: held at their availability, the other fuels cannot rise
+(no fuel is reallocated, as no import is), so the bundle loses at least
+the cut fuel's share of the heat times its cut whatever sigma, and sigma
+moves the loss little (a 40% cut of half the heat: 20% linear, 25% at
+0.5, 29% at 0.2; Germany's energy-intensive industry below loses 8% at
+0.25 and 7% at 1). What the bundle buys is that the loss is the gas's
+share of the heat, not the whole cut.
+
+The other artefacts the review turned up, fixed the same way. Equipment
+(machinery, electrical and precision equipment, vehicles, fabricated
+metal: `supply/equipment`) in a farm's or mine's recipe is its capital's
+replacement and repair, deferred in a short-run shortage, and
+substitutable whatever its share: Germany's vegetables lost 14% under
+the gas cut because machinery, 7% of their value, was critical and
+itself lost 13% through motor vehicles, aluminium and the gas they
+burn; now 2%. An electricity or heat carrier (TJ) is critical on its
+fuel alone: the other goods a power station buys are upkeep (EXIOBASE's
+industry mix gives Bulgaria's wind power chemicals at 18% of its value
+and steam at 13%, and it fell 40% with the gas). And gas distribution
+services in a carrier's recipe are the monetary route of the gas its
+physical row already holds, left with value added (France's nuclear
+power had them at 34% of its value, and lost 26% under the gas cut).
+
 Every other input is substitutable. A product's recipe is then nested:
 the minimum of its critical inputs and a bundle, the bundle a CES of the
 substitutable inputs and value added (labour and capital, weighted by one
@@ -512,8 +602,9 @@ refineries and households draw on the same origins.
 
 Substitutable inputs below a 0.1% share are left with value added in
 outage (a CES bundle barely feels them; they are half the rows). Of
-530,512 recipe rows (48 regions, 7,118 region-products, 206,009 rows
-physical in both units) 10,668 are critical.
+530,416 recipe rows (48 regions, 7,118 region-products, 205,913 rows
+physical in both units) 28,671 are critical, the energy bundles' fuels
+among them.
 
 ### What bnm.supply gives
 
@@ -558,7 +649,11 @@ updates to a residual of 1e-6.
 ### What it shows (tools/bnm/supply_check.clj)
 
 - EXIOBASE's 2011 refinery output against UNSD's 2011 production
-  (countries above 100 kt): the fuels agree, the rest do not.
+  (countries above 100 kt), as the hybrid tables have it: the fuels
+  agree, the rest do not. Scaled (above), naphtha, LPG, bitumen and
+  other products are at UNSD's (median 1.00; within 20% in 31 of 31
+  countries, 36 of 36, 30 of 30 and 24 of 25), jet and kerosene together
+  in all 35.
 
       product          countries  median  within 20%  furthest
       motor gasoline       37      1.00       34      NL 1.40, BE 0.78
@@ -573,8 +668,9 @@ updates to a residual of 1e-6.
       bitumen              30      1.90        1      PT 2.70, AU 2.50
       other products       25      1.56        5      ID 4.07, TR 3.97
 
-  Neither gap is the script's. production.csv is the hybrid supply table
-  as it stands (tonnes, divided by 1,000 against UNSD's kt), and every
+  Neither gap is the script's. The table is the hybrid supply table as
+  it stands, before the scaling (tonnes, divided by 1,000 against UNSD's
+  kt; scaling.csv keeps it as exiobase_kt), and every
   naphtha tonne comes from the refinery industry. Spain's jet is UNSD's
   reporting: it puts Spain's refinery kerosene, 6.45 Mt, under other
   kerosene (and moves it to jet as a transfer), leaving 0.26 Mt of jet;
@@ -586,35 +682,52 @@ updates to a residual of 1e-6.
   hybrid tables' refinery output carries what its refinery industry also
   takes in (gas processing, product backflows from petrochemicals;
   products out 14% above crude and feedstocks in), and that excess lands
-  on the light and non-fuel products. Read EXIOBASE's naphtha tonnages
-  (and its naphtha-to-plastics phys) as up to twice too large; UNSD's
-  yearly figures are the ones to scale by.
+  on the light and non-fuel products. The graph now carries them at
+  UNSD's (above).
 - Validation: US crude reaches gasoline, jet, diesel, naphtha and basic
   plastics in one recipe step (dependence 0.21-0.23, plastics 0.075; each
   37% exposed, the domestic share of US refinery crude), land and air
   transport and chemicals in two. Germany's and America's basic plastics
-  need naphtha (0.96 and 0.20 t/t) and crude (1.4 and 1.3 t/t) and natural
-  gas (0.14 and 0.24 t/t); N fertiliser needs gas (Germany 0.60, the US
+  need naphtha (0.58 and 0.07 t/t, after the scaling; 0.96 and 0.20
+  before) and crude (1.1 and 0.9 t/t) and natural gas (0.10 and 0.21
+  t/t); N fertiliser needs gas (Germany 0.60, the US
   0.78, China 0.33 t/t beside its coal). The gas links are invisible in
   value (dependence below 0.001: the monetary tables route gas through
   gas distribution services), which is why exposure and the feedstock
   rule read the physical rows.
+- Germany 2022: gas for use in Germany cut 26%, industry's cut from
+  July 2022 to March 2023 (Moll, Schularick & Zachmann 2023, against
+  2018-21). Energy-intensive output (Destatis's paper, coke and refined
+  products, chemicals, basic metals, non-metallic minerals; weighted by
+  2011 output value) falls 7%, the rest of manufacturing 1%: N
+  fertiliser 26%, ceramics 21%, glass 19%, chemicals 18%, cement 18%,
+  paper 15%, aluminium 9%, plastics 5%, steel 1%, machinery and vehicles
+  1%. Destatis's energy-intensive index fell by close to 20% at its low
+  and the rest of industry hardly: the direction and the decoupling are
+  reproduced, the size is a third of the trough's, which also held price
+  and demand (gas at several times its price, imports of ammonia and
+  other gas-intensive goods) that a quantity cut does not.
 - Natural gas for use in Europe cut 40%: N fertiliser and gas-fired
   electricity fall 40% in Germany, France, the Netherlands and Poland;
-  crops lose 2-6% (wheat 4-6%; Germany's vegetables 14%), cattle 4-6%;
-  steel 13-40% (gas burnt at 0.1 t/t or more counts as a feedstock);
-  America's N fertiliser loses 3%, China's 9%. Before the changes above,
-  gas power lost 2% in Germany (gas into TJ was never a feedstock) while
-  wheat lost 25% in France and 36% in Poland (fertiliser and crop
-  protection critical, and Poland's diesel capped by refinery gas).
-  Leontief on critical inputs still overstates the depth (Germany's 2022
-  output fell far less, Moll et al. 2023): read the ordering, not the
-  size.
-- Middle East crude output cut 50% (unchanged by the fixes): refining
-  falls 48% in Japan, 33% in India, 27-29% in China and Indonesia, 17% in
-  Korea, 11% in the rest of Asia-Pacific; 2-31% in Europe and the Americas
-  (Russia 2%, Brazil 7%, the US 14%, Germany 29%). Asia's mean 27% against
-  16%. The import shares are EXIOBASE's, estimated where no bilateral data
+  crops lose 2-9% (wheat 4-7%; vegetables 2% in Germany, 9% in the
+  Netherlands' greenhouses), cattle 4-7%; steel 14-33% (Germany 17%,
+  Italy 14%, France 22%, Poland 23%, the Netherlands 26%, Britain 27%,
+  Czechia 29%, Spain 33%: gas the heat of its furnaces, the loss the gas
+  share of the heat, or Italy's gas-heated coke ovens for Germany's);
+  America's N fertiliser loses 2%, China's 8%. Before the energy bundle,
+  the equipment rule and the scaling, crops lost 2-6% but Germany's
+  vegetables 14%, and steel 13-40% (gas burnt at 0.1 t/t, or at 5% of
+  value as in the Netherlands, counted as a feedstock; blast furnace gas
+  a feedstock of coke, and gas one of blast furnace gas); earlier still
+  gas power lost 2% in Germany while wheat lost 25% in France and 36% in
+  Poland. The availability-capped bundle cannot buy more oil, so it
+  still overstates the gas-heavy users: read the ordering, not the size.
+- Middle East crude output cut 50%: refining falls 48% in Japan, 29% in
+  India and Indonesia, 23% in China, 16% in Korea, 11% in the rest of
+  Asia-Pacific; 2-31% in Europe and the Americas (Russia 2%, Brazil 7%,
+  the US 14%, Germany 29%). Asia's mean 26% against 15% (before the
+  scaling 27% against 16%, India 33% and China 27%: smaller naphtha
+  flows carry less of the Gulf's crude into Asia's other products). The import shares are EXIOBASE's, estimated where no bilateral data
   exist: Korea's is far below its known Gulf dependence (about 85%) and
   Germany's and Britain's above theirs; bilateral crude flows (BACI) are
   the next step.
@@ -625,9 +738,9 @@ crackers, fertiliser and steel plants), so a cut is per region, not per
 cell (only SFI's ethylene assets are at hand); bilateral trade (the MR
 tables' shares, Taiwan inside WA, region-wide rather than per user);
 reallocation of imports; inventories (Pichler et al. 2022's days of use);
-fuel switching (gas burnt for heat is a feedstock once at 0.1 t/t, which
-is why steel loses up to 40%); and value shares the monetary tables route
-differently from the physical flows.
+fuel switching beyond the bundle (other fuels held at their
+availability, none bought in addition); and value shares the monetary
+tables route differently from the physical flows.
 
 ### Time: the UN energy statistics
 
