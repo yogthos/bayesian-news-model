@@ -70,7 +70,10 @@
   (Li-ion inside all accumulators) loses tonnes 2015-19 while its value
   share rises, so the rise score's tonnes guard would drop it. That choice
   was made after seeing 850780's tonnes, so the Li-ion targets are not
-  blind to it.")
+  blind to it. For the same reason the downstream set's revision filter
+  is on value share alone (:share-step): until the review of bnm-1pq.8 it
+  used the combined step, which dropped 850780 from 2008-13 for the
+  tonnes jump at the 2007 revision.")
 
 (def revisions
   "HS revision years: the first year each new edition is in force."
@@ -140,9 +143,10 @@
         ss (theil-sen (map (juxt identity ls) ys))
         st (when-not gap (theil-sen (sort-by first lt)))
         level (/ (reduce + (map share (subvec ys (- window 3)))) 3.0)
-        step (or (revision-step? ls ys opts) (and (not gap) (revision-step? lt ys opts)))]
+        share-step (revision-step? ls ys opts)
+        step (or share-step (and (not gap) (revision-step? lt ys opts)))]
     {:share-slope ss :tonnes-slope st :score (when st (min ss st))
-     :level level :revision-step step :tonnes-gap gap
+     :level level :revision-step step :share-step share-step :tonnes-gap gap
      :eligible (and (>= level min-share) (not step) (not gap))}))
 
 (defn- rank-group
@@ -161,7 +165,8 @@
 (defn rise
   "Rise entries at data year `y` of every product in `rows` with a row in
   the window: {:hs :hs6 :year :known :score :share-slope :tonnes-slope
-  :level :revision-step :tonnes-gap :eligible :rank :n :pct}, ranked on
+  :level :revision-step :share-step :tonnes-gap :eligible :rank :n :pct}
+  (:share-step: the revision step in value share alone), ranked on
   :rank-edition; other editions' entries carry :detail-rank :detail-n
   instead (see the namespace doc). Sorted by edition and rank (unranked
   last). Reads only rows with :year <= y. Empty before a full window of
@@ -235,8 +240,14 @@
   rise top :cand-pct; the downstream set is the :down-pct (of the ranked
   count) fastest growers in world-trade value share; each candidate is
   weighed against :placebos like-sized products; an edge is proposed at
-  placebo p <= :alpha."
-  {:cand-pct 0.01 :down-pct 0.10 :placebos 39 :alpha 0.05 :cap 320})
+  placebo p <= :alpha. The placebos leave out the candidate's HS4 heading
+  (:placebo-exclude :hs4) or its HS2 chapter (:hs2). :weight :value scores
+  countries by trade value; :rca by specialisation, each country's value
+  over its total exports (or imports) of all products that year, times the
+  mean total, with countries whose total is under :rca-floor (kUSD) left
+  out (see `country-panel`)."
+  {:cand-pct 0.01 :down-pct 0.10 :placebos 39 :alpha 0.05 :cap 320
+   :placebo-exclude :hs4 :weight :value :rca-floor 1e6})
 
 (defn overlap
   "Sum over countries of min(x_c / sum x, y_c / sum y): the share of x's
@@ -271,40 +282,81 @@
 (defn country-panel
   "Country x product rows {:hs6 :year :country :exports :imports} (one
   edition's hs6-country.csv.gz rows) as {:index {country i} :flows {[hs6
-  year] doubles}}: exports at i, imports at cap + i. At most `cap`
-  countries."
+  year] doubles} :totals {year doubles}}: exports at i, imports at cap + i.
+  :flows holds the rows passing `keep?` (default all); :totals sums every
+  row by country and year, so it is a country's whole trade only when
+  `rows` are all of the edition's products (the :rca weight). At most
+  `cap` countries."
   ([rows] (country-panel rows (:cap edge-defaults)))
-  ([rows cap]
+  ([rows cap] (country-panel rows cap (constantly true)))
+  ([rows cap keep?]
    (let [index (volatile! {})
-         flows (reduce
-                (fn [m {:keys [hs6 year country exports imports]}]
-                  (let [i (or (@index country)
-                              (let [i (count @index)]
-                                (when (>= i cap)
-                                  (throw (ex-info "more countries than the panel holds" {:cap cap})))
-                                (vswap! index assoc country i)
-                                i))
-                        k [hs6 year]
-                        ^doubles a (or (get m k) (double-array (* 2 cap)))]
-                    (aset a i (+ (aget a i) (double (or exports 0.0))))
-                    (aset a (+ cap i) (+ (aget a (+ cap i)) (double (or imports 0.0))))
-                    (if (contains? m k) m (assoc! m k a))))
-                (transient {})
-                rows)]
-     {:index @index :cap cap :flows (persistent! flows)})))
+         add! (fn [m k i ex im]
+                (let [^doubles a (or (get m k) (double-array (* 2 cap)))]
+                  (aset a i (+ (aget a i) ex))
+                  (aset a (+ cap i) (+ (aget a (+ cap i)) im))
+                  (if (contains? m k) m (assoc! m k a))))
+         [flows totals]
+         (reduce
+          (fn [[fm tm] {:keys [hs6 year country exports imports] :as r}]
+            (let [i (or (@index country)
+                        (let [i (count @index)]
+                          (when (>= i cap)
+                            (throw (ex-info "more countries than the panel holds" {:cap cap})))
+                          (vswap! index assoc country i)
+                          i))
+                  ex (double (or exports 0.0)) im (double (or imports 0.0))]
+              [(if (keep? r) (add! fm [hs6 year] i ex im) fm)
+               (add! tm year i ex im)]))
+          [(transient {}) (transient {})]
+          rows)]
+     {:index @index :cap cap :flows (persistent! flows) :totals (persistent! totals)})))
+
+(defn- rca-mean
+  "The mean of the panel's country totals on one side (offset `off`) over
+  every year, counting those at or above `floor`: the size the :rca weight
+  scales every country to. One constant for the panel, so shares across
+  countries and years are untouched by it."
+  [{:keys [index totals]} off floor]
+  (let [xs (for [[_ ^doubles t] totals i (range (count index))
+                 :let [x (aget t (+ off i))]
+                 :when (and (pos? x) (>= x floor))]
+             x)]
+    (if (seq xs) (/ (reduce + xs) (count xs)) 0.0)))
+
+(defn- rca-scale
+  "Per-country factors of year `y` for the :rca weight: `mean` / the
+  country's total on the side at offset `off`, 0 under `floor`."
+  ^doubles [{:keys [index totals]} y off floor mean]
+  (let [n (count index)
+        ^doubles t (get totals y)
+        out (double-array n)]
+    (when t
+      (dotimes [i n]
+        (let [x (aget t (+ off i))]
+          (when (and (pos? x) (>= x floor))
+            (aset out i (/ mean x))))))
+    out))
 
 (defn- window-mean
   "The mean over `years` of a product's exports (:ex) or imports (:im) by
-  country, as an array over the panel's countries (zeros without data)."
-  [{:keys [index cap flows]} hs6 years side]
-  (let [n (count index)
-        off (if (= side :ex) 0 cap)
-        out (double-array n)
-        k (double (count years))]
-    (doseq [y years]
-      (when-let [^doubles a (get flows [hs6 y])]
-        (dotimes [i n] (aset out i (+ (aget out i) (/ (aget a (+ off i)) k))))))
-    out))
+  country, as an array over the panel's countries (zeros without data). By
+  value, or for the :rca weight (`mean`, the side's rca-mean, not nil)
+  each year's value is scaled by rca-scale: specialisation at the mean
+  country's size."
+  ([panel hs6 years side] (window-mean panel hs6 years side nil 0.0))
+  ([{:keys [index cap flows] :as panel} hs6 years side mean floor]
+   (let [n (count index)
+         off (if (= side :ex) 0 cap)
+         out (double-array n)
+         k (double (count years))]
+     (doseq [y years]
+       (when-let [^doubles a (get flows [hs6 y])]
+         (let [^doubles f (when mean (rca-scale panel y off floor mean))]
+           (dotimes [i n]
+             (aset out i (+ (aget out i)
+                            (/ (* (aget a (+ off i)) (if f (aget f i) 1.0)) k)))))))
+     out)))
 
 (defn- normalized ^doubles [^doubles a]
   (let [s (areduce a i s 0.0 (+ s (aget a i)))
@@ -350,18 +402,20 @@
 
 (defn placebo-pool
   "The `n` products of the edition nearest `code` in log world value at
-  data year `y` (ties by code), other than `code` and its HS4 heading."
+  data year `y` (ties by code), other than `code` and its HS4 heading (or
+  HS2 chapter with :placebo-exclude :hs2)."
   ([world code y n] (placebo-pool world code y n {}))
   ([world code y n opts]
-   (let [ed (:rank-edition (merge defaults opts))
+   (let [{ed :rank-edition ex :placebo-exclude} (merge defaults edge-defaults opts)
+         len (case ex :hs4 4 :hs2 2)
          vals (into {} (for [r world
                              :when (and (= y (:year r)) (= ed (:hs r)) (:value r) (pos? (:value r)))]
                          [(:hs6 r) (double (:value r))]))]
      (if-let [v (vals code)]
-       (let [h4 (subs code 0 4)
+       (let [head (subs code 0 len)
              lv (Math/log v)]
          (->> (dissoc vals code)
-              (remove (fn [[c _]] (= h4 (subs c 0 4))))
+              (remove (fn [[c _]] (= head (subs c 0 len))))
               (sort-by (fn [[c x]] [(Math/abs (- (Math/log x) lv)) c]))
               (take n)
               (mapv key)))
@@ -387,7 +441,7 @@
         year-world (filterv #(= y (:year %)) seen)]
     {:candidates cands
      :growing (->> r
-                   (filter #(and (>= (:level %) min-share) (not (:revision-step %))
+                   (filter #(and (>= (:level %) min-share) (not (:share-step %))
                                  (pos? (:share-slope %))))
                    (sort-by (juxt (comp - :share-slope) :hs6))
                    (take (long (Math/ceil (* down-pct n-ranked))))
@@ -400,8 +454,9 @@
   :value, the rise input) and `panel` (country-panel of the edition's
   country rows). For each candidate input a (the rise top :cand-pct, or
   :candidates) and each growing output b (the :down-pct fastest risers in
-  value share among products above the share floor with no revision step,
-  not a's HS4), pair-score over the early (Y-7..Y-5) and recent (Y-2..Y)
+  value share among products above the share floor with no revision step
+  in value share (:share-step; a tonnes-only step, as 850780 has at 2007,
+  does not drop it), not a's HS4), pair-score over the early (Y-7..Y-5) and recent (Y-2..Y)
   windows. Each signal is standardised against the same score for a's
   placebo pool (placebo-pool: like-sized products standing in for a, their
   importers against b's exporters); :z is the mean of the overlap and
@@ -412,13 +467,15 @@
   the windows); :known is the latest year known."
   ([world panel y] (edges world panel y {}))
   ([world panel y opts]
-   (let [{:keys [alpha window]} (merge defaults edge-defaults opts)
+   (let [{:keys [alpha window weight rca-floor]} (merge defaults edge-defaults opts)
          {:keys [candidates growing pools known]} (edge-plan world y opts)
          lo (- y (dec window))
          early (range lo (+ lo 3))
          recent (range (- y 2) (inc y))
-         side (memoize (fn [hs6 s] (prep {:early (window-mean panel hs6 early s)
-                                          :recent (window-mean panel hs6 recent s)})))
+         means (when (= weight :rca)
+                 {:ex (rca-mean panel 0 rca-floor) :im (rca-mean panel (:cap panel) rca-floor)})
+         side (memoize (fn [hs6 s] (prep {:early (window-mean panel hs6 early s (get means s) rca-floor)
+                                          :recent (window-mean panel hs6 recent s (get means s) rca-floor)})))
          score (memoize (fn [a b] (pair-score (side a :im) (side b :ex))))
          sqrt2 (Math/sqrt 2.0)]
      (vec
@@ -451,6 +508,16 @@
   [rows floor]
   (into #{} (keep (fn [[k rs]] (when (>= (median (map :share rs)) floor) k)))
         (group-by (juxt :input :output) rows)))
+
+(defn subnode-links
+  "#{[input-code output-code]} of `edition` from sub-node name pairs
+  `pairs` ([input output]) and subnodes.csv rows {:subnode :edition
+  :code}: every code of the input sub-node against every code of the
+  output's."
+  [subnodes edition pairs]
+  (let [codes (reduce (fn [m r] (update m (:subnode r) (fnil conj #{}) (:code r)))
+                      {} (filter #(= edition (:edition %)) subnodes))]
+    (into #{} (for [[a b] pairs ca (codes a) cb (codes b)] [ca cb]))))
 
 (defn known-edge?
   "Whether a -> b is a recipe link between any of their EXIOBASE parents

@@ -340,3 +340,73 @@
     (is (close? (:p r) (ess/hypergeometric-tail 4 3 2 1) 1e-12))
     (is (= 2 (:top-n r)) "the top proposal of each input")
     (is (close? 1.0 (:top-precision r) 1e-12))))
+
+;; ---------------------------------------------------------------- review of the edge proposal (bnm-1pq.8)
+
+(deftest growing-set-ignores-a-tonnes-only-revision-step
+  ;; 850780 in HS92: value share smooth through 2007, tonnes x6.6 at the
+  ;; 2007 revision. The downstream set ranks value share alone, so a
+  ;; tonnes step must not drop it (it still drops it from the rise rank).
+  (let [step (for [y edge-years]
+               (row "841000" y (* 1e-4 (Math/exp (* 0.40 (- y 1995))))
+                    (* 1e5 (if (>= y 2007) 8.0 1.0))))
+        world (into edge-world (map #(assoc % :value (* 1e9 (:share %)))) step)
+        r (first (filter #(= "841000" (:hs6 %)) (ess/rise world 2010)))
+        plan (ess/edge-plan world 2010 {:candidates #{"282520"}})]
+    (is (:revision-step r) "the tonnes step still keeps it out of the rise rank")
+    (is (not (:share-step r)) "no step in value share")
+    (is (some #{"841000"} (:growing plan)) "in the downstream set")))
+
+(deftest placebo-pool-can-exclude-the-chapter
+  (let [world (into edge-world
+                    (for [i (range 5) y edge-years]
+                      {:hs "HS92" :hs6 (format "28%02d10" (+ 30 i)) :year y :known (+ y 2)
+                       :share 1e-4 :tonnes 1e5 :value (* 9e6 (+ 1.0 (* 0.01 i)))}))
+        h4 (ess/placebo-pool world "282520" 2010 10)
+        h2 (ess/placebo-pool world "282520" 2010 10 {:placebo-exclude :hs2})]
+    (is (some #(= "28" (subs % 0 2)) h4) "by default other chapter-28 headings stay in")
+    (is (= 10 (count h2)))
+    (is (every? #(not= "28" (subs % 0 2)) h2) "with :hs2 none of chapter 28")))
+
+(deftest country-totals-are-over-every-row
+  (let [rows [{:hs6 "a" :year 2000 :country "X" :exports 1.0 :imports 2.0}
+              {:hs6 "b" :year 2000 :country "X" :exports 3.0 :imports 0.0}
+              {:hs6 "b" :year 2000 :country "Y" :exports 0.0 :imports 5.0}]
+        p (ess/country-panel rows 4 #(= "a" (:hs6 %)))
+        ^doubles t (get-in p [:totals 2000])
+        x ((:index p) "X") y ((:index p) "Y")]
+    (is (= #{["a" 2000]} (set (keys (:flows p)))) "flows only of the kept rows")
+    (is (= 4.0 (aget t x)) "exports over every product")
+    (is (= 2.0 (aget t (+ 4 x))))
+    (is (= 5.0 (aget t (+ 4 y))) "a country seen only in rows not kept still has totals")))
+
+(deftest rca-overlap-ignores-country-size
+  ;; Multiply every flow of C5 (all products, so its totals too) by 50: the
+  ;; value overlap moves, the specialisation overlap does not.
+  (let [big (mapv (fn [r] (if (= "C5" (:country r))
+                            (-> r (update :exports * 50.0) (update :imports * 50.0))
+                            r))
+                  edge-countries)
+        opts {:candidates #{"282520"} :placebos 20}
+        key (fn [es] (into {} (map (juxt (juxt :input :output) (juxt :overlap :overlap-early))) es))
+        run (fn [rows o] (key (ess/edges edge-world (ess/country-panel rows) 2010 (merge opts o))))
+        rca {:weight :rca :rca-floor 0.0}
+        a (run edge-countries rca) b (run big rca)]
+    (is (seq a))
+    (is (every? (fn [[k [o oe]]] (let [[o2 oe2] (b k)] (and (close? o o2 1e-9) (close? oe oe2 1e-9)))) a))
+    (is (not= (run edge-countries {}) (run big {})) "by value, the big country moves it")
+    (testing "the planted edge is still found by specialisation"
+      (let [e (first (filter #(= "850780" (:output %))
+                             (ess/edges edge-world (ess/country-panel edge-countries) 2010 (merge opts rca))))]
+        (is (= 1 (:rank e)))))))
+
+(deftest subnode-links-from-names
+  (let [subnodes [{:subnode "lithium_carbonate" :edition "HS92" :code "283691"}
+                  {:subnode "li_ion_batteries" :edition "HS92" :code "850780"}
+                  {:subnode "li_ion_batteries" :edition "HS12" :code "850760"}
+                  {:subnode "evs" :edition "HS92" :code "870390"}]
+        links (ess/subnode-links subnodes "HS92" [["lithium_carbonate" "li_ion_batteries"]
+                                                  ["li_ion_batteries" "evs"]])]
+    (is (= #{["283691" "850780"] ["850780" "870390"]} links))
+    (is (= #{} (ess/subnode-links subnodes "HS12" [["lithium_carbonate" "li_ion_batteries"]]))
+        "a name without a code in the edition gives no link")))

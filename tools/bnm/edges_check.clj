@@ -26,12 +26,28 @@
   too). Parents are the sub-node parent (subnodes.csv) where the code is a
   sub-node, else the concordance's heaviest EXIOBASE product. EXIOBASE's
   products pool widely (C_CHEM is in most recipes), so the base rate is
-  high and the test is the lift over it.
+  high and the test is the lift over it. recipes.csv has no diagonal (a
+  product is not its own input there), so a pair within one parent
+  (lithium hydroxide -> cathode salts 284190, both C_CHEM) can never be
+  known; precision is also shown without those pairs.
 
-  Writes data/derived/supply/edge-proposals-<edition>.csv (every scored
-  pair of the rise candidates and the targets).
+  Precision is also given at the sub-node level, where the recipe parents
+  (C_CHEM -> C_ELMA) are too coarse to mean much: over the scored pairs
+  whose input and output are both sub-node codes, an edge is known when it
+  is one of `subnode-recipes`, the sub-node links of the recipe priors
+  (resources/bnm/recipe-priors.edn: li-ion/lithium, cobalt, nickel,
+  graphite; ev/battery, ev/copper; pv/silicon, pv/copper).
 
-    jolt -A:tools -M -m bnm.edges-check [edition] [first-year] [last-year]"
+  Robustness (review of bnm-1pq.8): --placebo-exclude hs2 leaves the
+  candidate's whole HS2 chapter out of the placebo pool (default its HS4
+  heading); --weight rca scores countries by specialisation instead of
+  value (bnm.essentials/edge-defaults).
+
+  Writes data/derived/supply/edge-proposals-<edition>[-<variant>].csv
+  (every scored pair of the rise candidates and the targets).
+
+    jolt -A:tools -M -m bnm.edges-check [edition] [first-year] [last-year]
+         [--placebo-exclude hs4|hs2] [--weight value|rca]"
   (:require [bnm.concordance :as conc]
             [bnm.csv :as csv]
             [bnm.essentials :as ess]
@@ -50,14 +66,24 @@
      [li "870390" 2022 "Li-ion -> cars n.e.s."]
      ["280461" "854140" 2012 "polysilicon -> PV cells"]]))
 
+(def subnode-recipes
+  "Sub-node links of the recipe priors (see the namespace doc), as
+  [input output] sub-node names of subnodes.csv."
+  [["lithium_carbonate" "li_ion_batteries"] ["lithium_hydroxide" "li_ion_batteries"]
+   ["cobalt_oxides" "li_ion_batteries"] ["nickel_sulphate" "li_ion_batteries"]
+   ["graphite_natural" "li_ion_batteries"] ["graphite_synthetic" "li_ion_batteries"]
+   ["li_ion_batteries" "evs"] ["copper_cathode" "evs"]
+   ["polysilicon" "pv_cells"] ["copper_cathode" "pv_cells"]])
+
 (defn- windows [y] (let [lo (- y 7)] (concat (range lo (+ lo 3)) (range (- y 2) (inc y)))))
 
 (defn- plan-codes [{:keys [candidates growing pools]}]
   (into (set candidates) (concat growing (mapcat val pools))))
 
 (defn read-panel
-  "The country panel of `edition`, keeping only rows whose (year, hs6) is
-  in `needed` ({year #{hs6}})."
+  "The country panel of `edition`, streamed from the gzip file: flows of
+  the rows whose (year, hs6) is in `needed` ({year #{hs6}}), and country
+  totals over every product (the :rca weight)."
   [path edition needed]
   (let [prefix (str edition ",")]
     (with-open [r (io/reader (java.util.zip.GZIPInputStream. (io/input-stream path)))]
@@ -65,13 +91,13 @@
         (ess/country-panel
          (eduction
           (comp (filter #(str/starts-with? % prefix))
-                (keep (fn [line]
-                        (let [[_ y _ hs6 c ex im] (str/split line #"," -1)
-                              y (Long/parseLong y)]
-                          (when (contains? (get needed y #{}) hs6)
-                            {:hs6 hs6 :year y :country c
-                             :exports (Double/parseDouble ex) :imports (Double/parseDouble im)})))))
-          lines))))))
+                (map (fn [line]
+                       (let [[_ y _ hs6 c ex im] (str/split line #"," -1)]
+                         {:hs6 hs6 :year (Long/parseLong y) :country c
+                          :exports (Double/parseDouble ex) :imports (Double/parseDouble im)}))))
+          lines)
+         (:cap ess/edge-defaults)
+         (fn [{:keys [year hs6]}] (contains? (get needed year #{}) hs6)))))))
 
 (defn parents-fn
   "hs6 -> #{EXIOBASE product} for `edition` (see the namespace doc)."
@@ -87,13 +113,28 @@
           proposed hits precision base known pairs (if (pos? base) (/ precision base) 0.0) p
           top-hits top-n top-precision))
 
-(defn -main [& [edition y0 y1]]
-  (let [edition (or edition "HS92")
+(defn- parse-args
+  "[positional flags] of the command line: flags {:placebo-exclude :weight}."
+  [args]
+  (loop [[a & more :as as] args pos [] flags {}]
+    (cond
+      (empty? as) [pos flags]
+      (= a "--placebo-exclude") (recur (rest more) pos (assoc flags :placebo-exclude (keyword (first more))))
+      (= a "--weight") (recur (rest more) pos (assoc flags :weight (keyword (first more))))
+      :else (recur more (conj pos a) flags))))
+
+(defn -main [& args]
+  (let [[[edition y0 y1] flags] (parse-args args)
+        edition (or edition "HS92")
         y0 (if y0 (parse-long y0) (if (= edition "HS92") 2008 2019))
         y1 (if y1 (parse-long y1) 2024)
         years (range y0 (inc y1))
         world (ec/read-world (str dir "/hs6-world.csv") edition)
-        opts {:rank-edition edition}
+        opts (merge {:rank-edition edition} flags)
+        variant (str/join "-" (keep (fn [[k d]] (let [v (get flags k)] (when (and v (not= v d)) (name v))))
+                                    [[:placebo-exclude :hs4] [:weight :value]]))
+        _ (println (format "%s, placebos without the same %s, weight %s" edition
+                           (name (get opts :placebo-exclude :hs4)) (name (get opts :weight :value))))
         ts (targets edition)
         t-inputs (set (map first ts))
         natural (into {} (for [y years] [y (:candidates (ess/edge-plan world y opts))]))
@@ -108,8 +149,12 @@
         _ (println (format "%s: panel of %d product-years, %d countries, read in %.0f s"
                            edition (count (:flows panel)) (count (:index panel))
                            (/ (- (System/currentTimeMillis) t0) 1000.0)))
-        parents (parents-fn (conc/load-subnodes (str dir "/subnodes.csv"))
-                            (conc/load-concordance (str dir "/concordance.csv")) edition)
+        subnodes (conc/load-subnodes (str dir "/subnodes.csv"))
+        parents (parents-fn subnodes (conc/load-concordance (str dir "/concordance.csv")) edition)
+        sn-codes (set (keep #(when (= edition (:edition %)) (:code %)) subnodes))
+        sn-links (ess/subnode-links subnodes edition subnode-recipes)
+        sn-known? (fn [a b] (contains? sn-links [a b]))
+        sn-pair? (fn [e] (and (sn-codes (:input e)) (sn-codes (:output e))))
         recipes (mapv (fn [r] {:region (:region r) :output (:output r) :input (:input r)
                                :share (or (parse-double (str (:share_2011 r))) 0.0)})
                       (csv/read-maps (str dir "/recipes.csv") \,))
@@ -149,18 +194,28 @@
       (println (format "  floor %.3f, all years: %s" f (fmt-p (ess/edge-precision nat (known? f))))))
     (doseq [y years]
       (println (format "  floor 0.005, %d: %s" y (fmt-p (ess/edge-precision (filter #(= y (:year %)) nat) (known? 0.005))))))
+    (let [diff (remove #(seq (filter (parents (:input %)) (parents (:output %)))) nat)]
+      (println (format "  floor 0.005, without same-parent pairs (%d of %d): %s" (count diff) (count nat)
+                       (fmt-p (ess/edge-precision diff (known? 0.005))))))
+    (println "held out at the sub-node level: pairs of sub-node codes against the recipe priors' sub-node links")
+    (println (format "  candidates: %s" (fmt-p (ess/edge-precision (filter sn-pair? nat) sn-known?))))
+    (println (format "  every scored pair (targets in every year too): %s"
+                     (fmt-p (ess/edge-precision (filter sn-pair? all) sn-known?))))
+    (println (format "  candidates, recipe parents (floor 0.005) on the same pairs: %s"
+                     (fmt-p (ess/edge-precision (filter sn-pair? nat) (known? 0.005)))))
     (println)
     (println "top proposal of each candidate, by year (proposed only)")
     (doseq [y years]
       (println (format "  %d: %s" y
                        (str/join " " (for [e (sort-by :input (filter #(and (= y (:year %)) (:candidate %) (= 1 (:rank %)) (:proposed %)) all))]
                                        (str (:input e) ">" (:output e) (if ((known? 0.005) (:input e) (:output e)) "" "?")))))))
-    (let [out (str dir "/edge-proposals-" (str/lower-case edition) ".csv")
+    (let [out (str dir "/edge-proposals-" (str/lower-case edition) (when (seq variant) (str "-" variant)) ".csv")
           ks [:year :known :input :output :candidate :rank :z :p :proposed :overlap :overlap-early
               :overlap-growth :comove :placebos]]
       (with-open [w (io/writer out)]
-        (.write w (str (str/join "," (map name ks)) ",known_edge\n"))
+        (.write w (str (str/join "," (map name ks)) ",known_edge,known_subnode\n"))
         (doseq [e all]
           (.write w (str (str/join "," (map #(let [v (% e)] (cond (float? v) (format "%.6g" v) (nil? v) "" :else (str v))) ks))
-                         "," (if ((known? 0.005) (:input e) (:output e)) 1 0) "\n"))))
+                         "," (if ((known? 0.005) (:input e) (:output e)) 1 0)
+                         "," (cond (not (sn-pair? e)) "" (sn-known? (:input e) (:output e)) 1 :else 0) "\n"))))
       (println (format "\n%s: %d rows" out (count all))))))
