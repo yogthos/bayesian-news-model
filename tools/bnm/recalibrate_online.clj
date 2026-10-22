@@ -10,9 +10,10 @@
   t' + 2 + lag <= t, nothing else. The lag is per kind: --lag (1, an
   onset known a year after it happens, Principle 7) or the catalogue's
   own :known-lag in whole years if longer (18 months, so 2 years, for
-  the annual economic catalogues, conflict and war). A fixed recalibration fitted on
-  1960-2002 lost out of sample (docs/PHASE-CHANGES.md, T2/T8): the base's
-  miscalibration drifts, so the recalibration has to drift with it.
+  the annual economic catalogues, conflict and war). A fixed
+  recalibration fitted on 1960-2002 lost out of sample
+  (docs/PHASE-CHANGES.md, T2/T8): the base's miscalibration drifts, so
+  the recalibration has to drift with it.
 
   The state is a dynamic logistic regression (augur.dynamic) on [1, L - c]
   (c a fixed centre, so the intercept is the correction at a typical
@@ -22,13 +23,25 @@
   year's newly resolved rows. A kind with no resolved row yet (food
   prices before 2004, protest and violence before 1980) is the base
   unchanged, outside the pool, its state waiting undiscounted. The
-  discount is not chosen: dynamic model averaging over a small grid of discounts weighs them by how well each forecast the rows as they
-  resolved (Raftery, Karny & Ettler 2010). With :pool w > 0 the reversion
+  discount is not chosen: dynamic model averaging over a small grid of
+  discounts weighs them by how well each forecast the rows as they
+  resolved (Raftery, Karny & Ettler 2010). With some 150 rows a year the
+  evidence is sharp and forget 0.99 barely flattens it: the weights act
+  close to a running selection of one discount. The forecast at t is one
+  discount step past the state, though the rows it forecasts lie 2 + lag
+  years past the newest learned: its spread is a little too narrow. With :pool w > 0 the reversion
   target is pooled across kinds, (1 - w) identity + w the kinds' mean
-  state at the start of the year: a hierarchical prior over kinds. On the
-  design years (scored 1981-2002) phi 0.95 and w 0.5 did best of phi in
-  {0.9, 0.95, 0.98, 1} and w in {0, 0.5}; pooling gained +0.0008 log per
-  row over the kinds alone.
+  state at the start of the year: a hierarchical prior over kinds. It
+  acts only through the reversion: at phi 1 the pool does nothing.
+
+  Design years, per-kind lags: phi 0.95, w 0.5 gains +0.0102 log per row
+  [+0.0054, +0.0156] on origins 1981-2000 (lag 0 had shown +0.0145, a
+  year of peeking for most kinds). phi and w were picked on those same
+  years. Picked on 1960-1978 alone (windows to 1980), the best is phi 1,
+  which scores +0.0085 on 1981-2000: the selection is worth about 0.0017
+  log per row, a sixth of the gain. Over all pre-2003 origins (1960-2000)
+  phi 0.95, w 0.5 is again the best of the grid, so it stands for the
+  registered test, which no choice here has seen.
 
   Scored on origins --from to --to - 2 (windows ending by --to), learned
   from --learn-from (1960) onward throughout, which is legitimate on the
@@ -38,12 +51,25 @@
   90% intervals from a moving-block bootstrap of origin years (blocks of
   --block years, as the two-year windows overlap).
 
-  The recalibrated forecasts are written as year-node rows of the
-  lattice's forecasts.tsv (scale place origin-month p y) under
-  data/runs/<--out-run>/<kind>/, every origin from --learn-from on, y
-  given only where its window ends by --to.
+  The outcomes are the catalogues' as they stand now (the lattice's
+  :target, the same onsets, at-risk rule and coverage): an origin near t
+  is scored, and learned from, with later revisions of its dating that
+  were not in hand at t. That vintage cannot be undone here.
 
-  No outcome whose window ends after --to is read.
+  The recalibrated forecasts are written as year-node rows of the
+  lattice's forecasts.tsv (scale place origin-month p y, p in (0, 1), y
+  true, false or empty) under data/runs/<--out-run>/<kind>/, every origin
+  from --learn-from on at month 12 t + 11 as the lattice's year node, y
+  given only where its window ends by --to. Countries only: the
+  regions, subregions, the world and the other scales are not
+  recalibrated (an aggregate's onset is near certain, its calibration not
+  a country's). A world run that takes these as its base reads the
+  country year node from here and everything else from the original
+  run's forecasts.tsv; its aggregates are then the original run's, not
+  recomposed from the recalibrated countries.
+
+  No outcome whose window ends after --to is read: the run's own outcome
+  column is never parsed.
 
     jolt -A:tools -M -m bnm.recalibrate-online [--run t44-world-norel]
       [--from 1981] [--to 2002] [--learn-from 1960] [--revert 0.95]
