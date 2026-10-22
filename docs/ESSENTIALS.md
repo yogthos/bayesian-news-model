@@ -1015,6 +1015,15 @@ before any test year is scored (PRINCIPLES 9).
      EXIOBASE shares better than the 2011 shares held constant (mean
      absolute log error). Only if they do, download the remaining
      EXIOBASE years.
+   - Result (October 2026): not met. Learned drift predicted 2022 worse
+     than no drift (0.345 log per cell, worse in every recipe but one), so
+     the remaining years were not downloaded and the filter is a local
+     level without trend; only cited technology trajectories drift (PV
+     silicon and silver, battery cobalt, polysilicon electricity). Ammonia
+     gas is observed as UNSD non-energy gas over USGS ammonia output, not
+     EXIOBASE value shares (which route fertiliser through imported
+     ammonia); the gas-route posterior sits in 0.55-0.75 t/t in 23 of 26
+     regions with data.
 6. **Technology demand** (extends bnm.technology). Add EV share (from
    BACI 870390/850780, later HS17 870380), PV and wind capacity
    (EIA/OWID) and DRI share (GEM) as diffusion stocks. Implied mineral
