@@ -35,18 +35,23 @@
   between (the model's state in a year between is the calibrated members'
   path, not corrected by the data since; the price gap is the data's);
   each value the median over up to :forecast-members members; rows iso
-  WLD, variable <commodity>_<name>:
+  WLD, variable cycles/<commodity>-<name> (bnm.cycles-run deflates prices
+  by the US CPI, so prices are real and pi a real drift):
 
-    log_price        log of last year's mean price
-    price_gap        log of last year's mean price over the model's P_eq
-    model_price_gap  the model's own log P/P_eq then (the cycle's phase)
+    log-price        log of last year's mean price
+    price-gap        log of last year's mean price over the model's P_eq
+    model-price-gap  the model's own log P/P_eq then (the cycle's phase;
+                     stale between calibrations)
     coverage         c / c*, the model's, then
     pipeline         SL / SL*, the capacity pipeline against its anchor
-    capacity_gap     log K / K*
-    dir_1y .. dir_3y the model's expected change of the log price over 1-3
-                     years from last year's
-    beta, beta_sd    the supply-line weight (median, sd of its log)
-    construction_time, construction_time_sd   tau-c likewise
+    capacity-gap     log K / K*
+    dir-1y .. dir-3y the model's log price 1-3 years on less last year's
+                     observed one: its expected change from where the
+                     price is (from the model's own price instead, the
+                     stale state between calibrations turns it against
+                     the outcome: oil's 3-year correlation -0.2)
+    beta, beta-sd    the supply-line weight (median, sd of its log)
+    construction-time, construction-time-sd   tau-c likewise
     period           the period of the calibrated market's own cycle (years)
     calibrated       the year the parameters were learned at
 
@@ -58,6 +63,10 @@
 ;; ---------------------------------------------------------------------------
 ;; The model
 
+(def ^:private n-shocks
+  "Demand shocks, one per :seg years: 48 cover a window of 96 years."
+  48)
+
 (def defaults
   "Parameters, years the time unit; output and demand at t0 are 1."
   (merge
@@ -67,9 +76,9 @@
    :seg 2.0 :last-seg 1000.0}
   ;; demand shocks: the log of demand's departure in each segment of :seg
   ;; years from t0, held after segment :last-seg
-  (into {} (for [i (range 32)] [(keyword (str "s" i)) 0.0]))))
+  (into {} (for [i (range n-shocks)] [(keyword (str "s" i)) 0.0]))))
 
-(def ^:private shock-keys (mapv #(keyword (str "s" %)) (range 32)))
+(def ^:private shock-keys (mapv #(keyword (str "s" %)) (range n-shocks)))
 
 (def ^:private grid-lo 0.2)
 (def ^:private grid-hi 3.0)
@@ -193,35 +202,53 @@
 
 (defn- mean [xs] (when (seq xs) (/ (reduce + 0.0 xs) (count xs))))
 
-(defn calibrate-window
-  "The model learned from `obs` ({:price {year mean price} :output {year
-  production} :demand {year use} :coverage {year stocks to use}}, data
-  years; output and demand in any unit) by bnm.assimilate/calibrate,
-  from the first price year (t0), annual means read at mid-year, with a
-  demand shock per :seg (2) years (normal, sd :shock-sd 0.3), the last
-  held after the data. Options :members (100; with 40 the ensemble collapses on some data) :iterations (4) :seed :dt
-  (0.25) :noise. {:params (medians and means) :posterior :members [params]
-  :from}."
-  [{:keys [price output demand coverage]} {:keys [members iterations seed dt noise seg shock-sd]
-                                           :or {members 100 iterations 4 seed 1 dt 0.25 seg 2.0 shock-sd 0.3}}]
+(defn- first-val
+  "The value of `series` ({year x}) at its first finite year from y0 on."
+  [series y0]
+  (some (fn [[y x]] (when (and (>= y y0) (finite? x) (pos? (double x))) x)) (sort-by key series)))
+
+(defn window-observations
+  "{:y0 :obs {t {name value}} :learn [params]} of a window's data ({:price
+  :output :demand :coverage}, each {data-year value}): from the first price
+  year y0, annual means read at mid-year; output and demand as logs
+  relative to their first value from y0 on (their scales learned), coverage
+  as is (cover-d learned)."
+  [{:keys [price output demand coverage]}]
   (let [y0 (first (keys (into (sorted-map) price)))
         _ (when-not y0 (throw (ex-info "bnm.cycles/calibrate-window: no prices" {})))
-        noise (merge noise-defaults noise)
-        geo (Math/exp (mean (map #(Math/log %) (vals price))))
+        q0 (first-val output y0)
+        d0 (first-val demand y0)
         obs (reduce (fn [acc [k series f]]
-                      (reduce (fn [acc [y x]] (if (and (>= y y0) (finite? x))
+                      (reduce (fn [acc [y x]] (if (and (>= y y0) (finite? x) (finite? (f x)))
                                                 (assoc-in acc [(+ y 0.5) k] (f x)) acc))
                               acc series))
                     {}
                     [[:log-price price #(Math/log %)]
-                     [:log-output (when (get output y0) output) #(Math/log (/ % (get output y0)))]
-                     [:log-demand (when (get demand y0) demand) #(Math/log (/ % (get demand y0)))]
-                     [:coverage coverage double]])
+                     [:log-output (when q0 output) #(Math/log (/ % q0))]
+                     [:log-demand (when d0 demand) #(Math/log (/ % d0))]
+                     [:coverage coverage double]])]
+    {:y0 y0
+     :obs obs
+     :learn (cond-> [:tau-c :beta :tau-s :tau-p :eta :p-ref :pi :g :k0 :i0]
+              q0 (conj :q-scale)
+              d0 (conj :d-scale)
+              (some (fn [[y x]] (and (>= y y0) (finite? x))) coverage) (conj :cover-d))}))
+
+(defn calibrate-window
+  "The model learned from `data` ({:price {year mean price} :output {year
+  production} :demand {year use} :coverage {year stocks to use}}, data
+  years; output and demand in any unit; see window-observations) by
+  bnm.assimilate/calibrate, from the first price year (t0), with a demand
+  shock per :seg (2) years (normal, sd :shock-sd 0.3), the last held after
+  the data. Options :members (100; with 40 the ensemble collapses on some
+  data) :iterations (4) :seed :dt (0.25) :noise. {:params (medians and
+  means) :posterior :members [params] :from}."
+  [{:keys [price] :as data} {:keys [members iterations seed dt noise seg shock-sd]
+                             :or {members 100 iterations 4 seed 1 dt 0.25 seg 2.0 shock-sd 0.3}}]
+  (let [{:keys [y0 obs learn]} (window-observations data)
+        noise (merge noise-defaults noise)
+        geo (Math/exp (mean (map #(Math/log %) (vals price))))
         last-seg (min (dec (count shock-keys)) (long (Math/floor (/ (- (apply max (keys obs)) y0) seg))))
-        learn (cond-> [:tau-c :beta :tau-s :tau-p :eta :p-ref :pi :g :k0 :i0]
-                (get output y0) (conj :q-scale)
-                (get demand y0) (conj :d-scale)
-                (seq coverage) (conj :cover-d))
         pri (-> (select-keys priors learn)
                 (assoc-in [:p-ref :mean] geo)
                 (into (for [i (range (inc last-seg))] [(shock-keys i) {:mean 0.0 :sd shock-sd}])))
@@ -237,6 +264,18 @@
      :posterior (:params post)
      :members (vec (for [theta (:members post)] (merge base (zipmap ps (map natural ps theta)))))
      :from y0}))
+
+(defn deflate
+  "{data-year [year-known value]} of `series` over `index` (likewise): each
+  value over the index's for its data year, known when both are; years
+  without the index left out (prices in constant money: the equilibrium's
+  drift pi is then real)."
+  [series index]
+  (into (sorted-map)
+        (for [[y [k x]] series
+              :let [[ki ix] (get index y)]
+              :when (and ix (some? x) (pos? (double ix)))]
+          [y [(max (long k) (long ki)) (/ (double x) (double ix))]])))
 
 ;; ---------------------------------------------------------------------------
 ;; A commodity year by year
@@ -279,19 +318,19 @@
 
 (defn- state-at
   "{variable value} of the calibrated model at year y, the medians over its
-  members: its state at the middle of the last data year, and its expected
-  price changes after."
+  members: its state at the middle of the last data year, and its log price
+  1-3 years after (:log-price-1y ..)."
   [cal y {:keys [dt]}]
   (let [last-mid (- y 0.5)
         idx (fn [t] (long (Math/round (/ (- t (double (:from cal))) dt))))
         per (fn [r]
               (let [a (fn [k t] (nth (r k) (idx t) nil))
-                    lp0 (a :log-price last-mid)
-                    d (fn [h] (some-> (a :log-price (+ last-mid h)) (- lp0)))]
+                    lp0 (a :log-price last-mid)]
                 (when lp0
-                  {"model_price_gap" (a :price-gap last-mid) "coverage" (a :coverage-ratio last-mid)
-                   "pipeline" (a :pipeline-ratio last-mid) "capacity_gap" (a :capacity-gap last-mid)
-                   "dir_1y" (d 1.0) "dir_2y" (d 2.0) "dir_3y" (d 3.0)
+                  {"model-price-gap" (a :price-gap last-mid) "coverage" (a :coverage-ratio last-mid)
+                   "pipeline" (a :pipeline-ratio last-mid) "capacity-gap" (a :capacity-gap last-mid)
+                   :log-price-1y (a :log-price (+ last-mid 1.0)) :log-price-2y (a :log-price (+ last-mid 2.0))
+                   :log-price-3y (a :log-price (+ last-mid 3.0))
                    :log-p-eq (Math/log (a :p-eq last-mid))})))
         states (keep per (:runs cal))]
     (when (seq states)
@@ -317,16 +356,21 @@
               last-price (get-in k [:price (dec y)])
               st (when cal (state-at cal y opts))
               vs (when (and st last-price)
-                   (let [post (:posterior cal)]
-                     (-> (dissoc st :log-p-eq)
-                         (assoc "price_gap" (- (Math/log last-price) (:log-p-eq st))
-                                "log_price" (Math/log last-price)
-                                "beta" (get-in post [:beta :median]) "beta_sd" (get-in post [:beta :log-sd])
-                                "construction_time" (get-in post [:tau-c :median])
-                                "construction_time_sd" (get-in post [:tau-c :log-sd])
+                   (let [post (:posterior cal)
+                         lp (Math/log last-price)
+                         ;; from the price observed, not the model's own
+                         ;; (stale between calibrations)
+                         dir (fn [k] (some-> (st k) (- lp)))]
+                     (-> (apply dissoc st [:log-p-eq :log-price-1y :log-price-2y :log-price-3y])
+                         (assoc "price-gap" (- lp (:log-p-eq st))
+                                "log-price" lp
+                                "dir-1y" (dir :log-price-1y) "dir-2y" (dir :log-price-2y) "dir-3y" (dir :log-price-3y)
+                                "beta" (get-in post [:beta :median]) "beta-sd" (get-in post [:beta :log-sd])
+                                "construction-time" (get-in post [:tau-c :median])
+                                "construction-time-sd" (get-in post [:tau-c :log-sd])
                                 "period" (:period cal) "calibrated" (double (:origin cal))))))
               rows (for [[v x] (sort-by key vs) :when (finite? x)]
-                     {:iso "WLD" :year y :variable (str commodity "_" v) :value (double x)})]
+                     {:iso "WLD" :year y :variable (str "cycles/" commodity "-" v) :value (double x)})]
           (recur (inc y) cal (reduce conj! out rows)))))))
 
 (defn exposure-rows
@@ -337,7 +381,7 @@
   [phase shares variable {:keys [max-lag] :or {max-lag 5}}]
   (vec (for [[iso s] (sort-by key shares)
              [y ph] (sort-by key phase)
-             :let [share (some (fn [[yr [avail x]]] (when (and (< yr y) (<= avail y) (>= yr (- y max-lag 1)) (some? x)) x))
+             :let [share (some (fn [[yr [avail x]]] (when (and (< yr y) (<= avail y) (>= yr (- y max-lag)) (some? x)) x))
                                (rseq (into (sorted-map) s)))]
              :when (and share (finite? ph))]
          {:iso iso :year y :variable variable :value (* (/ (double share) 100.0) (double ph))})))

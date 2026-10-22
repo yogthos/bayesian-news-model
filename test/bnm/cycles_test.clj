@@ -1,6 +1,9 @@
 (ns bnm.cycles-test
   (:require [bnm.cycles :as cy]
+            [bnm.cycles-run :as run]
+            [bnm.food :as food]
             [bnm.stockflow :as sf]
+            [clojure.java.io :as io]
             [augur.math :as m]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]))
@@ -139,23 +142,114 @@
     (is (= "iso,year,variable,value" (first lines)))
     (is (every? #(= "WLD" (:iso %)) rows))
     (is (every? #(and (integer? (:year %)) (string? (:variable %)) (double? (:value %)) (< (Math/abs (:value %)) ##Inf)) rows))
-    (is (every? #(str/starts-with? (:variable %) "test_") rows))
+    (testing "named cycles/<commodity>-<name>, kebab-case, as the other stock files"
+      (is (every? #(str/starts-with? (:variable %) "cycles/test-") rows))
+      (is (not-any? #(str/includes? (:variable %) "_") rows)))
     (testing "the variables the bead asks for"
       (let [vs (set (map :variable rows))]
-        (doseq [v ["price_gap" "model_price_gap" "coverage" "pipeline" "capacity_gap" "dir_1y" "dir_2y" "dir_3y"
-                   "beta" "construction_time" "period"]]
-          (is (vs (str "test_" v)) v))))
+        (doseq [v ["log-price" "price-gap" "model-price-gap" "coverage" "pipeline" "capacity-gap" "dir-1y" "dir-2y" "dir-3y"
+                   "beta" "beta-sd" "construction-time" "construction-time-sd" "period" "calibrated"]]
+          (is (vs (str "cycles/test-" v)) v))))
     (testing "no row is ahead of the data it reads: the first year has a full minimum window"
       (is (>= (apply min (map :year rows)) (+ 1980 8))))))
+
+(deftest directions-start-from-the-observed-price
+  ;; calibrations at 1990, 1995, 2000 ...: the row of 1996 reads the
+  ;; calibration of 1995 (data years to 1994) and last year's price (1995)
+  (let [data (synthetic 35 11)
+        rows (fn [d] (into {} (for [r (cy/commodity-rows "test" (panel-of d) fast)] [[(:year r) (:variable r)] (:value r)])))
+        a (rows data)
+        b (rows (update data :price #(update % 1995 * Math/E)))
+        v (fn [m n] (get m [1996 (str "cycles/test-" n)]))]
+    (is (= 1995.0 (v a "calibrated")))
+    (testing "rows before 1996 do not see the 1995 price"
+      (is (= (into {} (filter #(< (first (key %)) 1996) a)) (into {} (filter #(< (first (key %)) 1996) b)))))
+    (testing "a price e times higher: the observed gap one higher, the model's own state the same"
+      (is (close? (- (v b "log-price") (v a "log-price")) 1.0 1e-9))
+      (is (close? (- (v b "price-gap") (v a "price-gap")) 1.0 1e-9))
+      (is (close? (v b "model-price-gap") (v a "model-price-gap") 1e-12)))
+    (testing "the expected changes run from the observed price, not from the model's: one lower"
+      (doseq [h ["dir-1y" "dir-2y" "dir-3y"]]
+        (is (close? (- (v b h) (v a h)) -1.0 1e-9) h)))))
+
+(deftest shocks-cover-long-windows
+  (testing "a window of 80 years has a demand shock per segment, not the last of 32 held from year 64"
+    (let [r (cy/simulate {:s35 0.5 :last-seg 45.0 :seg 2.0} {:from 0.0 :to 85.0 :dt 0.5})
+          at (fn [t] (nth (get-in r [:aux :shock]) (long (/ t 0.5))))]
+      (is (close? (at 71.0) 0.5 1e-12))
+      (is (close? (at 69.0) 0.0 1e-12))
+      (is (close? (at 73.0) 0.0 1e-12)))))
+
+(deftest window-observations-normalize-each-quantity-at-its-first-year
+  (let [{:keys [obs learn y0]} (cy/window-observations {:price (sorted-map 1990 10.0 1991 11.0 1992 12.0)
+                                                         :demand (sorted-map 1989 1.0 1991 5.0 1992 6.0)
+                                                         :output (sorted-map 1990 2.0 1992 4.0)})]
+    (is (= 1990 y0))
+    (testing "demand starting after the first price year is used, relative to its first value in the window"
+      (is (some #{:d-scale} learn))
+      (is (nil? (get-in obs [1990.5 :log-demand])))
+      (is (close? (get-in obs [1991.5 :log-demand]) 0.0 1e-12))
+      (is (close? (get-in obs [1992.5 :log-demand]) (Math/log 1.2) 1e-12)))
+    (testing "output at the first price year as before"
+      (is (some #{:q-scale} learn))
+      (is (close? (get-in obs [1992.5 :log-output]) (Math/log 2.0) 1e-12)))
+    (testing "no coverage observed, cover-d not learned"
+      (is (not (some #{:cover-d} learn))))))
+
+(deftest deflate-divides-by-the-index-known-by-then
+  (is (= {2000 [2001 100.0] 2001 [2002 100.0]}
+         (update-vals (cy/deflate {2000 [2000 110.0] 2001 [2001 121.0] 2002 [2002 50.0]}
+                                  {2000 [2001 1.1] 2001 [2002 1.21]})
+                      (fn [[k x]] [k (/ (Math/round (* x 1e9)) 1e9)])))
+      "known the later of the two, a year without the index left out"))
+
+;; ---------------------------------------------------------------------------
+;; The tool's readers
+
+(defn- tmp [lines]
+  (let [f (java.io.File/createTempFile "cycles" ".csv")]
+    (.deleteOnExit f)
+    (spit f (str (str/join "\n" lines) "\n"))
+    (.getPath f)))
+
+(deftest food-rows-are-read-at-their-data-year
+  (let [path (tmp ["iso,year,variable,value"
+                   "WLD,2000,food/wheat-production,5.0E8"
+                   "WLD,2000,food/wheat-use,4.0E8"
+                   "WLD,2000,food/wheat-stocks-to-use,0.3"
+                   "WLD,2000,food/grains-production,9.0E8"
+                   "USA,2000,food/wheat-production,6.0E7"])
+        f (run/read-food path)]
+    (testing "food.csv's names (food/<item>-<name>); the data year food/lag before the year known"
+      (is (= {(- 2000 food/lag) [2000 5.0E8]} (get-in f ["wheat" :output])))
+      (is (= {(- 2000 food/lag) [2000 4.0E8]} (get-in f ["wheat" :demand]))))
+    (testing "FAO's stock level drifts (a cumulated change above its low so far): not read as coverage"
+      (is (nil? (get-in f ["wheat" :coverage]))))
+    (testing "only the world's rows, only the three crops"
+      (is (= #{"wheat"} (set (keys f)))))))
+
+(deftest monthly-csv-is-known-the-month-after
+  (let [path (tmp (cons "observation_date,X" (for [m (range 1 13)] (format "1950-%02d-01,%d.0" m m))))
+        es (run/read-monthly-csv path)]
+    (is (= 12 (count es)))
+    (is (= {1950 [1951 6.5]} (run/annual-prices es)) "December's value is out in January")
+    (testing "a month missing (the US CPI of October 2025, never published): a year only with :min-months allowing it"
+      (let [es (remove #(= (first %) (+ (* 12 1950) 9)) es)]
+        (is (= {} (run/annual-prices es)))
+        (is (= {1950 [1951 (/ (- 78.0 10.0) 11.0)]} (run/annual-prices es 11)))))))
 
 (deftest exposure-is-share-times-phase
   (let [phase {2010 0.4 2011 -0.2 2020 0.1}
         shares {"SAU" (sorted-map 2008 [2009 80.0] 2009 [2011 70.0])}
-        out (cy/exposure-rows phase shares "fuel_exposure" {:max-lag 5})
+        out (cy/exposure-rows phase shares "cycles/fuel-exposure" {:max-lag 5})
         r9 (fn [x] (/ (Math/round (* x 1e9)) 1e9))]
     (testing "the latest share known by the year (data years before it), as a fraction, times that year's phase"
-      (is (= #{{:iso "SAU" :year 2010 :variable "fuel_exposure" :value (r9 (* 0.8 0.4))}
-               {:iso "SAU" :year 2011 :variable "fuel_exposure" :value (r9 (* 0.7 -0.2))}}
+      (is (= #{{:iso "SAU" :year 2010 :variable "cycles/fuel-exposure" :value (r9 (* 0.8 0.4))}
+               {:iso "SAU" :year 2011 :variable "cycles/fuel-exposure" :value (r9 (* 0.7 -0.2))}}
              (set (map #(update % :value r9) out)))))
     (testing "a share older than the lag allows is not used"
-      (is (not-any? #(= 2020 (:year %)) out)))))
+      (is (not-any? #(= 2020 (:year %)) out)))
+    (testing "at most :max-lag years before the year"
+      (let [ys (fn [yr] (set (map :year (cy/exposure-rows {2016 0.5} {"SAU" {yr [(inc yr) 50.0]}} "v" {:max-lag 5}))))]
+        (is (= #{2016} (ys 2011)))
+        (is (= #{} (ys 2010)))))))
