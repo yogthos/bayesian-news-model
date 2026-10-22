@@ -78,8 +78,8 @@
   "availability where recipes may form cycles (an economy's do: power
   needs coal, coal mines need power). {node availability}, 1 normal, from
   the same rules, solved by iteration: every node starts at 1 (`given`
-  for a primary input) and a node is recomputed whenever one of its
-  inputs moves, until no node moves by more than :tol (default 1e-9).
+  for a primary input) and a node is recomputed, first in first out,
+  whenever one of its inputs moves by more than :tol (default 1e-9).
   Every rule is monotone, so from the top the values only fall and settle
   at the largest fixed point: a cut round a loop caps the loop at the
   cut, it does not spiral to zero. Throws past :max-updates (default
@@ -94,8 +94,8 @@
          nodes (distinct (concat (keys given) (keys recipes) (keys users)))
          x (transient (into {} (for [n nodes] [n (if (prep n) 1.0 (double (get given n 1.0)))])))
          start (distinct (concat (filter prep (keys given)) (mapcat users (remove prep (keys given)))))]
-     (loop [x x stack (vec start) queued (set start) k 0]
-       (if-let [n (peek stack)]
+     (loop [x x queue (into clojure.lang.PersistentQueue/EMPTY start) queued (set start) k 0]
+       (if-let [n (peek queue)]
          (let [{:keys [ins ws kind sigma]} (prep n)
                xs (mapv #(get x %) ins)
                r (case kind
@@ -104,14 +104,14 @@
                    :ces (ces xs ws sigma))
                v (if-let [g (get given n)] (min (double g) r) r)
                old (get x n)
-               stack (pop stack)
+               queue (pop queue)
                queued (disj queued n)]
            (when (> k max-updates)
              (throw (ex-info "bnm.hypergraph/propagate did not settle" {:updates k :node n})))
            (if (> (Math/abs (- old v)) tol)
              (let [fresh (remove queued (users n))]
-               (recur (assoc! x n v) (into stack fresh) (into queued fresh) (inc k)))
-             (recur x stack queued (inc k))))
+               (recur (assoc! x n v) (into queue fresh) (into queued fresh) (inc k)))
+             (recur x queue queued (inc k))))
          (persistent! x))))))
 
 (def ^:private ks (vec (for [i [0 1] j [0 1] k [0 1]] [i j k])))

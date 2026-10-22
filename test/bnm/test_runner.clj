@@ -32,6 +32,7 @@
             [bnm.energy-pilot-test]
             [bnm.archetypes-test]
             [bnm.hypergraph-test]
+            [bnm.supply-test]
             [bnm.state-diag-test]
             [bnm.tension-test]
             [bnm.food-test]
@@ -91,6 +92,7 @@
     bnm.energy-pilot-test
     bnm.archetypes-test
     bnm.hypergraph-test
+    bnm.supply-test
     bnm.state-diag-test
     bnm.tension-test
     bnm.food-test
