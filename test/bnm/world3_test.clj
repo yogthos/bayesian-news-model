@@ -41,7 +41,7 @@
     (is (close? (/ 6.65e10 pop) (:diopc i) 1e-12)) (is (= (:diopc i) (:aiopc i)))
     (testing "the pollution delay passes on 1900's generation rate of WorldDynamics' stand-ins"
       (is (close? (+ (* 0.17 1.6e9 0.02 0.1 10.0) (* 6.6 9e8 0.001)) (:ppapr i) 1e-12)))
-    (is (= 1e12 (:nr i))) (is (= 1.6e9 (+ (:p1 i) (:p2 i) (:p3 i) (:p4 i))))))
+    (is (= 1e12 ((:nr i) {:nri 1e12}))) (is (= 1.6e9 (+ (:p1 i) (:p2 i) (:p3 i) (:p4 i))))))
 
 (deftest capital-at-1900
   (let [v (at-1900)]
@@ -51,7 +51,8 @@
     (is (close? (/ 6.65e10 1.6e9) (:iopc v) 1e-12))
     (is (close? 90.0 (:sopc v) 1e-12) "so = sc cuf / scor over 1.6e9")
     (is (close? (/ 2.1e11 14.0) (:icdr v) 1e-12))
-    (is (close? (- 1.0 (:fioaa v) (:fioas v) (:fioac v)) (:fioai v) 1e-12))))
+    ;; fioaa1(269.33/ifpc1 281.95) 0.10896, fioas1(90/isopc1 94.03) 0.10857, fioac 0.43
+    (is (close? 0.352468116846468 (:fioai v) 1e-12))))
 
 (deftest agriculture-at-1900
   (let [v (at-1900)
@@ -66,24 +67,33 @@
     (is (close? 0.0 (:lfr v) 1e-12) "lfert starts at ilf")))
 
 (deftest population-at-1900
+  ;; by hand: fpc 4.3092e11/1.6e9 = 269.325, sopc 90, iopc 41.5625, ppolx 0.18382
   (let [v (at-1900)
-        fpc (/ (:f v) 1.6e9)
-        lmf (+ 1.0 (* 0.43 (- (/ fpc 230.0) 1.0)))]
-    (is (close? lmf (:lmf v) 1e-12) "World3-03's lmf")
-    (is (close? (* 28.0 (:lmf v) (:lmhs v) (:lmp v) (:lmc v)) (:le v) 1e-12))
-    (is (close? (:lmhs1 v) (:lmhs v) 1e-12) "before 1940")
-    (is (close? (* 6.5e8 (:m1 v)) (:d1 v) 1e-12))
-    (is (close? (+ (:d1 v) (:d2 v) (:d3 v) (:d4 v)) (:dr v) 1e-12))
-    (is (close? (/ (* (:tf v) 7e8 0.5) 30.0) (:br v) 1e-12) "br = tf p2 / 2 / rlt")
-    (is (close? (min (:mtf v) (+ (* (:mtf v) (- 1.0 (:fce v))) (* (:dtf v) (:fce v)))) (:tf v) 1e-12))))
+        lmf (+ 1.0 (* 0.43 (- (/ 269.325 230.0) 1.0)))   ; World3-03's lmf
+        lmhs 1.036                                       ; lmhs1(hsapc(90) = 7.2), before 1940
+        lmp 0.9998161764705882                           ; 1 - 0.01 x 0.18382/10
+        lmc (- 1.0 (* 0.406484375 0.16))                 ; cmi(41.5625), fpu(1.6e9)
+        le (* 28.0 lmf lmhs lmp lmc)]
+    (is (close? 1.073520652173913 (:lmf v) 1e-12))
+    (is (close? lmhs (:lmhs v) 1e-12))
+    (is (close? lmp (:lmp v) 1e-12))
+    (is (close? 0.9349625 (:lmc v) 1e-12))
+    (is (close? 29.11002255148156 le 1e-12)) (is (close? le (:le v) 1e-12))
+    (is (close? 24952755.536489345 (:d1 v) 1e-10) "p1 m1(29.11)")
+    (is (close? 51627978.73533929 (:dr v) 1e-10))
+    (testing "births: mtf 6.986, dtf 3.8 x frsn 0.7 x sfsn 1.1856 x cmple 1.6816 = 4.471, fce 0.7753"
+      (is (close? 5.0363526870557935 (:tf v) 1e-10) "mtf (1 - fce) + dtf fce")
+      (is (close? 58757448.01565092 (:br v) 1e-10) "tf p2 / 2 / rlt"))))
 
 (deftest pollution-and-resources-at-1900
   (let [v (at-1900)]
     (is (close? (/ 2.5e7 1.36e8) (:ppolx v) 1e-12) "Vensim's 0.183824")
-    (is (close? (* 1.6e9 (:pcrum v)) (:nrur v) 1e-12) "nrur = pop pcrum nruf")
+    (is (close? 2.82625e8 (:nrur v) 1e-12) "1.6e9 pop x 0.17664 pcrum x 1 nruf")
     (is (close? (* 0.85 (/ (/ 6.65e10 1.6e9) 200.0)) (:pcrum v) 1e-12) "World3-03's pcrum")
-    (is (close? (/ 2.5e7 (* 1.4 1.5 (w3/lookup w3/tables :ahlm (:ppolx v)))) (:ppasr v) 1e-12))
-    (is (close? (+ (:ppgio v) (:ppgao v)) (:ppgr v) 1e-12) "ppgf 1")))
+    (is (close? (/ 2.5e7 (* 1.4 1.5 1.0)) (:ppasr v) 1e-12) "ahlm 1 below ppolx 1")
+    (is (close? (+ (* 0.17664 1.6e9 0.02 0.1 10.0) (* (/ 4.8e9 9e8) 9e8 0.001)) (:ppgr v) 1e-4)
+        "industry's 5.65e6 and agriculture's 4.8e6, ppgf 1")
+    (is (close? 1.04525e7 (:ppgr v) 1e-12))))
 
 (def reference (edn/read-string (slurp "test/resources/world3-reference.edn")))
 
@@ -101,11 +111,24 @@
         errs (into (sorted-map) (for [[k path] ours] [k (compare-runs (reference k) (get-in r path) 1.0)]))]
     (println "world3 max relative error vs Vensim:" errs)
     (is (= 401 (count (:t r))))
+    (doseq [[k path] ours] (is (= 401 (count (reference k)) (count (get-in r path))) (str k " point for point")))
     (doseq [[k e] errs]
       (is (< e 0.1) (str k " within WorldDynamics' tolerance"))
       (is (< e 1e-5) (str k " as Vensim's, to its six printed digits")))
-    (testing "the material accounts close"
+    (testing "each material stock's account closes: its change is what its flows moved"
+      (doseq [s (:conserved r)
+              :let [xs (get-in r [:stocks s])
+                    moved (reduce + 0.0 (for [[k {:keys [from to]}] (:flows (w3/model))
+                                              :when (or (= from s) (= to s))
+                                              x (butlast (get-in r [:flows k]))]
+                                          (* 0.5 (if (= to s) x (- x)))))]]
+        (is (close? (- (last xs) (first xs)) moved 1e-9) (str s)))
       (is (< (/ (sf/imbalance r) 1e12) 1e-9)))))
+
+(deftest units-agree
+  (let [m (w3/model)]
+    (is (empty? (sf/unit-errors m "year")))
+    (is (every? :unit (for [[_ st] (:stocks m) :when (not (:info st))] st)) "every material stock has one")))
 
 (deftest starts-as-vensim-s
   ;; SMOOTH, DLINF3 and DELAY3 start at their inputs' values at t0
@@ -129,4 +152,8 @@
     (testing "World3's constants are the model's parameters: a run overrides them"
       (is (= (nr {:params {:nri 2e12}})
              (last (get-in (sf/run (w3/model) {:from 1900.0 :to 2100.0 :dt 0.5 :params {:nri 2e12}}) [:stocks :nr]))))
-      (is (= 2e12 (first (get-in (sf/run (w3/model) {:from 1900.0 :to 1901.0 :dt 0.5 :params {:nri 2e12}}) [:stocks :nr])))))))
+      (is (= 2e12 (first (get-in (sf/run (w3/model) {:from 1900.0 :to 1901.0 :dt 0.5 :params {:nri 2e12}}) [:stocks :nr])))))
+    (testing "so under WorldDynamics' starts too"
+      (let [m (w3/model {:start :worlddynamics})]
+        (is (= 2e12 (first (get-in (sf/run m {:from 1900.0 :to 1901.0 :dt 0.5 :params {:nri 2e12}}) [:stocks :nr]))))
+        (is (= 2e12 (first (get-in (w3/run {:start :worlddynamics :params {:nri 2e12} :to 1901.0}) [:stocks :nr]))))))))

@@ -1,8 +1,9 @@
 ;; The equations, parameters, tables and initial conditions are ported from
 ;; WorldDynamics.jl (https://github.com/worlddynamics/WorldDynamics.jl),
-;; MIT License, Copyright (c) 2022 Emanuele Natale, Pierluigi Crescenzi,
-;; Paulo Bruno Serafim. Line tags are Meadows et al.'s Appendix A
-;; (Dynamics of Growth in a Finite World, 1974), as WorldDynamics' are.
+;; Copyright (c) 2022 Emanuele Natale, Pierluigi Crescenzi, Paulo Bruno
+;; Serafim, MIT License: see THIRD_PARTY_NOTICES.md. Line tags are Meadows
+;; et al.'s Appendix A (Dynamics of Growth in a Finite World, 1974), as
+;; WorldDynamics' are.
 
 (ns bnm.world3
   "World3-03 (Meadows, Randers & Meadows 2004), the standard run
@@ -13,9 +14,9 @@
   tables and parameters revised (World3-91, then -03). The perceptions and
   delays start at their inputs' values in 1900, as Vensim's SMOOTH, DLINF3
   and DELAY3 do (WorldDynamics.jl starts them from values worked out on
-  World3's 1972 tables instead, `initial`, which is 2-5% off Vensim by
-  2100). Run by Euler steps of half a year from 1900 to 2100, it is
-  Vensim's solution to its six printed digits."
+  World3's 1972 tables instead, `initial`, which leaves the run up to ~4%
+  off Vensim's). Run by Euler steps of half a year from 1900 to 2100, it
+  is Vensim's solution within 7e-6 (about the sixth digit)."
   (:require [bnm.stockflow :as sf]))
 
 (def parameters-1972
@@ -33,13 +34,14 @@
    :nri 1e12 :nruf1 1.0 :nruf2 1.0
    ;; persistent pollution
    :ppgf1 1.0 :ppgf21 1.0 :ppgf22 1.0 :swat 0.0 :frpm 0.02 :imef 0.1 :imti 10.0 :fipm 0.001
-   :amti 1.0 :pptd1 20.0 :pptd2 20.0 :ppol70 1.36e8 :ahl70 1.5
-   ;; human welfare and ecological footprint (World3-03)
-   :oy 1.0 :gdpu 1.0 :rlgdp 24.0 :rhgdp 9508.0 :tl 1.91 :hup 4.0 :hgha 1e9})
+   :amti 1.0 :pptd1 20.0 :pptd2 20.0 :ppol70 1.36e8 :ahl70 1.5})
 
 (def parameters
-  "World3-03's constants: World3's with World3-91's revisions."
-  (merge parameters-1972 {:alln 1000.0 :dcfsn 3.8}))
+  "World3-03's constants: World3's with World3-91's revisions, and those of
+  World3-03's human welfare index and ecological footprint."
+  (merge parameters-1972
+         {:alln 1000.0 :dcfsn 3.8
+          :oy 1.0 :gdpu 1.0 :rlgdp 24.0 :rhgdp 9508.0 :tl 1.91 :hup 4.0 :hgha 1e9}))
 
 (def tables-1972
   "World3's (1972) tables, {name [ys [lo hi]]}: ys on an even grid across
@@ -96,21 +98,21 @@
    :fcaor1 [[1.0 0.9 0.7 0.5 0.2 0.1 0.05 0.05 0.05 0.05 0.05] [0.0 1.0]] ; Line 135.1 Appendix A
    :fcaor2 [[1.0 0.9 0.7 0.5 0.2 0.1 0.05 0.05 0.05 0.05 0.05] [0.0 1.0]] ; Line 136.1 Appendix A
    ;; persistent pollution
-   :ahlm [[1.0 11.0 21.0 31.0 41.0] [1.0 1001.0]] ; Line 145.1 Appendix A
-   ;; human welfare index (World3-03)
-   :lei [[0.0 0.16 0.33 0.5 0.67 0.84 1.0] [25.0 85.0]]
-   :ei [[0.0 0.81 0.88 0.92 0.95 0.98 0.99 1.0] [0.0 7000.0]]
-   :gdppc [[120.0 600.0 1200.0 1800.0 2500.0 3200.0] [0.0 1000.0]]})
+   :ahlm [[1.0 11.0 21.0 31.0 41.0] [1.0 1001.0]]}) ; Line 145.1 Appendix A
 
 (def tables
-  "World3-03's tables: World3's with World3-91's and -03's revisions."
-  (merge-with (fn [[_ r] ys] [ys r]) tables-1972
-              {:lmf [0.0 1.0 1.43 1.5 1.5 1.5]
-               :lmhs2 [1.0 1.5 1.9 2.0 2.0 2.0]
-               :fm [0.0 0.2 0.4 0.6 0.7 0.75 0.79 0.84 0.87]
-               :sfsn [1.25 0.94 0.715 0.59 0.5]
-               :lymc [1.0 3.0 4.5 5.0 5.3 5.6 5.9 6.1 6.35 6.6 6.9 7.2 7.4 7.6 7.8 8.0 8.2 8.4 8.6 8.8 9.0 9.2 9.4 9.6 9.8 10.0]
-               :pcrum [0.0 0.85 2.6 3.4 3.8 4.1 4.4 4.7 5.0]}))
+  "World3-03's tables: World3's with World3-91's and -03's revisions, and
+  those of World3-03's human welfare index."
+  (merge (merge-with (fn [[_ r] ys] [ys r]) tables-1972
+                     {:lmf [0.0 1.0 1.43 1.5 1.5 1.5]
+                      :lmhs2 [1.0 1.5 1.9 2.0 2.0 2.0]
+                      :fm [0.0 0.2 0.4 0.6 0.7 0.75 0.79 0.84 0.87]
+                      :sfsn [1.25 0.94 0.715 0.59 0.5]
+                      :lymc [1.0 3.0 4.5 5.0 5.3 5.6 5.9 6.1 6.35 6.6 6.9 7.2 7.4 7.6 7.8 8.0 8.2 8.4 8.6 8.8 9.0 9.2 9.4 9.6 9.8 10.0]
+                      :pcrum [0.0 0.85 2.6 3.4 3.8 4.1 4.4 4.7 5.0]})
+         {:lei [[0.0 0.16 0.33 0.5 0.67 0.84 1.0] [25.0 85.0]]
+          :ei [[0.0 0.81 0.88 0.92 0.95 0.98 0.99 1.0] [0.0 7000.0]]
+          :gdppc [[120.0 600.0 1200.0 1800.0 2500.0 3200.0] [0.0 1000.0]]}))
 
 (defn lookup "Table `k` of `tables` at x (TABHL)." ^double [tables k x]
   (let [[ys r] (or (tables k) (throw (ex-info (str "bnm.world3: no table " k) {:table k})))]
@@ -122,45 +124,69 @@
   pollution delay's outflow) started from values worked out on World3's
   1972 parameters and tables at a population of 1.61e9, ppolx 1, and the
   pollution delay from 1900's values of WorldDynamics' stand-in time
-  series. `p` gives :nri."
-  ([] (initial parameters))
-  ([p]
-   (let [p72 parameters-1972 tab (partial lookup tables-1972)
-         pop 1.61e9 ppolx 1.0 frsn 0.82                        ; Line 41.2 Appendix A
-         sopc (/ 1.5e11 pop) hsapc (tab :hsapc sopc)
-         lmf (tab :lmf (/ (/ 4e11 pop) (:sfpc p72)))
-         iopc (/ 0.7e11 pop)
-         le (* (:len p72) lmf (tab :lmhs1 hsapc) (tab :lmp ppolx)
-               (- 1.0 (* (tab :cmi iopc) (tab :fpu pop))))
-         mtf (* (:mtfn p72) (tab :fm le))
-         dtf (* (:dcfsn p72) frsn (tab :sfsn iopc) (tab :cmple le))
-         fcapc (* (tab :fsafc (- (/ mtf dtf) 1.0)) sopc)
-         iopc0 (/ 6.65e10 pop)
-         ;; WorldDynamics' stand-ins at 1900: pcrum 17e-2, pop 16e8, aiph 6.6, al 9e8
-         ppgr (* (:ppgf1 p72) (+ (* 0.17 1.6e9 (:frpm p72) (:imef p72) (:imti p72))
-                                 (* 6.6 9e8 (:fipm p72) (:amti p72))))]
-     {:p1 65e7 :p2 70e7 :p3 19e7 :p4 6e7                      ; Lines 2.2, 6.2, 10.2, 14.2 Appendix A
-      :ehspc hsapc                                            ; Line 22 Appendix A
-      :ple le                                                 ; Line 37 Appendix A
-      :diopc iopc0                                            ; Line 40 Appendix A
-      :aiopc iopc0                                            ; Line 43 Appendix A
-      :fcfpc fcapc                                            ; Line 46 Appendix A
-      :ic 2.1e11                                              ; Line 52.2 Appendix A
-      :sc 1.44e11                                             ; Line 67.2 Appendix A
-      :lufd 1.0                                               ; Line 82 Appendix A
-      :al 0.9e9                                               ; Line 85.2 Appendix A
-      :pal 2.3e9                                              ; Line 86.2 Appendix A
-      :ai 5e9                                                 ; Line 99.1 Appendix A
-      :uil 8.2e6                                              ; Line 120.2 Appendix A
-      :lfert 600.0                                            ; Line 121.2 Appendix A
-      :pfr 1.0                                                ; Line 128.1 Appendix A
-      :nr (double (:nri p))                                   ; Line 129.2 Appendix A
-      :ppapr ppgr                                             ; Line 141 Appendix A
-      :ppol 2.5e7})))                                         ; Line 142.1 Appendix A
+  series; :nr the run's :nri."
+  []
+  (let [p72 parameters-1972 tab (partial lookup tables-1972)
+        pop 1.61e9 ppolx 1.0 frsn 0.82                        ; Line 41.2 Appendix A
+        sopc (/ 1.5e11 pop) hsapc (tab :hsapc sopc)
+        lmf (tab :lmf (/ (/ 4e11 pop) (:sfpc p72)))
+        iopc (/ 0.7e11 pop)
+        le (* (:len p72) lmf (tab :lmhs1 hsapc) (tab :lmp ppolx)
+              (- 1.0 (* (tab :cmi iopc) (tab :fpu pop))))
+        mtf (* (:mtfn p72) (tab :fm le))
+        dtf (* (:dcfsn p72) frsn (tab :sfsn iopc) (tab :cmple le))
+        fcapc (* (tab :fsafc (- (/ mtf dtf) 1.0)) sopc)
+        iopc0 (/ 6.65e10 pop)
+        ;; WorldDynamics' stand-ins at 1900: pcrum 17e-2, pop 16e8, aiph 6.6, al 9e8
+        ppgr (* (:ppgf1 p72) (+ (* 0.17 1.6e9 (:frpm p72) (:imef p72) (:imti p72))
+                                (* 6.6 9e8 (:fipm p72) (:amti p72))))]
+    {:p1 65e7 :p2 70e7 :p3 19e7 :p4 6e7                      ; Lines 2.2, 6.2, 10.2, 14.2 Appendix A
+     :ehspc hsapc                                            ; Line 22 Appendix A
+     :ple le                                                 ; Line 37 Appendix A
+     :diopc iopc0                                            ; Line 40 Appendix A
+     :aiopc iopc0                                            ; Line 43 Appendix A
+     :fcfpc fcapc                                            ; Line 46 Appendix A
+     :ic 2.1e11                                              ; Line 52.2 Appendix A
+     :sc 1.44e11                                             ; Line 67.2 Appendix A
+     :lufd 1.0                                               ; Line 82 Appendix A
+     :al 0.9e9                                               ; Line 85.2 Appendix A
+     :pal 2.3e9                                              ; Line 86.2 Appendix A
+     :ai 5e9                                                 ; Line 99.1 Appendix A
+     :uil 8.2e6                                              ; Line 120.2 Appendix A
+     :lfert 600.0                                            ; Line 121.2 Appendix A
+     :pfr 1.0                                                ; Line 128.1 Appendix A
+     :nr (fn [v] (v :nri))                                   ; Line 129.2 Appendix A
+     :ppapr ppgr                                             ; Line 141 Appendix A
+     :ppol 2.5e7}))                                          ; Line 142.1 Appendix A
+
+(def ^:private units
+  "The material stocks' units, and their flows', per year."
+  (merge (into {} (for [k [:p1 :p2 :p3 :p4]] [k "people"]))
+         (into {} (for [k [:br :d1 :d2 :d3 :d4 :mat1 :mat2 :mat3]] [k "people/year"]))
+         {:ic "$" :sc "$" :icir "$/year" :icdr "$/year" :scir "$/year" :scdr "$/year"
+          :al "hectares" :pal "hectares" :uil "hectares"
+          :ldr "hectares/year" :ler "hectares/year" :lrui "hectares/year"
+          :lfert "veg-equivalent kg/hectare-year" :lfr "veg-equivalent kg/hectare-year/year"
+          :lfd "veg-equivalent kg/hectare-year/year"
+          :nr "resource units" :nrur "resource units/year"}
+         (into {} (for [k [:ppapr-1 :ppapr-2 :ppapr-3 :ppol]] [k "pollution units"]))
+         (into {} (for [k [:ppapr-in :ppapr-1-out :ppapr-2-out :ppapr :ppasr]] [k "pollution units/year"]))))
+
+(defn- with-units [m]
+  (reduce-kv (fn [m k u]
+               (let [part (some #(when (contains? (m %) k) %) [:stocks :flows])]
+                 (when-not part (throw (ex-info (str "bnm.world3: a unit for no stock or flow " k) {:name k})))
+                 (assoc-in m [part k :unit] u)))
+             m units))
 
 (defn- build [opts i]
-   (let [tab (partial lookup (merge tables (:tables opts)))
-         clip (fn [v a b k] (sf/clip a b (v :t) (v k)))]
+  (let [tab (partial lookup (merge tables (:tables opts)))
+        ;; the policy-year switches are CLIP's (t >= threshold), as
+        ;; WorldDynamics'; the 1940 health-services switch (lmhs) is strict,
+        ;; as Vensim's. Only the standard run, where every pyear switch is
+        ;; between equal values, checks this against Vensim.
+        clip (fn [v a b k] (sf/clip a b (v :t) (v k)))]
+    (with-units
      (sf/combine
       (sf/model {:params (merge parameters (:params opts))})
       ;; population, four cohorts (Pop4)
@@ -341,7 +367,7 @@
          :hef (fn [v] (/ (+ (v :alggha) (v :ulgha) (v :algha)) (v :tl)))
          :algha (fn [v] (/ (* (v :ppgr) (v :hup)) (v :hgha)))
          :alggha (fn [v] (/ (v :al) (v :hgha)))
-         :ulgha (fn [v] (/ (v :uil) (v :hgha)))}}))))
+         :ulgha (fn [v] (/ (v :uil) (v :hgha)))}})))))
 
 (def ^:private delays
   "The perceptions and delays Vensim starts in equilibrium with their
@@ -358,11 +384,8 @@
   (from `initial`'s values)."
   ([] (model {}))
   ([{:keys [inits start] :or {start :vensim} :as opts}]
-   (let [wd (initial (merge parameters (:params opts)))
-         i (merge (if (= start :vensim)
-                    (-> (apply dissoc wd delays) (assoc :nr (fn [v] (v :nri))))
-                    wd)
-                  inits)]
+   (let [wd (initial)
+         i (merge (if (= start :vensim) (apply dissoc wd delays) wd) inits)]
      (build opts i))))
 
 (defn run
