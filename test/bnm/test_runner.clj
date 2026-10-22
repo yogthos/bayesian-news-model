@@ -71,6 +71,7 @@
             [bnm.power-audit-test]
             [bnm.ews-reframed-test]
             [bnm.migration-test]
+            [bnm.econ-factors-test]
             [bnm.half-decade-test]
             [bnm.recipes-test]
             [bnm.econ-structure-test]))
@@ -147,6 +148,7 @@
     bnm.power-audit-test
     bnm.ews-reframed-test
     bnm.migration-test
+    bnm.econ-factors-test
     bnm.half-decade-test
     bnm.recipes-test
     bnm.econ-structure-test])
