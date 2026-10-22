@@ -7,6 +7,25 @@ them as products of underlying trends. The event lattice and its links
 material base (wuli) as sectors with stocks and flows, connected by
 influences, from which events emerge as threshold crossings of stocks.
 
+## What stays: stocks and flows on the lattice
+
+This layer adds fidelity; it does not replace what works. Each sector and
+stock is a node of the lattice, per place (the place tree) and time scale
+(quarter, year, half-decade), on the dimension axis beside the event
+kinds. Its flows are dynamic Bayesian models learned from what is known at
+each origin, so the delays, adjustment times and table points that system
+dynamics sets by hand are estimated, pooled up the place tree. Nodes still
+feed one another: states down, strain up, errors across, a coarser
+forecast carried down as an offset. A stock's imbalances are its
+contradictions: coverage against desired coverage, debt service against
+income, observed against expected progress, credit against wages; strain
+accumulates and resolves at a leap (a crisis), and the principal
+contradiction may name an archetype. Selection pressure decides what
+enters a forecast: model averaging adopts a stock-flow input only where
+the node forecasts better with it, in a nested comparison, checked against
+a placebo. Every piece is designed on the design years and tested as
+registered. The checklist is bead bnm-62z.1 (epic bnm-62z).
+
 ## What the store already holds
 
 Loose national totals and prices, not yet wired together:
