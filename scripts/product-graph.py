@@ -138,6 +138,22 @@ REFINERY_EXTRA = ["C_ADDC", "C_BIOG", "C_BIOD", "C_OBIO"]
 # split them differently: Spain reports its jet as kerosene)
 SCALED = [["C_NAPT"], ["C_LPGA"], ["C_BITU"], ["C_NSPP"], ["C_KJET", "C_KERO"]]
 SCALE_MIN_KT = 100.0
+# UNSD's total energy supply leaves out international bunkers, so no use
+# target for jet fuel
+NO_USE_TARGET = [["C_KJET", "C_KERO"]]
+# the rest-of-world regions' countries in UNSD's data (ISO3), by UN
+# continent; the Middle East as EXIOBASE has it (Iran with it, Turkey and
+# Cyprus apart); WA (Asia and Pacific, Taiwan in it, the Caucasus and
+# Central Asia with it) every country left
+ROW_MEMBERS = {
+    "WM": "ARE BHR IRN IRQ ISR JOR KWT LBN OMN PSE QAT SAU SYR YEM",
+    "WF": "AGO BDI BEN BFA BWA CAF CIV CMR COD COG COM CPV DJI DZA EGY ERI ETH GAB GHA GIN GMB GNB GNQ KEN LBR "
+          "LBY LSO MAR MDG MLI MOZ MRT MUS MWI NAM NER NGA RWA SDF SDN SSD SEN SHN SLE SOM STP SWZ SYC TCD TGO "
+          "TUN TZA UGA ZMB ZWE",
+    "WL": "ABW AIA ANT ARG ATG BHS BLM BLZ BMU BOL BRB CHL COL CRI CUB CUW CYM DMA DOM ECU FLK GRD GTM GUY HND "
+          "HTI JAM KNA LCA MAF MSR NIC PAN PER PRI PRY SLV SPM SUR SXM TCA TTO URY VCT VEN VGB",
+    "WE": "ALB AND BIH BLR FRO GGY GIB GRL IMN ISL JEY LIE MCO MDA MKD MNE SMR SRB UKR XKX",
+}
 ISO3 = {"AU": "AUS", "AT": "AUT", "BE": "BEL", "BR": "BRA", "BG": "BGR", "CA": "CAN", "CN": "CHN", "CY": "CYP",
         "CZ": "CZE", "DK": "DNK", "EE": "EST", "FI": "FIN", "FR": "FRA", "DE": "DEU", "GR": "GRC", "HU": "HUN",
         "HR": "HRV", "IN": "IND", "ID": "IDN", "IE": "IRL", "IT": "ITA", "JP": "JPN", "LV": "LVA", "LT": "LTU",
@@ -235,64 +251,94 @@ def unsd_2011(flow):
     return o.groupby(["iso", "exiobase"])["value"].sum().to_dict()
 
 
-def targets(regions, pcode, x, un, grp):
+def region_figures(regions, un):
+    """{(region, code): kt}: UNSD's figures `un` ({(iso3, code): kt}) for
+    the graph's regions, a rest-of-world region the sum of its countries
+    (ROW_MEMBERS; WA every country no other region takes)."""
+    iso_region = {ISO3[r]: r for r in regions if r in ISO3}
+    for r, members in ROW_MEMBERS.items():
+        if r in regions:
+            iso_region.update({i: r for i in members.split()})
+    taken = set(ISO3.values()) | {i for m in ROW_MEMBERS.values() for i in m.split()}
+    out = {}
+    for (iso, code), v in un.items():
+        r = iso_region.get(iso, "WA" if "WA" in regions and iso not in taken else None)
+        if r is not None:
+            out[(r, code)] = out.get((r, code), 0.0) + v
+    return out
+
+
+def targets(regions, pcode, x, figs, grp):
     """{region: (exiobase kt, unsd kt or None, target kt, source)} for the
     products `grp` together: x (R, P) EXIOBASE's tonnes (production or
-    use), un UNSD's kt. Target UNSD's where both are above SCALE_MIN_KT;
-    else the median ratio over those regions times EXIOBASE's (the
-    rest-of-world regions, small or unreported producers)."""
+    use), figs UNSD's kt by region (region_figures). Target UNSD's where
+    both are above SCALE_MIN_KT; else the median ratio over those regions
+    times EXIOBASE's (small or unreported producers). {} where no region
+    has a figure."""
     ix = [pcode.index(c) for c in grp]
     own = {}
     for s, reg in enumerate(regions):
         e = x[s, ix].sum() / 1000.0
-        u = sum(un.get((ISO3[reg], c), 0.0) for c in grp) if reg in ISO3 else None
-        own[reg] = (e, u)
+        hit = [figs[(reg, c)] for c in grp if (reg, c) in figs]
+        own[reg] = (e, sum(hit) if hit else None)
     ok = {r: u / e for r, (e, u) in own.items() if u is not None and e > SCALE_MIN_KT and u > SCALE_MIN_KT}
+    if not ok:
+        return {}
     med = float(np.median(list(ok.values())))
     return {r: (e, u, u if r in ok else e * med, "unsd" if r in ok else "median") for r, (e, u) in own.items() if e > 0}
 
 
-def scale_to_unsd(regions, pcode, V4, U4, Y4):
-    """Scale V4, U4, Y4 in place, each group of SCALED to UNSD's 2011
-    figures: for a product the origin-by-destination matrix of its uses
-    (every industry and final demand) is fitted by biproportional scaling
-    (RAS) to production by origin (UNSD's flow 01) and, for the
-    non-kerosene products, to use by destination (UNSD's total energy
-    supply, GA); a region's supply is scaled with its row, so its supply
-    still equals its uses. Origins without a UNSD figure take the median
-    ratio; destinations without one are free (they take up what the
-    production and use totals leave). Returns [(region, group, kind, exiobase kt, unsd kt,
-    target kt, fitted kt, source)], or None without oil-products.csv."""
-    prod_un = unsd_2011("01")
-    if prod_un is None:
-        return None
-    use_un = unsd_2011("GA")
+def scale_to_unsd(regions, pcode, V4, U4, Y4, prod_un, use_un, groups=SCALED):
+    """Scale V4, U4, Y4 in place, each group of `groups` to UNSD's 2011
+    figures (prod_un, use_un: {(iso3, code): kt}, flows 01 and GA): for a
+    group the origin-by-destination matrix of its uses (every industry and
+    final demand) is fitted by biproportional scaling (RAS) to production
+    by origin and, but for NO_USE_TARGET, to use by destination. A
+    rest-of-world region's figure is the sum of its countries'
+    (region_figures). Each product's supply in a region is scaled with its
+    own uses from there, so supply still equals use product by product.
+    Origins without a UNSD figure take the median ratio; destinations
+    without one are free (they take up what the production and use totals
+    leave). Returns [(region, group, kind, exiobase kt, unsd kt, target kt
+    (None for a free destination), fitted kt, source unsd|median|free)]."""
+    prod_f = region_figures(regions, prod_un)
+    use_f = region_figures(regions, use_un)
     R = len(regions)
     report = []
-    for grp in SCALED:
+    for grp in groups:
         ix = [pcode.index(c) for c in grp]
         q = np.stack([V4[r, :, r, :].sum(axis=1) for r in range(R)])
-        M0 = sum(U4[:, p, :, :].sum(axis=2) + Y4[:, p, :, :].sum(axis=2) for p in ix)  # (origin, dest) tonnes
+        M0p = {p: U4[:, p, :, :].sum(axis=2) + Y4[:, p, :, :].sum(axis=2) for p in ix}  # (origin, dest) tonnes
+        M0 = sum(M0p.values())
         use = np.zeros((R, len(pcode)))
         for p in ix:
-            use[:, p] = U4[:, p, :, :].sum(axis=(0, 2)) + Y4[:, p, :, :].sum(axis=(0, 2))
-        rt = targets(regions, pcode, q, prod_un, grp)
-        ct = targets(regions, pcode, use, use_un, grp) if grp != ["C_KJET", "C_KERO"] else {}
+            use[:, p] = M0p[p].sum(axis=0)
+        rt = targets(regions, pcode, q, prod_f, grp)
+        if not rt:
+            continue
+        ct = targets(regions, pcode, use, use_f, grp) if grp not in NO_USE_TARGET else {}
         rows = np.array([rt[r][2] * 1000.0 if r in rt else 0.0 for r in regions])
         # destinations without a UNSD figure are left free: they take up
         # the difference between the production and use targets' totals
         cols = np.array([ct[r][2] * 1000.0 if r in ct and ct[r][3] == "unsd" else np.nan for r in regions])
         M = M0.copy()
-        for _ in range(200):
+        for _ in range(5000):
             with np.errstate(invalid="ignore", divide="ignore"):
                 rs = M.sum(axis=1)
                 M *= np.where(rs > 0, rows / rs, 0.0)[:, None]
                 cs = M.sum(axis=0)
-                M *= np.where(np.isfinite(cols) & (cs > 0), cols / cs, 1.0)[None, :]
+                cf = np.where(np.isfinite(cols) & (cs > 0), cols / cs, 1.0)
+                M *= cf[None, :]
+            rs = M.sum(axis=1)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                if np.nanmax(np.abs(np.where(rows > 0, rs / rows - 1, 0.0))) < 1e-10 and np.abs(cf - 1).max() < 1e-10:
+                    break
         with np.errstate(invalid="ignore", divide="ignore"):
             f = np.where(M0 > 0, M / M0, 1.0)  # (origin, dest)
-            fv = np.where(M0.sum(axis=1) > 0, M.sum(axis=1) / M0.sum(axis=1), 1.0)
         for p in ix:
+            before = M0p[p].sum(axis=1)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                fv = np.where(before > 0, (M0p[p] * f).sum(axis=1) / before, 1.0)
             U4[:, p, :, :] *= f[:, :, None]
             Y4[:, p, :, :] *= f[:, :, None]
             for r in range(R):
@@ -305,7 +351,8 @@ def scale_to_unsd(regions, pcode, V4, U4, Y4):
                 report.append((reg, grp, "production", e, u, t, fitted_rows[k], src))
             if reg in ct:
                 e, u, t, src = ct[reg]
-                report.append((reg, grp, "use", e, u, t, fitted_cols[k], src))
+                free = src != "unsd"
+                report.append((reg, grp, "use", e, u, None if free else t, fitted_cols[k], "free" if free else src))
     return report
 
 
@@ -313,14 +360,15 @@ def refinery_balance(regions, prod, punit, pcode, ind, Vd, Ud):
     """{(region, check): (in, out, (out - in) / in)} for the refinery
     industry, as balances.csv has it."""
     refn = [j for j, (c, _) in enumerate(ind) if c == "A_REFN"][0]
-    refin = [pcode.index(c) for c in REFINERY_IN]
+    refin = [pcode.index(c) for c in REFINERY_IN if c in pcode]
     refout = [p for p in range(len(prod)) if prod[p][3].startswith("p23.20") and punit[p] == "tonnes"]
     refall = [p for p in range(len(prod)) if punit[p] == "tonnes"
               and (prod[p][3].startswith(("p11", "p23.20")) or pcode[p] in REFINERY_EXTRA)]
+    nogas = [p for p in refall if pcode[p] != "C_GASE"]
     out = {}
     for s, reg in enumerate(regions):
         cout = Vd[s][refout, refn].sum()
-        for name, idx in [("refinery", refin), ("refinery-all", refall)]:
+        for name, idx in [("refinery", refin), ("refinery-all", refall), ("refinery-nogas", nogas)]:
             cin = Ud[s][idx, refn].sum()
             if cin > 0 or cout > 0:
                 out[(reg, name)] = (cin, cout, (cout - cin) / cin if cin > 0 else np.nan)
@@ -365,15 +413,27 @@ def main():
     # toward its crude
     before = refinery_balance(regions, prod, punit, pcode, ind, np.stack([V4[r, :, r, :] for r in range(R)]),
                               U4.sum(axis=0).transpose(1, 0, 2))
-    scaling = scale_to_unsd(regions, pcode, V4, U4, Y4)
+    prod_un = unsd_2011("01")
+    six = [pcode.index(c) for grp in SCALED for c in grp]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        off0 = supply_less_use(V4[:, six], U4[:, six], Y4[:, six])
+    scaling = None if prod_un is None else scale_to_unsd(regions, pcode, V4, U4, Y4, prod_un, unsd_2011("GA"))
     if scaling is None:
         print("no oil-products.csv: refined products not scaled to UNSD (run scripts/oil-products.py first)")
     else:
+        # the tables' own rounding (up to 1e-4 of supply) stays as it was
+        with np.errstate(invalid="ignore", divide="ignore"):
+            off = supply_less_use(V4[:, six], U4[:, six], Y4[:, six])
+        made = np.isfinite(off0) & np.isfinite(off)
+        moved = np.abs(off[made] - off0[made]).max()
+        print(f"scaled products: supply less use moved by at most {moved:.2g} of supply (should be 0); "
+              f"as read, up to {np.abs(off0[made]).max():.2g}")
+        assert moved < 1e-9, "the scaling broke a product's balance"
         with open(os.path.join(OUT, "scaling.csv"), "w", newline="") as fh:
             w = csv.writer(fh)
             w.writerow(["region", "products", "kind", "exiobase_kt", "unsd_kt", "target_kt", "fitted_kt", "source"])
             for reg, grp, kind, e, u, t, fit, src in scaling:
-                w.writerow([reg, "+".join(grp), kind, fmt(e), fmt(u) if u is not None else "", fmt(t), fmt(fit), src])
+                w.writerow([reg, "+".join(grp), kind, fmt(e), fmt(u), fmt(t), fmt(fit), src])
         for grp in SCALED:
             for kind in ["production", "use"]:
                 rs = [x for x in scaling if x[1] == grp and x[2] == kind]
@@ -382,7 +442,8 @@ def main():
                 un = [x for x in rs if x[7] == "unsd"]
                 off = np.array([x[6] / x[5] - 1 for x in un if x[5] > 0])
                 print(f"scaled {'+'.join(grp)} {kind}: {len(un)} regions to UNSD (EXIOBASE/UNSD median "
-                      f"{np.median([x[3] / x[4] for x in un]):.2f}), {len(rs) - len(un)} at the median ratio; "
+                      f"{np.median([x[3] / x[4] for x in un]):.2f}), {len(rs) - len(un)} "
+                      f"{'at the median ratio' if kind == 'production' else 'free'}; "
                       f"world {sum(x[3] for x in rs) / 1000:.0f} -> {sum(x[6] for x in rs) / 1000:.0f} Mt; "
                       f"fitted to UNSD within {np.abs(off).max():.1%} (median {np.median(np.abs(off)):.1%})")
 
@@ -549,7 +610,7 @@ def main():
         for p in range(P):
             if q[s, p] > 0:
                 rows.append([reg, "product:" + pcode[p], used[p], q[s, p], punit[p], (q[s, p] - used[p]) / q[s, p]])
-        for name in ["refinery", "refinery-all"]:
+        for name in ["refinery", "refinery-all", "refinery-nogas"]:
             if (reg, name) in after:
                 cin, cout, res = after[(reg, name)]
                 rows.append([reg, name, cin, cout, "tonnes", res])
@@ -570,7 +631,8 @@ def main():
     print(f"product balances off by more than 1%, by group: {bygroup}")
     print(f"product balances: {len(prodres)}; |residual| median {np.median(prodres):.3g}, "
           f"90th pct {np.percentile(prodres, 90):.3g}, above 1%: {(prodres > 0.01).sum()}")
-    for name in ["refinery-unscaled", "refinery", "refinery-all-unscaled", "refinery-all"]:
+    for name in ["refinery-unscaled", "refinery", "refinery-all-unscaled", "refinery-all", "refinery-nogas-unscaled",
+                 "refinery-nogas"]:
         rs = [r for r in rows if r[1] == name and r[2] > 1e6]
         if not rs:
             continue
@@ -580,5 +642,113 @@ def main():
         print("  " + ", ".join(f"{r[0]} {r[5]:+.2f}" for r in rs))
 
 
+# ---------------------------------------------------------------- self-test
+
+def toy_tables(regions, pcode, seed=7):
+    """V4, U4, Y4 for a toy economy in which every region's supply of a
+    product equals its uses (tonnes)."""
+    R, P, I, C = len(regions), len(pcode), 3, 2
+    rng = np.random.default_rng(seed)
+    U4 = rng.uniform(0.5, 2.0, (R, P, R, I)) * 1e5
+    Y4 = rng.uniform(0.5, 2.0, (R, P, R, C)) * 1e5
+    V4 = np.zeros((R, P, R, I))
+    for r in range(R):
+        V4[r, :, r, :] = (U4[r].sum(axis=(1, 2)) + Y4[r].sum(axis=(1, 2)))[:, None] / I
+    return V4, U4, Y4
+
+
+def supply_less_use(V4, U4, Y4):
+    """(R, P) each region's supply of each product less every use of it,
+    relative to its supply."""
+    R = V4.shape[0]
+    sup = np.stack([V4[r, :, r, :].sum(axis=1) for r in range(R)])
+    use = U4.sum(axis=(2, 3)) + Y4.sum(axis=(2, 3))
+    return (sup - use) / sup
+
+
+def selftest():
+    """python -I scripts/product-graph.py --selftest"""
+    regions = ["DE", "FR", "WM", "WA"]
+    pcode = ["C_NAPT", "C_LPGA", "C_KJET", "C_KERO", "C_OTHR"]
+    # a region of the rest of the world takes the sum of its countries:
+    # WM Saudi Arabia and Iran, WA (the rest) Thailand
+    un = {("DEU", "C_NAPT"): 1200.0, ("FRA", "C_NAPT"): 900.0, ("SAU", "C_NAPT"): 700.0, ("IRN", "C_NAPT"): 500.0,
+          ("THA", "C_NAPT"): 800.0, ("NOR", "C_NAPT"): 5000.0}
+    figs = region_figures(regions, un)
+    assert figs[("WM", "C_NAPT")] == 1200.0 and figs[("WA", "C_NAPT")] == 800.0, figs
+    assert figs[("DE", "C_NAPT")] == 1200.0 and ("NO", "C_NAPT") not in figs, "only the graph's regions"
+
+    V4, U4, Y4 = toy_tables(regions, pcode)
+    V0, U0, Y0 = V4.copy(), U4.copy(), Y4.copy()
+    assert np.abs(supply_less_use(V4, U4, Y4)).max() < 1e-12
+    prod_un = {**un, ("DEU", "C_KJET"): 600.0, ("DEU", "C_KERO"): 300.0, ("FRA", "C_KJET"): 700.0,
+               ("SAU", "C_KJET"): 1000.0, ("THA", "C_KERO"): 400.0}
+    # use: Germany, France and the Gulf; Thailand none, so WA is free and
+    # takes up what is left (production 4,100 kt, these 3,000)
+    use_un = {("DEU", "C_NAPT"): 1500.0, ("FRA", "C_NAPT"): 600.0, ("SAU", "C_NAPT"): 900.0}
+    rep = scale_to_unsd(regions, pcode, V4, U4, Y4, prod_un, use_un, groups=[["C_NAPT"], ["C_KJET", "C_KERO"]])
+    got = {(r[0], "+".join(r[1]), r[2]): r for r in rep}
+    # supply equals use, product by product, region by region
+    assert np.abs(supply_less_use(V4, U4, Y4)).max() < 1e-9
+    # production fitted to UNSD by origin, use by destination where it has a figure
+    for reg, t in [("DE", 1200.0), ("FR", 900.0), ("WM", 1200.0), ("WA", 800.0)]:
+        e, u, target, fitted, src = [got[(reg, "C_NAPT", "production")][k] for k in (3, 4, 5, 6, 7)]
+        assert src == "unsd" and target == t and abs(fitted / t - 1) < 1e-6, (reg, got[(reg, "C_NAPT", "production")])
+        assert abs(V4[regions.index(reg), 0, regions.index(reg), :].sum() / 1000.0 - t) < 1e-6 * t
+    for reg, t in [("DE", 1500.0), ("FR", 600.0), ("WM", 900.0)]:
+        assert abs(got[(reg, "C_NAPT", "use")][6] / t - 1) < 1e-6, got[(reg, "C_NAPT", "use")]
+    assert abs(got[("WA", "C_NAPT", "use")][6] - (4100.0 - 3000.0)) < 1e-3, "the free destination takes the rest"
+    assert got[("WA", "C_NAPT", "use")][7] == "free"
+    # kerosene: production only (UNSD's supply leaves out bunkers)
+    assert ("DE", "C_KJET+C_KERO", "use") not in got
+    assert abs(got[("DE", "C_KJET+C_KERO", "production")][6] - 900.0) < 1e-3
+    # a product not scaled is left alone
+    k = pcode.index("C_OTHR")
+    assert np.array_equal(V4[:, k], V0[:, k]) and np.array_equal(U4[:, k], U0[:, k]) and np.array_equal(Y4[:, k], Y0[:, k])
+    assert np.array_equal(U4[:, pcode.index("C_LPGA")], U0[:, pcode.index("C_LPGA")])
+
+    # a group of two products fitted on use too keeps each product's supply
+    # equal to its own uses
+    V4, U4, Y4 = toy_tables(regions, pcode, seed=3)
+    scale_to_unsd(regions, pcode, V4, U4, Y4, {**un, ("DEU", "C_LPGA"): 400.0},
+                  {("DEU", "C_NAPT"): 1500.0, ("FRA", "C_NAPT"): 600.0, ("SAU", "C_NAPT"): 900.0},
+                  groups=[["C_NAPT", "C_LPGA"]])
+    assert np.abs(supply_less_use(V4, U4, Y4)).max() < 1e-9
+
+    # an origin without a figure takes the median ratio of those with one
+    V4, U4, Y4 = toy_tables(regions, pcode, seed=5)
+    e = {r: V4[i, 0, i, :].sum() / 1000.0 for i, r in enumerate(regions)}
+    part = {("DEU", "C_NAPT"): 1200.0, ("FRA", "C_NAPT"): 900.0, ("SAU", "C_NAPT"): 1200.0}
+    rep = scale_to_unsd(regions, pcode, V4, U4, Y4, part, {}, groups=[["C_NAPT"]])
+    wa = [r for r in rep if r[0] == "WA" and r[2] == "production"][0]
+    med = np.median([1200.0 / e["DE"], 900.0 / e["FR"], 1200.0 / e["WM"]])
+    assert wa[7] == "median" and wa[4] is None and abs(wa[5] - e["WA"] * med) < 1e-6 * wa[5], wa
+    assert np.abs(supply_less_use(V4, U4, Y4)).max() < 1e-9
+    # no figure at all for a group: nothing scaled
+    V4, U4, Y4 = toy_tables(regions, pcode, seed=5)
+    V0 = V4.copy()
+    assert scale_to_unsd(regions, pcode, V4, U4, Y4, {}, {}, groups=[["C_NAPT"]]) == []
+    assert np.array_equal(V4, V0)
+
+    # refinery balances: against crude and feedstocks, everything, and
+    # everything but natural gas (gas processing returns its dry gas to the
+    # grid, which the tables do not record as refinery output)
+    prod = [("C_COIL", "crude", "tonnes", "p11.a"), ("C_GASE", "gas", "tonnes", "p11.b"),
+            ("C_DOIL", "diesel", "tonnes", "p23.20.d"), ("C_RGAS", "refinery gas", "tonnes", "p23.20.a")]
+    pc = [p[0] for p in prod]
+    pu = [p[2] for p in prod]
+    ind = [("A_REFN", "refining")]
+    Vd = np.array([[[0.0], [0.0], [90.0], [6.0]]])
+    Ud = np.array([[[100.0], [20.0], [0.0], [5.0]]])
+    b = refinery_balance(["XX"], prod, pu, pc, ind, Vd, Ud)
+    assert abs(b[("XX", "refinery")][2] - (96.0 - 100.0) / 100.0) < 1e-12
+    assert abs(b[("XX", "refinery-all")][2] - (96.0 - 125.0) / 125.0) < 1e-12
+    assert abs(b[("XX", "refinery-nogas")][2] - (96.0 - 105.0) / 105.0) < 1e-12
+    print("product-graph.py selftest ok")
+
+
 if __name__ == "__main__":
-    main()
+    if "--selftest" in sys.argv:
+        selftest()
+    else:
+        main()
