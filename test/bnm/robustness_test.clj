@@ -170,6 +170,8 @@
     (testing "worst case, calibration and era spread are reported"
       (is (some? (value res "worst-case" "lattice" "minimax-D")))
       (is (<= (value res "worst-case" "lattice" "minimax-D") (value res "worst-case" "lattice" "decile-D")))
+      (is (close? (- (value res "worst-case" "lattice" "worst-era-D") (value res "worst-case" "lattice" "worst-era-P"))
+                  (value res "worst-case" "lattice" "worst-era-D-less-P") 1e-12))
       (is (close? 1.0 (value res "calibration" "lattice" "mean-slope-B" "-" "-") 0.25)
           "the lattice's forecast is the truth: slope near one")
       (is (some? (value res "calibration" "lattice" "drift-D-less-B" "-" "-")))

@@ -415,6 +415,8 @@
         (put! ["worst-case" route "worst-era-P" "-" score] (:minimax (worst-case era-p)))
         (put! ["worst-case" route "worst-kind-D" "-" score] (:minimax (worst-case kind-d)))
         (put! ["worst-case" route "worst-kind-P" "-" score] (:minimax (worst-case kind-p)))
+        (put! ["worst-case" route "worst-era-D-less-P" "-" score] (- (:minimax (worst-case era-d)) (:minimax (worst-case era-p))))
+        (put! ["worst-case" route "worst-kind-D-less-P" "-" score] (- (:minimax (worst-case kind-d)) (:minimax (worst-case kind-p))))
         (doseq [e eras]
           (put! ["worst-case" route "era-D" (str (first e) "-" (second e)) score] (- (era-pooled e score [d "intact"]) (era-pooled e score [b "intact"])))
           (put! ["worst-case" route "era-P" (str (first e) "-" (second e)) score] (- (era-pooled e score [p "intact"]) (era-pooled e score [b "intact"]))))
