@@ -1232,6 +1232,35 @@ end of the 90% interval):
    technology), Holm over the four; the shares of the base's skill (S,
    P', the indicators alone); the Shapley split; the raw-offset base.
 
+**Results, 22 October 2026 (trial T4).** Fitted 1960-2002, scored on
+outcome years 2003-2022, ten kinds, within mode, recalibrated base, 90%
+intervals:
+1. **The states against coverage-matched placebos** (primary), log:
+   +0.0010 [-0.0007, +0.0027]: level (design years +0.0021).
+2. **Where over when**, of S - P', log: +0.0026 [+0.0013, +0.0037]:
+   passes.
+3. **Over the recalibrated base**: log +0.0001 [-0.0007, +0.0009], Brier
+   -0.00005 [-0.0003, +0.00018]: both upper ends inside the bounds
+   (+0.002, +0.0006): equivalent to nothing.
+4. Per group, S - P', log (Holm over four): material +0.0035 [+0.0027,
+   +0.0043] and social +0.0022 [+0.0009, +0.0034] pass; technology
+   +0.0003 (its historical gap ends in 2006, so the test years carry it
+   only at the start); financial -0.0001. Per kind the states help the
+   political kinds' cross-section (conflict onsets +0.022, wars +0.005,
+   coups +0.005) and currency and inflation crises a little, and hurt
+   market crashes (-0.016), fiscal consolidations (-0.005), sovereign
+   defaults and banking crises (-0.003): where the economic kinds strike
+   is not where the levels point. The recalibrated base's own skill over
+   year effects alone: +0.0103 log.
+
+Out of sample the states still say where, more than when, and the land,
+grain and power levels and the social states keep their edge over
+placebos with the same coverage; pooled, the economic kinds' losses
+cancel the political kinds' gains. Over a base that knows each
+country's history they add nothing, as the design years said. The
+drivers are real for where conflict happens; for when anything happens,
+and for the economic kinds at all, these states do not carry it.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
