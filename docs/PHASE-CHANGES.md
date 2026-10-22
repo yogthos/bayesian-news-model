@@ -1447,6 +1447,32 @@ permutation p as the criterion (the block bootstrap passed a null state
    4-5, Brier, the debt-service proxy, the year-demeaned variant.
 Prediction from development: level or negative.
 
+**Results, 23 October 2026 (trial T5).** Fitted on 1,715 development rows,
+scored on 318 rows (origins 1996-2015, 66 onsets):
+1. **The joint model over history** (primary): log gain +0.0455 [-0.0383,
+   +0.1786], Brier +0.0108; permutation p 0.015 (null mean -0.0168),
+   placebo -0.0228: **passes**.
+2. Equivalence does not arise; the gain is above the +0.03 the test era
+   could resolve, but its interval is wide.
+3. Terms, Holm over five: house-price growth +0.0268 (p 0.005, Holm
+   0.025) passes; the credit gap +0.0515 (p 0.025, Holm 0.100) does not
+   after Holm; equity, the current account and credit x house level. The
+   lead profile does not rise (h4-5 less h1-2 -0.0287, p 0.67): the
+   credit gap is flat-to-falling with the lead, house prices rising.
+
+What it is and is not. The test era's crises are mostly one global
+event: of the 66 onset windows most sit around 2007-08, so this is close
+to one draw of the world, and the permutation of country series does not
+resolve that. Within it, the countries with credit and house-price booms
+were the ones that fell, the Schularick-Taylor and Jorda-Schularick-
+Taylor finding, against a base of history alone; after losing on every
+earlier era out of sample. It does not say slow states gain with the
+horizon, and it does not carry to the lattice: the lattice's banking base
+already reads JST house prices and the stock-flow term (bnm.macrohistory),
+which is why the same states added nothing over it at the year node (T1,
+T2, T3, T45). The financial cycle is real in the record where it is
+measured; the event model already has it.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
