@@ -1165,6 +1165,40 @@ exposure did not survive the change of period. Next (bnm-3qu): the
 total-effect attribution (T4), which asks the drivers' question the
 increment cannot, and the base's calibration by stock regime (T2).
 
+## Pre-registered, 22 October 2026: the base's calibration by stock regime (trial T2) and its plain recalibration (trial T8)
+
+Registered before any outcome after 2002 is read for these tests. On the
+design years the base's year-node calibration slope is far below 1 for
+most kinds (logit(y) = a + b logit(p): banking 0.30, currency 0.08,
+growth collapses -0.17; conflict, coups and wars about 0.75), its levels
+off (currency 0.128 against 0.069). T2 asks whether the miscalibration
+depends on the stock regime (the states as gauges of the base); T8
+whether a plain recalibration helps at all. tools/bnm/calibration-regime,
+the year node of t44-world-norel, outcome an onset within (t, t+2],
+origins 2003-2020; every parameter, threshold and centre from 1960-2002:
+logit(y) = a_k + b_k (L - m_k) + c R + d R (L - m_k), R = 1 above the 80th
+percentile (design years) of the year-demeaned signed state: financial
+group (banking, defaults, growth collapses, fiscal consolidations: the
+credit gap; currency crises: low reserves), social group (protest,
+violence, conflict, war: the youth bulge; coups: anocracy); c and d
+shared within a group, a_k and b_k per kind.
+
+**Tests**, one-sided 5%, permutation nulls of whole country series (200):
+1. (T2 primary) d > 0 in each group, Holm over the two; c and the joint
+   two-parameter p beside it, with the placebo (the next country's state).
+2. (T2) the regime recalibration against the plain recalibration on
+   log score per row, the lower end of the 90% year-bootstrap interval
+   above 0 (on the design rotation it lost: -0.0003 and -0.0002).
+3. (T8 primary) the plain recalibration (a_k, b_k from 1960-2002) against
+   the raw base on log score per row, pooled over both groups, the lower
+   end of the 90% interval above 0; Brier and top-10% recall for the
+   record. Equivalence bound for "no gain": Brier +0.0006 (the power
+   audit). On the design rotation it gained +0.013 (financial) and +0.021
+   (social).
+4. For the record: terciles (d_top - d_bottom), per-kind c and d, credit
+   gap x house prices (banking; directional, c > 0, about 30 onsets) and
+   food import share x the world grain price gap (protest).
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
