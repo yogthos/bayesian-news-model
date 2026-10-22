@@ -1318,6 +1318,22 @@ bootstrap draws, one-sided 5%:
 If it passes, the recalibrated country year node is the base for the
 next world run.
 
+**Results, 23 October 2026 (trial T8b).** Origins 2003-2020:
+1. **Online against the raw base** (primary), log per row, financial and
+   social pooled: +0.0001 [-0.0016, +0.0019]: level (design years
+   +0.0102).
+2. **Brier**: -0.0002 [-0.0007, +0.0003]: no harm (upper end under
+   +0.0006).
+3. Per kind all intervals cross zero but inflation crises (-0.0011) and
+   wars (-0.0014), both small losses; no reversion (phi 1) +0.0010
+   [-0.0021, +0.0051], unpooled +0.0005: level.
+
+The base's miscalibration on the design years was its early learning: by
+2003 it has forty years of history and is about as calibrated as a
+recalibration can make it. Neither a fixed nor an online recalibration
+improves it in the test years, and the online one does no harm. The base
+stays as it is.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
