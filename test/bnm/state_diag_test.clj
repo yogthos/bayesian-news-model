@@ -34,3 +34,22 @@
     (let [x (bnm.states/exposures st [["w" "c"]])]
       (is (= 1.0 (get-in x ["w*c" "AAA" 2003])) "2.0 times 0.5")
       (is (< (Math/abs (- 0.2 (get-in x ["w*c" "BBB" 2003]))) 1e-12)))))
+
+(deftest exposures-pair-within-a-module
+  ;; a world pressure meets the import dependence of its own module's item:
+  ;; food's wheat storage pressure, not every cycles/wheat-* series
+  (let [s {"food/wheat-storage-pressure" {"WLD" (sorted-map 2000 1.0)}
+           "cycles/wheat-beta" {"WLD" (sorted-map 2000 0.4)}
+           "food/wheat-import-dependence" {"AAA" (sorted-map 2000 0.5) "BBB" (sorted-map 2000 0.2)}}]
+    (is (= [["food/wheat-storage-pressure" "food/wheat-import-dependence"]]
+           (bnm.states/default-pairs s)))))
+
+(deftest bookkeeping-is-not-a-state
+  ;; when a model was calibrated, its posterior spreads, counts and set
+  ;; changes describe the estimate, not the system
+  (let [f (java.io.File/createTempFile "states" ".csv")]
+    (spit f (str "iso,year,variable,value\n"
+                 "AAA,2000,keen/d,1.5\nAAA,2000,keen/calibrated,1999\nAAA,2000,keen/state-year,1998\n"
+                 "WLD,2000,cycles/oil-wti-beta-sd,0.3\nAAA,2000,technology/gap-recent-count,3\n"
+                 "AAA,2000,technology/gap-recent-break,1\nWLD,2000,cycles/oil-wti-beta,0.4\n"))
+    (is (= #{"keen/d" "cycles/oil-wti-beta"} (set (keys (bnm.states/read-states [(.getPath f)])))))))

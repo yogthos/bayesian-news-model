@@ -7,9 +7,16 @@
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
+(defn bookkeeping?
+  "A variable that describes a model's estimate, not the system: when it
+  was calibrated, the year its state refers to, posterior spreads, counts
+  and set changes behind an index."
+  [v]
+  (boolean (re-find #"(?:^|/|-)(?:calibrated|state-year)$|-(?:sd|count|break)$" v)))
+
 (defn read-states
   "{variable {iso (sorted-map year value)}} from long tables
-  iso,year,variable,value[,...]; empty values left out (unknown)."
+  iso,year,variable,value[,...]; empty values and bookkeeping left out."
   [paths]
   (reduce (fn [acc path]
             (with-open [r (io/reader path)]
@@ -19,7 +26,7 @@
                           (let [f (str/split l #"," -1)
                                 g #(nth f (ix %) "")
                                 v (g "value")]
-                            (if (and (seq v) (seq (g "iso")))
+                            (if (and (seq v) (seq (g "iso")) (not (bookkeeping? (g "variable"))))
                               (update-in acc [(g "variable") (g "iso")] (fnil assoc (sorted-map)) (parse-long (g "year")) (parse-double v))
                               acc)))
                         acc ls))))
@@ -67,14 +74,16 @@
 
 (defn- item [name] (first (str/split (last (str/split name #"/")) #"[_-]")))
 
+(defn- module [name] (when (str/includes? name "/") (first (str/split name #"/"))))
+
 (defn default-pairs
   "[[world country] ...]: each world series with the country series of its
-  item that measure dependence on imports (a country's exposure to a world
-  pressure)."
+  item, from the same model, that measure dependence on imports (a
+  country's exposure to a world pressure)."
   [states]
   (let [world (set (keys (world-series states)))]
     (vec (for [w world c (keys states)
-               :when (and (not (world c)) (= (item w) (item c)) (re-find #"import" c) (re-find #"depend" c))]
+               :when (and (not (world c)) (= (item w) (item c)) (= (module w) (module c)) (re-find #"import" c) (re-find #"depend" c))]
            [w c]))))
 
 (defn readers

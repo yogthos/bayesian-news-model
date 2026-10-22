@@ -291,10 +291,13 @@
   {:members 100 :iterations 4 :every 5 :min-years 8 :from 1960 :to 2026 :seed 1 :dt 0.25
    :forecast-members 12 :noise {}})
 
-(defn- try-calibrate [k y {:keys [min-years seed] :as opts}]
+(defn- try-calibrate [commodity k y {:keys [min-years seed] :as opts}]
   (when (>= (count (:price k)) min-years)
     (try (assoc (calibrate-window k (assoc opts :seed (+ seed y))) :origin y)
-         (catch Exception _ nil))))
+         (catch Exception e
+           ;; the previous calibration carries on; say so rather than hide it
+           (binding [*out* *err*] (println "bnm.cycles: calibration failed for" commodity "at" y (or (ex-message e) (str e))))
+           nil))))
 
 (defn- spread-members
   "Up to n of the members, evenly spaced."
@@ -348,7 +351,7 @@
         (persistent! out)
         (let [k (known panel y)
               cal (if (or (nil? cal) (>= (- y (:origin cal)) every))
-                    (if-let [c (try-calibrate k y opts)]
+                    (if-let [c (try-calibrate commodity k y opts)]
                       (assoc c :period (own-period (:params c))
                              :runs (trajectories c (+ y every 3) opts))
                       cal)
