@@ -62,11 +62,25 @@
    "C_BIOG" 0.027 "C_BIOD" 0.027 "C_OBIO" 0.0274 "C_MBIO" 0.0504 "C_COOG" 0.0387
    "C_MGWG" 0.0387 "C_MBFG" 0.00247 "C_MOSG" 0.00706})
 
-(def fertilisers
+(def yield-inputs
   "Inputs whose loss a crop answers with a yield response, not a recipe's
-  hard cap: substitutable (CES) in a crop's recipe whatever their value
-  share."
-  #{"C_NFER" "C_PFER"})
+  hard cap: N fertiliser, P and compound fertiliser, and chemicals nec
+  (crop protection), substitutable (CES) in a crop's recipe whatever their
+  value share. A field with less fertiliser or spray still yields, less:
+  the yield curve is concave and soils carry nutrients over a season."
+  #{"C_NFER" "C_PFER" "C_CHEM"})
+
+(def gas-processing
+  "The refined products natural gas is a feedstock of (gas processing sits
+  in EXIOBASE's refinery industry); the industry-technology split spreads
+  its gas over every refinery product, 0.1-0.4 t per t of diesel in
+  eight regions, which no refinery makes diesel from."
+  #{"C_ETHA" "C_LPGA" "C_RGAS"})
+
+(def refined
+  "EXIOBASE's refined oil products (the refinery industry's output)."
+  #{"C_RGAS" "C_ETHA" "C_LPGA" "C_NAPT" "C_AGSL" "C_MGSL" "C_GJET" "C_KJET" "C_KERO" "C_DOIL"
+    "C_FOIL" "C_WHSP" "C_LUBR" "C_BITU" "C_PARW" "C_PETC" "C_NSPP" "C_REFF"})
 
 (def crops
   "EXIOBASE's crop products."
@@ -95,11 +109,13 @@
   "A raw material or fuel converted into an energy carrier or material at
   `feedstock` or more: tonnes per tonne into a product in tonnes; into an
   energy carrier in TJ, the fuel's heat per TJ (tonnes at their `ncv`, or
-  TJ as they are)."
-  [{g :group u :unit} {og :group ou :unit} input phys]
+  TJ as they are). Natural gas feeds only the gas-processing products of
+  a refinery."
+  [{g :group u :unit} {og :group ou :unit} input output phys]
   (let [phys (or phys 0.0)]
     (boolean
      (and (#{"raw" "energy"} g)
+          (not (and (= input "C_GASE") (refined output) (not (gas-processing output))))
           (or (and (= u "tonnes") (= ou "tonnes") (#{"energy" "material"} og) (>= phys feedstock))
               (and (= ou "TJ") (= og "energy") (not (pool input u))
                    (>= (* phys (case u "TJ" 1.0 "tonnes" (get ncv input 0.0) 0.0)) feedstock)))))))
@@ -107,14 +123,14 @@
 (defn- kind-of
   "A row's kind: a good (not a service) at critical-share or more of the
   output's value, or a feedstock (`feedstock?`): critical; else, and
-  always for fertiliser in a crop (a yield response), substitutable."
+  always for a yield input in a crop (a yield response), substitutable."
   [products {:keys [input output phys share]}]
   (let [{g :group :as ip} (products input)
         op (products output)]
     (if (and g (not= g "service")
-             (not (and (fertilisers input) (crops output)))
+             (not (and (yield-inputs input) (crops output)))
              (or (>= (or share 0.0) critical-share)
-                 (feedstock? ip op input phys)))
+                 (feedstock? ip op input output phys)))
       :critical
       :substitutable)))
 

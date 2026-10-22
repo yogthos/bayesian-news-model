@@ -59,7 +59,27 @@
     (is (= :critical (sup/classify toy "BB" "TRN" "GSL"))))
   (testing "fertiliser for a crop is a yield response, not a recipe: CES
             whatever its share (a crop loses far less than the fertiliser)"
-    (is (= :substitutable (sup/classify toy "CC" "C_WHEA" "C_NFER"))))
+    (is (= :substitutable (sup/classify toy "CC" "C_WHEA" "C_NFER")))
+    (let [g (sup/graph {:products [{:code "C_CHEM" :unit "tonnes" :group "material"}
+                                   {:code "C_PFER" :unit "tonnes" :group "material"}
+                                   {:code "C_OCER" :unit "tonnes" :group "raw"}
+                                   {:code "C_PLAS" :unit "tonnes" :group "material"}]
+                        :recipes [{:region "R" :output "C_OCER" :input "C_CHEM" :phys 0.002 :share 0.09}
+                                  {:region "R" :output "C_OCER" :input "C_PFER" :phys 0.02 :share 0.06}
+                                  {:region "R" :output "C_PLAS" :input "C_CHEM" :phys 0.2 :share 0.09}]})]
+      (is (= :substitutable (sup/classify g "R" "C_OCER" "C_PFER")) "P and compound fertiliser too")
+      (is (= :substitutable (sup/classify g "R" "C_OCER" "C_CHEM")) "and crop protection (chemicals nec)")
+      (is (= :critical (sup/classify g "R" "C_PLAS" "C_CHEM")) "chemicals elsewhere by the rule")))
+  (testing "natural gas in a refinery: a feedstock of what gas processing
+            makes (ethane, LPG, refinery gas), not of diesel or gasoline,
+            which get it only through the industry-technology split"
+    (let [g (sup/graph {:products [{:code "C_GASE" :unit "tonnes" :group "raw"}
+                                   {:code "C_DOIL" :unit "tonnes" :group "energy"}
+                                   {:code "C_LPGA" :unit "tonnes" :group "energy"}]
+                        :recipes [{:region "R" :output "C_DOIL" :input "C_GASE" :phys 0.107 :share 0.001}
+                                  {:region "R" :output "C_LPGA" :input "C_GASE" :phys 0.6 :share 0.001}]})]
+      (is (= :substitutable (sup/classify g "R" "C_DOIL" "C_GASE")))
+      (is (= :critical (sup/classify g "R" "C_LPGA" "C_GASE")))))
   (testing "fuel burnt into electricity or heat: a feedstock by energy, the
             fuel's heat per unit of output (IPCC default net calorific
             values) at 0.1 or more, whatever the monetary table makes of it"
