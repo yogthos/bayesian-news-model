@@ -57,3 +57,4 @@ the count is the number of lines below.
 | T2 | calibration by stock regime | 2026-10 | the base recalibrated per kind with a regime level and slope shift shared within the financial (credit gap, reserves) and social (youth bulge, anocracy) groups |
 | T8 | plain recalibration | 2026-10 | the base recalibrated per kind (a_k, b_k from 1960-2002) against the raw base on 2003-2020 |
 | T4 | total-effect attribution | 2026-10 | 13 states on their own against coverage-matched placebo states, where vs when, and their increment over the recalibrated base |
+| T8b | online recalibration | 2026-10 | per-kind logistic DLM on the base log odds, DMA discounts, reversion and pooling, per-kind publication lags, learned from 1960 |

@@ -1291,6 +1291,33 @@ is not stable, so any recalibration has to be learned as the base runs
 keeps showing, the credit gap's level shift with house prices, is the
 financial cycle the literature names, on too few onsets to stand alone.
 
+## Pre-registered, 23 October 2026: the base recalibrated online (trial T8, second form)
+
+Registered before any outcome after 2002 is read for this test. The fixed
+recalibration (T8, first form) failed: the base's miscalibration drifts.
+tools/bnm/recalibrate-online learns, per kind, logit(y) = a_t + b_t L (L
+the base's log odds, t44-world-norel's country year node) as it runs: a
+logistic DLM (augur.dynamic), DMA over discounts {0.9, 0.95, 0.98, 1}
+(forget 0.99), the state reverting at 0.95 a year toward the identity
+pulled halfway to the learned kinds' mean, learning from 1960 only from
+origins whose window has closed and whose outcome is published (each
+catalogue's known-lag: one year for banking, coups, market crashes,
+protest and violence, two for the rest); a kind is the base unchanged
+until its first outcome. On the design years (scored 1981-2000) it
+gained +0.0102 log per row [+0.0054, +0.0156]; tuned on 1960-78 alone
+the gain was +0.0085, so about a sixth of it is selection.
+
+**Tests**, origins 2003-2020 (windows to 2022), 1,000 two-year block
+bootstrap draws, one-sided 5%:
+1. (primary) online minus raw base, log per row, pooled over the ten
+   kinds of the financial and social groups: lower end of the 90%
+   interval above 0;
+2. Brier, pooled: no harm if the upper end is below +0.0006;
+3. for the record: per group and per kind, all kinds pooled, top-10%
+   recall, no reversion (phi 1) paired against the primary, unpooled.
+If it passes, the recalibrated country year node is the base for the
+next world run.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
