@@ -283,3 +283,19 @@ registered before scoring, placebos) is what the field lacks.
 4. Then the stocks it produces (output gaps, input-cost squeezes, coverage)
    become the event lattice's gauges, and events become its threshold
    crossings.
+
+## Beyond pairs: what the catalogues show (October 2026)
+
+bnm.hypergraph sets each triple of kinds' joint onsets (a country's
+three-year window, the design years 1960-2002) against what their pairs
+imply with no three-way term (the log-linear model [AB][BC][AC], fitted
+by iterative proportional fitting). Of 115 triples with five or more
+joint windows, three have their interval (countries resampled, 90%)
+above one: banking crises, growth collapses and market crashes (lift
+1.12); conflict onsets, fiscal consolidations and inflation crises
+(1.55); coups, growth collapses and violence surges (1.30). About six
+would by chance. Joint crises in these catalogues are what their pairs
+imply: the pairwise links (docs/WORLD-MODEL.md) carry the joint
+structure, and no polycrisis term is added to the event lattice.
+Recipes as hyperedges (critical inputs needed together) remain the
+production side's form (bnm.hypergraph/availability).
