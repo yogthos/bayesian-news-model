@@ -337,3 +337,16 @@ critical recipe is Leontief, a substitutable one the share-weighted mean
 infinity), and a CES recipe with elasticity sigma lies between (Cobb-Douglas
 at 1). A shock given at a node with a recipe caps it, and a cycle of
 recipes is refused.
+
+## Technology (bnm.technology, October 2026)
+
+Diffusion of technologies per country as logistic stocks (WDI/ITU
+internet, mobile, electricity access; the Cross-country Historical
+Adoption of Technology dataset (Comin & Hobijn 2009, NBER w15319, free
+for research use, data/raw/slow/chat) for telephones, cars, television,
+radio, computers, tractors, electricity, 1880-2005), each country's lag
+behind the frontier in years, a technology gap and the productivity
+inflow (the gap closed), with R&D and patent intensity as leading flows;
+causal (CHAT known two years after its data year, though it is a 2009
+compilation). The aggregate gap breaks when CHAT ends (about 2006-10);
+the inflow compares only technologies known in both years.

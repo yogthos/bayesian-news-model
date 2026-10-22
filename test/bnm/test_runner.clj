@@ -35,6 +35,7 @@
             [bnm.state-diag-test]
             [bnm.tension-test]
             [bnm.food-test]
+            [bnm.technology-test]
             [bnm.lattice-banking-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -89,6 +90,7 @@
     bnm.state-diag-test
     bnm.tension-test
     bnm.food-test
+    bnm.technology-test
     bnm.lattice-banking-test
     bnm.political-gauges-test
     bnm.reconcile-test
