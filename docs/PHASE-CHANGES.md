@@ -1389,6 +1389,34 @@ recorded above stand as run. Both trials were level against their
 benches, so the leak bought them nothing visible; it is recorded so their
 selections are not read as clean. Found by the T6 tool's author.
 
+## Pre-registered, 23 October 2026: early warnings reframed (trial T6)
+
+Registered before any outcome after 2002 is read for this test. The
+critical-slowing-down warnings mostly lowered risk on the design years;
+the literature's explanations are post-crisis composition (high variance
+marks countries just after a crisis) and stability breeding fragility
+(Danielsson, Valenzuela & Zer 2018). tools/bnm/ews-reframed: five named
+indicators with a + prior (ac1, log variance, their trends, own-part,
+12-year windows over GDP growth, inflation and food inflation; and calm
+duration, the years the countries' own-part volatility of growth,
+inflation and credit has stayed below its own running median), pooled
+within the financial and political groups, the year node of
+t44-world-norel as offset, rows within three years after an onset of the
+same kind at the country dropped (K = 3, fixed beforehand). On the design
+years nothing passed Holm, and dropping the post-crisis rows made log
+variance more negative (financial z -2.13 to -2.73), not less.
+
+**Tests**, origins 2003-2020, 200 permutations of whole country series:
+1. (primary) calm duration, + prior, pooled over the financial group,
+   post-crisis rows dropped: one-sided permutation p < 0.05, Holm over
+   the five indicators;
+2. the composition reading: financial log variance negative on all rows;
+   if it stays negative after the exclusion, composition is falsified
+   again as the explanation of the wrong sign;
+3. for the record: the other indicators, the political group, every kind
+   with and without the exclusion; calm duration for banking crises and
+   market crashes alone (directional, underpowered).
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:

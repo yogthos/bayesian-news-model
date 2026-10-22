@@ -59,3 +59,4 @@ the count is the number of lines below.
 | T4 | total-effect attribution | 2026-10 | 13 states on their own against coverage-matched placebo states, where vs when, and their increment over the recalibrated base |
 | T8b | online recalibration | 2026-10 | per-kind logistic DLM on the base log odds, DMA discounts, reversion and pooling, per-kind publication lags, learned from 1960 |
 | T3 | stock x trigger interactions | 2026-10 | credit gap x house prices, youth x grain gap, youth x neighbour conflict, technology gap x grain gap; argmax of gauges against their mean |
+| T6 | early warnings reframed | 2026-10 | post-crisis rows dropped; calm duration with a + prior; five named indicators pooled by group |
