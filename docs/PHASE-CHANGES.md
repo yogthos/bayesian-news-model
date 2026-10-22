@@ -1358,6 +1358,26 @@ the argmax lost to the mean (tau-hat 0).
 3. for the record: tau's profile on the test rows, the placebos, the
    gauges against the states' and triggers' levels alone.
 
+**Results, 23 October 2026 (trial T3).** Origins 2003-2020:
+1. **The four pairs** (primary, Holm): credit gap x house prices +0.004
+   (z 0.14, p 0.46; on the design years +0.196, p 0.060); youth x grain
+   gap +0.079 against its stated sign (p 0.77); youth x neighbour
+   conflict +0.018 (p 0.34); technology gap x grain gap +0.576 (z 1.3, p
+   0.22). None passes.
+2. **The principal contradiction**: argmax against the mean, financial
+   group, log per row: -0.0013 [-0.0017, -0.0008]. The single dominant
+   gauge loses to the mean of the gauges: falsified at this resolution.
+3. For the record: the mean of the financial gauges over the states'
+   and triggers' levels alone +0.0012 [+0.0008, +0.0016]; tau-hat 0.5,
+   chosen out of sample 0 (the mean); the political group has one gauge
+   per row, tau not identified.
+
+The credit-house interaction that kept appearing on the design years
+(T2's record, T3's design) is gone in 2003-2022, on 36 banking onsets.
+Interactions as named do not carry onsets past the recalibrated base;
+the gauges help a little only averaged together, which is the opposite
+of one principal contradiction steering the rest.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
