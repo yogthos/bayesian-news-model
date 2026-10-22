@@ -1417,6 +1417,36 @@ variance more negative (financial z -2.13 to -2.73), not less.
    with and without the exclusion; calm duration for banking crises and
    market crashes alone (directional, underpowered).
 
+## Pre-registered, 23 October 2026: slow states over five years on 150 years of crises (trial T5)
+
+Registered before any outcome from 1996 on is read (the tool strips every
+JST crisis flag from 1996 as it reads the data, and refuses development
+rows whose windows reach 1996). tools/bnm/half-decade, docs/T5-ERAS.md:
+a JST crisis (crisisJST) starting in t+1..t+5 at year-end origins, 18
+countries; five named terms read to t-1 (credit gap by one-sided HP on
+JST loans, 3-year real house-price and equity growth, the current
+account, credit x house as the product of positive parts) against a base
+of history alone (the country's crisis rate so far, years since its last
+crisis, the era's running world rate, the share of countries in crisis).
+Development, leave one era out over pre-WWI, interwar, Bretton Woods and
+1972-1995: the states lost to history in every era (pooled -0.0316 log
+per row, permutation p 0.93), with every term in its expected sign when
+fitted on all of it; the gain does not rise with the lead. Two changes
+were made after seeing development results: states clipped at 3 SD and
+the interaction as positive parts (a Weimar artefact), and the
+permutation p as the criterion (the block bootstrap passed a null state
+14% of the time on twenty origin years).
+
+**Tests**, fitted on all development rows, scored on origins 1996-2015:
+1. (primary) the joint model's log gain over history, one-sided
+   permutation p <= 0.05;
+2. equivalence: 80% power needs OR about 2.3 per SD (a gain of about
+   +0.03 log per row); a level result rules out only effects that large,
+   not the literature's 1.2-1.5;
+3. for the record: Holm over the five terms, the rise from leads 1-2 to
+   4-5, Brier, the debt-service proxy, the year-demeaned variant.
+Prediction from development: level or negative.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
