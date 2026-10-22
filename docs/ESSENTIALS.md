@@ -1036,6 +1036,20 @@ before any test year is scored (PRINCIPLES 9).
    - Registered targets: lithium hydroxide's top proposed downstream is
      850780 (or 850760 in HS12); cobalt oxides' and nickel sulphate's is
      850780; polysilicon's is 854140. Each beats its placebo.
+   - Result (bnm.essentials/edges, tools/bnm/edges_check.clj, HS92
+     2008-2024 and HS12 2019-2024, 39 like-sized placebos, p <= 0.05):
+     not met. No target is a top proposal in a year its input is a
+     candidate. Polysilicon -> 854140 is proposed in 2010 and 2012 (rank 5
+     and 2, top in 2013); Li-ion -> 870390 in 2021-22 (rank 6 and 5);
+     cobalt oxides -> 850780 in 2018 (rank 56). Lithium hydroxide never
+     proposes 850780 (rank 57-147), nor 850760 in HS12. About 5% of pairs
+     are proposed, the placebo's false-positive rate. Against recipe links
+     (median share_2011 >= 0.005) the proposals' precision is 0.248 against
+     a base of 0.213 (lift 1.16, from 2012-18; below 1 in 2008-11 and
+     2019-22), and the top proposals are mostly noise (lithium hydroxide's
+     is 370120 or 284190). Importer-exporter overlap of big trading
+     countries does not single out recipes; the edges stay with the
+     recipes and the sub-node parents.
 8. **Essentiality R_i(Y, H).** Outage loss (bnm.supply, σ learned, import
    reallocation added) × disruption probability (stage concentration, OECD
    restrictions, the project's onset forecasts for supplying places,
