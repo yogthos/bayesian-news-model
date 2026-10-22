@@ -65,20 +65,32 @@
   averaging sets the node with it against the node without it. A link's
   coefficient starts at its edge's sign (mean 0.2 for an exciting edge,
   -0.2 for an inhibiting one, variance 0.1, in the input's spreads).
+  Above the countries a place reads the mean of its countries' inputs. A
+  kind without a parent is left as it is.
   `source` maps the place to the one whose parents it reads (identity, or
   the placebo's other country)."
   [sp parents books cats scales-of edges source]
   (let [groups (into {} (for [[i j] (map-indexed vector parents)] [(keyword "rel" j) [i]]))
-        prior (:prior sp)]
+        prior (:prior sp)
+        ;; above the countries, a place reads the mean of its countries' inputs
+        par (:parent sp)
+        leaves (remove (set (vals par)) (keys par))
+        below (reduce (fn [m c] (reduce #(update %1 %2 (fnil conj []) c) m (take-while some? (iterate par c))))
+                      {} leaves)
+        members (fn [place] (get below place [place]))]
+    (if (empty? parents)
+      sp
     (assoc sp
            :relations (fn [scale place t]
                         (let [bs @books
                               ;; a parent without this scale (no half-decade for the kinds from
                               ;; 1980) is read at its year node
-                              src (source place)
-                              ins (map #(rl/edge-input (:form (edges %)) {:kind % :book (bs %) :catalogue (cats %)}
-                                                       (if (contains? (scales-of %) scale) scale :year) src t)
-                                       parents)]
+                              ms (members place)
+                              ins (for [j parents]
+                                    (let [rs (map #(rl/edge-input (:form (edges j)) {:kind j :book (bs j) :catalogue (cats j)}
+                                                                  (if (contains? (scales-of j) scale) scale :year) (source %) t)
+                                                  ms)]
+                                      {:x (/ (reduce + 0.0 (map :x rs)) (count ms)) :reads (mapcat :reads rs)}))]
                           {:x (mapv :x ins) :reads (vec (mapcat :reads ins))}))
            :relation-width (into {} (for [{n :name} (:scales sp)] [n (count parents)]))
            :relation-groups (into {} (for [{n :name} (:scales sp)] [n groups]))
@@ -87,7 +99,7 @@
            :prior (fn [scale level lay]
                     (merge (when prior (prior scale level lay))
                            (into {} (for [j parents :let [ix (get-in lay [:parts (keyword "rel" j)])] :when (seq ix)]
-                                      [(first ix) [(* 0.2 (:sign (edges j) 1)) 0.1]])))))))
+                                      [(first ix) [(* 0.2 (:sign (edges j) 1)) 0.1]]))))))))
 
 (defn placebo-source
   "The placebo's map from each country to the next in sorted order (the
