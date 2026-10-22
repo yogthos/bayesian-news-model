@@ -24,6 +24,7 @@
 
     jolt -A:tools -M -m bnm.supply-check"
   (:require [bnm.csv :as csv]
+            [bnm.food :as food]
             [bnm.supply :as sup]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -229,8 +230,8 @@
                          es (pct (wmean va po energy-intensive)) (pct (wmean va po other))
                          (pct (loss po ["DE" "C_CHEM"])) (pct (loss po ["DE" "C_PAPE"])) (pct (loss po ["DE" "C_STEL"]))))))))
 
-(defn- shock-report [g]
-  (let [h (sup/hypergraph g)]
+(defn- shock-report [g h]
+  (do
     (germany-2022 g h)
     (println "== shock 1: natural gas for use in Europe cut 40% (all origins)")
     (let [o (sup/outage g (into {} (for [r europe] [[r "C_GASE"] 0.4])) {:at :use :hypergraph h})
@@ -256,11 +257,11 @@
                          (pct (reduce min gp)) (pct (reduce max gp))
                          (str/join " " (for [[r x] nu] (str r " " (pct x))))))
         (check (every? #(< 0.35 % 0.45) gp) "gas power loses about the cut in every European region making it")
-        ;; not zero: nuclear fuel buys chemicals (conversion and
-        ;; enrichment, 34% of its value in Germany) and the graph holds no
-        ;; fuel stocks, though a reactor holds a year or more of fuel
+        ;; not zero in the steady state: nuclear fuel buys chemicals
+        ;; (conversion and enrichment, 34% of its value in Germany); with
+        ;; its fuel stocks (stock-report) it loses nothing for years
         (check (and (every? #(< (second %) 0.2) nu) (< (median (map second nu)) 0.1))
-               "nuclear power well under gas power (under 20% everywhere, median under 10%: its fuel's chemicals, no stocks)"))
+               "nuclear power well under gas power in the steady state (under 20% everywhere, median under 10%: its fuel's chemicals)"))
       (println " loss by product, Europe's four largest N fertiliser makers and two outside:")
       (doseq [r ["DE" "FR" "NL" "PL" "US" "CN"]]
         (println (format "  %s  N fert %s  P fert %s  wheat %s  cereals %s  vegetables %s  cattle %s  gas power %s  steel %s"
@@ -296,6 +297,106 @@
         (check (> (mean asia) (mean west)) "Asian refining loses more than Europe's and the Americas'")
         (check (> (loss io ["JP" "A_REFN"]) (loss io ["US" "A_REFN"])) "Japan's more than America's")))))
 
+(def report-months [1 3 6 12 24])
+
+(defn- path-line
+  "One line per node `k` of a path: its loss at report-months, and the
+  steady state's (outage)."
+  [label path steady k]
+  (println (format "  %-26s %s   steady %s" label
+                   (str/join " " (for [t report-months] (format "%4s" (pct (loss (:products (nth path (dec t))) k)))))
+                   (pct (loss steady k)))))
+
+(defn- ind-line
+  "path-line for an industry."
+  [label path steady k]
+  (println (format "  %-26s %s   steady %s" label
+                   (str/join " " (for [t report-months] (format "%4s" (pct (loss (:industries (nth path (dec t))) k)))))
+                   (pct (loss steady k)))))
+
+(defn- below-steady
+  "The largest amount by which a path's availability falls below the
+  steady state's anywhere (a stock only helps: at most tol)."
+  [path steady]
+  (reduce max 0.0 (for [m path [k v] (:products m)] (- (get steady k 1.0) v))))
+
+(defn- stock-report
+  "Stocks (data/derived/supply/stocks.csv) and the outage month by month
+  (sup/outage-path): the European gas cut, the Middle East crude cut and
+  a wheat harvest shortfall, at months 1, 3, 6, 12 and 24 against the
+  steady state (sup/outage)."
+  [g h rows]
+  (println "== stocks (stocks.csv, months of use; sup/outage-path)")
+  (doseq [[[p b] rs] (sort-by key (group-by (juxt :product :basis) rows))]
+    (let [ms (sort (map :months rs))]
+      (println (format "  %-7s %-5s %2d regions, median %5.2f months (%.2f-%.2f)  %s" p b (count rs)
+                       (median ms) (first ms) (last ms) (:source (first rs))))))
+  (let [st (sup/stocks rows)
+        months (apply max report-months)
+        hdr (fn [what] (println (format "  %-26s %s" (str what ", loss at month") (str/join " " (map #(format "%4d" %) report-months)))))]
+    (println "== shock 1 with stocks: natural gas for use in Europe cut 40%")
+    (let [cut (into {} (for [r europe] [[r "C_GASE"] 0.4]))
+          steady (:products (sup/outage g cut {:at :use :hypergraph h}))
+          path (sup/outage-path g cut st {:at :use :hypergraph h :months months})
+          nuc (filter #(get-in g [:recipes [% "C_POWN"]]) europe)]
+      (println " updates by month" (mapv :updates path))
+      (hdr "product")
+      (doseq [r ["DE" "FR" "IT" "NL" "PL" "GB"]]
+        (println (format "  %s gas storage %.2f months, fertiliser %.1f" r (get st [r "C_GASE"] 0.0) (get st [r "C_NFER"] 0.0)))
+        (doseq [[p what] [["C_NFER" "N fertiliser"] ["C_POWG" "gas power"] ["C_POWN" "nuclear power"]
+                          ["C_WHEA" "wheat"] ["C_STEL" "steel"] ["C_CHEM" "chemicals"]]]
+          (when (get-in g [:recipes [r p]]) (path-line (str r " " what) path steady [r p]))))
+      (check (every? (fn [t] (every? #(< (loss (:products (nth path (dec t))) [% "C_POWN"]) 1e-3) nuc)) (range 1 13))
+             (format "nuclear power loses nothing in months 1-12 in all %d European regions making it (its fuel stocks)" (count nuc)))
+      (let [stored (filter #(> (get st [% "C_GASE"] 0.0) 1.0) ["DE" "FR" "IT" "NL" "PL" "AT" "HU" "CZ" "SK"])]
+        (check (every? #(< (loss (:products (first path)) [% "C_NFER"]) (* 0.1 (loss steady [% "C_NFER"]))) stored)
+               (str "gas storage delays the N fertiliser cut: under a tenth of its steady loss in month 1 where storage holds over a month of use ("
+                    (str/join " " stored) ")"))
+        (check (every? #(< (Math/abs (- (loss (:products (nth path 11)) [% "C_NFER"]) (loss steady [% "C_NFER"]))) 0.01) stored)
+               "and the steady loss by month 12, the storage drawn"))
+      (check (< (below-steady path steady) 1e-4) "no month loses more than the steady state (stocks only help)"))
+    (println "== shock 2 with stocks: Middle East (WM) crude output cut 50%")
+    (let [cut {["WM" "C_COIL"] 0.5}
+          o (sup/outage g cut {:hypergraph h})
+          steady (:products o)
+          path (sup/outage-path g cut st {:hypergraph h :months months})
+          asia ["CN" "IN" "JP" "KR" "ID" "WA"]]
+      (println " updates by month" (mapv :updates path))
+      (hdr "refining industry")
+      (doseq [r ["WM" "JP" "IN" "KR" "CN" "WA" "DE" "US"]]
+        (println (format "  %s crude stock %.2f months, diesel %.2f" r (get st [r "C_COIL"] 0.0) (get st [r "C_DOIL"] 0.0)))
+        (ind-line (str r " refining") path (:industries o) [r "A_REFN"])
+        (doseq [[p what] [["C_DOIL" "diesel"] ["C_PLAS" "plastics"]]]
+          (path-line (str r " " what) path steady [r p])))
+      (check (every? #(< (loss (:industries (first path)) [% "A_REFN"]) (loss (:industries o) [% "A_REFN"])) ["JP" "IN" "KR" "CN"])
+             "crude stocks hold Asia's refining above its steady loss in month 1 (JP IN KR CN)")
+      (let [jp (map #(loss (:industries %) ["JP" "A_REFN"]) path)]
+        (check (every? (fn [[a b]] (<= a (+ b 1e-6))) (partition 2 1 jp)) "Japan's refining loss never falls back as its stocks drain"))
+      (check (< (Math/abs (- (loss (:industries (last path)) ["JP" "A_REFN"]) (loss (:industries o) ["JP" "A_REFN"]))) 0.01)
+             "Japan's refining at its steady loss by month 24, the stocks drained")
+      (check (< (below-steady path steady) 1e-4) "no month loses more than the steady state"))
+    (println "== a wheat harvest 30% short everywhere, with grain stocks (bnm.food's storage pressure)")
+    (let [regions (distinct (map first (keys (:recipes g))))
+          cut (into {} (for [r regions :when (get-in g [:recipes [r "C_WHEA"]])] [[r "C_WHEA"] 0.3]))
+          steady (:products (sup/outage g cut {:hypergraph h}))
+          path (sup/outage-path g cut st {:hypergraph h :months months})
+          use-t (into {} (for [r regions] [r (reduce + 0.0 (keep :quantity (get-in g [:use [r "C_WHEA"]])))]))
+          world-use (reduce + (vals use-t))
+          stu (fn [s] (/ (reduce + (for [r regions] (* (get s [r "C_WHEA"] 0.0) (/ (use-t r) 12.0)))) world-use))
+          stu0 (stu st)
+          pressures (mapv #(food/storage-pressure (max 1e-9 (stu (:stocks %))) stu0 food/pressure-c) path)]
+      (println (format " world wheat stocks %.2f months of use at the start (stocks-to-use %.3f)" (* 12 stu0) stu0))
+      (hdr "product")
+      (doseq [r ["US" "CN" "IN" "RU" "DE" "WM" "WF"]]
+        (doseq [[p what] [["C_OFOD" "food products nec"] ["C_CATL" "cattle"]]]
+          (path-line (str r " " what) path steady [r p])))
+      (println (format "  storage pressure (bnm.food, reference the stocks at the start): %s"
+                       (str/join " " (for [t report-months] (format "%.2f" (nth pressures (dec t)))))))
+      (check (every? #(< (loss (:products (first path)) [% "C_OFOD"]) (* 0.5 (max 1e-9 (loss steady [% "C_OFOD"])))) ["US" "CN" "IN"])
+             "grain stocks buffer the shortfall: food products lose under half their steady loss in month 1 (US CN IN)")
+      (check (apply < (take 6 pressures)) "storage pressure rises month by month as the stocks are drawn (months 1-6)")
+      (check (< (below-steady path steady) 1e-4) "no month loses more than the steady state"))))
+
 (defn -main [& _]
   (if-not (.exists (io/file dir "recipes.csv"))
     (println "bnm.supply-check: no" dir "- run python -I scripts/product-graph.py first")
@@ -305,6 +406,10 @@
       (when (.exists (io/file dir "scaling.csv")) (scaling-report))
       (when (.exists (io/file dir "oil-products.csv")) (unsd-report))
       (validation-report g)
-      (shock-report g)
+      (let [h (sup/hypergraph g)]
+        (shock-report g h)
+        (if (.exists (io/file dir "stocks.csv"))
+          (stock-report g h (sup/stock-rows (str (io/file dir "stocks.csv"))))
+          (println "== stocks: no" dir "stocks.csv - run python -I scripts/supply-stocks.py")))
       (println (format "== checks: %d failed" @failures))
       (when (pos? @failures) (System/exit 1)))))
