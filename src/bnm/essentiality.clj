@@ -42,10 +42,13 @@
 
   The loss of one disruption (`product-risk`), per importing region r:
 
-    T_rc        r's imports of i from c: r's imports x c's share of world
-                exports (BACI gives the bilateral split for the sub-nodes
-                only, so all products use the proportional split); none
-                from c's own region
+    T_rc        r's imports of i from c (`slices`): BACI's bilateral
+                flows from c to r's countries where essentiality-trade
+                carries them (the essentials codes of scripts/baci.py),
+                else r's imports x c's share of world exports, flagged
+                (a world share credits Indonesia with 87% of every
+                importer's lignite, Czech imports from Germany included);
+                none from c's own region
     rho_c       import reallocation (`reallocation`): the others' spare
                 capacity e_H (1 - s_c) over the lost supply x s_c, in
                 [0, 1] (Moll, Schularick & Zachmann 2023: Germany replaced
@@ -266,6 +269,20 @@
             (if (<= f1 f0) l1 (+ l0 (* (- l1 l0) (/ (- f f0) (- f1 f0)))))
             (recur (inc i) f1 l1)))))))
 
+(defn slices
+  "{region {supplier T}}: each importing region's imports of the product
+  by supplier. With :flows ({region {iso kUSD}}, BACI's bilateral flows
+  summed over the region's countries) the slice is what the region bought
+  from the supplier, so a region's slices add up to its imports; without,
+  the fallback: its imports x the supplier's share of world exports (the
+  listed :exporters only, the rest stay in :world)."
+  [{:keys [world exporters importers flows]}]
+  (if flows
+    (into {} (for [[r _] importers] [r (get flows r {})]))
+    (let [world (double world)]
+      (into {} (for [[r m] importers]
+                 [r (into {} (for [[c v] exporters] [c (* (double m) (/ (double v) world))]))])))))
+
 (defn product-risk
   "Expected loss from one product's disruptions, at one horizon:
   {:world R :regions {region R} :suppliers {iso {:p :risk}} :straits
@@ -284,13 +301,15 @@
                 result's unit), optional: the loss is lambda x f x this,
                 so a region the loss model sees using none of the parent
                 loses nothing whatever it imports; without it, :use
+    :flows      {region {iso imports}}, optional: the bilateral slices
+                (`slices`); without, the world-share fallback
     :x :e       the cut and the spare capacity
     :straits    {region {strait share of its imports}}, :q {strait rate},
                 :d the share of a closed strait's flow lost, :strait-world
                 {strait share of world trade}: a closure is rerouted or
                 replaced like a supplier's cut (`reallocation` with that
                 share; the region's own share where it is missing)."
-  [{:keys [world exporters importers region-of p use lambda x e straits q d strait-world model-use] :or {d 0.5}}]
+  [{:keys [world exporters importers region-of p use lambda x e straits q d strait-world model-use] :or {d 0.5} :as m}]
   (let [world (double world)
         loss (fn [r short] (if (pos? short)
                              (let [u (double (get use r 0.0))
@@ -298,12 +317,13 @@
                                    w (double (if model-use (get model-use r 0.0) (if (pos? u) u short)))]
                                (* (double (lambda r f)) f w))
                              0.0))
+        sl (slices m)
         sup (into {} (for [[c v] exporters
                            :let [s (/ (double v) world) pc (double (get p c 0.0))
                                  keep (- 1.0 (reallocation s x e))
                                  own (get region-of c)
-                                 by-r (into {} (for [[r m] importers :when (not= r own)]
-                                                 [r (* pc (loss r (* (double x) keep (double m) s)))]))]]
+                                 by-r (into {} (for [[r _] importers :when (not= r own)]
+                                                 [r (* pc (loss r (* (double x) keep (double (get-in sl [r c] 0.0)))))]))]]
                        [c {:p pc :risk (reduce + 0.0 (vals by-r)) :regions by-r}]))
         st (for [[r ex] straits [s share] ex
                  :let [qs (double (get q s 0.0)) m (double (get importers r 0.0))

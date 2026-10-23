@@ -10,7 +10,8 @@ are thousand USD, tonnes metric tons (blank where BACI has none).
       bilateral flows of the essentials codes only: every hs_code and hs6
       of subnodes.csv, and every code of the broad critical-materials
       mapping (eu-2023, usgs-2022 in tools/bnm/essentials_check.clj, read
-      from that file so the two cannot drift), and the technology codes
+      from that file so the two cannot drift), the codes ranked high by
+      bnm.essentiality (RANKED_CODES, HS92 only), and the technology codes
       of scripts/tech-trade.py (TECH_CODES: HS17 8703xx, HS92 850780, HS12
       850760, in their own edition only). uv = value / tonnes in kUSD
       per tonne (= USD per kg; blank without tonnes).
@@ -181,9 +182,34 @@ SHAPES = {  # output file -> its columns
 }
 
 
+RANKED_CODES = {  # HS92 only: codes in the top 100 by essentiality R at any K = 2014-2026 of the
+    # run with world-share supplier slices (bead bnm-1pq.30), for their bilateral slices
+    "030212", "060110", "060299", "060310", "080222", "090220", "090420", "090500", "090830", "090930",
+    "091010", "091030", "100590", "100700", "110814", "120100", "120400", "120500", "121490", "151110",
+    "151190", "151211", "151530", "151919", "170111", "180100", "220830", "250200", "250830", "251512",
+    "251611", "251622", "251749", "251910", "251990", "252400", "253020", "260111", "260112", "261220",
+    "270111", "270119", "270210", "270900", "271111", "271112", "271311", "271312", "271390", "271500",
+    "284190", "290110", "290531", "290611", "290944", "291814", "292241", "292249", "293100", "293340",
+    "293359", "293369", "293500", "293799", "294110", "310420", "310490", "310530", "330125", "330210",
+    "360410", "360610", "370590", "380830", "391211", "391810", "391890", "392073", "392410", "392490",
+    "392530", "392610", "392620", "392640", "400110", "400121", "400122", "400260", "400280", "401511",
+    "401519", "441900", "442090", "460210", "470329", "470500", "470692", "482010", "482360", "490300",
+    "490600", "510111", "520100", "530310", "540233", "540242", "540752", "570242", "600192", "600293",
+    "630140", "630790", "640299", "640620", "680293", "691010", "691110", "691200", "710210", "710221",
+    "710310", "710490", "720110", "720610", "721890", "722530", "722790", "722830", "722870", "732111",
+    "732113", "732393", "732399", "732611", "740620", "761510", "820551", "821520", "821599", "830110",
+    "830242", "830250", "830629", "830710", "840140", "841451", "841510", "841830", "847120", "847193",
+    "847330", "850440", "850810", "850820", "850880", "850910", "850940", "850980", "851310", "851629",
+    "851632", "851650", "851671", "851679", "851710", "851740", "851790", "851822", "851830", "852190",
+    "852520", "852990", "853400", "853931", "854441", "854519", "870431", "940130", "940161", "940171",
+    "940179", "940320", "940490", "940510", "940520", "940530", "940540", "940599", "950390", "950410",
+    "950490", "950510", "950691", "961511", "961700",
+}
+
+
 def essential_codes(subnodes, check):
     """The HS6 codes of hs6-essentials: subnodes.csv's hs_code and hs6 (all
-    editions), and the codes of the broad critical-materials tables of the
+    editions), the codes of the broad critical-materials tables of the
     check tool (the text from `(def eu-2023` to `(def subnode-lists`)."""
     sn = pd.read_csv(subnodes, dtype=str)
     codes = set(sn.hs_code.dropna()) | set(sn.hs6.dropna())
@@ -205,6 +231,8 @@ def shapes(df, edition, codes):
     year = int(df.year.iloc[0])
     known = year + LAG
     keep = df.hs6.isin(codes)
+    if edition == "HS92":
+        keep |= df.hs6.isin(RANKED_CODES)
     if edition in TECH_CODES:
         keep |= df.hs6.str.startswith(TECH_CODES[edition])
     ess = df[keep].copy()
@@ -322,6 +350,8 @@ def selftest():
     tech = ["283691", "850780", "850760", "870321", "870380", "870899"]
     assert kept("HS92", flows(2000, tech)) == ["283691", "850780"], kept("HS92", flows(2000, tech))
     assert kept("HS12", flows(2015, tech)) == ["283691", "850760"], kept("HS12", flows(2015, tech))
+    assert kept("HS92", flows(2000, ["270210"])) == ["270210"]
+    assert kept("HS12", flows(2015, ["270210"])) == []
     assert kept("HS17", flows(2020, tech)) == ["283691", "870321", "870380"], kept("HS17", flows(2020, tech))
     e = shapes(flows(2020, tech), "HS17", codes)["hs6-essentials.csv.gz"]
     assert list(e.columns) == ["hs", "year", "known", "hs6", "exporter", "importer", "value", "tonnes", "uv"]

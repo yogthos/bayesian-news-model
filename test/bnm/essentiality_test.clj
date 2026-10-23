@@ -221,6 +221,56 @@
     (is (close? (* 0.1 51.0 (- 1.0 (/ 0.08 0.3))) (:risk (suppliers "X")) 1e-9))
     (is (close? (* 0.2 34.0 0.4) (:risk (suppliers "Y")) 1e-9))))
 
+;; ---------------------------------------------------------------- bilateral slices
+
+(def toy-flows
+  ;; RA buys 40 from Y and 30 from X, RB 30 from X: X's 60 and Y's 40 of
+  ;; world exports, the importers' 70 and 30
+  {"RA" {"X" 30.0 "Y" 40.0} "RB" {"X" 30.0}})
+
+(deftest bilateral-slices-sum-to-the-importers-imports
+  (let [sl (es/slices (assoc toy :flows toy-flows))]
+    (testing "each importer's slices add up to its imports"
+      (doseq [[r m] (:importers toy)]
+        (is (close? m (reduce + 0.0 (vals (get sl r))) 1e-9))))
+    (testing "a supplier gets what the importer bought from it, not its world share"
+      (is (close? 30.0 (get-in sl ["RA" "X"]) 1e-12))
+      (is (close? 0.0 (get-in sl ["RB" "Y"] 0.0) 1e-12))))
+  (testing "parsed from essentiality-trade.csv.gz, every exporter's slice included"
+    (let [{:keys [importers flows bilateral]}
+          (run/parse-trade-line "2020,2022,270210,100,X:60;Y:40,RA:70;RB:30,bilateral,RA/X:30;RA/Y:40;RB/X:29;RB/Z:1")]
+      (is (true? bilateral))
+      (doseq [[r m] importers]
+        (is (close? m (reduce + 0.0 (vals (get flows r))) 1e-9)))
+      (is (close? 29.0 (get-in flows ["RB" "X"]) 1e-12)))))
+
+(deftest bilateral-slices-decide-who-is-hit
+  ;; X: RA 0.5 x 30 = 15 (loss 30), RB 15 (15): 45 at P 0.1
+  ;; Y: RA 0.5 x 40 = 20 (40): 40 at P 0.2
+  (let [{:keys [world regions suppliers]} (es/product-risk (assoc toy :flows toy-flows))]
+    (is (close? (+ 4.5 8.0) world 1e-9))
+    (is (close? (+ 3.0 8.0) (regions "RA") 1e-9))
+    (is (close? 1.5 (regions "RB") 1e-9))
+    (is (close? 4.5 (:risk (suppliers "X")) 1e-9)))
+  (testing "an importer that buys nothing from a supplier loses nothing when it is cut"
+    (let [r (es/product-risk (assoc toy :flows {"RA" {"Y" 70.0} "RB" {"Y" 30.0}} :p {"X" 1.0 "Y" 0.0}))]
+      (is (zero? (:world r)))))
+  (testing "a supplier's own region still does not import from it"
+    (let [r (es/product-risk (assoc toy :flows toy-flows :region-of {"X" "RA" "Y" "RY"}))]
+      ;; X's RA term drops: X 15 at 0.1, Y 40 at 0.2
+      (is (close? (+ 1.5 8.0) (:world r) 1e-9)))))
+
+(deftest world-shares-are-the-fallback
+  (testing "without bilateral flows the slice is the importer's imports x the world share"
+    (let [sl (es/slices toy)]
+      (is (close? (* 70.0 0.6) (get-in sl ["RA" "X"]) 1e-12))
+      (is (close? (* 30.0 0.4) (get-in sl ["RB" "Y"]) 1e-12))))
+  (testing "flows in proportion to the world shares give the fallback's R"
+    (let [prop {"RA" {"X" 42.0 "Y" 28.0} "RB" {"X" 18.0 "Y" 12.0}}]
+      (is (close? (:world (es/product-risk toy)) (:world (es/product-risk (assoc toy :flows prop))) 1e-9))))
+  (testing "a code without bilateral data is flagged"
+    (is (false? (:bilateral (run/parse-trade-line "2020,2022,010111,100,X:60;Y:40,RA:70;RB:30,world,"))))))
+
 ;; ---------------------------------------------------------------- causality
 
 (deftest event-hazard-reads-forecasts-made-by-the-year-end
@@ -235,6 +285,18 @@
     (testing "a country with no forecast yet is left to the default"
       (is (nil? (h19 "BBB")))
       (is (number? (:default h19))))))
+
+(deftest trade-is-read-as-known
+  ;; BACI's data year Y is known at Y + 2: at K the latest data year known
+  ;; by K, bilateral flows included, and never a row known later
+  (let [rows [{:year 2019 :known 2021 :hs6 "a" :world 1.0 :flows {"RA" {"X" 1.0}}}
+              {:year 2020 :known 2022 :hs6 "a" :world 2.0 :flows {"RA" {"Y" 2.0}}}
+              {:year 2020 :known 2022 :hs6 "b" :world 3.0}
+              {:year 2021 :known 2023 :hs6 "a" :world 4.0 :flows {"RA" {"Z" 4.0}}}]]
+    (is (= {"a" 2.0 "b" 3.0} (update-vals (run/trade-as-known rows 2022) :world)))
+    (is (= {"RA" {"Y" 2.0}} (:flows ((run/trade-as-known rows 2022) "a"))))
+    (is (= {"a" 4.0} (update-vals (run/trade-as-known rows 2023) :world)))
+    (is (empty? (run/trade-as-known rows 2020)))))
 
 (deftest known-by-filters-every-source
   (let [rows [{:known 2010 :v 1} {:known 2011 :v 2} {:known 2012 :v 3}]]

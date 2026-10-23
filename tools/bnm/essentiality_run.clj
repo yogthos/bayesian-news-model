@@ -7,6 +7,7 @@
     jolt -A:tools -M -m bnm.essentiality-run losses   # the loss tables (slow)
     jolt -A:tools -M -m bnm.essentiality-run          # stocks and report
     jolt -A:tools -M -m bnm.essentiality-run fertiliser  # the gas target
+    jolt -A:tools -M -m bnm.essentiality-run report <loss.csv>  # with other loss tables
 
   losses writes data/derived/supply/essentiality-loss.csv: per EXIOBASE
   product p with HS92 trade, the value added lost (EUR M, 2011) in the
@@ -197,16 +198,49 @@
       (into {} (for [kv (str/split s #";") :let [i (.lastIndexOf ^String kv ":")]]
                  [(subs kv 0 i) (f (subs kv (inc i)))]))))
 
+(defn- pair-list
+  "{region {iso kUSD}} from region/iso:kUSD;..."
+  [s]
+  (reduce-kv (fn [m k v] (let [i (.indexOf ^String k "/")] (assoc-in m [(subs k 0 i) (subs k (inc i))] v)))
+             {} (kv-list s parse-double)))
+
+(defn parse-trade-line
+  "One row of essentiality-trade.csv.gz: {:year :known :hs6 :world
+  :exporters {iso3 kUSD} :importers {region kUSD} :bilateral :flows}.
+  :flows {region {iso3 kUSD}} is BACI's bilateral split of each region's
+  imports (every exporter), nil where the code has none (:bilateral false:
+  the world-share fallback)."
+  [l]
+  (let [[y k hs6 w xs ms how pairs] (str/split l #"," -1)
+        bil (= how "bilateral")]
+    {:year (parse-long y) :known (parse-long k) :hs6 hs6 :world (parse-double w)
+     :exporters (kv-list xs parse-double) :importers (kv-list ms parse-double)
+     :bilateral bil :flows (when bil (pair-list pairs))}))
+
+(defn trade-as-known
+  "{hs6 row} of the latest data year known by K (:known <= K; BACI's year
+  Y is known at Y + 2), nothing later."
+  [rows k]
+  (let [rows (es/known-by rows k)
+        y (when (seq rows) (apply max (map :year rows)))]
+    (into {} (for [r rows :when (= y (:year r))] [(:hs6 r) r]))))
+
 (defn year-trade
-  "{hs6 {:world :exporters {iso3 kUSD} :importers {region kUSD}}} of BACI
-  data year `y` (essentiality-trade.csv.gz)."
-  [y]
-  (let [prefix (str y ",")]
-    (with-open [r (io/reader (java.util.zip.GZIPInputStream. (io/input-stream (str dir "/essentiality-trade.csv.gz"))))]
-      (into {} (for [l (rest (line-seq r)) :when (str/starts-with? l prefix)
-                     :let [[_ _ hs6 w xs ms] (str/split l #"," -1)]]
-                 [hs6 {:world (parse-double w) :exporters (kv-list xs parse-double)
-                       :importers (kv-list ms parse-double)}])))))
+  "{hs6 {:world :exporters :importers :bilateral :flows}} as known by K
+  (essentiality-trade.csv.gz, `trade-as-known`)."
+  [k]
+  (with-open [r (io/reader (java.util.zip.GZIPInputStream. (io/input-stream (str dir "/essentiality-trade.csv.gz"))))]
+    ;; one pass, holding only the lines of the latest year known so far
+    ;; (the year and known columns read without parsing the rest)
+    (let [[_ ls] (reduce (fn [[y acc :as st] ^String l]
+                           (let [a (.indexOf l ",") b (.indexOf l "," (inc a))
+                                 yy (parse-long (subs l 0 a)) kk (parse-long (subs l (inc a) b))]
+                             (cond (> kk k) st
+                                   (> yy y) [yy [l]]
+                                   (= yy y) [y (conj acc l)]
+                                   :else st)))
+                         [Long/MIN_VALUE []] (rest (line-seq r)))]
+      (trade-as-known (map parse-trade-line ls) k))))
 
 (def region-iso
   "EXIOBASE region -> the iso the stocks use (iso3 for a country region)."
@@ -298,7 +332,10 @@
 
 (defn risk-year
   "Every ranked product's risk at known year K: [{:hs6 :parent :risk
-  :risk-3m :risk-12m :regions :p :top-supplier :strait-share ...}]."
+  :risk-3m :risk-12m :regions :p :top-supplier :strait-share :bilateral
+  ...}], :bilateral false where the supplier slices fell back to world
+  export shares. Variants (one horizon): :cut-0.1 :no-restriction
+  :no-strait :trade-use :world-shares (every code on the fallback)."
   [{:keys [k ranks trade parents losses shares model-use exposure rates restr events region-of keyfn]} & [variant]]
   (let [ev (events k)
         rr (restr k)
@@ -326,6 +363,7 @@
                                       lam (fn [_ f] (/ (es/interp-loss tbl f) (* (max f 1e-12) (:use tbl))))]]
                             [hz (es/product-risk {:world (:world tr) :exporters (:exporters tr) :importers (:importers tr)
                                                   :region-of region-of :p pc :use use :lambda lam :x x
+                                                  :flows (when-not (= variant :world-shares) (:flows tr))
                                                   :e (es/spare hz) :straits st :q q :d strait-loss
                                                   :strait-world (get ex "WLD")
                                                   :model-use (when (and model-use (not= variant :trade-use)) (get model-use p {}))})]))
@@ -334,7 +372,7 @@
              wx (reduce + 0.0 (vals (:exporters tr)))]
          (assoc e :parent p :risk (:world s) :risk-3m (:world (res :m3)) :risk-12m (:world (res :m12))
                 :regions (:regions s) :regions-3m (:regions (res :m3)) :regions-12m (:regions (res :m12))
-                :value (:world tr)
+                :value (:world tr) :bilateral (boolean (:flows tr))
                 :p (if (pos? wx) (/ (reduce + 0.0 (for [[c v] (:exporters tr)] (* v (pc c)))) wx) 0.0)
                 :top-supplier (key top) :top-share (if (pos? (:world s)) (/ (:risk (val top)) (:world s)) 0.0)
                 :strait-share (if (pos? (:world s)) (/ (reduce + 0.0 (vals (:straits s))) (:world s)) 0.0)))))))
@@ -346,10 +384,10 @@
 
 (defn- print-top [k rows n names]
   (println (format "K = %d (data %d): %d products ranked; top %d by world R (steady, USD bn of value added a year)" k (- k 2) (count rows) n))
-  (println "   rank hs6     R      R-3m   R-12m  trade  P     top supplier (its share of R) strait  rise-pct parent  name")
+  (println "   rank hs6    slice  R      R-3m   R-12m  trade  P     top supplier (its share of R) strait  rise-pct parent  name")
   (doseq [r (take n rows)]
-    (println (format "   %4d %s %6.2f %6.2f %6.2f %6.1f %.3f %s (%.2f)          %.2f   %s %-7s %s"
-                     (:rank r) (:hs6 r) (bn (:risk r)) (bn (:risk-3m r)) (bn (:risk-12m r)) (bn (:value r)) (:p r)
+    (println (format "   %4d %s %s %6.2f %6.2f %6.2f %6.1f %.3f %s (%.2f)          %.2f   %s %-7s %s"
+                     (:rank r) (:hs6 r) (if (:bilateral r) "bilat" "WORLD") (bn (:risk r)) (bn (:risk-3m r)) (bn (:risk-12m r)) (bn (:value r)) (:p r)
                      (:top-supplier r) (:top-share r) (:strait-share r) (f (:pct-rise r) 3) (:parent r) (get names (:hs6 r) "")))))
 
 (def targets
@@ -428,7 +466,7 @@
     (let [rs (filter #(covered (:hs6 %)) pool)]
       (println (format "   (product-years 2014-2021: %d, of which %d on OECD-covered codes)" (count pool) (count rs))))))
 
-(defn report []
+(defn report [& [loss-file]]
   (let [t0 (System/currentTimeMillis)
         tick (fn [what] (println (format "  [%s %.0fs]" what (/ (- (System/currentTimeMillis) t0) 1000.0))))
         world (read-world (str dir "/hs6-world.csv"))
@@ -437,7 +475,7 @@
         _ (tick "rise ranks")
         conc (conc/load-concordance (str dir "/concordance.csv"))
         parents (main-parents conc)
-        losses (load-loss loss-path)
+        losses (load-loss (or loss-file loss-path))
         trade-rows (mapv #(update % :quantity parse-double) (read-plain (str dir "/trade.csv")))
         shares (import-shares trade-rows)
         model-use (model-uses trade-rows (read-plain (str dir "/production.csv")))
@@ -457,7 +495,7 @@
              :region-of (memoize cprof/exio-region)}
         names (merge subnodes cp/energy-products)
         rows-by-k (into {} (for [k years]
-                             (let [trade (year-trade (- k 2))
+                             (let [trade (year-trade k)
                                    rs (risk-year (assoc ctx :k k :ranks ranks :trade trade
                                                         :ranks (map #(assoc % :pct-rise (:pct %) :rank-rise (:rank %)) (ranks k))))]
                                (tick (str "risk " k " (" (count rs) " products)"))
@@ -469,7 +507,24 @@
     (println "event hazard at K 2022:" (str/join " " (for [c ["CHN" "COD" "CHL" "AUS" "RUS" "ZAF" "IDN" "USA" :default]] (str (name c) " " (f (get ((:events ctx) 2022) c) 3)))))
     (println "missing loss tables for parents:" (str/join " " (sort (remove losses (distinct (vals parents))))))
     (println)
+    (println "Supplier slices: bilateral (BACI flows) or the world-share fallback (WORLD), by K")
+    (doseq [k years :let [rs (rows-by-k k)
+                          share (fn [xs] (let [t (reduce + 0.0 (map :risk xs))]
+                                           (if (pos? t) (/ (reduce + 0.0 (map :risk (filter :bilateral xs))) t) 0.0)))]]
+      (println (format "   %d: bilateral %d of %d codes; top 20 %d (%.2f of their R), top 50 %d (%.2f), top 100 %d (%.2f); fallback in the top 20: %s"
+                       k (count (filter :bilateral rs)) (count rs)
+                       (count (filter :bilateral (take 20 rs))) (share (take 20 rs))
+                       (count (filter :bilateral (take 50 rs))) (share (take 50 rs))
+                       (count (filter :bilateral (take 100 rs))) (share (take 100 rs))
+                       (str/join " " (map :hs6 (remove :bilateral (take 20 rs)))))))
+    (println)
     (doseq [k [2016 2020 2023 2026]] (print-top k (rows-by-k k) 20 names) (println))
+    (println "Lignite (270210) by K: rank, R (USD bn), top supplier (its share of R), slice, largest regional R")
+    (doseq [k years :let [r (first (filter #(= "270210" (:hs6 %)) (rows-by-k k)))] :when r]
+      (println (format "   %d: rank %d, R %.2f, %s (%.2f), %s; %s" k (:rank r) (bn (:risk r)) (:top-supplier r) (:top-share r)
+                       (if (:bilateral r) "bilateral" "WORLD")
+                       (str/join " " (for [[g v] (take 4 (sort-by (comp - val) (:regions r)))] (format "%s %.2f" g (bn v)))))))
+    (println)
     {:rows-by-k rows-by-k :ctx ctx :world world :restr-rows restr-rows :names names :ranks ranks :subnodes subnodes
      :tick tick}))
 
@@ -604,8 +659,8 @@
                                        (str k ":" a "/" b))))))
     (println)
     (println "Sensitivity at K 2022 and 2023 (Spearman with the registered R; precision as above, EU at 2023)")
-    (doseq [k [2022 2023] variant [:cut-0.1 :no-restriction :no-strait :trade-use]]
-      (let [trade (year-trade (- k 2))
+    (doseq [k [2022 2023] variant [:cut-0.1 :no-restriction :no-strait :trade-use :world-shares]]
+      (let [trade (year-trade k)
             alt (es/rank-risk (risk-year (assoc ctx :k k :trade trade
                                                 :ranks (map #(assoc % :pct-rise (:pct %) :rank-rise (:rank %)) (ranks k)))
                                          variant))
@@ -632,6 +687,7 @@
   (case cmd
     "losses" (apply losses args)
     "fertiliser" (fertiliser)
-    nil (finish (report)))
+    nil (finish (report))
+    "report" (finish (report (first args))))
   (shutdown-agents))
 
