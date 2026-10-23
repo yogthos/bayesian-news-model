@@ -10,7 +10,8 @@
   data/derived/stocks/stages.csv. Shares here are by data year, from every
   row of that year (the current vintage); the stocks carry the same values
   at the year known."
-  (:require [bnm.stages :as stg]
+  (:require [bnm.csv :as csv]
+            [bnm.stages :as stg]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -59,6 +60,72 @@
   (println (format "  [%s] %s: %s" (if ok? "met" "NOT MET") label detail)))
 
 (defn- within [x lo hi] (and x (<= lo x hi)))
+
+;; ---------------------------------------------------------------- chemical stages
+
+(def chem-path "data/derived/supply/stages-chem.csv")
+
+(def miit-separation-quota
+  "China's rare-earth separation quotas, t REO, as USGS MCS quotes MIIT:
+  MCS 2020 (2019), MCS 2023 (2022), MCS 2024 (2023). A quota, not output:
+  it leaves out undocumented production."
+  {2019 127000.0 2022 202000.0 2023 230000.0})
+
+(defn- chem-methods
+  "{iso method} of a chemical stage's data year, latest edition."
+  [prov c y]
+  (let [ps (filter #(and (= c (:commodity %)) (= (str y) (:year %))) prov)
+        k (when (seq ps) (apply max (map #(parse-long (:known %)) ps)))]
+    (into {} (for [p ps :when (= (str k) (:known p))] [(:iso p) p]))))
+
+(defn- chemical-stages [rows]
+  (println "\nChemical stages (bead bnm-1pq.15; built: trade + domestic use, China closing the mass balance, 2025 from plant capacities)")
+  (let [prov (when (.exists (io/file chem-path)) (vec (csv/read-maps chem-path \,)))
+        yrs (fn [c s] (sort (distinct (map :year (filter #(and (= c (:commodity %)) (= s (:stage %))) rows)))))
+        line (fn [c s y]
+               (let [sh (stg/shares (by-year rows c s y))
+                     ms (chem-methods prov c y)
+                     m (when (seq sh) (stg/shares (by-year rows c "mine" y)))]
+                 (format "  %-12s %d  %s  HHI %s  D %s  (%s)" c y
+                         (str/join " " (for [[iso v] (take 4 (sort-by (comp - val) sh))] (str iso " " (f2 v))))
+                         (f2 (stg/hhi sh)) (f2 (when (seq m) (stg/displacement m sh)))
+                         (str/join "," (sort (distinct (map :method (vals ms))))))))]
+    (doseq [[c s] [["lithium" "chemical"] ["rare-earths" "separation"]]
+            y (yrs c s) :when (or (= c "lithium") (>= y 2015) (zero? (mod y 5)))]
+      (println (line c s y)))
+    (let [ss (for [y (range 2020 2024)] [y (share rows "lithium" "chemical" y "CHN")])]
+      (target "China's share of refined lithium chemicals 0.60-0.70 in 2020-23 (USGS/IEA)"
+              (every? #(within (second %) 0.60 0.70) ss)
+              (str (str/join ", " (map (fn [[y v]] (str y " " (f2 v))) ss))
+                   "; 2023: Chile's carbonate exports fall to 150 kt in BACI (201 kt in 2022) while world mine output grows 39%, so the balance gives China more")))
+    (let [ss (for [y (range 2020 2024)] [y (share rows "rare-earths" "separation" y "CHN")])
+          quota (for [[y q] (sort miit-separation-quota)
+                      :let [others (reduce + 0.0 (vals (dissoc (by-year rows "rare-earths" "separation" y) "CHN")))]]
+                  [y (/ q (+ q others)) (/ q (get (by-year rows "rare-earths" "separation" y) "CHN"))])]
+      (target "China's share of rare-earth separation 0.85-0.90 in 2020-23"
+              (every? #(within (second %) 0.85 0.90) ss)
+              (str (str/join ", " (map (fn [[y v]] (str y " " (f2 v))) ss))))
+      (println (str "        with China at its MIIT separation quota instead of the balance (others as built): "
+                    (str/join ", " (map (fn [[y v r]] (str y " " (f2 v) " (quota/balance " (f2 r) ")")) quota))
+                    "; the balance counts all mined REO as separated that year")))
+    (let [ds (for [y (range 2020 2026)] [y (d rows "lithium" "mine" "chemical" y)])]
+      (target "lithium D mine->chemical high (0.5+) in every year 2020-25: Australian spodumene refined in China"
+              (every? #(and (second %) (>= (second %) 0.5)) ds)
+              (str (str/join ", " (map (fn [[y v]] (str y " " (f2 v))) ds))
+                   "; rare earths " (str/join ", " (for [y [2020 2022 2024]] (str y " " (f2 (d rows "rare-earths" "mine" "separation" y))))))))
+    (let [pc (chem-methods prov "lithium" 2022) w (some-> (get pc "CHN") :world parse-double)
+          u (some-> (get pc "CHN") :domestic_use parse-double)]
+      (println (str "  China's implied domestic use of lithium chemicals (balance less its net exports), 2022: "
+                    (f2 (when (and u w) (/ u w))) " of world use; no battery cell output by country is held to check it")))
+    (println "  EU CRM 2023 factsheets (internal check only): \"approximately 85% of refined REEs are produced in China\";"
+             "China \"has most of the world's refining capacity\" for lithium")
+    (println "  Causality: trade years are written once per plant-list year; China's plants are on record from 2023 (China GIS),"
+             "Malaysia's from 2024 (Indo-Pacific GIS), the rest from 2026 (MYB vol. III 2024), so the 2023 edition of"
+             "rare-earth separation has no Malaysia and reads China"
+             (f2 (get (stg/shares (reduce (fn [m r] (update m (:iso r) (fnil + 0.0) (:quantity r))) {}
+                                          (filter #(and (= "rare-earths" (:commodity %)) (= "separation" (:stage %))
+                                                        (= 2021 (:year %)) (= 2023 (:known %))) rows)))
+                       "CHN")))))
 
 (defn -main [& _]
   (let [rows (stg/read-rows stg/in-path)
@@ -158,7 +225,7 @@
 
     (println "\nPlants (MYB vol. III 2024, USGS US facilities 2026, China copper smelters from USGS China GIS 2023): HHI by capacity, plants, coverage of the stage's output")
     (let [ps (stg/plant-stocks plants rows)
-          key-of (fn [r] (let [[_ c s] (re-matches #"stages/(.+?)-(mine|smelter|refinery|chemical)-plant-.*" (:variable r))] [c s]))
+          key-of (fn [r] (let [[_ c s] (re-matches #"stages/(.+?)-(mine|smelter|refinery|chemical|separation)-plant-.*" (:variable r))] [c s]))
           country-hhi (fn [c s]
                         (let [rs (filter #(and (= c (:commodity %)) (= s (:stage %))) rows)]
                           (when (seq rs)
@@ -168,6 +235,8 @@
           (println (format "  %-12s %-9s plant HHI %s  plants %3d  coverage %s  (country HHI %s)"
                            c s (f2 (g "-plant-hhi")) (long (or (g "-plant-count") 0)) (f2 (g "-plant-coverage"))
                            (f2 (country-hhi c s)))))))
+
+    (chemical-stages rows)
 
     (let [n (count @results) ok (count (filter second @results))]
       (println (format "\n%d of %d targets met." ok n)))))

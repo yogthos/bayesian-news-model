@@ -11,10 +11,17 @@ committed):
                     world production), for cross-checks only
   stage-plants.csv  commodity,stage,iso,facility,capacity,unit,source,known
                     plant capacities from USGS MYB vol. III 2024 (facilities)
+  stages-chem.csv   commodity,stage,iso,year,known,quantity,unit,method,
+                    net_exports,domestic_use,capacity,utilisation,world
+                    how each chemical-stage value was built (below)
 
-Stages are mine, smelter, refinery and chemical (none chosen yet: no source
-held gives country output of lithium chemicals, rare-earth separation or
-cobalt sulphate; see docs/ESSENTIALS.md section 5).
+Stages are mine, smelter, refinery, chemical and separation. No source held
+gives country output of lithium chemicals or rare-earth separation, so those
+two (lithium "chemical", t LCE; rare-earths "separation", t REO; bead
+bnm-1pq.15) are built from trade, plant lists and a mass balance against the
+mine stage: see "chemical stages" below. They are added to stages.csv and
+stage-plants.csv without changing any other row. Cobalt sulphate is still
+missing.
 
 Sources and the choice per commodity and stage
 ----------------------------------------------
@@ -104,7 +111,7 @@ OUT = os.path.join(ROOT, "data/derived/supply")
 
 BGS_LAG = 2
 MYB_LAG = 2
-STAGES = ("mine", "smelter", "refinery", "chemical")
+STAGES = ("mine", "smelter", "refinery", "chemical", "separation")
 
 # commodity, stage -> (BGS commodity, BGS sub-commodity or None, unit[, first year])
 # A first year drops the years before a coverage break, so that a country
@@ -427,7 +434,7 @@ def vol3_table():
     us["known"] = pd.to_numeric(us["Date Updated"], errors="coerce")
     us["source"] = "USGS-US2026"
     cols = ["Global Entry", "Country (Short Form) or Locality", "Facility Name", "Feature Type",
-            "Level 2 (Commodity)", "Level 3 (Type)", "Level 4 (Phase)", "Descriptor", "Commodity Unit",
+            "Level 2 (Commodity)", "Level 3 (Type)", "Level 4 (Phase)", "Level 5 (Form)", "Descriptor", "Commodity Unit",
             "Annual Production Capacity", "Shared Capacity", "Facility Status", "known", "source"]
     return pd.concat([v3[cols], us[cols]], ignore_index=True)
 
@@ -487,6 +494,361 @@ def plant_rows():
     return out
 
 
+# ------------------------------------------------------------------ chemical stages
+#
+# Lithium chemicals (stage "chemical", t LCE) and rare-earth separation
+# (stage "separation", t REO), bead bnm-1pq.15. No source gives country
+# output, so it is built; every value's method and inputs go to
+# stages-chem.csv. Methods:
+#
+#   trade     P = max(0, NX + U): net exports NX of the stage's chemicals in
+#             BACI (HS92 tonnes; lithium carbonate 283691, lithium oxide and
+#             hydroxide 282520, rare-earth compounds 284610 and 284690) plus
+#             domestic use U. U is a held figure only for US lithium (MCS
+#             salient consumption; withheld from data year 2023, when the
+#             last published figure is held). Elsewhere U = 0: what a
+#             producer outside China uses at home is assumed small, since no
+#             battery cell or magnet output by country is held to estimate
+#             it from. Only countries with a chemical-stage plant on record
+#             count ("gated"): Myanmar's and Laos's rare-earth compounds are
+#             mixed carbonate from ionic clays, an intermediate China
+#             separates, and Canada's 95 kt of hydroxide in 2018, or the
+#             Netherlands' and Nigeria's lithium, are re-exports or
+#             misreports with no plant behind them.
+#   reported  the output a held source reports: US rare-earth compounds and
+#             metals (MCS salient statistics, data years 2017-2025).
+#   balance   China closes the mass balance against the mine stage: world
+#             chemical output equals world mine output that year (no stock
+#             change, no losses; lithium mine output in LCE), so
+#             P_CHN = W - the others. Net exports sum to zero over the
+#             world, so this is P_CHN = NX_CHN + U_CHN with U_CHN world use
+#             less the others' (a consumer with no plant uses its net
+#             imports); stages-chem.csv carries NX_CHN and the implied U_CHN.
+#   facility  the facility year 2025 (MYB vol. III 2024, currentness
+#             2025-26, and the USGS US worksheet 2026): P = capacity x u for
+#             each country with a listed capacity, one utilisation
+#             u = min(1, W / listed world capacity), W the MCS 2026 world
+#             mine output of 2025 (above listed capacity for both, so u = 1:
+#             the others at capacity, an upper bound); the US's rare earths
+#             as reported; China closes the balance, since MYB lists none of
+#             its lithium hydroxide plants.
+#
+# Gate evidence and when it is known: active chemical plants with a stated
+# capacity in MYB vol. III 2024 / USGS US (known 2026; Austria's rare-earth
+# chemicals plant and Russia's lithium plants state none and do not gate); active processing plants (and, for lithium,
+# brine operations, which make carbonate at the salar) in
+# data/derived/cells/assets.csv from the USGS GIS compilations (known_from:
+# Latin America 2016, the others 2022-24; rows with dup_of skipped). A data
+# year is written once per evidence year (an edition, source
+# BNM-CHEM<year>, known that year and no earlier than BACI's data year + 2),
+# so bnm.stages reads the latest edition known by K and China's balance
+# never uses a plant list from after K. An edition is written only once
+# China's own plants are on record (2023), so trade years are known from
+# 2023 at the earliest.
+#
+# Units: LCE = Li x 5.323; LiOH.H2O 0.880 t LCE per t (BACI 282520 taken as
+# monohydrate, the traded battery grade); LiCl 0.871. Rare-earth compounds
+# in BACI and plant capacities in gross weight are taken as REO one for one
+# (separated oxides; carbonates and chlorides hold less, which overstates
+# such exporters a little).
+#
+# Known limits: the plant lists are snapshots, so a plant built in 2024
+# gates its country's earlier years too (harmless where its net exports
+# were negative, as Korea's lithium); a separator whose feedstock arrives as
+# compounds (Estonia's Silmet) has negative net exports in the same codes
+# and reads as zero in trade years; Japan and France separated rare earths
+# in the 1990s and have no plant on record, so they read as zero; MYB lists
+# China's lithium carbonate plants but none of its hydroxide plants, which
+# would understate China in the facility year were it not the closing
+# country there. Flows without tonnes in BACI (3-10% of flows) are left out.
+
+LCE_PER_LI = 5.323
+LCE_PER = {"carbonate": 1.0, "hydroxide": 0.880, "chloride": 0.871}
+
+CHEM = {
+    "lithium": dict(stage="chemical", unit="t LCE", hs={"283691": 1.0, "282520": LCE_PER["hydroxide"]},
+                    mine_scale=LCE_PER_LI, mcs="lithi", level2="Lithium",
+                    assets=("lithium",), asset_types=("processing_plant", "brine")),
+    "rare-earths": dict(stage="separation", unit="t REO", hs={"284610": 1.0, "284690": 1.0},
+                        mine_scale=1.0, mcs="rare ", level2="Rare earths",
+                        assets=("rare earths", "rare earth elements (ree)"), asset_types=("processing_plant",)),
+}
+CHEM_STAGES = {(c, v["stage"]) for c, v in CHEM.items()}
+CHEM_CLOSING = "CHN"
+CHEM_SOURCE = "BNM-CHEM"
+CHEM_FACILITY_YEAR = 2025
+ACTIVE = re.compile(r"^(a|active|assumed active)$", re.I)
+# rare-earth plants that are not separation: mixed intermediates,
+# concentrate, metal, magnets, other elements
+RE_NOT_SEPARATION = re.compile(r"mixed|concentrat|magnet|metal|cesium|ndfeb", re.I)
+
+
+def chem_capacity_factor(com, unit, form):
+    """Factor from a plant row's capacity to the stage unit, or None when
+    its unit does not convert."""
+    unit, form = str(unit), str(form).lower()
+    if com == "lithium":
+        if unit == "Li2CO3 content":
+            return 1.0
+        if unit == "Li content":
+            return LCE_PER_LI
+        if unit == "Gross weight":
+            return next((f for k, f in LCE_PER.items() if k in form), None)
+        return None
+    if unit in ("Oxide content", "Rare-earth-oxide equivalent", "Gross weight", "Compounds weight"):
+        return 1.0
+    return None
+
+
+def chem_plants(d=None):
+    """[(commodity, stage, iso, facility, capacity or None, unit, source,
+    known)]: active, primary chemical-stage plants in MYB vol. III 2024 and
+    the USGS US worksheet. Capacity None where none is given (-999) or its
+    unit does not convert; the plant still gates its country."""
+    d = vol3_table() if d is None else d
+    d = d[d["Facility Status"].str.lower().str.startswith("assumed active", na=False)]
+    d = d[d["Level 4 (Phase)"].fillna("") != "Secondary"]
+    out = []
+    for com, c in CHEM.items():
+        x = d[d["Level 2 (Commodity)"] == c["level2"]]
+        if com == "lithium":
+            x = x[(x["Level 3 (Type)"] == "Refinery") |
+                  (x["Level 3 (Type)"].isna() & x["Descriptor"].str.contains("carbonate", case=False, na=False))]
+        else:
+            x = x[(x["Feature Type"] == "Mineral Processing Plant") & (x["Level 3 (Type)"].fillna("") != "Mine")
+                  & ~x["Descriptor"].fillna("").str.contains(RE_NOT_SEPARATION)]
+        x = x.assign(iso=x["Country (Short Form) or Locality"].map(usgs_iso),
+                     cap=pd.to_numeric(x["Annual Production Capacity"], errors="coerce"),
+                     fac=x["Facility Name"],
+                     f=[chem_capacity_factor(com, u, fm) for u, fm in zip(x["Commodity Unit"], x["Level 5 (Form)"])])
+        x = x[x.iso.notna() & x.known.notna()]
+        x = x.assign(q=[q * f if (f is not None and q > 0) else float("nan") for q, f in zip(x.cap, x.f)],
+                     key=x["Shared Capacity"].fillna(x["Global Entry"]))
+        # a capacity shared across rows counts once
+        x = x.sort_values("q", na_position="first").drop_duplicates("key", keep="last")
+        for r in x.itertuples():
+            out.append((com, c["stage"], r.iso, r.fac, None if pd.isna(r.q) else float(r.q), c["unit"],
+                        r.source, int(r.known)))
+    return out
+
+
+def chem_asset_gates(path=None):
+    """{(commodity, iso): earliest known year} of active chemical-stage
+    assets (processing plants; lithium brines) in the cell asset table."""
+    path = path or os.path.join(ROOT, "data/derived/cells/assets.csv")
+    out = {}
+    with open(path, newline="") as f:
+        for r in csv.DictReader(f):
+            if r["dup_of"] or not ACTIVE.match(r["status"].strip()) or not r["known_from"] or not r["iso"]:
+                continue
+            for com, c in CHEM.items():
+                if r["commodity"] in c["assets"] and r["asset_type"] in c["asset_types"]:
+                    k = int(float(r["known_from"]))
+                    out[(com, r["iso"])] = min(k, out.get((com, r["iso"]), k))
+    return out
+
+
+def chem_trade(path=None):
+    """{(commodity, iso, year): (net exports in the stage unit, known)} from
+    BACI HS92 tonnes (flows without tonnes left out)."""
+    path = path or os.path.join(OUT, "hs6-essentials.csv.gz")
+    codes = {h: (com, f) for com, c in CHEM.items() for h, f in c["hs"].items()}
+    out, known = defaultdict(float), {}
+    for ch in pd.read_csv(path, dtype={"hs6": str}, chunksize=1_000_000):
+        ch = ch[(ch.hs == "HS92") & ch.hs6.isin(list(codes)) & ch.tonnes.notna()]
+        for hs6, ex, im, y, kn, t in zip(ch.hs6, ch.exporter, ch.importer, ch.year, ch.known, ch.tonnes):
+            com, f = codes[hs6]
+            out[(com, ex, int(y))] += f * t
+            out[(com, im, int(y))] -= f * t
+            known[int(y)] = int(kn)
+    return {k: (v, known[k[2]]) for k, v in out.items()}
+
+
+def mcs_us_salient():
+    """{(commodity, statistic, year): [(edition, value)]} of two US salient
+    statistics: lithium consumption (t Li) and rare-earth production of
+    compounds and metals (t REO). Withheld values ("W") are left out."""
+    base = os.path.join(RAW, "usgs-mcs")
+    cols = {"lithium": ("Consump_t", "consumption"), "rare-earths": ("USprod_Compounds-Metals_t", "production")}
+    out = defaultdict(list)
+
+    def add(com, stat, y, ed, v):
+        v, y = number(v), number(y)
+        if v is not None and y is not None:
+            out[(com, stat, int(y))].append((ed, v))
+
+    for ed, zpath in ((2022, "2022/salient.zip"), (2023, "2023/salient.zip"), (2024, "2024/salient.zip"),
+                      (2025, "2025/Salient_Commodity_Data_Release_Grouped_MCS_2025.zip")):
+        with zipfile.ZipFile(os.path.join(base, zpath)) as z:
+            for n in z.namelist():
+                m = re.search(r"mcs\d{4}-(lithi|lithium|raree|rareee)_salient\.csv$", n)
+                if not m:
+                    continue
+                com = "lithium" if m.group(1).startswith("lithi") else "rare-earths"
+                col, stat = cols[com]
+                t = pd.read_csv(io.BytesIO(z.read(n)), encoding="utf-8-sig", dtype=str)
+                for y, v in zip(t.Year, t[col]):
+                    add(com, stat, y, ed, v)
+    t = pd.read_csv(os.path.join(base, "2026/MCS2026_Commodities_Data.csv"), dtype=str, encoding="cp1252",
+                    encoding_errors="replace")
+    t = t[t.Section.str.startswith("Salient", na=False)]
+    for com_, det, y, v in zip(t.Commodity, t.Statistics_detail.astype(str), t.Year, t.Value):
+        if com_ == "Lithium" and det.startswith("Consumption"):
+            add("lithium", "consumption", y, 2026, v)
+        elif com_ == "Rare Earths" and det == "Production: Compounds and metals":
+            add("rare-earths", "production", y, 2026, v)
+    return out
+
+
+def latest_by(eds, k):
+    """The value of the latest edition known by k in [(edition, value)]."""
+    eds = [(e, v) for e, v in eds if e <= k]
+    return max(eds)[1] if eds else None
+
+
+def chem_world(stage_rows, com, y, k):
+    """(world mine output of com in data year y in the chemical stage's
+    unit, from its latest edition known by k; that edition's known year),
+    or None."""
+    rs = [r for r in stage_rows if r[0] == com and r[1] == "mine" and r[3] == y and r[7] <= k]
+    if not rs:
+        return None
+    src = max(rs, key=lambda r: r[7])[6]
+    rs = [r for r in rs if r[6] == src]
+    return sum(r[4] for r in rs) * CHEM[com]["mine_scale"], max(r[7] for r in rs)
+
+
+def chem_balance(nx, gated, world, use=None, reported=None, closing=CHEM_CLOSING):
+    """{iso: (quantity, method, net exports, domestic use)} for one data
+    year. Gated countries other than the closing one: as reported, else
+    max(0, NX + U). The closing country: world output less the others, with
+    its implied domestic use. nx {iso: net exports}, gated a set of isos
+    (the closing one among them), world the stage's world output, use
+    {iso: U}, reported {iso: quantity}. Raises when the others exceed world
+    output."""
+    use, reported = use or {}, reported or {}
+    out = {}
+    for iso in sorted(set(gated) - {closing}):
+        n = nx.get(iso, 0.0)
+        if iso in reported:
+            out[iso] = (reported[iso], "reported", n, None)
+        else:
+            out[iso] = (max(0.0, n + use.get(iso, 0.0)), "trade+use" if iso in use else "trade", n, use.get(iso))
+    rest = world - sum(v[0] for v in out.values())
+    if rest < 0:
+        raise ValueError(f"chemical balance: others {world - rest:.0f} exceed world {world:.0f}")
+    n = nx.get(closing, 0.0)
+    out[closing] = (rest, "balance", n, rest - n)
+    return out
+
+
+def chem_facility(caps, world, reported=None, closing=CHEM_CLOSING):
+    """{iso: (quantity, method, capacity, utilisation)} for the facility
+    year: each country other than the closing one at its listed capacity x
+    one utilisation u = min(1, world / listed world capacity), or as
+    reported; the closing country the rest of world output (its own
+    listing is incomplete: MYB has none of China's lithium hydroxide
+    plants). caps {iso: capacity}, the closing country's among them."""
+    reported = reported or {}
+    tot = sum(caps.values())
+    u = min(1.0, world / tot) if tot > 0 else 0.0
+    out = {}
+    for iso, q in sorted(caps.items()):
+        if iso == closing:
+            continue
+        out[iso] = (reported[iso], "reported", q, None) if iso in reported else (q * u, "facility", q, u)
+    rest = world - sum(v[0] for v in out.values())
+    if rest < 0:
+        raise ValueError(f"facility balance: others {world - rest:.0f} exceed world {world:.0f}")
+    out[closing] = (rest, "balance", caps.get(closing), None)
+    return out
+
+
+def chem_us(com, y, k, salient):
+    """(domestic use, reported output) for the US in data year y as known
+    by k: lithium consumption (MCS; withheld from data year 2023, so the
+    last figure published by k is held), rare-earth compounds and metals
+    produced."""
+    if com == "lithium":
+        pub = [(yy, latest_by(eds, k)) for (cm, st, yy), eds in salient.items()
+               if cm == com and st == "consumption" and yy <= y and latest_by(eds, k) is not None]
+        return ({"USA": max(pub)[1] * LCE_PER_LI} if pub else {}), {}
+    v = latest_by(salient.get((com, "production", y), []), k)
+    return {}, ({"USA": v} if v is not None else {})
+
+
+def chem_rows(stage_rows, trade=None, plants=None, gates=None, salient=None, mcs=None):
+    """(stage rows, provenance rows) of the chemical stages. Provenance:
+    commodity, stage, iso, year, known, quantity, unit, method, net_exports,
+    domestic_use, capacity, utilisation, world."""
+    trade = chem_trade() if trade is None else trade
+    plants = chem_plants() if plants is None else plants
+    gates = dict(chem_asset_gates() if gates is None else gates)
+    salient = mcs_us_salient() if salient is None else salient
+    mcs = mcs_tables() if mcs is None else mcs
+    for com, stage, iso, fac, cap, unit, src, k in plants:
+        if cap:
+            gates[(com, iso)] = min(k, gates.get((com, iso), k))
+    rows, prov = [], []
+    for com, c in CHEM.items():
+        g = {iso: k for (cm, iso), k in gates.items() if cm == com}
+        by_year = defaultdict(dict)
+        k0s = defaultdict(int)
+        for (cm, iso, y), (v, kn) in trade.items():
+            if cm == com:
+                by_year[y][iso] = v
+                k0s[y] = max(k0s[y], kn)
+        for y in sorted(by_year):
+            for e in sorted({max(k0s[y], kg) for kg in g.values()}):
+                gated = {iso for iso, kg in g.items() if kg <= e}
+                w = chem_world(stage_rows, com, y, e)
+                if CHEM_CLOSING not in gated or w is None:
+                    continue
+                world = w[0]
+                use, rep = chem_us(com, y, e, salient)
+                for iso, (q, method, n, u) in chem_balance(by_year[y], gated, world, use, rep).items():
+                    prov.append((com, c["stage"], iso, y, e, q, c["unit"], method, n, u, None, None, world))
+                    if q > 0:
+                        rows.append((com, c["stage"], iso, y, q, c["unit"], f"{CHEM_SOURCE}{e}", e))
+        # the facility year
+        caps, kf = defaultdict(float), 0
+        for cm, stage, iso, fac, cap, unit, src, k in plants:
+            if cm == com and cap:
+                caps[iso] += cap
+                kf = max(kf, k)
+        x = mcs[(mcs.com == c["mcs"]) & (mcs.year == CHEM_FACILITY_YEAR) & (mcs.ed <= kf)
+                & mcs.country.fillna("").str.contains("world total", case=False)]
+        if com == "lithium":
+            x = x[x.type.str.contains("mine production", case=False, na=False)]
+        x = x[x.value.map(number).notna()]
+        if caps and len(x):
+            world = number(x.sort_values("ed").value.iloc[-1]) * c["mine_scale"]
+            rep = chem_us(com, CHEM_FACILITY_YEAR, kf, salient)[1]
+            for iso, (q, method, cap, u) in sorted(chem_facility(caps, world, rep).items()):
+                prov.append((com, c["stage"], iso, CHEM_FACILITY_YEAR, kf, q, c["unit"], method,
+                             None, None, cap, u, world))
+                if q > 0:
+                    rows.append((com, c["stage"], iso, CHEM_FACILITY_YEAR, q, c["unit"], f"{CHEM_SOURCE}{kf}", kf))
+    return rows, prov
+
+
+def check_chem(old, rows, prov, old_plants, plants):
+    """The chemical stages are new stages, added without touching the
+    others, and the balance holds in every trade edition."""
+    assert not ({(r[0], r[1]) for r in old} & CHEM_STAGES), "a chemical stage existed already"
+    assert not ({(p[0], p[1]) for p in old_plants} & CHEM_STAGES)
+    assert {(r[0], r[1]) for r in rows} == CHEM_STAGES, {(r[0], r[1]) for r in rows}
+    assert {(p[0], p[1]) for p in plants} <= CHEM_STAGES
+    for r in rows:
+        assert r[7] > r[3] and r[4] > 0, r
+    eds = defaultdict(list)
+    for p in prov:
+        eds[(p[0], p[3], p[4])].append(p)
+    for key, ps in eds.items():
+        assert sum(1 for p in ps if p[7] == "balance") == 1, key
+        assert abs(sum(p[5] for p in ps) - ps[0][12]) <= 1e-6 * max(1.0, ps[0][12]), key
+
+
 # ------------------------------------------------------------------ write
 
 def write(name, header, rows):
@@ -535,11 +897,20 @@ def check_repairs(rows, plants):
 def main():
     rows = bgs_rows() + mcs_rows()
     check(rows)
-    check_repairs(rows, plant_rows())
-    write("stages.csv", ["commodity", "stage", "iso", "year", "quantity", "unit", "source", "known"], rows)
+    plants = plant_rows()
+    check_repairs(rows, plants)
+    cplants = chem_plants()
+    chem, prov = chem_rows(rows, plants=cplants)
+    with_caps = [p for p in cplants if p[4]]
+    check_chem(rows, chem, prov, plants, with_caps)
+    check(rows + chem)
+    write("stages.csv", ["commodity", "stage", "iso", "year", "quantity", "unit", "source", "known"], rows + chem)
     write("stages-alt.csv", ["commodity", "stage", "iso", "year", "quantity", "unit", "source", "known"], myb_rows())
     write("stage-plants.csv", ["commodity", "stage", "iso", "facility", "capacity", "unit", "source", "known"],
-          plant_rows())
+          plants + with_caps)
+    write("stages-chem.csv", ["commodity", "stage", "iso", "year", "known", "quantity", "unit", "method",
+                              "net_exports", "domestic_use", "capacity", "utilisation", "world"],
+          [tuple("" if v is None else v for v in p) for p in prov])
 
 
 if __name__ == "__main__":

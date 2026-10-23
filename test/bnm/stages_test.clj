@@ -1,5 +1,7 @@
 (ns bnm.stages-test
-  (:require [bnm.stages :as stg]
+  (:require [bnm.csv :as csv]
+            [bnm.stages :as stg]
+            [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b tol] (and a b (< (Math/abs (- (double a) (double b))) tol)))
@@ -167,3 +169,52 @@
           out (stg/stocks rows)]
       (is (close? 60.0 (value out "WLD" 2002 "stages/x-mine-world") 1e-12))
       (is (close? 100.0 (value out "WLD" 2003 "stages/x-mine-world") 1e-12)))))
+
+;; ---------------------------------------------------------------- chemical stages (bnm-1pq.15)
+
+(deftest chemical-stages-in-the-chain
+  (testing "lithium chemicals and rare-earth separation come after the mine"
+    (is (= ["mine" "chemical"] (stg/chain "lithium" #{"chemical" "mine"})))
+    (is (= ["mine" "separation"] (stg/chain "rare-earths" #{"separation" "mine"})))
+    (is (= ["mine" "refinery" "separation"] (stg/chain "x" #{"separation" "refinery" "mine"})))))
+
+(def ^:private new-variable
+  "Variables the chemical stages add: the stage's own, and D, its
+  non-resource share and state-year for lithium and rare earths, which had
+  only a mine stage before."
+  #"^stages/(lithium|rare-earths)-(chemical|separation|d|d-.+|non-resource|state-year)$|^stages/(lithium|rare-earths)-(chemical|separation)-")
+
+(deftest a-new-stage-leaves-the-others-alone
+  (let [chem (concat (for [y [2000 2001 2002]] (row "lithium" "mine" "A" y 50))
+                     (for [y [2000 2001 2002]] (row "lithium" "mine" "B" y 50)))
+        sep (for [y [2000 2001 2002]] (row "lithium" "chemical" "C" y 90 :unit "t LCE"))
+        before (set (stg/stocks (concat synthetic chem)))
+        after (set (stg/stocks (concat synthetic chem sep)))]
+    (testing "every row from before is still there, unchanged"
+      (is (= before (set (remove #(re-find new-variable (:variable %)) after)))))
+    (testing "and the new stage brings its own measures and D from mine to chemical"
+      (is (close? 1.0 (value (vec after) "WLD" 2002 "stages/lithium-chemical-hhi") 1e-12))
+      (is (close? 1.0 (value (vec after) "WLD" 2002 "stages/lithium-d") 1e-12))
+      (is (close? 1.0 (value (vec after) "WLD" 2002 "stages/lithium-d-mine-chemical") 1e-12)))))
+
+;; The tables written before the chemical stages (stages.csv 47,364 rows,
+;; stage-plants.csv 1,933, stocks/stages.csv 61,290), pinned by row count
+;; and total: the chemical stages add rows and change none.
+(def ^:private pinned
+  {:stages {:path "data/derived/supply/stages.csv" :col :quantity :n 47364 :sum 214242202835.0}
+   :plants {:path "data/derived/supply/stage-plants.csv" :col :capacity :n 1933 :sum 735213595.6799998}
+   :stocks {:path "data/derived/stocks/stages.csv" :col :value :n 61290 :sum 236798672671.81543}})
+
+(defn- old-rows [k rows]
+  (if (= k :stocks)
+    (remove #(re-find new-variable (:variable %)) rows)
+    (remove #(#{["lithium" "chemical"] ["rare-earths" "separation"]} [(:commodity %) (:stage %)]) rows)))
+
+(deftest earlier-tables-unchanged
+  (doseq [[k {:keys [path col n sum]}] pinned]
+    (if-not (.exists (io/file path))
+      (println "  (skipped:" path "not built)")
+      (let [rs (old-rows k (csv/read-maps path \,))
+            tot (reduce + 0.0 (map #(parse-double (get % col)) rs))]
+        (is (= n (count rs)) (str path ": rows other than the chemical stages"))
+        (is (< (Math/abs (- tot sum)) (* 1e-9 sum)) (str path ": their total"))))))

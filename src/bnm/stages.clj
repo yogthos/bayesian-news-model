@@ -9,8 +9,8 @@
   data/derived/stocks/stages.csv: iso,year,variable,value,top, the year a
   value is known at.
 
-  Per commodity <c> and stage <s> (mine, smelter, refinery, chemical), at
-  iso WLD:
+  Per commodity <c> and stage <s> (mine, smelter, refinery, chemical,
+  separation), at iso WLD:
     stages/<c>-<s>-hhi          Herfindahl index of country shares of world
                                 output
     stages/<c>-<s>-top-share    the largest country's share; its iso is in
@@ -36,6 +36,13 @@
                                 countries with a plant listed
   and per country:
     stages/<c>-<s>-share        the country's share of world output
+
+  The chemical stages (bead bnm-1pq.15, scripts/minerals.py) are built, not
+  reported: lithium-chemical (t LCE) and rare-earths-separation (t REO) from
+  net exports plus domestic use, China closing the mass balance against the
+  mine stage, and a facility year from plant capacities; one edition per
+  plant-list year (source BNM-CHEM<year>), so they read like any other.
+  Their D is mine against that stage.
 
   D compares shares, each stage's of its own world total, so stages whose
   world totals differ (refined copper, lead and tin include scrap; stocks)
@@ -109,7 +116,10 @@
     (when (and (seq a) (seq b))
       (min 1.0 (reduce + 0.0 (for [[iso s] b :when (< (get a iso 0.0) resource-floor)] s))))))
 
-(def stage-order {"mine" 0 "smelter" 1 "refinery" 2 "chemical" 3})
+(def stage-order
+  "Upstream first. Lithium's chemical stage (carbonate, hydroxide) and rare
+  earths' separation both follow the mine (bead bnm-1pq.15)."
+  {"mine" 0 "smelter" 1 "refinery" 2 "chemical" 3 "separation" 3})
 
 (def chain-order
   "Stage order where it differs from mine, smelter, refinery, chemical:
