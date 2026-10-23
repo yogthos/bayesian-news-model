@@ -63,3 +63,4 @@ the count is the number of lines below.
 | T5 | slow states over five years, JST 1870-2020 | 2026-10 | credit gap, house and equity growth, current account, credit x house against history alone; developed by leaving eras out, tested on 1996-2015 origins |
 | T9 | robustness of the extra dimensions | 2026-10 | input dropout (slow gauges, countries dark, lags doubled), calibration drift and worst era, the 13 states against coverage-matched placebos |
 | CVP | cells against provinces, with features | 2026-10 | the pilot's event runs plus a feature stage (assets, grids, lights, emissions); cells vs provinces and vs within-country shuffles |
+| H4 | asset-growth divergence | 2026-10 | equity, valuation, house and wealth gaps against their own past, composite timing for banking crises and market crashes, coverage-matched placebos |

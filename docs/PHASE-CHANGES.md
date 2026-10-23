@@ -1573,6 +1573,24 @@ ROC AUC and Brier skill against climatology, 2015-26:
 Cells and provinces are scored on different rows, as in the pilot. Cells
 are adopted as the unit inference reads only if both primaries hold.
 
+## Pre-registered, 23 October 2026: asset-growth divergence (H4 of docs/ECONOMIC-CHARACTER.md)
+
+Registered before any outcome after 2002 is read for this test.
+tools/bnm/divergence-attribution (T4's method): the divergence stock
+(log equity, valuation, house-price and wealth levels less each country's
+trailing 25-year mean; and their composite, econ/divergence) for banking
+crises and market crashes, against coverage-matched placebo states,
+fitted on origins 1960-2000, scored on 2002-2020 (outcomes 2003-2022),
+ridge penalties fixed on the design rotation. On the design years the
+four gaps said nothing; the composite's timing (raw mode) gained over its
+placebo, +0.0031 log [+0.0007, +0.0061], mostly for market crashes, with
+its penalty chosen on the rotation it was scored on.
+
+**Tests**, log score, kinds pooled, one-sided 5%:
+1. (primary) the composite, raw mode (timing): skill(S) - skill(P') > 0;
+2. the composite, within mode (where): the same;
+3. for the record: per kind, the four gaps, the credit and Keen gaps, Brier.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
