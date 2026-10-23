@@ -970,6 +970,8 @@ order), "lag 1" from the year before.
 | R6 | R -> P | material base and its migration | world share, ci-share | y+2 | econ-structure, migration, stages | yes |
 | R7 | R -> C | resource rents | % GDP | y+1 | WDI NY.GDP.TOTL.RT.ZS, petroleum rents | yes |
 | R8 | R -> F | supply outage losses | VA lost | as shock known | bnm.supply outage-path; essentiality | yes |
+| R9 | R -> W, R | material demand by technology | log growth over 5 years | y+2 | bnm.tech-demand (BACI, capacity, OWID) | yes |
+| R10 | R -> D, F | technology adoption, frontier gap, productivity inflow | share, years | y+1 | bnm.technology (WDI, CHAT) | yes |
 | D1 | D -> P | wage share, employment | share | y+2 | PWT labsh, OECD T14 D1/B1G, Keen w and l | yes |
 | D2 | D -> P | real income per head, its trend | log growth | y+1 | WDI, Maddison | yes |
 | D3 | D -> P | top 10%, bottom 50% income shares | share | y+2 | WID | yes |
@@ -984,6 +986,7 @@ order), "lag 1" from the year before.
 | W1 | W -> R, D | world commodity prices | real, log gap | month | bnm.cycles, FRED/IMF, Pink Sheet | yes |
 | W2 | W -> D, P | world storage pressure | index | y+2 | bnm.food | yes |
 | W3 | W -> F | global credit, US rate, VIX | rate, index | month | FRED, BIS | yes |
+| W4 | W -> R | trade through each chokepoint | share of trade value | y+2 | bnm.chokepoints (BACI routed, PortWatch) | yes |
 | X1 | F <-> F abroad | bilateral claims against surplus | % GDP | +2 | econ-coupling (PIP, DIP, BACI) | yes |
 
 The coupling graph has more edges than the table: each module's internal
