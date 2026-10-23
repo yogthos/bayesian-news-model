@@ -50,7 +50,19 @@ data/derived/supply/recipe-obs/:
                                   volume III table (2020-2024);
                     dri_world     world direct-reduced iron, gross weight:
                                   the MYB world total of each edition, and
-                                  the 2024 volume III country sum.
+                                  the 2024 volume III country sum;
+                    fe_grade      Fe content over gross weight of world
+                                  iron ore less China's (MYB world total
+                                  less China's row, its usable ore in the
+                                  2014-2015 editions), each edition;
+                    ore_apparent  world apparent iron-ore consumption, t
+                                  actual weight, China's production
+                                  adjusted to the world average Fe content:
+                                  worldsteel World Steel in Figures, the
+                                  edition's iron-ore page (data year
+                                  edition - 2), editions that adjust China
+                                  (2012 on; 2016 is not online), known in
+                                  the edition's year (bnm-1pq.21).
                   Volume I editions are known edition + 2, the 2024
                   volume III table in 2026.
   nh3.csv         iso,year,edition,known,value
@@ -61,7 +73,10 @@ data/derived/supply/recipe-obs/:
                   former states and the two German states are left out.
                   USGS, BGS and UNSD carry no methanol series, so none is
                   written (bnm.recipes leaves out countries with large gas
-                  methanol instead).
+                  methanol instead). Rows the MYB data release
+                  gives a country from another country's (France in the
+                  2012-2016 editions, Estonia in 2014, Italy 2012 in 2012;
+                  MYB_NH3_BAD) are left out, bnm-ia4.
   fao.csv         iso,year,known,nutrient,element,tonnes
                   FAOSTAT Inputs_FertilizersNutrient: N, P2O5 and K2O,
                   agricultural use and production, tonnes of nutrient;
@@ -275,11 +290,83 @@ def iron():
                 rows[("china_usable", y, 2024)] = (2026, float(d["Value"]))
     for y, q in dri.items():
         rows[("dri_world", y, 2024)] = (2026, q)
+    rows.update(fe_grade())
+    rows.update(ore_apparent())
     with open(os.path.join(OUT, "iron.csv"), "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["series", "year", "edition", "known", "value"])
         for (s, y, ed), (k, q) in sorted(rows.items()):
             w.writerow([s, y, ed, k, f"{q:.6g}"])
+
+
+def fe_grade():
+    """{("fe_grade", year, edition): (known, Fe/gross of world ore less China)}."""
+    acc = {}
+    with open(MYB, newline="", encoding="utf-8-sig") as fh:
+        for d in csv.DictReader(fh):
+            if d["COMMODITY"] != "Iron ore" or not re.fullmatch(r"-?[0-9.]+", d["QUANTITY"]):
+                continue
+            m = re.match(r"MYB_(\d{4})_", d["DATA_SOURCE"])
+            ctry = d["COUNTRY_OR_REGION"].split("\n")[0].strip()
+            if not m or d["UNIT_DETAIL"] not in ("Gross weight", "Iron content"):
+                continue
+            k = (int(d["YEAR"]), int(m.group(1)))
+            a = acc.setdefault(k, {"world": {}, "china": {}, "china_usable": {}})
+            q = float(d["QUANTITY"])
+            if ctry.startswith("World"):
+                a["world"][d["UNIT_DETAIL"]] = a["world"].get(d["UNIT_DETAIL"], 0.0) + q
+            elif ctry == "China" and q > 0:
+                part = "china_usable" if d["FORM_DETAIL"] == "Usable ore" else "china"
+                a[part][d["UNIT_DETAIL"]] = a[part].get(d["UNIT_DETAIL"], 0.0) + q
+    out = {}
+    for (y, ed), a in acc.items():
+        c = a["china_usable"] or a["china"]
+        w = a["world"]
+        if len(w) == 2 and len(c) == 2:
+            g = (w["Iron content"] - c["Iron content"]) / (w["Gross weight"] - c["Gross weight"])
+            out[("fe_grade", y, ed)] = (ed + MYB_LAG, g)
+    return out
+
+
+WSIF = os.path.join(ROOT, "raw/material/worldsteel")
+_NUM = r"(\d{1,3}(?:[ ,]\d{3})*\.\d)"
+
+
+def wsif_iron_ore(text):
+    """(data year, production, exports, imports, apparent consumption) in Mt
+    from a World Steel in Figures text layer (pdftotext -layout), or None
+    when the edition does not adjust China's ore to the world average Fe."""
+    if "adjusted so that Fe content" not in text:
+        return None
+    y = re.search(r"Iron ore,\s*(\d{4})", text)
+    i = re.search(r"actual weight", text)
+    if not y or not i:
+        return None
+    for line in text[i.start():].split("\n"):
+        m = re.match(r"\s*World\s+" + r"\s+".join([_NUM] * 4), line)
+        if m:
+            p, e, im, a = (float(v.replace(",", "").replace(" ", "")) for v in m.groups())
+            if abs(p - e + im - a) > 0.01 * a:
+                raise ValueError(f"iron ore page does not add up: {m.groups()}")
+            return int(y.group(1)), p, e, im, a
+    return None
+
+
+def ore_apparent():
+    import subprocess
+    out = {}
+    for f in sorted(os.listdir(WSIF)):
+        m = re.search(r"(\d{4})", f)
+        if "World-Steel-in-Figures" not in f or not f.endswith(".pdf") or not m:
+            continue
+        ed = int(m.group(1))
+        text = subprocess.run(["pdftotext", "-layout", os.path.join(WSIF, f), "-"],
+                              capture_output=True, text=True, check=True).stdout
+        r = wsif_iron_ore(text)
+        if r:
+            y, _, _, _, a = r
+            out[("ore_apparent", y, ed)] = (ed, a * 1e6)
+    return out
 
 
 NH3_PER_N = 17.031 / 14.007
@@ -305,6 +392,27 @@ def usgs_iso(name):
         return None
 
 
+# Minerals Yearbook ammonia rows that are another country's (bnm-ia4), left
+# out: {(country, edition): reason}; every year of that edition's row goes.
+# France's row in the 2012-2016 editions carries 2,600-3,517 kt N for
+# 2009-2016 (2011: 3,500, Egypt's figure in the same tables); France made
+# about 800 kt N (the 2006-2011 editions), and the 2017 edition revises
+# 2013-2014 to 810 and 760. With those editions out, France 2009-2011 is
+# the 2011 edition's 800 kt N (972,714 t NH3), 2012 has no figure, and
+# 2013 on is the 2017 edition's. Estonia's 2014 edition (3,333 and 3,000 kt
+# N for 2012-2014, against 14-99 in every other edition) is the same kind
+# of slip, as is Italy's 2012 in the 2012 edition (2,365 against 590).
+MYB_NH3_BAD = {("France", 2012): "another country's row", ("France", 2013): "another country's row",
+               ("France", 2014): "another country's row", ("France", 2015): "another country's row",
+               ("France", 2016): "another country's row", ("Estonia", 2014): "out of line with every other edition"}
+MYB_NH3_BAD_YEAR = {("Italy", 2012, 2012): "4x every other edition"}
+
+
+def nh3_bad(country, year, ed):
+    country = country.split("\n")[0].strip()
+    return (country, ed) in MYB_NH3_BAD or (country, year, ed) in MYB_NH3_BAD_YEAR
+
+
 def nh3():
     rows = {}
     with open(MYB, newline="", encoding="utf-8-sig") as fh:
@@ -318,6 +426,8 @@ def nh3():
             if not m or not iso:
                 continue
             ed = int(m.group(1))
+            if nh3_bad(d["COUNTRY_OR_REGION"], int(d["YEAR"]), ed):
+                continue
             rows[(iso, int(d["YEAR"]), ed)] = (ed + MYB_LAG, float(d["QUANTITY"]) * 1000.0 * NH3_PER_N)
     with open(MYB3, newline="", encoding="utf-8-sig") as fh:
         for d in csv.DictReader(fh):

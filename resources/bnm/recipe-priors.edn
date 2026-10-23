@@ -49,9 +49,12 @@
 ;;   :exio-ammonia  the same for ammonia, split by route (gas reforming,
 ;;              coal gasification) with the prior route intensities.
 ;;   :exio-power-share  fossil share of electricity output, EXIOBASE 2011.
-;;   :bf-ore    world iron ore less ore for direct reduction over pig
-;;              iron (bnm.recipes; recipe-obs/iron.csv for China's usable
-;;              ore and world DRI, USGS MYB editions as vintages).
+;;   :bf-burden world apparent iron-ore use (worldsteel) x the Fe grade
+;;              of ore outside China, less :dri-fe t Fe per t DRI, over
+;;              pig iron x :ore-fe (recipe-obs/iron.csv: ore_apparent,
+;;              fe_grade, dri_world, each edition a vintage).
+;;   :bf-ore    world mine ore less DRI x :dri-fe/:ore-fe over pig iron
+;;              (China's crude ore scaled to usable before 2010).
 ;;   :stage     ratio of world stage outputs, data/derived/supply/
 ;;              stages.csv (:num stage over :den stage), :adjust scaling
 ;;              a country's :num quantity, times :factor.
@@ -105,6 +108,10 @@
   :smil "Smil, V. (2001). Enriching the Earth. MIT Press."
   :xu "Xu, C., Dai, Q., Gaines, L., Hu, M., Tukker, A. & Steubing, B. (2020). Future material demand for automotive lithium-based batteries. Communications Materials 1:99. https://doi.org/10.1038/s43246-020-00095-x"
   :usgs-iron "USGS Mineral Commodity Summaries, Iron Ore (yearly): China's production is reported as crude ore; its usable ore is about a quarter to a third of it."
+  :worldsteel-wsif "World Steel Association, World Steel in Figures, editions 2012-2025 (2016 not online): iron ore production, exports, imports and apparent consumption, million t actual weight, China's production adjusted so that its Fe content is similar to the world average (UNCTAD, later RMG). https://worldsteel.org"
+  :ceew-dri "Nitturu, K., Sripathy, P., Patidar, R., Elango, S., Yadav, D. & Mallya, H. (2024). Decarbonising Coal-based Direct Reduced Iron Production: Surveying the Landscape in Steel Clusters of India. CEEW Issue Brief: 1.4-1.5 t pellets per t DRI, at most 1.6; 1.8-2 t lump ore. https://ceew.in/sites/default/files/decarbonising-coal-based-dri-production.pdf"
+  :iima-dri "International Iron Metallics Association, Direct Reduced Iron (DRI): general specifications from 65.5-68% Fe ore, total Fe 86-93.5%, metallisation 92-96%. https://www.metallics.org/dri.html"
+  :ferrexpo-dr "North, J. (2023-01-18). Direct Reduction Pellets: Pivoting Towards a Greener Future. Ferrexpo Insights: DR grades are typically 67% Fe and above. https://www.ferrexpo.com/news-media/ferrexpo-insights-blog/ferrexpo-insights-jim-north/"
   :usgs-myb "USGS Minerals Yearbook World Production Data 1990-2022 and 2024 Minerals Yearbook vol. III: iron ore by country (China usable ore from the 2014 edition), world direct-reduced iron."
   :icsg "ICSG (yearly). The World Copper Factbook: secondary (scrap) refined copper is about 15-18% of refined output."
   :iai "International Aluminium Institute statistics (yearly): primary aluminium smelting power consumption; alumina production by use."
@@ -161,15 +168,15 @@
   ;; -------------------------------------------------------------- steel
   {:id "steel-bf/iron-ore"
    :group "steel"
-   :unit "t iron ore (gross weight, 60-65% Fe) per t hot metal (pig iron)"
+   :unit "t iron ore (gross weight, at 62% Fe) per t hot metal (pig iron)"
    :mean 1.57 :lo 1.50 :hi 1.65
    :floor 1.35 :floor-basis "Fe balance: 0.945 t Fe in hot metal over 0.70 Fe in pure hematite"
    :step 0.01 :ref-year 2011
    :regions ["WLD"]
-   :sources [{:kind :bf-ore :china :usable :dri-ore 1.45 :sd0 0.08}
-             {:kind :bf-ore :china :scaled :dri-ore 1.45 :sd0 0.15}]
-   :cite [:worrell :fruehan :usgs-iron :usgs-myb]
-   :note "World ore (BGS outside China, USGS usable ore for China) less 1.45 t ore per t of direct-reduced iron (USGS world DRI; Fe balance: DRI about 92% Fe from 63-67% Fe pellets and lump, with fines losses), over pig iron. Before 2010 USGS gives no usable ore for China: its crude ore x the first published usable/crude ratio (2010, MYB 2014), known from 2016, as a second source with its own noise. Mine output is gross weight and includes stock changes and handling losses; the prior is the furnace burden, so the two differ by more than noise."}
+   :sources [{:kind :bf-burden :dri-fe 0.96 :ore-fe 0.62 :dri-cite [:ceew-dri :iima-dri :ferrexpo-dr] :sd0 0.08}
+             {:kind :bf-ore :china :scaled :dri-fe 0.96 :ore-fe 0.62 :dri-cite [:ceew-dri :iima-dri :ferrexpo-dr] :sd0 0.15}]
+   :cite [:worrell :fruehan :usgs-iron :usgs-myb :worldsteel-wsif]
+   :note "The furnace burden (bnm-1pq.21), in t of ore at 62% Fe: worldsteel's world apparent iron-ore consumption (World Steel in Figures 2012-2025, data years 2010-2023 less 2014; China's ore adjusted to the world average Fe content) times the Fe grade of world ore outside China (USGS MYB, 0.60-0.63 since 1995), less 0.96 t Fe of ore per t DRI, over pig iron, divided by 0.62. The DRI factor: 1.4-1.5 t pellets per t DRI, at most 1.6 (CEEW 2024 survey; 1.8-2 t for lump ore), at 65-67% Fe (DR pellets 67% Fe and above, Ferrexpo 2023) is 0.91-1.0 t Fe; DRI is 86-93.5% Fe from 65.5-68% Fe ore (IIMA), so about 4% of the Fe is lost; 0.96 t Fe is 1.55 t of 62% ore, or 1.43 t of 67% pellets. Before 2010 (no burden series with China adjusted): mine output, BGS outside China and China's crude ore x the first published USGS usable/crude ratio (2010, MYB 2014), known from 2016, with its own noise. China's USGS usable ore (2010 on) is not read: in 2014-17 it is three times worldsteel's adjusted figure (397 against 124 Mt in 2015) and put the mine-basis ratio at 1.80-1.86."}
   {:id "steel-bf/coal"
    :group "steel"
    :unit "t coal per t hot metal: coking coal for the blast furnace's coke plus coal injected"

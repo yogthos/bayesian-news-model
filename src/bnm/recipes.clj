@@ -64,7 +64,7 @@
             [clojure.string :as str]))
 
 (def source-kinds
-  #{:test :exio :exio-ammonia :exio-power-share :stage :bf-ore :bf-coal :unsd-heat-rate :unsd-ratio
+  #{:test :exio :exio-ammonia :exio-power-share :stage :bf-ore :bf-burden :bf-coal :unsd-heat-rate :unsd-ratio
     :unsd-ammonia :fao-nutrient})
 
 (defn priors
@@ -528,9 +528,52 @@
   (let [vs (filter #(<= (long (:known %)) k) (get-in data [:iron series y]))]
     (when (seq vs) (apply max-key :edition vs))))
 
+(defn- dri-ore
+  "t of ore at the reference grade per t of DRI: the Fe of the ore a t of
+  DRI takes (:dri-fe) over the reference grade (:ore-fe)."
+  ^double [{:keys [dri-fe ore-fe] :as s}]
+  (when-not (and dri-fe ore-fe)
+    (throw (ex-info "an iron-ore source needs :dri-fe and :ore-fe (bnm-1pq.21)" {:source s})))
+  (/ (double dri-fe) (double ore-fe)))
+
+(defn- iron-upto
+  "The latest edition of an iron.csv series' year y known by k, else of the
+  latest earlier year known by k; nil if none."
+  [data series y k]
+  (some #(iron-at data series % k)
+        (sort > (filter #(<= (long %) (long y)) (keys (get-in data [:iron series]))))))
+
+(defmethod source-obs :bf-burden [p s data regions]
+  ;; The furnace burden (bnm-1pq.21): world apparent iron-ore use
+  ;; (worldsteel, China's ore at the world average Fe content) times the
+  ;; Fe grade of world ore outside China (USGS), less the Fe of DRI's ore,
+  ;; over pig iron, in t of ore at the reference grade :ore-fe:
+  ;; [A g - DRI :dri-fe] / (pig :ore-fe). Without a grade for the year,
+  ;; the latest earlier year's known by then.
+  (when (regions "WLD")
+    (let [pigs (group-by :year (filter #(and (= "iron" (:commodity %)) (= "smelter" (:stage %))) (:stages data)))
+          dri-fe (double (:dri-fe s)) ore-fe (double (:ore-fe s))]
+      (dri-ore s)
+      (for [[y as] (sort-by key (get-in data [:iron "ore_apparent"]))
+            :let [sr (pigs y)]
+            :when (seq sr)
+            k (sort (distinct (concat (map :known as) (map :known sr)
+                                      (map :known (get-in data [:iron "dri_world" y]))
+                                      (mapcat #(map :known (val %)) (filter #(<= (long (key %)) (long y)) (get-in data [:iron "fe_grade"]))))))
+            :let [a (iron-at data "ore_apparent" y k)
+                  g (iron-upto data "fe_grade" y k)
+                  d (iron-at data "dri_world" y k)
+                  pig (reduce + 0.0 (map :quantity (stg/vintage sr k)))]
+            :when (and a g d (pos? pig))
+            :let [fe (- (* (:value a) (:value g)) (* dri-fe (:value d)))]
+            :when (pos? fe)]
+        {:region "WLD" :year y :known k :value (/ fe (* pig ore-fe))}))))
+
 (defmethod source-obs :bf-ore [p s data regions]
   ;; World iron ore over pig iron, ore for direct reduction taken off:
-  ;; [BGS ore outside China + China's ore - DRI x :dri-ore] / pig iron.
+  ;; [BGS ore outside China + China's ore - DRI x dri-ore] / pig iron, the
+  ;; DRI's ore at the reference grade (dri-ore). Mine output, not burden:
+  ;; read only before worldsteel's burden series (:bf-burden).
   ;; :china :usable is USGS's usable ore where it reports it (2010 on);
   ;; :china :scaled the years before, BGS crude ore x the first published
   ;; usable/crude ratio, known only once that ratio is.
@@ -545,7 +588,7 @@
                     (when (seq c)
                       (let [c0 (apply min-key :known c)]
                         {:r (/ (:value u) (:quantity c0)) :known (max (:known u) (:known c0))}))))
-          dri-ore (double (or (:dri-ore s) 1.45))]
+          dri-ore (dri-ore s)]
       (for [y (sort (distinct (map :year rows)))
             :let [mr (by ["mine" y]) sr (by ["smelter" y])
                   scaled? (= :scaled (:china s))]

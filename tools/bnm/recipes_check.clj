@@ -99,12 +99,25 @@
         p (rc/recipe pr "ammonia/coal")]
     (target "the coal route applies in China" (and c s (> (:mean s) 0.5) (<= (:lo p) (:mean c) (:hi p)))
             (str "coal per t NH3 " (ms c) " (prior " (:lo p) "-" (:hi p) "), coal share of output " (ms s))))
-  ;; steel ore: mine ore less DRI ore over pig iron (bf-ore)
+  ;; steel ore: the furnace burden (bf-burden, 2010 on) and mine ore before
+  ;; it (bf-ore), DRI's ore taken off, over pig iron (bnm-1pq.21)
   (let [r (:rows (runs "steel-bf/iron-ore"))
-        out (remove #(<= 1.4 (:mean %) 1.7) r)]
+        out (remove #(<= 1.4 (:mean %) 1.7) r)
+        p (rc/recipe pr "steel-bf/iron-ore")
+        obs (->> (rc/observations p (rc/load-data dir pr))
+                 (group-by (juxt :source :year)) vals (map #(apply max-key :known %)))
+        obs-out (sort-by :year (remove #(<= 1.4 (:value %) 1.7) obs))
+        burden (sort-by :year (filter #(zero? (:source %)) obs))]
+    (println (str "    burden observations (latest vintage): "
+                  (str/join " " (map #(str (:year %) " " (g (:value %))) burden))))
     (target "steel ore per t hot metal within 1.4-1.7 (step 5)" (empty? out)
             (str "WLD 2000 " (ms (row runs "steel-bf/iron-ore" "WLD" 2000)) ", 2025 "
-                 (ms (row runs "steel-bf/iron-ore" "WLD" 2025)) "; " (count out) " of " (count r) " years outside")))
+                 (ms (row runs "steel-bf/iron-ore" "WLD" 2025)) "; " (count out) " of " (count r) " years outside"))
+    (target "steel ore observations 2014-17 within 1.4-1.7 on the burden basis (bnm-1pq.21)"
+            (every? #(<= 1.4 (:value %) 1.7) (filter #(<= 2014 (:year %) 2017) burden))
+            (str (str/join ", " (map #(str (:year %) " " (g (:value %))) (filter #(<= 2014 (:year %) 2017) burden)))
+                 " (2014: no World Steel in Figures 2016); all sources' observations outside 1.4-1.7: "
+                 (if (seq obs-out) (str/join ", " (map #(str (:year %) " " (g (:value %))) obs-out)) "none"))))
   ;; power
   (let [o (owid-fossil)
         names {"WLD" "World" "DK" "Denmark" "GB" "United Kingdom" "DE" "Germany" "CN" "China" "FR" "France"}]

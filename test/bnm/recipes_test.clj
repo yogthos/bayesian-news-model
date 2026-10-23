@@ -2,6 +2,8 @@
   (:require [augur.math :as am]
             [bnm.recipes :as rc]
             [bnm.recipes-check :as rcc]
+            [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b tol] (and a b (< (Math/abs (- (double a) (double b))) tol)))
@@ -269,8 +271,8 @@
                                   2012 [{:edition 2014 :known 2016 :value 60.0}]}}}
         crude2010 {:stages (conj (:stages data) (st "mine" "CHN" 2010 800.0 2012))}
         data (merge data crude2010)
-        usable (rc/source-obs {} {:kind :bf-ore :china :usable :dri-ore 1.5} data #{"WLD"})
-        scaled (rc/source-obs {} {:kind :bf-ore :china :scaled :dri-ore 1.5} data #{"WLD"})]
+        usable (rc/source-obs {} {:kind :bf-ore :china :usable :dri-fe 0.93 :ore-fe 0.62} data #{"WLD"})
+        scaled (rc/source-obs {} {:kind :bf-ore :china :scaled :dri-fe 0.93 :ore-fe 0.62} data #{"WLD"})]
     (testing "China's usable ore replaces its crude ore, each edition from its known year; DRI ore is taken off"
       (is (= #{[2012 2016 (/ (- (+ 1000.0 180.0) 90.0) 500.0)]
                [2012 2018 (/ (- (+ 1000.0 150.0) 90.0) 500.0)]}
@@ -278,6 +280,63 @@
     (testing "before USGS reports usable ore, crude ore at the first published ratio, known from then"
       (is (= [[2005 2016 (/ (- (+ 1000.0 (* 600.0 (/ 200.0 800.0))) 60.0) 500.0)]]
              (map (juxt :year :known :value) scaled))))))
+
+(deftest blast-furnace-ore-on-a-burden-basis
+  ;; bnm-1pq.21: world apparent ore use (worldsteel, China at the world
+  ;; average Fe) times its Fe grade, less the Fe of DRI's ore, over pig
+  ;; iron, in t of ore at the reference grade
+  (let [st (fn [y q k] {:commodity "iron" :stage "smelter" :iso "AUS" :year y :quantity q :known k :source (str "BGS " k)})
+        data {:stages [(st 2015 1000.0 2017) (st 2015 1100.0 2019)]
+              :iron {"ore_apparent" {2015 [{:edition 2017 :known 2017 :value 1800.0}]
+                                     2016 [{:edition 2018 :known 2018 :value 1900.0}]}
+                     "fe_grade" {2015 [{:edition 2017 :known 2019 :value 0.61}]}
+                     "dri_world" {2015 [{:edition 2015 :known 2017 :value 70.0}
+                                        {:edition 2017 :known 2020 :value 80.0}]}}}
+        s {:kind :bf-burden :dri-fe 0.96 :ore-fe 0.62}
+        obs (rc/source-obs {} s data #{"WLD"})
+        v (fn [pig dri] (/ (- (* 1800.0 0.61) (* dri 0.96)) (* pig 0.62)))]
+    (testing "Fe in apparent ore less Fe in DRI ore, per t pig iron, at the reference grade; each input's vintage"
+      (is (= [[2015 2019 (v 1100.0 70.0)] [2015 2020 (v 1100.0 80.0)]]
+             (map (juxt :year :known :value) (sort-by :known obs))))
+      (is (every? #(= "WLD" (:region %)) obs)))
+    (testing "no pig iron or no DRI for a year: no observation; none before a grade is known"
+      (is (not-any? #(= 2016 (:year %)) obs)))
+    (testing "only for the world"
+      (is (empty? (rc/source-obs {} s data #{"CN"}))))))
+
+(deftest steel-ore-prior-reads-the-burden-and-cites-its-dri-factor
+  (let [pr (rc/priors)
+        ore (rc/recipe pr "steel-bf/iron-ore")
+        kinds (set (map :kind (:sources ore)))]
+    (is (contains? kinds :bf-burden) "the furnace burden, not mine output, for the years it exists")
+    (doseq [s (:sources ore) :when (#{:bf-burden :bf-ore} (:kind s))]
+      (is (number? (:dri-fe s)) "Fe of DRI's ore per t DRI, not a gross factor")
+      (is (number? (:ore-fe s)))
+      (is (seq (:dri-cite s)) "the DRI factor is cited")
+      (is (every? (:literature pr) (:dri-cite s))))
+    (is (not-any? #(and (= :bf-ore (:kind %)) (= :usable (:china %))) (:sources ore))
+        "China's usable mine output no longer stands for its burden")))
+
+(defn- obs-csv [path]
+  (let [[h & ls] (str/split-lines (slurp path))
+        ks (map keyword (str/split h #","))]
+    (map #(zipmap ks (str/split % #",")) ls)))
+
+(deftest real-recipe-obs
+  (let [nh3 "data/derived/supply/recipe-obs/nh3.csv" iron "data/derived/supply/recipe-obs/iron.csv"]
+    (if-not (and (.exists (io/file nh3)) (.exists (io/file iron)))
+      (println "bnm.recipes-test: no recipe-obs - checks skipped (python -I scripts/recipe-obs.py)")
+      (let [rs (obs-csv nh3)
+            fra (filter #(= "FRA" (:iso %)) rs)
+            latest (fn [y] (apply max-key #(parse-long (:edition %)) (filter #(= (str y) (:year %)) fra)))]
+        (testing "France's ammonia is France's, not Egypt's (bnm-ia4): 800 kt N in 2011, about 1 Mt NH3"
+          (is (close? 972714.0 (parse-double (:value (latest 2011))) 1.0))
+          (is (every? #(< (parse-double (:value %)) 1.5e6) (filter #(<= 2009 (parse-long (:year %))) fra))
+              "no MYB 2012-2016 row (2,600-3,517 kt N for 2009-2016)"))
+        (testing "worldsteel's world apparent iron-ore use, China adjusted (bnm-1pq.21)"
+          (let [a (first (filter #(and (= "ore_apparent" (:series %)) (= "2015" (:year %))) (obs-csv iron)))]
+            (is (= "2017" (:edition a) (:known a)))
+            (is (close? 2.0226e9 (parse-double (:value a)) 1e6))))))))
 
 (deftest drift-learning
   ;; the registered step-5 test's machinery (bnm.recipes-check), not the model's
