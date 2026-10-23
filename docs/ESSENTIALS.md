@@ -1227,6 +1227,98 @@ before any test year is scored (PRINCIPLES 9).
        lamps and plastics. Signal 2 (linked) is true for 85% of the codes
        and decides little; q and the HHI level were set a priori, not
        learned on 1995-2010.
+   - Corrected record (October 2026, after the result above; the result
+     stands as it was run). The product graph changed after the loss
+     tables were computed: power stations defer their upkeep and stocks
+     are capped and filled (2fa5f97, 6f8e353), and the hybrid table's
+     physical flows decide criticality (da0cc6c, 3,469 recipe rows
+     turned substitutable). The tables were rerun on that graph (about
+     two hours), then the report, first with the code as registered and
+     then with the loss weighting below.
+     - Multipliers fall but stay large for cheap critical inputs (steady,
+       cut 0.1): sub-bituminous coal 351 to 267, lignite 300 to 215,
+       chemical minerals 236 to 217, coke-oven coke 216 to 187, bauxite
+       145 to 123, iron ore 94 to 83, gas 50 to 45; the products crude
+       had wrongly reached fall most (refinery gas 256 to 62, other
+       non-ferrous ores 25 to 2, oilseeds 44 to 13, biodiesel 155 to 10).
+     - Hand check, Indonesian "lignite" 270210 at K = 2026 (registered
+       tables): Indonesia has 0.867 of world exports, reallocation 0.092,
+       P 0.241. China imports 10.5 bn USD of the code; its EXIOBASE
+       lignite use is EUR 1.4 M, all imported, so the trade data's use
+       is the 10.5 bn: shortfall 0.5 x 0.908 x 10.5 x 0.867 = 4.15 bn, f
+       0.39, lambda 418, loss 1.7 trillion USD, x P = 419 bn of the
+       code's 443. The arithmetic is as specified; the specification was
+       wrong. The code in China is Indonesian low-rank coal for power,
+       which EXIOBASE files under the other coals, and a cut of China's
+       lignite in the loss model costs nothing (one-region outages,
+       cut 0.1: China 0, Germany lambda 72, Poland 445, the US 454).
+     - Fixed (d102b45): a region's loss is lambda(f) x f x its use of the
+       parent in the loss model (EXIOBASE 2011, at 1.392 USD per EUR), f
+       still the shortfall over its use in the trade data: the region's
+       share of the world's use times the world's loss at f, so the
+       regions' losses at one cut add to the world's. A shortfall above
+       a region's use costs no more than all of it (it had cost lambda x
+       the shortfall). Ranks barely move (Spearman 0.999 with the old
+       weighting at K = 2022-23); the top changes. Lignite falls from
+       307 bn USD at K = 2026 (rerun, old weighting) to 17 bn (Czechia,
+       Russia: the proportional supplier split gives Indonesia 87% of
+       every importer's lignite, Czech imports from Germany included);
+       Indonesian sub-bituminous coal from 153 to 8 at K = 2023. Top R,
+       K = 2026: bauxite (Guinea, 65 bn), iron ore (Australia, 41),
+       lignite, propane (USA), phones (China), petroleum coke residues
+       (Indonesia), ferro-nickel, computer units, soybeans, Li-ion
+       accumulators (China, rank 10).
+     - Why the multipliers are large, not fixed here: bnm.supply makes
+       each coal a power station burns at 0.1 TJ per TJ or more critical
+       on its own, so a cut of 10% of the US's lignite (5% of its coal
+       heat) stops 10% of US coal power, and the electricity pool then
+       passes it to everything critical on electricity. Pooling a
+       station's coals (a share-weighted mean, as electricity by source
+       is pooled) gives lambda 7 for the US's lignite, 11 for Poland's,
+       14 for Germany's, and 180 for US sub-bituminous coal against 293:
+       the rest is the electricity cascade with no other source ramping
+       up, a modelling choice. The pooling is a change to bnm.supply's
+       rule and every outage that reads it, so it is left for a decision.
+       Value added is not double counted (each node's own, output less
+       inputs) and the world loss stays below world value added (EUR 63
+       trillion; the largest, a half cut of crude oil, 19%).
+     - Targets, registered -> rerun (old weighting) -> fixed:
+       lithium met -> met (hydroxide 138 and 113 at 2021-22) -> met (125,
+       102); cobalt met -> met (oxides 11 at 2020, ore 169 at 2022) ->
+       met (12, 481); rare earths not met -> not met (cerium compounds
+       1,003-1,107) -> not met (988-1,108); precision unchanged in both
+       (EU 2 against rise 4, p 0.03; USGS 2 against 3, p 0.04): beats
+       random, not rise.
+     - Gas for European fertiliser after da0cc6c: crude's ties are gone
+       (crude is no longer critical where its physical flow is 0), so gas
+       is strictly first in France, Italy and Great Britain (1.00 of the
+       cut). It still ties with stone in Germany and with stone and
+       chemicals in the Netherlands and Poland: all are critical, and a
+       Leontief recipe passes a half cut of any critical input whole.
+       Not met (3 of 6, from 2 of 6); under Leontief the target can only
+       be met where gas is the sole critical input.
+     - Rare earths: the codes map as they should (284610, 284690 and
+       280530 to C_CHEM, magnets 850511 to C_FABM), and a sub-node's cut
+       is already its parent's cut at its share of the parent's use,
+       which is what wiring it through bnm.concordance/split-parent would
+       give. The miss has two causes. Trade shares: China has 0.17 of
+       cerium compound exports at K = 2022 (Japan 0.39, France 0.21),
+       0.22 of rare-earth metals (Vietnam 0.32) and 0.17 of other
+       compounds (Myanmar 0.30), so every supplier is under the
+       reallocation threshold and fully replaced; China's separation
+       share (0.85 and more) shows in stages.csv, not in exports, and the
+       Japanese and French processors' feed from China is not in the
+       graph. And the parent: C_CHEM's multiplier is 5, the average of
+       chemicals n.e.c., with no magnet-motor-turbine chain under it.
+       Fixing either needs a sub-node with its own recipe and users
+       (section 7a's splitting, coefficients from section 4) and supply
+       shares from production, not a change to R's arithmetic.
+     - Back-test after the rerun: restrictions in K+1..K+3 on 54% of the
+       top decile's covered codes against 43% (difference 0.113, placebo
+       0.085, p 0.18), with the fix 0.102 against 0.072 (p 0.18);
+       unit-value spikes 0.005 and 0.000 above the bottom half (placebo
+       0.014 and 0.009, p 0.99). R still carries nothing beyond its HS
+       chapter.
 9. **Chokepoints.** Route BACI bilateral seaborne flows on a sea network
    and compute each chokepoint's share by product and year.
    - Tests: Hormuz carries about 20% of world crude and LNG in 2019-23.
