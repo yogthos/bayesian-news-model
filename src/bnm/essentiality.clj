@@ -36,7 +36,9 @@
                   0.08), updated by the PortWatch disruptions on straits
                   known by Y (2019 on); each cuts d (default 0.5, PortWatch
                   saw transits fall 30-85%) of the imports routed through
-                  it (bnm.chokepoints exposure), with no reallocation.
+                  it (bnm.chokepoints exposure), less what is rerouted or
+                  replaced: `reallocation` with the strait's share of the
+                  world's trade in the product in place of a supplier's.
 
   The loss of one disruption (`product-risk`), per importing region r:
 
@@ -271,8 +273,11 @@
                 the region's use
     :x :e       the cut and the spare capacity
     :straits    {region {strait share of its imports}}, :q {strait rate},
-                :d the share of a closed strait's flow lost."
-  [{:keys [world exporters importers region-of p use lambda x e straits q d] :or {d 0.5}}]
+                :d the share of a closed strait's flow lost, :strait-world
+                {strait share of world trade}: a closure is rerouted or
+                replaced like a supplier's cut (`reallocation` with that
+                share; the region's own share where it is missing)."
+  [{:keys [world exporters importers region-of p use lambda x e straits q d strait-world] :or {d 0.5}}]
   (let [world (double world)
         loss (fn [r short] (if (pos? short)
                              (let [u (double (get use r 0.0))
@@ -287,9 +292,10 @@
                                                  [r (* pc (loss r (* (double x) keep (double m) s)))]))]]
                        [c {:p pc :risk (reduce + 0.0 (vals by-r)) :regions by-r}]))
         st (for [[r ex] straits [s share] ex
-                 :let [qs (double (get q s 0.0)) m (double (get importers r 0.0))]
+                 :let [qs (double (get q s 0.0)) m (double (get importers r 0.0))
+                       keep (- 1.0 (reallocation (get strait-world s share) d e))]
                  :when (and (pos? qs) (pos? m))]
-             [r s (* qs (loss r (* (double d) (double share) m)))])
+             [r s (* qs (loss r (* (double d) keep (double share) m)))])
         regions (merge-with + (apply merge-with + {} (map :regions (vals sup)))
                             (reduce (fn [acc [r _ v]] (update acc r (fnil + 0.0) v)) {} st))]
     {:world (reduce + 0.0 (vals regions))

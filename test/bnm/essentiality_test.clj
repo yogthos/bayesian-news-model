@@ -147,6 +147,20 @@
     (is (close? (+ base 3.5) (:world r) 1e-9))
     (is (close? 3.5 (get-in r [:straits "suez"]) 1e-9))))
 
+(deftest strait-closures-reroute-like-suppliers
+  (testing "a strait carrying a small share of world trade is routed around"
+    (let [base (:world (es/product-risk toy))
+          r (es/product-risk (assoc toy :straits {"RA" {"suez" 0.5}} :q {"suez" 0.1} :d 0.5
+                                    :strait-world {"suez" 0.1} :e 0.3))]
+      (is (close? (:world (es/product-risk (assoc toy :e 0.3))) (:world r) 1e-9))
+      (is (zero? (get-in r [:straits "suez"] 0.0)))
+      (is (some? base))))
+  (testing "a strait carrying most of it is not: the others' spare over the loss"
+    ;; world share 0.8, d 0.5, e 0.2: replaced 0.2 x 0.2 / 0.4 = 0.1
+    (let [r (es/product-risk (assoc toy :straits {"RA" {"suez" 0.5}} :q {"suez" 0.1} :d 0.5
+                                    :strait-world {"suez" 0.8} :e 0.2))]
+      (is (close? (* 0.9 3.5) (get-in r [:straits "suez"]) 1e-9)))))
+
 (deftest risk-monotone
   (let [r (comp :world es/product-risk)
         base (r toy)]
