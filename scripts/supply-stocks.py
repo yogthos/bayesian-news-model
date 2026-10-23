@@ -22,6 +22,19 @@ From (each in data/raw/material/<dir>, with a SOURCE.txt):
                       demand, per product (gasoline, gas/diesel oil,
                       jet kerosene, other kerosene, fuel oil, LPG,
                       naphtha)
+                      Each country's stock is capped at JODI_CAP months
+                      of its own use before a region's are summed (a
+                      tiny demand inflates the ratio: Greece's naphtha
+                      at 36 months, Switzerland's fuel oil 25).
+                      China reports no crude stock to JODI: a prior from
+                      its phase-1 strategic reserve (12.43 Mt, NBS,
+                      November 2014) and Xinhua's commercial crude stock
+                      (29.2 Mt, July 2010) over its 2011 refinery intake
+                      (JODI). A region using an oil product with no
+                      figure takes the lower quartile of the reporting
+                      regions' (every refinery and terminal holds
+                      working stock; zero would make a cut bite in
+                      month 1), basis prior.
   natural gas         Europe: GIE's Storage Database (gie-storage/),
   (C_GASE)            working gas (technical, TWh GCV) of the
                       facilities working in 2011 (started by then, not
@@ -30,7 +43,13 @@ From (each in data/raw/material/<dir>, with a SOURCE.txt):
                       needs an API key, on the manual list), over
                       EXIOBASE's 2011 gas use (use.csv); the US: EIA's
                       2011 mean working gas over its 2011 consumption
-                      (eia-ng-storage/). Elsewhere none (not known).
+                      (eia-ng-storage/). Russia: a prior, Gazprom's
+                      working gas at the start of a withdrawal season
+                      (62.2 bcm in 2005, 72.7 bcm in 2022: 65 bcm) times
+                      FILL over EXIOBASE's use. Elsewhere none: in
+                      Europe GIE lists every facility, so a country with
+                      none has none; outside it (Canada, China, Japan's
+                      and Korea's LNG tanks) not known, left at zero.
   grain               USDA PSD (usda-psd/), market year 2011/12: ending
                       stocks over domestic consumption: wheat (C_WHEA),
                       milled rice (C_PARI), coarse grains (C_OCER: corn,
@@ -81,8 +100,36 @@ PG = _product_graph()
 
 FILL = 0.6
 """The share of working gas in store at a cut's start, a prior: the
-midpoint of the year's cycle (about 30% at the end of winter, about 90%
-at its start, in Europe). AGSI+ has the daily series, behind a key."""
+middle of the year's cycle. GIE's AGSI+ (the daily series, behind a key)
+as ACER's public summary gives it: EU storage 35.75% full on 1 April,
+2011-2015 mean (ACER, "EU gas in storage and filling level by 1 April");
+86-87% in late November, 2011-2024 mean, and about 90% at the start of
+winter. A cycle from 0.36 to 0.9 averages about 0.62; 0.6 is a cut at
+no particular season (October meets 0.9, March 0.4)."""
+
+JODI_CAP = {"C_COIL": 6.0, "C_MGSL": 6.0, "C_DOIL": 6.0, "C_KJET": 6.0, "C_KERO": 6.0, "C_FOIL": 6.0,
+            "C_LPGA": 4.0, "C_NAPT": 3.0}
+"""The most months of its use a country's JODI stock is taken to cover:
+crude and the fuels 6, above the largest obligation (Switzerland's
+compulsory stocks, 4.5 months of petrol, diesel and heating oil; the
+IEA's 90 days of net imports) and Japan's 4.3 months of crude, the
+highest regional ratio in 2011; LPG 4 (Japan's national and private LPG
+stockpiles, about 90 days together); naphtha 3, a feedstock with no
+obligation. Above it, the ratio measures a tiny demand, not a stock."""
+
+CN_CRUDE_KT = 12430.0 + 29200.0
+"""China's crude stocks, kt, a prior (JODI has no Chinese crude stock):
+the phase-1 strategic reserve, 12.43 Mt at Zhenhai, Zhoushan, Huangdao
+and Dalian (National Bureau of Statistics, November 2014, China Daily
+21 Nov 2014; filled by 2009), and the commercial crude stock, 29.2 Mt in
+July 2010 (Xinhua's China Oil, Gas & Petrochemicals, via Interfax);
+Xinhua's 33.6 Mt of May 2014 was the highest since January 2010, so
+2011 lay between. Phase 2's sites were not yet filled."""
+
+RU_GAS_BCM = 65.0
+"""Russia's working gas at the start of a withdrawal season, bcm, a
+prior: Gazprom's 62.2 bcm (2005) and 72.7 bcm (2022, a record)."""
+GAS_GJ_PER_M3 = 0.0335  # NCV of Russian pipeline gas per standard cubic metre
 
 GAS_TJ_PER_T = 0.048
 NCV_PER_GCV = 0.9
@@ -159,10 +206,12 @@ def months(stock, use_per_month):
     return min(MAX_MONTHS, stock / use_per_month)
 
 
-def jodi(path, product_flows, regions):
+def jodi(path, product_flows, regions, uses=None):
     """{(region, code): months}: the year's mean closing stock over the
     mean monthly use flow, countries with both reported in at least six
-    months (kt), summed by region."""
+    months (kt), each stock capped at JODI_CAP months of its use, summed
+    by region. `uses`, when a dict, gets {(iso2, code): mean monthly use}
+    of every country reporting the use flow."""
     d = pd.read_csv(path, dtype=str)
     d["OBS_VALUE"] = pd.to_numeric(d.OBS_VALUE, errors="coerce")
     d = d[(d.UNIT_MEASURE == "KTONS") & d.ENERGY_PRODUCT.isin(product_flows)]
@@ -175,6 +224,8 @@ def jodi(path, product_flows, regions):
         us = x[x.FLOW_BREAKDOWN == use_flow].groupby("REF_AREA").OBS_VALUE
         s_n, u_n = st.apply(lambda v: (v > 0).sum()), us.apply(lambda v: (v > 0).sum())
         s_m, u_m = st.mean(), us.mean()
+        if uses is not None:
+            uses.update({(a2, code): u_m[a2] for a2 in u_m.index if u_n[a2] >= 6 and u_m[a2] > 0})
         for a2 in s_m.index:
             if a2 not in u_m.index or s_n[a2] < 6 or u_n[a2] < 6 or u_m[a2] <= 0:
                 continue
@@ -182,7 +233,7 @@ def jodi(path, product_flows, regions):
             if r is None:
                 continue
             s, u = acc.get((r, code), (0.0, 0.0))
-            acc[(r, code)] = (s + s_m[a2], u + u_m[a2])
+            acc[(r, code)] = (s + min(s_m[a2], JODI_CAP.get(code, MAX_MONTHS) * u_m[a2]), u + u_m[a2])
     for k, (s, u) in acc.items():
         m = months(s, u)
         if m is not None:
@@ -220,6 +271,17 @@ def europe_gas(cap, use_pm, regions):
     return {r: m for r, t in tonnes.items() if (m := months(t, use_pm.get(r))) is not None}
 
 
+def russia_gas(use_pm):
+    """Russia's months of gas use in storage, a prior (RU_GAS_BCM)."""
+    t = RU_GAS_BCM * 1e9 * GAS_GJ_PER_M3 / 1000.0 / GAS_TJ_PER_T * FILL
+    return months(t, use_pm.get("RU"))
+
+
+def lower_quartile(xs):
+    xs = sorted(xs)
+    return xs[(len(xs) - 1) // 4] if xs else None
+
+
 def eia_us(dirpath):
     """US months of use: 2011's mean working gas over its consumption (MMcf)."""
     s = pd.read_excel(os.path.join(dirpath, "NG_STOR_SUM_DCU_NUS_M.xls"), sheet_name="Data 1", header=2)
@@ -253,10 +315,29 @@ def psd(zpath, regions):
     return {k: m for k, (s, u) in acc.items() if (m := months(s, u / 12.0)) is not None}
 
 
-def rows_for(regions, used, jodi_crude, jodi_prod, gas_eu, us_gas, grain):
+OIL = ["C_COIL"] + list(JODI_PRODUCTS.values())
+
+
+def rows_for(regions, used, jodi_crude, jodi_prod, gas_eu, us_gas, grain, cn_crude=None, ru_gas=None):
     """The stocks.csv rows: data first, priors where a product is used and
-    no data are."""
+    no data are (an oil product: the reporting regions' lower quartile)."""
     out = []
+    if cn_crude is not None and "CN" in regions and ("CN", "C_COIL") not in jodi_crude:
+        out.append(("CN", "C_COIL", cn_crude, 2011, 2026, "prior",
+                    "prior: NBS phase-1 SPR 12.43 Mt + Xinhua commercial crude 29.2 Mt (2010) / JODI 2011 refinery intake"))
+    if ru_gas is not None and "RU" in regions:
+        out.append(("RU", "C_GASE", ru_gas, 2011, 2026, "prior",
+                    f"prior: Gazprom working gas {RU_GAS_BCM:.0f} bcm x fill {FILL} / EXIOBASE 2011 gas use"))
+    oil = {**jodi_crude, **jodi_prod}
+    have = set(oil) | {(r[0], r[1]) for r in out}
+    for p in OIL:
+        q = lower_quartile([m for (r, c), m in oil.items() if c == p])
+        if q is None:
+            continue
+        for r in regions:
+            if (r, p) in used and (r, p) not in have:
+                out.append((r, p, q, 2011, 2026, "prior",
+                            "prior: lower quartile of the JODI 2011 regions' months (no figure reported)"))
     for (r, p), m in sorted(jodi_crude.items()):
         out.append((r, p, m, 2011, 2012, "data", "JODI Oil World 2011: crude closing stocks / refinery intake"))
     for (r, p), m in sorted(jodi_prod.items()):
@@ -288,13 +369,16 @@ def main():
     rec = pd.read_csv(os.path.join(OUT, "recipes.csv"), usecols=["region", "input"])
     used = set(zip(rec["region"], rec["input"]))
     jd = os.path.join(RAW, "jodi")
-    crude = jodi(os.path.join(jd, "primary-2011.csv"), {"CRUDEOIL": ("C_COIL", "REFINOBS")}, regions)
+    uses = {}
+    crude = jodi(os.path.join(jd, "primary-2011.csv"), {"CRUDEOIL": ("C_COIL", "REFINOBS")}, regions, uses)
+    cn = months(CN_CRUDE_KT, uses.get(("CN", "C_COIL")))
     prods = jodi(os.path.join(jd, "secondary-2011.csv"), {k: (v, "TOTDEMO") for k, v in JODI_PRODUCTS.items()}, regions)
     use_pm = gas_use(os.path.join(OUT, "use.csv"))
     gas = europe_gas(gie_capacity(os.path.join(RAW, "gie-storage/Storage-Database_public_v3.xlsx")), use_pm, regions)
     us = eia_us(os.path.join(RAW, "eia-ng-storage"))
     grain = psd(os.path.join(RAW, "usda-psd/psd_grains_pulses_csv.zip"), regions)
-    rows = [x for x in rows_for(regions, used, crude, prods, gas, us, grain) if (x[0], x[1]) in used]
+    rows = [x for x in rows_for(regions, used, crude, prods, gas, us, grain, cn, russia_gas(use_pm))
+            if (x[0], x[1]) in used]
     with open(os.path.join(OUT, "stocks.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["region", "product", "months", "year", "known", "basis", "source"])
@@ -320,6 +404,30 @@ def selftest():
     assert by[("US", "C_NUCF")][2] == 18.0 and by[("US", "C_NUCF")][5] == "prior"
     assert by[("DE", "C_NFER")][2] == 2.0 and ("US", "C_NFER") not in by
     assert by[("US", "C_GASE")][2] == 1.8 and by[("DE", "C_GASE")][2] == 1.5
+    # a country's stock capped at JODI_CAP months of its own use
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as f:
+        f.write("REF_AREA,TIME_PERIOD,ENERGY_PRODUCT,FLOW_BREAKDOWN,UNIT_MEASURE,OBS_VALUE,ASSESSMENT_CODE\n")
+        for mth in range(1, 13):
+            for a2, st, use in [("GR", 360.0, 10.0), ("DE", 50.0, 100.0)]:
+                f.write(f"{a2},2011-{mth:02d},NAPHTHA,CLOSTLV,KTONS,{st},1\n")
+                f.write(f"{a2},2011-{mth:02d},NAPHTHA,TOTDEMO,KTONS,{use},1\n")
+    uses = {}
+    j = jodi(f.name, {"NAPHTHA": ("C_NAPT", "TOTDEMO")}, ["GR", "DE"], uses)
+    os.unlink(f.name)
+    assert j[("GR", "C_NAPT")] == JODI_CAP["C_NAPT"] and j[("DE", "C_NAPT")] == 0.5, j
+    assert uses[("GR", "C_NAPT")] == 10.0
+    # China's crude and Russia's gas from priors; missing oil at the lower quartile
+    regs = ["CN", "DE", "FR", "IT", "PL", "RU"]
+    used = {(r, "C_COIL") for r in regs} | {("RU", "C_GASE"), ("CN", "C_DOIL"), ("DE", "C_DOIL")}
+    crude = {("DE", "C_COIL"): 2.0, ("FR", "C_COIL"): 1.0, ("IT", "C_COIL"): 0.5, ("PL", "C_COIL"): 3.0}
+    rs = rows_for(regs, used, crude, {("DE", "C_DOIL"): 1.2}, {}, None, {}, 1.1, 1.0)
+    by = {(r[0], r[1]): r for r in rs}
+    assert by[("CN", "C_COIL")][2] == 1.1 and by[("CN", "C_COIL")][5] == "prior"
+    assert by[("RU", "C_COIL")][2] == 0.5 and by[("RU", "C_COIL")][5] == "prior", by[("RU", "C_COIL")]
+    assert by[("CN", "C_DOIL")][2] == 1.2 and by[("RU", "C_GASE")][2] == 1.0
+    assert by[("DE", "C_COIL")][5] == "data" and sum(1 for r in rs if r[:2] == ("DE", "C_COIL")) == 1
+    assert 0.9 < russia_gas({"RU": 27.4e6}) < 1.1
     print("supply-stocks.py selftest ok")
 
 
