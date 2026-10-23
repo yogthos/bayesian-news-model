@@ -1107,6 +1107,32 @@ before any test year is scored (PRINCIPLES 9).
        (OECD, onsets after Y) and larger unit-value spikes in Y+1..Y+3 than
        low-R_i ones, against a placebo shuffling R_i across products within
        HS chapter.
+   - Operational form (bead bnm-1pq.9, written before any R_i was
+     computed; bnm.essentiality, tools/bnm/essentiality_run.clj). Products
+     are the HS92 codes the rise score ranks; R_i is the world's steady
+     R in value added, at known year K (BACI data year K - 2), from 2014
+     (EXIOBASE 2011 is known 2014, so earlier years would read the
+     structure before it was published).
+     - Lithium (282520, 283691), cobalt (260500, 282200, 810510) and rare
+       earths (280530, 284610, 284690) rank high: each material's best
+       code in the top 10% of R_i in at least one of K = 2020-2022 (data
+       2018-2020).
+     - Gas for European fertiliser: in DE, FR, IT, NL, PL and GB, of the
+       inputs of N fertiliser (C_NFER) with a value share of at least 1%
+       or critical, a cut of half the region's use of natural gas
+       (C_GASE) costs C_NFER more than a cut of any other, and at least
+       0.3 of the cut (bnm.supply outage, steady).
+     - Precision: the 20 highest-R_i of the rising products (the rise
+       score's top 10%) at K = 2023 (data 2021) against the EU 2023 list
+       and at K = 2022 (data 2020) against the USGS 2022 list, broad
+       mapping (tools/bnm/essentials_check.clj; strict reported too):
+       beats a random 20 of the ranked products (hypergeometric p <=
+       0.05) and the rise score's own top 20 (higher precision).
+     - Back-test, descriptive: K = 2014-2021, top decile of R_i against
+       the bottom half; new OECD restrictions on the code in K+1..K+3
+       (codes the inventory covers), and the largest rise in log world
+       unit value over data years Y+1..Y+3 (all codes); 999 shuffles of
+       R_i within HS2 chapter as the placebo.
 9. **Chokepoints.** Route BACI bilateral seaborne flows on a sea network
    and compute each chokepoint's share by product and year.
    - Tests: Hormuz carries about 20% of world crude and LNG in 2019-23.
