@@ -1640,6 +1640,12 @@ any difference is explained before anything else is read. Smoke first
 (bnm.world-run --smoke true), then the full run, then bnm.world-score
 against t44-world-norel.
 
+**Result, 23 October 2026 (t46-world-norel).** Smoke: every kind's checks
+passed. Full run on 02f980a: all thirteen kinds' forecasts.tsv are
+byte-identical to t44-world-norel. The session's changes to shared code
+left the event model's base exactly as it was; the base for the next
+trial is t44-world-norel unchanged.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
