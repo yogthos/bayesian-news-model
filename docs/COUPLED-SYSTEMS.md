@@ -1347,6 +1347,15 @@ Three kinds of check, each a smoke test or a diagnostic written every year:
   changing their behaviour. The engine must then reproduce today's stock
   files exactly: a golden test, as bnm.sheaf's introduction was pinned.
   Only after that do the channels change what modules read.
+  - Done (October 2026): bnm.engine (the interface, the graph, the
+    runner), bnm.modules.stocks (19 modules over the 18 stock tables;
+    food split into its countries, R, and the world, W) and
+    bnm.engine-run. The coupled table reproduces every stock table with
+    0 mismatches; bnm.states reads it with read-states' :coupled (not
+    the default yet). Each step runs levels before rates, as system
+    dynamics orders its equations, so modules coupled within the instant
+    need no iteration: World3-03 as six modules (bnm.modules.world3)
+    matches bnm.world3's run exactly.
 
 ## 7. Mapping today's code onto modules
 
