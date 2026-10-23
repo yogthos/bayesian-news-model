@@ -573,15 +573,23 @@ Gas used as the reductant in direct-reduction steel is no heat, and
 EXIOBASE cannot tell it apart: it has one steel product, whose gas rows
 are as small in the Middle East (0.017 t per t) and Mexico (0.019) as in
 Spain (0.020), where no DRI is made. So it is a per-region override
-(`supply/dri-share`): in Mexico 0.3 of the steel, in the Middle East 0.8
-(DRI over crude steel in 2011, worldsteel's figures, rounded), goes
-with the gas used there one for one, as a perfect-substitute mean of
+(`supply/dri-share`): in Mexico 0.32 of the steel, in the Middle East
+0.87, goes with the gas used there one for one, as a perfect-substitute mean of
 the gas and an untouched rest that sits beside the other critical
 inputs; the gas row stays in the energy bundle as the heat it also is.
-A 40% cut of the gas used there costs the Middle East's steel 32%,
-against 25% with its gas as heat alone; Mexico's loses 28% either way,
-its energy bundle, mostly gas, already losing more than its DRI part
-(0.3 of the 40%, 12%). The override matters where DRI is most of the
+The shares are DRI over crude steel in 2011 from worldsteel's Steel
+Statistical Yearbook 2012 (table 42, DRI; table 1, crude steel;
+data/raw/material/worldsteel, bead bnm-1pq.24): Mexico 5,854 kt over
+18,101 kt; the Middle East 20,056 kt (Iran 10,368, Saudi Arabia 5,153,
+the Emirates 1,800, Oman 1,400 estimated, Qatar 1,335) over 23,002 kt
+(0.81 without Oman's estimate, from a country with no crude steel row:
+its DRI is exported). They had been 0.3 and 0.8, remembered rather than
+read; Midrex's World Direct Reduction Statistics, the other free
+source, returned 404 and 403 when fetched (October 2026), so it is not
+used. A 40% cut of the gas used there costs the Middle East's steel
+35% (32% at the old 0.8), against 25% with its gas as heat alone;
+Mexico's loses 28% either way, its energy bundle, mostly gas, already
+losing more than its DRI part (0.32 of the 40%, 13%). The override matters where DRI is most of the
 steel and little where it is not. Gas DRI elsewhere
 (Venezuela and Trinidad, Egypt and Libya, Russia, India's few gas
 plants) is a smaller part of its region's steel and stays heat.
@@ -631,10 +639,10 @@ European regions that make it. Nuclear power does not lose nothing: 2-
 18% (Germany 9%, France 6%, Spain and Hungary 13%, WE 18%), because
 nuclear fuel, its critical input, buys chemicals (conversion and
 enrichment: 34% of its value in Germany), substitutable in its CES
-bundle but losing what the gas takes from chemicals, and the graph
-holds no stocks. A reactor holds a year or more of fuel, so over the
-months of a gas cut the true loss is near zero; the gap is the missing
-inventories (below), not the rule.
+bundle but losing what the gas takes from chemicals. That is the
+steady state, with every stock drawn: a reactor holds a year or more
+of fuel, and with the stocks (below) nuclear power loses 0-2% over
+the first year of the cut, its upkeep rather than its fuel.
 
 Every other input is substitutable. A product's recipe is then nested:
 the minimum of its critical inputs and a bundle, the bundle a CES of the
@@ -691,6 +699,8 @@ among them.
   it is used) propagated through the nested recipes across regions by
   hypergraph/propagate (recipes loop: power needs coal, coal mines need
   power), with how it settled (:settled, the updates and residual).
+- outage-path: the same month by month with stocks (below): a stock
+  drains at the shortfall before the cut passes on; outage is its limit.
 - tools/bnm/supply_check.clj reports the balances, EXIOBASE against UNSD,
   the validation and two shocks, and asserts the real-data checks (ok or
   FAIL, exit 1 on a failure). They take about seven minutes, so the unit
@@ -799,7 +809,7 @@ updates to a residual of 1e-6.
   Poland. The availability-capped bundle cannot buy more oil, so it
   still overstates the gas-heavy users: read the ordering, not the size.
 - Natural gas for use in the Middle East and Mexico cut 40% (the DRI
-  override, `supply/dri-share`): steel loses 32% in the Middle East
+  override, `supply/dri-share`): steel loses 35% in the Middle East
   (25% with its gas read as heat alone) and 28% in Mexico (the same
   without the override).
 - Middle East crude output cut 50%: refining falls 48% in Japan, 29% in
@@ -817,10 +827,115 @@ oil products as the only time dimension; plant locations (refineries,
 crackers, fertiliser and steel plants), so a cut is per region, not per
 cell (only SFI's ethylene assets are at hand); bilateral trade (the MR
 tables' shares, Taiwan inside WA, region-wide rather than per user);
-reallocation of imports; inventories (Pichler et al. 2022's days of use);
-fuel switching beyond the bundle (other fuels held at their
+reallocation of imports; stocks that refill or are managed (below, a
+stock only drains); fuel switching beyond the bundle (other fuels held at their
 availability, none bought in addition); and value shares the monetary
 tables route differently from the physical flows.
+
+### Stocks: an outage drains a stock before it cuts a flow (bead bnm-1pq.23)
+
+`supply/outage` is instantaneous: a cut flows straight through the
+recipes. `supply/outage-path` runs it month by month (H = 24 by
+default) with stocks, in months of a region's normal use of a product,
+held at [:use region product], what the region uses of it from every
+origin. Each month a stocked node supplies its inflow (its recipe, the
+cut applied) plus what it draws from its stock, at most the shortfall
+and at most what is left, min(1, inflow + stock); the stock falls by
+what was drawn, and only once it is empty does the cut pass downstream
+whole. The cut holds every month and nothing refills a stock, so
+`outage` is the path's limit once the stocks a cut reaches are drawn
+(the unit tests check the two agree then, and every month when there
+are no stocks). The rule min(1, r + s) is monotone and continuous like
+the others, and each month's operator lies below the last's, so a
+month is solved from the last month's answer (chaotic iteration from
+above, as in hypergraph/propagate): only what a stock running short
+moves is recomputed.
+
+scripts/supply-stocks.py writes data/derived/supply/stocks.csv
+(region, product, months, year, known, basis data or prior, source),
+861 rows:
+
+    product                 basis  regions  months (median, range)  source
+    crude                   data     40     0.97 (0.17-4.33)   JODI Oil World 2011: closing stocks / refinery intake
+    gasoline, diesel, jet,  data   26-47    0.6-2.2 medians    JODI 2011: closing stocks / total demand
+      kerosene, fuel oil,
+      LPG, naphtha
+    natural gas             data     22     1.34 (0.00-10.97)  GIE Storage Database (working gas of the facilities
+                                                                 working in 2011) x fill 0.6 (prior) / EXIOBASE gas use;
+                                                                 US: EIA 2011 mean working gas / consumption (1.33)
+    wheat, rice, coarse     data     48     1.47, 6.20, 1.25   USDA PSD 2011/12: ending stocks / domestic consumption
+      grains                                                    (the EU's figure for every member)
+    nuclear fuel            data     26     30                 ESA Annual Report 2011: EU utilities' 47,343 tU, "at
+                                                                 least two and a half years" of requirements
+                            prior    18     18                 outside the EU: the core lasts to its next refuelling,
+                                                                 12-24 months
+    N, P fertiliser         prior    48     2                  plant, port and dealer inventories, 1-3 months
+    steel, aluminium,       prior    48     1                  LME/SHFE warehouse stocks are days to weeks of world
+      copper, Pb/Zn/Sn,                                         use; consumers' and stockholders' are unpublished
+      other non-ferrous
+
+The JODI ratios are as reported: Japan's crude (4.3 months) includes
+the stocks it reports, government stocks among them where countries
+include them; a few small demands give long ratios (Greece's naphtha at
+the 36-month cap, Switzerland's fuel oil 25, South Africa's products
+8-17). The gas figures are capacities, not fills: the GIE database gives
+today's working gas per facility with its start-up and closing years,
+and the fill, 0.6, is a prior (the midpoint of a cycle from about 30%
+at winter's end to 90% at its start); a cut in October meets more, one
+in March less. Storage also carries the seasonal swing, which the
+model's constant monthly use leaves out, so it is a buffer at its
+best. Britain's is small (0.24 months), Austria's and Hungary's large
+(11 and 7). Regions with no figure hold no stock of that product.
+
+Manual list (gated or not downloadable, October 2026): GIE AGSI+ daily
+fill (API key, free registration); IEA emergency stocks (not open); LME
+and SHFE stock series (partly open, no bulk history); Midrex World
+Direct Reduction Statistics PDFs (404/403).
+
+What it shows (tools/bnm/supply_check.clj, loss at months 1, 3, 6, 12,
+24 against the steady state):
+
+    natural gas for use in Europe cut 40%
+      DE N fertiliser   0%   0%  40%  40%  40%   steady 40%   (storage 1.55 months)
+      DE gas power      0%   1%  40%  40%  40%          40%
+      DE nuclear power  0%   0%   1%   1%   1%           9%
+      DE steel          0%   1%  15%  15%  15%          17%
+      FR N fertiliser   0%   0%  40%  40%  40%          40%   (1.90)
+      FR nuclear power  0%   0%   0%   1%   1%           6%
+      PL N fertiliser   1%   1%  34%  40%  40%          40%   (2.06)
+      GB N fertiliser  16%  40%  40%  40%  40%          40%   (0.24)
+      GB steel          9%  26%  26%  26%  27%          27%
+    Middle East crude output cut 50% (refining industry)
+      WM refining       2%   2%   2%  50%  50%   steady 50%   (crude 3.03 months)
+      JP refining       0%   0%   0%  48%  48%          48%   (4.33)
+      IN refining       0%  27%  28%  29%  29%          29%   (0.32)
+      KR refining       2%   2%   2%  14%  17%          17%   (1.44)
+      CN refining      19%  19%  19%  22%  23%          24%   (no JODI stock)
+      DE refining       0%   0%   0%  29%  29%          29%   (2.57)
+      US refining       0%   1%   2%   4%  14%          14%   (2.08)
+    a wheat harvest 30% short everywhere (world stocks 3.6 months)
+      RU food products  0%   0%   0%  16%  30%   steady 30%
+      WM food products  0%   0%   0%  30%  30%          30%
+      CN food products  0%   0%   0%   2%   3%           6%
+      storage pressure (bnm.food, against the stocks at the start)
+                        1.07 1.25 1.63 2.67 4.29
+
+Nuclear power loses nothing in the first months and 0-2% in the first
+year (its upkeep bundle, not its fuel, which its stocks hold for 18-30
+months), against 4-9% in the steady state. European gas storage delays
+the N fertiliser cut by months: none in month 1 or 3 where storage
+holds over a month of use, the whole cut by month 6 (Germany, France,
+Italy, the Netherlands), as storage carried the 2022 winter; Britain,
+with a week of storage, loses 16% in month 1. Crude stocks hold
+refining for months (Japan's four months of crude, then
+its products, keep it whole to month 6), India's for a month, and
+China, with no stock in the data, takes most of its loss at once. Grain
+stocks hold food whole for the first half year while world stocks fall
+and bnm.food's storage pressure (1 + c)/(s/s_ref + c) rises from 1.07
+to 4.3: the quantity loss is delayed, and the scarcity shows first in
+the price, as competitive storage has it. None of these is a
+calibration: the stocks are the right size, give or take the fill and
+the reporting, and the timing follows from them.
 
 ### Time: the UN energy statistics
 
