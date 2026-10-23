@@ -76,7 +76,8 @@
             [bnm.recipes-test]
             [bnm.econ-structure-test]
             [bnm.robustness-test]
-            [bnm.tech-demand-test]))
+            [bnm.tech-demand-test]
+            [bnm.chokepoints-test]))
 
 (def namespaces
   '[bnm.time-test
@@ -155,7 +156,8 @@
     bnm.recipes-test
     bnm.econ-structure-test
     bnm.robustness-test
-    bnm.tech-demand-test])
+    bnm.tech-demand-test
+    bnm.chokepoints-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
