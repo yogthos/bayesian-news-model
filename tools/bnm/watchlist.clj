@@ -36,7 +36,7 @@
                                       [--placebo t44-world-placebo] [--from 2003 --to 2022]
                                       [--reps 1000] [--kinds a,b]
     jolt -A:tools -M -m bnm.watchlist --base t44-world-norel
-    jolt -A:tools -M -m bnm.watchlist --power t44-world-norel [--betas 0,0.25,0.5,0.75,1] [--sims 100]
+    jolt -A:tools -M -m bnm.watchlist --power t44-world-norel [--betas 0,0.25,0.5,0.75,1] [--sims 100] [--kinds a,b]
     jolt -A:tools -M -m bnm.watchlist --record true
 
   --record runs the base table, every world trial on disk against its bench
@@ -395,8 +395,8 @@
    ["trial T8b (online recalibration)" "t44-world-norel-online-registered" "t44-world-norel" nil]
    ["t46 rebuild (regression check)" "t46-world-norel" "t44-world-norel" nil]])
 
-(defn report-power [say run cats betas sims {:keys [from to] :as opts}]
-  (let [kds (all-kinds run)
+(defn report-power [say run cats betas sims {:keys [from to kinds] :as opts}]
+  (let [kds (or kinds (all-kinds run))
         rows (into {} (for [kd kds] [kd (mapv #(assoc % :p {:b (get-in % [:p :m])}) (kind-rows {:m run} kd (cats kd) from to))]))
         res (power rows betas sims opts)]
     (say (format "C. Power on %s's hard rows, origins %d-%d, %d kinds: outcomes redrawn, a signal of log-odds size beta per row" run from to (count kds)))
@@ -437,7 +437,7 @@
             (report-pair say r b cats (dissoc opts :kinds))
             (when (and p (.exists (io/file (str "data/runs/" p)))) (report-pair say r p cats (dissoc opts :kinds))))
           (say)
-          (report-power say "t44-world-norel" cats betas sims (assoc opts :reps 200))
+          (report-power say "t44-world-norel" cats betas sims (assoc opts :reps 200 :kinds nil))
           (spit "data/runs/sequencing/watchlist-record.txt" (str out)))
       base (do (hdr) (report-base say base cats opts) (spit (str "data/runs/" base "/watchlist-base.txt") (str out)))
       pw (do (report-power say pw cats betas sims (assoc opts :reps (min (:reps opts) 200)))
