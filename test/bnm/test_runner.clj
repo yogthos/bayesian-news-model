@@ -29,6 +29,7 @@
             [bnm.assimilate-test]
             [bnm.material-test]
             [bnm.cell-assets-test]
+            [bnm.cell-profiles-test]
             [bnm.cells-test]
             [bnm.geo-test]
             [bnm.network-test]
@@ -109,6 +110,7 @@
     bnm.assimilate-test
     bnm.material-test
     bnm.cell-assets-test
+    bnm.cell-profiles-test
     bnm.cells-test
     bnm.geo-test
     bnm.network-test
