@@ -1628,6 +1628,18 @@ which say where things are, do not add to the timing of violence that
 the event streams carry. Cells stay the storage and the material layer
 (principle 11); they are not the event model's node.
 
+## Registered, 23 October 2026: the base rebuilt on current code (run t46-world-norel)
+
+Not a trial of a change: no mechanism tested since trial 44 earned a
+place in the base (45, T1-T9, H4, the cells pilot). This rebuilds trial
+44's base, the world without relations (as t44-world-norel), on the
+code as it stands after the session's work (shared code touched:
+bnm.train's calibration call, bnm.geo, bnm.hypergraph, the diagnostics),
+as a regression check. Expected: identical forecasts to t44-world-norel;
+any difference is explained before anything else is read. Smoke first
+(bnm.world-run --smoke true), then the full run, then bnm.world-score
+against t44-world-norel.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
