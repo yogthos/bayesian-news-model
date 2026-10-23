@@ -28,6 +28,21 @@
       ;; coarsening ids is the hierarchy, locating a point is geometry
       (is (not= c (cells/coarsen (apply cells/cell (conj berlin 9)) 6)))
       (is (some #{(cells/coarsen (apply cells/cell (conj berlin 9)) 6)} (cells/neighbours c))))
+    (testing "supercells: the spatial parent"
+      (let [f (apply cells/cell (conj berlin 9))]
+        (is (= c (cells/supercell f 6)) "Berlin's fine cell lies in Berlin's cell")
+        (is (not= (cells/coarsen f 6) (cells/supercell f 6)) "while its id's parent is a neighbour")
+        (doseq [k (take 40 (cells/children c 9))]
+          (is (= (apply cells/cell (conj (cells/centre k) 6)) (cells/supercell k 6))
+              "a cell's supercell holds its centre"))
+        (is (= c (cells/supercell c 6)) "at its own resolution, the cell")))
+    (testing "subcells: the finer cells whose centres a cell holds"
+      (let [ks (cells/subcells c 8)
+            ring (cells/neighbours c)]
+        (is (< 12 (count ks) 20) "about 16 at two resolutions finer")
+        (is (every? #(= c (cells/supercell % 6)) ks))
+        (is (not-every? #(= c (cells/coarsen % 6)) ks) "some descend from a neighbour")
+        (is (empty? (filter (set ks) (mapcat #(cells/subcells % 8) ring))) "a neighbour's are its own")))
     (testing "the cell x country key"
       (let [k (cells/cell-key c "DEU")]
         (is (= ["DEU" c] [(cells/key-iso k) (cells/key-cell k)]))
@@ -99,6 +114,31 @@
       (is (= {"AAA" 100.0 "BBB" 100.0} (cells/aggregate x {a 100.0 b 10.0} :country :max)))
       (is (= {"AAA" 1 "BBB" 2} (cells/aggregate x {a 100.0 b 10.0} :country :count))))))
 
+(deftest coarser-cells-keep-totals
+  ;; resolution-9 values over a block coarsened to resolution 6: each fine
+  ;; cell's value goes to the coarse cell holding it, so totals are kept
+  ;; and every coarse cell gets exactly what lies in it
+  (let [c (apply cells/cell berlin)
+        fine (vec (mapcat #(cells/children % 9) (cells/disk c 1)))
+        v (into {} (map-indexed (fn [i k] [k (double (inc (mod i 7)))])) fine)
+        total (reduce + (vals v))
+        up (cells/coarser v 6 :sum)]
+    (is (close? total (reduce + (vals up)) 1e-6) "the sum is kept")
+    (is (every? #(= 6 (cells/res %)) (keys up)))
+    (is (close? (reduce + (map v (filter #(= c (cells/supercell % 6)) fine))) (up c) 1e-9)
+        "a coarse cell holds the fine cells whose centres it holds")
+    (let [by-parent (reduce-kv (fn [m k x] (update m (cells/coarsen k 6) (fnil + 0.0) x)) {} v)]
+      (is (not= (up c) (by-parent c)) "coarsening ids would misplace about a third"))
+    (is (= (count fine) (reduce + (vals (cells/coarser v 6 :count)))))
+    (is (close? 7.0 (reduce max (vals (cells/coarser v 6 :max)))))
+    (is (every? #(<= 1.0 % 7.0) (vals (cells/coarser v 6 :mean))))
+    (testing "aggregate takes finer cells, through their supercells"
+      (let [x (cells/read-crosswalk (tmp (str "cell,iso,admin1,share,flag\n" c ",AAA,AAA.1,0.5,land\n" c ",BBB,BBB.1,0.5,land\n")))
+            mine (into {} (filter #(= c (cells/supercell (key %) 6))) v)]
+        (is (close? (reduce + (vals mine)) (reduce + (vals (cells/aggregate x mine :country :sum)))))
+        (is (close? (/ (reduce + (vals mine)) 2) ((cells/aggregate x mine :country :sum) "AAA")))))
+    (is (thrown? Exception (cells/coarser {c 1.0} 7 :sum)) "not to a finer resolution")))
+
 (deftest rollup-of-located-records
   ;; records already on (cell, iso, admin1): assets, events
   (let [rs [{:cell a :iso "DEU" :admin1 "DEU.16" :value 3.0}
@@ -111,6 +151,36 @@
     (is (= {"world" 6.0} (cells/rollup rs :world :sum)))
     (is (= {"DEU" 2 "FRA" 1} (cells/rollup rs :country :count)))
     (is (= {"DEU" 3.0 "FRA" 2.0} (cells/rollup rs :country :max)))))
+
+(deftest locating-in-split-cells
+  ;; cell a split AAA 3/4, BBB 1/4; the fine crosswalk names the samples
+  ;; (resolution-10 cells whose centres a holds) outside a's largest part
+  (let [subs (cells/subcells a 10)
+        f (first subs)
+        ;; a resolution-9 cell whose four id children are all a's samples: compacted
+        x (some (fn [k] (let [p (cells/coarsen k 9)]
+                          (when (and (not= f k) (every? (set subs) (cells/children p))) p)))
+                subs)
+        sibs (set (cells/children x))
+        g (some #(when-not (or (= f %) (sibs %)) %) subs)
+        h (some #(when-not (or (= f %) (= g %) (sibs %)) %) subs)
+        x' (cells/read-crosswalk
+            (tmp (str "cell,iso,admin1,share,flag\n" a ",AAA,AAA.1,0.75,land\n" a ",BBB,BBB.1,0.25,land\n"
+                      b ",BBB,BBB.1,1,land\n"))
+            (tmp (str "cell,part,iso,admin1,flag,res\n" a "," f ",BBB,BBB.1,land,10\n" a "," x ",BBB,BBB.1,land,10\n"
+                      a "," g ",CCC,CCC.1,land,10\n" a "," h ",,,none,10\n")))
+        at (fn [k] (apply cells/locate x' (cells/centre k)))]
+    (is (= [10 9] (:sample-res x')))
+    (is (= {:cell a :iso "BBB" :admin1 "BBB.1" :flag "land"} (at f)) "a named sample")
+    (is (every? #(= "BBB" (:iso (at %))) (cells/children x)) "a compacted part stands for its children")
+    (is (= "AAA" (:iso (at (some #(when-not (#{f g h} %) (when-not (sibs %) %)) subs)))) "the rest: the largest part")
+    (is (= "AAA" (:iso (at g))) "never a country the cell does not reach")
+    (is (nil? (at h)) "the high seas")
+    (is (= {:cell b :iso "BBB" :admin1 "BBB.1" :flag "land"} (cells/locate x' 2.35 48.86)) "a cell in one part")
+    (testing "a locator remembers the places it has located"
+      (let [loc (cells/locator x')
+            pts (map cells/centre (take 20 subs))]
+        (is (= (map #(apply cells/locate x' %) pts) (map #(apply loc %) pts) (map #(apply loc %) pts)))))))
 
 ;; --- ingest helpers --------------------------------------------------------------------
 
@@ -157,6 +227,11 @@
       (is (< 20 (count shares)))
       (is (close? 1.0 (reduce + (vals shares)) 1e-9))
       (is (close? 1.0 (/ area (cells/lon-lat-box-km2 10.0 50.0 14.0 54.0)) 1e-3))))
+  (testing "a small polygon takes a few samples, no closer than 0.5 km"
+    (let [sq [[[13.40 52.50] [13.415 52.50] [13.415 52.509] [13.40 52.509] [13.40 52.50]]]
+          ss (cells/polygon-samples sq)]
+      (is (<= 1 (count ss) 9) "about 1 km2: a 3 x 3 grid at most")
+      (is (close? (cells/polygon-area-km2 sq) (reduce + (map #(nth % 2) ss)) 0.3))))
   (testing "a hole is not part of it"
     (let [outer [[10.0 50.0] [14.0 50.0] [14.0 54.0] [10.0 54.0] [10.0 50.0]]
           hole [[11.0 51.0] [13.0 51.0] [13.0 53.0] [11.0 53.0] [11.0 51.0]]
@@ -173,7 +248,16 @@
         (is (= [{:cell a :iso "BBB" :admin1 "BBB.1"}] (map #(select-keys % [:cell :iso :admin1]) parts)))
         (is (close? 1.0 (:share (first parts))))
         (is (close? area (:area (first parts))))
-        (is (close? 1.0 elsewhere) "the crosswalk puts it in AAA")))
+        (is (close? 1.0 elsewhere) "the crosswalk puts it in AAA")
+        (is (close? 0.0 (:moved (cells/place-polygon x {:rings near-berlin :iso "BBB"}))))))
+    (testing "a part where the source's country does not reach goes to the crosswalk's"
+      (let [{:keys [parts elsewhere moved]} (cells/place-polygon x {:rings near-paris :iso "AAA"})]
+        (is (= [{:cell b :iso "BBB" :admin1 "BBB.1" :xw-iso nil}]
+               (map #(select-keys % [:cell :iso :admin1 :xw-iso]) parts)) "AAA is not in Paris's cell")
+        (is (close? 1.0 elsewhere))
+        (is (close? 1.0 moved))))
+    (testing "a part kept under the source's country names the crosswalk's"
+      (is (= "AAA" (:xw-iso (first (:parts (cells/place-polygon x {:rings near-berlin :iso "BBB"})))))))
     (testing "a multipolygon: parts weighted by their areas"
       (let [{:keys [parts area]} (cells/place-polygon x {:polygons [near-berlin near-paris]})
             by-cell (into {} (map (juxt :cell :share)) parts)]
@@ -194,7 +278,30 @@
   (is (= "DDR" (cells/country-in-year "DEU" "DEU.13" 1980)) "Saxony was in the East")
   (is (= "DEW" (cells/country-in-year "DEU" "DEU.02" 1980)) "Bavaria in the West")
   (is (= "DEU" (cells/country-in-year "DEU" "DEU.13" 1991)))
-  (is (= "FRA" (cells/country-in-year "FRA" nil 1950)) "no change"))
+  (is (= "FRA" (cells/country-in-year "FRA" nil 1950)) "no change")
+  (testing "Kosovo was in Serbia until it declared independence in 2008"
+    (is (= "SRB" (cells/country-in-year "XKX" nil 2007)))
+    (is (= "XKX" (cells/country-in-year "XKX" nil 2008)))
+    (is (= "SCG" (cells/country-in-year "XKX" nil 2005)))
+    (is (= "YUG" (cells/country-in-year "XKX" nil 1985))))
+  (testing "Montenegro split in 2006, Serbia and Montenegro formed in 1992"
+    (is (= "SCG" (cells/country-in-year "MNE" nil 2005)))
+    (is (= "MNE" (cells/country-in-year "MNE" nil 2006)))
+    (is (= "SCG" (cells/country-in-year "SRB" nil 1992))))
+  (testing "Aruba left the Netherlands Antilles in 1986"
+    (is (= "ANT" (cells/country-in-year "ABW" nil 1985)))
+    (is (= "ABW" (cells/country-in-year "ABW" nil 1986)))
+    (is (= "ANT" (cells/country-in-year "CUW" nil 2010)))
+    (is (= "CUW" (cells/country-in-year "CUW" nil 2011))))
+  (testing "the Yemens to 1989, by province"
+    (is (= "YMD" (cells/country-in-year "YEM" "YEM.02" 1980)) "Aden in the South")
+    (is (= "YAR" (cells/country-in-year "YEM" "YEM.26" 1980)) "Sanaa in the North")
+    (is (= "YEM" (cells/country-in-year "YEM" "YEM.02" 1990)) "unified in May 1990"))
+  (testing "splits take effect the year after the last year of the old state"
+    (is (= ["CSK" "SVK"] (map #(cells/country-in-year "SVK" nil %) [1992 1993])))
+    (is (= ["ETP" "ERI"] (map #(cells/country-in-year "ERI" nil %) [1992 1993])))
+    (is (= ["SDF" "SSD"] (map #(cells/country-in-year "SSD" nil %) [2011 2012])))
+    (is (= ["DEW" "DEU"] (map #(cells/country-in-year "DEU" "DEU.16" %) [1990 1991])) "Berlin with the West")))
 
 ;; --- the real crosswalk (data/derived/cells, scripts/cells.py) ---------------------------
 
@@ -220,6 +327,25 @@
         (is (= "USA" (:iso (cells/locate x -74.006 40.713))) "New York")
         (is (nil? (cells/locate x -45.0 25.0)) "the open Atlantic")
         (is (= #{"CHE" "DEU" "FRA"} (set (cells/countries-of x (cells/cell 7.588 47.559)))) "Basel's cell has three countries"))
+      (testing "small states and territories (sampled finer)"
+        (doseq [[iso lon lat what] [["VAT" 12.4534 41.9029 "the Vatican"] ["MAC" 113.55 22.19 "Macau"]
+                                    ["SMR" 12.4578 43.9424 "San Marino"] ["MCO" 7.4246 43.7384 "Monaco"]
+                                    ["LIE" 9.5215 47.1410 "Vaduz"] ["SGP" 103.8198 1.3521 "Singapore"]
+                                    ["LSO" 27.4833 -29.3167 "Maseru"] ["GIB" -5.3463 36.1268 "Gibraltar"]
+                                    ["REU" 55.45 -20.88 "Réunion, not France"] ["GUF" -52.33 4.93 "Cayenne"]
+                                    ["SJM" 15.63 78.22 "Longyearbyen"] ["CXR" 105.68 -10.45 "Christmas Island"]]]
+          (is (= iso (:iso (cells/locate x lon lat))) what))
+        (let [land (fn [iso] (reduce + (for [r (:rows x) :when (and (= iso (:iso r)) (= "land" (:flag r)))]
+                                         (* (:share r) (cells/area-km2)))))]
+          (is (< 0.001 (land "VAT") 0.1) "the Vatican: Natural Earth's 0.016 km2 outline")
+          (is (< 2 (land "GIB") 8) "Gibraltar: Natural Earth's 4.5 km2, not a whole 32 km2 sample")))
+      (testing "provinces where Natural Earth's units are a level down"
+        (is (= "IRL.L" (:admin1 (cells/locate x -6.26 53.35))) "Dublin in Leinster")
+        (is (= "LKA.36" (:admin1 (cells/locate x 79.86 6.93))) "Colombo in the Western Province"))
+      (testing "overlapping claims go to the nearest claimant, not the first named"
+        (is (not= "CHN" (:iso (cells/locate x 114.0 10.0)))
+            "the Spratlys' waters, which Marine Regions' South China Sea claim names China alone for")
+        (is (= "JPN" (:iso (cells/locate x 123.5 25.75))) "by the Senkakus (Japan's in Natural Earth), not Taiwan, named first"))
       (testing "aggregation keeps the total: one per cell with land, by country and up"
         (let [land (into {} (for [[c rs] (:by-cell x) :when (some #(= "land" (:flag %)) rs)] [c 1.0]))
               n (count land)]

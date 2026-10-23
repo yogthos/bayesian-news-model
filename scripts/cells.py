@@ -13,32 +13,48 @@ with area shares. Writes data/derived/cells/crosswalk.csv
           disputed  land Natural Earth gives to no ISO country (Bir Tawil,
                     the Spratlys, ...): the nearest country's
           eez       inside the country's EEZ (Marine Regions v12)
-          eez-shared  inside an overlapping claim or joint regime: the first
-                    territory Marine Regions names
+          eez-shared  inside an overlapping claim or joint regime: the
+                    claimant whose coast is nearest (the zone's own claimants
+                    when Marine Regions names two or more, else any country),
+                    not the first one named
           coast     at sea outside every EEZ but within 200 nautical miles
                     of the country's coast (the nearest)
 High seas beyond that are not written, so a cell's shares sum to 1 unless it
 reaches them; every cell with land sums to 1. data/derived/cells/crosswalk-fine.csv
 
-    cell,part,iso,admin1,flag
+    cell,part,iso,admin1,flag,res
 
 says, for each cell the crosswalk splits, which part each of its samples
 lies in: part is a compacted set of samples (an A5 cell at resolution 7 to
-10 standing for its resolution-10 or 9 descendants), flag "none" for the high
-seas and land of no country; the cell's largest country part is left out. A point
-is located by the part holding its resolution-10 cell, or else its cell's
-largest part (bnm.cells/locate), to about 6 km.
+res standing for its descendants at res, the resolution the cell was sampled
+at), flag "none" for the high seas and land of no country; the cell's
+largest country part is left out. A point is located by the part holding
+its sample, or else the largest part (bnm.cells/locate), to about 6 km at
+resolution 10.
 
-Method: each cell is sampled by the finer cells whose centres it holds,
-which are equal in area, so a part's share is its count of samples over the
-cell's. Cells wholly inside one province take share 1 without sampling;
-cells on a border or coast are sampled at resolution 10 (about 256 samples
-of 32 km2), the rest (open sea) at resolution 9 (64). A5's children are not
-inside their parent (a cell's own descendants cover about 70% of it), so
-the samples are the descendants of the cell and its neighbours that fall in
-it, not its own descendants. Borders are current
-(Natural Earth 5.1.2): reading a cell's country for a past year is
-bnm.cells/country-in-year.
+Method: each cell is sampled by the finer cells whose centres it holds
+(A5's cell_to_subcells), which are equal in area, so a part's share is its
+count of samples over the cell's. Cells wholly inside one province take
+share 1 without sampling; cells on a border or coast are sampled at
+resolution 10 (about 256 samples of 32 km2), the rest (open sea) at
+resolution 9 (64), and cells touching a country or territory under 1,500
+km2 finer, at up to resolution 16 (0.008 km2), enough for about eight
+samples of it (the Vatican, 0.016 km2 in Natural Earth's outline against
+its real 0.44, gets two). A5's children
+are not inside their parent (a cell's own descendants cover about 64-70% of
+it), so the samples are subcells, not id children.
+
+Territories Natural Earth keeps inside their sovereign's admin-0 unit but
+bnm.geo keys as countries (French Guiana, Guadeloupe, Martinique, Réunion,
+Mayotte, Svalbard, the Caribbean Netherlands, Cocos, Christmas Island,
+Tokelau, Bouvet) are read from their admin-1 unit, as Marine Regions keys
+their EEZs. Where Natural Earth's admin-1 units are a level below GeoNames'
+and say nothing that matches it (Ireland's counties, Sri Lanka's
+districts), the province is looked up from the unit's county or region.
+
+Borders are current (Natural Earth 5.1.2, its default de facto view: Crimea
+is Russia's, Kashmir split on the line of control): reading a cell's
+country for a past year is bnm.cells/country-in-year.
 
 Inputs (untrusted data, read only): data/raw/geo/natural-earth/ (public
 domain), data/raw/geo/marine-regions/eez.geojson (CC BY 4.0), and
@@ -82,6 +98,28 @@ NE_UNITS = {
 }
 
 EEZ_ALIAS = {"KOS": "XKX", "XKS": "XKX"}
+
+# Natural Earth admin-1 units (adm1_code, else gn_a1_code) that bnm.geo keys
+# as countries of their own
+TERRITORY = {
+    "FR.973": "GUF", "FR.971": "GLP", "FR.972": "MTQ", "FR.974": "REU", "FR.976": "MYT",
+    "NO.21": "SJM", "BVT+00?": "BVT", "NL.BO": "BES", "NL.SE": "BES", "NL.SB": "BES",
+    "IOA-1928": "CCK", "IOA-2652": "CXR", "NZL-5472": "TKL",
+}
+
+# Natural Earth units a level below GeoNames' admin 1 whose names do not
+# match it: Ireland's counties to its provinces, Sri Lanka's districts by
+# their province (Natural Earth's region, in Sinhala)
+IRL_PROVINCE = {
+    **{c: "U" for c in ("Donegal", "Cavan", "Monaghan")},
+    **{c: "C" for c in ("Galway", "Mayo", "Sligo", "Leitrim", "Roscommon")},
+    **{c: "M" for c in ("Clare", "Cork", "Kerry", "Limerick", "North Tipperary", "South Tipperary",
+                        "Tipperary", "Waterford")},
+}
+LKA_PROVINCE = {"basnahira": "36", "madhyama": "29", "dakunu": "34", "uturu": "38", "ngenahira": "37",
+                "vayamba": "32", "uturumda": "30", "uva": "35", "sabaragamuva": "33"}
+TINY_KM2 = 1500.0
+MAX_RES = 16
 
 
 def log(*a):
@@ -167,6 +205,13 @@ def match_province(p, iso, names, keys, fips_of):
     counties), whose own codes must not be read as admin1 codes; those are
     matched by the name of the region or unit they lie in."""
     codes, ks = names.get(iso, {}), keys.get(iso, {})
+    if iso == "IRL" and codes:
+        return iso + "." + IRL_PROVINCE.get(p.get("name"), "L"), "county"
+    if iso == "LKA" and codes:
+        # ascii_fold drops the ae ligature: Næ̆gĕnahira -> ngenahira
+        k = re.sub(r"[^a-z]", "", ascii_fold(p.get("region") or "").lower().split(" ")[0])
+        if k in LKA_PROVINCE:
+            return iso + "." + LKA_PROVINCE[k], "region"
 
     def by_name(*fields):
         for fld in fields:
@@ -297,21 +342,26 @@ def main():
         log("admin-0 units with no bnm.geo country:", dict(unknown))
     a0_tree = shapely.STRtree(a0_geom)
     owned = [i for i, iso in enumerate(a0_iso) if iso]
+    geoms_of = collections.defaultdict(list)
+    for i in owned:
+        geoms_of[a0_iso[i]].append(a0_geom[i])
     owned_tree = shapely.STRtree([a0_geom[i] for i in owned])
     for g in a0_geom:
         shapely.prepare(g)
 
     # admin 1: GeoNames code first (gn_a1_code "UA.12"), then FIPS ("UP12")
     a1 = load(os.path.join(root, "data/raw/geo/natural-earth/ne_10m_admin_1_states_provinces.geojson"))
-    a1_geom, a1_id = [], []
+    a1_geom, a1_id, a1_terr = [], [], []
     how = collections.Counter()
     for f in a1:
         p = f["properties"]
-        iso = iso2.get(p.get("iso_a2") or "")
+        terr = TERRITORY.get(p.get("adm1_code")) or TERRITORY.get(p.get("gn_a1_code"))
+        iso = terr or iso2.get(p.get("iso_a2") or "")
         pid, kind = match_province(p, iso, names, keys, fips_of) if iso else (None, "none")
         how[kind] += 1
         a1_geom.append(shape(f["geometry"]))
         a1_id.append(pid)
+        a1_terr.append(terr if terr in isos else None)
     for g in a1_geom:
         shapely.prepare(g)
     a1_tree = shapely.STRtree(a1_geom)
@@ -322,18 +372,29 @@ def main():
 
     # EEZ
     ez = load(os.path.join(root, "data/raw/geo/marine-regions/eez.geojson"))
-    ez_geom, ez_iso, ez_flag = [], [], []
+    ez_geom, ez_iso, ez_flag, ez_claim = [], [], [], []
     for f in ez:
         p = f["properties"]
         ter, sov = p.get("iso_ter1"), p.get("iso_sov1")
         ter, sov = EEZ_ALIAS.get(ter, ter), EEZ_ALIAS.get(sov, sov)
         iso = ter if ter in isos else (sov if sov in isos else None)
-        if iso is None:
+        # an overlapping claim or joint regime: each claimant, by territory
+        # where Marine Regions names one, else by sovereign
+        claim = []
+        for n in "123":
+            t, v = p.get("iso_ter" + n), p.get("iso_sov" + n)
+            t, v = EEZ_ALIAS.get(t, t), EEZ_ALIAS.get(v, v)
+            c = t if t in isos else (v if v in isos else None)
+            if c and c not in claim:
+                claim.append(c)
+        if iso is None and not claim:
             log("EEZ with no country:", p.get("geoname"))
             continue
+        shared = p.get("pol_type") != "200NM"
         ez_geom.append(shape(f["geometry"]))
-        ez_iso.append(iso)
-        ez_flag.append("eez" if p.get("pol_type") == "200NM" else "eez-shared")
+        ez_iso.append(iso or claim[0])
+        ez_flag.append("eez-shared" if shared else "eez")
+        ez_claim.append(claim if shared and len(claim) > 1 else None)
     for g in ez_geom:
         shapely.prepare(g)
     ez_tree = shapely.STRtree(ez_geom)
@@ -372,6 +433,11 @@ def main():
             pid = a1_id[prov1[k]]
             if pid:
                 iso[k], flag[k] = pid[:3], "land"
+        # territories inside their sovereign's admin-0 unit
+        for k in np.where(prov1 >= 0)[0]:
+            t = a1_terr[prov1[k]]
+            if t and flag[k] in ("land", "nobody", ""):
+                iso[k], flag[k] = t, "land"
         # land Natural Earth gives to no country (Bir Tawil, the Spratlys): the nearest
         dis = np.where((flag == "land") & (iso == None))[0]  # noqa: E711
         if len(dis):
@@ -385,6 +451,15 @@ def main():
             for k, g in zip(sea, e):
                 if g >= 0:
                     iso[k], flag[k] = ez_iso[g], ez_flag[g]
+                    if ez_flag[g] == "eez-shared":
+                        # the claimant whose coast is nearest (a median line),
+                        # or, for a zone naming one claimant, any country's
+                        pt = shapely.Point(pts[k])
+                        if ez_claim[g]:
+                            iso[k] = min(ez_claim[g], key=lambda c: min(
+                                (shapely.distance(pt, x) for x in geoms_of[c]), default=math.inf))
+                        else:
+                            iso[k] = a0_iso[owned[nearest(owned_tree, [pt])[0]]]
         # outside every EEZ: the nearest coast within 200 nm
         rest = np.where(flag == "")[0]
         if len(rest):
@@ -406,10 +481,45 @@ def main():
                 out.append((iso[k], a, flag[k]))
         return out
 
+    # countries and territories too small for resolution 10: the cells they
+    # touch are sampled finer, enough for about eight samples of them
+    def km2(g):
+        return g.area * 111.32 ** 2 * math.cos(math.radians(g.centroid.y))
+    unit_geoms = collections.defaultdict(list)
+    for i in owned:
+        unit_geoms[a0_iso[i]].append(a0_geom[i])
+    for g, t in zip(a1_geom, a1_terr):
+        if t:
+            unit_geoms[t].append(g)
+    tiny_res = {}
+    for iso, gs in unit_geoms.items():
+        area = sum(km2(g) for g in gs)
+        if area < TINY_KM2:
+            r = FINE
+            while r < MAX_RES and area / a5.cell_area(r) * 1e6 < 8:
+                r += 1
+            tiny_res[iso] = (shapely.union_all(gs), r)
+    finer = {}
+    for iso, (g, r) in tiny_res.items():
+        # the cells its outline (cut to about 5 km) passes through: a unit
+        # this small holds no whole cell
+        parts = g.geoms if hasattr(g, "geoms") else [g]
+        for part in parts:
+            ring = getattr(part, "exterior", part)
+            for x, y, *_ in shapely.segmentize(ring, 0.05).coords:
+                c = a5.lonlat_to_cell((x, y), RES)
+                finer[c] = max(finer.get(c, FINE), r)
+    log(f"{len(tiny_res)} small units, {len(finer)} cells sampled finer:",
+        {iso: r for iso, (_, r) in sorted(tiny_res.items())})
+
     rows = []
     stats = collections.Counter()
     kind = {}
     for i, c in enumerate(cells):
+        if c in finer:
+            kind[c] = finer[c]
+            stats["finer"] += 1
+            continue
         if len(inside.get(i, ())) == 1 and a1_id[inside[i][0]] is not None:
             pid = a1_id[inside[i][0]]
             # the province's country, as admin 0 says at the centre
@@ -424,14 +534,9 @@ def main():
     log(dict(stats))
 
     # A5's children are not inside their parent (a cell's descendants cover
-    # about 70% of it, the rest lying in its neighbours), so a cell is
-    # sampled by the descendants of it and its neighbours whose centres it
-    # holds: equal-area cells, about 256 at resolution 10 (64 at 9).
-    if args.limit:
-        parents = {x for c in kind for x in a5.uncompact(a5.grid_disk(c, 1))
-                   if not a5.is_compaction_marker(x)}
-    else:
-        parents = set(cells)
+    # about 64-70% of it, the rest lying in its neighbours), so a cell is
+    # sampled by its subcells, the finer cells whose centres it holds:
+    # equal-area cells, about 256 at resolution 10 (64 at 9).
     keyix = {}
     s_owner, s_kid, s_key = [], [], []
     batch_pts, batch_owner, batch_kid = [], [], []
@@ -447,18 +552,15 @@ def main():
         batch_owner.clear()
         batch_kid.clear()
 
-    for n, par in enumerate(sorted(parents)):
-        for res in (FINE, SEA):
-            for k in a5.cell_to_children(par, res):
-                ll = a5.cell_to_lonlat(k)
-                o = a5.lonlat_to_cell(ll, RES)
-                if kind.get(o) == res:
-                    batch_pts.append(ll)
-                    batch_owner.append(o)
-                    batch_kid.append(k)
+    for n, (o, res) in enumerate(sorted(kind.items())):
+        for k in a5.uncompact(a5.cell_to_subcells(o, res)):
+            if not a5.is_compaction_marker(k):
+                batch_pts.append(a5.cell_to_lonlat(k))
+                batch_owner.append(o)
+                batch_kid.append(k)
         if len(batch_pts) > 400_000:
             flush()
-            log(f"{n + 1} of {len(parents)} parents, {len(s_owner)} samples, {time.time() - t0:.0f}s")
+            log(f"{n + 1} of {len(kind)} cells, {len(s_owner)} samples, {time.time() - t0:.0f}s")
     flush()
 
     keys = {v: k for k, v in keyix.items()}
@@ -480,7 +582,7 @@ def main():
             if len(parts) > 1 and key != main:
                 for x in a5.compact(kids):
                     if not a5.is_compaction_marker(x):
-                        fine.append((h, a5.u64_to_hex(x), i, a, fl))
+                        fine.append((h, a5.u64_to_hex(x), i, a, fl, kind[o]))
     stats["samples"] = len(s_owner)
     log(dict(stats))
 
@@ -494,9 +596,9 @@ def main():
 
     fine.sort()
     with open(os.path.join(out, "crosswalk-fine.csv"), "w", encoding="utf-8") as f:
-        f.write("cell,part,iso,admin1,flag\n")
-        for c, x, i, a, fl in fine:
-            f.write(f"{c},{x},{i},{a},{fl}\n")
+        f.write("cell,part,iso,admin1,flag,res\n")
+        for c, x, i, a, fl, r in fine:
+            f.write(f"{c},{x},{i},{a},{fl},{r}\n")
 
     # coverage
     in_xw = {r[2] for r in rows if r[2]}
