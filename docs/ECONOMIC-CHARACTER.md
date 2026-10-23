@@ -1487,3 +1487,245 @@ carries it without also carrying income.
 - Net lending is over operating surplus, not value added: Japan has no
   S11 B1G in the table and was missing.
 - An index row has no posterior SD, so econ/<index>-sd is not written.
+
+## Results: divergence, coupling and the capability gap (bnm-3ka.7, bnm-3ka.8, bnm-3ka.9)
+
+Three descriptive and attribution designs. The core claims concern a few
+countries (the power audit), so nothing here is a test with power, and
+nothing was tuned after the first run.
+
+### H4: asset-growth divergence as attribution (bnm-3ka.7, not registered)
+
+scripts/econ-divergence.py, src/bnm/econ_divergence.clj,
+tools/bnm/divergence_attribution.clj. Stock
+data/derived/stocks/econ-divergence.csv (year = known, plus known and
+data_year columns).
+
+**The stock.** Each input is a log level, and its gap is the value less
+the country's mean over the previous 25 data years (at least 10). It is a
+trailing mean, not a trend: the rise of wealth over income is itself what
+K5 names, and a trend would remove it. A gap is known when the latest of
+its inputs is. The inputs:
+- JST equity price over GDP (the cumulated capital gain, 16 countries);
+- JST price over dividends;
+- JST house prices over GDP per head (18);
+- WDI/GFDD market cap over GDP (85, from 1985);
+- WID private wealth over national income (216, from 1970);
+- for the US only, Shiller CAPE and Z.1 NFC equity over net operating
+  surplus.
+
+econ/divergence-equity takes JST's equity gap where JST has one, else
+the market-cap gap. econ/divergence is the mean of the equity, house and
+wealth gaps, each over its spread across the gaps known by that year.
+Readings: Japan 1989 +1.95, the US 1999 +0.78, 2007 +0.71, 2020 +0.98.
+Lags: JST, Shiller, Z.1 and WDI +1; WID +2.
+
+**The attribution.** T4's method (bnm.attribution's evaluate, unchanged)
+on the year node of t44-world-norel. The kinds are banking crises (4,125
+rows, 244 onsets) and market crashes (729 rows, 209 onsets). The design
+rotation fits 1960-1980 and scores 1981-2002, then the reverse; no
+outcome after 2002 is read. The states, as known at each year end (the
+latest data year published, at most three years old), and their
+between-country shares:
+- equity gap 0.51 (29 countries in the design years);
+- valuation 0.21;
+- house 0.40;
+- wealth 0.64;
+- the composite 0.62 (128 countries; wealth carries the coverage).
+Groups: the four gaps; the composite alone; T4's credit gap and Keen debt
+gap alone, and with the four (the nesting 8e asks for); and "where"
+(equity, wealth) against "when" (valuation, house) by T4's 0.5 cut.
+
+Within mode fixes each year's count, so it asks "where". Raw mode keeps
+the timing, so it adds "when". The table shows the recalibrated base, log
+score, kinds pooled equally, with 90% intervals from 1,000 two-year block
+draws. S − P' is the primary contrast: the states less the
+coverage-matched placebo.
+
+| group | mode | skill(B') | skill(S) | skill(P') | S − P' | increment over B' |
+|---|---|---|---|---|---|---|
+| four gaps | within | −0.0016 [−0.0042, +0.0011] | −0.0001 [−0.0002, −0.0001] | −0.0001 [−0.0002, −0.0000] | −0.0000 [−0.0001, +0.0000] | −0.0001 [−0.0002, −0.0000] |
+| four gaps | raw | −0.0257 [−0.0416, −0.0123] | −0.0000 [−0.0001, +0.0001] | −0.0001 [−0.0002, +0.0000] | +0.0000 [−0.0000, +0.0001] | −0.0000 [−0.0001, +0.0001] |
+| composite | within | | +0.0013 [−0.0001, +0.0032] | +0.0003 [−0.0002, +0.0009] | +0.0010 [−0.0001, +0.0025] | +0.0017 [−0.0010, +0.0048] |
+| composite | raw | | +0.0057 [+0.0033, +0.0088] | +0.0027 [+0.0011, +0.0043] | +0.0031 [+0.0007, +0.0061] | +0.0112 [+0.0056, +0.0185] |
+| financial (credit, Keen) | within | | −0.0001 [−0.0002, −0.0000] | −0.0001 [−0.0002, −0.0000] | −0.0000 [−0.0001, +0.0000] | −0.0001 [−0.0002, −0.0000] |
+| financial + four gaps | within | | −0.0003 [−0.0004, −0.0001] | −0.0002 [−0.0004, −0.0001] | −0.0001 [−0.0001, +0.0000] | −0.0002 [−0.0004, −0.0001] |
+| financial + four gaps | raw | | −0.0001 [−0.0003, +0.0000] | −0.0002 [−0.0003, −0.0000] | +0.0000 [−0.0001, +0.0001] | −0.0001 [−0.0003, +0.0001] |
+
+Per kind, composite, S − P': banking crises within +0.0000
+[−0.0001, +0.0002] and raw +0.0006 [−0.0001, +0.0014]; market crashes
+within +0.0019 [−0.0003, +0.0050] and raw +0.0055 [+0.0007, +0.0117].
+Where less when (four gaps, pooled): within +0.00001 [−0.00004, +0.00005];
+matched +0.00001.
+
+Reading:
+- The base has no skill on either kind in the design years. B' is
+  negative in both modes, as in T4. So the attribution share
+  (skill(S)/skill(B')) is meaningless here, and the table reports skills.
+- The four gaps as separate states carry nothing. The rotation chose the
+  heaviest ridge (10,000, shrink to nothing) for every group but the
+  composite, so S equals M0 up to noise, and so does the financial pair.
+- The composite is the one positive line. On "where" it is +0.0010 over
+  its matched placebo, with an interval that touches zero. With timing
+  (raw) it is +0.0031 [+0.0007, +0.0061] pooled, and the market crashes
+  carry it. Three things flatter it:
+  - its ridge (100) was chosen on the same rotation it is scored on;
+  - raw mode credits timing that is partly the world's (rich countries'
+    wealth gaps rise together before global crashes);
+  - it is one state against four, so it is shrunk less.
+- Read H4 as: nothing on "where", and a timing signal for market crashes
+  from the composite, to be confirmed on 2003-2022. The power audit's MDE
+  (OR 1.9 to above 2.5 per kind) stands. A null would not mean no
+  effect.
+
+**For the registered run** (not run):
+
+    jolt -A:tools -M -m bnm.divergence-attribution --fit-from 1960 --fit-to 2002 \
+      --from 2002 --to 2022 \
+      --penalties data/runs/sequencing/divergence-h4-penalties.edn \
+      --reps 1000 --seed 1 \
+      --out data/runs/sequencing/divergence-h4-registered.tsv
+
+This fits on origins 1960-2000 (outcomes to 2002) and scores origins
+2002-2020 (outcomes 2003-2022), with the design's penalties. The
+where/when split is computed on the fitted span, so it matches the
+design. The design output is data/runs/sequencing/divergence-h4-design.tsv.
+
+### H5: coupling (bnm-3ka.8)
+
+scripts/econ-coupling.py, src/bnm/econ_coupling.clj,
+tools/bnm/econ_coupling_run.clj. Fits in data/derived/econ/coupling-h5.txt.
+
+**Data.** Ordered pairs (holder h, issuer i) by data year:
+- h's goods surplus with i: BACI HS92 summed over HS2 (the file's other
+  vintages are left out, so no year counts twice);
+- h's claims on i:
+  - IMF PIP (formerly CPIS), total portfolio assets reported by h,
+    2001-2024;
+  - IMF DIP (formerly CDIS), h's outward position, else i's inward
+    position from h, 2009-2024;
+  - Coppola-Maggiori-Neiman-Schreger restated holdings (bonds plus
+    equity and fund shares, by nationality, 2007-2020; academic use;
+    the EMU investor aggregate dropped);
+- i's GDP (WDI).
+An observation is y = the change in h's claims on i over i's GDP, and
+x = h's surplus with i over i's GDP. Fixed effects: ordered pair and
+year. Standard errors are clustered by pair. x and y are clipped at
+1%/99%. Known: the latest source, +2.
+
+| sample | PIP | DIP | PIP + DIP | restated (GCAP) |
+|---|---|---|---|---|
+| all pairs | +0.004 (t 0.8; 14,197 pairs) | +0.010 (2.0) | +0.040 (2.1; 11,111) | −0.010 (−0.7; 1,405) |
+| no offshore centres | +0.004 (2.1) | +0.007 (2.9) | +0.024 (3.8; 7,565) | +0.007 (0.5) |
+| issuer USA or GBR | −0.10 (−0.7; 166) | +0.15 (1.1) | +0.40 (0.9; 164) | −0.01 (−0.0; 13) |
+| issuer USA | −0.32 (−1.2; 84) | −0.04 (−0.4) | −0.38 (−0.7; 83) | −1.73 (−4.2; 7 pairs) |
+| issuer GBR | −0.09 (−0.4) | +0.27 (1.2) | +0.32 (0.5) | +0.11 (0.8) |
+| holders CHN, DEU, JPN, KOR | +0.012 (2.2) | −0.018 (−0.6) | +0.032 (0.8) | |
+
+The holder's investment-regime index, interacted with x (8e: "more for
+high-regime partners"): all pairs −0.0013 (t −1.8); issuer US or UK
++0.12 (t 0.9).
+
+Reading:
+- Across all pairs, surplus partners do acquire the deficit country's
+  assets, but at 2 to 4 cents per dollar of bilateral surplus, outside
+  offshore centres. The association is real in the large panel, and
+  economically small.
+- For the US and the UK as issuers, the case K3 is about, there is no
+  association. The signs vary by instrument, and the intervals are wide
+  on 80-200 partners. The restated holdings for the US have 7 investor
+  pairs, so their −1.7 is not a result.
+- The high-regime interaction is not there.
+- What the data cannot see:
+  - official reserves: PIP excludes reserve assets, and China's
+    Treasuries sit in SEFER and TIC, which are not on disk;
+  - valuation changes, which dominate year-on-year changes in positions;
+  - custodial routing through Belgium, Luxembourg and the UK.
+  So H5's "zero at the dyad level" is the private and direct-investment
+  channel only. It is not falsified for the reserve channel Bernanke
+  and Pettis describe, which these data do not hold.
+
+**Stock** data/derived/stocks/econ-coupling.csv:
+- econ/coupling-liability-share: the share of i's PIP plus DIP
+  liabilities held by partners in goods surplus with i, from 2009. US
+  0.53 in 2014, 0.59 in 2020, 0.50 in 2023; UK 0.83, 0.54, 0.74; China
+  about 0.06.
+- econ/coupling-slope: the fixed-effects slope on i's pairs over the
+  five years to the data year.
+
+### H9: the capability gap and dyadic tension (bnm-3ka.9)
+
+scripts/geo-gap.py, src/bnm/geo_gap.clj, tools/bnm/geo_gap_run.clj.
+Output in data/derived/econ/geo-h9.txt.
+
+**Data.**
+- Material share: the mean of the world shares in crude steel (BGS,
+  +2), primary energy (OWID/Energy Institute, +1) and manufacturing VA
+  (WDI, against WLD, from 1997, +1), with at least two present. These are
+  our own stocks rather than CINC, which stops in 2016; CINC is in the
+  inputs for comparison.
+- Financial share: the mean of the world shares in market cap (WDI) and
+  in allocated FX reserves by currency (COFER, 1995-). The euro is split
+  over the members by GDP. The ECU's 8.5% in 1995-1998 and the "other
+  currencies" (2-5%) are not assigned.
+- geo/capability-gap is the material share less the financial share.
+- The financialisation index is left out: it is not a world share, and
+  its ranking failed the face check above.
+- Tension, for the 28 dyads of USA, CHN, RUS, JPN, DEU, GBR, FRA and
+  IND:
+  - MIDs with the pair on opposite sides, from MIDB 5.0, to 2014. The
+    dyadic MID file on disk is truncated.
+  - Export restrictions: the OECD raw-materials inventory measures in
+    force, weighted by the importer's purchases from the restricting
+    country by HS2 chapter in the year before, 2009-2024.
+  - Sanctions: none. The GSDB is a request-form download and is not on
+    disk.
+
+| capability gap, as known | 1997 | 2002 | 2007 | 2012 | 2017 | 2022 |
+|---|---|---|---|---|---|---|
+| USA | −0.31 | −0.39 | −0.37 | −0.33 | −0.39 | −0.40 |
+| CHN | | | +0.18 | +0.24 | +0.26 | +0.29 |
+| JPN | −0.04 | +0.04 | +0.01 | +0.02 | −0.00 | −0.02 |
+| DEU | −0.05 | +0.00 | +0.00 | −0.00 | −0.01 | −0.01 |
+| GBR | −0.03 | −0.03 | −0.04 | −0.03 | −0.04 | |
+| IND | | +0.02 | +0.02 | +0.02 | +0.03 | +0.03 |
+| RUS | | | | +0.03 | +0.03 | +0.03 |
+
+Gaps are blank where WDI lacks market cap: China before 2003, Russia
+before 2009, France after 2018 and the UK in 2015-2020. China's material
+share rose from 0.12 to 0.37 between 1997 and 2022. The US share fell
+from 0.18 to 0.12, and its financial share held at about 0.5. The
+US-China distance widened from 0.54 (2005) to 0.69 (2022).
+
+**Dyad panel.** The level is |gap_a − gap_b| as known at year end t, and
+the outcome is in year t + 1. Fixed effects: dyad and year. Standard
+errors are clustered by dyad. The permutation p comes from 999 draws,
+each handing every dyad another dyad's gap series.
+
+| outcome ~ predictor | b | t | perm p | n | dyads with variation | dyad-years > 0 |
+|---|---|---|---|---|---|---|
+| MID ongoing ~ distance (1998-2014) | +0.88 | 1.6 | 0.22 | 305 | 8 | 25 |
+| MID onset ~ distance | +0.57 | 1.4 | 0.34 | 305 | 9 | 21 |
+| MID ongoing ~ 5-year widening | −0.08 | −1.1 | 0.82 | 179 | 2 | 9 |
+| restrictions ~ distance (2009-2024) | +0.24 | 0.3 | 0.85 | 379 | 25 | 344 |
+| restrictions ~ 5-year widening | +0.64 | 0.8 | 0.55 | 326 | 25 | 292 |
+| MID ongoing ~ material distance alone (record, 1973-2014) | +0.02 | 0.1 | 0.96 | 1,022 | 9 | 63 |
+
+Reading:
+- No association that survives the permutation. The point estimates for
+  MIDs are positive (a wider gap, more MIDs), but they rest on 8-9
+  dyads with any MID and 21-25 dyad-years.
+- Restriction exposure varies in 25 dyads. But only China, India and
+  Russia restrict much, so it is mostly three countries' policy seen
+  through trade weights.
+- US-China, n = 1. The distance widened every few years from 2005. The
+  pair had MIDs in 2009, 2011, 2013 and 2014. China's restriction
+  exposure toward the US peaked in 2014-2015 (2.1) and fell to 0.6-0.9
+  by 2021-2024, while the gap kept widening.
+- Power: with 28 dyads, of which 8-9 vary on MIDs, a within-dyad effect
+  would have to be large to show. This is description, as 8e said, not a
+  test of power transition.
+
+**Stock** data/derived/stocks/geo-capability.csv: geo/material-share,
+geo/financial-share and geo/capability-gap for about 100 countries
+(financial share from 1995), each known when its last part is.
