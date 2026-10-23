@@ -377,6 +377,32 @@
               r))
           rs)))
 
+(defn- coal-pooled
+  "Rows `rs` with a power station's or heat plant's coals
+  (`power-station?`, `coals`) classified together: all critical, tagged
+  :pool :coal, when one of them is critical by the rule (a feedstock at
+  0.1 TJ per TJ, or 5% of the value); the negligible ones
+  (`negligible-heat`) are no members. Coals each below the rule are not
+  added up into a critical pool: in a gas or biomass station they are
+  the industry mix's CHP (Germany's gas power 0.05 TJ of lignite and
+  0.07 of hard coal per TJ), and adding them would make 49 rows critical
+  that are not now.
+  One coal stands in for another in a station's boilers (blending,
+  switching mines), so in outage the pool is the share-weighted mean of
+  its members, as electricity by source is (`critical-inputs`): a 10% cut
+  to America's lignite, 3% of its coal power's coals by value and 5% by
+  heat, had stopped 10% of that power, lignite a feedstock on its own."
+  [products rs]
+  (let [member? (fn [{:keys [output input negligible]}] (and (coals input) (power-station? output) (not negligible)))
+        crit (reduce (fn [m {:keys [region output kind] :as r}]
+                       (if (and (member? r) (= kind :critical)) (conj m [region output]) m))
+                     #{} rs)]
+    (mapv (fn [{:keys [region output] :as r}]
+            (if (and (member? r) (crit [region output]))
+              (assoc r :kind :critical :pool :coal)
+              r))
+          rs)))
+
 (defn heat-output?
   "Is `output` made with process heat (its fuels, but its
   `material-feedstock`, an energy bundle)? A material or manufactured
@@ -440,7 +466,7 @@
   the way in."
   [{:keys [products recipes trade supply use]}]
   (let [ps (into {} (for [p products] [(:code p) (dissoc p :code)]))
-        rs (energy-pooled ps (pooled ps (mapv #(assoc % :kind (kind-of ps %)) (physically-negligible ps (clean-shares recipes)))))
+        rs (energy-pooled ps (coal-pooled ps (pooled ps (mapv #(assoc % :kind (kind-of ps %)) (physically-negligible ps (clean-shares recipes))))))
         g (graph* ps rs trade supply use)]
     (assoc g :critical-h (delay (critical-hypergraph g)))))
 

@@ -14,9 +14,10 @@
       2022 to March 2023 (Moll, Schularick & Zachmann 2023), against what
       followed: energy-intensive output down by up to 20%, the rest of
       industry hardly;
-    two shocks, qualitatively: natural gas for use in Europe cut 40% (N
+    three shocks, qualitatively: natural gas for use in Europe cut 40% (N
       fertiliser, then agriculture, steel), Middle East crude output cut
-      50% (refining in Asia, against Europe and the Americas).
+      50% (refining in Asia, against Europe and the Americas), US lignite
+      cut 10% and Indonesia's coal 50% (a station's coals one pool).
 
   The checks marked ok/FAIL are the real-data tests (kept out of the unit
   suite, which runs on synthetic graphs: they take minutes); the run
@@ -350,7 +351,21 @@
         (println (format " refining loss, mean: Asia (CN IN JP KR ID WA) %s, Europe and the Americas %s"
                          (pct (mean asia)) (pct (mean west))))
         (check (> (mean asia) (mean west)) "Asian refining loses more than Europe's and the Americas'")
-        (check (> (loss io ["JP" "A_REFN"]) (loss io ["US" "A_REFN"])) "Japan's more than America's")))))
+        (check (> (loss io ["JP" "A_REFN"]) (loss io ["US" "A_REFN"])) "Japan's more than America's")))
+    (println "== shock 3: coal, a power station's coals one pool (sup/coal-pooled)")
+    (let [row (fn [r o i] (get-in g [:recipes [r o] i]))
+          us (for [i ["C_SUBC" "C_OTBC" "C_LIBC"]] (row "US" "C_POWC" i))
+          lig (/ (or (:share (row "US" "C_POWC" "C_LIBC")) 0.0) (reduce + (map #(or (:share %) 0.0) us)))
+          po (:products (sup/outage g {["US" "C_LIBC"] 0.1} {:hypergraph h}))
+          id (:products (sup/outage g {["ID" "C_SUBC"] 0.5 ["ID" "C_OTBC"] 0.5 ["ID" "C_LIBC"] 0.5} {:hypergraph h}))]
+      (println (format " US coal power's coals: %s; lignite %.1f%% of their value"
+                       (str/join " " (for [[i r] (map vector ["C_SUBC" "C_OTBC" "C_LIBC"] us)] (str i " " (some-> (:pool r) name))))
+                       (* 100 lig)))
+      (check (every? #(= :coal (:pool %)) us) "America's coal power: sub-bituminous, other bituminous and lignite one pool")
+      (check (< (Math/abs (- (loss po ["US" "C_POWC"]) (* 0.1 lig))) 0.002)
+             (format "US lignite cut 10%%: its coal power loses %s, lignite's share of the pool (not 10%%)" (pct (loss po ["US" "C_POWC"]))))
+      (println " Indonesia's coal output cut 50%, coal power:"
+               (str/join "  " (for [r ["ID" "IN" "CN" "JP" "KR" "WA" "SI" "RO"]] (str r " " (pct (loss id [r "C_POWC"])))))))))
 
 (def report-months [1 3 6 12 24])
 

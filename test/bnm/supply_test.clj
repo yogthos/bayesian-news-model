@@ -763,3 +763,66 @@
       (is (= "usgs-ammonia" (get-in g [:recipes ["LT" "C_NFER"] "C_GASE" :override])))
       (is (nil? (get-in g [:recipes ["DE" "C_NFER"] "C_GASE" :override])))
       (is (= :critical (sup/classify g "LT" "C_NFER" "C_GASE"))))))
+
+(deftest a-power-stations-coals-are-one-pool
+  ;; America's coal power: 1.19 TJ of sub-bituminous coal, 1.26 of other
+  ;; bituminous and 0.12 of lignite per TJ, each a feedstock on its own
+  ;; (at least 0.1 TJ per TJ); lignite 3% of the coals' value, 5% of
+  ;; their heat. One coal stands in for another in a station's boilers
+  ;; (blending, switching mines), so they are one pool, its availability
+  ;; the share-weighted mean of its members', as electricity by source is
+  (let [ps [{:code "C_SUBC" :unit "tonnes" :group "raw"}
+            {:code "C_OTBC" :unit "tonnes" :group "raw"}
+            {:code "C_LIBC" :unit "tonnes" :group "raw"}
+            {:code "C_ANTH" :unit "tonnes" :group "raw"}
+            {:code "C_GASE" :unit "tonnes" :group "raw"}
+            {:code "C_POWC" :unit "TJ" :group "energy"}
+            {:code "C_HWAT" :unit "TJ" :group "energy"}
+            {:code "C_STEL" :unit "tonnes" :group "material"}
+            {:code "C_COKC" :unit "tonnes" :group "raw"}
+            {:code "SRV" :unit "Meuro" :group "service"}]
+        rs [{:region "US" :output "C_POWC" :input "C_SUBC" :phys 63.04 :share 0.0156}
+            {:region "US" :output "C_POWC" :input "C_OTBC" :phys 49.0 :share 0.0077}
+            {:region "US" :output "C_POWC" :input "C_LIBC" :phys 9.92 :share 0.0008}
+            ;; a coal at a thousandth of the heat: negligible, no member
+            {:region "US" :output "C_POWC" :input "C_ANTH" :phys 0.13 :share 0.0011}
+            {:region "US" :output "C_POWC" :input "SRV" :phys 1e-4 :share 0.3}
+            ;; gas power with two coals each under 0.1 TJ per TJ and 5%
+            ;; of its value (the industry mix's CHP): no pool is made
+            ;; critical by adding them up, only by a member critical alone
+            {:region "US" :output "C_POWG" :input "C_OTBC" :phys 2.6 :share 0.03}
+            {:region "US" :output "C_POWG" :input "C_SUBC" :phys 3.5 :share 0.03}
+            {:region "US" :output "C_POWG" :input "SRV" :phys 1e-4 :share 0.3}
+            ;; a heat plant on one coal: a pool of one
+            {:region "US" :output "C_HWAT" :input "C_OTBC" :phys 40.0 :share 0.05}
+            {:region "US" :output "C_HWAT" :input "SRV" :phys 1e-4 :share 0.3}
+            ;; not a power station: steel's coking coal and its other coal
+            ;; stay critical each on its own
+            {:region "US" :output "C_STEL" :input "C_COKC" :phys 0.5 :share 0.06}
+            {:region "US" :output "C_STEL" :input "C_OTBC" :phys 0.15 :share 0.01}
+            {:region "US" :output "C_STEL" :input "SRV" :phys 1e-4 :share 0.3}]
+        g (sup/graph {:products ps :recipes rs})
+        row (fn [o i] (get-in g [:recipes ["US" o] i]))
+        avail (fn [cut k] (get-in (sup/outage g cut {}) [:products ["US" k]] 1.0))]
+    (testing "the coals classified together, critical, tagged :coal"
+      (doseq [i ["C_SUBC" "C_OTBC" "C_LIBC"]]
+        (is (= :critical (:kind (row "C_POWC" i))) i)
+        (is (= :coal (:pool (row "C_POWC" i))) i))
+      (is (= :substitutable (:kind (row "C_POWC" "C_ANTH"))) "negligible: no member")
+      (is (nil? (:pool (row "C_POWC" "C_ANTH")))))
+    (testing "a 10% lignite cut takes its share of the pool, not 10% of the power"
+      (is (close? (- 1.0 (* 0.1 (/ 0.0008 (+ 0.0156 0.0077 0.0008)))) (avail {["US" "C_LIBC"] 0.1} "C_POWC") 1e-6))
+      (is (close? (- 1.0 (* 0.4 (/ 0.0156 (+ 0.0156 0.0077 0.0008)))) (avail {["US" "C_SUBC"] 0.4} "C_POWC") 1e-6)))
+    (testing "every coal cut: the power falls with it"
+      (is (close? 0.6 (avail {["US" "C_SUBC"] 0.4 ["US" "C_OTBC"] 0.4 ["US" "C_LIBC"] 0.4} "C_POWC") 1e-6)))
+    (testing "coals each below the rule stay substitutable together"
+      (is (= :substitutable (:kind (row "C_POWG" "C_OTBC"))))
+      (is (= :substitutable (:kind (row "C_POWG" "C_SUBC"))))
+      (is (nil? (:pool (row "C_POWG" "C_OTBC")))))
+    (testing "a pool of one is its coal"
+      (is (= :coal (:pool (row "C_HWAT" "C_OTBC"))))
+      (is (close? 0.7 (avail {["US" "C_OTBC"] 0.3} "C_HWAT") 1e-6)))
+    (testing "steel's coals are not pooled"
+      (is (nil? (:pool (row "C_STEL" "C_OTBC"))))
+      (is (= :critical (:kind (row "C_STEL" "C_OTBC"))))
+      (is (close? 0.7 (avail {["US" "C_OTBC"] 0.3} "C_STEL") 1e-6)))))

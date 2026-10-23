@@ -524,7 +524,21 @@ diesel in eight regions. Electricity by source (EXIOBASE's twelve C_POW*
 products) is one carrier to its users: its rows are critical together
 when their shares add to 5% and enter the recipe as one pool, their
 share-weighted mean (losing gas power costs a user its gas-fired share,
-not all its power).
+not all its power). A power station's or heat plant's coals (anthracite,
+coking, other bituminous and sub-bituminous coal, lignite, peat) are
+one pool the same way (`supply/coal-pooled`): a station blends and
+switches coals, so when one is critical by the rule (0.1 TJ per TJ, or 5%
+of the value) all its coals above the 1% of heat are, as one input, their
+share-weighted mean. Each coal had been critical on its own: a 10% cut
+to America's lignite, 3% of its coal power's coals by value and 5% by
+heat, stopped 10% of that power and 6.7 region-products' worth of loss
+downstream; pooled, 0.3% and 0.4. Coals each below the rule are not
+added up into a critical pool (in gas and biomass stations they are the
+industry mix's CHP): the pools are 161 rows in 82 recipes, 54 with more
+than one coal, and 31 rows joined a pool that was critical through
+another coal. Indonesia's coal output cut 50% now costs 91
+region-products' worth, 134 before (Slovenia's and India's coal power
+49-50% before, 1% now: their other coals hold the pool).
 
 Crops are the exception: fertiliser (N, P and compound) and chemicals nec
 (crop protection) are substitutable in a crop's recipe whatever their
