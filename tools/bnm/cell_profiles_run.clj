@@ -17,11 +17,15 @@
                                          by the year before
     data/derived/cells/profiles-report.edn  types, transitions, correlates,
                                          displacement, top cells
+    data/derived/cells/cut-ras-laffan.edn   with the argument cut: the Ras
+                                         Laffan cell cut (2011 assets)
+                                         through bnm.supply/outage
 
     python -I scripts/cell-grids.py
-    jolt -A:tools -M -m bnm.cell-profiles-run"
+    jolt -A:tools -M -m bnm.cell-profiles-run [cut]"
   (:require [bnm.cell-profiles :as cp]
             [bnm.cells :as cells]
+            [bnm.supply :as sup]
             [bnm.stages :as stages]
             [clojure.java.io :as io]
             [clojure.pprint :as pp]
@@ -57,12 +61,21 @@
 
 ;; ------------------------------------------------------------------ profiles
 
-(defn profiles [g assets land pres]
-  (into {} (for [y profile-years
-                 :let [ac (cp/asset-counts assets y pres)]
-                 [k a] land :when (>= a cp/min-land-km2)
-                 :let [p (cp/profile g (get ac k {}) k a y)] :when p]
-             [[y k] (mapv p cp/features)])))
+(defn profiles
+  ([g assets land pres] (profiles g assets land pres profile-years))
+  ([g assets land pres ys]
+   (into {} (for [y ys
+                  :let [ac (cp/asset-counts assets y pres)]
+                  [k a] land :when (>= a cp/min-land-km2)
+                  :let [p (cp/profile g (get ac k {}) k a y)] :when p]
+              [[y k] (mapv p cp/features)]))))
+
+(defn entry-flags
+  "#{[year part]}: the steps whose end type is the data entry's
+  (cp/entry-flags on profiles built with cp/without-entry for each step)."
+  [g assets land fits]
+  (into #{} (mapcat (fn [[a b]] (cp/entry-flags fits (profiles g assets land (cp/without-entry a) [b])))
+                    (partition 2 1 profile-years))))
 
 (def ^:private cg-cache (atom {}))
 (defn country-growth-memo
@@ -92,21 +105,34 @@
      :centroids-raw (into {} (map-indexed (fn [i c] [(names i) (zipmap cp/features (map #(round % 3) c))])
                                           (:centroids last-fit)))
      :fit-n (into (sorted-map) (for [y ys] [y (:n (fits y))]))
+     :moved (into (sorted-map) (for [y ys :when (:moved (fits y))]
+                                 [y {:z (zipmap names (map #(round % 3) (:moved (fits y)))) :permuted (:permuted (fits y))}]))
      :counts (into (sorted-map) (for [y ys] [y (into (sorted-map) (frequencies (map names (vals (:labels (fits y))))))]))}))
 
-(defn transitions-report [g fits names ys regime]
+(defn- matrix-of [names counts]
+  (into (sorted-map)
+        (for [[from cs] (group-by ffirst counts)
+              :let [tot (reduce + (map val cs))]]
+          [(names from) (into (sorted-map) (for [[[_ to] n] cs] [(names to) {:n n :share (round (/ n (double tot)) 3)}]))])))
+
+(defn transitions-report
+  "Transitions between consecutive profile years, the steps in `excluded`
+  ({:entry #{[year part]} :sensor #{...}}) left out of the matrix and the
+  correlates; :matrix-all keeps them, :excluded counts them per step."
+  [g fits names ys regime excluded]
   (let [types (into {} (for [y ys [k t] (:labels (fits y))] [[y k] t]))
-        counts (cp/transition-counts types ys)
-        rows (group-by ffirst counts)
-        matrix (into (sorted-map)
-                     (for [[from cs] rows
-                           :let [tot (reduce + (map val cs))]]
-                       [(names from) (into (sorted-map) (for [[[_ to] n] cs] [(names to) {:n n :share (round (/ n (double tot)) 3)}]))]))
+        ex (into #{} cat (vals excluded))
+        prev (into {} (map (fn [[a b]] [b a]) (partition 2 1 ys)))
+        stepped (fn [s] (filter (fn [[b k]] (and (types [b k]) (prev b) (types [(prev b) k]))) s))
+        changed? (fn [[b k]] (not= (types [b k]) (types [(prev b) k])))
+        counts (cp/transition-counts types ys ex)
+        matrix (matrix-of names counts)
+        matrix-all (update-vals (matrix-of names (cp/transition-counts types ys)) #(update-vals % :n))
         ;; correlates: the country's investment regime at the start, the
         ;; part's light growth against its country's over the five years
         obs (for [[a b] (partition 2 1 ys)
                   [[yr k] t] types :when (= yr a)
-                  :let [u (types [b k])] :when u
+                  :let [u (types [b k])] :when (and u (not (ex [b k])))
                   :let [iso (cells/key-iso k)
                         cg (get (country-growth-memo g "ntl/dn" b a) iso)
                         pg (part-growth-years g "ntl/dn" k a b)]]
@@ -114,6 +140,14 @@
                :light-within (when (and cg pg) (- pg cg))})
         mean (fn [xs] (let [xs (remove nil? xs)] (when (seq xs) (round (/ (reduce + xs) (count xs)) 3))))]
     {:matrix matrix
+     :matrix-all matrix-all
+     :excluded (into (sorted-map)
+                     (for [[kind s] excluded]
+                       [kind (into (sorted-map)
+                                   (for [[b fs] (group-by first (stepped s))]
+                                     [b {:steps (count fs) :type-changed (count (filter changed? fs))}]))]))
+     :changes {:all (reduce + (for [[[f t] n] (cp/transition-counts types ys) :when (not= f t)] n))
+               :kept (reduce + (for [[[f t] n] counts :when (not= f t)] n))}
      :correlates (into (sorted-map)
                        (for [[[f t] os] (group-by (juxt :from :to) obs)]
                          [(str f " -> " t) {:n (count os) :investment-regime (mean (map :regime os))
@@ -179,9 +213,39 @@
     (concat (rows "cell" #(sum-by cells/key-cell %) main-iso)
             (rows "province" #(cp/to-provinces xw %) (fn [a1] (when a1 (first (str/split a1 #"\."))))))))
 
+;; ----------------------------------------------------------------- a cell cut
+
+(defn- read-production
+  "{[region product] tonnes} of data/derived/supply/production.csv."
+  []
+  (with-open [r (io/reader "data/derived/supply/production.csv")]
+    (into {} (for [l (rest (line-seq r)) :let [[reg p q] (str/split l #",")]] [[reg p] (parse-double q)]))))
+
+(defn cut-report
+  "The cell holding Ras Laffan (51.55E 25.90N) cut whole with the assets
+  present in 2011 (the product graph's year), through bnm.supply/outage:
+  the cut and the products and industries losing 1% or more."
+  [assets]
+  (let [c (cells/cell 51.55 25.90)
+        cut (cp/cell-cut assets #{c} {:year 2011 :production (read-production)})
+        g (sup/load-graph "data/derived/supply")
+        o (sup/outage g cut)
+        loss (fn [m] (into (sorted-map) (for [[k v] m :when (< v 0.99)] [(str/join " " k) (round (- 1.0 v) 4)])))]
+    {:cell c
+     :assets-2011 (into (sorted-map) (frequencies (keep #(when (and (= c (:cell %)) (cp/present? % 2011)) (cp/asset-key %)) assets)))
+     :cut (into (sorted-map) (for [[k v] cut] [(str/join " " k) (round v 4)]))
+     :product-loss (loss (:products o))
+     :industry-loss (loss (:industries o))
+     :settled (:settled o)}))
+
 ;; ---------------------------------------------------------------------- main
 
-(defn -main [& _]
+(defn -main [& args]
+  (when (= ["cut"] args)
+    (let [r (cut-report (cp/read-assets (str dir "/assets.csv")))]
+      (spit (str dir "/cut-ras-laffan.edn") (with-out-str (pp/pprint r)))
+      (pp/pprint (select-keys r [:cell :assets-2011 :cut :settled]))
+      (System/exit 0)))
   (let [xw (cells/load-crosswalk)
         land (cp/land-km2 xw)
         main-iso (into {} (for [[c rows] (:by-cell xw)
@@ -190,8 +254,18 @@
                             [c (:iso (apply max-key :share rs))]))
         assets (cp/read-assets (str dir "/assets.csv"))
         _ (log "assets (dup_of blank):" (count assets))
-        g (cp/read-grids (str dir "/cell-grids.csv"))
-        _ (log "grids:" (into (sorted-map) (update-vals g count)))
+        g0 (cp/read-grids (str dir "/cell-grids.csv"))
+        _ (log "grids:" (into (sorted-map) (update-vals g0 count)))
+        {g :grids break :break lf :factors lc :country} (cp/splice-lights g0)
+        world (fn [g y] (round (reduce + (vals (get-in g ["ntl/dn" y :values]))) 0))
+        join {:world-raw (into (sorted-map) (for [y [2012 2013 2014 2015]] [y (world g0 y)]))
+              :world-spliced (into (sorted-map) (for [y [2012 2013 2014 2015]] [y (world g y)]))
+              :parts-own-ratio (count lf) :parts-break (count break)
+              :ratio-quantiles (let [v (vec (sort (vals lf))) q #(round (v (int (* % (dec (count v))))) 3)]
+                                 (when (seq v) {:p10 (q 0.1) :p50 (q 0.5) :p90 (q 0.9)}))
+              :country-ratio {:CHN (round (lc "CHN") 3) :USA (round (lc "USA") 3) :IND (round (lc "IND") 3)
+                              :NGA (round (lc "NGA") 3) :RUS (round (lc "RUS") 3)}}
+        _ (log "sensor join:" join)
         ;; concentration
         ks (cp/concentration-keys assets)
         hhi (cp/hhi-stocks assets ks (range 1990 2027))
@@ -209,6 +283,8 @@
         fits (cp/fit-types ps profile-years k-types {})
         tr (report-types fits profile-years)
         names (:names tr)
+        sensor (cp/sensor-flags g break profile-years "ntl/dn")
+        entry (entry-flags g assets land fits)
         ;; the same read back from the snapshots (descriptive, not causal)
         ps-b (profiles g assets land cp/present-backcast?)
         fits-b (cp/fit-types ps-b profile-years k-types {})
@@ -216,8 +292,8 @@
         _ (write-csv (str dir "/profiles.csv") (into ["part" "year" "type"] (map name cp/features))
                      (for [[[y k] x] (sort-by key ps)] (into [k y (names (get-in fits [y :labels k]))] x)))
         regime (read-stock "data/derived/stocks/econ-factors.csv" "econ/investment-regime")
-        paths (transitions-report g fits names profile-years regime)
-        paths-b (transitions-report g fits-b (:names tr-b) profile-years regime)
+        paths (transitions-report g fits names profile-years regime {:entry entry :sensor sensor})
+        paths-b (transitions-report g fits-b (:names tr-b) profile-years regime {:sensor sensor})
         ;; displacement
         stage-d (into {} (for [c ["iron" "aluminium"]]
                            [c (read-stock "data/derived/stocks/stages.csv" (str "stages/" c "-d"))]))
@@ -228,6 +304,6 @@
         _ (log "features.csv:" (count frows) "rows")
         cover {:parts-profiled (count (distinct (map second (keys ps))))
                :end-flags (into (sorted-map) (frequencies (map (juxt :source :end_flag) (filter :end_flag assets))))}
-        report {:types tr :paths paths :backcast {:types tr-b :paths paths-b} :displacement disp :top-cells-2026 top :world-hhi world-hhi :coverage cover}]
+        report {:sensor-join join :types tr :paths paths :backcast {:types tr-b :paths paths-b} :displacement disp :top-cells-2026 top :world-hhi world-hhi :coverage cover}]
     (spit (str dir "/profiles-report.edn") (with-out-str (pp/pprint report)))
     (pp/pprint (dissoc report :top-cells-2026))))

@@ -22,7 +22,15 @@
   of a part at year Y reads, per variable, the latest year known by Y
   (`known-value`). The types are fitted at each profile year Y on the
   part-years up to Y only (an expanding window), each fit started from the
-  previous one's centroids so the labels carry over."
+  previous one's centroids and matched to them (`match-centroids`), so a
+  type keeps its index and name.
+
+  Paths. A five-year step whose end type is due to the data, not the
+  place, is left out of the transitions: assets entering at a snapshot's
+  publication, or closures reported long after they happened
+  (`without-entry`, `entry-flags`), and parts whose lights cannot be
+  carried across the 2013/14 DMSP-VIIRS join (`splice-lights`,
+  `sensor-flags`)."
   (:require [bnm.cells :as cells]
             [bnm.csv :as csv]
             [bnm.stages :as stages]
@@ -143,11 +151,17 @@
       (if (odd? n) (v (quot n 2)) (/ (+ (v (dec (quot n 2))) (v (quot n 2))) 2.0)))))
 
 (defn medians
-  "{key median capacity} over the rows with one, for filling a missing
-  capacity."
+  "{key median capacity} over the assets with one, for filling a missing
+  capacity: a polygon's pieces (one row per cell, each with its piece's
+  capacity) sum to the asset first, so the median is a whole asset's and a
+  piece without one weighs it by its share."
   [rows]
   (into {} (for [[k rs] (group-by asset-key rows) :when k
-                 :let [m (median (keep capacity rs))] :when m]
+                 :let [whole (vals (reduce (fn [m r] (if-let [c (capacity r)]
+                                                       (update m (or (:asset_id r) (gensym)) (fnil + 0.0) c)
+                                                       m))
+                                           {} rs))
+                       m (median whole)] :when m]
              [k m])))
 
 (def outlier-ratio
@@ -286,6 +300,19 @@
    "mine-nickel" ["C_NIKO"] "mine-lead" ["C_LZTO"] "mine-zinc" ["C_LZTO"] "mine-tin" ["C_LZTO"]
    "mine-gold" ["C_PREO"] "mine-silver" ["C_PREO"] "mine-platinum" ["C_PREO"] "mine-uranium" ["C_ORAN"]})
 
+(def lng-tonnes-per-mmcfd
+  "Tonnes of gas a year through an LNG train of 1 mmcf/d: 1 Mt a year of
+  LNG is about 133 mmcf/d of feed gas (48.7 bcf a year)."
+  (/ 1.0e6 133.0))
+
+(def gas-basis
+  "Asset keys cut against the region's output of a product (bnm.supply's
+  production, tonnes) rather than against the region's listed capacity of
+  the key: an export terminal ships part of a region's gas, and the
+  terminals listed are not the region's gas. {key [product tonnes per
+  capacity unit]}."
+  {"lng-export" ["C_GASE" lng-tonnes-per-mmcfd]})
+
 (defn- in-cut? [cut {:keys [cell iso]}]
   (or (contains? cut cell) (contains? cut (cells/cell-key cell iso))))
 
@@ -297,10 +324,26 @@
   keys (that part only). Capacity is the asset's (`capacity`, in one unit
   per product), else its key's median; a product whose region has no
   capacity at all is weighed by asset count. Pairs not cut are left out.
-  Options: :year (required), :products (default `products`)."
-  [rows cut {:keys [year] ps :products :or {ps products}}]
+  A polygon (a field or mining area across cells) is cut by its pieces in
+  the cut cells: each piece carries its own area. The `gas-basis` keys (LNG
+  export terminals) cut the tonnes they ship over the region's output of
+  the product, from :production {[region product] tonnes} (bnm.supply's
+  production.csv); without it they cut nothing. Where both cut one product
+  (gas fields and a terminal), the larger loss binds: the terminal ships
+  the fields' gas, so the two losses do not add.
+  Options: :year (required), :products (default `products`), :production."
+  [rows cut {:keys [year production] ps :products :or {ps products}}]
   (let [cut (set cut)
         meds (medians rows)
+        basis (reduce (fn [m r]
+                        (let [[p per] (gas-basis (asset-key r)) reg (exio-region (:iso r))]
+                          (if (and p reg (present? r year) (in-cut? cut r) (capacity r))
+                            (update m [reg p] (fnil + 0.0) (* per (capacity r)))
+                            m)))
+                      {} rows)
+        absolute (into {} (keep (fn [[k t]] (when-let [q (get production k)]
+                                              (when (and (pos? q) (pos? t)) [k (min 1.0 (/ t q))]))))
+                       basis)
         rs (filter #(and (ps (asset-key %)) (present? % year) (exio-region (:iso %))) rows)
         acc (reduce (fn [m r]
                       (let [w (weight meds r) c? (in-cut? cut r)]
@@ -311,10 +354,12 @@
                                              :n (inc n) :nhit (+ nhit (if c? 1 0))})))
                                 m (ps (asset-key r)))))
                     {} rs)]
-    (into {} (keep (fn [[k {:keys [tot hit n nhit]}]]
-                     (let [x (if (pos? tot) (/ hit tot) (/ (double nhit) n))]
-                       (when (pos? x) [k (min 1.0 x)]))))
-          acc)))
+    (merge-with max
+                (into {} (keep (fn [[k {:keys [tot hit n nhit]}]]
+                                 (let [x (if (pos? tot) (/ hit tot) (/ (double nhit) n))]
+                                   (when (pos? x) [k (min 1.0 x)]))))
+                      acc)
+                absolute)))
 
 ;; ------------------------------------------------------------------- grids
 
@@ -496,26 +541,60 @@
                             (nth cs j))))]
             (recur cs (inc it) labels)))))))
 
+(def name-group
+  "The groups a type is named by: the services measures split into urban
+  form (built-up share, density) and lights and GDP per head, which part
+  ways (the lit types with few people are not urban); processing and
+  manufacturing named together as industrial (no manufacturing type
+  separates from the plants)."
+  {:ext-sites "extraction" :ext-field-area "extraction" :ext-mining-area "extraction"
+   :proc-sites "industrial" :proc-power "industrial"
+   :man-co2pc "industrial" :man-nres "industrial"
+   :serv-built "urban" :serv-density "urban"
+   :serv-gdppc "lit-sparse" :serv-lights-pc "lit-sparse"})
+
 (defn name-types
   "A name per type from its centroid in z units (`features` order): the
-  group (extraction, processing, manufacturing, services) with the largest
-  mean z, or sparse when none is above 0; repeated names numbered."
+  measure group with the largest mean z (`name-group`; industrial by the
+  larger of its processing and manufacturing means), or sparse when none
+  is above 0; repeated names numbered. lit-sparse: lights and GDP per head
+  above the mean without the density or built-up of a town."
   [centroids]
-  (let [gs [:extraction :processing :manufacturing :services]
+  (let [gs [["extraction" #{:ext-sites :ext-field-area :ext-mining-area}]
+            ["industrial" #{:proc-sites :proc-power}]
+            ["industrial" #{:man-co2pc :man-nres}]
+            ["urban" #{:serv-built :serv-density}]
+            ["lit-sparse" #{:serv-gdppc :serv-lights-pc}]]
         base (mapv (fn [c]
-                     (let [m (fn [g] (let [js (keep-indexed (fn [j f] (when (= g (feature-group f)) j)) features)]
-                                       (/ (reduce + 0.0 (map #(nth c %) js)) (count js))))
-                           [g z] (apply max-key second (map (juxt identity m) gs))]
-                       (if (pos? z) (name g) "sparse")))
+                     (let [m (fn [fs] (let [js (keep-indexed (fn [j f] (when (fs f) j)) features)]
+                                        (/ (reduce + 0.0 (map #(nth c %) js)) (count js))))
+                           [g z] (apply max-key second (map (fn [[g fs]] [g (m fs)]) gs))]
+                       (if (pos? z) g "sparse")))
                    centroids)]
     (vec (map-indexed (fn [i b] (let [n (count (filter #{b} (take i base)))] (if (pos? n) (str b "-" (inc n)) b))) base))))
+
+(defn- permutations [xs]
+  (if (empty? xs) [[]] (for [x xs p (permutations (remove #{x} xs))] (cons x p))))
+
+(defn match-centroids
+  "The order of `cur` that matches `prev` (both in the same units): the
+  permutation p minimising the summed squared distance from prev[i] to
+  cur[p[i]] (all k! tried: k is small)."
+  [prev cur]
+  (vec (apply min-key (fn [p] (reduce + 0.0 (map-indexed (fn [i j] (d2 (nth prev i) (nth cur j))) p)))
+              (permutations (range (count cur))))))
 
 (defn fit-types
   "Types fitted causally: at each year in `ys`, k-means (k types) on the
   standardised profiles of the part-years up to that year (`profiles`
   {[year part] vector}), a sample of at most :max-n of them, started from
-  the previous year's centroids. {year {:scaler :centroids (raw units)
-  :labels {part type} :n}}, the labels the year's own parts' types."
+  the previous year's centroids. The fit's centroids are then matched to
+  the previous ones (`match-centroids`, in the year's z units) and put in
+  their order, so a type keeps its index (and name) even if k-means swapped
+  two; :moved, the z distance each centroid moved from the previous fit's,
+  and :permuted, whether the match reordered them. {year {:scaler
+  :centroids (raw units) :z-centroids :labels {part type} :n :moved
+  :permuted}}, the labels the year's own parts' types."
   [profiles ys k {:keys [max-n seed] :or {max-n 20000 seed 42}}]
   (loop [[y & more] ys prev nil out {}]
     (if-not y out
@@ -526,18 +605,108 @@
             zs (mapv #(scale s %) sample)
             init (some->> prev (mapv #(scale s %)))
             {:keys [centroids]} (kmeans zs k {:init init :seed seed})
+            order (if init (match-centroids init centroids) (vec (range (count centroids))))
+            centroids (mapv centroids order)
             raw (mapv #(unscale s %) centroids)
             labels (into {} (for [[[yr part] x] profiles :when (= yr y)] [part (nearest centroids (scale s x))]))]
-        (recur more raw (assoc out y {:scaler s :centroids raw :z-centroids centroids :labels labels :n (count pool)}))))))
+        (recur more raw (assoc out y (cond-> {:scaler s :centroids raw :z-centroids centroids :labels labels
+                                              :n (count pool)}
+                                       init (assoc :moved (mapv #(Math/sqrt (d2 %1 %2)) init centroids)
+                                                   :permuted (not= order (vec (range (count order))))))))))))
+
+(defn classify
+  "The type fit `fit` gives the raw profile vector `x`."
+  [fit x]
+  (nearest (:z-centroids fit) (scale (:scaler fit) x)))
 
 (defn transition-counts
   "{[from to] n}: parts typed in both of consecutive years `ys` (types
-  {[year part] type})."
-  [types ys]
-  (frequencies (for [[a b] (partition 2 1 ys)
-                     [[yr part] t] types :when (= yr a)
-                     :let [u (types [b part])] :when u]
-                 [t u])))
+  {[year part] type}), leaving out the steps into [year part] in
+  `excluded` (data entry, the sensor join)."
+  ([types ys] (transition-counts types ys #{}))
+  ([types ys excluded]
+   (frequencies (for [[a b] (partition 2 1 ys)
+                      [[yr part] t] types :when (= yr a)
+                      :let [u (types [b part])] :when (and u (not (excluded [b part])))]
+                  [t u]))))
+
+(defn without-entry
+  "Presence as `present?`, but for a step from year `a`: an asset entering
+  the data after `a` at its source's publication (year_flag snapshot) is
+  left out, and one whose closure was reported after `a` but happened by
+  `a` or at no known year is kept: the data changed, not the place. A dated
+  opening, and a closure dated inside the step, are changes and count."
+  [a]
+  (fn [{:keys [known_from year_flag end_year end_known] :as r} y]
+    (cond
+      (and known_from (> known_from a) (= year_flag "snapshot")) false
+      (present? r y) true
+      :else (boolean (and (present? r a) end_known (> end_known a)
+                          (or (nil? end_year) (<= end_year a)))))))
+
+(defn entry-flags
+  "#{[year part]}: the parts whose type in a year differs from the type
+  the same fit gives their profile without the step's data entry
+  (`cf` {[year part] vector}, profiles built with `without-entry`): the
+  type change, if any, is the data's."
+  [fits cf]
+  (into #{} (keep (fn [[[y part] x]]
+                    (let [fit (fits y) t (get-in fit [:labels part])]
+                      (when (and fit t (not= t (classify fit x))) [y part]))))
+        cf))
+
+;; ------------------------------------------------------- the sensor join
+
+(def last-dmsp
+  "The last year of the harmonised lights from DMSP; VIIRS (simulated DMSP
+  numbers) from the year after."
+  2013)
+
+(defn splice-lights
+  "The lights across the DMSP-VIIRS join (Li et al.'s calibrated break:
+  the world's lights fall 17% from 2013 to 2014, dim pixels zeroed by
+  VIIRS). Each VIIRS year of a part is put on the DMSP scale by the part's
+  ratio of its last DMSP year to its first VIIRS year (so the first VIIRS
+  year equals the last DMSP one: a year's change is lost, the break is
+  not), known with the first VIIRS year, so no earlier year reads it.
+  The ratio is the part's when both years have at least :min-dn
+  (default 100) and it lies within :ratio (default [0.2 5.0]); a part
+  dim under DMSP takes its country's ratio over the parts that have one
+  (else 1); a part lit under DMSP whose own ratio fails is flagged: its
+  lights after the join are not comparable with before. Options
+  :variable (default \"ntl/dn\"). {:grids g' :break #{part} :factors {part
+  f} :country {iso f}}."
+  ([g] (splice-lights g {}))
+  ([g {:keys [min-dn ratio variable] :or {min-dn 100.0 ratio [0.2 5.0] variable "ntl/dn"}}]
+   (let [v0 (get-in g [variable last-dmsp :values])
+         v1 (get-in g [variable (inc last-dmsp) :values])]
+     (if-not (and v0 v1)
+       {:grids g :break #{} :factors {} :country {}}
+       (let [[lo hi] ratio
+             own (into {} (for [[k x0] v0 :let [x1 (get v1 k 0.0)]
+                                :when (and (>= x0 min-dn) (>= x1 min-dn) (<= lo (/ x0 x1) hi))]
+                            [k (/ x0 x1)]))
+             break (into #{} (for [[k x0] v0 :when (and (>= x0 min-dn) (not (own k)))] k))
+             country (into {} (for [[iso ks] (group-by cells/key-iso (keys own))]
+                                [iso (/ (reduce + (map v0 ks)) (reduce + (map v1 ks)))]))
+             f (fn [k] (or (own k) (country (cells/key-iso k)) 1.0))]
+         {:grids (update g variable
+                         (fn [ys] (into {} (for [[y m] ys]
+                                             [y (if (> y last-dmsp)
+                                                  (update m :values #(into {} (for [[k x] %] [k (* x (f k))])))
+                                                  m)]))))
+          :break break :factors own :country country})))))
+
+(defn sensor-flags
+  "#{[year part]}: steps of `ys` whose ends read `variable` from either
+  side of the join (the known year at the start a DMSP year, at the end a
+  VIIRS one) for a part in `break`."
+  [g break ys variable]
+  (into #{} (for [[a b] (partition 2 1 ys)
+                  :let [ya (known-year g variable a) yb (known-year g variable b)]
+                  :when (and ya yb (<= ya last-dmsp) (> yb last-dmsp))
+                  k break]
+              [b k])))
 
 ;; ---------------------------------------------------------- displacement
 

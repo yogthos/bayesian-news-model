@@ -235,3 +235,121 @@
                               {:cell "c1" :iso "POL" :admin1 "POL.01" :share 0.4 :flag "land"}]}}
           p (cp/to-provinces xw {"DEU@c1" 8.0 "POL@c1" 2.0})]
       (is (= {"DEU.01" 6.0 "DEU.02" 2.0 "POL.01" 2.0} (update-vals p #(/ (Math/round (* 1e9 %)) 1e9)))))))
+
+;; --- review fixes ---------------------------------------------------------------------
+
+(deftest medians-over-whole-assets
+  (testing "a polygon's pieces sum to the asset before the median: a field of 3
+            pieces is one 90 km2 field, not three 30 km2 ones"
+    (let [rs (concat (for [i (range 3)] (a {:cell (nth [berlin munich warsaw] i) :asset_type "field" :commodity "oil"
+                                            :capacity 30.0 :unit "km2" :share (/ 1.0 3) :asset_id "f1"}))
+                     [(a {:asset_type "field" :commodity "oil" :capacity 90.0 :unit "km2" :asset_id "f2"})
+                      (a {:asset_type "field" :commodity "oil" :capacity 90.0 :unit "km2" :asset_id "f3"})])]
+      (is (= 90.0 ((cp/medians rs) "field"))))))
+
+(deftest cuts-of-polygons-across-cells
+  (let [rs [(a {:cell berlin :asset_type "field" :commodity "oil" :capacity 60.0 :unit "km2" :share 0.6 :asset_id "f1"})
+            (a {:cell munich :asset_type "field" :commodity "oil" :capacity 40.0 :unit "km2" :share 0.4 :asset_id "f1"})
+            (a {:cell munich :asset_type "field" :commodity "oil" :capacity 100.0 :unit "km2" :asset_id "f2"})]]
+    (testing "a field across two cells is cut by the piece in the cut cell"
+      (is (< (Math/abs (- 0.3 ((cp/cell-cut rs #{berlin} {:year 2000}) ["DE" "C_COIL"]))) 1e-12)))
+    (testing "a piece with no area takes the whole-asset median by its share"
+      (let [rs (conj rs (a {:cell berlin :asset_type "field" :commodity "oil" :capacity nil :share 0.5 :asset_id "f3"}))]
+        ;; medians over assets f1 100 and f2 100: f3's piece weighs 50
+        (is (< (Math/abs (- (/ 110.0 250.0) ((cp/cell-cut rs #{berlin} {:year 2000}) ["DE" "C_COIL"]))) 1e-12))))))
+
+(deftest lng-cuts-against-the-region's-gas
+  (let [rs [(a {:cell warsaw :iso "QAT" :asset_type "lng" :commodity "lng_export" :capacity 1000.0 :unit "mmcf/d"})
+            (a {:cell munich :iso "OMN" :asset_type "lng" :commodity "lng_export" :capacity 500.0 :unit "mmcf/d"})
+            (a {:cell berlin :iso "QAT" :asset_type "field" :commodity "gas" :capacity 10.0 :unit "km2"})
+            (a {:cell munich :iso "IRN" :asset_type "field" :commodity "gas" :capacity 90.0 :unit "km2"})]
+        prod {["WM" "C_GASE"] 2.0e7}]
+    (testing "without the region's output an LNG terminal cuts nothing"
+      (is (nil? ((cp/cell-cut rs #{warsaw} {:year 2000}) ["WM" "C_GASE"]))))
+    (testing "an export terminal cuts the gas it ships, over the region's gas output"
+      (is (< (Math/abs (- (/ (* 1000.0 cp/lng-tonnes-per-mmcfd) 2.0e7)
+                          ((cp/cell-cut rs #{warsaw} {:year 2000 :production prod}) ["WM" "C_GASE"])))
+             1e-12)))
+    (testing "fields and terminals cut together: the larger loss binds"
+      (let [x ((cp/cell-cut rs #{warsaw berlin} {:year 2000 :production prod}) ["WM" "C_GASE"])]
+        (is (< (Math/abs (- (max 0.1 (/ (* 1000.0 cp/lng-tonnes-per-mmcfd) 2.0e7)) x)) 1e-12))))
+    (testing "capped at the whole output"
+      (is (= 1.0 ((cp/cell-cut rs #{warsaw} {:year 2000 :production {["WM" "C_GASE"] 1.0}}) ["WM" "C_GASE"]))))))
+
+(deftest data-entry
+  (let [snap (a {:asset_type "mine" :commodity "gold" :known_from 2021 :year_flag "snapshot" :start_year nil})
+        opened (a {:asset_type "mine" :commodity "gold" :known_from 2022 :year_flag "start" :start_year 2022})
+        old-close (a {:asset_type "mine" :commodity "iron" :known_from 1900 :end_year 1950
+                      :end_flag "last-production" :end_known 2011})
+        status-close (a {:asset_type "mine" :commodity "iron" :known_from 1990 :end_flag "closed-unknown" :end_known 2021})
+        dated-close (a {:asset_type "mine" :commodity "iron" :known_from 1990 :end_year 2012
+                        :end_flag "last-production" :end_known 2013})
+        pres (cp/without-entry 2010)
+        pres20 (cp/without-entry 2020)]
+    (testing "an asset entering the data at its publication is left out of the later year"
+      (is (cp/present? snap 2025))
+      (is (not (pres20 snap 2025))))
+    (testing "a dated opening is a change, kept"
+      (is (pres20 opened 2025)))
+    (testing "a closure reported long after it happened is a data event: kept as present"
+      (is (not (cp/present? old-close 2015)))
+      (is (pres old-close 2015))
+      (is (pres20 status-close 2025)))
+    (testing "a closure dated inside the step is a change"
+      (is (not (pres dated-close 2015))))
+    (testing "an asset known before the step is untouched"
+      (is (= (cp/present? snap 2025) ((cp/without-entry 2021) snap 2025)))))
+  (testing "a type change the entry caused is flagged and left out of the counts"
+    (let [types {[2020 "a"] 0 [2025 "a"] 1 [2020 "b"] 0 [2025 "b"] 1 [2020 "c"] 0 [2025 "c"] 0}
+          entry #{[2025 "a"]}]
+      (is (= {[0 1] 1 [0 0] 1} (cp/transition-counts types [2020 2025] entry)))
+      (is (= {[0 1] 2 [0 0] 1} (cp/transition-counts types [2020 2025]))))))
+
+(deftest entry-flags-from-fits
+  (let [fits {2025 {:scaler {:mu [0.0 0.0] :sd [1.0 1.0]} :z-centroids [[0.0 0.0] [5.0 5.0]]
+                    :labels {"a" 1 "b" 1}}}
+        cf {[2025 "a"] [0.1 0.0] [2025 "b"] [4.9 5.0]}]
+    (is (= #{[2025 "a"]} (cp/entry-flags fits cf)) "a is type 1 only with the new assets")))
+
+(deftest lights-across-the-sensor-join
+  (let [k1 "DEU@x1" k2 "DEU@x2" k3 "DEU@x3" k4 "DEU@x4"
+        g {"ntl/dn" {2012 {:known 2013 :values {k1 400.0 k2 300.0 k3 5.0 k4 100.0}}
+                     2013 {:known 2014 :values {k1 400.0 k2 300.0 k3 5.0 k4 100.0}}
+                     2014 {:known 2015 :values {k1 200.0 k3 2.0 k4 50.0}}
+                     2015 {:known 2016 :values {k1 220.0 k3 2.0 k4 60.0}}}
+           "ghsl/pop" {2015 {:known 2018 :values {k1 1.0}}}}
+        {:keys [grids break]} (cp/splice-lights g {:min-dn 50.0})]
+    (testing "the VIIRS years are put on the DMSP scale part by part, from the overlap known in 2015"
+      (is (= 400.0 (get-in grids ["ntl/dn" 2014 :values k1])))
+      (is (< (Math/abs (- 440.0 (get-in grids ["ntl/dn" 2015 :values k1]))) 1e-9)))
+    (testing "the DMSP years and other grids are untouched"
+      (is (= 300.0 (get-in grids ["ntl/dn" 2013 :values k2])))
+      (is (= (g "ghsl/pop") (grids "ghsl/pop"))))
+    (testing "a part lit under DMSP and dark under VIIRS cannot be spliced: flagged"
+      (is (= #{k2} break)))
+    (testing "a dim part takes its country's factor"
+      ;; DEU: (400 + 100) / (200 + 50) over the parts spliced alone
+      (is (< (Math/abs (- (* 2.0 2.0) (get-in grids ["ntl/dn" 2014 :values k3]))) 1e-9)))
+    (testing "a transition across the join is flagged for a part that cannot be spliced"
+      (is (= #{[2015 k2]} (cp/sensor-flags grids break [2014 2015 2020] "ntl/dn"))))))
+
+(deftest labels-matched-across-fits
+  (testing "the new centroids are matched to the last fit's, whatever order k-means gave"
+    (is (= [2 0 1] (cp/match-centroids [[0.0 0.0] [5.0 5.0] [9.0 0.0]] [[5.1 5.0] [9.0 0.2] [0.1 0.0]]))))
+  (testing "fit-types keeps a type's index from one year to the next"
+    (let [ps (into {} (concat (for [i (range 30)] [[2000 (str "a" i)] [(* 0.01 i) 0.0]])
+                              (for [i (range 30)] [[2000 (str "b" i)] [5.0 (+ 5.0 (* 0.01 i))]])
+                              (for [i (range 30)] [[2005 (str "a" i)] [(* 0.01 i) 0.0]])
+                              (for [i (range 30)] [[2005 (str "b" i)] [5.0 (+ 5.0 (* 0.01 i))]])))
+          fits (cp/fit-types ps [2000 2005] 2 {})]
+      (is (= (get-in fits [2000 :labels "a3"]) (get-in fits [2005 :labels "a3"])))
+      (is (contains? (fits 2005) :moved)))))
+
+(deftest type-names-from-centroids
+  (let [z (fn [m] (mapv #(get m % 0.0) cp/features))]
+    (is (= ["sparse" "lit-sparse" "urban" "industrial" "extraction"]
+           (cp/name-types [(z {:serv-gdppc -0.6 :serv-lights-pc -0.8 :serv-density -0.3})
+                           (z {:serv-gdppc 0.7 :serv-lights-pc 1.0 :serv-density -0.6 :serv-built -0.4})
+                           (z {:serv-density 1.3 :serv-built 1.1 :serv-gdppc 0.1})
+                           (z {:proc-sites 3.0 :proc-power 3.3 :man-nres 4.2 :serv-built 3.5 :serv-density 1.9})
+                           (z {:ext-sites 5.3 :ext-mining-area 2.9})])))))
