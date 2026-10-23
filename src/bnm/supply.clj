@@ -121,6 +121,30 @@
   of Germany's vegetables made them lose 14% under the gas cut)."
   #{"C_FABM" "C_MACH" "C_OFMA" "C_ELMA" "C_RATV" "C_MEIN" "C_MOTO" "C_OTRE"})
 
+(def upkeep
+  "A power station's upkeep: the machinery and equipment (`equipment`),
+  metals (steel, aluminium, copper, lead/zinc/tin, other non-ferrous,
+  precious metals, foundry work, fabricated metal products),
+  construction and the renting of machinery in an electricity or heat
+  carrier's recipe (`power-station?`), all substitutable there (a
+  carrier is critical on its fuel alone, `kind-of`). Repair and
+  replacement wait for the next planned outage, so in `outage-path` they
+  are a stock at the station (`upkeep-months`), drawn at the shortfall
+  before the loss passes on; in `outage`, the steady state, they pass on
+  as before."
+  (into equipment #{"C_STEL" "C_ALUM" "C_COPP" "C_LZTP" "C_ONFM" "C_PREM" "C_METC" "C_FABM" "C_CONS" "C_MARE"}))
+
+(def upkeep-months
+  "How long a power station can defer its `upkeep`, in months of its
+  normal upkeep, a prior: maintenance is done at planned outages, yearly
+  for a thermal plant and at refuelling for a nuclear one (12-24 months,
+  a third to a quarter of the core each time), so a station meets a cut
+  on average half a cycle from its next outage, about 6 months with a
+  yearly one, and the work can wait for it. Deferring past it (a second
+  outage put off) is not counted. A cut of 30% of an upkeep input draws
+  it in 20 months."
+  6.0)
+
 (def petrochemical
   "Outputs whose fuels are all their feedstock (the rule as it is, no
   energy bundle): N fertiliser, ammonia from gas, coal, naphtha or fuel
@@ -199,6 +223,15 @@
   manufactured good's heat per tonne measures its weight, not its need,
   so there the rule's thresholds alone decide."
   0.002)
+
+(declare pool)
+
+(defn power-station?
+  "Is `output` an electricity carrier (C_POW*, by source) or steam and
+  hot water: a power station or a heat plant, whose `upkeep` is deferred
+  in `outage-path`?"
+  [output]
+  (boolean (or (pool output "TJ") (= output "C_HWAT"))))
 
 (defn pool
   "The carrier an input belongs to with its substitutes, or nil:
@@ -624,7 +657,9 @@
   [:energy region product], their CES (elasticity `esigma`, default
   energy-sigma; weights their heat). [:use region product] is the share-weighted mean of its origins' [:make
   ...] (imports not reallocated); [:industry region code] the mean of what
-  it makes, by output share. Substitutable inputs with a share below
+  it makes, by output share. A power station's `upkeep` input enters its
+  bundle through [:upkeep region product input], which passes [:use
+  region input] on (the node `outage-path` holds its deferral at). Substitutable inputs with a share below
   `min-input` (default 1e-3) are left with value added: a CES bundle
   barely feels them, and they are half the rows. So is gas distribution
   (C_GASD) in an electricity or heat carrier's recipe: the monetary
@@ -642,10 +677,15 @@
               (let [[h crit] (critical-inputs h s p ins w esigma)
                     critical? (into #{} (for [[i r] ins :when (= :critical (:kind r))] [:use s i]))
                     carrier? (= ["TJ" "energy"] ((juxt :unit :group) (get-in g [:products p])))
-                    subs (into {} (for [[i r] ins :when (and (= :substitutable (:kind r)) (>= (or (:share r) 0.0) min-input)
-                                                             (not (and carrier? (= i "C_GASD"))))]
-                                    [[:use s i] (w (:share r))]))
-                    va (max 0.01 (- 1.0 (reduce + 0.0 (for [[i r] ins :when (or (critical? [:use s i]) (subs [:use s i]))]
+                    sub-rows (for [[i r] ins :when (and (= :substitutable (:kind r)) (>= (or (:share r) 0.0) min-input)
+                                                        (not (and carrier? (= i "C_GASD"))))]
+                               [i r])
+                    sub-in (set (map first sub-rows))
+                    upkeep? (fn [i] (and carrier? (power-station? p) (upkeep i)))
+                    h (reduce (fn [h [i _]] (if (upkeep? i) (hg/recipe h [:upkeep s p i] {[:use s i] 1.0} :substitutable) h))
+                              h sub-rows)
+                    subs (into {} (for [[i r] sub-rows] [(if (upkeep? i) [:upkeep s p i] [:use s i]) (w (:share r))]))
+                    va (max 0.01 (- 1.0 (reduce + 0.0 (for [[i r] ins :when (or (critical? [:use s i]) (sub-in i))]
                                                          (or (:share r) 0.0)))))
                     bundle (assoc subs [:factors s] va)]
                 (if (seq crit)
@@ -699,9 +739,6 @@
 
 ;; ------------------------------------------------------ stocks and time
 
-(def ^:private prepared @#'hg/prepared)
-(def ^:private rule @#'hg/rule)
-
 (defn- settle
   "hypergraph/propagate's chaotic iteration from `x` ({node value}, at or
   above the greatest fixed point), the queue seeded with `seeds`, every
@@ -709,7 +746,7 @@
   stock): a month's use drawn from the stock covers the shortfall, up to
   what is left. [settled {node value}, updates done]."
   [prep users given stock x seeds tol max-updates]
-  (let [value (fn [x n] (let [r (rule (prep n) #(get x %) (get given n))]
+  (let [value (fn [x n] (let [r (hg/rule (prep n) #(get x %) (get given n))]
                           (if-let [s (stock n)] (min 1.0 (+ r s)) r)))]
     (loop [x (transient x) queue (into clojure.lang.PersistentQueue/EMPTY seeds) queued (set seeds) k 0]
       (if-let [n (peek queue)]
@@ -732,29 +769,46 @@
   shortfall and at most what is left: min(1, inflow + stock); the stock
   falls by what was drawn, and only once it is empty does the cut pass
   downstream whole. The cut holds every month and nothing refills a
-  stock. [{:month t :products {[region product] availability}
+  stock; imports from the origins a cut does not reach keep flowing, so
+  a stock covers the cut origins' share alone. A power station's
+  `upkeep` is a stock too, at [:upkeep region station input]: every
+  station holds :upkeep-months (default `upkeep-months`; 0 for none) of
+  each upkeep input unless `stocks` gives one under [region station
+  input]. [{:month t :products {[region product] availability}
   :industries {[region code] availability} :stocks {[region product]
-  months left} :drawn {[region product] months drawn in t} :updates n}],
+  months left} :drawn {[region product] months drawn in t} :upkeep
+  {[region station input] months left, where any was drawn} :updates
+  n}], stocks and upkeep at the month's end, so (merge (:stocks m)
+  (:upkeep m)) restarts the path after month m;
   products and industries below 1 as in `outage`, whose answer is the
   limit once every stock the cut reaches is empty (and, with no stocks,
   every month's). Stocks on nodes the graph does not use are ignored.
 
   Each month's operator is below the last's (stocks only fall), so a
   month is solved from the last month's answer, at or above its greatest
-  fixed point: only what the stocks running short move is recomputed.
-  Options as for `outage`, and :months."
+  fixed point: only what the stocks running short move is recomputed
+  (the tests check every month against the month solved afresh).
+  A stock is drawn at the shortfall against normal use, even where its
+  users are held back by another input and need less: it drains early,
+  if anything. Options as for `outage`, and :months, :upkeep-months."
   ([g cuts stocks] (outage-path g cuts stocks {}))
-  ([g cuts stocks {:keys [tol months] :or {tol 1e-6 months 24} :as opts}]
+  ([g cuts stocks {:keys [tol months] um :upkeep-months :or {tol 1e-6 months 24 um upkeep-months} :as opts}]
    (let [[h given] (cut-hypergraph g cuts opts)
-         prep (prepared (:recipes h))
+         prep (hg/prepared (:recipes h))
          users (reduce-kv (fn [m out {:keys [ins]}] (reduce #(update %1 %2 (fnil conj []) out) m ins)) {} prep)
          nodes (distinct (concat (keys given) (keys prep) (keys users)))
          max-updates (max 1000000 (* 2000 (count nodes)))
          x0 (into {} (for [n nodes] [n (if (prep n) 1.0 (double (get given n 1.0)))]))
          seeds0 (distinct (concat (filter prep (keys given)) (mapcat users (remove prep (keys given)))))
-         s0 (into {} (for [[[r p] m] stocks :let [n [:use r p]] :when (and (prep n) (pos? m))] [n (double m)]))
-         inflow (fn [x n] (rule (prep n) #(get x %) (get given n)))
-         key-of (fn [[_ r p]] [r p])]
+         full (merge (into {} (for [n (keys prep) :when (= :upkeep (first n))] [n (double um)]))
+                     (into {} (for [[k m] stocks
+                                    :let [n (case (count k) 2 (into [:use] k) 3 (into [:upkeep] k) nil)]
+                                    :when (and n (prep n))]
+                                [n (double m)])))
+         s0 (into {} (filter (comp pos? val) full))
+         inflow (fn [x n] (hg/rule (prep n) #(get x %) (get given n)))
+         key-of (fn [n] (vec (rest n)))
+         use? #(= :use (first %))]
      (loop [t 1 x x0 s s0 seeds seeds0 out []]
        (if (> t months)
          out
@@ -763,8 +817,9 @@
                s' (reduce-kv (fn [s n d] (assoc s n (max 0.0 (- (s n) d)))) s drawn)]
            (recur (inc t) x s' (keys drawn)
                   (conj out {:month t :products (pick x :make) :industries (pick x :industry)
-                             :stocks (into {} (for [[n m] s'] [(key-of n) m]))
-                             :drawn (into {} (for [[n d] drawn] [(key-of n) d]))
+                             :stocks (into {} (for [[n m] s' :when (use? n)] [(key-of n) m]))
+                             :drawn (into {} (for [[n d] drawn :when (use? n)] [(key-of n) d]))
+                             :upkeep (into {} (for [[n m] s' :when (and (not (use? n)) (< m (full n)))] [(key-of n) m]))
                              :updates k}))))))))
 
 ;; ---------------------------------------------------------------- loading

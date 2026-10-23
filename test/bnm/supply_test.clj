@@ -529,6 +529,93 @@
   (testing "stocks on nodes the graph does not use are ignored, not an error"
     (is (= 2 (count (sup/outage-path toy {["AA" "CRUD"] 0.5} {["ZZ" "NONE"] 5.0} {:months 2}))))))
 
+(deftest only-the-cut-origins-share-is-drawn
+  ;; nothing refills a stock, but imports from the origins the cut does not
+  ;; reach keep flowing: the stock covers the cut origin's share alone
+  (doseq [[x share] [[0.5 0.4] [1.0 0.8]]]
+    (let [p (sup/outage-path toy {["AA" "CRUD"] x} {["BB" "CRUD"] 4.0} {:months 2})]
+      (is (close? share (get-in (month-of p 1) [:drawn ["BB" "CRUD"]]) 1e-6)
+          (str "AA cut by " x ": its 0.8 of BB's crude times the cut, BB's own 0.2 still flows"))
+      (is (close? (- 4.0 (* 2 share)) (get-in (month-of p 2) [:stocks ["BB" "CRUD"]]) 1e-6))))
+  (testing "a cut at use takes every origin, so the stock covers the cut"
+    (let [p (sup/outage-path toy {["BB" "CRUD"] 0.5} {["BB" "CRUD"] 4.0} {:at :use :months 1})]
+      (is (close? 0.5 (get-in (month-of p 1) [:drawn ["BB" "CRUD"]]) 1e-6)))))
+
+(deftest a-month-solved-from-the-last-is-a-month-solved-afresh
+  ;; each month starts from the last month's answer, valid only because
+  ;; stocks only fall (each month's operator below the last's): the
+  ;; availabilities and stocks never rise, and every month equals the
+  ;; month solved from the top with the stocks it started with
+  (doseq [[cut stocks opts] [[{["AA" "CRUD"] 0.5} {["BB" "CRUD"] 0.6 ["BB" "NAP"] 0.4} {}]
+                             [{["AA" "CRUD"] 0.9} {["BB" "CRUD"] 1.3 ["BB" "GSL"] 0.7 ["BB" "NAP"] 2.0} {}]
+                             [{["CC" "GAS"] 0.4} {["CC" "GAS"] 1.1 ["CC" "C_NFER"] 0.5} {:at :use}]]]
+    (let [p (sup/outage-path toy cut stocks (assoc opts :months 8))
+          ks (distinct (mapcat (comp keys :products) p))]
+      (doseq [[a b] (partition 2 1 p)]
+        (doseq [k ks]
+          (is (<= (avail b k) (+ (avail a k) 1e-9)) (str "month " (:month b) " " k " never rises")))
+        (doseq [[k m] (:stocks b)]
+          (is (<= m (+ (get-in a [:stocks k]) 1e-12)) (str "month " (:month b) " stock " k " never rises")))
+        (let [fresh (first (sup/outage-path toy cut (:stocks a) (assoc opts :months 1)))]
+          (doseq [k (distinct (concat ks (keys (:products fresh))))]
+            (is (close? (avail fresh k) (avail b k) 1e-5) (str "month " (:month b) " " k " as solved afresh")))
+          (is (= (keys (:drawn fresh)) (keys (:drawn b))))
+          (doseq [[k d] (:drawn b)] (is (close? d (get-in fresh [:drawn k]) 1e-5))))))))
+
+;; A power station: nuclear fuel its fuel (critical), construction and
+;; non-ferrous metals its upkeep; a machine maker uses construction too
+(def plant
+  (sup/graph {:products [{:code "C_NUCF" :unit "TJ" :group "energy"}
+                         {:code "C_POWN" :unit "TJ" :group "energy"}
+                         {:code "C_CONS" :unit "Meuro" :group "service"}
+                         {:code "C_ONFM" :unit "tonnes" :group "material"}
+                         {:code "C_MACH" :unit "tonnes" :group "manufactured"}]
+              :recipes [{:region "R" :output "C_POWN" :input "C_NUCF" :phys 3.0 :share 0.01}
+                        {:region "R" :output "C_POWN" :input "C_CONS" :phys 1e-4 :share 0.06}
+                        {:region "R" :output "C_POWN" :input "C_ONFM" :phys 1e-5 :share 0.03}
+                        {:region "R" :output "C_MACH" :input "C_CONS" :phys 1e-4 :share 0.06}]}))
+
+(deftest a-power-stations-upkeep-is-deferred
+  ;; machinery, metals and construction in a power station's recipe are
+  ;; its upkeep, which can wait months for the next planned outage: a
+  ;; stock of sup/upkeep-months at the station, drawn at the shortfall
+  ;; like any other, and the steady state once it is gone
+  (let [cut {["R" "C_CONS"] 0.3}
+        steady (:products (sup/outage plant cut))
+        p (sup/outage-path plant cut {} {:months 18 :upkeep-months 5.0})
+        pown #(avail (month-of p %) ["R" "C_POWN"])]
+    (is (pos? sup/upkeep-months))
+    (is (every? sup/upkeep #{"C_MACH" "C_STEL" "C_ONFM" "C_CONS"}))
+    (is (< (get steady ["R" "C_POWN"]) 0.999) "the steady state: the upkeep lost passes on (CES)")
+    (doseq [t (range 1 17)]
+      (is (close? 1.0 (pown t) 1e-6) (str "month " t ": 5 months of upkeep at 0.3 a month last 16.7")))
+    (is (close? (get steady ["R" "C_POWN"]) (pown 18) 1e-6) "then the steady loss")
+    (is (close? (- 5.0 0.3) (get-in (month-of p 1) [:upkeep ["R" "C_POWN" "C_CONS"]]) 1e-6)
+        "the upkeep stock left, by station and input")
+    (is (nil? (get-in (month-of p 1) [:stocks ["R" "C_CONS"]])) "no stock of construction where it is used")
+    (is (close? (get steady ["R" "C_MACH"]) (avail (month-of p 1) ["R" "C_MACH"]) 1e-6)
+        "a machine maker's construction is no upkeep of a power station: lost at once")
+    (testing "the default"
+      (let [p (sup/outage-path plant cut {} {:months 12})]
+        (is (every? #(close? 1.0 (avail % ["R" "C_POWN"]) 1e-6) p)
+            "a few months of upkeep hold a station through a year of a 30% cut")))
+    (testing "no deferral: the steady state at once"
+      (doseq [m (sup/outage-path plant cut {} {:months 2 :upkeep-months 0})]
+        (is (close? (get steady ["R" "C_POWN"]) (avail m ["R" "C_POWN"]) 1e-6))))
+    (testing "an upkeep stock given as [region output input] overrides the default, and round-trips"
+      (let [q (sup/outage-path plant cut {["R" "C_POWN" "C_CONS"] 0.15} {:months 2 :upkeep-months 5.0})]
+        (is (close? (get-in (sup/outage plant {["R" "C_CONS"] 0.15}) [:products ["R" "C_POWN"]])
+                    (avail (month-of q 1) ["R" "C_POWN"]) 1e-6)
+            "half the shortfall covered in month 1"))
+      (let [m10 (month-of p 10)
+            fresh (first (sup/outage-path plant cut (merge (:stocks m10) (:upkeep m10)) {:months 1 :upkeep-months 5.0}))]
+        (is (close? (get-in (month-of p 11) [:upkeep ["R" "C_POWN" "C_CONS"]])
+                    (get-in fresh [:upkeep ["R" "C_POWN" "C_CONS"]]) 1e-6))))
+    (testing "the steady state is the recipe's: the upkeep node passes its input on"
+      (let [ws [(/ 0.06 0.99) (/ 0.03 0.99) (/ 0.9 0.99)]
+            ces (Math/pow (reduce + (map #(* %2 (Math/pow %1 -4.0)) [0.7 1.0 1.0] ws)) -0.25)]
+        (is (close? ces (get steady ["R" "C_POWN"]) 1e-6))))))
+
 (deftest stocks-load-from-csv
   (let [f (java.io.File/createTempFile "stocks" ".csv")]
     (spit f (str "region,product,months,year,known,basis,source\n"
