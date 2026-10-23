@@ -302,6 +302,67 @@
   (let [rows [{:known 2010 :v 1} {:known 2011 :v 2} {:known 2012 :v 3}]]
     (is (= [1 2] (map :v (es/known-by rows 2011))))))
 
+;; ---------------------------------------------------------------- supplier shares from production stages
+
+(def stage-rows
+  ;; separation: data 2020 known 2022 (China 0.9), a revised edition of
+  ;; 2020 and the 2021 data known 2023; the mine stage known 2010 only
+  [{:commodity "re" :stage "separation" :iso "CHN" :year 2020 :known 2022 :quantity 90.0 :source "A"}
+   {:commodity "re" :stage "separation" :iso "JPN" :year 2020 :known 2022 :quantity 10.0 :source "A"}
+   {:commodity "re" :stage "separation" :iso "CHN" :year 2021 :known 2023 :quantity 60.0 :source "B"}
+   {:commodity "re" :stage "separation" :iso "MYS" :year 2021 :known 2023 :quantity 40.0 :source "B"}
+   {:commodity "re" :stage "mine" :iso "CHN" :year 2008 :known 2010 :quantity 1.0 :source "C"}])
+
+(deftest stage-shares-are-read-as-known
+  (testing "the latest data year known by K, as shares of the stage's output"
+    (is (= {["re" "separation"] {"CHN" 0.9 "JPN" 0.1}} (dissoc (es/stage-shares stage-rows 2022) ["re" "mine"])))
+    (is (= {"CHN" 0.6 "MYS" 0.4} (get (es/stage-shares stage-rows 2023) ["re" "separation"]))))
+  (testing "nothing known after K is read"
+    (is (nil? (get (es/stage-shares stage-rows 2021) ["re" "separation"]))))
+  (testing "data known more than three years before K are stale"
+    (is (= {"CHN" 1.0} (get (es/stage-shares stage-rows 2013) ["re" "mine"])))
+    (is (nil? (get (es/stage-shares stage-rows 2014) ["re" "mine"]))))
+  (testing "the stages keep their units apart: shares sum to 1 within each"
+    (doseq [[_ sh] (es/stage-shares stage-rows 2023)]
+      (is (close? 1.0 (reduce + (vals sh)) 1e-12)))))
+
+(deftest stage-shares-replace-export-shares
+  (let [tr {:world 100.0 :exporters {"JPN" 60.0 "FRA" 40.0} :importers {"RA" 70.0 "RB" 30.0}
+            :flows {"RA" {"JPN" 40.0 "FRA" 30.0} "RB" {"JPN" 30.0}}}
+        stage {"CHN" 0.9 "JPN" 0.1}]
+    (testing "where a stage exists: its producers are the suppliers, with their production shares"
+      (let [b (es/supplier-basis tr stage)]
+        (is (= :stage (:basis b)))
+        (is (nil? (:flows b)))
+        (is (close? 0.9 (/ (get-in b [:exporters "CHN"]) (:world b)) 1e-12))
+        (is (= (:importers tr) (:importers b)))
+        (testing "and each importer's imports are split by them"
+          (is (close? (* 70.0 0.9) (get-in (es/slices b) ["RA" "CHN"]) 1e-12)))))
+    (testing "no stage: bilateral flows where there are, else world export shares"
+      (is (= :bilateral (:basis (es/supplier-basis tr nil))))
+      (is (= (:flows tr) (:flows (es/supplier-basis tr nil))))
+      (is (= :world (:basis (es/supplier-basis (dissoc tr :flows) nil))))
+      (is (= :world (:basis (es/supplier-basis (dissoc tr :flows) {}))))))
+  (testing "a concentrated stage is not reallocated away the way scattered exporters are"
+    ;; exporters 0.3 each: replaced at e 0.3 (threshold 0.375); a 0.9 producer is not
+    (let [m {:world 100.0 :exporters {"JPN" 30.0 "FRA" 30.0 "USA" 30.0 "CHN" 10.0} :importers {"RA" 100.0}
+             :region-of {} :p {"JPN" 0.1 "FRA" 0.1 "USA" 0.1 "CHN" 0.1} :use {"RA" 1000.0}
+             :lambda (fn [_ _] 1.0) :x 0.5 :e 0.3}]
+      (is (zero? (:world (es/product-risk m))))
+      (is (pos? (:world (es/product-risk (merge m (es/supplier-basis m {"CHN" 0.9 "JPN" 0.1})))))))))
+
+(deftest hs-codes-map-to-their-stage
+  (testing "ores to the mine, refined metal to the refinery or smelter, compounds to the chemical or separation stage"
+    (is (= ["iron" "mine"] (run/supply-stage "260111")))
+    (is (= ["copper" "refinery"] (run/supply-stage "740311")))
+    (is (= ["aluminium" "smelter"] (run/supply-stage "760110")))
+    (is (= ["lithium" "chemical"] (run/supply-stage "282520")))
+    (is (= ["rare-earths" "separation"] (run/supply-stage "284610"))))
+  (testing "pooled codes and codes without a stage keep export shares"
+    (is (nil? (run/supply-stage "253090")))
+    (is (nil? (run/supply-stage "811291")))
+    (is (nil? (run/supply-stage "120100")))))
+
 ;; ---------------------------------------------------------------- rare-earth sub-nodes
 
 (def subnode-rows

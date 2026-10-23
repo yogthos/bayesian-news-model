@@ -32,6 +32,7 @@
             [bnm.essentiality :as es]
             [bnm.essentials :as ess]
             [bnm.essentials-check :as ec]
+            [bnm.stages :as stages]
             [bnm.supply :as sup]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -348,6 +349,42 @@
                      (if (and (not= i o) (>= (if (>= (count v) 25) med 0.0) floor)) (update m i (fnil conj #{}) o) m)))
                  {} shares))))
 
+(def stage-codes
+  "[commodity stage] -> the HS92 codes whose suppliers are that production
+  stage's countries (data/derived/supply/stages.csv, bnm.stages): ores
+  and concentrates the mine; unwrought or refined metal the smelter or
+  refinery the stage table has for it (alumina the alumina refinery,
+  crude-steel semis the steel stage); compounds the chemical or
+  separation stage (lithium salts, rare-earth compounds; rare-earth metals
+  too, there being no metal stage), else the most downstream stage
+  (cobalt oxides, nickel sulphate: the refinery). Pooled codes (253090
+  other minerals, 811291 other unwrought metals, 261590 other ores) and
+  metals without their stage (antimony, tungsten and platinum metal, nickel
+  mattes) keep export shares. Bead bnm-1pq.32, a change after the
+  registered result."
+  {["aluminium" "mine"] ["260600"] ["aluminium" "refinery"] ["281820"]
+   ["aluminium" "smelter"] ["760110" "760120"]
+   ["antimony" "mine"] ["261710"] ["chromium" "mine"] ["261000"]
+   ["cobalt" "mine"] ["260500"] ["cobalt" "refinery"] ["810510" "282200"]
+   ["copper" "mine"] ["260300"] ["copper" "smelter"] ["740200"]
+   ["copper" "refinery"] ["740311" "740312" "740319"]
+   ["germanium" "refinery"] ["811230"] ["graphite" "mine"] ["250410" "250490"]
+   ["iron" "mine"] ["260111" "260112"] ["iron" "smelter"] ["720110" "720120" "720150"]
+   ["iron" "refinery"] ["720610" "720690" "720711" "720712" "720719" "720720"]
+   ["lead" "mine"] ["260700"] ["lead" "refinery"] ["780110" "780191" "780199"]
+   ["lithium" "chemical"] ["282520" "283691"]
+   ["magnesium" "mine"] ["251910"] ["magnesium" "smelter"] ["810411" "810419"]
+   ["manganese" "mine"] ["260200"] ["molybdenum" "mine"] ["261310" "261390"]
+   ["nickel" "mine"] ["260400"] ["nickel" "refinery"] ["750210" "750220" "283324"]
+   ["rare-earths" "separation"] ["284610" "284690" "280530"]
+   ["tin" "mine"] ["260900"] ["tin" "smelter"] ["800110" "800120"]
+   ["tungsten" "mine"] ["261100"]
+   ["zinc" "mine"] ["260800"] ["zinc" "smelter"] ["790111" "790112" "790120"]})
+
+(def supply-stage
+  "HS92 code -> [commodity stage] (`stage-codes`), nil for the rest."
+  (into {} (for [[cs codes] stage-codes c codes] [c cs])))
+
 ;; ---------------------------------------------------------------- risk per year
 
 (defn- spearman [xs ys]
@@ -362,11 +399,13 @@
 
 (defn risk-year
   "Every ranked product's risk at known year K: [{:hs6 :parent :risk
-  :risk-3m :risk-12m :regions :p :top-supplier :strait-share :bilateral
-  ...}], :bilateral false where the supplier slices fell back to world
-  export shares. Variants (one horizon): :cut-0.1 :no-restriction
-  :no-strait :trade-use :world-shares (every code on the fallback)."
-  [{:keys [k ranks trade parents losses shares model-use exposure rates restr events region-of keyfn]} & [variant]]
+  :risk-3m :risk-12m :regions :p :top-supplier :strait-share :basis
+  ...}], :basis the suppliers' (es/supplier-basis): :stage (production
+  stage shares known by K, `supply-stage`), :bilateral or :world (the
+  export-share fallback). Variants (one horizon): :cut-0.1
+  :no-restriction :no-strait :trade-use :world-shares (export shares
+  for every code) :export-shares (no stage shares)."
+  [{:keys [k ranks trade parents losses shares model-use exposure rates restr events region-of keyfn stage-shares]} & [variant]]
   (let [ev (events k)
         rr (restr k)
         q (into {} (for [[s r] (rates k)] [s (:mean r)]))
@@ -377,12 +416,15 @@
                                          (reduce-kv (fn [m r v] (update-in m [p r] (fnil + 0.0) v)) m importers)
                                          m))
                                      {} trade)
-        horizons (if variant [:steady] [:steady :m3 :m12])]
+        horizons (if variant [:steady] [:steady :m3 :m12])
+        sts (when (and stage-shares (not (#{:world-shares :export-shares} variant))) (stage-shares k))]
     (vec
      (for [{:keys [hs6] :as e} ranks
-           :let [p (parents hs6) tr (trade hs6) tbls (get losses p)]
-           :when (and p tr tbls (pos? (:world tr)))]
-       (let [use (into {} (for [[r v] (imports-by-parent p)]
+           :let [p (parents hs6) tr0 (trade hs6) tbls (get losses p)]
+           :when (and p tr0 tbls (pos? (:world tr0)))]
+       (let [tr (es/supplier-basis (if (= variant :world-shares) (dissoc tr0 :flows) tr0)
+                                   (some-> (supply-stage hs6) sts))
+             use (into {} (for [[r v] (imports-by-parent p)]
                             [r (/ v (max 0.01 (get shares [r p] 1.0)))]))
              pc (into {} (for [c (keys (:exporters tr))]
                            [c (es/union [(get ev c (:default ev)) (* w (es/restriction-p rr c hs6))])]))
@@ -393,7 +435,7 @@
                                       lam (fn [_ f] (/ (es/interp-loss tbl f) (* (max f 1e-12) (:use tbl))))]]
                             [hz (es/product-risk {:world (:world tr) :exporters (:exporters tr) :importers (:importers tr)
                                                   :region-of region-of :p pc :use use :lambda lam :x x
-                                                  :flows (when-not (= variant :world-shares) (:flows tr))
+                                                  :flows (:flows tr)
                                                   :e (es/spare hz) :straits st :q q :d strait-loss
                                                   :strait-world (get ex "WLD")
                                                   :model-use (when (and model-use (not= variant :trade-use)) (get model-use p {}))})]))
@@ -402,7 +444,7 @@
              wx (reduce + 0.0 (vals (:exporters tr)))]
          (assoc e :parent p :risk (:world s) :risk-3m (:world (res :m3)) :risk-12m (:world (res :m12))
                 :regions (:regions s) :regions-3m (:regions (res :m3)) :regions-12m (:regions (res :m12))
-                :value (:world tr) :bilateral (boolean (:flows tr))
+                :value (:world tr0) :basis (:basis tr)
                 :p (if (pos? wx) (/ (reduce + 0.0 (for [[c v] (:exporters tr)] (* v (pc c)))) wx) 0.0)
                 :top-supplier (key top) :top-share (if (pos? (:world s)) (/ (:risk (val top)) (:world s)) 0.0)
                 :strait-share (if (pos? (:world s)) (/ (reduce + 0.0 (vals (:straits s))) (:world s)) 0.0)))))))
@@ -414,10 +456,10 @@
 
 (defn- print-top [k rows n names]
   (println (format "K = %d (data %d): %d products ranked; top %d by world R (steady, USD bn of value added a year)" k (- k 2) (count rows) n))
-  (println "   rank hs6    slice  R      R-3m   R-12m  trade  P     top supplier (its share of R) strait  rise-pct parent  name")
+  (println "   rank hs6    basis  R      R-3m   R-12m  trade  P     top supplier (its share of R) strait  rise-pct parent  name")
   (doseq [r (take n rows)]
     (println (format "   %4d %s %s %6.2f %6.2f %6.2f %6.1f %.3f %s (%.2f)          %.2f   %s %-7s %s"
-                     (:rank r) (:hs6 r) (if (:bilateral r) "bilat" "WORLD") (bn (:risk r)) (bn (:risk-3m r)) (bn (:risk-12m r)) (bn (:value r)) (:p r)
+                     (:rank r) (:hs6 r) ({:stage "stage" :bilateral "bilat"} (:basis r) "WORLD") (bn (:risk r)) (bn (:risk-3m r)) (bn (:risk-12m r)) (bn (:value r)) (:p r)
                      (:top-supplier r) (:top-share r) (:strait-share r) (f (:pct-rise r) 3) (:parent r) (get names (:hs6 r) "")))))
 
 (def targets
@@ -522,7 +564,9 @@
              :rates (memoize (fn [k] (es/strait-rates closures k {})))
              :restr (memoize (fn [k] (es/restriction-rates restr-rows k {:codes n-codes})))
              :events (memoize (fn [k] (es/event-hazard fc k)))
-             :region-of (memoize cprof/exio-region)}
+             :region-of (memoize cprof/exio-region)
+             :stage-shares (let [rows (vec (stages/read-rows (str dir "/stages.csv")))]
+                             (memoize (fn [k] (es/stage-shares rows k))))}
         names (merge subnodes cp/energy-products)
         rows-by-k (into {} (for [k years]
                              (let [trade (year-trade k)
@@ -537,22 +581,20 @@
     (println "event hazard at K 2022:" (str/join " " (for [c ["CHN" "COD" "CHL" "AUS" "RUS" "ZAF" "IDN" "USA" :default]] (str (name c) " " (f (get ((:events ctx) 2022) c) 3)))))
     (println "missing loss tables for parents:" (str/join " " (sort (remove losses (distinct (vals parents))))))
     (println)
-    (println "Supplier slices: bilateral (BACI flows) or the world-share fallback (WORLD), by K")
+    (println "Supplier basis by K: production stage shares (stage), bilateral BACI flows (bilat), world export shares (WORLD)")
     (doseq [k years :let [rs (rows-by-k k)
-                          share (fn [xs] (let [t (reduce + 0.0 (map :risk xs))]
-                                           (if (pos? t) (/ (reduce + 0.0 (map :risk (filter :bilateral xs))) t) 0.0)))]]
-      (println (format "   %d: bilateral %d of %d codes; top 20 %d (%.2f of their R), top 50 %d (%.2f), top 100 %d (%.2f); fallback in the top 20: %s"
-                       k (count (filter :bilateral rs)) (count rs)
-                       (count (filter :bilateral (take 20 rs))) (share (take 20 rs))
-                       (count (filter :bilateral (take 50 rs))) (share (take 50 rs))
-                       (count (filter :bilateral (take 100 rs))) (share (take 100 rs))
-                       (str/join " " (map :hs6 (remove :bilateral (take 20 rs)))))))
+                          n (fn [b xs] (count (filter #(= b (:basis %)) xs)))]]
+      (println (format "   %d: stage %d, bilateral %d, world %d of %d codes; top 20 %d/%d/%d, top 100 %d/%d/%d; stage codes in the top 100: %s"
+                       k (n :stage rs) (n :bilateral rs) (n :world rs) (count rs)
+                       (n :stage (take 20 rs)) (n :bilateral (take 20 rs)) (n :world (take 20 rs))
+                       (n :stage (take 100 rs)) (n :bilateral (take 100 rs)) (n :world (take 100 rs))
+                       (str/join " " (for [r (take 100 rs) :when (= :stage (:basis r))] (str (:hs6 r) "@" (:rank r)))))))
     (println)
     (doseq [k [2016 2020 2023 2026]] (print-top k (rows-by-k k) 20 names) (println))
     (println "Lignite (270210) by K: rank, R (USD bn), top supplier (its share of R), slice, largest regional R")
     (doseq [k years :let [r (first (filter #(= "270210" (:hs6 %)) (rows-by-k k)))] :when r]
       (println (format "   %d: rank %d, R %.2f, %s (%.2f), %s; %s" k (:rank r) (bn (:risk r)) (:top-supplier r) (:top-share r)
-                       (if (:bilateral r) "bilateral" "WORLD")
+                       (name (:basis r))
                        (str/join " " (for [[g v] (take 4 (sort-by (comp - val) (:regions r)))] (format "%s %.2f" g (bn v)))))))
     (println)
     {:rows-by-k rows-by-k :ctx ctx :world world :restr-rows restr-rows :names names :ranks ranks :subnodes subnodes
@@ -689,7 +731,7 @@
                                        (str k ":" a "/" b))))))
     (println)
     (println "Sensitivity at K 2022 and 2023 (Spearman with the registered R; precision as above, EU at 2023)")
-    (doseq [k [2022 2023] variant [:cut-0.1 :no-restriction :no-strait :trade-use :world-shares]]
+    (doseq [k [2022 2023] variant [:cut-0.1 :no-restriction :no-strait :trade-use :world-shares :export-shares]]
       (let [trade (year-trade k)
             alt (es/rank-risk (risk-year (assoc ctx :k k :trade trade
                                                 :ranks (map #(assoc % :pct-rise (:pct %) :rank-rise (:rank %)) (ranks k)))

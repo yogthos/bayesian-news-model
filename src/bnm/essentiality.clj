@@ -79,6 +79,7 @@
   node downstream), concentrated (exporter or stage HHI at least 0.25, or
   up 0.05 in five years), and R up against its own past (`risk-up?`)."
   (:require [bnm.csv :as csv]
+            [bnm.stages :as stages]
             [bnm.supply :as sup]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -282,6 +283,38 @@
     (let [world (double world)]
       (into {} (for [[r m] importers]
                  [r (into {} (for [[c v] exporters] [c (* (double m) (/ (double v) world))]))])))))
+
+(defn stage-shares
+  "{[commodity stage] {iso share}}: each production stage's country shares
+  of output as known by year `k` (bnm.stages/as-of: the latest data year
+  with rows known by k, its latest edition), from bnm.stages/read-rows rows.
+  A stage whose data were known more than `stale` years before k
+  (bnm.stages/default-stale) is left out."
+  ([rows k] (stage-shares rows k stages/default-stale))
+  ([rows k stale]
+   (into {} (for [[cs rs] (group-by (juxt :commodity :stage) rows)
+                  :let [snap (stages/as-of (group-by :year rs) k)
+                        sh (when (and snap (<= (- (long k) (long (:known snap))) (long stale)))
+                             (stages/shares (:q snap)))]
+                  :when (seq sh)]
+              [cs sh]))))
+
+(defn supplier-basis
+  "The supplier side of one product's trade row ({:world :exporters
+  :importers :flows}) for `product-risk`, :basis saying which:
+    :stage      a production stage's country shares `stage` ({iso share},
+                `stage-shares`) are the suppliers and their shares, and
+                each importer's imports are split by them (a processor's
+                feed comes from where the stage is, not where the last
+                shipper is: Japan's cerium compounds from Chinese
+                separation)
+    :bilateral  no stage, BACI's bilateral flows (`slices`)
+    :world      neither, world export shares
+  The importers stay the trade data's."
+  [tr stage]
+  (if (seq stage)
+    (assoc tr :world 1.0 :exporters stage :flows nil :basis :stage)
+    (assoc tr :basis (if (:flows tr) :bilateral :world))))
 
 (defn product-risk
   "Expected loss from one product's disruptions, at one horizon:
