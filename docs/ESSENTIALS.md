@@ -1383,6 +1383,34 @@ before any test year is scored (PRINCIPLES 9).
          stone and chemicals). The overrides leave the registered six
          as they were. Outside them, gas is strictly first in LT,
          WA and WL and ties with stone in TR.
+   - Rare-earth sub-nodes (after 5e28e29). The runner had read
+     production.csv and trade.csv itself, so it weighed losses by the
+     parents' full values and never saw the split chain. It now takes
+     both from bnm.supply/load-rows (c3dc6db) and computes loss tables
+     for C_REOX, C_REMT and C_NDFB (124 products, 40 minutes). Their
+     HS92 codes in subnodes.csv now go to the sub-node instead of C_CHEM
+     or C_FABM. Steady multipliers at cuts 0.1 and 0.5: oxides 3.2 and
+     12.8, metals 8.6 and 33.6, NdFeB 5.4 and 22.2 (C_CHEM 4.7 and 7.4).
+     The rest of the ranking is unchanged (the same top 20 at K = 2023
+     and 2026).
+     - Targets, registered -> previous record -> sub-nodes:
+       - lithium: met -> met -> met (hydroxide 114 and 101 at 2021-22).
+       - cobalt: met -> met -> met (oxides 12 at 2020, ore 495 at 2022).
+       - rare earths: not met -> not met -> not met. Cerium compounds
+         rise from 992-1,107 to 828-899 (21-23%), rare-earth metals stay
+         about 1,790, and other compounds are still unranked by the rise
+         score.
+       - precision: unchanged (EU 2 against 4, p 0.03; USGS 2 against
+         3, p 0.04).
+       - back-test: 0.544 against 0.428 (p 0.09); spikes p 0.98.
+       - gas for European fertiliser: unchanged, 3 of 6.
+     - Why rare earths still miss: R's supplier term reads export shares.
+       China ships 0.17-0.22 of these codes, so every supplier is under
+       the reallocation threshold and replaced. The sub-node's production
+       shares (China 0.93 of separation) feed the loss model's outage,
+       not P x the supplier's slice. Magnets (850511, not a registered
+       code) rank 76-80 at K = 2020-22, against 55-64 before: C_NDFB's
+       multiplier is close to C_FABM's, and its use is smaller.
 9. **Chokepoints.** Route BACI bilateral seaborne flows on a sea network
    and compute each chokepoint's share by product and year.
    - Tests: Hormuz carries about 20% of world crude and LNG in 2019-23.
