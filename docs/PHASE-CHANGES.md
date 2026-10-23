@@ -1511,6 +1511,33 @@ passing calibration as a stabiliser; neither claims a higher mean. For
 the record: ratio(D) < 1 per scenario, the event-stream scenario, the
 cell minimax and decile, the worst kind, the era spread, Brier.
 
+**Results, 23 October 2026 (trial T9).** Fitted on 1960-2002, scored on
+origins 2002-2020, log score, 90% intervals (the one-sided 5% bound):
+1. **Dropout, slow gauges**: ratio(D) 0.715 against the placebo's 0.910,
+   D - P' -0.196 [-0.545, -0.094]: passes (bootstrap z about 3.2, inside
+   Holm's 0.01).
+2. **Dropout, a fifth of countries dark**: 0.721 against 0.894, D - P'
+   -0.173 [-0.351, -0.098]: passes (z about 3.8).
+3. **Dropout, lags doubled**: -0.315 [-1.18, +1.10]: fails (the base
+   barely loses when lags double in these years).
+4. **Calibration drift**: D - P' +0.004 [-0.073, +0.058]: fails; the
+   design years' steadying does not recur.
+5. **Worst era**: D - P' -0.00007 [-0.0025, +0.0006]: fails.
+Harm check: the states' worst era against the base, -0.00053 [-0.0047,
+-0.0002], has its lower end below -0.002 log. **By the registered rule
+the dimensions are not kept**: two dropout tests pass after Holm, but
+the harm bound is crossed.
+
+What it shows. When the base's slow gauges go dark or a fifth of the
+countries lose their data, the stock-flow states hold back about a
+quarter of the loss, about a fifth better than placebo states with the
+same coverage, out of sample as on the design years: the robustness the
+extra dimensions were thought to give is real for failing inputs. It is
+bought with a small cost in the worst era that the test years cannot
+rule out (the interval is wide; the placebo's cost is similar). They
+stay out of the base; held ready as a fallback when inputs fail, which
+is a use the event model can switch on when a source goes dark.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
