@@ -1,6 +1,6 @@
 """Gridded economic data on A5 cells (docs/ECONOMIC-CHARACTER.md 8c step 1;
-bead bnm-3ka.6): zonal sums per resolution-6 cell, split over the cell's
-countries by the crosswalk's area shares. Writes
+bead bnm-3ka.6): zonal sums per resolution-6 cell and country part, each
+block given to the part it lies in. Writes
 data/derived/cells/cell-grids.csv
 
     cell,iso,year,variable,value,known
@@ -21,15 +21,26 @@ they are), each block counted whole in the cell holding its centre
 (pya5's lonlat_to_cell; GHSL's centres from the inverse Mollweide
 projection on the sphere of ESRI:54009's semi-major axis). A block
 straddling a cell edge goes to one side: at 5 arcmin (9 km) against cells
-of about 91 km, a small error that conserves the total. A cell's sum is
-then split over its country parts by their area shares (the crosswalk's
-cell,iso,share), renormalised to sum to 1: for land variables (GDP,
-lights, built-up, population) the land and disputed parts only, falling
-back to all parts in a cell with none; for EDGAR every part (offshore
-platforms and terminals lie in EEZs). Values in blocks on cells the
-crosswalk has no row for (the high seas) are dropped and show in the
-coverage. The split is by area, not by where in the cell the pixels lie:
-a border cell's GDP is shared by area (bnm.cells/aggregate does the same).
+of about 91 km, a small error that conserves the total. In a cell the
+crosswalk splits (a border or a coast), a block goes to the country part
+its centre lies in, read from the fine crosswalk as bnm.cells/locate reads
+it (FineParts: the part of the block's sample, about 6 km at resolution
+10), so a border cell's GDP follows its pixels: Kummu calibrates GDP to
+each country's (and province's) total, and an area split would hand one
+side's GDP to the other. Only a block whose part is unknown (no country,
+or one the cell does not reach) is split over the cell's parts by area
+(the crosswalk's cell,iso,share renormalised to 1: for land variables
+the land and disputed parts only, falling back to all parts in a cell
+with none; for EDGAR every part, offshore platforms and terminals lying in
+EEZs). Values in blocks on cells the crosswalk has no row for (the high
+seas) are dropped and show in the coverage.
+
+Pixel area. Kummu's GDP and population and EDGAR's tonnes are amounts per
+pixel, and GHSL is on an equal-area grid: summed as they are. Night
+lights are a level per pixel (a digital number) on a lon/lat grid, whose
+pixels shrink with cos(latitude): an equal-area cell at 60 degrees holds
+twice the pixels of one on the equator, so each row is weighted by
+cos(latitude) before summing (ntl/dn is in equator-pixel units).
 
 Variables, their grids and publication lags (known = year + lag):
   kummu/gdp        Kummu et al. 2025 (Zenodo 18429133, 2026 update)
@@ -42,8 +53,15 @@ Variables, their grids and publication lags (known = year + lag):
                    Lag 2.
   ntl/dn           Li et al. harmonised night lights (figshare 9828827
                    v10), the sum of digital numbers, 1992-2024 (DMSP to
-                   2013, simulated VIIRS from 2014: a calibrated break).
-                   Lag 1: annual composites come out the next year.
+                   2013, simulated VIIRS from 2014: a calibrated break
+                   that leaves a 17% fall in the world's lights from 2013
+                   to 2014 and zeroes dim pixels; written raw here,
+                   spliced by bnm.cell-profiles/splice-lights. The
+                   DN_NTL_2013_simVIIRS overlap file is from the 2020
+                   calibration, not v10's (its world total is 1.49 times
+                   DMSP 2013's and 1.78 times v10's 2014), so it cannot
+                   splice the series). Lag 1: annual composites come out
+                   the next year.
   ghsl/built-km2   GHSL R2023A built-up surface, km2, epochs 1975-2020
   ghsl/nres-km2    GHSL R2023A non-residential built-up surface, km2
   ghsl/pop         GHSL R2023A residential population
@@ -124,29 +142,97 @@ def split_shares(parts, land):
 
 # --- cells of points ----------------------------------------------------------------
 
-class Cells:
-    """Dense indices for cells: index -> hex, and the cell of points."""
+class FineParts:
+    """Which country part of a split cell a point lies in, from the fine
+    crosswalk (data/derived/cells/crosswalk-fine.csv, scripts/cells.py), as
+    bnm.cells/locate reads it: the point's sample (its cell at the
+    resolution its owner was sampled at, the owner the resolution-6 cell
+    holding the sample's centre) lies in the part listed for it or for an
+    id ancestor of it (parts are compacted), else in the owner's largest
+    part (left out of the table). `part` gives the iso, or None when the
+    cell is not split, the sample is in no country ("none") or in a country
+    the point's cell does not reach: the caller then splits by area."""
 
-    def __init__(self, locate=None):
+    def __init__(self, fine, res, xw, cell_at=None, owner_of=None, parent=None):
+        self.fine = fine          # {part id: (owner hex, iso, flag)}
+        self.res = res            # {owner hex: sampling resolution}
+        self.xw = xw              # {cell hex: [(iso, share, flag)]}
+        if cell_at is None:
+            import a5
+            cell_at = lambda lon, lat, r: a5.lonlat_to_cell((lon, lat), r)
+            owner_of = lambda f: a5.u64_to_hex(a5.lonlat_to_cell(a5.cell_to_lonlat(f), RES))
+            parent = a5.cell_to_parent
+        self.cell_at, self.owner_of, self.parent = cell_at, owner_of, parent
+
+    def split(self, h):
+        parts = self.xw.get(h)
+        return bool(parts) and not (len(parts) == 1 and parts[0][1] >= 0.9999)
+
+    def part(self, lon, lat, h):
+        if not self.split(h):
+            return None
+        isos = {p[0] for p in self.xw[h]}
+        s = self.res.get(h, 10)
+        f = self.cell_at(lon, lat, s)
+        o = self.owner_of(f)
+        s = self.res.get(o, s)
+        if s != self.res.get(h, 10):
+            f = self.cell_at(lon, lat, s)
+        found = None
+        for r in range(s, 6, -1):
+            p = self.fine.get(f if r == s else self.parent(f, r))
+            if p and p[0] == o:
+                found = p
+                break
+        if found is None:
+            rows = self.xw.get(o)
+            iso = max(rows, key=lambda p: p[1])[0] if rows else None
+        elif found[2] == "none":
+            return None
+        else:
+            iso = found[1]
+        return iso if iso in isos else None
+
+
+def read_fine(path, xw):
+    """FineParts from the fine crosswalk at `path`."""
+    import a5
+    fine, res = {}, {}
+    with open(path, newline="") as f:
+        for r in csv.DictReader(f):
+            fine[a5.hex_to_u64(r["part"])] = (r["cell"], r["iso"], r["flag"])
+            res[r["cell"]] = int(r["res"] or 10)
+    return FineParts(fine, res, xw)
+
+
+class Cells:
+    """Dense indices for the (cell, part) a point lies in: index -> (hex,
+    iso), iso None when the point's part is not known (the cell is split
+    over its parts by area later)."""
+
+    def __init__(self, locate=None, part_of=None):
         self.hexes = []
         self.ix = {}
         if locate is None:
             import a5
             locate = lambda lon, lat: a5.u64_to_hex(a5.lonlat_to_cell((lon, lat), RES))
         self.locate = locate
+        self.part_of = part_of
 
-    def index(self, h):
-        i = self.ix.get(h)
+    def index(self, key):
+        i = self.ix.get(key)
         if i is None:
-            i = self.ix[h] = len(self.hexes)
-            self.hexes.append(h)
+            i = self.ix[key] = len(self.hexes)
+            self.hexes.append(key)
         return i
 
     def of_points(self, lons, lats):
         out = np.full(len(lons), -1, dtype=np.int64)
         for k, (x, y) in enumerate(zip(lons.tolist(), lats.tolist())):
             if x == x and y == y:
-                out[k] = self.index(self.locate(((x + 180.0) % 360.0) - 180.0, max(-90.0, min(90.0, y))))
+                x, y = ((x + 180.0) % 360.0) - 180.0, max(-90.0, min(90.0, y))
+                h = self.locate(x, y)
+                out[k] = self.index((h, self.part_of(x, y, h) if self.part_of else None))
         return out
 
 
@@ -246,8 +332,26 @@ class Out:
         self.totals[(var, year)] = (t0 + tot, l0 + lost)
 
 
-def raster_strips(path, band, f, geom_of, out, var, year, transform=None, rows=None, scale=1.0, nodata=None):
-    """Read a raster band in strips of f rows multiple, sum blocks, add to out."""
+def lat_weights(y0, dy, r0, n):
+    """cos(latitude) of rows r0 .. r0+n-1 of a lon/lat grid whose top edge
+    is y0 and row height dy (negative going south): a pixel's area against
+    one on the equator."""
+    return np.cos(np.radians(y0 + (np.arange(r0, r0 + n) + 0.5) * dy))
+
+
+# grids whose pixels hold a per-pixel level, not an amount: on a lon/lat
+# grid a pixel's area is cos(latitude) of an equator pixel's, so an equal-
+# area cell at 60 degrees holds twice the pixels it would at the equator
+# and an unweighted sum of their digital numbers would double its lights.
+# Kummu's GDP and population are amounts per pixel (summed as they are),
+# GHSL is on an equal-area grid and EDGAR gives tonnes per pixel.
+ROW_WEIGHT = {"ntl": True}
+
+
+def raster_strips(path, band, f, geom_of, out, var, year, transform=None, rows=None, scale=1.0, nodata=None,
+                  row_weight=False):
+    """Read a raster band in strips of f rows multiple, sum blocks, add to
+    out; with row_weight each row times cos(latitude) first (lat_weights)."""
     import rasterio
     from rasterio.windows import Window
     with rasterio.open(path) as d:
@@ -262,6 +366,8 @@ def raster_strips(path, band, f, geom_of, out, var, year, transform=None, rows=N
             if nd is not None:
                 a[a == nd] = np.nan
             a[a < 0] = np.nan
+            if row_weight:
+                a *= lat_weights(d.transform.f, d.transform.e, r0, h)[:, None]
             b = block_sum(a, f) * scale
             br0 = r0 // f
             flat = (np.arange(b.shape[0])[:, None] + br0) * bw + np.arange(b.shape[1])[None, :]
@@ -307,7 +413,7 @@ def ntl(root, cells, out):
         return geoms[k]
     for y in range(1992, 2025):
         name = f"Harmonized_DN_NTL_{y}_{'calDMSP' if y <= 2013 else 'simVIIRS'}.tif"
-        raster_strips(os.path.join(d, name), 1, 10, geom_of, out, "ntl/dn", y)
+        raster_strips(os.path.join(d, name), 1, 10, geom_of, out, "ntl/dn", y, row_weight=ROW_WEIGHT["ntl"])
         log("ntl", y)
 
 
@@ -378,17 +484,22 @@ def cell_rows(out, cells, xw):
     for (var, year), acc in sorted(out.sums.items()):
         tot, lost = out.totals[(var, year)]
         written, nocw = 0.0, 0.0
+        by = collections.defaultdict(float)
         for ci, v in acc.items():
-            h = cells.hexes[ci]
+            h, part = cells.hexes[ci]
             parts = xw.get(h)
             if not parts:
                 nocw += v
                 continue
-            for iso, s in sorted(split_shares(parts, is_land(var)).items()):
-                x = v * s
-                if x != 0:
-                    rows.append((h, iso, year, var, x, year + lag(var)))
-                    written += x
+            if part is not None and any(p[0] == part for p in parts):
+                by[(h, part)] += v
+                continue
+            for iso, s in split_shares(parts, is_land(var)).items():
+                by[(h, iso)] += v * s
+        for (h, iso), x in sorted(by.items()):
+            if x != 0:
+                rows.append((h, iso, year, var, x, year + lag(var)))
+                written += x
         cov[f"{var}@{year}"] = {"grid": tot, "written": written, "no_centre": lost, "no_crosswalk": nocw,
                                 "coverage": written / tot if tot else None}
     return rows, cov
@@ -422,7 +533,7 @@ def selftest():
     assert t == a.sum() and lost == 0.0
     assert abs(sum(acc.values()) - a.sum()) < 1e-9, "zonal sums conserve the total"
     left = a[:, :2].sum()
-    assert acc[cells.ix["a"]] == left and acc[cells.ix["b"]] == a.sum() - left
+    assert acc[cells.ix[("a", None)]] == left and acc[cells.ix[("b", None)]] == a.sum() - left
     # odd sizes pad, still conserving
     assert block_sum(np.ones((5, 3)), 2).sum() == 15
     # the split: a border cell by its land shares; a sea-only cell by all
@@ -461,6 +572,44 @@ def selftest():
     assert abs(lon[0] - 30.0) < 1e-6 and abs(lat[0] - 45.0) < 1e-6, (lon, lat)
     lon, lat = inverse_mollweide(np.array([2e7]), np.array([8.9e6]))
     assert np.isnan(lon[0]), "outside the ellipse"
+    # a split cell's pixels go to the part they lie in, not by area: cell
+    # "a" is 80% DEU by area, but its GDP lies in POL (lon < -1)
+    cells = Cells(locate=lambda lon, lat: "a", part_of=lambda lon, lat, h: "POL" if lon < -1 else None)
+    g, bw, bh = lonlat_geometry(cells, -2.0, 2.0, 1.0, -1.0, 4, 4, 1)
+    vals = np.zeros(16)
+    vals[0], vals[1] = 10.0, 6.0   # (lon -1.5: POL) and (lon -0.5: no part found)
+    acc, out = {}, Out()
+    t, lost = zonal(g, np.arange(16), vals, acc)
+    out.add("kummu/gdp", 2000, acc, t, lost)
+    xw = {"a": [("DEU", 0.8, "land"), ("POL", 0.2, "land")]}
+    by = collections.defaultdict(float)
+    for h, iso, y, var, v, k in cell_rows(out, cells, xw)[0]:
+        by[iso] += v
+    assert abs(by["POL"] - (10.0 + 6.0 * 0.2)) < 1e-9 and abs(by["DEU"] - 6.0 * 0.8) < 1e-9, dict(by)
+    # a part outside the cell's countries is not trusted: the area split
+    cells = Cells(locate=lambda lon, lat: "a", part_of=lambda lon, lat, h: "CZE")
+    g, _, _ = lonlat_geometry(cells, -2.0, 2.0, 1.0, -1.0, 4, 4, 1)
+    acc, out = {}, Out()
+    out.add("kummu/gdp", 2000, acc, *zonal(g, np.arange(1), np.array([10.0]), acc))
+    assert {r[1] for r in cell_rows(out, cells, xw)[0]} == {"DEU", "POL"}
+    # the fine crosswalk's parts: a sample is in the part holding it (an id
+    # ancestor stands for its descendants), else in its owner's largest part,
+    # left out of the fine table; "none" (high seas, no country) is no part
+    fine = FineParts({"p1": ("a", "POL", "land"), "p2": ("a", "", "none")}, {"a": 10},
+                     {"a": [("DEU", 0.7, "land"), ("POL", 0.3, "land")], "b": [("DEU", 1.0, "land")]},
+                     cell_at=lambda lon, lat, r: f"s{lon:g}",
+                     owner_of=lambda f: "a",
+                     parent=lambda f, r: {"s1": "p1", "s2": "p2"}.get(f, "q") if r == 9 else "q")
+    assert fine.part(1.0, 0.0, "a") == "POL", "in a fine part, through its ancestor"
+    assert fine.part(2.0, 0.0, "a") is None, "a none part: no country"
+    assert fine.part(3.0, 0.0, "a") == "DEU", "no fine part: the owner's largest"
+    assert fine.part(3.0, 0.0, "b") is None, "an unsplit cell needs no part"
+    # night lights are digital numbers per pixel, and a lon/lat pixel's area
+    # falls with latitude: each row weighs by cos(latitude), the pixel's
+    # area against one on the equator
+    w = lat_weights(60.5, -1.0, 0, 2)
+    assert abs(w[0] - math.cos(math.radians(60.0))) < 1e-12 and abs(w[1] - math.cos(math.radians(59.0))) < 1e-12
+    assert ROW_WEIGHT["ntl"] and "kummu" not in ROW_WEIGHT, "only the per-pixel brightness is weighted"
     print("cell-grids selftest ok", file=sys.stderr)
 
 
@@ -472,7 +621,8 @@ def main():
     ap.add_argument("--only", default="kummu,ntl,ghsl,edgar")
     a = ap.parse_args()
     xw = read_crosswalk(os.path.join(a.root, "data/derived/cells/crosswalk.csv"))
-    cells = Cells()
+    fine = read_fine(os.path.join(a.root, "data/derived/cells/crosswalk-fine.csv"), xw)
+    cells = Cells(part_of=fine.part)
     out = Out()
     for name in a.only.split(","):
         {"kummu": kummu, "ntl": ntl, "ghsl": ghsl, "edgar": edgar}[name](a.root, cells, out)
