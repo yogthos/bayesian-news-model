@@ -1538,6 +1538,41 @@ rule out (the interval is wide; the placebo's cost is similar). They
 stay out of the base; held ready as a fallback when inputs fail, which
 is a use the event model can switch on when a source goes dark.
 
+## Pre-registered, 23 October 2026: cells against provinces, with what is in the cells (bead bnm-3ka.11)
+
+Registered before any row from 2015 on is scored by the new stage. The
+October 2026 pilot (docs/RESEARCH.md) had only GDELT event coordinates,
+and cells lost to provinces on both measures chosen then. Now the cells
+carry assets, extraction and processing intensity, gridded GDP, night
+lights (spliced at 2013/14), built-up area, population and EDGAR sector
+emissions (data/derived/cells/features.csv, each year from data known by
+the year before). tools/bnm/cells-vs-provinces reuses the pilot's event
+runs (a5p-gdelt for provinces, a5p-gdelt-a5 for cells: events from 1979,
+scored 2015-26 every 13 weeks, 100 simulations) and adds a lattice stage
+that reads 20 gauges per node (the 11 cell-profile measures and the 9
+feature columns, z-scored within the year over the arm's nodes, capped at
+5, missing as 0), offset by the event model's log odds, with a learned
+recalibration and a quiet flag; discount 0.99, forget 0.99, prior
+variance 0.1; online, from resolved rows only; trained on all of a
+level's violence rows, scored on the quiet ones. Lights growth is left out
+in 2016 (the splice year), both lights gauges from 2016 for the parts the
+splice cannot join. Arms: provinces without features (the pilot's raw
+numbers), provinces with features, cells with features, cells with
+features shuffled among a country's cells (seed 1 the placebo, 19 seeds
+the permutation distribution).
+
+**Tests**, violence escalation from quiet at the sub-national level,
+ROC AUC and Brier skill against climatology, 2015-26:
+1. (primary) cells with features beat provinces with features on both
+   measures (point estimates, as in the pilot; 95% paired bootstrap over
+   periods reported);
+2. (primary) cells with features beat the seed-1 placebo on both, and
+   all 19 shuffles on both (permutation p <= 0.05);
+3. for the record: provinces with features against the pilot baseline,
+   the stage with gauges zeroed (recalibration alone), the group weights.
+Cells and provinces are scored on different rows, as in the pilot. Cells
+are adopted as the unit inference reads only if both primaries hold.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
