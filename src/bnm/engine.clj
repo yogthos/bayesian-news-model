@@ -38,7 +38,28 @@
   Known years: an emit's :known {:data-year n} is the publication lag of
   what it reports (a value for data year y is first known at y + n); a
   reader may not assume one shorter. A step at year t emits only what is
-  known by t: a table row's data year is at least n years before t."
+  known by t: a table row's data year is at least n years before t.
+
+  An emit's value is a number (one value at the module's place) or rows
+  [[iso value data-year source sd] ...] (strings as written; source and
+  sd optional, sd the model's spread where it has one).
+
+  What the runner enforces (review of phase A, October 2026; the checks
+  are stricter than the first version, the interface otherwise the same):
+  - same-year causality: an :observe gets only its stocks (state) and its
+    :phase :level reads, never a same-year rate; it may emit only its
+    declared :level variables; a step that re-emits a level must give the
+    observed value (a level is its stocks' alone); a module that declares
+    a :level emit must have an :observe (validate's :observe), else its
+    level would be read a step late;
+  - lags: a number of years at least 0 (validate's :lag) and a whole
+    number of the run's steps (run throws), so no lag rounds to 0;
+  - known years: every row emit is checked against its declaration as it
+    is emitted (check-known!), before any reader or the table sees it;
+  - families: a family covers a variable only if its pattern matches it,
+    and two families meet only if some variable matches both
+    (glob-overlap?); of several declarations covering a variable the
+    exact one wins, then the most specific family, whatever their order."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -64,15 +85,41 @@
                  (let [j (str/index-of s p i)]
                    (and j (<= (+ j (count p)) end) (recur (+ j (count p)) more))))))))))
 
-(defn- prefix [v] (first (str/split v #"\*" -1)))
+(defn glob-overlap?
+  "Whether some string matches both patterns `a` and `b` (each * any run
+  of characters): \"cycles/*\" and \"cycles/*-gap\" overlap; \"cycles/*\" and
+  \"cycles-x/*\" do not, nor \"cycles/*-price-gap\" and \"cycles/*-exposure\"."
+  [a b]
+  (let [a (str a) b (str b) na (count a) nb (count b)
+        memo (atom {})
+        star? (fn [s i n] (and (< i n) (= \* (.charAt ^String s i))))]
+    ((fn go [i j]
+       (let [k [i j]]
+         (if (contains? @memo k)
+           (@memo k)
+           (let [r (cond (and (= i na) (= j nb)) true
+                         (star? a i na) (or (go (inc i) j) (and (< j nb) (go i (inc j))))
+                         (star? b j nb) (or (go i (inc j)) (and (< i na) (go (inc i) j)))
+                         (or (= i na) (= j nb)) false
+                         :else (and (= (.charAt ^String a i) (.charAt ^String b j)) (go (inc i) (inc j))))]
+             (swap! memo assoc k r)
+             r))))
+     0 0)))
 
 (defn- var-match?
-  "Whether an emitted variable (or family) `e` gives the read `r`."
+  "Whether an emitted variable (or family) `e` gives the read `r` (some
+  variable is both)."
   [e r]
-  (cond (and (glob? e) (glob? r)) (let [a (prefix e) b (prefix r)] (or (str/starts-with? a b) (str/starts-with? b a)))
+  (cond (and (glob? e) (glob? r)) (glob-overlap? e r)
         (glob? e) (and (string? r) (glob-match? e r))
         (glob? r) (and (string? e) (glob-match? r e))
         :else (= e r)))
+
+(defn- specificity
+  "Sort key of a declaration's variable: an exact one first, then the
+  family with the most literal characters."
+  [v]
+  (if (glob? v) [1 (- (count (str/replace v "*" "")))] [0 0]))
 
 (defn- norm-unit [u] (when u (str/replace (str/trim u) #"\s+" " ")))
 
@@ -82,10 +129,11 @@
 
 (defn emit-for
   "The declaration in module `m`'s emits that covers variable `v`: an exact
-  one before a family."
+  one before a family, the most specific family (most literal characters)
+  before a wider one, whatever their order."
   [m v]
   (or (first (filter #(= (:var %) v) (:emits m)))
-      (first (filter #(and (glob? (:var %)) (var-match? (:var %) v)) (:emits m)))))
+      (first (sort-by (comp specificity :var) (filter #(and (glob? (:var %)) (var-match? (:var %) v)) (:emits m))))))
 
 (defn- emitters
   "[[module emit] ...] of the modules (not `self`) whose emits give read
@@ -96,8 +144,8 @@
                     e (:emits m) :when (var-match? (:var e) (:var r))]
                 [m e])
         exact (filter (fn [[_ e]] (= (:var e) (:var r))) cands)
-        pick (if (seq exact) exact cands)]
-    ;; one declaration per module: its exact one if any
+        pick (sort-by (comp specificity :var second) (if (seq exact) exact cands))]
+    ;; one declaration per module: its exact one if any, else its most specific
     (vals (reduce (fn [acc [m e]] (if (contains? acc (:module m)) acc (assoc acc (:module m) [m e]))) {} pick))))
 
 ;; -- the graph ---------------------------------------------------------------
@@ -146,14 +194,20 @@
   "Errors in the declarations, each {:error :module :var :msg}: a read
   with no emitter or source (:no-emitter), with several (:ambiguous), a
   unit unlike its emitter's (:unit), a known-year rule shorter than its
-  emitter's (:known), a level read of a rate emit (:phase), a lag-0 edge
-  against W C F R D P (:group-order), lag-0 edges in a cycle (:cycle), a
-  module named twice (:duplicate)."
+  emitter's (:known), a level read of a rate emit (:phase), a lag that is
+  not a number at least 0 (:lag), a :level emit of a module with no
+  :observe (:observe; it would be read a step late), a lag-0 edge against
+  W C F R D P (:group-order), lag-0 edges in a cycle (:cycle), a module
+  named twice (:duplicate)."
   [ms]
   (let [err (fn [k m v msg] {:error k :module (:module m) :var v :msg msg})
         ids (map :module ms)
         g (into {} (map (juxt :module :group)) ms)
         dup (for [[id c] (frequencies ids) :when (> c 1)] {:error :duplicate :module id :msg (str "module " id " declared " c " times")})
+        lags (for [m ms r (:reads m) :let [l (:lag r)] :when (and (some? l) (not (and (number? l) (>= l 0))))]
+               (err :lag m (:var r) (str (:module m) " reads " (:var r) " at lag " (pr-str l) ": a lag is a number of years, at least 0")))
+        observes (for [m ms :when (not (:observe m)) e (:emits m) :when (= :level (phase-of e))]
+                   (err :observe m (:var e) (str (:module m) " emits " (:var e) " as a level but has no :observe: it would be read a step late")))
         reads (for [m ms r (:reads m) :when (not (:source r))
                     :let [es (emitters ms (:module m) r) v (:var r)]
                     e (cond (empty? es) [(err :no-emitter m v (str (:module m) " reads " v ": no module emits it and no :source"))]
@@ -175,7 +229,7 @@
         cycles (for [pass [:level :rate]
                      :let [[_ left] (topo (vec ids) g (same-year es pass))] :when (seq left)]
                  {:error :cycle :module (first left) :msg (str "lag-0 " (name pass) " edges in a cycle through " left)})]
-    (vec (concat dup reads cycles))))
+    (vec (concat dup lags observes reads cycles))))
 
 (defn check!
   "The modules, or an error listing what is wrong with their declarations."
@@ -248,16 +302,32 @@
 (defn- integral? [x] (or (integer? x) (== x (Math/floor (double x)))))
 
 (defn- declared-check
-  "(fn [module v]) that throws when module emits a variable it did not
-  declare (cached per variable)."
+  "(fn [module v]) -> the declaration covering v; throws when module emits
+  a variable it did not declare (cached per variable)."
   [ms]
   (let [by (into {} (map (juxt :module identity)) ms)
-        ok (atom #{})]
+        ok (atom {})]
     (fn [id v]
-      (when-not (contains? @ok [id v])
-        (if (emit-for (by id) v)
-          (swap! ok conj [id v])
-          (throw (ex-info (str "bnm.engine: " id " emits " v ", not declared") {:module id :var v})))))))
+      (or (get @ok [id v])
+          (if-let [e (emit-for (by id) v)]
+            (do (swap! ok assoc [id v] e) e)
+            (throw (ex-info (str "bnm.engine: " id " emits " v ", not declared") {:module id :var v})))))))
+
+(defn- rows? [x] (and (sequential? x) (seq x) (sequential? (first x))))
+
+(defn check-known!
+  "Throws when a row of `module`'s emit `v` at t ([iso value data-year
+  ...]) reports a data year sooner than its declaration's known-year rule
+  (`decl`, the emit covering v) allows: a value for data year y is first
+  known at y + n. A number, or a row with no data year, is not checked."
+  [module decl v t x]
+  (when-let [k (and (rows? x) (get-in decl [:known :data-year]))]
+    (doseq [[_ _ dy] x :when (and dy (seq (str dy)))]
+      (when (< (- (double t) (double (parse-long (str dy)))) k)
+        (throw (ex-info (str "bnm.engine: " (name module) " emits " v " for data year " dy " at " t ", sooner than its known rule (+" k ")")
+                        {:module module :var v :data-year dy :t t}))))))
+
+(defn- same-value? [a b] (or (= a b) (and (number? a) (number? b) (not= a a) (not= b b))))
 
 (defn- gather
   "The step's inputs from `cur` (this step's emits by module) and `hist`
@@ -286,7 +356,10 @@
   (check! ms)
   (let [dt (or dt (apply min (map :dt ms)))
         whole (and (integral? from) (integral? dt) (integer? from) (integer? dt))
-        n (long (Math/round (/ (- (double to) (double from)) (double dt))))
+        span (/ (- (double to) (double from)) (double dt))
+        n (long (Math/round span))
+        _ (when (> (Math/abs (- span n)) 1e-9)
+            (throw (ex-info (str "bnm.engine: from " from " to " to " is not a whole number of steps of " dt) {})))
         t-at (fn [i] (if whole (+ from (* i dt)) (+ (double from) (* i (double dt)))))
         every (into {} (for [m ms :let [k (/ (double (:dt m)) (double dt))]]
                          (do (when (> (Math/abs (- k (Math/round k))) 1e-9)
@@ -300,7 +373,11 @@
                                     :let [[em] (first (emitters ms (:module m) r))]]
                                 {:key (key-of r) :var (:var r) :emitter (:module em) :glob (glob? (:var r))
                                  :level (= :level (phase-of r))
-                                 :lag-steps (Math/round (/ (double (lag-of r)) (double dt)))}))]))
+                                 :lag-steps (let [k (/ (double (lag-of r)) (double dt))]
+                                              (when (> (Math/abs (- k (Math/round k))) 1e-9)
+                                                (throw (ex-info (str "bnm.engine: " (:module m) " reads " (:var r) " at lag " (lag-of r)
+                                                                     ", not a whole number of steps of " dt) {:module (:module m) :var (:var r)})))
+                                              (Math/round k))}))]))
         max-lag (reduce max 0 (map :lag-steps (mapcat val plan)))
         ps (into {} (for [m ms] [(:module m) (merge (param-values (:params m)) (get params (:module m)))]))
         declared! (declared-check ms)]
@@ -316,7 +393,10 @@
                             (if-let [obs (and (steps? id) (:observe m))]
                               (let [in (gather (filter :level (plan id)) cur hist i)
                                     e (obs (states id) in (ps id) t)]
-                                (doseq [v (keys e)] (declared! id v))
+                                (doseq [[v x] e :let [d (declared! id v)]]
+                                  (when (not= :level (phase-of d))
+                                    (throw (ex-info (str "bnm.engine: " id "'s observe gives " v ", not a declared level") {:module id :var v})))
+                                  (check-known! id d v t x))
                                 (assoc cur id e))
                               (assoc cur id (get-in hist [(dec i) id])))))
                         {} lo)
@@ -326,8 +406,14 @@
                                      (let [m (by id)
                                            in (gather (plan id) cur hist i)
                                            {s :state e :emits} ((:step m) (states id) in (ps id) t (:dt m))
-                                           e (merge (when (:observe m) (cur id)) e)]
-                                       (doseq [v (keys e)] (declared! id v))
+                                           lv (when (:observe m) (cur id))
+                                           _ (doseq [[v x] e :let [d (declared! id v)]]
+                                               (when (and lv (= :level (phase-of d)) (not (and (contains? lv v) (same-value? x (lv v)))))
+                                                 (throw (ex-info (str "bnm.engine: " id "'s step changes the level " v " at " t
+                                                                      " (observed " (pr-str (get lv v)) ", stepped " (pr-str x) "): a level is its stocks' alone")
+                                                                 {:module id :var v :t t})))
+                                               (check-known! id d v t x))
+                                           e (merge lv e)]
                                        (when on-step (on-step id t e))
                                        [(assoc cur id e) (assoc states id s)])
                                      [cur states]))
@@ -354,19 +440,17 @@
 (defn table-rows
   "The coupled table's rows of `module`'s emits at t: a number is one row
   at the module's place (WLD for :world); a vector of [iso value data-year
-  source] rows (value a string, as written) is those rows. Throws when a
-  row's data year is published sooner than the emit's known-year rule
-  allows."
+  source sd] rows (value and sd strings, as written; sd optional, empty
+  where the model gives no spread) is those rows. Throws when a row's
+  data year is published sooner than the emit's known-year rule allows
+  (check-known!)."
   [m t emits]
   (let [id (name (:module m))
-        rule (memoize (fn [v] (get-in (emit-for m v) [:known :data-year])))]
+        decl (memoize (fn [v] (emit-for m v)))]
+    (doseq [[v x] emits] (check-known! (:module m) (decl v) v t x))
     (vec (for [[v x] emits :when (some? x)
-               [iso value dy src] (if (number? x) [[(place-iso (:place m)) (str x) nil nil]] x)]
-           (do (when-let [k (and dy (seq dy) (rule v))]
-                 (when (< (- (double t) (double (parse-long dy))) k)
-                   (throw (ex-info (str "bnm.engine: " id " emits " v " for data year " dy " at " t ", sooner than its known rule (+" k ")")
-                                   {:module (:module m) :var v :data-year dy :t t}))))
-               [iso t id v value "" (or dy "") t (if (seq src) (str "model:" src) "model")])))))
+               [iso value dy src sd] (if (number? x) [[(place-iso (:place m)) (str x) nil nil nil]] x)]
+           [iso t id v value (or sd "") (or dy "") t (if (seq src) (str "model:" src) "model")]))))
 
 (defn- csv-field [x] (cond (nil? x) "" (keyword? x) (name x) :else (str x)))
 

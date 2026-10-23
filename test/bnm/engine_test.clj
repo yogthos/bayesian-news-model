@@ -135,3 +135,89 @@
     (is (str/includes? txt "W -> R"))
     (is (= [{:from :a :to :b :var "a/x" :lag 0 :phase :rate :emit-phase :rate :unit "u" :channel :W1}] (:edges g)))
     (is (not-any? fn? (mapcat vals (:modules g))) "data only")))
+
+;; -- review (bead bnm-4hv.9): same-year causality, lags, known years, families
+
+(deftest level-emits-come-from-an-observe
+  (testing "a :level emit with no :observe would be read a step late"
+    (let [a (m :a :W [] [{:var "a/x" :unit "u" :phase :level}])
+          b (m :b :R [{:var "a/x" :unit "u" :phase :level}] [])]
+      (is (= #{:observe} (errors [a b])))
+      (is (empty? (eng/validate [(assoc a :observe (fn [_ _ _ _] {"a/x" 1.0})) b]))))))
+
+(deftest observe-sees-only-stocks-and-levels
+  (let [seen (atom #{})
+        lv {:module :lv :group :W :place :world :dt 1 :init 1.0
+            :emits [{:var "lv/x" :unit "u" :phase :level}]
+            :observe (fn [s _ _ _] {"lv/x" s})
+            :step (fn [s _ _ _ _] {:state (inc s) :emits {}})}
+        rt {:module :rt :group :W :place :world :dt 1
+            :emits [{:var "rt/y" :unit "u"}]
+            :step (fn [s _ _ t _] {:state s :emits {"rt/y" (double t)}})}
+        obs {:module :obs :group :R :place :world :dt 1 :init 0.0
+             :reads [{:var "lv/x" :unit "u" :phase :level} {:var "rt/y" :unit "u"}]
+             :emits [{:var "obs/z" :unit "u" :phase :level} {:var "obs/w" :unit "u"}]
+             :observe (fn [s in _ _] (swap! seen into (keys in)) {"obs/z" s})
+             :step (fn [s in _ _ _] {:state (+ s (in "rt/y")) :emits {"obs/w" (in "lv/x")}})}]
+    (eng/run [obs rt lv] {:from 2000 :to 2002})
+    (is (= #{"lv/x"} @seen) "a same-year rate never reaches an observe")
+    (testing "an observe may emit only its declared levels"
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"level"
+                            (eng/run [rt lv (assoc obs :observe (fn [s _ _ _] {"obs/z" s "obs/w" 1.0}))] {:from 2000 :to 2001}))))
+    (testing "a step may not change a level its observe gave"
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo #"level"
+                            (eng/run [rt lv (assoc obs :step (fn [s in _ _ _] {:state s :emits {"obs/z" (+ s (in "rt/y"))}}))]
+                                     {:from 2000 :to 2001})))
+      (is (some? (eng/run [rt lv (assoc obs :step (fn [s _ _ _ _] {:state s :emits {"obs/z" s}}))] {:from 2000 :to 2001}))
+          "re-emitting the same value is fine"))))
+
+(deftest lags-are-whole-steps-and-never-negative
+  (let [a (m :a :W [] [{:var "a/x" :unit "u"}])]
+    (is (= #{:lag} (errors [a (m :b :R [{:var "a/x" :unit "u" :lag -1}] [])])) "a negative lag reads the future")
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"lag"
+                          (eng/run [a (m :b :R [{:var "a/x" :unit "u" :lag 0.25}] [])] {:from 2000 :to 2001}))
+        "a lag shorter than a step would be read as this step's value, unordered")
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"lag"
+                          (eng/run [a (m :b :R [{:var "a/x" :unit "u" :lag 1.5}] [])] {:from 2000 :to 2004})))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"whole number of steps"
+                          (eng/run [a] {:from 2000 :to 2002.5})) "the run's span is whole steps too")))
+
+(deftest a-value-is-never-seen-before-it-is-known
+  (let [seen (atom [])
+        early {:module :e :group :F :place :country :dt 1
+               :emits [{:var "e/gap" :unit "log" :known {:data-year 2}}]
+               ;; at 2001 it reports data year 2000: a year too soon
+               :step (fn [s _ _ t _] {:state s :emits {"e/gap" [["USA" "0.5" (str (if (= t 2001) (dec t) (- t 2))) nil]]}})}
+        reader {:module :r :group :R :place :country :dt 1
+                :reads [{:var "e/gap" :unit "log" :known {:data-year 2}}]
+                :emits []
+                :step (fn [s in _ t _] (swap! seen conj [t (in "e/gap")]) {:state s :emits {}})}]
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"known" (eng/run [reader early] {:from 2000 :to 2003})))
+    (is (= [[2000 [["USA" "0.5" "1998" nil]]]] @seen) "the reader stepped 2000 and never saw 2001's early row")
+    (testing "a number has no data year to check; a row with none is not checked"
+      (is (some? (eng/run [(assoc early :step (fn [s _ _ _ _] {:state s :emits {"e/gap" [["USA" "0.5" "" nil]]}}))] {:from 2000 :to 2001}))))))
+
+(deftest families-match-only-what-they-name
+  (is (eng/glob-match? "cycles/*" "cycles/oil-price-gap"))
+  (is (not (eng/glob-match? "cycles/*" "cycles-x")))
+  (is (not (eng/glob-match? "cycles/*" "cycles")))
+  (is (not (eng/glob-match? "cycles/*-gap" "cycles/oil-gap-sd")))
+  (let [cy (m :cy :W [] [{:var "cycles/*-price-gap" :unit "log gap"} {:var "cycles/*-exposure" :unit "export share x log gap"}
+                         {:var "cycles/*" :unit "mixed"}])
+        cx (m :cx :W [] [{:var "cycles-x/*" :unit "other"}])]
+    (testing "two families overlap only when one string can match both"
+      (is (empty? (eng/validate [cy cx (m :r :R [{:var "cycles/*-exposure" :unit "export share x log gap"}] [])]))
+          "not the -price-gap family, whose unit differs")
+      (is (= [:cy] (map :from (eng/edges [cy cx (m :r :R [{:var "cycles/*" :unit "mixed"}] [])]))) "cycles/* is not cycles-x/*")
+      (is (= #{:no-emitter} (errors [cy (m :r :R [{:var "cycles-x" :unit "other"}] [])])))
+      (is (empty? (eng/validate [(m :cy :W [] [{:var "cycles/*-price-gap" :unit "log gap"} {:var "cycles/*-exp*" :unit "share"}])
+                                 (m :r :R [{:var "cycles/*-exposure" :unit "share"}] [])]))
+          "a prefix in common is not an overlap"))
+    (testing "the most specific declaration covers a variable, whatever their order"
+      (let [rev (update cy :emits (comp vec reverse))]
+        (is (= "export share x log gap" (:unit (eng/emit-for rev "cycles/oil-exposure"))))
+        (is (= "mixed" (:unit (eng/emit-for rev "cycles/oil-beta"))))))))
+
+(deftest table-rows-carry-a-spread
+  (is (= [["USA" 2010 "e" "e/x" "0.5" "0.1" "2009" 2010 "model"]]
+         (eng/table-rows {:module :e :place :country :emits [{:var "e/x"}]} 2010 {"e/x" [["USA" "0.5" "2009" nil "0.1"]]}))))
