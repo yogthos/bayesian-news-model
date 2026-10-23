@@ -31,6 +31,7 @@
             [bnm.cell-assets-test]
             [bnm.cell-profiles-test]
             [bnm.cells-test]
+            [bnm.cells-vs-provinces-test]
             [bnm.geo-test]
             [bnm.network-test]
             [bnm.energy-pilot-test]
@@ -112,6 +113,7 @@
     bnm.cell-assets-test
     bnm.cell-profiles-test
     bnm.cells-test
+    bnm.cells-vs-provinces-test
     bnm.geo-test
     bnm.network-test
     bnm.energy-pilot-test
