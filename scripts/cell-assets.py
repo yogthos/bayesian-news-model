@@ -4,13 +4,25 @@ Writes data/derived/cells/:
 
   asset-points.csv    source,id,asset_type,commodity,capacity,unit,
                       start_year,status,known_from,year_flag,country,
-                      country_kind,lon,lat
+                      country_kind,lon,lat,dup_of
   asset-polygons.edn  one EDN map per line, the same keys and :polygons
                       [[ring ...] ...], each ring [[lon lat] ...], the
                       first ring of a polygon its outline and the rest holes
 
 country is the source's own (country_kind iso3, iso2, fips or name), resolved
 by bnm.geo on the Clojure side.
+
+dup_of names the asset another source (or the same one) already has, so
+that counting or summing assets counts it once: the sources overlap (SFI's
+steel and cement plants are most of USGS's; OGIM's refineries half of
+USGS's; PRIO's diamond deposits are mostly in MRDS). Within 2 km and of the
+same kind and commodity, the asset of the source first in DUP_PRIORITY is
+kept: sfi, ogim, prio-dia, usgs-minfac, mrds; within a source, the first
+record at the same coordinates. An oil or gas field point (USGS) inside an
+OGIM field polygon, and a PRIO PETRODATA polygon at least half covered by
+OGIM's fields, are duplicates of the OGIM field covering most of them. Maus
+mining areas are footprints, not counted assets, and are not deduplicated
+against the mine points.
 
 When an asset is known to exist (known_from, year_flag):
   start      the source's start year (commissioning, first production)
@@ -45,10 +57,12 @@ Downloaded files are untrusted data, read only.
 """
 
 import argparse
+import collections
 import csv
 import datetime
 import io
 import json
+import math
 import os
 import sqlite3
 import sys
@@ -63,7 +77,11 @@ import shapely.geometry
 warnings.filterwarnings("ignore")
 
 FIELDS = ["source", "id", "asset_type", "commodity", "capacity", "unit", "start_year", "status",
-          "known_from", "year_flag", "country", "country_kind", "lon", "lat"]
+          "known_from", "year_flag", "country", "country_kind", "lon", "lat", "dup_of"]
+
+DUP_KM = 2.0
+DUP_PRIORITY = ["sfi", "ogim", "prio-dia", "usgs-minfac", "mrds"]
+EARTH_KM = 6371.0088
 
 
 def log(*a):
@@ -214,7 +232,26 @@ def mrds(root, points):
                            lon=lon, lat=lat))
 
 
-FACTYPE = {"M": "mine", "P": "processing_plant", "R": "refinery", "S": "smelter"}
+# MINFAC_LAC's FACTYPE: mine, processing plant, oil or gas field, oil
+# refinery, mine and plant, brine
+FACTYPE = {"M": "mine", "P": "processing_plant", "OG": "field", "OR": "refinery", "MP": "mine",
+           "B": "brine", "R": "refinery", "S": "smelter"}
+
+
+def usgs_kind(ftype):
+    """The asset type for a compilation's FeatureTyp ("Mines and Quarries",
+    "Mineral Processing Plants", ...; the first of several). "Mineral" holds
+    "mine", so processing plants are tested first."""
+    f = clean(ftype).lower().split(";")[0].strip()
+    if "processing" in f:
+        return "processing_plant"
+    if "refiner" in f:
+        return "refinery"
+    if "field" in f:
+        return "field"
+    if "mine" in f or "quarr" in f:
+        return "mine"
+    return f.replace(" ", "_") or "facility"
 
 
 def minfac(root, points):
@@ -227,7 +264,7 @@ def minfac(root, points):
             except ValueError:
                 continue
             points.append(dict(source="usgs-minfac", id=f"usgs-lac:{r['ROWID']}",
-                               asset_type=FACTYPE.get(clean(r.get("FACTYPE"))[:1], "facility"),
+                               asset_type=FACTYPE.get(clean(r.get("FACTYPE")).upper(), "facility"),
                                commodity=clean(r.get("COMMODITY")).lower(), capacity=num(r.get("ANNCAP")),
                                unit=clean(r.get("UNITS")), start_year=None, status=clean(r.get("STATUS")).lower(),
                                known_from=2016, year_flag="snapshot", country=r.get("ISO_CC"),
@@ -246,10 +283,7 @@ def minfac(root, points):
             lon, lat = col["Longitude"][k], col["Latitude"][k]
             if lon is None or lat is None or lon != lon or lat != lat:
                 continue
-            ftype = clean(col["FeatureTyp"][k]).lower()
-            kind = ("mine" if "mine" in ftype else "processing_plant" if "processing" in ftype
-                    else "refinery" if "refiner" in ftype
-                    else "field" if "field" in ftype else ftype.replace(" ", "_") or "facility")
+            kind = usgs_kind(col["FeatureTyp"][k])
             points.append(dict(source="usgs-minfac", id=f"usgs:{col['FeatureUID'][k]}", asset_type=kind,
                                commodity=clean(col[com][k]).lower(), capacity=num(col[cap][k]),
                                unit=clean(col[unit][k]), start_year=None,
@@ -316,6 +350,128 @@ def maus(root, polys):
                               polygons=ps))
 
 
+# --- duplicates across and within sources ---------------------------------------
+
+def commodity_key(c):
+    c = clean(c).lower()
+    for a, b in [("iron and steel", "steel"), ("steel", "steel"), ("diamond", "diamond"),
+                 ("petroleum", "oil"), ("crude", "oil"), ("iron ore", "iron"), ("natural gas", "gas")]:
+        if c.startswith(a):
+            return b
+    return c.split(" ")[0].split(",")[0] if c else ""
+
+
+def dup_class(p):
+    """The kind of asset two sources can both hold, or None."""
+    t, c = p["asset_type"], commodity_key(p["commodity"])
+    if t == "refinery" and c == "oil":
+        return "refinery/oil"
+    if t == "steel_plant" or (t == "processing_plant" and c == "steel"):
+        return "plant/steel"
+    if t == "cement_plant" or (t == "processing_plant" and c == "cement"):
+        return "plant/cement"
+    if t in ("mine", "deposit") and c:
+        return "mine/" + c
+    return None
+
+
+def haversine_km(lon1, lat1, lon2, lat2):
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    h = (math.sin((p2 - p1) / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2)
+    return 2 * EARTH_KM * math.asin(math.sqrt(min(h, 1.0)))
+
+
+def coords(p):
+    """(lon, lat), or None where a source has none ("Unknown")."""
+    try:
+        lon, lat = float(p["lon"]), float(p["lat"])
+    except (TypeError, ValueError):
+        return None
+    return (lon, lat) if -180 <= lon <= 180 and -90 <= lat <= 90 else None
+
+
+def mark_duplicates(points, polys):
+    """Set dup_of on the points and polygons another asset already counts
+    (see the module doc). Returns {(source, kept-source) n}."""
+    counts = collections.Counter()
+    rank = {s: i for i, s in enumerate(DUP_PRIORITY)}
+    for p in points:
+        p["dup_of"] = ""
+    for p in polys:
+        p["dup_of"] = ""
+    # the same record twice in one source
+    seen = {}
+    points = [p for p in points if coords(p)]
+    for p in points:
+        lon, lat = coords(p)
+        k = (p["source"], dup_class(p), commodity_key(p["commodity"]), round(lon, 5), round(lat, 5))
+        if k[1] is None:
+            continue
+        if k in seen:
+            p["dup_of"] = seen[k]["id"]
+            counts[(p["source"], p["source"])] += 1
+        else:
+            seen[k] = p
+    # across sources, by class: each point against the higher-priority
+    # sources' points within DUP_KM
+    by_class = collections.defaultdict(list)
+    for p in points:
+        c = dup_class(p)
+        if c and not p["dup_of"] and p["source"] in rank:
+            by_class[c].append(p)
+    for c, ps in by_class.items():
+        ps.sort(key=lambda p: rank[p["source"]])
+        kept = []
+        for src in DUP_PRIORITY:
+            mine = [p for p in ps if p["source"] == src]
+            if kept and mine:
+                tree = shapely.STRtree(shapely.points([coords(q) for q in kept]))
+                for p in mine:
+                    lon, lat = coords(p)
+                    deg = DUP_KM / 111.32 / max(math.cos(math.radians(lat)), 0.05)
+                    best, bd = None, DUP_KM
+                    for j in tree.query(shapely.Point(lon, lat).buffer(deg)):
+                        q = kept[j]
+                        if q["source"] == src:
+                            continue
+                        d = haversine_km(lon, lat, *coords(q))
+                        if d <= bd:
+                            best, bd = q, d
+                    if best is not None:
+                        p["dup_of"] = best["id"]
+                        counts[(src, best["source"])] += 1
+            kept += [p for p in mine if not p["dup_of"]]
+    # fields: OGIM's polygons first
+    ogim = [p for p in polys if p["source"] == "ogim" and p["asset_type"] == "field"]
+    if ogim:
+        def geom(p):
+            return shapely.make_valid(shapely.MultiPolygon([shapely.Polygon(r[0], r[1:]) for r in p["polygons"]]))
+        og = [geom(p) for p in ogim]
+        tree = shapely.STRtree(og)
+        for p in points:
+            if p["asset_type"] == "field" and not p["dup_of"]:
+                hits = tree.query(shapely.Point(coords(p)), predicate="within")
+                if len(hits):
+                    p["dup_of"] = ogim[hits[0]]["id"]
+                    counts[(p["source"], "ogim")] += 1
+        for p in polys:
+            if p["source"] != "prio-petro":
+                continue
+            g = geom(p)
+            if g.area <= 0:
+                continue
+            hits = tree.query(g, predicate="intersects")
+            if not len(hits):
+                continue
+            inter = [(og[j].intersection(g).area, j) for j in hits]
+            cover = shapely.union_all([og[j] for j in hits]).intersection(g).area / g.area
+            if cover >= 0.5:
+                p["dup_of"] = ogim[max(inter)[1]]["id"]
+                counts[("prio-petro", "ogim")] += 1
+    return counts
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=".")
@@ -328,6 +484,8 @@ def main():
         n0, p0 = len(points), len(polys)
         f()
         log(f"{name}: {len(points) - n0} points, {len(polys) - p0} polygons")
+    dups = mark_duplicates(points, polys)
+    log("duplicates (source, of source):", dict(sorted(dups.items())))
     out = os.path.join(root, "data/derived/cells")
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, "asset-points.csv"), "w", newline="", encoding="utf-8") as f:

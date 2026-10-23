@@ -5,14 +5,21 @@
   (bnm.cells). Writes data/derived/cells/assets.csv
 
     cell,iso,admin1,asset_type,commodity,capacity,unit,start_year,status,
-    source,asset_id,share,area_km2,known_from,year_flag
+    source,asset_id,share,area_km2,known_from,year_flag,dup_of,xw_iso
 
   one row per asset and cell x country x province it covers: a point is one
   row with share 1; a polygon one row per part, its share of the polygon's
   area (area_km2) and capacity (a field's or mine's area, when that is its
-  capacity) apportioned by it. The source's country is kept where the
-  crosswalk puts the asset in another (bnm.cells/place-points); the counts
-  go to data/derived/cells/assets-report.edn.
+  capacity) apportioned by it. A point keeps its source's country where the
+  crosswalk puts it in another (bnm.cells/place-points); a polygon's part
+  keeps it only in cells the source's country reaches, and is the
+  crosswalk's country beyond (bnm.cells/place-polygon). xw_iso is the
+  crosswalk's country where the row keeps a different one. The counts go to
+  data/derived/cells/assets-report.edn.
+
+  dup_of names the asset (of another source, or the same) this one repeats
+  (scripts/cell-assets.py): the sources overlap, so a count or a sum of
+  assets (concentration) takes the rows with dup_of blank.
 
   known_from is when the asset is known to exist: its start year (year_flag
   start), its discovery year (discovery), or, with neither, the year its
@@ -34,7 +41,14 @@
 
 (def columns
   [:cell :iso :admin1 :asset_type :commodity :capacity :unit :start_year :status :source
-   :asset_id :share :area_km2 :known_from :year_flag])
+   :asset_id :share :area_km2 :known_from :year_flag :dup_of :xw_iso])
+
+(def source-codes
+  "Sources' country codes bnm.geo does not read: PRIO's FIPS 10-4 for the
+  Emirates (TC, since replaced by AE) and Serbia (SR), OGIM's name for the
+  US Virgin Islands."
+  {"fips" {"TC" "ARE" "SR" "SRB"}
+   "name" {"US VIRGIN ISLANDS" "VIR"}})
 
 (def ^:private iso2->iso3
   (delay (into {} (keep (fn [{:keys [iso2 iso3]}] (when (seq iso2) [iso2 iso3]))) (:countries @geo/registry))))
@@ -45,11 +59,12 @@
   [s kind]
   (when-not (str/blank? s)
     (let [s (str/trim s)
-          iso (case kind
+          iso (or (get-in source-codes [kind (str/upper-case s)])
+                  (case kind
                 "iso3" (geo/resolve-code s)
                 "iso2" (@iso2->iso3 s)
                 "fips" (geo/resolve-fips s)
-                "name" (or (geo/resolve-name s) (geo/resolve-name (str/replace s #"(?i)\s*\(.*\)" ""))))]
+                "name" (or (geo/resolve-name s) (geo/resolve-name (str/replace s #"(?i)\s*\(.*\)" "")))))]
       (when (and iso (geo/country? iso)) iso))))
 
 (defn gppd-points
@@ -65,24 +80,32 @@
                     plants)))
 
 (defn- row [m]
-  (select-keys m columns))
+  (let [r (select-keys m columns)]
+    (assoc r :dup_of (not-empty (:dup_of m)) :xw_iso (:xw_iso m))))
+
+(defn placed-point-rows
+  "Points bnm.cells/place-points placed, as asset rows."
+  [points]
+  (mapv (fn [p] (row (assoc p :asset_id (:id p) :share 1.0 :area_km2 nil :xw_iso (:crosswalk-iso p)))) points))
 
 (defn point-rows
   "Asset points ({:lon :lat :iso ...}) as asset rows on the crosswalk."
   [xw points]
-  (let [{:keys [points]} (cells/place-points xw points)]
-    (mapv (fn [p] (row (assoc p :asset_id (:id p) :share 1.0 :area_km2 nil))) points)))
+  (placed-point-rows (:points (cells/place-points xw points))))
+
+(defn placed-polygon-rows
+  "A polygon `p` and its placing (bnm.cells/place-polygon) as asset rows,
+  one per part, capacity apportioned by area."
+  [p {:keys [parts]}]
+  (for [{:keys [cell iso admin1 share area xw-iso]} parts]
+    (row (assoc p :cell cell :iso iso :admin1 admin1 :asset_id (:id p) :share share :xw_iso xw-iso
+                :area_km2 area :capacity (some-> (:capacity p) (* share))))))
 
 (defn polygon-rows
   "Asset polygons ({:polygons [rings ...] :iso ...}) as asset rows, one per
   part, capacity apportioned by area."
   [xw polys]
-  (vec (mapcat (fn [p]
-                 (let [{:keys [parts]} (cells/place-polygon xw p)]
-                   (for [{:keys [cell iso admin1 share area]} parts]
-                     (row (assoc p :cell cell :iso iso :admin1 admin1 :asset_id (:id p) :share share
-                                 :area_km2 area :capacity (some-> (:capacity p) (* share)))))))
-               polys)))
+  (vec (mapcat #(placed-polygon-rows % (cells/place-polygon xw %)) polys)))
 
 (defn csv-line [fields]
   (str/join "," (map (fn [v]
@@ -121,18 +144,13 @@
                                       (concat pts polys)))
         by-source (group-by :source pts)
         placed (into {} (for [[s ps] by-source] [s (cells/place-points xw ps)]))
-        prows (vec (mapcat (fn [[_ {:keys [points]}]]
-                             (map (fn [p] (row (assoc p :asset_id (:id p) :share 1.0 :area_km2 nil))) points))
-                           placed))
+        prows (vec (mapcat (comp placed-point-rows :points val) placed))
         _ (do (println (count prows) "point rows") (flush))
         poly-placed (vec (map-indexed (fn [i p]
                                         (when (zero? (mod i 5000)) (println "polygon" i) (flush))
                                         [p (cells/place-polygon xw p)])
                                       polys))
-        lrows (vec (for [[p {:keys [parts]}] poly-placed
-                         {:keys [cell iso admin1 share area]} parts]
-                     (row (assoc p :cell cell :iso iso :admin1 admin1 :asset_id (:id p) :share share
-                                 :area_km2 area :capacity (some-> (:capacity p) (* share))))))
+        lrows (vec (mapcat (fn [[p placing]] (placed-polygon-rows p placing)) poly-placed))
         rows (sort-by (juxt :source :asset_id :cell :iso) (concat prows lrows))
         report {:assets (into (sorted-map)
                               (frequencies (map (juxt :source :asset_type) (concat pts polys))))
@@ -144,7 +162,13 @@
                                            [s {:polygons (count ps)
                                                :with-source-country (count (filter (comp :iso first) ps))
                                                :mostly-elsewhere (count (filter #(> (:elsewhere (second %)) 0.5) ps))
-                                               :partly-elsewhere (count (filter #(< 0.0 (:elsewhere (second %)) 0.5) ps))}]))
+                                               :partly-elsewhere (count (filter #(< 0.0 (:elsewhere (second %)) 0.5) ps))
+                                               :parts-moved (count (filter #(pos? (:moved (second %))) ps))}]))
+                :duplicates (into (sorted-map)
+                                  (frequencies (keep (fn [{:keys [source dup_of]}]
+                                                       (when-not (str/blank? dup_of)
+                                                         [source (first (str/split dup_of #":"))]))
+                                                     (concat pts polys))))
                 :unresolved-countries (into (sorted-map) (for [[s m] (group-by ffirst unresolved)]
                                                             [s (into (sorted-map) (map (fn [[[_ c] n]] [c n])) m)]))
                 :by-year-flag (into (sorted-map) (frequencies (map (juxt :source :year_flag) (concat pts polys))))}]
