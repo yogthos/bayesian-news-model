@@ -74,16 +74,22 @@
     (into {} (for [n (distinct (concat (keys given) (keys recipes) (mapcat (comp keys :inputs) (vals recipes))))]
                [n (av [] n)]))))
 
-(defn- prepared
-  "Each recipe with its inputs in a vector and its shares normalised."
+(defn prepared
+  "{node {:ins :ws :kind :sigma}}: each of `recipes` (a hypergraph's
+  :recipes) with its inputs in a vector and its shares normalised to sum
+  to 1, the form `rule` reads. Public for solvers that run their own
+  iteration over the same rules (bnm.supply/outage-path)."
   [recipes]
   (into {} (for [[n {:keys [inputs kind sigma]}] recipes
                  :let [tot (double (reduce + (vals inputs)))]]
              [n {:ins (vec (keys inputs)) :ws (mapv #(/ (double %) tot) (vals inputs)) :kind kind :sigma sigma}])))
 
-(defn- rule
-  "A prepared recipe's value from availabilities looked up by `f`, capped
-  by the node's given value `g` (nil: none)."
+(defn rule
+  "A prepared recipe's value (one entry of `prepared`) from availabilities
+  looked up by `f` (a function or a map of node to availability), capped
+  by the node's given value `g` (nil: none): the minimum of a critical
+  recipe's inputs, a substitutable one's share-weighted mean, a CES one's
+  CES. Monotone and continuous in every input."
   [{:keys [ins ws kind sigma]} f g]
   (let [xs (mapv f ins)
         r (case kind

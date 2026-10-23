@@ -129,6 +129,34 @@
           x'
           (recur x' (inc i)))))))
 
+(deftest prepared-recipes-and-their-rule
+  ;; the pieces propagate is built from, public for solvers that run their
+  ;; own iteration over the same rules (bnm.supply/outage-path)
+  (let [h (-> (hg/hypergraph)
+              (hg/recipe :steel {:energy 1.0 :ore 3.0} :critical)
+              (hg/recipe :cars {:steel 3.0 :plastics 1.0} :substitutable)
+              (hg/recipe :bread {:wheat 1.0 :labour 1.0} :ces 0.5))
+        p (hg/prepared (:recipes h))
+        x {:energy 0.5 :ore 1.0 :steel 0.5 :plastics 1.0 :wheat 0.25 :labour 1.0}]
+    (testing "inputs in a vector, shares normalised to sum to 1"
+      (is (= [:energy :ore] (:ins (p :steel))))
+      (is (= [0.25 0.75] (:ws (p :steel))))
+      (is (= :critical (:kind (p :steel))))
+      (is (= 0.5 (:sigma (p :bread)))))
+    (testing "the rule: minimum, share-weighted mean, CES"
+      (is (= 0.5 (hg/rule (p :steel) x nil)))
+      (is (close? (+ (* 0.75 0.5) 0.25) (hg/rule (p :cars) x nil) 1e-12))
+      (is (close? (Math/pow (* 0.5 (+ (/ 1 0.25) 1.0)) -1.0) (hg/rule (p :bread) x nil) 1e-12)
+          "sigma 0.5: rho -1, the weighted harmonic mean"))
+    (testing "capped by the node's given value"
+      (is (= 0.3 (hg/rule (p :steel) x 0.3)))
+      (is (= 0.5 (hg/rule (p :steel) x 0.9))))
+    (testing "node-value and propagate run the same rule"
+      (is (= (hg/rule (p :cars) x nil) (hg/node-value h {} x :cars)))
+      (let [a (hg/propagate h {:energy 0.5 :wheat 0.25})]
+        (doseq [n [:steel :cars :bread]]
+          (is (close? (a n) (hg/rule (p n) a nil) 1e-9) (str n)))))))
+
 (deftest propagate-reaches-the-same-point-in-any-order
   ;; every rule is monotone, so iteration from the top falls to the
   ;; greatest fixed point whatever order the nodes are recomputed in:
