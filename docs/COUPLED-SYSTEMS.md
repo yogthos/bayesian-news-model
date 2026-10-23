@@ -192,8 +192,8 @@ Three consequences for the design:
 
 ## 2. Literature
 
-DOIs marked (mem) were taken from memory and not resolved online; the rest
-were checked.
+DOIs and URLs were checked against Crossref or the publisher's site
+(2026-10-23).
 
 ### 2a. Stock-flow consistent models: how they join money and goods
 
@@ -220,14 +220,14 @@ were checked.
     open economies with banks and inventories.
 - Caverzasi, E. & Godin, A. (2015). "Post-Keynesian stock-flow-consistent
   modelling: a survey." *Cambridge Journal of Economics* 39(1): 157-187.
-  https://doi.org/10.1093/cje/beu021 (mem). The extensions are
+  https://doi.org/10.1093/cje/beu021. The extensions are
   financialisation (shareholder value, household debt), open economies and
   growth with distribution (Kaleckian investment functions). Calibration
   is the weak point: most models are calibrated to a steady state and run
   as scenarios, not estimated.
 - Nikiforos, M. & Zezza, G. (2017). "Stock-flow consistent macroeconomic
   models: a survey." *Journal of Economic Surveys* 31(5): 1204-1239.
-  https://doi.org/10.1111/joes.12221 (mem). Lineage, method, empirical
+  https://doi.org/10.1111/joes.12221. Lineage, method, empirical
   models. The empirical ones (the Levy model, the Danish and Greek
   models) are small and estimated equation by equation, with the
   accounting as identities.
@@ -245,7 +245,7 @@ were checked.
     the T1/T4 lesson in another form.
 - Dafermos, Y., Nikolaidi, M. & Galanis, G. (2017). "A stock-flow-fund
   ecological macroeconomic model." *Ecological Economics* 131: 191-207.
-  https://doi.org/10.1016/j.ecolecon.2016.08.013 (mem). The DEFINE model,
+  https://doi.org/10.1016/j.ecolecon.2016.08.013. The DEFINE model,
   https://define-model.org.
   - An SFC monetary core is joined to Georgescu-Roegen's flow-fund
     accounts of matter and energy: material extraction and energy use per
@@ -258,7 +258,7 @@ were checked.
 - Jackson, T. & Victor, P. A. (2020). "The transition to a sustainable
   prosperity: a stock-flow-consistent ecological macroeconomic model for
   Canada." *Ecological Economics* 177: 106787.
-  https://doi.org/10.1016/j.ecolecon.2020.106787 (mem). LowGrow SFC,
+  https://doi.org/10.1016/j.ecolecon.2020.106787. LowGrow SFC,
   extending Victor (2008), *Managing Without Growth*, Edward Elgar.
   - A full SFC model for Canada is calibrated to the national accounts and
     the national balance sheets (Statistics Canada's sector matrices).
@@ -314,7 +314,7 @@ is longest, and nothing says the interest paid on it is someone's income.
 State against private banking:
 - La Porta, R., Lopez-de-Silanes, F. & Shleifer, A. (2002). "Government
   ownership of banks." *Journal of Finance* 57(1): 265-301.
-  https://doi.org/10.1111/1540-6261.00422 (mem).
+  https://doi.org/10.1111/1540-6261.00422.
   - They measure the government's share of the top ten banks' assets in 92
     countries in 1970 and 1995.
   - It is high and widespread (about 42% in 1995, far higher in poorer and
@@ -327,14 +327,14 @@ State against private banking:
     stock.
 - Sapienza, P. (2004). "The effects of government ownership on bank
   lending." *Journal of Financial Economics* 72(2): 357-384.
-  https://doi.org/10.1016/j.jfineco.2002.10.002 (mem). Italian state banks
+  https://doi.org/10.1016/j.jfineco.2002.10.002. Italian state banks
   charged lower rates to similar firms, and their lending followed the
   electoral strength of the party controlling the bank: politics to
   allocation, measured at the loan.
 - Dinç, I. S. (2005). "Politicians and banks: political influences on
   government-owned banks in emerging markets." *Journal of Financial
-  Economics* 77(2): 453-479. https://doi.org/10.1016/j.jfineco.2004.06.011
-  (mem). State-owned banks raise lending in election years relative to
+  Economics* 77(2): 453-479. https://doi.org/10.1016/j.jfineco.2004.06.011.
+  State-owned banks raise lending in election years relative to
   private banks (19 countries): a political lending cycle, which is a
   sign prior for the politics-to-allocation edge.
 - World Bank Bank Regulation and Supervision Survey (BRSS),
@@ -350,9 +350,9 @@ Directed credit and development:
   Mild financial repression and directed credit can raise welfare when
   they come with monitoring. Theory for the development view.
 - Amsden, A. (1989). *Asia's Next Giant: South Korea and Late
-  Industrialization*. Oxford UP. https://doi.org/10.1093/0195058526.001.0001
-  (mem). Wade, R. (1990). *Governing the Market*. Princeton UP. Studwell,
-  J. (2013). *How Asia Works*. Profile/Grove.
+  Industrialization*. Oxford UP. https://doi.org/10.1093/0195076036.001.0001 (the
+  DOI is of the 1992 edition). Wade, R. (1990). *Governing the Market*.
+  Princeton UP. Studwell, J. (2013). *How Asia Works*. Profile/Grove.
   - Their common mechanism is reciprocal control. The state, through banks
     it owns or commands, gives cheap credit, protection and licences to
     manufacturers in exchange for export performance, and withdraws them
@@ -388,7 +388,7 @@ Directed credit and development:
 Finance in the West:
 - Krippner, G. (2005). "The financialization of the American economy."
   *Socio-Economic Review* 3(2): 173-208.
-  https://doi.org/10.1093/SER/mwi008 (mem). Krippner (2011). *Capitalizing
+  https://doi.org/10.1093/SER/mwi008. Krippner (2011). *Capitalizing
   on Crisis*. Harvard UP. Measured by where profits are made, US
   accumulation moved to financial channels from the 1970s. Non-financial
   firms' portfolio income rose against their productive income. The 2011
@@ -397,14 +397,14 @@ Finance in the West:
   politics to control.
 - Lazonick, W. & O'Sullivan, M. (2000). "Maximizing shareholder value: a
   new ideology for corporate governance." *Economy and Society* 29(1):
-  13-35. https://doi.org/10.1080/030851400360541 (mem). Lazonick, W.
+  13-35. https://doi.org/10.1080/030851400360541. Lazonick, W.
   (2014). "Profits without prosperity." *Harvard Business Review*,
   September, https://hbr.org/2014/09/profits-without-prosperity. "Retain
   and reinvest" gave way to "downsize and distribute" through buybacks.
   The NFC payout measures of econ/financialisation come from here.
 - Jordà, Ò., Schularick, M. & Taylor, A. M. (2016). "The great
   mortgaging: housing finance, crises and business cycles." *Economic
-  Policy* 31(85): 107-152. https://doi.org/10.1093/epolic/eiv017 (mem).
+  Policy* 31(85): 107-152. https://doi.org/10.1093/epolic/eiv017.
   Database: https://www.macrohistory.net/database/ (on disk).
   - In 17 advanced economies, mortgage credit rose from about a third of
     bank lending in 1900 to about two thirds by 2010.
@@ -414,7 +414,7 @@ Finance in the West:
   - This is the long-run allocation drift in the West.
 - Mian, A., Sufi, A. & Verner, E. (2017). "Household debt and business
   cycles worldwide." *Quarterly Journal of Economics* 132(4): 1755-1817.
-  https://doi.org/10.1093/qje/qjx017 (mem). A rise in household debt to
+  https://doi.org/10.1093/qje/qjx017. A rise in household debt to
   GDP predicts lower growth three to four years on (30 countries).
   Firm-debt rises do not. The mechanism is credit-supply shocks that raise
   consumption, then force deleveraging.
@@ -457,8 +457,7 @@ a download per country.
 ### 2c. The economy to politics
 
 - Acemoglu, D. & Robinson, J. A. (2006). *Economic Origins of Dictatorship
-  and Democracy*. Cambridge UP. https://doi.org/10.1017/CBO9780511510809
-  (mem).
+  and Democracy*. Cambridge UP. https://doi.org/10.1017/CBO9780511510809.
   - Regimes are set by distribution and the threat of revolt. Elites
     concede democracy when the masses' threat is credible and repression
     is costly.
@@ -471,7 +470,7 @@ a download per country.
   - Business cycles and crises create windows where the threat is
     credible.
 - Boix, C. (2003). *Democracy and Redistribution*. Cambridge UP.
-  https://doi.org/10.1017/CBO9780511804960 (mem). Democracy is likelier
+  https://doi.org/10.1017/CBO9780511804960. Democracy is likelier
   where inequality is low and assets are mobile (capital that can leave
   cannot be heavily taxed). So the real economy's composition (land and
   oil against manufacturing and finance) moves the regime. That gives the
@@ -490,7 +489,7 @@ a download per country.
 - Food prices and unrest:
   - Bellemare, M. F. (2015). "Rising food prices, food price volatility,
     and social unrest." *American Journal of Agricultural Economics*
-    97(1): 1-21. https://doi.org/10.1093/ajae/aau038 (mem). Food price
+    97(1): 1-21. https://doi.org/10.1093/ajae/aau038. Food price
     levels, not their volatility, cause unrest (instrumented, 1990-2011).
   - Arezki, R. & Brückner, M. (2011). "Food prices and political
     instability." IMF WP 11/62. https://doi.org/10.5089/9781455221066.001.
@@ -499,7 +498,7 @@ a download per country.
     high-income ones.
   - Hendrix, C. S. & Haggard, S. (2015). "Global food prices, regime type,
     and urban unrest in the developing world." *Journal of Peace Research*
-    52(2): 143-157. https://doi.org/10.1177/0022343314561599 (mem). The
+    52(2): 143-157. https://doi.org/10.1177/0022343314561599. The
     effect is stronger in democracies and hybrid regimes.
 
   The channel runs through exposure (import dependence, the food share of
@@ -533,7 +532,7 @@ a download per country.
 - Guriev, S., Kolotilin, A. & Sonin, K. (2011). "Determinants of
   nationalization in the oil sector: a theory and evidence from panel
   data." *Journal of Law, Economics, and Organization* 27(2): 301-323.
-  https://doi.org/10.1093/jleo/ewp011 (mem). Nationalisation is likelier
+  https://doi.org/10.1093/jleo/ewp011. Nationalisation is likelier
   when oil prices are high and when constraints on the executive are weak
   (1960-2006). That makes a hazard with two typed inputs: world price
   (bnm.cycles) and institutions (V-Dem). It is the cleanest
@@ -551,7 +550,7 @@ a download per country.
   - Chinn, M. D. & Ito, H. (2006). "What matters for financial
     development? Capital controls, institutions, and interactions."
     *Journal of Development Economics* 81(1): 163-192.
-    https://doi.org/10.1016/j.jdeveco.2005.05.010 (mem). KAOPEN,
+    https://doi.org/10.1016/j.jdeveco.2005.05.010. KAOPEN,
     https://web.pdx.edu/~ito/Chinn-Ito_website.htm, on disk (185
     countries, 1970-2023).
   - Fernández, A., Klein, M. W., Rebucci, A., Schindler, M. & Uribe, M.
@@ -564,13 +563,13 @@ a download per country.
 - State capture: Hellman, J. S., Jones, G. & Kaufmann, D. (2003). "Seize
   the state, seize the day: state capture and influence in transition."
   *Journal of Comparative Economics* 31(4): 751-773.
-  https://doi.org/10.1016/j.jce.2003.09.006 (mem). Firms that shape the
+  https://doi.org/10.1016/j.jce.2003.09.006. Firms that shape the
   rules gain at the expense of the rest. This is the feedback from
   economic concentration to political control. V-Dem's corruption indices
   (v2x_corr, on disk) are the standard proxy.
 - Varieties of capitalism:
   - Hall, P. A. & Soskice, D. (2001). *Varieties of Capitalism*. Oxford UP.
-    https://doi.org/10.1093/0199247757.001.0001 (mem). Liberal against
+    https://doi.org/10.1093/0199247757.001.0001. Liberal against
     coordinated market economies, with complementary institutions
     (finance, labour, training).
   - Milanović, B. (2019). *Capitalism, Alone*. Harvard UP. Liberal
@@ -603,16 +602,16 @@ a download per country.
 - **Integrated assessment models** (IAMs) couple modules with defined
   interfaces.
   - DICE: Nordhaus, W. (2017). "Revisiting the social cost of carbon."
-    *PNAS* 114(7): 1518-1523. https://doi.org/10.1073/pnas.1609244114
-    (mem). A single optimisation over economy and climate, hard-linked.
+    *PNAS* 114(7): 1518-1523. https://doi.org/10.1073/pnas.1609244114.
+    A single optimisation over economy and climate, hard-linked.
   - IMAGE 3.0: Stehfest, E. et al. (2014), PBL,
     https://www.pbl.nl/en/publications/integrated-assessment-of-global-environmental-change-with-image-30-model-description-and-policy-applications.
     Modules for energy, land, agriculture, climate and water. Each one
     declares the variables it passes, and they exchange them at fixed time
     steps (one to five years).
-  - GCAM, https://jgcri.github.io/gcam-doc/ (mem). Energy, land, water and
+  - GCAM, https://jgcri.github.io/gcam-doc/. Energy, land, water and
     economy solved jointly for market-clearing prices every five years.
-  - MESSAGEix, https://docs.messageix.org (mem). An optimisation core with
+  - MESSAGEix, https://docs.messageix.org. An optimisation core with
     soft-linked MACRO.
   - Practice on coupling:
     - Krook-Riekkola, A., Berg, C., Ahlgren, E. O. & Söderholm, P. (2017).
@@ -632,7 +631,7 @@ a download per country.
     read as structural uncertainty. Rarely out of sample.
 - **EUROMOD.** Sutherland, H. & Figari, F. (2013). "EUROMOD: the European
   Union tax-benefit microsimulation model." *International Journal of
-  Microsimulation* 6(1): 4-26. https://doi.org/10.34196/ijm.00075 (mem).
+  Microsimulation* 6(1): 4-26. https://doi.org/10.34196/ijm.00075.
   - A static microsimulation of taxes and benefits on survey households.
   - Coupled to macro models one way: macro paths re-weight and uprate the
     households, and the micro model returns distribution.
@@ -643,11 +642,11 @@ a download per country.
 - **Agent-based macro, as contrast.**
   - Dosi, G., Fagiolo, G. & Roventini, A. (2010). "Schumpeter meeting
     Keynes." *JEDC* 34(9): 1748-1767.
-    https://doi.org/10.1016/j.jedc.2010.06.018 (mem). The K+S model.
+    https://doi.org/10.1016/j.jedc.2010.06.018. The K+S model.
   - Cincotti, S., Raberto, M. & Teglio, A. (2010). "Credit money and
     macroeconomic instability in the agent-based model and simulator
     Eurace." *Economics e-journal* 4: 2010-26.
-    https://doi.org/10.5018/economics-ejournal.ja.2010-26 (mem).
+    https://doi.org/10.5018/economics-ejournal.ja.2010-26.
 
   Both are SFC at the aggregate by construction (every agent's flows have a
   counterpart). They are validated by reproducing stylised facts:
@@ -657,7 +656,7 @@ a download per country.
     763-787. https://doi.org/10.1007/978-3-319-70766-2_31.
   - Windrum, P., Fagiolo, G. & Moneta, A. (2007). "Empirical validation of
     agent-based models." *JASSS* 10(2): 8.
-    https://www.jasss.org/10/2/8.html (mem).
+    https://www.jasss.org/10/2/8.html.
 
   We do not take the agent route. Principle 2 needs parameters learned per
   country from what was known, and ABMs have hundreds of parameters
@@ -667,8 +666,11 @@ a download per country.
   - parameter-space exploration.
 - **Coupled data assimilation.** Earth-system models assimilate across
   ocean, atmosphere and land (Penny, S. G. et al. 2017, "Coupled data
-  assimilation for integrated Earth system analysis and prediction," WMO
-  WWRP 2017-3 (mem)).
+  assimilation for integrated Earth system analysis and prediction: goals,
+  challenges and recommendations," report for the WMO,
+  https://ntrs.nasa.gov/citations/20170007430; summarised in Penny, S. G. &
+  Hamill, T. M. 2017, *BAMS* 98(7): ES169-ES172,
+  https://doi.org/10.1175/BAMS-D-17-0036.1).
   - The distinction they draw is "weakly coupled" (each component
     assimilates its own observations, coupling through the forecast)
     against "strongly coupled" (an observation in one component updates
