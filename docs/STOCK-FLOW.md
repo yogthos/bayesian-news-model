@@ -956,33 +956,64 @@ The nodes, 2011 as the graph is:
 |---|---|---|---|---|
 | C_REOX oxides and compounds, separated | C_CHEM | 109,318 | 4,224 | CN 0.93, WA 0.06 |
 | C_REMT metals | C_CHEM | 23,973 | 1,535 | as separation |
-| C_NDFB NdFeB magnets | C_FABM | 67,923 | 2,280 | CN 0.90, JP 0.07 |
+| C_NDFB NdFeB magnets | C_FABM | 67,923 | 2,261 | CN 0.915, JP 0.07 |
 | C_EVMO EV traction motors | C_ELMA | 3,411 | 73 | US 0.37, JP 0.27, CN 0.11 |
-| C_WGEN permanent-magnet wind generators | C_ELMA | 13,388 | 298 | CN 0.36, GB 0.18, US 0.13 |
-| C_PMMO magnet motors and electronics n.e.c. | C_ELMA | 2,749,233 | 18,866 | by C_ELMA's output |
+| C_WGEN permanent-magnet wind generators | C_ELMA | 14,305 | 307 | CN 0.36, GB 0.18, US 0.13 |
+| C_PMMO magnet motors and electronics n.e.c. | C_ELMA | 2,749,233 | 18,695 | as C_ELMA ships (CN 0.63) |
 
 Sizes. Oxides: the separation stage's 2011 world output (stages.csv,
 the 2026 edition), at BACI's 2011 unit value of 284610 and 284690 (54
 USD/kg; split-parent's trade share of C_CHEM would give 166 kt: the
 compounds' trade runs ahead of their output). Metal:
 C_CHEM's world output split by BACI 2011 trade (bnm.concordance/
-split-parent, 280530), at its unit value; 1.166 t of oxide per t
-(Nd2O3 over 2 Nd). Magnets: 0.85 of the metal (a prior: magnets take the
-Nd, Pr, Dy and Tb metal) over 0.3 t of rare earth per t of NdFeB (Pavel
-et al. 2017). Split-parent would make magnets 1 Mt, fourteen times the
+split-parent, 280530), at its unit value; 1.2 t of oxide per t (1.166
+for Nd2O3 over 2 Nd, 1.208 for Pr6O11, and a few per cent lost in
+reduction: MP Materials counts 1.20, DOE 2022 a cell at 1.18; range
+1.18-1.25). Magnets: 0.85 of the metal over 0.3 t of rare earth per t of
+NdFeB (Pavel et al. 2017), 68 kt. The 0.85 is a prior (range 0.55-0.95):
+no source splits 2011's metal by use, and in 2008 NdFeB took 0.53 of
+the rare earths that went the metal route (Goonan 2011, USGS SIR
+2011-5094, table 2), which here would give 48 kt; the sources put
+world NdFeB at about 78 kt in 2010 (Constantinides 2012), 92 kt in 2011
+(USGS Minerals Yearbook 2011) and 63 kt in 2012 (Yang et al. 2017), so
+the trade split's 24 kt of metal is if anything short and 0.85 makes
+up for it. Split-parent would make magnets 1 Mt, fourteen times the
 industry: fabricated metal is little traded, magnets much, so a trade
 share overstates them. EV motors: 48,734 battery-electric and plug-in
-cars sold in 2011 (IEA) at 70 kg of motor (DOE 2023: 40-100 kg of
-electrical steel per vehicle motor) and 0.5 kg of rare earths a car
-(IEA 2021), 1.67 kg of magnet. Wind generators: the rare earths of
-2011's additions at recipe-priors.edn's 14 t per GW onshore and 239
-offshore, as magnet, in generators of 0.65 t of magnet over 3.65 t per
-MW (DOE 2023). Magnet motors and electronics take the remaining 65 kt
-of magnet, at the EV motor's 2.4% magnet by mass, made where electrical
-machinery is. Magnets, motors and generators are valued cost-plus: the
-parent's price plus the chain inputs at their world prices over the
-parent's input share (850511's unit value, 28 USD/kg, mixes in cheaper
-magnets and lies under the metal an NdFeB magnet held at 2011's price).
+cars sold in 2011 (IEA) at 70 kg of motor (a prior, 40-100: DOE 2023,
+table B.1, gives 40-100 kg of electrical steel per vehicle motor) and
+0.5 kg of rare earths a car (IEA 2021; DOE 2023 0.33-0.67 kg), 1.67 kg
+of magnet. Wind generators: the rare earths of 2011's additions at
+recipe-priors.edn's 14 t per GW onshore and 239 offshore (IEA 2021), as
+magnet, in generators of 0.6 t of magnet (DOE 2011, after Constantinides;
+DOE 2023's direct-drive Nd, Pr and Dy give 0.35-0.7) over 3.6 t of
+active parts per MW (2.45-3.47 t of electrical steel offshore, DOE 2023;
+a prior: the frame weighs several times more). Magnet motors and
+electronics (industrial and car auxiliary motors, hard drives, e-bikes,
+speakers, appliances) take the remaining 65 kt of magnet, at the EV
+motor's 2.4% magnet by mass: measured, motors hold 0.8-2%, hard drives
+2.5-2.8%, speakers 4-6% (Menad & Seron 2016), so 2.75 Mt of product is
+an honest size. The node is large next to the chain (EUR 18.7 bn
+against the magnets' 2.3 bn) because the magnet is about a ninth of
+the product's value, and small next to its parent (1.0% of electrical
+machinery's tonnes, 1.2% of its value); what is soft is the magnet
+total, 65 kt of 68, most of the world's magnets: Constantinides' 2010
+split gives motors, drives, e-bikes and speakers 56% of them, wind 2%,
+traction 1%, so 50-65 kt is the plausible range. Magnets, motors and
+generators are valued cost-plus: the parent's price plus the chain
+inputs at their world prices over the parent's input share. 850511's
+unit value, 28 USD/kg, mixes in cheaper magnets (SmCo, AlNiCo,
+assemblies) and is barely the 27 USD of metal a magnet holds at
+280530's own unit value; cost-plus gives NdFeB 33 EUR/kg, 46 USD. In
+2011 China's average magnet price ran from RMB 106/kg in January to 615
+in July and 215 in December (16, 95 and 33 USD), sintered NdFeB outside
+China 150-200 USD/kg (Constantinides 2012), and the Nd, Pr and Dy a
+magnet holds were worth over 100 USD/kg at 2011's oxide prices (Nd 270,
+Dy 1,600 USD/kg, USGS Minerals Yearbook 2011, table 3). So cost-plus
+sits at China's own price over the year and under the world's: if
+anything the chain's values are low, which moves no availability (its
+inputs are critical whatever their share) but raises the magnets'
+multiplier per EUR of use.
 
 The split. A sub-node keeps its parent's recipe per tonne (the
 industry-technology assumption), each value share times (T - c)/T (T
@@ -994,22 +1025,54 @@ output the chain does not take goes to the parent's users (every
 recipe and final use of the parent in a region gives up the sub-node's
 part of the region's use), EV motors into motor vehicles, wind
 generators to gross fixed capital formation. A parent row that gives
-up part of itself is judged at the family's share, so no row crosses
-the critical threshold by the split (Portugal's pipeline transport, its
-machinery at 5.003% of its value, had turned substitutable). Every
-family's output, trade, use and recipe inputs are conserved to 1e-15
-(split-balances); three rows (electrical machinery's fabricated metal in
-Luxembourg, Switzerland and Germany, under 3e-4 t/t) had too little for
-the generators' magnets and were clamped.
+up part of itself is judged at the family's share, so no parent row
+crosses the critical threshold by the split: Portugal's pipeline
+transport buys machinery at 5.003% of its value, critical; the split
+leaves 4.946% of it electrical machinery and 0.057% magnet motors, and
+without the rule the machinery would turn substitutable for a
+relabelling. Six rows are held so (five of machinery, one of fabricated
+metal). The rule is one-sided on purpose: the sub-node's own sliver is
+judged at its own share, so 893 slivers of critical parent rows (oxides
+and metal in users of chemicals, magnet motors in users of machinery;
+EUR 1.9 bn of inputs) are substitutable, and a magnet cut reaches
+Portugal's pipeline through its 0.057%, not through its machinery. That
+is a real change, and the intended one: a pipeline's pumps run on
+induction motors as well, while its machinery as a whole has no
+substitute.
+
+Conservation. Every family's output, trade, use, recipe inputs and their
+2011 values are conserved to 1e-15 (split-balances, comparing every key
+of either side, so a flow the split creates counts), but for what the
+split records making. Within a family: metal's oxide is a chemical in a
+chemical, and the tables hold no product as its own input, so the chain
+adds 28.8 kt of chemicals into chemicals (EUR 1.1 bn; China 26.7 kt).
+Clamped: electrical machinery's fabricated metal in Germany, Switzerland
+and Luxembourg has no tonnes on record (its value share 3%, 8% and 1%),
+so the magnets of their motors and generators, 1,600 t (2.4% of the
+magnets), are added; and Bulgaria's electrical machinery, 2.05 Mt at
+0.51 EUR/kg, buys EUR 8.7 M of fabricated metal, less than the EUR 15.6 M
+its magnet motors' magnets are worth, so EUR 6.9 M of value is added.
+Before, split-balances compared only the keys present before the split
+and only tonnes: it saw none of these.
 
 Supply shares from production. Every region draws its oxides and metal
 from the separation stage's country shares of the latest year with a
 quota (2024): China 0.927 by the balance (its upper bound), 0.905 at its
-MIIT quota (the lower bound, `{:bound :quota}`); magnets from China 0.90
-(IEA 2021; the European Commission's 2020 foresight study gives 85-90%
-of capacity), the rest an assumption (Japan 0.07, Germany 0.01, Japanese
-makers' plants in the rest of Asia 0.02). The user nodes by their own
-output. Today's concentration on 2011's structure.
+MIIT quota (the lower bound, `{:bound :quota}`); magnets from China
+0.915, Japan 0.07, Vietnam (the rest of Asia) 0.01 and Germany 0.005
+(DOE 2022, Rare Earth Permanent Magnets Supply Chain Deep Dive, 2020:
+China 92%, Japan 7%, Vietnam 1%, Germany under 1%; the European
+Commission's 2020 foresight study gives China 85-90%). In 2011 Japan
+made more, about 22% to China's 75% (CRS R41347). EV motors and wind
+generators by their own output. Magnet motors, a slice of electrical
+machinery with no geography of their own, are made and shipped as it
+is (`:supply :parent`): pooled at the producers' shares they came 63%
+from China into every region (China's 63% of the parent's tonnes, at 3
+EUR/kg against Germany's 20), so Bulgaria, which buys 84% of its
+machinery at home, drew its magnet motors through China's machinery
+(31% down under the Middle East crude cut, on its rubber and plastics).
+Now it makes 85% of them itself. Today's concentration on 2011's
+structure.
 
 What it shows (tools/bnm/supply_check.clj). China's separation cut 50%:
 world oxides, metal, NdFeB, EV motors, wind generators and magnet
@@ -1019,14 +1082,20 @@ bnm.essentiality's spare capacity (0.05, 0.15 and 0.30 at 3 and 12
 months and steady) the others can make up 0.4-2.4% of the shortfall, so
 NdFeB loses 45-46% (44-45% at the quota bound). Multipliers (value added
 lost in the world per EUR of use lost, every region's use cut 50%,
-steady): oxides 12.8, metal 33.6, magnets 22.2, against chemicals
+steady): oxides 12.7, metal 32.5, magnets 21.7, against chemicals
 n.e.c.'s 7.4 with and without the sub-nodes. The existing shocks (gas in
 Europe, Middle East crude) and the report's lines above are unchanged
-to the printed digits; the largest change of any EXIOBASE product's
-availability is 0.14% under the gas cut and 0.41% under the crude cut
-(Bulgaria's lignite, heat and coal power: the magnet motors in its
-machinery now come from where they are made, China 0.63, whose
-machinery loses 31% under the crude cut).
+to the printed digits (one more industry under the gas cut loses 1%);
+the largest change of any EXIOBASE product's availability is 0.09%
+under the gas cut and 0.37% under the crude cut, Bulgaria's lignite
+(0.41% before its magnet motors followed their parent's trade). What
+is left goes through the magnets, and is the industry-technology
+assumption's: China's separation keeps the recipe of China's average
+chemical, critical on its rubber and plastics and naphtha, so under the
+crude cut its oxides lose 31%, and with them metal, magnets and every
+magnet motor in the world, Bulgaria's too, which enter its heat at
+0.9% of value. The magnets being Chinese is real; separation losing
+what the average Chinese chemical loses to crude is not known.
 
 Left out: the mine stage (the ore is inside other non-ferrous ores and
 chemical minerals); domestic preference (a pooled world market);

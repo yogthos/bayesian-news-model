@@ -551,12 +551,22 @@
         (println (format "  %s %-44s in %s: %,10.0f t  EUR %,7.0f M (%5.1f EUR/kg)  %s" code name parent t v (/ (* 1e3 v) t)
                          (str/join " " (for [[r s] top] (format "%s %.2f" r s)))))
         (println (format "         chain %s  basis %s" (or inputs "-") (dissoc basis :split-eur-m)))))
-    (let [b (sup/split-balances rows0 rows)]
-      (println (format "  balances (largest relative residual): output %.1e, trade %.1e, use %.1e, inputs %.1e; %d clamped %s"
-                       (:output b) (:trade b) (:use b) (:inputs b) (count (:clamped b)) (vec (:clamped b))))
-      (check (every? #(< % 1e-9) ((juxt :output :trade :use :inputs) b))
-             "every family's output, trade, use and inputs conserved by the split")
-      (check (< (reduce + 0.0 (map :short (:clamped b))) 1e-2) "nothing material clamped"))
+    (let [b (sup/split-balances rows0 rows)
+          sum (fn [xs k] (reduce + 0.0 (keep k xs)))
+          sub-t (fn [c] (reduce + 0.0 (for [r (prod c)] (num (:quantity r)))))
+          sub-v (reduce + 0.0 (for [{:keys [code]} specs r (prod code)] (num (:value_2011 r))))]
+      (println (format "  balances (largest relative residual, every key of either side): output %.1e, trade %.1e, use %.1e, inputs %.1e, input values %.1e"
+                       (:output b) (:trade b) (:use b) (:inputs b) (:input-values b)))
+      (println (format "  made by the split, set aside above: within a family (no product is its own input in the tables) %,.0f t, EUR %,.0f M %s"
+                       (sum (:within b) :tonnes) (sum (:within b) :value) (mapv (juxt :recipe #(Math/round (:tonnes %))) (:within b))))
+      (println (format "  clamped (a chain input over the parent's row) %,.0f t, EUR %.1f M %s"
+                       (sum (:clamped b) :tonnes) (sum (:clamped b) :value)
+                       (mapv (juxt #(or (:recipe %) (:trade %) (:use %)) #(Math/round (or (:tonnes %) (:short %) 0.0)) #(format "%.1f" (or (:value %) 0.0))) (:clamped b))))
+      (check (every? #(< % 1e-9) ((juxt :output :trade :use :inputs :input-values) b))
+             "every family's output, trade, use, inputs and input values conserved by the split, but what it records making")
+      (check (and (< (sum (:clamped b) :tonnes) (* 0.05 (sub-t "C_NDFB"))) (< (sum (:clamped b) :value) (* 1e-3 sub-v)))
+             (format "nothing material clamped: %.1f%% of the magnets' tonnes, %.3f%% of the sub-nodes' value"
+                     (/ (* 100 (sum (:clamped b) :tonnes)) (sub-t "C_NDFB")) (/ (* 100 (sum (:clamped b) :value)) sub-v))))
     (let [ox-spec (first (filter #(= "C_REOX" (:code %)) specs))
           s-cn (/ (get-in ox-spec [:output "CN"]) (reduce + (vals (:output ox-spec))))
           lo (re/load-specs dir rows0 {:bound :quota})
@@ -604,10 +614,10 @@
       (let [a (:products (sup/outage g cut (assoc opts :hypergraph h)))
             b (:products (sup/outage g0 cut (assoc opts :hypergraph h0)))
             [d k] (shift g a b)]
-        ;; not zero: the magnet motors a region's machinery holds now come
-        ;; from where they are made (China 0.63), not EXIOBASE's trade, so
-        ;; Bulgaria's power-heat-lignite loop feels China's machinery under
-        ;; the crude cut (0.4%)
+        ;; not zero: magnets and the chain come from where they are made;
+        ;; the magnet motors follow their parent's trade (as pooled at
+        ;; China's 0.63 they had cost Bulgaria's lignite-heat loop 0.4%
+        ;; under the crude cut, through China's machinery)
         (check (< d 0.01) (format "%s: largest change %.4f (%s), under 1%%" what d k))))))
 
 (defn -main [& _]
