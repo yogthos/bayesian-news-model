@@ -39,8 +39,27 @@
 
 (def critical-share
   "A good (not a service) whose share of the output's value is at least
-  this is critical."
+  this is critical, unless the hybrid table records its flow as absent
+  or negligible (`negligible-heat`)."
   0.05)
+
+(def negligible-heat
+  "Where the hybrid table records a good's flow into a product in
+  physical units (both in tonnes or TJ), the physics decides, not the
+  value share: a good at 0 per unit is absent, and a fuel (a good with an
+  `ncv`, or a carrier in TJ: electricity, steam, nuclear fuel) whose heat
+  is under this part of the heat of every fuel in the recipe is
+  negligible. Either is the monetary tables routing a flow differently
+  from the physical one (crude at 6-10% of the value of Italy's, the
+  Netherlands' and Poland's N fertiliser, 0 t per t; natural gas at
+  0.3-0.9% of nuclear power's value, 0.2 kg per TJ against 3 TJ of
+  nuclear fuel): not critical whatever its share, and left with value
+  added like gas distribution in a power station (`hypergraph`). A
+  material at any tonnage above 0 is present: its tonnes per tonne
+  cannot be read against the recipe's (an alloying metal, a catalyst).
+  Electricity by source is read as its pool. A recipe the hybrid table
+  records no tonne or TJ of keeps the value-share rule."
+  0.01)
 
 (def feedstock
   "A raw material or fuel going into an energy carrier or material at this
@@ -255,9 +274,52 @@
               (and (= ou "TJ") (= og "energy") (not (pool input u))
                    (>= (* phys (case u "TJ" 1.0 "tonnes" (get ncv input 0.0) 0.0)) feedstock)))))))
 
+(defn- fuel-heat
+  "The heat of a row's input per unit of output, TJ, when it is a fuel:
+  phys at its `ncv`, or phys for a carrier in TJ; else nil."
+  [products {:keys [input phys]}]
+  (let [{u :unit g :group} (products input)]
+    (cond (ncv input) (* (double (or phys 0.0)) (ncv input))
+          (and (= u "TJ") (= g "energy")) (double (or phys 0.0)))))
+
+(defn- physical-pair?
+  "Does the hybrid table record `input` into `output` in physical units,
+  a good into a product in tonnes or TJ?"
+  [products input output]
+  (let [{iu :unit ig :group} (products input)
+        ou (get-in products [output :unit])]
+    (boolean (and ig (not= ig "service") (#{"tonnes" "TJ"} iu) (#{"tonnes" "TJ"} ou)))))
+
+(defn- physically-negligible
+  "Rows `rs` with :negligible true where the hybrid table records the
+  good's flow as absent or negligible (`negligible-heat`): its phys 0, or
+  a fuel's heat (an electricity pool's together) under negligible-heat of
+  the recipe's, in a recipe with some tonne or TJ of a good recorded."
+  [products rs]
+  (let [pool-of #(pool % (get-in products [% :unit]))
+        tot (reduce (fn [m {:keys [region output input phys] :as r}]
+                      (if (physical-pair? products input output)
+                        (let [k [region output] q (or (fuel-heat products r) 0.0)]
+                          (cond-> (-> m (update-in [k :phys] (fnil + 0.0) (or phys 0.0))
+                                      (update-in [k :heat] (fnil + 0.0) q))
+                            (pool-of input) (update-in [k (pool-of input)] (fnil + 0.0) q)))
+                        m))
+                    {} rs)]
+    (mapv (fn [{:keys [region output input phys] :as r}]
+            (let [{p :phys h :heat :as t} (tot [region output])
+                  k (pool-of input)
+                  q (if k (get t k) (fuel-heat products r))]
+              (if (and (physical-pair? products input output) (pos? (or p 0.0))
+                       (or (if k (<= q 0.0) (<= (or phys 0.0) 0.0))
+                           (and q (< q (* negligible-heat h)))))
+                (assoc r :negligible true)
+                r)))
+          rs)))
+
 (defn- kind-of
   "A row's kind: a good (not a service) at critical-share or more of the
-  output's value, or a feedstock (`feedstock?`): critical; else, and
+  output's value, but where the hybrid table finds it absent or
+  negligible (`negligible-heat`), or a feedstock (`feedstock?`): critical; else, and
   always for a yield input in a crop (a yield response) and for
   equipment in a raw product (its capital's upkeep), substitutable. An
   energy carrier in TJ (electricity, steam, nuclear fuel) is critical on
@@ -265,14 +327,14 @@
   `uncalorific-fuels`; the other goods a power station buys, at any
   share, are upkeep (EXIOBASE's industry mix gives Bulgaria's wind power
   chemicals at 18% of its value and steam at 13%)."
-  [products {:keys [input output phys share]}]
+  [products {:keys [input output phys share negligible]}]
   (let [{g :group :as ip} (products input)
         op (products output)
         carrier? (and (= "TJ" (:unit op)) (= "energy" (:group op)))]
     (if (and g (not= g "service")
              (not (and (yield-inputs input) (crops output)))
              (not (and (equipment input) (= "raw" (:group op))))
-             (or (and (or (not carrier?) (uncalorific-fuels input)) (>= (or share 0.0) critical-share))
+             (or (and (or (not carrier?) (uncalorific-fuels input)) (not negligible) (>= (or share 0.0) critical-share))
                  (feedstock? ip op input output phys)))
       :critical
       :substitutable)))
@@ -299,12 +361,15 @@
 
 (defn- pooled
   "Rows `rs` with the pooled inputs (`pool`) of each recipe classified
-  together: all critical when their shares add to critical-share, else all
-  substitutable; each tagged with its :pool."
+  together: all critical when their shares add to critical-share (but a
+  pool the hybrid table finds negligible), else all substitutable; each
+  tagged with its :pool."
   [products rs]
   (let [pool-of #(pool % (get-in products [% :unit]))
-        tot (reduce (fn [m {:keys [region output input share]}]
-                      (if-let [k (pool-of input)] (update m [region output k] (fnil + 0.0) (or share 0.0)) m))
+        tot (reduce (fn [m {:keys [region output input share negligible]}]
+                      (if-let [k (pool-of input)]
+                        (update m [region output k] (fnil + 0.0) (if negligible 0.0 (or share 0.0)))
+                        m))
                     {} rs)]
     (mapv (fn [{:keys [region output input] :as r}]
             (if-let [k (pool-of input)]
@@ -338,14 +403,16 @@
   "Rows `rs` with the heat fuels (`heat`) of each heat output's recipe
   tagged :pool :energy and :heat (TJ per unit), and classified together:
   all critical when one of them is (by the rule, electricity as its pool),
-  their shares add to critical-share, or (but in a manufactured good)
+  their shares add to critical-share (the negligible ones'
+  aside, `negligible-heat`), or (but in a manufactured good)
   their heat adds to heat-critical; else all substitutable as they were.
   A row's kind by the rule alone is kept as :kind-rule."
   [products rs]
   (let [rs (mapv (fn [r] (if-let [q (heat products r)] (assoc r :energy? true :heat q) r)) rs)
-        crit (reduce (fn [m {:keys [region output kind share energy? heat]}]
+        crit (reduce (fn [m {:keys [region output kind share energy? heat negligible]}]
                        (if energy?
-                         (update m [region output] (fn [[c t q]] [(or c (= kind :critical)) (+ (or t 0.0) (or share 0.0))
+                         (update m [region output] (fn [[c t q]] [(or c (= kind :critical))
+                                                                  (+ (or t 0.0) (if negligible 0.0 (or share 0.0)))
                                                                   (+ (or q 0.0) heat)]))
                          m))
                      {} rs)]
@@ -373,7 +440,7 @@
   the way in."
   [{:keys [products recipes trade supply use]}]
   (let [ps (into {} (for [p products] [(:code p) (dissoc p :code)]))
-        rs (energy-pooled ps (pooled ps (mapv #(assoc % :kind (kind-of ps %)) (clean-shares recipes))))
+        rs (energy-pooled ps (pooled ps (mapv #(assoc % :kind (kind-of ps %)) (physically-negligible ps (clean-shares recipes)))))
         g (graph* ps rs trade supply use)]
     (assoc g :critical-h (delay (critical-hypergraph g)))))
 
@@ -666,6 +733,10 @@
   tables' route for the gas a power station buys, which its physical
   fuel row already holds (EXIOBASE's industry mix gives France's nuclear
   power gas distribution at 34% of its value, and with it a 26% loss
+  under the gas cut). So is a good the hybrid table finds absent or
+  negligible in the recipe (`negligible-heat`): the monetary route of a
+  flow its physical rows hold elsewhere (natural gas at 0.87% of the
+  Netherlands' nuclear power's value, 0.2 kg per TJ, had cost it 1.7%
   under the gas cut)."
   ([g] (hypergraph g default-sigma))
   ([g sigma] (hypergraph g sigma 1e-3))
@@ -678,7 +749,8 @@
                     critical? (into #{} (for [[i r] ins :when (= :critical (:kind r))] [:use s i]))
                     carrier? (= ["TJ" "energy"] ((juxt :unit :group) (get-in g [:products p])))
                     sub-rows (for [[i r] ins :when (and (= :substitutable (:kind r)) (>= (or (:share r) 0.0) min-input)
-                                                        (not (and carrier? (= i "C_GASD"))))]
+                                                        (not (and carrier? (= i "C_GASD")))
+                                                        (not (:negligible r)))]
                                [i r])
                     sub-in (set (map first sub-rows))
                     upkeep? (fn [i] (and carrier? (power-station? p) (upkeep i)))

@@ -380,6 +380,86 @@
       (is (nil? (get-in o [:products ["R" "C_POWN"]]))))))
 
 
+(deftest physical-evidence-decides
+  ;; where the hybrid table records a good's flow in physical units, a
+  ;; value share alone does not make it critical when the flow is absent
+  ;; (0 per unit) or, for a fuel, negligible (under sup/negligible-heat of
+  ;; the recipe's heat): the monetary tables route it differently, as they
+  ;; route a power station's gas through gas distribution
+  (let [ps [{:code "C_GASE" :unit "tonnes" :group "raw"}
+            {:code "C_COIL" :unit "tonnes" :group "raw"}
+            {:code "C_NAPT" :unit "tonnes" :group "energy"}
+            {:code "C_COKE" :unit "tonnes" :group "energy"}
+            {:code "C_DOIL" :unit "tonnes" :group "energy"}
+            {:code "C_IRON" :unit "tonnes" :group "raw"}
+            {:code "C_CHEM" :unit "tonnes" :group "material"}
+            {:code "C_PULP" :unit "tonnes" :group "material"}
+            {:code "C_PLAS" :unit "tonnes" :group "material"}
+            {:code "C_STEL" :unit "tonnes" :group "material"}
+            {:code "C_NFER" :unit "tonnes" :group "material"}
+            {:code "C_FISH" :unit "tonnes" :group "raw"}
+            {:code "C_NUCF" :unit "TJ" :group "energy"}
+            {:code "C_POWN" :unit "TJ" :group "energy"}
+            {:code "C_POWC" :unit "TJ" :group "energy"}
+            {:code "C_MACH" :unit "tonnes" :group "manufactured"}
+            {:code "C_MOTO" :unit "Meuro" :group "manufactured"}
+            {:code "C_TLND" :unit "Meuro" :group "service"}
+            {:code "SRV" :unit "Meuro" :group "service"}]
+        ;; Italy's N fertiliser: 0.415 t of gas per t, at 8% of its value;
+        ;; crude at 10% of its value, 0 t per t. The Netherlands' nuclear
+        ;; power: 3.03 TJ of nuclear fuel per TJ; natural gas at 0.87% of
+        ;; its value, 0.18 kg per TJ (9e-6 TJ of heat)
+        rs [{:region "IT" :output "C_NFER" :input "C_GASE" :phys 0.415 :share 0.082}
+            {:region "IT" :output "C_NFER" :input "C_COIL" :phys 0.0 :share 0.104}
+            {:region "IT" :output "C_NFER" :input "SRV" :phys 1e-4 :share 0.2}
+            {:region "NL" :output "C_POWN" :input "C_NUCF" :phys 3.03 :share 2.2e-5}
+            {:region "NL" :output "C_POWN" :input "C_GASE" :phys 0.00018 :share 0.0087}
+            {:region "NL" :output "C_POWN" :input "SRV" :phys 1e-4 :share 0.05}
+            ;; plastics: naphtha its feedstock at 2% of its value, the
+            ;; monetary route through chemicals nec at 20%, 0 t per t
+            {:region "R" :output "C_PLAS" :input "C_NAPT" :phys 0.58 :share 0.02}
+            {:region "R" :output "C_PLAS" :input "C_CHEM" :phys 0.0 :share 0.2}
+            {:region "R" :output "C_STEL" :input "C_COKE" :phys 0.4 :share 0.1}
+            {:region "R" :output "C_STEL" :input "C_IRON" :phys 1.5 :share 0.1}
+            ;; a fuel physically present, by its value share
+            {:region "R" :output "C_FISH" :input "C_DOIL" :phys 0.3 :share 0.1}
+            ;; a manufactured good: its electricity at 6% of its value but
+            ;; 1e-9 TJ per t, against 4e-4 TJ of fuel oil's heat
+            {:region "R" :output "C_MACH" :input "C_POWC" :phys 1e-9 :share 0.06}
+            {:region "R" :output "C_MACH" :input "C_DOIL" :phys 0.01 :share 0.001}
+            ;; no physical row: a good in money, a service output, and a
+            ;; recipe the hybrid table records no tonne of
+            {:region "R" :output "C_MACH" :input "C_MOTO" :phys 0.001 :share 0.06}
+            {:region "R" :output "C_TLND" :input "C_DOIL" :phys 1e5 :share 0.15}
+            {:region "R" :output "C_PULP" :input "C_CHEM" :phys 0.0 :share 0.1}]
+        g (sup/graph {:products ps :recipes rs})]
+    (testing "crude in Italy's N fertiliser: 0 t per t, not critical, and
+              no input at all (a crude cut leaves the fertiliser whole)"
+      (is (= :substitutable (sup/classify g "IT" "C_NFER" "C_COIL")))
+      (is (nil? (get-in (sup/outage g {["IT" "C_COIL"] 0.5} {:at :use}) [:products ["IT" "C_NFER"]]))))
+    (testing "natural gas in the Netherlands' nuclear power: a millionth of
+              its heat, not critical, and nuclear power loses nothing when
+              gas is cut"
+      (is (= :substitutable (sup/classify g "NL" "C_POWN" "C_GASE")))
+      (is (nil? (get-in (sup/outage g {["NL" "C_GASE"] 0.4} {:at :use}) [:products ["NL" "C_POWN"]]))))
+    (testing "the real critical inputs stay critical"
+      (is (= :critical (sup/classify g "IT" "C_NFER" "C_GASE")) "gas into N fertiliser")
+      (is (close? 0.6 (get-in (sup/outage g {["IT" "C_GASE"] 0.4} {:at :use}) [:products ["IT" "C_NFER"]]) 1e-6))
+      (is (= :critical (sup/classify g "R" "C_PLAS" "C_NAPT")) "naphtha into plastics")
+      (is (= :substitutable (sup/classify g "R" "C_PLAS" "C_CHEM")) "not its monetary route")
+      (is (= :critical (sup/classify g "R" "C_STEL" "C_COKE")) "coke into steel")
+      (is (= :critical (sup/classify g "R" "C_STEL" "C_IRON")) "and ore")
+      (is (= :critical (sup/classify g "NL" "C_POWN" "C_NUCF")) "nuclear fuel into nuclear power")
+      (is (= :critical (sup/classify g "R" "C_FISH" "C_DOIL")) "a fuel present: its value share decides"))
+    (testing "electricity a billionth of the heat: its 6% share does not
+              make it, nor the energy bundle, critical"
+      (is (= :substitutable (sup/classify g "R" "C_MACH" "C_POWC")))
+      (is (= :substitutable (sup/classify g "R" "C_MACH" "C_DOIL"))))
+    (testing "no physical row: the value share decides"
+      (is (= :critical (sup/classify g "R" "C_MACH" "C_MOTO")) "a good recorded in money")
+      (is (= :critical (sup/classify g "R" "C_TLND" "C_DOIL")) "a service's fuel")
+      (is (= :critical (sup/classify g "R" "C_PULP" "C_CHEM")) "a recipe with no tonne recorded"))))
+
 (deftest a-carrier-is-critical-on-its-fuel-even-without-a-calorific-value
   ;; a carrier's other goods are upkeep, but wood and crops are the fuel
   ;; of biomass power and uranium ore that of nuclear fuel: with no ncv to

@@ -77,6 +77,33 @@
     (println " use rows whose value ratio is above 1 (value_rough, not a share):"
              (count (filter :value-rough (apply concat (vals (:use g))))))))
 
+(defn- rule-report
+  "Physical evidence against value shares (sup/negligible-heat): the rows
+  the hybrid table finds absent or negligible, the artefacts that made
+  critical, and the feedstocks that stay critical."
+  [g]
+  (println "== physical evidence decides (sup/negligible-heat)")
+  (let [rs (sup/recipe-rows g)
+        neg (filter :negligible rs)
+        row (fn [r o i] (get-in g [:recipes [r o] i]))]
+    (println (format " %d rows absent or negligible in the hybrid table (%d with a value share of 5%% or more), left with value added"
+                     (count neg) (count (filter #(>= (or (:share %) 0.0) sup/critical-share) neg))))
+    (doseq [r ["IT" "NL" "PL"]]
+      (let [x (row r "C_NFER" "C_COIL")]
+        (check (and x (= :substitutable (:kind x)) (:negligible x))
+               (format "%s N fertiliser's crude (%.0f%% of its value, %s t per t) is not critical" r
+                       (* 100 (or (:share x) 0.0)) (:phys x)))))
+    (doseq [r ["NL" "GB" "HU"]]
+      (let [x (row r "C_POWN" "C_GASE")]
+        (check (and x (= :substitutable (:kind x)) (:negligible x))
+               (format "%s nuclear power's natural gas (%.2f%% of its value, %.2g t per TJ) is not critical, nor an input" r
+                       (* 100 (or (:share x) 0.0)) (:phys x)))))
+    (doseq [[o i what] [["C_NFER" "C_GASE" "gas into N fertiliser"] ["C_PLAS" "C_NAPT" "naphtha into plastics"]
+                        ["C_STEL" "C_COKE" "coke into steel"]]]
+      (let [xs (filter #(and (= o (:output %)) (= i (:input %)) (>= (or (:phys %) 0.0) sup/feedstock)) rs)]
+        (check (and (seq xs) (every? #(= :critical (:kind %)) xs))
+               (format "%s critical in every region with %.1f t per t or more (%d)" what sup/feedstock (count xs)))))))
+
 (defn- balance-report [g]
   (println "== balances (data/derived/supply/balances.csv)")
   (let [bs (rows "balances.csv")
@@ -428,6 +455,7 @@
     (println "bnm.supply-check: no" dir "- run python -I scripts/product-graph.py first")
     (let [g (sup/load-graph dir)]
       (size-report g)
+      (rule-report g)
       (balance-report g)
       (when (.exists (io/file dir "scaling.csv")) (scaling-report))
       (when (.exists (io/file dir "oil-products.csv")) (unsd-report))
