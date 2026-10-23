@@ -6,6 +6,7 @@
     python3 -I scripts/essentiality-trade.py
     jolt -A:tools -M -m bnm.essentiality-run losses   # the loss tables (slow)
     jolt -A:tools -M -m bnm.essentiality-run          # stocks and report
+    jolt -A:tools -M -m bnm.essentiality-run fertiliser  # the gas target
 
   losses writes data/derived/supply/essentiality-loss.csv: per EXIOBASE
   product p with HS92 trade, the value added lost (EUR M, 2011) in the
@@ -330,7 +331,7 @@
 
 (defn- print-top [k rows n names]
   (println (format "K = %d (data %d): %d products ranked; top %d by world R (steady, USD bn of value added a year)" k (- k 2) (count rows) n))
-  (println "   rank hs6     R      R-3m   R-12m  trade  P     top supplier (share)  strait  rise-pct parent  name")
+  (println "   rank hs6     R      R-3m   R-12m  trade  P     top supplier (its share of R) strait  rise-pct parent  name")
   (doseq [r (take n rows)]
     (println (format "   %4d %s %6.2f %6.2f %6.2f %6.1f %.3f %s (%.2f)          %.2f   %s %-7s %s"
                      (:rank r) (:hs6 r) (bn (:risk r)) (bn (:risk-3m r)) (bn (:risk-12m r)) (bn (:value r)) (:p r)
@@ -459,9 +460,38 @@
 
 ;; ---------------------------------------------------------------- flags, targets, stocks
 
+(def tech-material
+  "HS92 code -> its bnm.tech-demand implied-demand growth (5-year log
+  change, WLD): the technology link of signal 2."
+  (into {} (for [[v codes] {"lithium-li-ion-growth5" ["282520" "283691" "253090"]
+                            "cobalt-li-ion-growth5" ["260500" "282200" "810510"]
+                            "nickel-li-ion-growth5" ["260400" "283324" "750110" "750120" "750210"]
+                            "graphite-li-ion-growth5" ["250410" "250490" "380110"]
+                            "copper-growth5" ["260300" "740200" "740311" "740312" "740319"]
+                            "rare-earths-growth5" ["280530" "284610" "284690" "850511"]
+                            "silicon-growth5" ["280461" "280469"]
+                            "silver-growth5" ["710691" "710692"]}
+                 c codes]
+             [c (str "tech-demand/" v)])))
+
+(defn tech-growth
+  "{[variable K] growth}: the latest WLD value known by K."
+  [path ks]
+  (let [rows (for [r (csv/read-maps path \,)
+                   :when (and (= "WLD" (:iso r)) (str/ends-with? (:variable r) "growth5"))]
+               [(:variable r) (parse-long (:year r)) (parse-double (:value r))])]
+    (into {} (for [[v rs] (group-by first rows) k ks
+                   :let [x (last (sort-by second (filter #(<= (second %) k) rs)))]
+                   :when x]
+               [[v k] (nth x 2)]))))
+
 (defn with-flags
-  "rows-by-k with the four signals and :flag on each row."
-  [rows-by-k world parents users st-hhi]
+  "rows-by-k with the four signals and :flag on each row. Linked: a
+  recipe user of the product's parent (median value share >= 0.005) whose
+  world trade grew faster than the world's over five years or is in the
+  top quarter by value, or a technology the product feeds whose implied
+  demand grew (`tech-material`)."
+  [rows-by-k world parents users st-hhi tg]
   (let [pv (reduce (fn [m {:keys [hs6 year value]}]
                      (if-let [p (and value (parents hs6))] (update m [p year] (fnil + 0.0) value) m))
                    {} world)
@@ -479,7 +509,9 @@
         past (fn [c k] (keep #(get-in idx [% c]) (range (- k 3) k)))]
     (into {} (for [[k rs] rows-by-k]
                [k (mapv (fn [r] (let [y (- k 2)
-                                      m (assoc r :rising (<= (:pct-rise r) 0.10) :linked (linked? (:parent r) y)
+                                      tech (some-> (tech-material (:hs6 r)) (vector k) tg)
+                                      m (assoc r :rising (<= (:pct-rise r) 0.10)
+                                               :linked (or (linked? (:parent r) y) (boolean (and tech (pos? tech))))
                                                :concentrated (conc? (:hs6 r) y k)
                                                :risk-up (boolean (es/risk-up? (:risk r) (past (:hs6 r) k))))]
                                   (assoc m :flag (es/flag? m))))
@@ -511,7 +543,8 @@
 (defn finish [{:keys [rows-by-k ctx world restr-rows names ranks tick]}]
   (let [users (users-of 0.005)
         st-hhi (stage-hhi "data/derived/stocks/stages.csv" (range 1995 2027))
-        rows-by-k (with-flags rows-by-k world (:parents ctx) users st-hhi)
+        tg (tech-growth "data/derived/stocks/tech-demand.csv" (range 2014 2027))
+        rows-by-k (with-flags rows-by-k world (:parents ctx) users st-hhi tg)
         _ (tick "flags")
         sets (ec/label-sets (conc/load-subnodes (str dir "/subnodes.csv")))]
     (write-stocks rows-by-k (set (keys names)) "data/derived/stocks/essential.csv")

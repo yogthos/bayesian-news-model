@@ -1133,6 +1133,100 @@ before any test year is scored (PRINCIPLES 9).
        (codes the inventory covers), and the largest rise in log world
        unit value over data years Y+1..Y+3 (all codes); 999 shuffles of
        R_i within HS2 chapter as the placebo.
+   - Result (October 2026; bnm.essentiality, tools/bnm/essentiality_run.clj;
+     stocks essential/<hs6>-risk, -risk-3m, -risk-12m, -risk-rank, -p,
+     -flag and the four signals in data/derived/stocks/essential.csv, kUSD
+     of value added a year; WLD for every ranked code, per importing
+     region for the sub-nodes, the energy codes and each year's top 50).
+     About 3,800 HS92 codes a year, K = 2014-2026. Construction:
+     - P per supplier: the union of the t44-world-norel yearly hazards of
+       conflict, war, coup and violence onsets (China 0.10 at K = 2022,
+       Congo 0.55, Russia 0.17, Indonesia 0.17, the median 0.07) and 0.2 x
+       the restriction hazard (tightening 0.089 a year on a code under an
+       OECD measure, new listings 0.003 per unrestricted code-year).
+       Straits: Gamma(0.5, 25) closures a strait-year, updated by the four
+       PortWatch strait events (Red Sea 2023 on Suez and Bab-el-Mandeb,
+       Panama 2023, Hormuz 2026): 0.045 a year for those four at K = 2026,
+       0.015 for the rest.
+     - Loss: bnm.supply outages of every region's use of each EXIOBASE
+       product at once (cuts 0.1 and 0.5; steady, and months 3 and 12
+       with the data stocks; data/derived/supply/essentiality-loss.csv,
+       an hour of outages), as value added lost per unit of use lost.
+       Cheap critical inputs carry huge multipliers: sub-bituminous coal
+       350, lignite 300, chemical minerals 236, bauxite 145, iron ore 94,
+       gas 50, chemicals n.e.c. 5, garments 0.2. Reallocation leaves only
+       suppliers with more than e / (x + e) of world exports in the steady
+       R (0.375 at x = 0.5, e = 0.3): the steady ranking is a ranking of
+       concentrated codes times their parent's multiplier.
+     - Magnitudes are not credible: Indonesian "lignite" (270210, really
+       low-rank coal for Chinese and Indian power) carries 443 bn USD of
+       expected loss a year at K = 2026, because it takes the world
+       lignite multiplier (German and Polish lignite power, no fuel
+       switching in a critical recipe) and Indonesia's onset hazard. One
+       multiplier per product for every region (a cut per region would be
+       6,000 outages each way) is the main simplification; the ranks are
+       what the tests read.
+     - Top R (steady), K = 2023: lignite (Indonesia), iron ore
+       (Australia), sub-bituminous coal (Indonesia), soybeans (Brazil),
+       anthracite (Russia), petroleum coke (USA), feldspar (Turkey), cobalt
+       oxides (Congo, rank 8), magnesia (China), asbestos (Russia), borates
+       (Turkey), toys (China), ferro-nickel (Indonesia). K = 2026: lignite,
+       iron ore, bauxite (Guinea), soybeans, propane (USA), computer
+       storage units and mobile phones (China), petroleum coke, Li-ion
+       accumulators (China, rank 9), ferro-nickel and unwrought nickel
+       alloys (Indonesia), natural uranium (Kazakhstan), unwrought cobalt
+       (Congo).
+     - Lithium and cobalt: met. Lithium hydroxide is in the top 3-4% at K =
+       2021-2022 (rank 156 and 121 of about 3,850), lithium carbonate 6%
+       at 2020; cobalt oxides rank 11 at 2020, cobalt ore 31 at 2022.
+     - Rare earths: not met. Cerium compounds (284610) rank about 1,000
+       (26-29%), rare-earth metals (280530) 1,789 at 2022, other compounds
+       (284690) unranked by the rise score in those years: China's export
+       share stays under the reallocation threshold, and C_CHEM's
+       multiplier is 5. Their concentration signal is on from 2000 (mine
+       HHI 0.83 or more from K = 2000, 0.97 in 2011), before the quota
+       episode; gallium's refinery HHI is above 0.8 from K = 2019 (0.61-0.76
+       in 2013-18) and 811291 never rises (rise percentile 0.85-0.99):
+       flagged by concentration and not by rise, as registered, from 2019.
+     - Gas for European fertiliser: half of each region's gas cut passes
+       whole to N fertiliser in all six regions (1.00 of the cut), but gas
+       is strictly first only in France and Great Britain: in Germany it
+       ties with stone (lime for calcium ammonium nitrate, 0.28 t/t), in
+       the Netherlands and Poland with stone, crude oil and chemicals, in
+       Italy with crude oil. Not met as written. Crude oil's tie is
+       suspect: bnm.supply classifies C_COIL critical for C_NFER in IT, NL
+       and PL on its 2011 value share (0.06-0.10) although its physical
+       coefficient is 0.
+     - Precision: beats random, not rise; not met. EU 2023 (K = 2023, broad):
+       2 of the 20 highest-R rising codes listed (cobalt oxides, natural
+       graphite), against a base of 0.014 (p 0.03), and the rise top 20 has
+       4. USGS 2022 (K = 2022): 2 (ferro-nickel, natural graphite), p 0.04,
+       against 3 for rise alone. Strict mapping: 2 and 1 against 4 and 3.
+       Descriptively, over K = 2016-2026 (the lists are not held out from
+       the later years in the same way) R beats rise in 6 years of 11 on
+       the EU list (ties 3, losses 2) and in 3 on the USGS list (ties 2,
+       losses 6).
+     - Back-test (K 2014-2021, 30,606 product-years): new OECD measures in
+       K+1..K+3 on 51% of the top decile's covered codes against 43% of the
+       bottom half's (2,404 covered product-years), a difference of 0.084
+       that shuffling R within chapter reproduces (placebo mean 0.081, p
+       0.44); unit-value spikes 0.098 against 0.092 (placebo 0.015, p
+       0.99). R carries no information on later restrictions or price
+       spikes beyond its HS chapter.
+     - Sensitivity (K 2022-23): the cut x = 0.1 instead of 0.5 moves the
+       ranking a lot (Spearman 0.56-0.57; with the threshold e / (x + e)
+       only suppliers above 75% count); without the restriction term
+       nothing moves (0.9999+); without straits 0.93-0.94.
+     - The four-signal flag (rise top 10%; linked; exporter or stage HHI
+       0.25 or up 0.05 in five years; R above its mean of the last three
+       years) flags 47-87 codes a year in K = 2017-2026. Among them:
+       lithium carbonate (2020), natural graphite (2023-25), permanent
+       magnets (2023-25), lithium hydroxide (2024), Li-ion accumulators
+       (2024-26), PV cells, synthetic graphite (2025), nickel mattes
+       (2025-26), ferro-nickel (2022-26); and as many spices, furniture,
+       lamps and plastics. Signal 2 (linked) is true for 85% of the codes
+       and decides little; q and the HHI level were set a priori, not
+       learned on 1995-2010.
 9. **Chokepoints.** Route BACI bilateral seaborne flows on a sea network
    and compute each chokepoint's share by product and year.
    - Tests: Hormuz carries about 20% of world crude and LNG in 2019-23.

@@ -182,6 +182,19 @@
 
 ;; ---------------------------------------------------------------- causality
 
+(deftest event-hazard-reads-forecasts-made-by-the-year-end
+  (let [fc {"coup" {"AAA" [[(+ (* 12 2019) 11) 0.19] [(+ (* 12 2020) 11) 0.36]]
+                    "BBB" [[(+ (* 12 2020) 11) 0.0]]}
+            "war_onset" {"AAA" [[(+ (* 12 2020) 11) 0.0] [(+ (* 12 2021) 11) 0.99]]}}
+        h20 (es/event-hazard fc 2020)
+        h19 (es/event-hazard fc 2019)]
+    (testing "the origin at the end of the year, never a later one"
+      (is (close? (es/annual 0.36 24) (h20 "AAA") 1e-12))
+      (is (close? (es/annual 0.19 24) (h19 "AAA") 1e-12)))
+    (testing "a country with no forecast yet is left to the default"
+      (is (nil? (h19 "BBB")))
+      (is (number? (:default h19))))))
+
 (deftest known-by-filters-every-source
   (let [rows [{:known 2010 :v 1} {:known 2011 :v 2} {:known 2012 :v 3}]]
     (is (= [1 2] (map :v (es/known-by rows 2011))))))
