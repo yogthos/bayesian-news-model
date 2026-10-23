@@ -1646,6 +1646,28 @@ byte-identical to t44-world-norel. The session's changes to shared code
 left the event model's base exactly as it was; the base for the next
 trial is t44-world-norel unchanged.
 
+## Pre-registered, 23 October 2026: cell against country concentration under located shocks (bead bnm-1pq.27)
+
+Registered before any output after 2010 is read. Does knowing where a
+country's plants sit (A5 cells) predict its output loss from a located
+shock better than spreading the shock over its land? tools/bnm/located-
+shocks: USGS M6+ ShakeMaps, IBTrACS hurricane-force tracks, Dartmouth
+flood polygons and the project's GDELT conflict onsets, mapped to cells
+(a cell hit when half covered); exposure by bnm.cell-profiles/cell-cut
+on the plants known the year before (steel, cement, refining dominate);
+outcome the shock year and the next against the three years before, log,
+clipped at 1; key-year effects; exposure threshold 0.05. On the design
+shock years (1991-2009, 263 exposed country-years, floods most) neither
+cell nor country beat no exposure; cell less country +0.00026 [-0.0002,
++0.0007].
+
+**Test**, shock years 2011-2023, all hazards, leave-one-year-out squared
+error, 1,000 bootstrap draws by year (seed 1), read only with at least 50
+exposed country-years: cell-level exposure beats country-level (cell less
+country below 0 at the upper end of the 90% interval); time and space
+placebos and each hazard alone for the record. If not, countries stay the
+unit for located supply shocks.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:

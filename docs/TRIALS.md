@@ -64,3 +64,4 @@ the count is the number of lines below.
 | T9 | robustness of the extra dimensions | 2026-10 | input dropout (slow gauges, countries dark, lags doubled), calibration drift and worst era, the 13 states against coverage-matched placebos |
 | CVP | cells against provinces, with features | 2026-10 | the pilot's event runs plus a feature stage (assets, grids, lights, emissions); cells vs provinces and vs within-country shuffles |
 | H4 | asset-growth divergence | 2026-10 | equity, valuation, house and wealth gaps against their own past, composite timing for banking crises and market crashes, coverage-matched placebos |
+| LS | located shocks, cell vs country exposure | 2026-10 | quakes, cyclones, floods, conflict onsets on cells; plant output loss; cell-cut vs uniform country spread |
