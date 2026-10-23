@@ -61,3 +61,4 @@ the count is the number of lines below.
 | T3 | stock x trigger interactions | 2026-10 | credit gap x house prices, youth x grain gap, youth x neighbour conflict, technology gap x grain gap; argmax of gauges against their mean |
 | T6 | early warnings reframed | 2026-10 | post-crisis rows dropped; calm duration with a + prior; five named indicators pooled by group |
 | T5 | slow states over five years, JST 1870-2020 | 2026-10 | credit gap, house and equity growth, current account, credit x house against history alone; developed by leaving eras out, tested on 1996-2015 origins |
+| T9 | robustness of the extra dimensions | 2026-10 | input dropout (slow gauges, countries dark, lags doubled), calibration drift and worst era, the 13 states against coverage-matched placebos |

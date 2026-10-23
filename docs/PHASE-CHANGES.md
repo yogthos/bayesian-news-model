@@ -1481,6 +1481,36 @@ positive in the test years (all rows +0.294, z 1.91; post-crisis out
 strong (z 1.71), it is not specific to the country. Early warnings, as
 reframed, do not carry onsets in either period.
 
+## Pre-registered, 23 October 2026: robustness of the extra dimensions (trial T9)
+
+Registered before any outcome after 2002 is read for this test. Trials
+45 and T1-T4 measured the mean and found the stock-flow states level or
+equivalent to nothing over the base; extra dimensions may still hold
+skill up when other inputs fail or regimes shift (docs/T9-ROBUSTNESS.md,
+tools/bnm/robustness). B is T4's recalibrated base, B+D adds T4's 13
+states, B+P' their coverage-matched placebo; dropout is approximated by
+a ridged logit on the lattice year node's named gauges (G), knocked-out
+inputs entering as unknown, the states never knocked out. On the design
+years (four eras left out in turn) the states cut the loss when the slow
+gauges, a random fifth of countries' data, or publication timeliness
+were knocked out (degradation ratio 0.74-0.83, about 0.10 below the
+placebo), and steadied the base's calibration across eras (slope SD
+0.148 against 0.199, 0.024 below the placebo).
+
+**Tests**, fitted on 1960-2002, scored on origins 2002-2020 in four eras
+(2002, 2007, 2012, 2017), log score, one-sided 5%, Holm over five:
+1. dropout, slow gauges: ratio(D) - ratio(P') < 0;
+2. dropout, a fifth of countries dark: the same;
+3. dropout, publication lags doubled: the same;
+4. calibration drift: drift(B+D) - drift(B+P') < 0;
+5. worst era: worst-era(D) - worst-era(P') > 0.
+**Keep the dimensions** if at least one of 1-4 passes after Holm and none
+shows harm (the worst era's lower end below -0.002 log); 5 alone is not
+enough. Passing dropout keeps them as a fallback against failing inputs,
+passing calibration as a stabiliser; neither claims a higher mean. For
+the record: ratio(D) < 1 per scenario, the event-stream scenario, the
+cell minimax and decile, the worst kind, the era spread, Brier.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
