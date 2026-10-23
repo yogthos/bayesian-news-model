@@ -1591,6 +1591,14 @@ its penalty chosen on the rotation it was scored on.
 2. the composite, within mode (where): the same;
 3. for the record: per kind, the four gaps, the credit and Keen gaps, Brier.
 
+**Results, 23 October 2026 (H4).** Origins 2002-2020: (1, primary) the
+composite's timing over its placebo, log -0.0051 [-0.0143, +0.0090]:
+fails (market crashes -0.0100, banking crises -0.0003); (2) its "where"
+-0.00002 [-0.0011, +0.0010]: level. The design years' timing signal does
+not recur: divergence of asset values from their own past does not time
+crashes or banking crises out of sample, as an attribution over placebos
+with the same coverage.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
