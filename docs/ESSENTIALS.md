@@ -1327,6 +1327,62 @@ before any test year is scored (PRINCIPLES 9).
        unit-value spikes 0.005 and 0.000 above the bottom half (placebo
        0.014 and 0.009, p 0.99). R still carries nothing beyond its HS
        chapter.
+   - Bilateral supplier slices (bead bnm-1pq.30, after the record above).
+     A region's slice of a supplier had been the supplier's share of
+     world exports. It is now what the region's countries bought from
+     the supplier in BACI (scripts/essentiality-trade.py from
+     hs6-essentials, read as known by K), so a region's slices add up to
+     its imports. Codes without bilateral flows fall back to world shares
+     and are flagged in the report. scripts/baci.py now also keeps
+     bilaterally the 195 HS92 codes that ranked in the top 100 at any K
+     under world shares (RANKED_CODES; its other outputs are byte for
+     byte unchanged). That puts 241-275 codes a year on bilateral
+     slices, including every code in each year's top 50. The code list
+     was chosen from rankings at every K, so it is a look-ahead in
+     coverage, though not in the data.
+     - Slices alone, on the earlier loss tables: the ranks barely move
+       (Spearman 0.99999 at K = 2022-23), but the top changes. Lignite
+       drops from rank 3 (16.7 bn USD, Czechia 5.9 and Russia 4.9) to
+       rank 22 (1.8 bn) at K = 2026, and from 3 to 36 at K = 2023. Czech
+       imports come from Germany, and what Indonesia ships goes mostly
+       to the rest of Asia (WA). Bauxite falls from 65 to 13 bn at K =
+       2026 (rank 1 to 3), because Guinea's ore goes to China.
+       Anthracite rises from 39 to 61 bn at K = 2023, because Russia
+       ships it to heavy users. Iron ore falls from 40 to 30 bn.
+     - Final rerun. It uses the slices plus two changed inputs. First,
+       the graph: the hybrid overrides (3df0389, gas into N fertiliser in
+       8 regions, electricity in 138 mining recipes) and the pooled
+       power-station coals (ad1f21e), with the loss tables recomputed (41
+       minutes). Second, technology demand (8fb630b, IEA EV sales and
+       IRENA's onshore/offshore wind split; world rare-earths growth5
+       0.32 to 0.51). Only the sign of growth5 enters the flag, so the
+       second leaves R and the flags as they were. Steady multipliers
+       at cut 0.1: lignite 215 to 25, sub-bituminous coal 267 to 86,
+       anthracite 110 to 91. Coke, bauxite, iron ore and gas are
+       unchanged. Lignite ends at rank 137 at K = 2026 (0.21 bn) and
+       197 at K = 2023. Sub-bituminous coal goes from rank 5 to 27 at
+       K = 2023. Top R, K = 2026: iron ore (Australia, 30 bn), propane
+       (USA, 16), bauxite (Guinea, 13), computer units and phones
+       (China), ferro-nickel (Indonesia), Li-ion accumulators (China,
+       rank 7), soybeans, petroleum coke, granite (India). K = 2023:
+       anthracite (Russia, 51 bn), iron ore, granite, soybeans, marble.
+     - Targets, registered -> fixed (above) -> slices and the final
+       inputs:
+       - lithium: met -> met -> met (hydroxide 115 and 101 at 2021-22,
+         carbonate 218 at 2020).
+       - cobalt: met -> met -> met (oxides 12 at 2020, ore 495 at 2022).
+       - rare earths: not met -> not met -> not met (cerium compounds
+         992-1,107).
+       - precision: unchanged (EU 2 against rise 4, p 0.03; USGS 2
+         against 3, p 0.04). R beats random but not rise.
+       - back-test: restrictions 0.543 against 0.428 (difference 0.115,
+         placebo 0.074, p 0.10); unit-value spikes 0.000 (p 0.98). Still
+         nothing beyond the chapter.
+       - gas for European fertiliser: as after da0cc6c, 3 of 6 (FR, IT
+         and GB strictly first; DE ties with stone; NL and PL tie with
+         stone and chemicals). The overrides leave the registered six
+         as they were. Outside them, gas is strictly first in LT,
+         WA and WL and ties with stone in TR.
 9. **Chokepoints.** Route BACI bilateral seaborne flows on a sea network
    and compute each chokepoint's share by product and year.
    - Tests: Hormuz carries about 20% of world crude and LNG in 2019-23.
