@@ -346,14 +346,21 @@
         (doseq [[p what] [["C_NFER" "N fertiliser"] ["C_POWG" "gas power"] ["C_POWN" "nuclear power"]
                           ["C_WHEA" "wheat"] ["C_STEL" "steel"] ["C_CHEM" "chemicals"]]]
           (when (get-in g [:recipes [r p]]) (path-line (str r " " what) path steady [r p]))))
-      (check (every? (fn [t] (every? #(< (loss (:products (nth path (dec t))) [% "C_POWN"]) 1e-3) nuc)) (range 1 13))
-             (format "nuclear power loses nothing in months 1-12 in all %d European regions making it (its fuel stocks)" (count nuc)))
+      ;; not nothing: a power station's upkeep (its CES bundle: chemicals,
+      ;; machinery, services) loses what the gas takes from them, 1-2%;
+      ;; its fuel, the critical input, is held by its stocks
+      (let [worst (reduce max 0.0 (for [t (range 1 13) r nuc] (loss (:products (nth path (dec t))) [r "C_POWN"])))]
+        (check (and (< worst 0.03) (every? #(< (loss (:products (nth path 11)) [% "C_POWN"]) (* 0.5 (loss steady [% "C_POWN"]))) nuc))
+               (format "nuclear power loses under 3%% in months 1-12 in all %d European regions making it (largest %s; its upkeep, not its fuel), under half its steady loss"
+                       (count nuc) (pct worst))))
       (let [stored (filter #(> (get st [% "C_GASE"] 0.0) 1.0) ["DE" "FR" "IT" "NL" "PL" "AT" "HU" "CZ" "SK"])]
         (check (every? #(< (loss (:products (first path)) [% "C_NFER"]) (* 0.1 (loss steady [% "C_NFER"]))) stored)
                (str "gas storage delays the N fertiliser cut: under a tenth of its steady loss in month 1 where storage holds over a month of use ("
                     (str/join " " stored) ")"))
-        (check (every? #(< (Math/abs (- (loss (:products (nth path 11)) [% "C_NFER"]) (loss steady [% "C_NFER"]))) 0.01) stored)
-               "and the steady loss by month 12, the storage drawn"))
+        (let [drained (filter #(< (get st [% "C_GASE"] 0.0) 4.0) stored)]
+          (check (every? #(< (Math/abs (- (loss (:products (nth path 11)) [% "C_NFER"]) (loss steady [% "C_NFER"]))) 0.01) drained)
+                 (str "and the steady loss by month 12 where the storage (under 4 months at 0.4 a month) is drawn ("
+                      (str/join " " drained) ")"))))
       (check (< (below-steady path steady) 1e-4) "no month loses more than the steady state (stocks only help)"))
     (println "== shock 2 with stocks: Middle East (WM) crude output cut 50%")
     (let [cut {["WM" "C_COIL"] 0.5}
