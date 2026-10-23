@@ -676,6 +676,39 @@ nuclear power's heat, 0 t of crude) and far below any fuel a process
 runs on; a fuel's part of the heat is read from the hybrid table
 alone.
 
+So the rule follows the hybrid table's errors too, and two were found
+against independent sources and overridden in scripts/product-graph.py
+(its OVERRIDES table: region, product pair, value, source, reason; the
+rows carry the source in recipes.csv's override column and are listed in
+overrides.csv). Electricity in mining: the hybrid table gives the quarries
+(stone, sand and clay, chemical and fertiliser minerals) and uranium
+mining next to none in nearly every region (Germany's mining 3 TJ of
+electricity in all against 11,100 TJ of fuel; Italy's, France's, Japan's
+and Britain's under 1 TJ), where UNSD's 2011 energy statistics give
+mining and quarrying (transaction 1214E) 9-68% of its energy as
+electricity, 40% at the median (Germany 43%, the US 40%, Russia 36%). A
+mining product whose electricity is under 1% of its heat takes UNSD's
+share for its region (the median where UNSD has no figure or reports
+electricity alone), split by source as the region's industries use it:
+1,089 rows in 138 recipes; the sector's share, an upper figure for a
+quarry, but anything in that range is far from negligible. Gas in N
+fertiliser: ammonia takes 0.55-0.75 t of gas per t, and where the hybrid
+row is under a quarter of what USGS's 2011 ammonia output needs at 0.58
+t/t, and UNSD's non-energy gas confirms the gas route, it is set to 0.65
+t per t of NH3 over the hybrid's N fertiliser output (at most 0.75):
+Lithuania 0.003 to 0.733 t/t (Achema, 1.06 Mt of NH3), Turkey 0.006 to
+0.131, the rest of Asia 0.013 to 0.325, Latin America 0.049 to 0.75,
+Africa 0.15 to 0.716, Poland 0.11 to 0.75, Croatia 0.11 to 0.75, Britain
+0.085 to 0.655. Norway (no gas row; UNSD's non-energy gas there is
+methanol's) and the Czech Republic (ammonia from heavy-oil residue) are
+left. The gas becomes critical in Lithuania's, Turkey's, Asia's and Latin
+America's N fertiliser (the others were feedstocks already), and the
+mining energy bundles critical in 40 recipes (sand and clay in 12
+regions, stone 8, chemical minerals 8, uranium 6, precious-metal ores 4,
+bauxite and other ores 1 each). Under the European gas cut Lithuania's N
+fertiliser loses 40% (3% before); Spain's, Finland's and the rest of
+Europe's sand 18-26% (2-6%).
+
 Every other input is substitutable. A product's recipe is then nested:
 the minimum of its critical inputs and a bundle, the bundle a CES of the
 substitutable inputs and value added (labour and capital, weighted by one

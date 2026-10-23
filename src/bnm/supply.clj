@@ -916,7 +916,10 @@
                           (fn [m] {:region (:region m) :output (:output m) :input (:input m)
                                    :phys (num (:phys m)) :share (num (:share_2011 m))
                                    :share-1995 (num (:share_1995 m)) :share-2022 (num (:share_2022 m))
-                                   :physical? (= "1" (:physical m))}))
+                                   :physical? (= "1" (:physical m))
+                                   ;; the source of a hybrid row product-graph.py
+                                   ;; overrode (its OVERRIDES; overrides.csv)
+                                   :override (not-empty (:override m))}))
       :trade (read-rows (f "trade.csv") (fn [m] (-> m (update :quantity num) (update :share num))))
       :supply (read-rows (f "supply.csv")
                          (fn [m] {:region (:region m) :industry (:industry m) :product (:product m)

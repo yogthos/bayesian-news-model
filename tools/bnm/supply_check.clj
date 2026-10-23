@@ -104,6 +104,34 @@
         (check (and (seq xs) (every? #(= :critical (:kind %)) xs))
                (format "%s critical in every region with %.1f t per t or more (%d)" what sup/feedstock (count xs)))))))
 
+(defn- override-report
+  "The hybrid rows scripts/product-graph.py overrode (overrides.csv): each
+  in the graph at its cited value, and what it decides."
+  [g]
+  (println "== hybrid rows overridden (overrides.csv)")
+  (let [os (rows "overrides.csv")
+        row (fn [r o i] (get-in g [:recipes [r o] i]))
+        written (filter #(row (:region %) (:output %) (:input %)) os)]
+    (doseq [[src xs] (sort-by key (group-by :source os))]
+      (println (format " %-31s %4d rows in %3d recipes" src (count xs) (count (distinct (map (juxt :region :output) xs))))))
+    (check (and (seq os) (every? #(let [x (row (:region %) (:output %) (:input %))]
+                                    (and (= (:source %) (:override x))
+                                         (< (Math/abs (- (:phys x) (parse-double (:value %)))) (* 1e-5 (parse-double (:value %))))))
+                                 written)
+                (= (count written) (count os)))
+           (format "every overridden row is in the graph at its value, with its source (%d)" (count os)))
+    (doseq [r ["LT" "TR" "WA" "WL" "WF" "PL" "HR" "GB"]]
+      (let [x (row r "C_NFER" "C_GASE")]
+        (check (and x (= "usgs-ammonia" (:override x)) (= :critical (:kind x)))
+               (format "%s N fertiliser's gas at %.3f t per t (USGS ammonia), critical" r (or (:phys x) 0.0)))))
+    (let [mine #{"unsd-mining-electricity" "unsd-mining-electricity-median"}
+          rs (filter #(mine (:override %)) (sup/recipe-rows g))]
+      (check (and (seq rs) (not-any? :negligible rs))
+             (format "no overridden mining electricity row is negligible (%d rows)" (count rs)))
+      (doseq [r ["DE" "ES" "CN"]]
+        (let [x (row r "C_SDCL" "C_POWC")]
+          (println (format "  %s sand and clay: coal power %s TJ per t, %s, %s" r (:phys x) (:override x) (some-> (:kind x) name))))))))
+
 (defn- balance-report [g]
   (println "== balances (data/derived/supply/balances.csv)")
   (let [bs (rows "balances.csv")
@@ -456,6 +484,7 @@
     (let [g (sup/load-graph dir)]
       (size-report g)
       (rule-report g)
+      (when (.exists (io/file dir "overrides.csv")) (override-report g))
       (balance-report g)
       (when (.exists (io/file dir "scaling.csv")) (scaling-report))
       (when (.exists (io/file dir "oil-products.csv")) (unsd-report))

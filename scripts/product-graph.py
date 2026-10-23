@@ -24,7 +24,7 @@ do). Writes data/derived/supply/:
                   treatment and re-processing services)
   industries.csv  code,name
   recipes.csv     region,output,input,phys,input_unit,output_unit,
-                  share_1995,share_2011,share_2022,physical
+                  share_1995,share_2011,share_2022,physical,override
                   phys: input per unit of output in the hybrid units
                   (tonnes per tonne, TJ per tonne, M EUR per tonne...), the
                   industry-technology assumption on the hybrid supply and
@@ -53,7 +53,14 @@ do). Writes data/derived/supply/:
                   units are tonnes or TJ.
                   Kept: rows with a 2011 share of at least 1e-4,
                   or physical rows carrying at least 1% of the output's
-                  inputs in the input's unit.
+                  inputs in the input's unit (as the hybrid has them).
+                  override: the source where the row is not the hybrid
+                  table's but OVERRIDES' (an independent source
+                  contradicts it: gas in N fertiliser, electricity in
+                  mining; blank otherwise).
+  overrides.csv   region,output,input,hybrid,value,unit,source,reason
+                  each overridden recipe row: the hybrid's value, the one
+                  written, and why.
   production.csv  region,product,quantity,unit,value_1995,value_2011,
                   value_2022   (hybrid supply 2011; M EUR output by year)
   supply.csv      region,industry,product,quantity,unit,market_share,
@@ -160,6 +167,148 @@ ISO3 = {"AU": "AUS", "AT": "AUT", "BE": "BEL", "BR": "BRA", "BG": "BGR", "CA": "
         "LU": "LUX", "MT": "MLT", "MX": "MEX", "NL": "NLD", "NO": "NOR", "PL": "POL", "PT": "PRT", "RO": "ROU",
         "RU": "RUS", "SK": "SVK", "SI": "SVN", "ZA": "ZAF", "KR": "KOR", "ES": "ESP", "SE": "SWE", "CH": "CHE",
         "TR": "TUR", "GB": "GBR", "US": "USA"}
+
+# ------------------------------------------------- overrides (bnm-1pq.28)
+#
+# Where an independent source clearly contradicts a hybrid recipe row,
+# the row is overridden with a cited value (override_recipe; written to
+# recipes.csv with the source in its override column, and to
+# overrides.csv). bnm.supply reads physical rows as evidence of what is
+# absent or negligible (negligible-heat), so a near-zero hybrid row that
+# is a data error, not physics, would decide criticality wrongly.
+#
+# Net calorific values, TJ per tonne, as bnm.supply/ncv (IPCC 2006
+# defaults, vol. 2, table 1.2); test/bnm/supply_test.clj holds the two equal
+NCV = {"C_ANTH": 0.0267, "C_COKC": 0.0282, "C_OTBC": 0.0258, "C_SUBC": 0.0189, "C_LIBC": 0.0119,
+       "C_PEAT": 0.00976, "C_PATF": 0.0207, "C_BKBP": 0.0207, "C_COKE": 0.0282, "C_GCOK": 0.0282,
+       "C_COTA": 0.028, "C_COIL": 0.0423, "C_GASE": 0.048, "C_GASL": 0.0442, "C_OGPL": 0.0423,
+       "C_REFF": 0.043, "C_ADDC": 0.0443, "C_RGAS": 0.0495, "C_ETHA": 0.0464, "C_LPGA": 0.0473,
+       "C_NAPT": 0.0445, "C_MGSL": 0.0443, "C_AGSL": 0.0443, "C_GJET": 0.0443, "C_KJET": 0.0441,
+       "C_KERO": 0.0438, "C_DOIL": 0.043, "C_FOIL": 0.0404, "C_WHSP": 0.0402, "C_LUBR": 0.0402,
+       "C_BITU": 0.0402, "C_PARW": 0.0402, "C_PETC": 0.0325, "C_NSPP": 0.0402, "C_CHAR": 0.0295,
+       "C_BIOG": 0.027, "C_BIOD": 0.027, "C_OBIO": 0.0274, "C_MBIO": 0.0504, "C_COOG": 0.0387,
+       "C_MGWG": 0.0387, "C_MBFG": 0.00247, "C_MOSG": 0.00706}
+NEGLIGIBLE_HEAT = 0.01  # bnm.supply/negligible-heat
+
+# 1. Electricity in mining and quarrying. The hybrid table gives the
+# quarries (stone, sand and clay, chemical and fertiliser minerals) and
+# uranium mining next to no electricity in nearly every region (Germany's
+# mining 3 TJ in all, against 11,100 TJ of fuel), where UNSD's 2011 energy
+# statistics give mining and quarrying (final consumption, transaction
+# 1214E; the energy sector's own extraction is apart) a quarter to two
+# thirds of its energy as electricity. A quarry crushes, screens and
+# washes on electricity. A mining product whose recipe has its electricity
+# under NEGLIGIBLE_HEAT of its heat takes UNSD's electricity share of the
+# region's mining energy: electricity = the recipe's other heat x share /
+# (1 - share), split by source as the region's industries use it. The
+# sector's share: quarrying's own is lower (more diesel, less grinding),
+# but any share in this range is far from negligible.
+# MINING_ELEC_UNSD: region: (electricity TJ, all energy TJ), UNSD Energy
+# Statistics Database 2011, 1214E, every commodity (TJ by its conversion
+# factor, natural gas net at 0.9 of gross; a rest-of-world region the sum
+# of its reporting countries, ROW_MEMBERS). None: no electricity figure
+# (Brazil, China, India, Indonesia, Switzerland), or a share above
+# MINING_ELEC_MAX, its fuels missing (Britain, Cyprus, Malta, Luxembourg
+# report electricity alone; Bulgaria 3,352 of 3,701 TJ); those take the
+# median share of the rest.
+MINING = ["C_ORAN", "C_IRON", "C_COPO", "C_NIKO", "C_ALUO", "C_PREO", "C_LZTO", "C_ONFO", "C_STON", "C_SDCL",
+          "C_CHMF"]
+MINING_ELEC_MAX = 0.8
+MINING_ELEC_UNSD = {
+    "AU": (50200, 119900), "AT": (4669, 7362), "BE": (1519, 2210), "BR": None, "BG": None, "CA": (48410, 131300),
+    "CN": None, "CY": None, "CZ": (1415, 3418), "DK": (288, 3176), "EE": (58, 428), "FI": (3938, 6610),
+    "FR": (6404, 23070), "DE": (6912, 16220), "GR": (148, 1439), "HU": (205, 1043), "HR": (144, 415), "IN": None,
+    "ID": None, "IE": (1793, 3198), "IT": (3107, 7283), "JP": (4892, 17060), "LV": (43, 240), "LT": (104, 204),
+    "LU": None, "MT": None, "MX": (26270, 48730), "NL": (900, 5954), "NO": (2192, 5289), "PL": (8006, 15360),
+    "PT": (2084, 5660), "RO": (882, 2158), "RU": (81630, 229700), "SK": (155, 466), "SI": (335, 560),
+    "ZA": (115300, 166900), "KR": (6941, 10480), "ES": (4874, 12630), "SE": (11970, 20260), "CH": None,
+    "TR": (3946, 8917), "GB": None, "US": (121400, 306900), "WA": (29530, 126000), "WL": (124900, 313100),
+    "WE": (4313, 13800), "WF": (13010, 39470), "WM": (6080, 8669)}
+
+
+def mining_elec_share(region):
+    """(UNSD's electricity share of the region's mining energy, 'unsd'),
+    or the median of the regions with one, 'median'."""
+    ok = {r: e / t for r, v in MINING_ELEC_UNSD.items() if v for e, t in [v] if e / t <= MINING_ELEC_MAX}
+    if region in ok:
+        return ok[region], "unsd"
+    return float(np.median(list(ok.values()))), "median"
+
+
+# 2. Natural gas into N fertiliser. Ammonia takes 0.55-0.75 t of gas per
+# t (feed and fuel, 28-36 GJ/t). Where the hybrid row is under a quarter
+# of what USGS's 2011 ammonia output needs at 0.58 t/t (the best plants),
+# and UNSD's 2011 non-energy gas (transaction 11, net at 0.9 of gross)
+# confirms the gas route, the row is set to NFER_GAS_PER_NH3 t per t of
+# NH3 over the hybrid's N fertiliser output, at most NFER_GAS_MAX (no
+# product needs more than a tonne of ammonia's). Left alone: Norway (no
+# gas row; Yara Porsgrunn's feedstock is not shown by UNSD, whose non-
+# energy gas there is Tjeldbergodden's methanol) and the Czech Republic
+# (Unipetrol's ammonia from heavy-oil residue). NFER_EVIDENCE: region:
+# (USGS NH3 kt, hybrid N fertiliser output kt, hybrid gas t/t, UNSD non-
+# energy gas kt), USGS Minerals Yearbook (data/derived/supply/recipe-obs/
+# nh3.csv, its latest edition; a rest-of-world region the sum of its
+# countries).
+NFER_GAS_PER_NH3 = 0.65
+NFER_GAS_MAX = 0.75
+NFER_EVIDENCE = {"LT": (1057.2, 937.9, 0.00284, 840), "TR": (243.2, 1206.4, 0.00611, 220),
+                 "WA": (8211, 16439.5, 0.0131, 11399), "WL": (8869, 3533.2, 0.0488, 10649),
+                 "WF": (5035, 4568.5, 0.153, 6718), "PL": (2332.1, 1781.4, 0.112, 1586),
+                 "HR": (447.4, 19.7, 0.110, 361), "GB": (729.5, 723.4, 0.0846, 402)}
+_USGS = "USGS MYB {:,.0f} kt NH3 2011 x 0.65 t gas/t over {:,.0f} kt N fertiliser (hybrid){}; UNSD non-energy gas {:,.0f} kt"
+OVERRIDES = [
+    # region, output, input, value (t/t), source, reason and citation
+    ("LT", "C_NFER", "C_GASE", 0.733, "usgs-ammonia",
+     "Achema (Jonava) makes ammonia from gas; hybrid 0.0028 t/t. " + _USGS.format(1057.2, 937.9, "", 840)),
+    ("TR", "C_NFER", "C_GASE", 0.131, "usgs-ammonia",
+     "Toros and Igsas ammonia from gas, most N fertiliser from imported NH3; hybrid 0.0061 t/t. "
+     + _USGS.format(243.2, 1206.4, "", 220)),
+    ("WA", "C_NFER", "C_GASE", 0.325, "usgs-ammonia",
+     "Pakistan, Bangladesh, Malaysia, Uzbekistan: gas ammonia; hybrid 0.013 t/t. "
+     + _USGS.format(8211, 16439.5, "", 11399)),
+    ("WL", "C_NFER", "C_GASE", 0.75, "usgs-ammonia",
+     "Trinidad, Venezuela, Argentina: gas ammonia; hybrid 0.049 t/t. "
+     + _USGS.format(8869, 3533.2, ", capped at 0.75", 10649)),
+    ("WF", "C_NFER", "C_GASE", 0.716, "usgs-ammonia",
+     "Egypt, Algeria, Nigeria, Libya: gas ammonia; hybrid 0.15 t/t. " + _USGS.format(5035, 4568.5, "", 6718)),
+    ("PL", "C_NFER", "C_GASE", 0.75, "usgs-ammonia",
+     "Azoty (Pulawy, Tarnow, Kedzierzyn, Police) and Anwil ammonia from gas; hybrid 0.11 t/t. "
+     + _USGS.format(2332.1, 1781.4, ", capped at 0.75", 1586)),
+    ("HR", "C_NFER", "C_GASE", 0.75, "usgs-ammonia",
+     "Petrokemija (Kutina) ammonia from gas; hybrid 0.11 t/t on an output of 20 kt. "
+     + _USGS.format(447.4, 19.7, ", capped at 0.75", 361)),
+    ("GB", "C_NFER", "C_GASE", 0.655, "usgs-ammonia",
+     "CF Fertilisers (Billingham, Ince) ammonia from gas; hybrid 0.085 t/t. " + _USGS.format(729.5, 723.4, "", 402)),
+]
+
+
+def override_recipe(region, output, col, pcode, punit, mix):
+    """(col', {input: (hybrid, value, source)}): a recipe column (input
+    per unit of `output`, the hybrid's units) with OVERRIDES and the
+    mining electricity rule applied; `mix` {electricity product: share}
+    the region's industries' electricity by source. `col` is not changed."""
+    col = col.copy()
+    got = {}
+    for r, o, i, v, src, _ in OVERRIDES:
+        if (r, o) == (region, output) and i in pcode:
+            k = pcode.index(i)
+            got[i] = (col[k], v, src)
+            col[k] = v
+    if output in MINING:
+        elec = [k for k, c in enumerate(pcode) if c.startswith("C_POW") and punit[k] == "TJ"]
+        other = sum(col[k] * NCV[c] for k, c in enumerate(pcode) if c in NCV)
+        other += sum(col[k] for k in range(len(pcode)) if punit[k] == "TJ" and k not in elec)  # steam, nuclear fuel
+        e = sum(col[k] for k in elec)
+        if other > 0 and e < NEGLIGIBLE_HEAT * (e + other):
+            sh, how = mining_elec_share(region)
+            tot = other * sh / (1.0 - sh)
+            src = "unsd-mining-electricity" if how == "unsd" else "unsd-mining-electricity-median"
+            for k in elec:
+                v = tot * mix.get(pcode[k], 0.0)
+                if v > 0 or col[k] > 0:
+                    got[pcode[k]] = (col[k], v, src)
+                    col[k] = v
+    return col, got
 
 
 def group(code, unit):
@@ -491,11 +640,19 @@ def main():
     units = sorted(set(punit))
     nrec = 0
     nphys = 0
+    for r, (_, nfer, _, _) in NFER_EVIDENCE.items():
+        got = q[regions.index(r), pcode.index("C_NFER")] / 1000.0
+        assert abs(got / nfer - 1) < 0.01, f"{r}: N fertiliser output {got:.1f} kt, the override cites {nfer}"
+    elec = [k for k, c in enumerate(pcode) if c.startswith("C_POW") and punit[k] == "TJ"]
+    reason = {(r, o, i): why for r, o, i, _, _, why in OVERRIDES}
+    overridden = []
     with open(os.path.join(OUT, "recipes.csv"), "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["region", "output", "input", "phys", "input_unit", "output_unit",
-                    "share_1995", "share_2011", "share_2022", "physical"])
+                    "share_1995", "share_2011", "share_2022", "physical", "override"])
         for s, reg in enumerate(regions):
+            used = Ud[s][elec].sum(axis=1)
+            mix = {pcode[k]: used[n] / used.sum() for n, k in enumerate(elec)} if used.sum() > 0 else {}
             M = np.zeros((I, P))
             theta = unit_split(Vd[s], price[s], punit, units)  # {unit: (I,)}
             for u in units:
@@ -510,9 +667,10 @@ def main():
             for p in range(P):
                 if q[s, p] <= 0:
                     continue
-                col = a[:, p]
-                # the output's physical inputs by unit, for the 1% rule
-                by_unit = {u: col[[i for i in range(P) if punit[i] == u]].sum() for u in PHYS}
+                col, got = override_recipe(reg, pcode[p], a[:, p], pcode, punit, mix)
+                # the output's physical inputs by unit as the hybrid has them, for the 1%
+                # rule (an override adds rows, it does not drop any)
+                by_unit = {u: a[[i for i in range(P) if punit[i] == u], p].sum() for u in PHYS}
                 for i in range(P):
                     if i == p:
                         continue
@@ -521,11 +679,25 @@ def main():
                     keep = sh[1] >= 1e-4 or (phys and col[i] > 0 and col[i] >= 0.01 * by_unit[punit[i]])
                     if not keep or (col[i] <= 0 and not sh[1] > 0):
                         continue
+                    src = got[pcode[i]][2] if pcode[i] in got else ""
                     w.writerow([reg, pcode[p], pcode[i], fmt(col[i]), punit[i], punit[p],
-                                fmt(sh[0]), fmt(sh[1]), fmt(sh[2]), 1 if phys else 0])
+                                fmt(sh[0]), fmt(sh[1]), fmt(sh[2]), 1 if phys else 0, src])
                     nrec += 1
                     nphys += phys
+                    if src:
+                        why = reason.get((reg, pcode[p], pcode[i]), "electricity share of mining energy " + (
+                            "UNSD 2011 1214E" if src == "unsd-mining-electricity" else "the median of UNSD's regions")
+                            + f" {mining_elec_share(reg)[0]:.3f}, split by the region's industrial mix")
+                        overridden.append([reg, pcode[p], pcode[i], fmt(got[pcode[i]][0]), fmt(col[i]),
+                                           f"{punit[i]}/{punit[p]}", src, why])
     print(f"recipes: {nrec} rows, {nphys} physical")
+    with open(os.path.join(OUT, "overrides.csv"), "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["region", "output", "input", "hybrid", "value", "unit", "source", "reason"])
+        w.writerows(overridden)
+    print(f"overrides: {len(overridden)} recipe rows "
+          f"({sum(1 for x in overridden if x[6] == 'usgs-ammonia')} N fertiliser gas, the rest mining electricity in "
+          f"{len({(x[0], x[1]) for x in overridden if x[6] != 'usgs-ammonia'})} recipes)")
 
     # production
     with open(os.path.join(OUT, "production.csv"), "w", newline="") as fh:
@@ -744,6 +916,50 @@ def selftest():
     assert abs(b[("XX", "refinery")][2] - (96.0 - 100.0) / 100.0) < 1e-12
     assert abs(b[("XX", "refinery-all")][2] - (96.0 - 125.0) / 125.0) < 1e-12
     assert abs(b[("XX", "refinery-nogas")][2] - (96.0 - 105.0) / 105.0) < 1e-12
+
+    # overrides (OVERRIDES, MINING_ELEC_UNSD): each pinned to its source
+    ov = {(r, o, i): (v, src) for r, o, i, v, src, _ in OVERRIDES}
+    assert sorted(r for r, _, _ in ov) == ["GB", "HR", "LT", "PL", "TR", "WA", "WF", "WL"], sorted(ov)
+    for r, (nh3, nfer, hyb, unsd) in NFER_EVIDENCE.items():
+        v = ov[(r, "C_NFER", "C_GASE")][0]
+        assert abs(v - min(NFER_GAS_MAX, NFER_GAS_PER_NH3 * nh3 / nfer)) < 5e-4, (r, v)
+        assert hyb < v / 4, f"{r}: an override only where the hybrid row is under a quarter of the physics"
+        assert unsd >= 0.5 * NFER_GAS_PER_NH3 * nh3, f"{r}: UNSD's non-energy gas confirms a gas route"
+    assert ov[("LT", "C_NFER", "C_GASE")][0] == 0.733 and ov[("GB", "C_NFER", "C_GASE")][0] == 0.655
+    assert ov[("TR", "C_NFER", "C_GASE")][0] == 0.131 and ov[("WA", "C_NFER", "C_GASE")][0] == 0.325
+    assert ov[("WF", "C_NFER", "C_GASE")][0] == 0.716
+    assert all(ov[(r, "C_NFER", "C_GASE")][0] == 0.75 for r in ["PL", "HR", "WL"]), "capped at a tonne of NH3's gas"
+    assert abs(mining_elec_share("DE")[0] - 6912 / 16220) < 1e-12 and mining_elec_share("DE")[1] == "unsd"
+    med = mining_elec_share("CN")
+    assert med[1] == "median" and abs(med[0] - 0.4038) < 1e-4, med
+    assert mining_elec_share("GB")[1] == "median", "Britain reports only electricity for mining"
+    assert mining_elec_share("BG")[1] == "median", "Bulgaria's fuels for mining are mostly missing"
+    # applied to a recipe column
+    pc = ["C_SDCL", "C_IRON", "C_DOIL", "C_POWC", "C_POWG", "C_POWT", "C_HWAT", "C_NFER", "C_GASE", "C_MACH"]
+    pu = ["tonnes", "tonnes", "tonnes", "TJ", "TJ", "Meuro", "TJ", "tonnes", "tonnes", "tonnes"]
+    mix = {"C_POWC": 0.75, "C_POWG": 0.25}
+    col = np.array([0, 0, 1e-4, 1e-9, 0, 1e-8, 1e-7, 0, 0, 0.0])
+    new, got = override_recipe("DE", "C_SDCL", col, pc, pu, mix)
+    s = 6912 / 16220
+    heat = 1e-4 * NCV["C_DOIL"] + 1e-7
+    assert abs(new[3] + new[4] - heat * s / (1 - s)) < 1e-15 and abs(new[3] / (new[3] + new[4]) - 0.75) < 1e-12
+    assert new[5] == col[5] and new[2] == col[2] and new[6] == col[6], "only the electricity by source moves"
+    assert set(got) == {"C_POWC", "C_POWG"} and got["C_POWC"][2] == "unsd-mining-electricity"
+    assert col[3] == 1e-9, "the column is not changed in place"
+    # electricity already at 1% of the heat or more: the hybrid row stands
+    col2 = col.copy()
+    col2[3] = 0.02 * heat
+    assert override_recipe("DE", "C_SDCL", col2, pc, pu, mix)[1] == {}
+    # no fuel at all: nothing to scale from
+    assert override_recipe("DE", "C_SDCL", np.zeros(len(pc)), pc, pu, mix)[1] == {}
+    # not a mining product
+    assert override_recipe("DE", "C_MACH", col, pc, pu, mix)[1] == {}
+    # N fertiliser: the gas set to the cited value
+    col3 = np.zeros(len(pc))
+    col3[8] = 0.00283659
+    new, got = override_recipe("LT", "C_NFER", col3, pc, pu, mix)
+    assert new[8] == 0.733 and got["C_GASE"] == (0.00283659, 0.733, "usgs-ammonia")
+    assert override_recipe("DE", "C_NFER", col3, pc, pu, mix)[1] == {}, "Germany's stands"
     print("product-graph.py selftest ok")
 
 

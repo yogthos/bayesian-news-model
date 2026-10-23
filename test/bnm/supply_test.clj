@@ -706,3 +706,60 @@
       (is (= {:region "DE" :product "C_GASE" :months 1.5 :year 2011 :known 2026 :basis "data" :source "GIE x fill"}
              (first rows)))
       (is (= {["DE" "C_GASE"] 1.5 ["US" "C_NUCF"] 18.0} (sup/stocks rows))))))
+
+(deftest overridden-hybrid-rows-decide-as-the-physics
+  ;; scripts/product-graph.py overrides hybrid rows an independent source
+  ;; contradicts (bnm-1pq.28): Lithuania's N fertiliser at 0.0028 t of gas
+  ;; per t where USGS's ammonia needs 0.73, a quarry's electricity at a
+  ;; thousandth of a percent of its heat where UNSD gives mining 43%
+  (let [ps [{:code "C_GASE" :unit "tonnes" :group "raw"}
+            {:code "C_NFER" :unit "tonnes" :group "material"}
+            {:code "C_SDCL" :unit "tonnes" :group "raw"}
+            {:code "C_DOIL" :unit "tonnes" :group "energy"}
+            {:code "C_POWC" :unit "TJ" :group "energy"}
+            {:code "C_POWG" :unit "TJ" :group "energy"}
+            {:code "SRV" :unit "Meuro" :group "service"}]
+        rows (fn [gas e]
+               [{:region "LT" :output "C_NFER" :input "C_GASE" :phys gas :share 0.004}
+                {:region "LT" :output "C_NFER" :input "SRV" :phys 1e-4 :share 0.2}
+                {:region "DE" :output "C_SDCL" :input "C_DOIL" :phys 1e-4 :share 0.02}
+                {:region "DE" :output "C_SDCL" :input "C_POWC" :phys (* 0.75 e) :share 0.04}
+                {:region "DE" :output "C_SDCL" :input "C_POWG" :phys (* 0.25 e) :share 0.015}
+                {:region "DE" :output "C_SDCL" :input "SRV" :phys 1e-4 :share 0.3}])
+        hybrid (sup/graph {:products ps :recipes (rows 0.00283659 3.6e-9)})
+        s (/ 6912.0 16220.0)
+        fixed (sup/graph {:products ps :recipes (rows 0.733 (/ (* 1e-4 0.043 s) (- 1.0 s)))})]
+    (testing "as the hybrid table has them: gas not a feedstock, electricity negligible"
+      (is (= :substitutable (sup/classify hybrid "LT" "C_NFER" "C_GASE")))
+      (is (= :substitutable (sup/classify hybrid "DE" "C_SDCL" "C_POWC")))
+      (is (= :substitutable (sup/classify hybrid "DE" "C_SDCL" "C_DOIL"))))
+    (testing "overridden: gas a feedstock, electricity a third of the heat,
+              its 5.5% share critical, and with it the energy bundle"
+      (is (= :critical (sup/classify fixed "LT" "C_NFER" "C_GASE")))
+      (is (close? 0.6 (get-in (sup/outage fixed {["LT" "C_GASE"] 0.4} {:at :use}) [:products ["LT" "C_NFER"]]) 1e-6))
+      (is (= :critical (sup/classify fixed "DE" "C_SDCL" "C_POWC")))
+      (is (= :critical (sup/classify fixed "DE" "C_SDCL" "C_POWG")))
+      (is (= :critical (sup/classify fixed "DE" "C_SDCL" "C_DOIL"))))))
+
+(deftest scripts-calorific-values-match
+  ;; scripts/product-graph.py reads a recipe's heat with its own copy of
+  ;; ncv (the mining electricity override); the two must agree
+  (let [src (slurp "scripts/product-graph.py")
+        blk (subs src (.indexOf src "NCV = {") (.indexOf src "}" (.indexOf src "NCV = {")))
+        py (into {} (for [[_ k v] (re-seq #"\"(C_\w+)\": ([0-9.]+)" blk)] [k (parse-double v)]))]
+    (is (= sup/ncv py))))
+
+(deftest recipes-load-their-override
+  (let [d (doto (java.io.File/createTempFile "graph" "") (.delete) (.mkdirs))
+        w (fn [f s] (spit (java.io.File. d f) s))]
+    (w "products.csv" "code,name,unit,group\nC_GASE,gas,tonnes,raw\nC_NFER,N fertiliser,tonnes,material\n")
+    (w "recipes.csv" (str "region,output,input,phys,input_unit,output_unit,share_1995,share_2011,share_2022,physical,override\n"
+                          "LT,C_NFER,C_GASE,0.733,tonnes,tonnes,0,0.004,0.0006,1,usgs-ammonia\n"
+                          "DE,C_NFER,C_GASE,0.61,tonnes,tonnes,0,0.08,0.05,1,\n"))
+    (w "trade.csv" "product,origin,dest,quantity,share\n")
+    (w "supply.csv" "region,industry,product,quantity,unit,market_share,industry_share\n")
+    (w "use.csv" "region,product,user,kind,quantity,unit,share,value_share,value_rough\n")
+    (let [g (sup/load-graph (str d))]
+      (is (= "usgs-ammonia" (get-in g [:recipes ["LT" "C_NFER"] "C_GASE" :override])))
+      (is (nil? (get-in g [:recipes ["DE" "C_NFER"] "C_GASE" :override])))
+      (is (= :critical (sup/classify g "LT" "C_NFER" "C_GASE"))))))
