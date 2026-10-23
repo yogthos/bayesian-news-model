@@ -589,7 +589,12 @@ source, returned 404 and 403 when fetched (October 2026), so it is not
 used. A 40% cut of the gas used there costs the Middle East's steel
 35% (32% at the old 0.8), against 25% with its gas as heat alone;
 Mexico's loses 28% either way, its energy bundle, mostly gas, already
-losing more than its DRI part (0.32 of the 40%, 13%). The override matters where DRI is most of the
+losing more than its DRI part (0.32 of the 40%, 13%). The Middle East's
+share rests on one estimate: Oman's 1,400 kt is worldsteel's, not a
+reported figure, so the share lies between 0.81 and 0.87, and the
+steel's loss under the 40% cut between about 32% (0.4 x 0.81, as at the
+old 0.8) and 35%; the DRI part sets a floor of 0.4 times the share
+either way. The override matters where DRI is most of the
 steel and little where it is not. Gas DRI elsewhere
 (Venezuela and Trinidad, Egypt and Libya, Russia, India's few gas
 plants) is a smaller part of its region's steel and stays heat.
@@ -704,7 +709,7 @@ among them.
   drains at the shortfall before the cut passes on; outage is its limit.
 - tools/bnm/supply_check.clj reports the balances, EXIOBASE against UNSD,
   the validation and two shocks, and asserts the real-data checks (ok or
-  FAIL, exit 1 on a failure). They take about seven minutes, so the unit
+  FAIL, exit 1 on a failure). They take over an hour with the stock paths, so the unit
   suite (test/bnm/supply_test.clj) runs on synthetic graphs only.
 
 hypergraph/propagate. Every rule (minimum, share-weighted mean, CES with
@@ -843,27 +848,61 @@ origin. Each month a stocked node supplies its inflow (its recipe, the
 cut applied) plus what it draws from its stock, at most the shortfall
 and at most what is left, min(1, inflow + stock); the stock falls by
 what was drawn, and only once it is empty does the cut pass downstream
-whole. The cut holds every month and nothing refills a stock, so
-`outage` is the path's limit once the stocks a cut reaches are drawn
-(the unit tests check the two agree then, and every month when there
-are no stocks). The rule min(1, r + s) is monotone and continuous like
-the others, and each month's operator lies below the last's, so a
-month is solved from the last month's answer (chaotic iteration from
-above, as in hypergraph/propagate): only what a stock running short
-moves is recomputed.
+whole. The cut holds every month and nothing refills a stock, but the
+inflow is the trade-share mean of every origin, so imports from origins
+the cut does not reach keep flowing and a stock covers only the cut
+origins' share (Korea's crude drawn at its Gulf share times the cut,
+not at the cut). `outage` is the path's limit once the stocks a cut
+reaches are drawn (the unit tests check the two agree then, and every
+month when there are no stocks). The rule min(1, r + s) is monotone and
+continuous like the others, and since stocks only fall each month's
+operator lies below the last's, so a month is solved from the last
+month's answer (chaotic iteration from above, as in
+hypergraph/propagate, whose `prepared` and `rule` it calls, public for
+this): only what a stock running short moves is recomputed. The unit
+tests check that this is so: no availability and no stock ever rises,
+and every month equals the month solved afresh from the top with the
+stocks it began with. A stock is drawn at the shortfall against normal
+use, even where its users are held back by another input and need less,
+so it drains early if anything.
+
+A power station's upkeep is a stock too. Its machinery, metals and
+construction (`supply/upkeep`: equipment, steel, aluminium, copper,
+lead/zinc/tin, other non-ferrous and precious metals, foundry work,
+fabricated metal products, construction, renting of machinery) are
+substitutable in its recipe (a carrier is critical on its fuel alone),
+and in the steady state their loss passes on through the CES bundle, so
+nuclear power lost 0.6-5% by month 12 of the gas cut, all of it upkeep.
+But repair and replacement wait for the next planned outage, as a farm
+defers its equipment: in `hypergraph` each upkeep input of an
+electricity or heat carrier enters through its own node [:upkeep region
+station input], and `outage-path` gives each `supply/upkeep-months` of
+it (6, a prior: maintenance is done at planned outages, yearly for a
+thermal plant and at refuelling, every 12-24 months, for a nuclear one,
+so a cut finds a station on average half a cycle from its next; putting
+off a second outage is not counted). A 30% cut of an upkeep input draws
+it in 20 months. :upkeep-months 0 turns it off, a stocks key [region
+station input] sets one station's, and each month reports what is left
+where any was drawn (:upkeep). `outage` is unchanged.
 
 scripts/supply-stocks.py writes data/derived/supply/stocks.csv
 (region, product, months, year, known, basis data or prior, source),
-861 rows:
+918 rows:
 
     product                 basis  regions  months (median, range)  source
     crude                   data     40     0.97 (0.17-4.33)   JODI Oil World 2011: closing stocks / refinery intake
-    gasoline, diesel, jet,  data   26-47    0.6-2.2 medians    JODI 2011: closing stocks / total demand
-      kerosene, fuel oil,
-      LPG, naphtha
+                            prior     1     1.13 (China)       NBS phase-1 SPR 12.43 Mt + Xinhua commercial 29.2 Mt
+                                                                 over JODI's 2011 refinery intake
+                            prior     5     0.55               the JODI regions' lower quartile (Russia; the
+                                                                 Baltics, Luxembourg, Malta, with no refinery)
+    gasoline, diesel, jet,  data   26-47    0.6-1.9 medians    JODI 2011: closing stocks / total demand, each
+      kerosene, fuel oil,                   (cap 3-6)            country capped (below)
+      LPG, naphtha          prior   1-22    0.33-1.17          the JODI regions' lower quartile (China's products,
+                                                                 Russia's naphtha and jet, small users)
     natural gas             data     22     1.34 (0.00-10.97)  GIE Storage Database (working gas of the facilities
                                                                  working in 2011) x fill 0.6 (prior) / EXIOBASE gas use;
                                                                  US: EIA 2011 mean working gas / consumption (1.33)
+                            prior     1     0.99 (Russia)      Gazprom's working gas, 65 bcm, x fill 0.6
     wheat, rice, coarse     data     48     1.47, 6.20, 1.25   USDA PSD 2011/12: ending stocks / domestic consumption
       grains                                                    (the EU's figure for every member)
     nuclear fuel            data     26     30                 ESA Annual Report 2011: EU utilities' 47,343 tU, "at
@@ -875,43 +914,86 @@ scripts/supply-stocks.py writes data/derived/supply/stocks.csv
       copper, Pb/Zn/Sn,                                         use; consumers' and stockholders' are unpublished
       other non-ferrous
 
-The JODI ratios are as reported: Japan's crude (4.3 months) includes
-the stocks it reports, government stocks among them where countries
-include them; a few small demands give long ratios (Greece's naphtha at
-the 36-month cap, Switzerland's fuel oil 25, South Africa's products
-8-17). The gas figures are capacities, not fills: the GIE database gives
+JODI's ratios run long where demand is tiny (Greece's naphtha had hit
+the old 36-month cap, Switzerland's fuel oil 25 months, South Africa's
+products 8-17), so each country's stock is capped at a plausible
+maximum of its own use before a region's are summed: 6 months of crude
+and the fuels (above the largest obligation, Switzerland's compulsory
+4.5 months of petrol, diesel and heating oil, and the IEA's 90 days of
+net imports; Japan's 4.3 months of crude is the largest regional ratio),
+4 of LPG (Japan's national and private stockpiles together, about 90
+days), 3 of naphtha (a feedstock no one is obliged to store). Japan's
+crude includes the government stocks it reports; countries include
+those inconsistently.
+
+China reports no crude stock to JODI, and with none it lost most of its
+refining in month 1 of the crude cut. It holds large ones: the phase-1
+strategic reserve, 12.43 Mt at Zhenhai, Zhoushan, Huangdao and Dalian
+(the National Bureau of Statistics' first figure, November 2014; filled
+by 2009) and a commercial crude stock Xinhua's China Oil, Gas &
+Petrochemicals put at 29.2 Mt in July 2010 (via Interfax; its 33.6 Mt of
+May 2014 was the highest since January 2010). Together 41.6 Mt over
+2011's 37.5 Mt a month of refinery intake: 1.13 months, a prior and
+flagged as one (no open series; EIA's later estimates of Chinese
+stockpiling start after 2011, and IEA's are not open).
+
+Where no figure is reported, zero overstated the fast losses for oil:
+every refinery and terminal holds working stock. A region using an oil
+product with no figure (China's products, Russia's crude, which Russia
+does not report, a few small users) takes the lower quartile of the
+reporting regions' months, a prior, so as not to overstate the buffer
+either. Gas is different: GIE's database is the census of European
+facilities, so a European country with none listed (Finland, Greece,
+the Baltics but Latvia, Luxembourg, Slovenia, Cyprus, Malta) is taken to
+have none and zero is right, except where a facility has since closed
+without a closing year (Ireland's Kinsale field store, 2001-2017, is
+missing: a gap); outside Europe and the US only Russia is
+filled (Gazprom's 62.2 bcm in 2005, 72.7 in 2022: 65 bcm), and Canada's
+storage, China's (about 3% of its use then) and Japan's and Korea's LNG
+tanks (a few weeks) are left at zero, a gap that matters for none of
+the shocks below.
+
+The gas figures are capacities times a fill: the GIE database gives
 today's working gas per facility with its start-up and closing years,
-and the fill, 0.6, is a prior (the midpoint of a cycle from about 30%
-at winter's end to 90% at its start); a cut in October meets more, one
-in March less. Storage also carries the seasonal swing, which the
-model's constant monthly use leaves out, so it is a buffer at its
-best. Britain's is small (0.24 months), Austria's and Hungary's large
-(11 and 7). Regions with no figure hold no stock of that product.
+and the fill, 0.6, is a prior checked against GIE's AGSI+ as ACER's
+public summary has it: EU storage 35.75% full on 1 April (2011-2015
+mean), 86-87% in late November (2011-2024 mean) and about 90% at the
+start of winter. A cycle from 0.36 to 0.9 averages about 0.62, so 0.6
+is a cut at no particular season; one in October meets about 0.9, one in
+March 0.4. Storage also carries the seasonal swing, which the model's
+constant monthly use leaves out, so it is a buffer at its best.
+Britain's is small (0.24 months), Austria's and Hungary's large (11 and
+7: Austria's Haidach and 7Fields serve Germany's grid too, so its own
+figure is overstated).
 
 Manual list (gated or not downloadable, October 2026): GIE AGSI+ daily
 fill (API key, free registration); IEA emergency stocks (not open); LME
 and SHFE stock series (partly open, no bulk history); Midrex World
-Direct Reduction Statistics PDFs (404/403).
+Direct Reduction Statistics PDFs (404/403); Xinhua's monthly Chinese
+crude stocks (subscription).
 
 What it shows (tools/bnm/supply_check.clj, loss at months 1, 3, 6, 12,
-24 against the steady state):
+24 against the steady state; upkeep deferred, the oil stocks capped and
+China's crude a prior):
 
     natural gas for use in Europe cut 40%
       DE N fertiliser   0%   0%  40%  40%  40%   steady 40%   (storage 1.55 months)
       DE gas power      0%   1%  40%  40%  40%          40%
-      DE nuclear power  0%   0%   1%   1%   1%           9%
+      DE nuclear power  0%   0%   0%   0%   0%           9%   (was 0 0 1 1 1)
       DE steel          0%   1%  15%  15%  15%          17%
       FR N fertiliser   0%   0%  40%  40%  40%          40%   (1.90)
-      FR nuclear power  0%   0%   0%   1%   1%           6%
+      FR nuclear power  0%   0%   0%   0%   0%           6%   (was 0 0 0 1 1)
+      NL nuclear power  0%   0%   2%   2%   2%           8%
       PL N fertiliser   1%   1%  34%  40%  40%          40%   (2.06)
       GB N fertiliser  16%  40%  40%  40%  40%          40%   (0.24)
+      GB nuclear power  0%   1%   1%   1%   1%           4%
       GB steel          9%  26%  26%  26%  27%          27%
     Middle East crude output cut 50% (refining industry)
       WM refining       2%   2%   2%  50%  50%   steady 50%   (crude 3.03 months)
       JP refining       0%   0%   0%  48%  48%          48%   (4.33)
       IN refining       0%  27%  28%  29%  29%          29%   (0.32)
-      KR refining       2%   2%   2%  14%  17%          17%   (1.44)
-      CN refining      19%  19%  19%  22%  23%          24%   (no JODI stock)
+      KR refining       0%   0%   1%  13%  16%          17%   (1.44)
+      CN refining       0%   0%   0%  22%  23%          24%   (1.13, a prior; was 19 19 19 22 23)
       DE refining       0%   0%   0%  29%  29%          29%   (2.57)
       US refining       0%   1%   2%   4%  14%          14%   (2.08)
     a wheat harvest 30% short everywhere (world stocks 3.6 months)
@@ -921,26 +1003,33 @@ What it shows (tools/bnm/supply_check.clj, loss at months 1, 3, 6, 12,
       storage pressure (bnm.food, against the stocks at the start)
                         1.07 1.25 1.63 2.67 4.29
 
-Nuclear power loses under 1% in month 1 and 0.6-5% by month 12
-against 2-18% in the steady state; its fuel stocks (18-30 months) are
-at most 5% drawn by then, so what it loses is its upkeep, the CES
-bundle of goods a power station buys (Romania's 5%: non-ferrous metals
-and construction, each down 30%). Not nothing, then, as the brief
-expected: deferring upkeep for a year, as the equipment rule defers a
-farm's, would take it to near zero, and is not done here. European gas storage delays
-the N fertiliser cut by months: none in month 1 or 3 where storage
-holds over a month of use, the whole cut by month 6 (Germany, France,
-Italy, the Netherlands), as storage carried the 2022 winter; Britain,
-with a week of storage, loses 16% in month 1. Crude stocks hold
-refining for months (Japan's four months of crude, then
-its products, keep it whole to month 6), India's for a month, and
-China, with no stock in the data, takes most of its loss at once. Grain
+Nuclear power loses nothing through month 12 in Germany and France
+(against 9% and 6% in the steady state), and at most 1.7% anywhere in
+Europe: its fuel stocks (18-30 months) are at most 5% drawn by then and
+its upkeep waits for the next planned outage (the least left at month
+12 is Belgium's construction, 3 of its 6 months). The 1.7% left, the
+Netherlands' (Britain's 1%, Hungary's less), is no upkeep: the monetary
+tables give these stations natural gas itself at 0.3-0.9% of their value
+(the Netherlands 0.87%) against 0.2 kg of it per TJ, the industry mix's
+gas as the gas-distribution row was, and a 40% cut of it costs a CES
+bundle 1-2%. The check that nuclear loses under 1% through month 12
+fails on it; treating a carrier's gas row like its gas distribution, a
+monetary route of another station's fuel, would clear it, and is left
+for a decision. European gas storage delays the N fertiliser cut by
+months: none in month 1 or 3 where storage holds over a month of use,
+the whole cut by month 6 (Germany, France, Italy, the Netherlands), as
+storage carried the 2022 winter; Britain, with a week of storage, loses
+16% in month 1. Crude stocks hold refining for months (Japan's four
+months of crude, then its products, keep it whole to month 6), India's
+for a month; China, with its reserve and commercial stock in, now holds
+its refining whole to month 6 instead of losing 19% at once. Grain
 stocks hold food whole for the first half year while world stocks fall
 and bnm.food's storage pressure (1 + c)/(s/s_ref + c) rises from 1.07
 to 4.3: the quantity loss is delayed, and the scarcity shows first in
-the price, as competitive storage has it. None of these is a
-calibration: the stocks are the right size, give or take the fill and
-the reporting, and the timing follows from them.
+the price, as competitive storage has it. No availability rises from one
+month to the next in any of the three paths. None of these is a
+calibration: the stocks are the right size, give or take the fill, the
+reporting and the priors, and the timing follows from them.
 
 ### Time: the UN energy statistics
 
