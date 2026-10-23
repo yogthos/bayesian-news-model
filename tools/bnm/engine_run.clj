@@ -11,10 +11,15 @@
   edges and orders) and <out>/graph.txt (the same as text), then prints
   the causal step order, the rows per module and, per stock table, the
   mismatches between bnm.states reading the file and reading the coupled
-  table (each a bug in the wrapper). --check-only skips the run and checks
-  an existing <out>. Exits 1 on any mismatch or row left unstepped."
+  table (each a bug in the wrapper); then bnm.state-diag's default state
+  paths (the lagged material tables among them) read both ways, which
+  must give the same states and the same readers. --check-only skips the
+  run and checks an existing <out>. Exits 1 on any mismatch or row left
+  unstepped."
   (:require [bnm.engine :as eng]
             [bnm.modules.stocks :as ms]
+            [bnm.state-diag :as sd]
+            [bnm.states :as states]
             [clojure.java.io :as io]))
 
 (defn -main [& args]
@@ -40,6 +45,12 @@
       (println "golden: bnm.states from the files against from the coupled table")
       (doseq [{:keys [table vars mismatches first]} gold]
         (println (format "  %-44s %4d variables  %d mismatches%s" table vars mismatches (if (seq first) (str " e.g. " first) ""))))
-      (println "checked in" (secs) "s")
-      (shutdown-agents)
-      (System/exit (if (and (every? (comp zero? :mismatches) gold) (every? zero? (vals (:leftover res)))) 0 1)))))
+      (let [paths (sd/default-paths)
+            a (states/read-states paths) b (states/read-states paths {:coupled out})
+            same-states (= a b)
+            same-readers (and same-states (ms/same-readers? a b {:sample 1}))]
+        (println "default state paths:" (vec paths))
+        (println (format "  %d variables; same states: %s; same readers: %s" (count a) same-states same-readers))
+        (println "checked in" (secs) "s")
+        (shutdown-agents)
+        (System/exit (if (and same-readers (every? (comp zero? :mismatches) gold) (every? zero? (vals (:leftover res)))) 0 1))))))

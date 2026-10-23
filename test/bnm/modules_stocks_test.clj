@@ -60,7 +60,59 @@
     (testing "the table carries the module, data year and source"
       (let [ls (str/split-lines (slurp (str out "/state.csv")))]
         (is (= (str/join "," eng/table-header) (first ls)))
-        (is (some #{"USA,2002,bb,bb/gap,0.3,,2000,2002,model"} ls))))))
+        (is (some #{"USA,2002,bb,bb/gap,0.3,,2000,2002,model"} ls))
+        (is (some #{"USA,2001,aa,aa/x,1.5,0.1,,2001,model"} ls) "a value carries its spread where the model gives one")
+        (is (some #{"USA,2000,aa,aa/x,1.0,,,2000,model"} ls) "and none where it does not")))))
+
+(deftest a-table-changed-since-the-run-is-read-from-its-file
+  (let [dir (tmp-dir) [a b] (fixture dir) mods (modules-of a b)
+        out (str dir "/coupled")]
+    (ms/run! mods out {:from 1990 :to 2010})
+    (spit a "JPN,2003,aa/x,9.0\n" :append true)
+    (is (= 9.0 (get-in (states/read-states [a] {:coupled out}) ["aa/x" "JPN" 2003])) "a stale coupled table is not read")
+    (is (= (states/read-states [a b]) (states/read-states [a b] {:coupled out})))))
+
+(deftest lagged-tables-outside-the-coupled-table-read-the-same
+  ;; the material base: by data year, known two years on, read from its file
+  (let [dir (tmp-dir) [a b] (fixture dir) mods (modules-of a b)
+        out (str dir "/coupled")
+        c (str dir "/material/cc.csv")]
+    (io/make-parents c)
+    (spit c "iso,year,variable,value\nUSA,1999,arable_land,10\nUSA,2000,arable_land,11\nDEU,2000,arable_land,7\n")
+    (ms/run! mods out {:from 1990 :to 2010})
+    (let [paths [a b [c 2]]
+          s1 (states/read-states paths) s2 (states/read-states paths {:coupled out})]
+      (is (= s1 s2))
+      (is (= 11.0 (get-in s2 ["arable_land" "USA" 2002])) "known two years after its data year"))))
+
+(deftest the-run-streams-the-tables
+  ;; run! steps each table from a copy sorted by year, read as it goes,
+  ;; not from the tables held in memory: the same coupled table as the
+  ;; modules' own in-memory steps, and nothing left behind
+  (let [dir (tmp-dir) [a b] (fixture dir) mods (modules-of a b)
+        out (str dir "/coupled")
+        mem (atom [])
+        _ (eng/run mods {:from 1990 :to 2010 :keep false
+                         :on-step (fn [id t e] (swap! mem into (eng/table-rows (first (filter #(= id (:module %)) mods)) t e)))})
+        res (ms/run! mods out {:from 1990 :to 2010})
+        ls (rest (str/split-lines (slurp (str out "/state.csv"))))]
+    (is (= (sort (map #(str/join "," (map (fn [x] (if (keyword? x) (name x) (str x))) %)) @mem)) (sort ls)))
+    (is (= {:aa 23 :bb 3} (:rows res)))
+    (is (= #{"state.csv" "graph.edn" "graph.txt" "tables.edn"} (set (.list (io/file out)))) "no spill left")
+    (testing "rows before the first year run are left over, not lost silently"
+      (is (= {:aa 18 :bb 1} (:leftover (ms/run! mods (str dir "/c3") {:from 2002 :to 2010})))))))
+
+(deftest the-golden-check-in-shards-is-the-same
+  ;; a table over the budget is checked a share of its variables at a time
+  (let [dir (tmp-dir) [a b] (fixture dir) mods (modules-of a b)
+        out (str dir "/coupled")]
+    (ms/run! mods out {:from 1990 :to 2010})
+    (is (= {"aa/w" {"WLD" {2000 3.0 2001 4.0}}}
+           (first (states/read-each [a] {:coupled out :var? #{"aa/w"}}))
+           (first (states/read-each [a] {:var? #{"aa/w"}}))))
+    (is (= (ms/golden mods out) (ms/golden mods out {:budget 10})))
+    (spit (str out "/state.csv") (str/join "\n" (remove #(str/starts-with? % "USA,2001,aa,aa/x,") (str/split-lines (slurp (str out "/state.csv"))))))
+    (is (= [1 0] (map :mismatches (ms/golden mods out {:budget 10}))) "a mismatch is still found")))
 
 (deftest a-mismatch-is-found
   (let [dir (tmp-dir) [a b] (fixture dir) mods (modules-of a b)
@@ -101,8 +153,26 @@
              (set (map (juxt :from :to) (eng/edges mods))))))
     (testing "emits map onto the typed channels (section 4c)"
       (is (every? #(or (nil? %) (ms/channels %)) (map :channel (mapcat :emits mods))))
-      (is (every? (fn [m] (some :channel (:emits m))) (remove #(#{:technology :tech-demand :chokepoints} (:module %)) mods))
-          "every model but three has a channel"))))
+      (is (every? (fn [m] (some :channel (:emits m))) mods) "every model has a channel")
+      (is (= {:technology #{:R10} :tech-demand #{:R9} :chokepoints #{:W4}}
+             (into {} (for [m mods :when (#{:technology :tech-demand :chokepoints} (:module m))]
+                        [(:module m) (set (keep :channel (:emits m)))])))))))
+
+(deftest the-default-states-read-the-same-from-the-coupled-table
+  ;; bnm.state-diag's default paths, the lagged material tables among
+  ;; them, over the small stock tables on disk run through the engine: the
+  ;; same states and the same readers (the tool bnm.engine-run checks the
+  ;; full default paths against the full coupled table)
+  (let [small (filter #(#{:credit :energy :econ-coupling} (:module %)) (ms/modules))
+        material (for [f ["endowments" "capacity" "production"] :let [p (str "data/derived/material/" f ".csv")] :when (.exists (io/file p))] [p 2])]
+    (if-not (and (every? #(.exists (io/file (:table %))) small) (seq material))
+      (println "the-default-states-read-the-same-from-the-coupled-table: tables not on disk, skipped")
+      (let [out (str (tmp-dir) "/coupled")
+            _ (ms/run! small out {:from 1800 :to 2035})
+            paths (concat (map :table small) material)
+            s1 (states/read-states paths) s2 (states/read-states paths {:coupled out})]
+        (is (= s1 s2))
+        (is (ms/same-readers? s1 s2 {:sample 40}))))))
 
 (deftest golden-on-the-small-tables-on-disk
   ;; the real stock tables, where present: the small ones, so the suite

@@ -17,31 +17,45 @@
 
 (defn- add-line
   "acc with line `l`'s value (split as f, header `ix`), known `lag` years
-  after its year; empty values and bookkeeping left out."
-  [acc ix f lag]
+  after its year; empty values, bookkeeping and variables `var?` refuses
+  (nil: none) left out."
+  [acc ix f lag var?]
   (let [g #(nth f (ix %) "")
         v (g "value")]
-    (if (and (seq v) (seq (g "iso")) (not (bookkeeping? (g "variable"))))
+    (if (and (seq v) (seq (g "iso")) (not (bookkeeping? (g "variable"))) (or (nil? var?) (var? (g "variable"))))
       (update-in acc [(g "variable") (g "iso")] (fnil assoc (sorted-map)) (+ lag (parse-long (g "year"))) (parse-double v))
       acc)))
 
-(defn- read-file [path lag]
+(defn- read-file [path lag var?]
   (with-open [r (io/reader path)]
     (let [[h & ls] (line-seq r)
           ix (zipmap (str/split h #",") (range))]
-      (reduce (fn [acc l] (add-line acc ix (str/split l #"," -1) lag)) {} ls))))
+      (reduce (fn [acc l] (add-line acc ix (str/split l #"," -1) lag var?)) {} ls))))
+
+(defn- stamp [path] (let [f (io/file path)] (when (.exists f) {:bytes (.length f) :modified (.lastModified f)})))
+
+(defn write-stamps!
+  "dir/tables.edn: each stock table's size and modification time as the
+  coupled table in `dir` was made from it."
+  [dir paths]
+  (io/make-parents (str dir "/x"))
+  (spit (str dir "/tables.edn") (pr-str (into (sorted-map) (for [p paths] [p (stamp p)])))))
 
 (defn- coupled-tables
   "{table path #{module}}: which modules of the coupled table in `dir`
-  (its graph.edn) reproduce each stock table."
+  (its graph.edn) reproduce each stock table; a table that changed since
+  the coupled table was made (dir/tables.edn) is left out, so read from
+  its file."
   [dir]
-  (reduce (fn [m {:keys [module table]}] (if table (update m table (fnil conj #{}) (name module)) m))
-          {} (:modules (edn/read-string (slurp (str dir "/graph.edn"))))))
+  (let [stamps (let [f (io/file dir "tables.edn")] (when (.exists f) (edn/read-string (slurp f))))
+        fresh? (fn [t] (or (nil? stamps) (and (contains? stamps t) (= (stamps t) (stamp t)))))]
+    (reduce (fn [m {:keys [module table]}] (if (and table (fresh? table)) (update m table (fnil conj #{}) (name module)) m))
+            {} (:modules (edn/read-string (slurp (str dir "/graph.edn")))))))
 
 (defn- read-coupled
   "{entry index states}: one pass over dir/state.csv, each line to every
   entry (`take`: {index [modules lag]}) that takes its module."
-  [dir take]
+  [dir take var?]
   (let [by-module (reduce (fn [m [i [ms lag]]] (reduce #(update %1 %2 (fnil conj []) [i lag]) m ms)) {} take)]
     (with-open [r (io/reader (str dir "/state.csv"))]
       (let [[h & ls] (line-seq r)
@@ -49,8 +63,10 @@
             mi (ix "module")]
         (reduce (fn [accs l]
                   (let [f (str/split l #"," -1)]
-                    (reduce (fn [accs [i lag]] (update accs i add-line ix f lag)) accs (by-module (nth f mi "")))))
+                    (reduce (fn [accs [i lag]] (update accs i add-line ix f lag var?)) accs (by-module (nth f mi "")))))
                 {} ls)))))
+
+(declare read-each)
 
 (defn read-states
   "{variable {iso (sorted-map year value)}} from long tables
@@ -65,15 +81,21 @@
   instead, in one pass; any other path from its file. Not the default yet
   (phase A, bead bnm-4hv.9)."
   ([paths] (read-states paths {}))
-  ([paths {:keys [coupled]}]
+  ([paths opts]
+   (reduce (fn [acc st] (merge-with (fn [x y] (merge-with merge x y)) acc st)) {} (read-each paths opts))))
+
+(defn read-each
+  "[states ...]: read-states of each path on its own, in order (opts as
+  read-states'; the coupled table read in one pass for all of them).
+  opts :var?, a predicate on variable names: only those it accepts are
+  read (to check a large table a share at a time)."
+  ([paths] (read-each paths {}))
+  ([paths {:keys [coupled var?]}]
    (let [entries (mapv #(if (vector? %) % [% 0]) paths)
          tables (if coupled (coupled-tables coupled) {})
          take (into {} (keep-indexed (fn [i [p lag]] (when-let [ms (tables (str/replace p #"^\./" ""))] [i [ms lag]])) entries))
-         coupled-states (when (seq take) (read-coupled coupled take))]
-     (reduce (fn [acc [i [path lag]]]
-               (let [st (if (contains? take i) (get coupled-states i {}) (read-file path lag))]
-                 (merge-with (fn [x y] (merge-with merge x y)) acc st)))
-             {} (map-indexed vector entries)))))
+         coupled-states (when (seq take) (read-coupled coupled take var?))]
+     (vec (map-indexed (fn [i [path lag]] (if (contains? take i) (get coupled-states i {}) (read-file path lag var?))) entries)))))
 
 (defn own-parts
   "{variable {iso {year own part}}}: each state's own part at each country

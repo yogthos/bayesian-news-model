@@ -21,6 +21,7 @@
   as section 4a puts the world node in W."
   (:refer-clojure :exclude [run!])
   (:require [bnm.engine :as eng]
+            [bnm.factors :as fac]
             [bnm.states :as states]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -28,8 +29,8 @@
 (def channels
   "Section 4c's channel ids, and :PL, politics' hazards to the event
   lattice (the diagram, 4b)."
-  #{:C1 :C2 :C3 :C4 :F1 :F2 :F3 :F4 :F5 :F6 :R1 :R2 :R3 :R4 :R5 :R6 :R7 :R8
-    :D1 :D2 :D3 :D4 :D5 :P1 :P2 :P3 :P4 :P5 :P6 :W1 :W2 :W3 :X1 :PL})
+  #{:C1 :C2 :C3 :C4 :F1 :F2 :F3 :F4 :F5 :F6 :R1 :R2 :R3 :R4 :R5 :R6 :R7 :R8 :R9 :R10
+    :D1 :D2 :D3 :D4 :D5 :P1 :P2 :P3 :P4 :P5 :P6 :W1 :W2 :W3 :W4 :X1 :PL})
 
 ;; -- a stock table as a module ---------------------------------------------
 
@@ -58,14 +59,30 @@
                             m))
                         {} ls)})))
 
+(defn- lines-emits
+  "{variable [[iso value data-year source sd] ...]} of lines `ls` (header
+  index `ix`); sd is the value of its companion variable <variable>-sd at
+  the same iso and data year (the model's spread, kept as its own
+  variable too), nil where the model gives none."
+  [ix ls]
+  (let [g (fn [f c] (when-let [i (ix c)] (nth f i "")))
+        rows (reduce (fn [m l]
+                       (let [f (str/split l #"," -1)]
+                         (update m (g f "variable") (fnil conj []) [(g f "iso") (g f "value") (g f "data_year") (g f "source")])))
+                     {} ls)
+        sds (into {} (for [[v rs] rows :when (str/ends-with? v "-sd")
+                           :let [base (subs v 0 (- (count v) 3))] :when (contains? rows base)
+                           [iso value dy] rs :when (seq value)]
+                       [[base iso dy] value]))]
+    (if (empty? sds)
+      rows
+      (into {} (for [[v rs] rows]
+                 [v (mapv (fn [[iso _ dy :as r]] (conj r (get sds [v iso dy]))) rs)])))))
+
 (defn- emits-at
-  "{variable [[iso value data-year source] ...]} of the lines known at t."
+  "lines-emits of the lines known at t."
   [{:keys [ix by-year]} t]
-  (let [g (fn [f c] (when-let [i (ix c)] (nth f i "")))]
-    (reduce (fn [m l]
-              (let [f (str/split l #"," -1)]
-                (update m (g f "variable") (fnil conj []) [(g f "iso") (g f "value") (g f "data_year") (g f "source")])))
-            {} (get by-year t))))
+  (lines-emits ix (get by-year t)))
 
 (defn table-module
   "A module that steps a model's table (`decl` with :table, the path, and
@@ -143,7 +160,7 @@
     :doc "Shares of trade through each strait, by importer and the world (bnm.chokepoints)"
     :reads [(src "baci/routes" "USD" "data/derived/supply (BACI routed)" 2)
             (src "portwatch/daily" "transits" "data/raw/material/imf-portwatch/Daily_Chokepoints_Data.csv" 0)]
-    :emits [(out "chokepoint/*" "share of trade value" 2)]}
+    :emits [(out "chokepoint/*" "share of trade value" 2 :W4)]}
    {:module :econ-factors :group :C :place :country :table "data/derived/stocks/econ-factors.csv" :tool 'bnm.econ-factors-run
     :doc "Control and financial-power factors from the econ indicators (bnm.econ-factors)"
     :reads [(src "econ/indicators" "mixed" "data/derived/econ/econ-indicators.csv" 1)]
@@ -184,12 +201,12 @@
     :reads [(src "supply/tech-trade" "USD" "data/derived/supply/tech-trade.csv (BACI)" 2)
             (src "material/capacity" "MW" "data/derived/material/capacity.csv" 2)
             (src "owid/energy" "share" "data/raw/material/owid-energy/owid-energy-data.csv" 1)]
-    :emits [(out "tech-demand/*-growth5" "log growth over 5 years" 2) (out "tech-demand/*" "mixed" 2)]}
+    :emits [(out "tech-demand/*-growth5" "log growth over 5 years" 2 :R9) (out "tech-demand/*" "mixed" 2 :R9)]}
    {:module :technology :group :R :place :country :table "data/derived/stocks/technology.csv" :tool 'bnm.technology-run
     :doc "Technology adoption, lags behind the frontier and productivity inflows (bnm.technology)"
     :reads [(src "slow/wdi-technology" "mixed" "data/slow/series.tsv (WDI)" 1)
             (src "chat/adoption" "mixed" "data/raw/slow/chat/FinalCHAT_72909.csv" 2)]
-    :emits [(out "technology/*" "mixed" 1)]
+    :emits [(out "technology/*" "mixed" 1 :R10)]
     :stocks {:adoption {:unit "share"}}}
    {:module :energy :group :R :place :country :table "data/derived/stocks/energy.csv" :tool 'bnm.energy-pilot
     :doc "Energy exposure and price pass-through through the I-O spine (bnm.energy-pilot)"
@@ -229,13 +246,52 @@
 
 ;; -- running and the golden check ---------------------------------------------
 
+(defn- spill!
+  "Writes the lines of `table` passing `select` to `path`, header first,
+  sorted by their year (stable: file order within a year). One table is
+  in memory at a time."
+  [table select path]
+  (let [{:keys [by-year]} (load-table table select)
+        h (with-open [r (io/reader table)] (first (line-seq r)))]
+    (io/make-parents path)
+    (with-open [w (io/writer path)]
+      (.write w (str h "\n"))
+      (doseq [y (sort (keys by-year)) l (by-year y)] (.write w (str l "\n"))))
+    path))
+
+(defn- stream-module
+  "Module `m` (a table-module) stepped from a copy of its table sorted by
+  year in `spill-dir`, read as the years pass: what run! steps, so the
+  tables are not all held at once. `opened` collects the readers."
+  [{:keys [module table select] :as m} spill-dir opened]
+  (assoc m
+         :init (fn [_]
+                 (let [p (spill! table select (str spill-dir "/" (name module) ".csv"))
+                       r (io/reader p)
+                       [h & ls] (line-seq r)
+                       ix (zipmap (str/split h #",") (range))]
+                   (swap! opened conj r)
+                   {:ix ix :yi (ix "year") :lines ls :skipped 0}))
+         :step (fn [{:keys [ix yi lines skipped] :as state} _ _ t _]
+                 (let [yr #(parse-long (field % yi))
+                       [before ls] (split-with #(< (yr %) t) lines)
+                       [now ls] (split-with #(= (yr %) t) ls)]
+                   {:state (assoc state :lines ls :skipped (+ skipped (count before)))
+                    :emits (lines-emits ix now)}))))
+
 (defn run!
   "Runs the modules from `from` to `to`, writing dir/state.csv (the
-  coupled table) and dir/graph.{edn,txt}. {:rows {module n} :leftover
-  {module rows not emitted}}."
+  coupled table), dir/graph.{edn,txt} and dir/tables.edn (the tables'
+  stamps, bnm.states). A table module is stepped from a copy of its table
+  sorted by year (dir/.spill, removed after), read as the years pass.
+  {:rows {module n} :leftover {module rows not emitted}}."
   [ms dir {:keys [from to]}]
   (eng/write-graph dir ms)
+  (states/write-stamps! dir (distinct (keep :table ms)))
   (let [{:keys [write close]} (eng/table-writer (str dir "/state.csv") ms)
+        spill-dir (str dir "/.spill")
+        opened (atom [])
+        ms (mapv #(if (:table %) (stream-module % spill-dir opened) %) ms)
         rows (atom {})]
     (try
       (let [r (eng/run ms {:from from :to to :keep false
@@ -243,8 +299,17 @@
                                       (swap! rows update id (fnil + 0) (reduce + 0 (map count (vals e))))
                                       (write id t e))})]
         {:rows (merge (zipmap (map :module ms) (repeat 0)) @rows)
-         :leftover (into {} (for [[id s] (:states r)] [id (reduce + 0 (map count (vals (:by-year s))))]))})
-      (finally (close)))))
+         :leftover (into {} (for [[id s] (:states r)]
+                              [id (cond (contains? s :lines) (+ (:skipped s) (count (:lines s)))
+                                        (contains? s :by-year) (reduce + 0 (map count (vals (:by-year s))))
+                                        :else 0)]))})
+      (finally
+        (close)
+        (doseq [r @opened] (.close r))
+        (let [d (io/file spill-dir)]
+          (when (.exists d)
+            (doseq [f (.listFiles d)] (.delete f))
+            (.delete d)))))))
 
 (defn mismatches
   "[[variable iso year a b] ...]: where two read-states results differ."
@@ -256,11 +321,45 @@
              :let [p (get x yr) q (get y yr)] :when (not= p q)]
          [v iso yr p q])))
 
+(defn same-readers?
+  "Whether bnm.states' readers of two states maps agree: the same
+  variables, and the same value for every variable at every `sample`-th
+  country of the place tree in each of its years."
+  [a b {:keys [sample] :or {sample 1}}]
+  (let [isos (sort (disj (set (mapcat keys (concat (vals a) (vals b)))) "WLD"))
+        tree (fac/place-tree isos)
+        ra (states/readers a tree (states/default-pairs a))
+        rb (states/readers b tree (states/default-pairs b))
+        cs (take-nth sample (filter tree isos))
+        years (sort (distinct (mapcat keys (mapcat vals (vals a)))))]
+    (and (= (set (keys ra)) (set (keys rb)))
+         (every? (fn [[v f]] (let [g (rb v)] (every? (fn [c] (every? #(= (f c %) (g c %)) years)) cs))) ra))))
+
+(defn- batches
+  "The tables in batches of at most `budget` bytes on disk (a larger table
+  alone), in order."
+  [tables budget]
+  (reduce (fn [acc t]
+            (let [n (.length (io/file t)) [b sz] (peek acc)]
+              (if (and b (<= (+ sz n) budget)) (conj (pop acc) [(conj b t) (+ sz n)]) (conj acc [[t] n]))))
+          [] tables))
+
 (defn golden
   "Per table: {:table :vars :mismatches n :first [...]}, the table read by
-  bnm.states from its file against from the coupled table in `dir`."
-  [ms dir]
-  (vec (for [t (distinct (map :table ms))
-             :let [a (states/read-states [t]) b (states/read-states [t] {:coupled dir})
-                   mm (mismatches a b)]]
-         {:table t :vars (count a) :mismatches (count mm) :first (vec (take 5 mm))})))
+  bnm.states from its file against from the coupled table in `dir`. The
+  tables are checked in batches of about `budget` bytes (64 MB), one pass
+  over the coupled table each, so a batch's states are all that is held;
+  a table larger than the budget is checked in shares of its variables
+  (by hash), one pass each."
+  ([ms dir] (golden ms dir {}))
+  ([ms dir {:keys [budget] :or {budget (* 64 1024 1024)}}]
+   (vec (for [[ts sz] (batches (distinct (map :table ms)) budget)
+              :let [k (max 1 (long (Math/ceil (/ (double sz) budget))))
+                    parts (for [j (range k)
+                                :let [var? (when (> k 1) #(= j (mod (hash %) k)))
+                                      as (states/read-each ts {:var? var?}) bs (states/read-each ts {:coupled dir :var? var?})]]
+                            (mapv (fn [a b] [(count a) (mismatches a b)]) as bs))]
+              [i t] (map-indexed vector ts)
+              :let [rs (map #(nth % i) parts)
+                    mm (vec (mapcat second rs))]]
+          {:table t :vars (reduce + (map first rs)) :mismatches (count mm) :first (vec (take 5 mm))}))))
