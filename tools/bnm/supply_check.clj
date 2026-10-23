@@ -347,12 +347,17 @@
                           ["C_WHEA" "wheat"] ["C_STEL" "steel"] ["C_CHEM" "chemicals"]]]
           (when (get-in g [:recipes [r p]]) (path-line (str r " " what) path steady [r p]))))
       ;; not nothing: a power station's upkeep (its CES bundle: chemicals,
-      ;; machinery, services) loses what the gas takes from them, 1-2%;
-      ;; its fuel, the critical input, is held by its stocks
-      (let [worst (reduce max 0.0 (for [t (range 1 13) r nuc] (loss (:products (nth path (dec t))) [r "C_POWN"])))]
-        (check (and (< worst 0.03) (every? #(< (loss (:products (nth path 11)) [% "C_POWN"]) (* 0.5 (loss steady [% "C_POWN"]))) nuc))
-               (format "nuclear power loses under 3%% in months 1-12 in all %d European regions making it (largest %s; its upkeep, not its fuel), under half its steady loss"
-                       (count nuc) (pct worst))))
+      ;; construction, metals, services) loses what the gas takes from
+      ;; them, up to 5% by month 12 (Romania's non-ferrous metals and
+      ;; construction); its fuel, the critical input, is held by its stocks
+      (let [m1 (reduce max 0.0 (map #(loss (:products (first path)) [% "C_POWN"]) nuc))
+            drawn (reduce max 0.0 (for [r nuc :let [s0 (get st [r "C_NUCF"])] :when s0]
+                                    (/ (- s0 (get-in (nth path 11) [:stocks [r "C_NUCF"]] s0)) s0)))
+            m12 (reduce max 0.0 (map #(loss (:products (nth path 11)) [% "C_POWN"]) nuc))]
+        (check (< m1 0.01) (format "nuclear power loses under 1%% in month 1 in all %d European regions making it (largest %.1f%%)"
+                                   (count nuc) (* 100 m1)))
+        (check (< drawn 0.1) (format "its fuel stocks hold it: under a tenth of them drawn by month 12 (most %.1f%%); what it loses (up to %s by month 12) is its upkeep"
+                                     (* 100 drawn) (pct m12))))
       (let [stored (filter #(> (get st [% "C_GASE"] 0.0) 1.0) ["DE" "FR" "IT" "NL" "PL" "AT" "HU" "CZ" "SK"])]
         (check (every? #(< (loss (:products (first path)) [% "C_NFER"]) (* 0.1 (loss steady [% "C_NFER"]))) stored)
                (str "gas storage delays the N fertiliser cut: under a tenth of its steady loss in month 1 where storage holds over a month of use ("

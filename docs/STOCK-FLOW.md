@@ -641,8 +641,9 @@ nuclear fuel, its critical input, buys chemicals (conversion and
 enrichment: 34% of its value in Germany), substitutable in its CES
 bundle but losing what the gas takes from chemicals. That is the
 steady state, with every stock drawn: a reactor holds a year or more
-of fuel, and with the stocks (below) nuclear power loses 0-2% over
-the first year of the cut, its upkeep rather than its fuel.
+of fuel, and with the stocks (below) nuclear power loses under 1% in
+the first month of the cut and 0.6-5% by month 12, its upkeep rather
+than its fuel (its fuel stocks are at most 5% drawn).
 
 Every other input is substitutable. A product's recipe is then nested:
 the minimum of its critical inputs and a bundle, the bundle a CES of the
@@ -920,9 +921,13 @@ What it shows (tools/bnm/supply_check.clj, loss at months 1, 3, 6, 12,
       storage pressure (bnm.food, against the stocks at the start)
                         1.07 1.25 1.63 2.67 4.29
 
-Nuclear power loses nothing in the first months and 0-2% in the first
-year (its upkeep bundle, not its fuel, which its stocks hold for 18-30
-months), against 4-9% in the steady state. European gas storage delays
+Nuclear power loses under 1% in month 1 and 0.6-5% by month 12
+against 2-18% in the steady state; its fuel stocks (18-30 months) are
+at most 5% drawn by then, so what it loses is its upkeep, the CES
+bundle of goods a power station buys (Romania's 5%: non-ferrous metals
+and construction, each down 30%). Not nothing, then, as the brief
+expected: deferring upkeep for a year, as the equipment rule defers a
+farm's, would take it to near zero, and is not done here. European gas storage delays
 the N fertiliser cut by months: none in month 1 or 3 where storage
 holds over a month of use, the whole cut by month 6 (Germany, France,
 Italy, the Netherlands), as storage carried the 2022 winter; Britain,
