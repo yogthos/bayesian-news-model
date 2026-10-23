@@ -88,7 +88,8 @@
             [bnm.watchlist-test]
             [bnm.engine-test]
             [bnm.modules-world3-test]
-            [bnm.modules-stocks-test]))
+            [bnm.modules-stocks-test]
+            [bnm.control-test]))
 
 (def namespaces
   '[bnm.time-test
@@ -179,7 +180,8 @@
     bnm.watchlist-test
     bnm.engine-test
     bnm.modules-world3-test
-    bnm.modules-stocks-test])
+    bnm.modules-stocks-test
+    bnm.control-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
