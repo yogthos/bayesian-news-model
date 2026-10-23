@@ -1,12 +1,12 @@
 """Country imports and exports of the technology products (bead bnm-1pq.7,
-docs/ESSENTIALS.md section 8 step 6), from the BACI bilateral panels that
-scripts/baci.py writes:
+docs/ESSENTIALS.md section 8 step 6), from data/derived/supply/
+hs6-essentials.csv.gz, which scripts/baci.py writes with these codes
+(its TECH_CODES):
 
-  data/derived/supply/hs6-hs17.csv  HS17 2017-: 870380 (battery-electric
-      cars) and every other 8703 code (all passenger cars, the EV share's
-      denominator)
-  data/derived/supply/hs6.csv       HS92 1995-: 850780 (accumulators other
-      than lead-acid and nickel-cadmium: Li-ion with NiMH and the rest)
+  HS17 2017-: 870380 (battery-electric cars) and every other 8703 code
+      (all passenger cars, the EV share's denominator)
+  HS92 1995-: 850780 (accumulators other than lead-acid and
+      nickel-cadmium: Li-ion with NiMH and the rest)
 
 Writes data/derived/supply/tech-trade.csv:
   hs,year,known,hs6,iso,imports_t,imports_v,imports_vt,exports_t,exports_v,exports_vt
@@ -15,33 +15,34 @@ flows whose tonnes are known (BACI leaves some blank), so the tonnes'
 cover of the value is *_vt / *_v. known is BACI's (data year + 2).
 
     python -I scripts/tech-trade.py [data-dir]
+    python -I scripts/tech-trade.py --selftest
 """
 import csv
+import gzip
 import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-SOURCES = [
-    ("HS17", "hs6-hs17.csv", lambda c: c.startswith("8703")),
-    ("HS92", "hs6.csv", lambda c: c == "850780"),
-]
-NEEDLES = {"HS17": ",8703", "HS92": ",850780,"}
+KEEP = {  # edition -> the codes read
+    "HS17": lambda c: c.startswith("8703"),
+    "HS92": lambda c: c == "850780",
+}
 
 
-def scan(path, hs, keep, acc):
-    needle = NEEDLES[hs]
-    with open(path, newline="") as f:
+def scan(path, acc):
+    """Add the KEEP flows of the essentials file at `path` to acc
+    {(hs, year, known, hs6, iso): {side_v, side_t, side_vt}}."""
+    with gzip.open(path, "rt", newline="") as f:
         header = f.readline().rstrip("\n").split(",")
         ix = {k: i for i, k in enumerate(header)}
         for line in f:
-            if needle not in line:
-                continue
             r = line.rstrip("\n").split(",")
+            keep = KEEP.get(r[ix["hs"]])
             code = r[ix["hs6"]]
-            if not keep(code):
+            if keep is None or not keep(code):
                 continue
-            y, kn = int(r[ix["year"]]), int(r[ix["known"]])
+            hs, y, kn = r[ix["hs"]], int(r[ix["year"]]), int(r[ix["known"]])
             v = float(r[ix["value"]] or 0.0)
             t = r[ix["tonnes"]]
             for iso, side in ((r[ix["importer"]], "imports"), (r[ix["exporter"]], "exports")):
@@ -52,13 +53,41 @@ def scan(path, hs, keep, acc):
                     a[side + "_vt"] = a.get(side + "_vt", 0.0) + v
 
 
+def selftest():
+    """Checks on a toy essentials file: python -I scripts/tech-trade.py --selftest."""
+    import gzip
+    import tempfile
+    rows = ["hs,year,known,hs6,exporter,importer,value,tonnes,uv",
+            "HS17,2020,2022,870380,CHN,DEU,10,4,2.5",
+            "HS17,2020,2022,870380,USA,DEU,6,,",
+            "HS17,2020,2022,870321,JPN,DEU,5,2,2.5",
+            "HS92,2020,2022,850780,CHN,USA,8,1,8",
+            "HS92,2020,2022,870380,CHN,USA,9,1,9",
+            "HS12,2020,2022,850760,CHN,USA,7,1,7",
+            "HS92,2020,2022,283691,CHL,CHN,3,1,3"]
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "hs6-essentials.csv.gz")
+        with gzip.open(path, "wt") as f:
+            f.write("\n".join(rows) + "\n")
+        acc = {}
+        scan(path, acc)
+    assert set(acc) == {("HS17", 2020, 2022, "870380", "CHN"), ("HS17", 2020, 2022, "870380", "USA"),
+                        ("HS17", 2020, 2022, "870380", "DEU"), ("HS17", 2020, 2022, "870321", "JPN"),
+                        ("HS17", 2020, 2022, "870321", "DEU"), ("HS92", 2020, 2022, "850780", "CHN"),
+                        ("HS92", 2020, 2022, "850780", "USA")}, sorted(acc)
+    assert acc[("HS17", 2020, 2022, "870380", "DEU")] == {"imports_v": 16.0, "imports_t": 4.0, "imports_vt": 10.0}
+    assert acc[("HS17", 2020, 2022, "870380", "USA")] == {"exports_v": 6.0}
+    print("tech-trade selftest ok", file=sys.stderr)
+
+
 def main():
+    if sys.argv[1:] == ["--selftest"]:
+        return selftest()
     base = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "data")
     sup = os.path.join(base, "derived", "supply")
     acc = {}
-    for hs, name, keep in SOURCES:
-        scan(os.path.join(sup, name), hs, keep, acc)
-        print(hs, "done", len(acc), file=sys.stderr)
+    scan(os.path.join(sup, "hs6-essentials.csv.gz"), acc)
+    print("scanned", len(acc), file=sys.stderr)
     cols = ["imports_t", "imports_v", "imports_vt", "exports_t", "exports_v", "exports_vt"]
     out = os.path.join(sup, "tech-trade.csv")
     tmp = out + ".part"

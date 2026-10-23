@@ -10,7 +10,9 @@ are thousand USD, tonnes metric tons (blank where BACI has none).
       bilateral flows of the essentials codes only: every hs_code and hs6
       of subnodes.csv, and every code of the broad critical-materials
       mapping (eu-2023, usgs-2022 in tools/bnm/essentials_check.clj, read
-      from that file so the two cannot drift). uv = value / tonnes in kUSD
+      from that file so the two cannot drift), and the technology codes
+      of scripts/tech-trade.py (TECH_CODES: HS17 8703xx, HS92 850780, HS12
+      850760, in their own edition only). uv = value / tonnes in kUSD
       per tonne (= USD per kg; blank without tonnes).
   hs6-country.csv.gz     hs,year,known,hs6,country,exports,imports
       country x product totals: a country's exports and imports of the
@@ -30,9 +32,7 @@ are thousand USD, tonnes metric tons (blank where BACI has none).
 A run over some editions rewrites only their rows in every output. The
 full bilateral files (hs6.csv, hs6-hs12.csv, hs6-hs17.csv: 13, 6.9 and
 4.3 GB) are written only with --full, and the zips rebuild them in
-minutes. scripts/tech-trade.py still reads hs6.csv (850780) and
-hs6-hs17.csv (every 8703 code, with tonnes by country), which none of the
-three files above holds, so it needs a --full run until it is moved.
+minutes. scripts/tech-trade.py reads hs6-essentials.csv.gz.
 
 Known and vintage. CEPII publishes BACI once a year, in January (V202601
 was released 2026-01-22 and runs to 2024; V202102 came in February), so
@@ -86,6 +86,7 @@ Union to 1999, R20 EFTA n.e.s.).
     python -I scripts/baci.py [--root data/raw/material]
                               [--out data/derived/supply]
                               [--editions HS92,HS12,HS17] [--world-only] [--full]
+    python -I scripts/baci.py --selftest
 """
 
 import argparse
@@ -192,11 +193,21 @@ def essential_codes(subnodes, check):
     return {c.zfill(6) for c in codes if c.isdigit()}
 
 
+TECH_CODES = {  # edition -> code prefixes kept in hs6-essentials for scripts/tech-trade.py
+    "HS92": ("850780",),  # accumulators other than lead-acid and NiCd
+    "HS12": ("850760",),  # Li-ion accumulators
+    "HS17": ("8703",),    # every passenger car code (870380 battery-electric)
+}
+
+
 def shapes(df, edition, codes):
     """The rows of one year's flows for each SHAPES file."""
     year = int(df.year.iloc[0])
     known = year + LAG
-    ess = df[df.hs6.isin(codes)].copy()
+    keep = df.hs6.isin(codes)
+    if edition in TECH_CODES:
+        keep |= df.hs6.str.startswith(TECH_CODES[edition])
+    ess = df[keep].copy()
     ess.insert(0, "hs", edition)
     ess.insert(2, "known", known)
     ess["uv"] = np.where(ess.tonnes > 0, ess.value / ess.tonnes, np.nan)
@@ -301,7 +312,26 @@ def run(root, out, editions, bilateral=True, codes=None, full=False,
     print(f"{wpath}: {len(w)} rows", file=sys.stderr)
 
 
+def selftest():
+    """Checks on toy flows: python -I scripts/baci.py --selftest."""
+    def flows(year, codes):
+        return pd.DataFrame({"year": year, "hs6": codes, "exporter": "AAA", "importer": "BBB",
+                             "value": 1.0, "tonnes": 2.0})
+    codes = {"283691"}
+    kept = lambda ed, df: sorted(shapes(df, ed, codes)["hs6-essentials.csv.gz"].hs6)
+    tech = ["283691", "850780", "850760", "870321", "870380", "870899"]
+    assert kept("HS92", flows(2000, tech)) == ["283691", "850780"], kept("HS92", flows(2000, tech))
+    assert kept("HS12", flows(2015, tech)) == ["283691", "850760"], kept("HS12", flows(2015, tech))
+    assert kept("HS17", flows(2020, tech)) == ["283691", "870321", "870380"], kept("HS17", flows(2020, tech))
+    e = shapes(flows(2020, tech), "HS17", codes)["hs6-essentials.csv.gz"]
+    assert list(e.columns) == ["hs", "year", "known", "hs6", "exporter", "importer", "value", "tonnes", "uv"]
+    assert (e.known == 2022).all() and (e.uv == 0.5).all()
+    print("baci selftest ok", file=sys.stderr)
+
+
 def main():
+    if sys.argv[1:] == ["--selftest"]:
+        return selftest()
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--root", default="data/raw/material")
     p.add_argument("--out", default="data/derived/supply")
