@@ -87,7 +87,8 @@
             [bnm.located-shocks-test]
             [bnm.watchlist-test]
             [bnm.engine-test]
-            [bnm.modules-world3-test]))
+            [bnm.modules-world3-test]
+            [bnm.modules-stocks-test]))
 
 (def namespaces
   '[bnm.time-test
@@ -177,7 +178,8 @@
     bnm.located-shocks-test
     bnm.watchlist-test
     bnm.engine-test
-    bnm.modules-world3-test])
+    bnm.modules-world3-test
+    bnm.modules-stocks-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]

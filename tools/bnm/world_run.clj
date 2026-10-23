@@ -202,10 +202,11 @@
   bnm.state-diag), each read as the diagnostic read it (bnm.states/
   readers: a world series' causal z, any other its own part at the
   country, exposures included) as known at the last year ended by the
-  origin."
-  [{:keys [paths] chosen :states} countries]
+  origin. :coupled (a coupled engine's directory, bnm.engine) reads the
+  stock tables it reproduces from its one table instead."
+  [{:keys [paths coupled] chosen :states} countries]
   (let [tree (fac/place-tree countries)
-        st (states/read-states paths)
+        st (states/read-states paths {:coupled coupled})
         read (states/readers st tree (states/default-pairs st))]
     (into {} (for [[k ss] chosen]
                [k (vec (for [[n sign] ss :let [f (read n)] :when f]

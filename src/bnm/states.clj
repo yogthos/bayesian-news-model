@@ -4,6 +4,7 @@
   is known), read for the event lattice (bead bnm-62z.13): each state's own
   part at each country (bnm.factors), causal."
   (:require [bnm.factors :as fac]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -14,27 +15,65 @@
   [v]
   (boolean (re-find #"(?:^|/|-)(?:calibrated|state-year)$|-(?:sd|count|break)$" v)))
 
+(defn- add-line
+  "acc with line `l`'s value (split as f, header `ix`), known `lag` years
+  after its year; empty values and bookkeeping left out."
+  [acc ix f lag]
+  (let [g #(nth f (ix %) "")
+        v (g "value")]
+    (if (and (seq v) (seq (g "iso")) (not (bookkeeping? (g "variable"))))
+      (update-in acc [(g "variable") (g "iso")] (fnil assoc (sorted-map)) (+ lag (parse-long (g "year"))) (parse-double v))
+      acc)))
+
+(defn- read-file [path lag]
+  (with-open [r (io/reader path)]
+    (let [[h & ls] (line-seq r)
+          ix (zipmap (str/split h #",") (range))]
+      (reduce (fn [acc l] (add-line acc ix (str/split l #"," -1) lag)) {} ls))))
+
+(defn- coupled-tables
+  "{table path #{module}}: which modules of the coupled table in `dir`
+  (its graph.edn) reproduce each stock table."
+  [dir]
+  (reduce (fn [m {:keys [module table]}] (if table (update m table (fnil conj #{}) (name module)) m))
+          {} (:modules (edn/read-string (slurp (str dir "/graph.edn"))))))
+
+(defn- read-coupled
+  "{entry index states}: one pass over dir/state.csv, each line to every
+  entry (`take`: {index [modules lag]}) that takes its module."
+  [dir take]
+  (let [by-module (reduce (fn [m [i [ms lag]]] (reduce #(update %1 %2 (fnil conj []) [i lag]) m ms)) {} take)]
+    (with-open [r (io/reader (str dir "/state.csv"))]
+      (let [[h & ls] (line-seq r)
+            ix (zipmap (str/split h #",") (range))
+            mi (ix "module")]
+        (reduce (fn [accs l]
+                  (let [f (str/split l #"," -1)]
+                    (reduce (fn [accs [i lag]] (update accs i add-line ix f lag)) accs (by-module (nth f mi "")))))
+                {} ls)))))
+
 (defn read-states
   "{variable {iso (sorted-map year value)}} from long tables
   iso,year,variable,value[,...]; empty values and bookkeeping left out.
   A path is a table by the year its values are known, or [path lag] for
   one by data year (the material base): a value known lag years after its
-  year."
-  [paths]
-  (reduce (fn [acc entry]
-            (let [[path lag] (if (vector? entry) entry [entry 0])]
-            (with-open [r (io/reader path)]
-              (let [[h & ls] (line-seq r)
-                    ix (zipmap (str/split h #",") (range))]
-                (reduce (fn [acc l]
-                          (let [f (str/split l #"," -1)
-                                g #(nth f (ix %) "")
-                                v (g "value")]
-                            (if (and (seq v) (seq (g "iso")) (not (bookkeeping? (g "variable"))))
-                              (update-in acc [(g "variable") (g "iso")] (fnil assoc (sorted-map)) (+ lag (parse-long (g "year"))) (parse-double v))
-                              acc)))
-                        acc ls)))))
-          {} paths))
+  year. A later row (or table) wins a key.
+
+  opts :coupled, the engine's output directory (data/derived/coupled,
+  bnm.engine): a stock table the coupled table reproduces (by its
+  graph.edn) is read from the coupled table's rows of its modules
+  instead, in one pass; any other path from its file. Not the default yet
+  (phase A, bead bnm-4hv.9)."
+  ([paths] (read-states paths {}))
+  ([paths {:keys [coupled]}]
+   (let [entries (mapv #(if (vector? %) % [% 0]) paths)
+         tables (if coupled (coupled-tables coupled) {})
+         take (into {} (keep-indexed (fn [i [p lag]] (when-let [ms (tables (str/replace p #"^\./" ""))] [i [ms lag]])) entries))
+         coupled-states (when (seq take) (read-coupled coupled take))]
+     (reduce (fn [acc [i [path lag]]]
+               (let [st (if (contains? take i) (get coupled-states i {}) (read-file path lag))]
+                 (merge-with (fn [x y] (merge-with merge x y)) acc st)))
+             {} (map-indexed vector entries)))))
 
 (defn own-parts
   "{variable {iso {year own part}}}: each state's own part at each country
