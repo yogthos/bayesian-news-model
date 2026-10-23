@@ -82,7 +82,8 @@
             [bnm.chokepoints-test]
             [bnm.econ-divergence-test]
             [bnm.econ-coupling-test]
-            [bnm.geo-gap-test]))
+            [bnm.geo-gap-test]
+            [bnm.essentiality-test]))
 
 (def namespaces
   '[bnm.time-test
@@ -167,7 +168,8 @@
     bnm.chokepoints-test
     bnm.econ-divergence-test
     bnm.econ-coupling-test
-    bnm.geo-gap-test])
+    bnm.geo-gap-test
+    bnm.essentiality-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
