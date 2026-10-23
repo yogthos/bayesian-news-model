@@ -1114,27 +1114,75 @@ before any test year is scored (PRINCIPLES 9).
      estimate (2019-2024).
    - Result (October 2026; scripts/routes.py, bnm.chokepoints,
      tools/bnm/chokepoints_run.clj; stocks chokepoint/<strait>-<product>
-     in data/derived/stocks/chokepoints.csv). MARNET with 19 of PortWatch's
-     28 straits resolved; port weights from PortWatch per ship class with a
-     2,000 km distance decay across port pairs; landlocked countries through
-     a transit port; pairs with a land border or a short land route are
-     non-maritime. Of 2019-23 BACI pairs with flows, 35,314 of 38,141 are
-     seaborne and routed (71.0% of value), 1,765 land (29.0%), 1,062 small
-     ones without a port (0.01%).
-     - Hormuz, 2019-23: 30% of world crude imports by value (the "20%" is
+     in data/derived/stocks/chokepoints.csv). MARNET with 20 of PortWatch's
+     28 straits resolved (Kerch added: one Azov lane, gate across the
+     narrows); landlocked countries through a transit port; pairs with a
+     land border or a short land route are non-maritime, except pairs
+     whose land route no corridor carries (Turkey with Egypt, Israel and
+     Ukraine, Finland-Estonia, China with Bangladesh and Thailand ...).
+     Bulk and general cargo: port weights from PortWatch per ship class
+     with a 2,000 km distance decay across port pairs. Tankers: export
+     ports by PortWatch tanker export tonnes per year (Kozmino added from
+     Transneft, Valdez dropped as domestic), a gravity model on each year's
+     buyers deciding which port serves whom, and the decay only among the
+     importer's ports. Of 2019-23 BACI pairs with flows, 35,338 of 38,141
+     are seaborne and routed (72.0% of value), 1,741 land (28.0%), 1,062
+     small ones without a port (0.01%).
+     - US tankers to East Asia, before the tonnage weights: 93% from
+       Valdez across the Pacific (the decay preferred Alaska's 6% of calls
+       to the Gulf Coast, 11,000 km further), Panama 0.07 for Japan, Korea
+       and China. After: all from the Gulf Coast, Panama 1.00. Shortest
+       paths send them all through Panama; VLCCs go round the Cape, so
+       Panama is over- and the Cape under-routed for US crude to Asia.
+     - Gulf bypasses, from PortWatch tonnes by year: the Red Sea ports
+       (Yanbu, Rabigh, Jeddah) 18-25% of Saudi tanker tonnes in 2019-24,
+       Fujairah 35-43% of the UAE's (a storage hub too: its export tonnes
+       overstate the pipeline crude; EIA gives the line's 1.8 mb/d
+       capacity, not its use). Routed Hormuz share of Saudi tankers to
+       Korea 0.90-0.93 by year (Yanbu's cargo goes mostly to Europe), UAE
+       0.56-0.65 (before: 0.89 and 0.51, fixed).
+     - Hormuz, 2019-23: 31-34% of world crude imports by value (the "20%" is
        of world oil use; of seaborne crude trade it is about 40%), 20% of
        LNG. Met for LNG; crude is consistent once the base is trade.
-     - Hormuz share of crude imports, 2019-23: Japan 0.69-0.71, Korea
-       0.53-0.62 (0.70-0.73 in 2010-15), India 0.43-0.54, China 0.35-0.42.
-       Korea's 70-85% is not met in recent years: its imports from the Gulf
-       exporters are only 0.59-0.72 of the total (US, Kazakh, Mexican crude),
-       and Saudi Yanbu (11%) and UAE Fujairah (half) load outside Hormuz.
-       Still well above EXIOBASE's Korean Gulf dependence.
-     - Malacca, crude: Japan 0.93, Korea 0.72, Taiwan 0.66, China 0.57.
+     - Hormuz share of crude imports, 2019-23: Japan 0.71-0.77 (before
+       0.69-0.71), Korea 0.55-0.65 (0.53-0.62), India 0.44-0.55, China
+       0.35-0.44. The Korean 70-85% target has no source in this repo and
+       is probably the Middle East share of Korea's crude imports (around
+       70% in recent years in EIA's country brief), which is not Hormuz
+       transit: it counts Oman (outside Hormuz) and Saudi crude loaded at
+       Yanbu and UAE crude at Fujairah. BACI's Gulf-supplier share of Korea's crude is
+       0.59-0.72 in 2019-23 (US, Kazakh, Mexican and Australian crude rose),
+       an upper bound; routing puts 0.90-0.92 of it through Hormuz.
+       Restated test: the routed Hormuz share is the Gulf-supplier share
+       times one minus the bypass share. Korea meets that by construction;
+       there is no independent Korean Hormuz-transit figure to check it
+       against, and routing is not tuned to the old target.
+     - Malacca, crude: Japan 0.94, Korea 0.74, Taiwan 0.66, China 0.60.
        LNG splits between Malacca and Lombok/Makassar (Australian LNG).
+     - Russia-China: a land pair, but LNG is shipped (any pair with LNG
+       and ports on both sides) and crude beyond the ESPO spur and the
+       Kazakh transit is shipped (44% in 2019, 60% in 2023), from Kozmino
+       and, after 2022, the Baltic. Coal, oil products, iron ore, timber and
+       fertiliser stay non-maritime (rail and Pacific ports both; no
+       source for the split), as do Canadian crude to the US and Yamal's
+       summer cargoes over the Northern Sea Route (Arctic passages removed).
+     - Look-ahead: tanker ports use 2019's PortWatch tonnes for data years
+       1995-2018, exposure years 1997-2020 (US crude exports were near zero
+       before the 2015 ban ended; Yanbu's share held at 2019's); bulk and
+       general port weights and all borders and lanes are fixed for every
+       year. Russian ports to Japan and Korea: Sakhalin's terminals are
+       missing from PortWatch, so 21-38% of those tankers are routed from
+       the Baltic or the Black Sea.
+     - Unresolved: Bohai, Ombai, Torres, Balabac, Mindoro, Yucatan, Windward
+       and Mona. None is the only route for a major importer's essentials
+       (Bohai is inside China's coastal trade; the Caribbean passages have
+       alternatives a day away; the four Indonesian and Philippine ones are
+       bypasses of resolved straits). Kerch carries 9 Mt of routed trade
+       (PortWatch capacity 27 Mt dwt): Rostov, Azov, Taganrog, Mariupol and
+       Berdyansk grain, steel and oil products.
      - Asia to Europe, container chapters: Suez and Bab-el-Mandeb 1.00.
-     - PortWatch: routed tonnes against observed capacity across 18
-       straits, Spearman 0.69 (Pearson of logs 0.71). Oresund is over-routed
+     - PortWatch: routed tonnes against observed capacity across 19
+       straits, Spearman 0.72 (Pearson of logs 0.78). Oresund is over-routed
        (the gate is the whole Kattegat) and Luzon under. Observed shocks
        line up with the routed exposure: Bab-el-Mandeb -56% and Suez -46%
        transits in 2024 against early 2023, the Cape +78% (routed: 15% of
