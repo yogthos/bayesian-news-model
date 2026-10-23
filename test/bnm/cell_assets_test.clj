@@ -64,8 +64,26 @@
 
 (deftest the-columns
   (is (= [:cell :iso :admin1 :asset_type :commodity :capacity :unit :start_year :status :source
-          :asset_id :share :area_km2 :known_from :year_flag :dup_of :xw_iso]
+          :asset_id :share :area_km2 :known_from :year_flag :dup_of :xw_iso :end_year :end_flag :end_known]
          ca/columns)))
+
+(deftest end-years
+  (testing "read from the points file: the year, the flag and when it is known"
+    (let [f (tmp (str "source,id,asset_type,commodity,capacity,unit,start_year,status,known_from,year_flag,"
+                      "country,country_kind,lon,lat,dup_of,end_year,end_flag,end_known\n"
+                      "mrds,mrds:1,mine,iron,,,1900,past producer,1900,start,GERMANY,name,13.4,52.5,,1950,last-production,2011\n"
+                      "sfi,sfi:3,steel_plant,steel,1.0,Mt/y,,shut down,2021,snapshot,DEU,iso3,13.4,52.5,,,closed-unknown,2021\n"
+                      "sfi,sfi:4,steel_plant,steel,1.0,Mt/y,,operating,2021,snapshot,DEU,iso3,13.4,52.5,,,,\n"))
+          [a b c] (ca/read-points f)]
+      (is (= [1950 "last-production" 2011] ((juxt :end_year :end_flag :end_known) a)))
+      (is (= [nil "closed-unknown" 2021] ((juxt :end_year :end_flag :end_known) b)))
+      (is (= [nil nil nil] ((juxt :end_year :end_flag :end_known) c)))
+      (testing "and kept on the asset row"
+        (let [[r] (ca/point-rows xw [a])]
+          (is (= [1950 "last-production" 2011] ((juxt :end_year :end_flag :end_known) r)))))))
+  (testing "GPPD carries no retirement"
+    (let [[p] (ca/gppd-points [{:iso "DEU" :fuel "coal" :mw 500.0 :lon 13.4 :lat 52.5 :year 1975}])]
+      (is (= [nil nil nil] ((juxt :end_year :end_flag :end_known) p))))))
 
 (deftest csv-out
   (is (= "a,\"b,c\",,1.5" (ca/csv-line ["a" "b,c" nil 1.5]))))

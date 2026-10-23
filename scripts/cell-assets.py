@@ -4,7 +4,8 @@ Writes data/derived/cells/:
 
   asset-points.csv    source,id,asset_type,commodity,capacity,unit,
                       start_year,status,known_from,year_flag,country,
-                      country_kind,lon,lat,dup_of
+                      country_kind,lon,lat,dup_of,end_year,end_flag,
+                      end_known
   asset-polygons.edn  one EDN map per line, the same keys and :polygons
                       [[ring ...] ...], each ring [[lon lat] ...], the
                       first ring of a polygon its outline and the rest holes
@@ -30,6 +31,18 @@ When an asset is known to exist (known_from, year_flag):
   snapshot   no year: the year the snapshot was published. Such an asset is
              not to be read into earlier years without this flag.
 
+When an asset ends (end_year, end_flag, end_known; blank for none):
+  last-production  MRDS past producers' yr_lst_prd: absent after end_year
+  closed-unknown   closed by its status (OGIM retired, SFI shut down, USGS
+                   closed, an MRDS past producer with no last year), no year
+  idle-unknown     idle by its status (mothballed, care and maintenance,
+                   suspended), no year
+  cancelled        an OGIM project cancelled
+end_known is the source's publication year: a closure is known once the
+source reports it, so an asset counts as present until then, and one with
+no end year is absent from end_known on (never backdated). GPPD and the
+polygon sources carry no status that ends an asset.
+
 Sources (data/raw/material/<dir>/SOURCE.txt for licences), and the year a
 snapshot counts from:
   gppd           not here: bnm.cell-assets reads it with bnm.material (2021)
@@ -54,6 +67,7 @@ the United States" has no coordinates (a place description only).
 Downloaded files are untrusted data, read only.
 
     python -I scripts/cell-assets.py [--root .]
+    python -I scripts/cell-assets.py --selftest
 """
 
 import argparse
@@ -77,11 +91,24 @@ import shapely.geometry
 warnings.filterwarnings("ignore")
 
 FIELDS = ["source", "id", "asset_type", "commodity", "capacity", "unit", "start_year", "status",
-          "known_from", "year_flag", "country", "country_kind", "lon", "lat", "dup_of"]
+          "known_from", "year_flag", "country", "country_kind", "lon", "lat", "dup_of",
+          "end_year", "end_flag", "end_known"]
 
 DUP_KM = 2.0
 DUP_PRIORITY = ["sfi", "ogim", "prio-dia", "usgs-minfac", "mrds"]
 EARTH_KM = 6371.0088
+MRDS_PUB = 2011
+
+# status words that end an asset, by source: closed for good, or idle
+# (care and maintenance, mothballed, suspended), or a project cancelled
+END_STATUS = {
+    "ogim": {"retired": "closed-unknown", "mothballed": "idle-unknown", "idle": "idle-unknown",
+             "suspended": "idle-unknown", "cancelled": "cancelled"},
+    "sfi": {"shut down": "closed-unknown", "mothballed": "idle-unknown"},
+    "usgs-minfac": {"closed": "closed-unknown", "c": "closed-unknown", "c&m": "idle-unknown",
+                    "cm": "idle-unknown", "suspended": "idle-unknown", "s": "idle-unknown"},
+    "mrds": {"past producer": "closed-unknown"},
+}
 
 
 def log(*a):
@@ -170,7 +197,7 @@ def ogim(root, points, polys):
             points.append(dict(source="ogim", id=f"ogim:{oid}", asset_type=kind, commodity=commodity,
                                capacity=num(c), unit=unit, start_year=start, status=clean(status).lower(),
                                known_from=kf, year_flag=flag, country=country, country_kind="name",
-                               lon=lon, lat=lat))
+                               lon=lon, lat=lat, pub=pub))
     for oid, country, rtype, area, geom in db.execute(
             'select OGIM_ID, COUNTRY, RESERVOIR_TYPE, AREA_KM2, geom from "Oil_and_Natural_Gas_Fields"'):
         ps = polygons(gpkg_geom(geom))
@@ -210,7 +237,7 @@ def sfi(root, points):
                                capacity=num(r.get(capf)), unit=unit, start_year=start,
                                status=clean(r.get("status")).lower(), known_from=kf, year_flag=flag,
                                country=r.get("iso3"), country_kind="iso3",
-                               lon=r["longitude"], lat=r["latitude"]))
+                               lon=r["longitude"], lat=r["latitude"], pub=pub))
 
 
 def mrds(root, points):
@@ -222,14 +249,14 @@ def mrds(root, points):
         except ValueError:
             continue
         start = year_of(r.get("yr_fst_prd"))
-        kf, flag = known(start, year_of(r.get("disc_yr")), 2011)
+        kf, flag = known(start, year_of(r.get("disc_yr")), MRDS_PUB)
         stat = clean(r.get("dev_stat")).lower()
         kind = "mine" if stat in ("producer", "past producer") else "deposit"
         points.append(dict(source="mrds", id=f"mrds:{r['dep_id']}", asset_type=kind,
                            commodity=clean(r.get("commod1")).split(",")[0].strip().lower(),
                            capacity=None, unit="", start_year=start, status=stat,
                            known_from=kf, year_flag=flag, country=r.get("country"), country_kind="name",
-                           lon=lon, lat=lat))
+                           lon=lon, lat=lat, pub=MRDS_PUB, last_year=year_of(r.get("yr_lst_prd"))))
 
 
 # MINFAC_LAC's FACTYPE: mine, processing plant, oil or gas field, oil
@@ -268,7 +295,7 @@ def minfac(root, points):
                                commodity=clean(r.get("COMMODITY")).lower(), capacity=num(r.get("ANNCAP")),
                                unit=clean(r.get("UNITS")), start_year=None, status=clean(r.get("STATUS")).lower(),
                                known_from=2016, year_flag="snapshot", country=r.get("ISO_CC"),
-                               country_kind="iso2", lon=lon, lat=lat))
+                               country_kind="iso2", lon=lon, lat=lat, pub=2016))
     # the DsgAttr columns differ by region: (commodity, capacity, unit)
     for z, layer, pub, cols in [
             ("africa/Africa_GIS.gdb.zip", "AFR_Mineral_Facilities", 2021, ("DsgAttr02", "DsgAttr07", "DsgAttr08")),
@@ -288,7 +315,8 @@ def minfac(root, points):
                                commodity=clean(col[com][k]).lower(), capacity=num(col[cap][k]),
                                unit=clean(col[unit][k]), start_year=None,
                                status=clean(col["LocOpStat"][k]).lower(), known_from=pub, year_flag="snapshot",
-                               country=col["Country"][k], country_kind="name", lon=float(lon), lat=float(lat)))
+                               country=col["Country"][k], country_kind="name", lon=float(lon), lat=float(lat),
+                               pub=pub))
 
 
 def shp(zf, base, encoding="utf-8"):
@@ -472,7 +500,60 @@ def mark_duplicates(points, polys):
     return counts
 
 
+def end_of(p):
+    """(end_year, end_flag, end_known) of an asset record: when it stopped,
+    how that is known, and the year it is known (the source's publication,
+    pub: a closure is known once reported, never earlier). MRDS past
+    producers give their last production year (last-production); a closure
+    read from a status word has no year (closed-unknown, idle-unknown,
+    cancelled) and counts from the snapshot on. A last year after the
+    publication is not one the source could report and is dropped.
+    (None, "", None) for an asset with no end."""
+    flag = END_STATUS.get(p.get("source"), {}).get(clean(p.get("status")).lower())
+    if not flag:
+        return None, "", None
+    pub = p.get("pub")
+    ly = p.get("last_year")
+    if flag == "closed-unknown" and ly and (pub is None or ly <= pub):
+        return ly, "last-production", pub
+    return None, flag, pub
+
+
+def set_ends(records):
+    for p in records:
+        p["end_year"], p["end_flag"], p["end_known"] = end_of(p)
+
+
+def selftest():
+    """Checks on the end-year rule: python -I scripts/cell-assets.py --selftest."""
+    # MRDS: a past producer's last production year, known when MRDS published it
+    assert end_of(dict(source="mrds", status="past producer", last_year=1950, pub=2011)) == (1950, "last-production", 2011)
+    assert end_of(dict(source="mrds", status="past producer", last_year=None, pub=2011)) == (None, "closed-unknown", 2011)
+    assert end_of(dict(source="mrds", status="producer", last_year=2005, pub=2011)) == (None, "", None), \
+        "a producer's last year is the latest reported, not a closure"
+    # status-only closures: no year, known from the snapshot, never backdated
+    assert end_of(dict(source="ogim", status="retired", pub=2026)) == (None, "closed-unknown", 2026)
+    assert end_of(dict(source="ogim", status="mothballed", pub=2026)) == (None, "idle-unknown", 2026)
+    assert end_of(dict(source="ogim", status="cancelled", pub=2026)) == (None, "cancelled", 2026)
+    assert end_of(dict(source="ogim", status="operating", pub=2026)) == (None, "", None)
+    assert end_of(dict(source="sfi", status="shut down", pub=2021)) == (None, "closed-unknown", 2021)
+    assert end_of(dict(source="sfi", status="operating", pub=2021)) == (None, "", None)
+    assert end_of(dict(source="usgs-minfac", status="closed", pub=2023)) == (None, "closed-unknown", 2023)
+    assert end_of(dict(source="usgs-minfac", status="c&m", pub=2021)) == (None, "idle-unknown", 2021)
+    assert end_of(dict(source="usgs-minfac", status="assumed active", pub=2021)) == (None, "", None)
+    assert end_of(dict(source="prio-dia", status="alluvial", pub=None)) == (None, "", None)
+    # a last year after the source's publication is not a closure it could report
+    assert end_of(dict(source="mrds", status="past producer", last_year=2015, pub=2011)) == (None, "closed-unknown", 2011)
+    ps = [dict(source="sfi", status="shut down", pub=2021)]
+    set_ends(ps)
+    assert (ps[0]["end_year"], ps[0]["end_flag"], ps[0]["end_known"]) == (None, "closed-unknown", 2021)
+    assert all(k in FIELDS for k in ("end_year", "end_flag", "end_known"))
+    print("cell-assets selftest ok", file=sys.stderr)
+
+
 def main():
+    if sys.argv[1:] == ["--selftest"]:
+        return selftest()
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=".")
     root = ap.parse_args().root
@@ -484,6 +565,10 @@ def main():
         n0, p0 = len(points), len(polys)
         f()
         log(f"{name}: {len(points) - n0} points, {len(polys) - p0} polygons")
+    set_ends(points)
+    set_ends(polys)
+    log("ends (source, flag):", dict(sorted(collections.Counter(
+        (p["source"], p["end_flag"]) for p in points + polys if p["end_flag"]).items())))
     dups = mark_duplicates(points, polys)
     log("duplicates (source, of source):", dict(sorted(dups.items())))
     out = os.path.join(root, "data/derived/cells")

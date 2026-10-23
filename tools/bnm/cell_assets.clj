@@ -26,6 +26,13 @@
   snapshot was published (snapshot), never earlier: a snapshot asset read
   into earlier years must carry that flag.
 
+  end_year, end_flag and end_known say when it ended (scripts/cell-assets.py):
+  last-production (MRDS's last production year), closed-unknown,
+  idle-unknown or cancelled (a status word, no year), known from the
+  source's publication (end_known), never earlier. An asset counts as
+  present until end_known, and after end_year (from end_known when it has
+  none) as absent: bnm.cell-profiles/present?. GPPD carries no retirement.
+
     python -I scripts/cells.py && python -I scripts/cell-assets.py
     jolt -A:tools -M -m bnm.cell-assets"
   (:require [bnm.cells :as cells]
@@ -41,7 +48,7 @@
 
 (def columns
   [:cell :iso :admin1 :asset_type :commodity :capacity :unit :start_year :status :source
-   :asset_id :share :area_km2 :known_from :year_flag :dup_of :xw_iso])
+   :asset_id :share :area_km2 :known_from :year_flag :dup_of :xw_iso :end_year :end_flag :end_known])
 
 (def source-codes
   "Sources' country codes bnm.geo does not read: PRIO's FIPS 10-4 for the
@@ -76,12 +83,14 @@
                       {:source "gppd" :id (str "gppd:" i) :asset_type "power_plant" :commodity fuel
                        :capacity mw :unit "MW" :start_year year :status "operating"
                        :known_from (or year mat/vintage) :year_flag (if year "start" "snapshot")
+                       :end_year nil :end_flag nil :end_known nil
                        :iso iso :lon lon :lat lat})
                     plants)))
 
 (defn- row [m]
   (let [r (select-keys m columns)]
-    (assoc r :dup_of (not-empty (:dup_of m)) :xw_iso (:xw_iso m))))
+    (cond-> (assoc r :dup_of (not-empty (:dup_of m)) :xw_iso (:xw_iso m))
+      (contains? m :end_flag) (assoc :end_flag (not-empty (:end_flag m))))))
 
 (defn placed-point-rows
   "Points bnm.cells/place-points placed, as asset rows."
@@ -118,13 +127,15 @@
 
 (defn read-points
   "data/derived/cells/asset-points.csv (scripts/cell-assets.py), those with
-  coordinates."
+  coordinates. end_year, end_flag and end_known (scripts/cell-assets.py)
+  are blank in a file written before them."
   [path]
   (filterv #(and (:lon %) (:lat %) (<= -180 (:lon %) 180) (<= -90 (:lat %) 90))
-   (map (fn [{:keys [country country_kind lon lat capacity start_year known_from] :as m}]
+   (map (fn [{:keys [country country_kind lon lat capacity start_year known_from end_year end_flag end_known] :as m}]
           (assoc m :iso (resolve-country country country_kind) :lon (number lon) :lat (number lat)
                  :capacity (number capacity) :start_year (int-year start_year)
-                 :known_from (int-year known_from)))
+                 :known_from (int-year known_from) :end_year (int-year end_year)
+                 :end_flag (not-empty end_flag) :end_known (int-year end_known)))
         (csv/read-maps path \,))))
 
 (defn read-polygons
