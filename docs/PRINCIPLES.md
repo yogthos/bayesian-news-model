@@ -71,3 +71,16 @@ mechanical ones are smoke checks (bnm.lattice-smoke).
     provinces) is decided by trials: the 2026 pilot, with only event
     coordinates to go on, found cells lost to provinces (docs/RESEARCH.md);
     it is rerun once cells carry what is in them.
+
+12. **Coupled systems, not streams.** The financial economy (markets and
+    the flow of money), the real economy (resources, food, energy,
+    manufacturing) and politics are subsystems whose outputs are each
+    other's inputs, every period. Finance is a layer over the real economy
+    that decides where labour and resources go; who controls it (state
+    banks, financial institutions, oligarchs) decides what money is
+    allocated to, and so the shape of the real economy; the real economy
+    shapes politics; politics decides who controls production and
+    finance. A model of one is incomplete without its channels to the
+    others: each module declares what it reads and what it emits, with
+    known years, and the coupling is a graph, not ad hoc links
+    (docs/COUPLED-SYSTEMS.md, epic bnm-4hv).
