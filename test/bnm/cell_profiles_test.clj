@@ -142,6 +142,20 @@
             ;; steel capacities 3, 1, 4 Mt: median 3; DE has 3 + 1 + 3
             cut (cp/cell-cut rs #{munich} {:year 2000})]
         (is (< (Math/abs (- (/ 4.0 7.0) (cut ["DE" "C_STEL"]))) 1e-12))))
+    (testing "a capacity far above its key's median (ore throughput, a unit slip) counts as the median"
+      (let [rs (vec (concat (for [i (range 5)] (a {:cell munich :admin1 "DEU.02" :asset_type "processing_plant"
+                                                   :commodity "gold" :capacity 3.0 :unit "kg" :asset_id (str "g" i)}))
+                            [(a {:asset_type "processing_plant" :commodity "gold" :capacity 2.0
+                                 :unit "Thousand metric tons" :asset_id "g9"})]))
+            c (cp/concentration rs "gold-plant" 2000)]
+        (is (= munich (get-in c [:world :top])))
+        (is (< (Math/abs (- (/ 5.0 6.0) (get-in c [:world :top-share]))) 1e-12)
+            "the 2,000 t gold plant weighs as a 3 kg one")
+        (let [ps (vec (concat (for [i (range 5)] (a {:cell munich :asset_type "power_plant" :commodity "hydro"
+                                                     :capacity 1.0 :unit "MW"}))
+                              [(a {:asset_type "power_plant" :commodity "hydro" :capacity 22500.0 :unit "MW"})]))]
+          (is (= berlin (get-in (cp/concentration ps "power-hydro" 2000) [:world :top]))
+              "a big dam is not an outlier"))))
     (testing "an asset ended by the year is not capacity"
       (let [rs (conj rs (a {:cell munich :admin1 "DEU.02" :asset_type "steel_plant" :commodity "steel" :capacity 4.0
                             :unit "Mt/y" :end_flag "closed-unknown" :end_known 1999}))]

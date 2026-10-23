@@ -882,6 +882,72 @@ each as a within-country change, lagged a year:
 They are the cells' "what is in them" that principle 11 asks for before
 cells are tried again against provinces.
 
+**Results (bead bnm-3ka.6).** scripts/cell-grids.py, bnm.cell-profiles,
+tools/bnm/cell_profiles_run.clj; outputs in data/derived/cells/
+(cell-grids.csv, profiles.csv, features.csv, profiles-report.edn) and
+data/derived/stocks/cells.csv.
+- Grids on cells: Kummu GDP and implied population 1990-2024 (known +2),
+  harmonised lights 1992-2024 (+1), GHSL built-up, non-residential
+  built-up and population, epochs 1975-2020 (+3; the projected 2025 and
+  2030 epochs left out), EDGAR CO2 for seven sectors 1990-2025 (+1). Each
+  cell's sum is split over its country parts by the crosswalk's area
+  shares (land parts for the land grids). Every grid keeps 100% of its
+  total but lights (99.6-100%: lit pixels on the high seas). The split is
+  by area, so a border cell's GDP is shared by area. The R2023A GHSL
+  back-casts its early epochs from 2018 imagery: a vintage caveat.
+- Ended assets (assets.csv end_year, end_flag, end_known): MRDS 3,935
+  last production years and 124,881 past producers with no year; OGIM 24
+  retired, 32 idle, 1 cancelled; SFI 2 shut, 1 mothballed; USGS 13
+  closed, 466 idle. A closure counts from its source's publication, so
+  an MRDS mine closed in 1950 counts until 2011.
+- Profile types (k-means, k = 5, on eleven log intensities; fitted at
+  1995, 2000, ..., 2025 on the part-years up to each, warm-started; 19,054
+  parts with at least 200 km2 of land and people). In the 2025 fit's
+  units: a poor sparse rural type (lights and GDP per head well below
+  average; 5,136 parts in 2025), a lit low-density type with high GDP
+  per head ("services", 7,856), a dense urban type ("services-2", 4,106),
+  an industrial core with plants, power and non-residential built-up four
+  sd above the mean ("processing", 951), and mining districts (mines and
+  mining area five and three sd up, 1,005). No manufacturing type
+  separates from the industrial core: EDGAR's industrial CO2 per person
+  loads on it and on the lit types alike.
+- Development paths, five-year transitions (causal fits): types are
+  sticky (88-96% stay). Extraction to processing is 18 of 2,115
+  extraction part-steps (0.9%); extraction goes to the lit or urban types
+  more often (8%). Entries into processing come from the urban types
+  (573 from services-2, 23 from services), in countries with a higher
+  investment regime at the start (mean econ/investment-regime 0.63 and
+  0.76, against 0.26-0.44 for the stayers): the state-directed pole
+  builds the new industrial cores. Too few extraction-to-processing
+  steps to read H6 (their light growth against the country, -0.04 over
+  five years, against +0.09 for extraction that stays, n = 18). The
+  2025 step is inflated by assets entering at their snapshot year (Maus
+  mining areas 2022, OGIM 2026, USGS 2016-2024): extraction parts jump
+  from 403 to 1,005. A backcast run (snapshots read back to their start
+  years, not causal) has 5 extraction-to-processing steps in 34,095.
+  Light growth between the sparse and lit types swings by about 3 log
+  points either way: dim cells (DN under 7) flicker, and the 2013/14
+  DMSP-VIIRS join drops the world's lights 17%.
+- Displacement on cells against bnm.stages' country D (WLD). Cell D is
+  near 1 throughout (mines and plants rarely share a 91 km cell): iron
+  0.86-0.94, aluminium 0.85-0.92, crude 0.91 (backcast). The country D
+  computed from the same assets is closer to the stages D after 2011
+  (iron 0.59 against 0.35-0.55, aluminium 0.66-0.68 against 0.64-0.71)
+  but does not move with it; before 2011 the MRDS past producers (read
+  as present until their closure is reported) push the iron D to 0.85
+  against 0.40-0.55. The mean distance from a mine cell to the nearest
+  processing cell: iron 128-182 km, bauxite 840-1,440 km, crude about 215 km
+  (backcast). The causal series are dominated by when the plant lists
+  were published (OGIM's refineries enter in 2026, SFI's undated steel
+  plants in 2021), so displacement over time needs dated plants (GEM)
+  before it says anything.
+- features.csv: per cell (23,002) and province (3,247), 1994-2026, each
+  from data known by the year before: light and GDP per head growth
+  against the country, extraction against the country's mean, mining
+  area, lootable sites (gold, gems, oil), processing sites and openings.
+  Not built: processing exposure (feed from abroad) and the ADH shock,
+  which need BACI bilateral ore flows and 8b's import surge on cells.
+
 ### 8d. Links into the lattice and the essentials model
 
 - **Essentials (docs/ESSENTIALS.md, bnm.supply).** Supply risk per

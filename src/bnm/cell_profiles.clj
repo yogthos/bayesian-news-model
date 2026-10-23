@@ -150,11 +150,23 @@
                  :let [m (median (keep capacity rs))] :when m]
              [k m])))
 
+(def outlier-ratio
+  "A capacity this many times its key's median is not the product's
+  capacity (USGS facilities give ore throughput for some plants, and a
+  unit slips: a gold plant at 2,000 t a year against a median of 3): it
+  weighs as the median. Only for the <commodity>-plant keys: power plants
+  and SFI's plants span orders of magnitude and are kept."
+  100.0)
+
 (defn- weight
-  "The row's capacity, else its key's median (by the row's share of the
-  asset), else nil."
+  "The row's capacity (the key's median when it is an outlier), else its
+  key's median (by the row's share of the asset), else nil."
   [meds r]
-  (or (capacity r) (some-> (meds (asset-key r)) (* (:share r 1.0)))))
+  (let [m (meds (asset-key r)) c (capacity r)]
+    (cond
+      (and c m (str/ends-with? (asset-key r) "-plant") (> c (* outlier-ratio m))) (* m (:share r 1.0))
+      c c
+      m (* m (:share r 1.0)))))
 
 ;; ------------------------------------------------------------ concentration
 
@@ -196,9 +208,10 @@
   for keys `ks` and years `ys`: cells/<k>-hhi, cells/<k>-top-share (the top
   cell in :top) and cells/<k>-cells (bookkeeping), at WLD and per country."
   [rows ks ys]
-  (let [meds (medians rows)]
+  (let [meds (medians rows)
+        by-key (group-by asset-key rows)]
     (vec (for [k ks y ys
-               :let [{:keys [world countries]} (concentration rows k y meds)]
+               :let [{:keys [world countries]} (concentration (by-key k) k y meds)]
                [iso s] (cons ["WLD" world] countries)
                :when s
                [v x top] [["hhi" (:hhi s) nil] ["top-share" (:top-share s) (:top s)] ["cells" (double (:cells s)) nil]]]

@@ -105,6 +105,8 @@ Located quantities are kept on A5 equal-area cells (`bnm.cells`, resolution 6, a
 python -I scripts/cells.py           # crosswalk: cell -> country, province, area share (data/derived/cells)
 python -I scripts/cell-assets.py     # plant and resource sources read into one form
 jolt -A:tools -M -m bnm.cell-assets  # assets on cells: data/derived/cells/assets.csv
+python -I scripts/cell-grids.py      # GDP, lights, built-up, EDGAR CO2 on cells: cell-grids.csv
+jolt -A:tools -M -m bnm.cell-profiles-run  # profiles, paths, cell HHI (stocks/cells.csv), features
 ```
 
 The crosswalk is drawn from Natural Earth's current borders (public domain) and Marine Regions' EEZs (CC BY 4.0) under `data/raw/geo/`; `bnm.cells/country-in-year` reads a cell's country for a past year (the USSR, Yugoslavia, Sudan before 2011, the two Germanys).

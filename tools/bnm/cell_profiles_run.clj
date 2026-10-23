@@ -47,7 +47,7 @@
 
 (defn- round [x d] (when x (let [p (Math/pow 10 d)] (/ (Math/round (* p (double x))) p))))
 
-(defn- fmt [x] (cond (nil? x) "" (integer? x) (str x) :else (str (round x 6))))
+(defn- fmt [x] (cond (nil? x) "" (string? x) x (integer? x) (str x) :else (str (round x 6))))
 
 (defn- write-csv [path header rows]
   (io/make-parents path)
@@ -126,7 +126,7 @@
     (into (sorted-map)
           (for [[c ch] cp/chains [mode pres] [[:causal cp/present?] [:backcast cp/present-backcast?]]]
             [[c mode] (into (sorted-map)
-                     (for [y (range 1990 2026 5)
+                     (for [y (conj (vec (range 1990 2026 5)) 2026)
                            :let [{:keys [mine proc mine-iso proc-iso]} (cp/chain-weights assets meds ch y pres)
                                  r (cp/cell-displacement mine proc)]
                            :when r]
@@ -197,10 +197,11 @@
         hhi (cp/hhi-stocks assets ks (range 1990 2027))
         _ (stages/write-stocks "data/derived/stocks/cells.csv" hhi)
         _ (log "cells.csv:" (count hhi) "rows," (count ks) "keys")
-        top (into (sorted-map) (for [k ks] [k (mapv #(update % :share round 3) (cp/top-cells assets k 2025 5))]))
+        by-key (group-by cp/asset-key assets)
+        top (into (sorted-map) (for [k ks] [k (mapv #(update % :share round 3) (cp/top-cells (by-key k) k 2026 5))]))
         world-hhi (into (sorted-map) (for [k ks]
                                        [k (into (sorted-map) (for [r hhi :when (and (= "WLD" (:iso r)) (= (:variable r) (str "cells/" k "-hhi"))
-                                                                                     (#{1990 2000 2010 2020 2025} (:year r)))]
+                                                                                     (#{1990 2000 2010 2020 2025 2026} (:year r)))]
                                                                [(:year r) (round (:value r) 4)]))]))
         ;; profiles and types
         ps (profiles g assets land cp/present?)
@@ -222,11 +223,11 @@
                            [c (read-stock "data/derived/stocks/stages.csv" (str "stages/" c "-d"))]))
         disp (displacement-report assets stage-d)
         ;; features
-        frows (vec (mapcat #(unit-features g assets xw main-iso %) (range 1994 2026)))
+        frows (vec (mapcat #(unit-features g assets xw main-iso %) (range 1994 2027)))
         _ (write-csv (str dir "/features.csv") (into ["unit_kind" "unit" "iso" "year"] (map name feature-cols)) frows)
         _ (log "features.csv:" (count frows) "rows")
         cover {:parts-profiled (count (distinct (map second (keys ps))))
                :end-flags (into (sorted-map) (frequencies (map (juxt :source :end_flag) (filter :end_flag assets))))}
-        report {:types tr :paths paths :backcast {:types tr-b :paths paths-b} :displacement disp :top-cells-2025 top :world-hhi world-hhi :coverage cover}]
+        report {:types tr :paths paths :backcast {:types tr-b :paths paths-b} :displacement disp :top-cells-2026 top :world-hhi world-hhi :coverage cover}]
     (spit (str dir "/profiles-report.edn") (with-out-str (pp/pprint report)))
-    (pp/pprint (dissoc report :top-cells-2025))))
+    (pp/pprint (dissoc report :top-cells-2026))))

@@ -1146,6 +1146,21 @@ before any test year is scored (PRINCIPLES 9).
       cell-located shocks (droughts, floods, conflict onsets near plants)
       better than country-level. If it does not, keep countries (as in the
       A5 pilot).
+    - Built (bead bnm-1pq.11): data/derived/stocks/cells.csv,
+      cells/<key>-hhi, -top-share (top cell in top) and -cells for 57
+      processing and power keys, WLD and per country, 1990-2026, over the
+      assets present in the year (bnm.cell-profiles/present?). Capacity
+      missing is the key's median; a USGS plant capacity over 100 times
+      its key's median (ore throughput, unit slips) weighs as the median.
+      Top cells 2026: Shandong (118E 37N) holds 18% of listed alumina and
+      12% of aluminium smelting capacity; Zambia's Copperbelt 38% of
+      cobalt refining; Baotou 16% of rare-earth processing; Ras Laffan 19%
+      of LNG export. World cell HHI is low for steel (0.004), cement
+      (0.001) and refineries (0.005), higher for cobalt (0.17), alumina
+      (0.05) and the minor metals. bnm.cell-profiles/cell-cut gives the
+      share of each bnm.supply region's capacity of each product in a set
+      of cells ({[region product] fraction}), the input outage takes; not
+      yet run against located shocks, so the registered test is open.
 
 ## 9. Downloads needed
 
