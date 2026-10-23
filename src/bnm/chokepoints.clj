@@ -4,7 +4,9 @@
   imports whose sea route passes each strait.
 
   Routes come from scripts/routes.py (data/derived/supply/routes.csv): for
-  each ordered country pair and ship class (tanker, bulk, general), whether
+  each ordered country pair and ship class (tanker, crude, bulk,
+  capesize, general; crude and capesize take the big ships' lanes on long
+  hauls: no Panama, and for crude no Suez or Sunda; see hs6-class), whether
   the pair trades by sea (a land border or a short land route makes it
   non-maritime), the share of the pair's port-to-port weight that has a
   route (`routed`), and the share of the routed weight whose route passes

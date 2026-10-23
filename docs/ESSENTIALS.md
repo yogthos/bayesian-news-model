@@ -1131,9 +1131,30 @@ before any test year is scored (PRINCIPLES 9).
      - US tankers to East Asia, before the tonnage weights: 93% from
        Valdez across the Pacific (the decay preferred Alaska's 6% of calls
        to the Gulf Coast, 11,000 km further), Panama 0.07 for Japan, Korea
-       and China. After: all from the Gulf Coast, Panama 1.00. Shortest
-       paths send them all through Panama; VLCCs go round the Cape, so
-       Panama is over- and the Cape under-routed for US crude to Asia.
+       and China. After: all from the Gulf Coast, Panama 1.00 for every
+       tanker cargo (bnm-1pq.10).
+     - Ship size (bnm-1pq.26). A laden VLCC fits neither the Neopanamax
+       locks (Panama Canal Authority: beam 51.25 m, draught 15.2 m, about
+       120,000 dwt) nor Suez (Suez Canal Authority: 66 ft, 20.1 m), and
+       avoids the shallow Sunda strait; a Capesize fits Suez but not
+       Panama. No vessel mix by route is on disk, so the rule: crude port
+       pairs of 8,000 km or more go VLCC (no Panama, Suez or Sunda), iron
+       ore and coal Capesize (no Panama), unless a port is behind the
+       Danish straits, the Bosporus or Kerch (Aframax and Suezmax ports),
+       set before any route was computed. SUMED is not modelled: long-haul
+       VLCC crude to Europe goes round the Cape, over-routing the Cape by
+       what SUMED carries. Oil products, LNG and HS chapters 26 and 27 keep
+       the ordinary lanes.
+       - US crude to Japan, Korea and China: Panama 1.00, Cape 0.00 before;
+         Panama 0.00, Cape 1.00 after, then Malacca (all years).
+       - Iron ore to China, Capesize: Brazil Panama 0.36 and Cape 0.64
+         before, Panama 0.00 and Cape 1.00 after; Australia unchanged
+         (Lombok 0.83, Makassar 0.71; no canal on the way). China's iron
+         ore imports in 2023: Lombok 0.55, Sunda 0.21, Cape 0.19, Panama 0.
+       - Saudi crude to the Netherlands: the Gulf terminals' VLCCs (0.34)
+         round the Cape, Yanbu's Suezmaxes keep Suez (0.66).
+       - Crude Malacca shares rise where US crude went by Panama: Korea
+         0.74 to 0.91, China 0.60 to 0.83, Taiwan 0.66 to 0.90.
      - Gulf bypasses, from PortWatch tonnes by year: the Red Sea ports
        (Yanbu, Rabigh, Jeddah) 18-25% of Saudi tanker tonnes in 2019-24,
        Fujairah 35-43% of the UAE's (a storage hub too: its export tonnes
@@ -1157,7 +1178,7 @@ before any test year is scored (PRINCIPLES 9).
        times one minus the bypass share. Korea meets that by construction;
        there is no independent Korean Hormuz-transit figure to check it
        against, and routing is not tuned to the old target.
-     - Malacca, crude: Japan 0.94, Korea 0.74, Taiwan 0.66, China 0.60.
+     - Malacca, crude: Japan 0.96, Korea 0.91, Taiwan 0.90, China 0.83.
        LNG splits between Malacca and Lombok/Makassar (Australian LNG).
      - Russia-China: a land pair, but LNG is shipped (any pair with LNG
        and ports on both sides) and crude beyond the ESPO spur and the
@@ -1182,7 +1203,11 @@ before any test year is scored (PRINCIPLES 9).
        Berdyansk grain, steel and oil products.
      - Asia to Europe, container chapters: Suez and Bab-el-Mandeb 1.00.
      - PortWatch: routed tonnes against observed capacity across 19
-       straits, Spearman 0.72 (Pearson of logs 0.78). Oresund is over-routed
+       straits, Spearman 0.73 (Pearson of logs 0.80; 0.72 and 0.78 with
+       crude, ore and coal on the ordinary tanker and bulk lanes). Panama's
+       routed tonnes fall from 506 to 292 Mt (observed 318 Mt dwt), the
+       Cape's rise from 807 to 1,140 Mt (1,050), Suez falls from 1,350 to
+       1,140 Mt (1,010). Oresund is over-routed
        (the gate is the whole Kattegat) and Luzon under. Observed shocks
        line up with the routed exposure: Bab-el-Mandeb -56% and Suez -46%
        transits in 2024 against early 2023, the Cape +78% (routed: 15% of

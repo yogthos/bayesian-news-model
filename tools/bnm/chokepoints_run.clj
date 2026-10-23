@@ -205,19 +205,48 @@
                   ", sea without a route " (f (/ (get value :sea-unrouted 0.0) t) 4)
                   ", no route row " (f (/ (get value :no-route 0.0) t) 4)))))
 
-(defn- portwatch-check [hs2 routes-closed]
+(def ^:private sized
+  "The HS6 products with their own ship class: their chapter's class in the HS2 run."
+  {"crude-oil" "tanker" "iron-ore" "bulk" "coal" "tanker"})
+
+(defn- chapter-classed
+  "{year {strait tonnes}} through each strait, world, of the sized products
+  routed on their HS2 chapter's class (as the HS2 run routes them)."
+  [routes path]
+  (let [out (atom {})]
+    (cp/gz-lines path
+                 (fn [ls]
+                   (cp/by-year routes ls
+                               (fn [l] (when-let [x (cp/hs6-flow cp/energy-products l)]
+                                         (when-let [c (sized (:product x))] (assoc x :class c))))
+                               (fn [y agg]
+                                 (swap! out assoc y (apply merge-with + (for [p (keys sized)]
+                                                                          (get-in agg [[p "WLD"] :through-tonnes]))))))))
+    @out))
+
+(defn- portwatch-check [hs2 energy old routes-closed]
   (println "\n3. PortWatch")
   (let [pw (read-portwatch "data/raw/material/imf-portwatch/Daily_Chokepoints_Data.csv")
-        routed (fn [c] (mean (keep #(get-in hs2 [% ["all" "WLD"] :through-tonnes c]) check-years)))
+        sized-t (fn [y c] (reduce + (keep #(get-in energy [y [% "WLD"] :through-tonnes c]) (keys sized))))
+        ;; HS2 chapters 26 and 27 route crude, iron ore and coal on tanker and bulk lanes;
+        ;; swap in their own ship classes (VLCC, Capesize; coal off the tanker lanes)
+        routed (fn [c] (mean (keep #(when-let [a (get-in hs2 [% ["all" "WLD"] :through-tonnes c] 0.0)]
+                                      (+ a (sized-t % c) (- (get-in old [% c] 0.0))))
+                                   check-years)))
+        routed-chapters (fn [c] (mean (keep #(get-in hs2 [% ["all" "WLD"] :through-tonnes c]) check-years)))
         observed (fn [c] (mean (for [y check-years]
                                  (reduce + (keep #(when (= y (:year %)) (:capacity %)) (pw (cp/straits c)))))))
         pairs (for [c (sort (keys cp/straits))] [c (routed c) (observed c)])]
     (println "\n  Routed world tonnes (BACI, all chapters, maritime) against PortWatch capacity (dwt), mean a year 2019-2023")
     (doseq [[c r o] (sort-by #(- (or (nth % 2) 0)) pairs)]
       (println (str "   " c "  routed " (format "%.3g" (double (or r 0))) " t   observed " (format "%.3g" (double (or o 0))) " dwt")))
-    (let [ps (for [[_ r o] pairs :when (and r o (pos? r) (pos? o))] [r o])]
+    (let [ps (for [[_ r o] pairs :when (and r o (pos? r) (pos? o))] [r o])
+          ps0 (for [[c _ o] pairs :let [r (routed-chapters c)] :when (and r o (pos? r) (pos? o))] [r o])]
       (println (str "   across " (count ps) " straits: spearman " (f (tdr/spearman ps) 2)
-                    ", pearson of logs " (f (tdr/pearson (map (fn [[a b]] [(Math/log a) (Math/log b)]) ps)) 2))))
+                    ", pearson of logs " (f (tdr/pearson (map (fn [[a b]] [(Math/log a) (Math/log b)]) ps)) 2)))
+      (println (str "   chapters' classes only (crude, ore and coal on tanker and bulk lanes): spearman "
+                    (f (tdr/spearman ps0) 2) ", pearson of logs "
+                    (f (tdr/pearson (map (fn [[a b]] [(Math/log a) (Math/log b)]) ps0)) 2))))
     (println "\n  Disruptions, mean daily transits (all ships; tankers; containers)")
     (doseq [[lbl c base dis] [["Red Sea: Bab-el-Mandeb" "bab-el-mandeb" ["2023-01-01" "2023-10-31"] ["2024-01-01" "2024-12-31"]]
                               ["Red Sea: Suez" "suez" ["2023-01-01" "2023-10-31"] ["2024-01-01" "2024-12-31"]]
@@ -237,7 +266,8 @@
                     "  hs85 " (f (mean (keep #(share-of hs2 % "hs85" "WLD" c) check-years)) 3))))
     (println "\n  Closures (routes-closed.csv): detour and stranded share of the pairs through the strait")
     (doseq [[e i cls] [["CHN" "NLD" "general"] ["CHN" "DEU" "general"] ["SAU" "NLD" "tanker"] ["QAT" "GBR" "tanker"]
-                       ["USA" "JPN" "tanker"] ["USA" "CHN" "bulk"] ["SAU" "KOR" "tanker"] ["SAU" "JPN" "tanker"]]]
+                       ["USA" "JPN" "tanker"] ["USA" "JPN" "crude"] ["USA" "CHN" "bulk"] ["BRA" "CHN" "capesize"]
+                       ["SAU" "KOR" "tanker"] ["SAU" "JPN" "tanker"] ["SAU" "NLD" "crude"]]]
       (doseq [r (get routes-closed [e i cls])]
         (println (str "   " e "->" i " " cls " closed " (:closed r) ": affected " (:affected r)
                       " stranded " (:stranded r) " extra km " (:extra r)))))))
@@ -271,7 +301,9 @@
       (coverage ps)
       (validation routes energy hs2 subs)
       (asia-europe ps))
-    (portwatch-check hs2 (read-closed (str dir "/routes-closed.csv")
+    (portwatch-check hs2 energy (chapter-classed routes (str dir "/hs6-energy-pairs.csv.gz"))
+                     (read-closed (str dir "/routes-closed.csv")
                                       #{["CHN" "NLD" "general"] ["CHN" "DEU" "general"] ["SAU" "NLD" "tanker"] ["QAT" "GBR" "tanker"]
-                                        ["USA" "JPN" "tanker"] ["USA" "CHN" "bulk"] ["SAU" "KOR" "tanker"] ["SAU" "JPN" "tanker"]}))
+                                        ["USA" "JPN" "tanker"] ["USA" "JPN" "crude"] ["USA" "CHN" "bulk"] ["BRA" "CHN" "capesize"]
+                                        ["SAU" "KOR" "tanker"] ["SAU" "JPN" "tanker"] ["SAU" "NLD" "crude"]}))
     (shutdown-agents)))
