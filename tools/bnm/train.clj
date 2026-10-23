@@ -215,7 +215,7 @@
                   results (cond-> results scored (conj (ev/slim scored)))
                   ;; the calibration and the climatology learn from the period just scored
                   mdl (cond-> mdl
-                        scored (-> (update :calibration pcal/learn (:outcomes scored))
+                        scored (-> (update :calibration pcal/learn (:outcomes scored) cal/probability)
                                    (update :spread #(cal/learn-by (get-in mdl [:config :spread-mode]) % (:rows r)
                                                              (cal/shock-learning (:config mdl))))))
                   clim (cond-> clim scored (ev/learn-climate (:scored scored)))
