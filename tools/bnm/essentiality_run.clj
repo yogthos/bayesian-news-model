@@ -423,7 +423,7 @@
            :let [p (parents hs6) tr0 (trade hs6) tbls (get losses p)]
            :when (and p tr0 tbls (pos? (:world tr0)))]
        (let [tr (es/supplier-basis (if (= variant :world-shares) (dissoc tr0 :flows) tr0)
-                                   (some-> (supply-stage hs6) sts))
+                                   (when sts (some-> (supply-stage hs6) sts)))
              use (into {} (for [[r v] (imports-by-parent p)]
                             [r (/ v (max 0.01 (get shares [r p] 1.0)))]))
              pc (into {} (for [c (keys (:exporters tr))]

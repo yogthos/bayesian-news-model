@@ -351,6 +351,22 @@
       (is (zero? (:world (es/product-risk m))))
       (is (pos? (:world (es/product-risk (merge m (es/supplier-basis m {"CHN" 0.9 "JPN" 0.1})))))))))
 
+(deftest risk-year-runs-without-stage-shares
+  ;; the :world-shares and :export-shares variants read no stage table
+  (let [ctx {:k 2022 :ranks [{:hs6 "260111"} {:hs6 "120100"}]
+             :trade {"260111" {:world 100.0 :exporters {"AUS" 60.0 "BRA" 40.0} :importers {"CN" 100.0}}
+                     "120100" {:world 10.0 :exporters {"BRA" 10.0} :importers {"CN" 10.0}}}
+             :parents {"260111" "C_IRON" "120100" "C_OILS"}
+             :losses {"C_IRON" {:steady {:cuts [0.1] :loss [1.0] :use 10.0}}
+                      "C_OILS" {:steady {:cuts [0.1] :loss [1.0] :use 10.0}}}
+             :shares {} :model-use nil :exposure {} :keyfn identity
+             :rates (constantly {}) :restr (constantly {:tighten 0.0 :pooled 0.0 :entry {} :in-force #{}})
+             :events (constantly {:default 0.1}) :region-of {}
+             :stage-shares (constantly {["iron" "mine"] {"AUS" 0.5 "CHN" 0.5}})}]
+    (is (= [:stage :world] (map :basis (run/risk-year ctx :no-strait))))
+    (doseq [v [:world-shares :export-shares]]
+      (is (= [:world :world] (map :basis (run/risk-year ctx v)))))))
+
 (deftest hs-codes-map-to-their-stage
   (testing "ores to the mine, refined metal to the refinery or smelter, compounds to the chemical or separation stage"
     (is (= ["iron" "mine"] (run/supply-stage "260111")))
