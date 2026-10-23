@@ -17,7 +17,7 @@
   For importer i, product p and data year t, with v the value of the
   flow from exporter e and r = routes[e i class(p)]:
 
-    seaborne(e)   = v x maritime(r) x routed(r)
+    seaborne(e)   = v x maritime(r) x routed(r)    maritime: the product's mode share, else the pair flag
     through_c(e)  = seaborne(e) x share_c(r)
     chokepoint/<c>-<p>        = sum_e through_c(e) / sum_e v
     chokepoint/seaborne-<p>   = sum_e seaborne(e) / sum_e v
@@ -29,11 +29,18 @@
   first published in January t+2 (scripts/baci.py), so a row's year is t+2
   and nothing of a later data year enters it.
 
-  Structure assumed fixed: the network (c.2000 lanes), the port weights
-  (PortWatch, AIS 2019-) and the land borders (current) are applied to
-  every year. That is a look-ahead in the route structure (a port that grew
-  after 2000 weighs in 1995), not in the flows; the exposures move only
-  with who trades with whom.
+  Structure. Tanker routes (crude, LNG, oil products, HS chapter 27) are
+  per data year (routes-years.csv): export ports by that year's PortWatch
+  tanker tonnes and a gravity model on that year's buyers. PortWatch starts
+  in 2019, so data years 1995-2018 use 2019's ports: a look-ahead in the
+  port structure for exposure years 1997-2020 (US crude loaded at Corpus
+  Christi before its export terminals existed; Yanbu's share fixed at
+  2019's). Bulk and general routes are fixed across years: the network
+  (c.2000 lanes), their port weights (PortWatch, AIS 2019-) and the land
+  borders (current) apply to every year, a look-ahead in the route
+  structure, not in the flows. A product's mode can override its pair's
+  land flag (routes-modes.csv): LNG between neighbours, Russian crude to
+  China beyond the pipelines.
 
   Value, not tonnes: BACI's value is complete where its tonnes are not
   (about 1% of value has none). For one HS6 product the two shares differ
@@ -53,7 +60,7 @@
    "oresund" "chokepoint10" "taiwan" "chokepoint11" "korea" "chokepoint12"
    "tsugaru" "chokepoint13" "luzon" "chokepoint14" "lombok" "chokepoint15"
    "sunda" "chokepoint19" "makassar" "chokepoint20" "magellan" "chokepoint21"
-   "bering" "chokepoint26"})
+   "bering" "chokepoint26" "kerch" "chokepoint28"})
 
 ;; ---------------------------------------------------------------- products and ship classes
 
@@ -93,28 +100,67 @@
     {}
     (into {} (for [kv (str/split s #";") :let [[k v] (str/split kv #"=")]] [k (parse-double v)]))))
 
-(defn read-routes
-  "{exporter {importer {class {:maritime? :routed :km :through {strait share}}}}}."
-  [path]
+(defn- route-row
+  [g]
+  {:maritime? (= "1" (g "maritime"))
+   :reason (g "reason")
+   :routed (or (parse-double (g "routed")) 0.0)
+   :km (parse-double (g "distance_km"))
+   :through (parse-chokepoints (g "chokepoints"))})
+
+(defn- read-csv
+  "(f acc g) over a CSV's rows, g the column getter."
+  [path f]
   (with-open [r (io/reader path)]
     (let [[h & ls] (line-seq r)
           ix (zipmap (str/split h #",") (range))]
-      (reduce (fn [acc l]
-                (let [f (str/split l #"," -1)
-                      g #(nth f (ix %) "")]
-                  (assoc-in acc [(g "exporter") (g "importer") (g "class")]
-                            {:maritime? (= "1" (g "maritime"))
-                             :reason (g "reason")
-                             :routed (or (parse-double (g "routed")) 0.0)
-                             :km (parse-double (g "distance_km"))
-                             :through (parse-chokepoints (g "chokepoints"))})))
+      (reduce (fn [acc l] (let [x (str/split l #"," -1)] (f acc #(nth x (ix %) ""))))
               {} ls))))
 
+(defn read-routes
+  "{exporter {importer {class {:maritime? :routed :km :through {strait share}}}}}
+  of routes.csv (tanker rows: the 2019-23 pooled structure)."
+  [path]
+  (read-csv path (fn [acc g] (assoc-in acc [(g "exporter") (g "importer") (g "class")] (route-row g)))))
+
+(defn read-year-routes
+  "{data-year {exporter {importer {class route}}}} of routes-years.csv: the
+  tanker routes of each BACI data year, export ports by that year's PortWatch
+  tonnes (2019's for 1995-2018) and the year's buyers."
+  [path]
+  (read-csv path (fn [acc g] (assoc-in acc [(parse-long (g "year")) (g "exporter") (g "importer") (g "class")]
+                                       (route-row g)))))
+
+(defn read-modes
+  "{[exporter importer product data-year] seaborne share} of routes-modes.csv:
+  where a product's mode differs from its pair's land flag (LNG between
+  neighbours, Russian crude to China beyond the pipelines)."
+  [path]
+  (read-csv path (fn [acc g] (assoc acc [(g "exporter") (g "importer") (g "product") (parse-long (g "year"))]
+                                    (parse-double (g "maritime"))))))
+
+(defn with-structure
+  "routes with the year routes and the modes attached (see route-of)."
+  [routes years modes]
+  (assoc routes ::years years ::modes modes))
+
+(defn route-of
+  "The route of a flow {:year :exporter :importer :class :product}: the
+  year's own route where routes-years.csv has one, else the pooled one; a
+  product mode sets :maritime-share."
+  [routes {:keys [year exporter importer class product]}]
+  (let [r (or (get-in routes [::years year exporter importer class])
+              (get-in routes [exporter importer class]))
+        m (get-in routes [::modes [exporter importer product year]])]
+    (cond-> r (and r m) (assoc :maritime-share m))))
+
 (defn seaborne-share
-  "The share of a pair's flow that goes by sea on a routed lane: 0 for a
-  non-maritime pair or no route."
+  "The share of a pair's flow that goes by sea on a routed lane: the
+  product's mode share or the pair flag (0 or 1), times routed."
   [route]
-  (if (and route (:maritime? route)) (:routed route) 0.0))
+  (if route
+    (* (or (:maritime-share route) (if (:maritime? route) 1.0 0.0)) (:routed route))
+    0.0))
 
 ;; ---------------------------------------------------------------- aggregation
 
@@ -139,8 +185,8 @@
 (defn add-to
   "Adds one flow {:product :class :exporter :importer :value :tonnes} to an
   aggregate {[product importer] accumulator}, and to the world (\"WLD\")."
-  [routes m {:keys [product class exporter importer value tonnes]}]
-  (let [r (get-in routes [exporter importer class])]
+  [routes m {:keys [year product class exporter importer value tonnes]}]
+  (let [r (route-of routes {:year year :exporter exporter :importer importer :class class :product product})]
     (-> m
         (update [product importer] add-flow r value tonnes)
         (update [product "WLD"] add-flow r value tonnes))))

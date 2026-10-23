@@ -71,7 +71,7 @@
                  (reduce (fn [acc l]
                            (if-let [{:keys [year product class exporter importer value]} (cp/hs2-flow l)]
                              (if (some #{year} check-years)
-                               (let [r (get-in routes [exporter importer class])
+                               (let [r (cp/route-of routes {:year year :exporter exporter :importer importer :class class})
                                      s (cp/seaborne-share r)
                                      kind (cond (nil? r) :no-route
                                                 (not (:maritime? r)) :land
@@ -136,7 +136,7 @@
                                    {} ls)))]
     (update-vals acc #(/ (or (:gulf %) 0.0) (:total %)))))
 
-(defn- validation [energy hs2 subs]
+(defn- validation [routes energy hs2 subs]
   (println "\n2. Validation (data years; share of the importer's imports by value)")
   (println "\n  Hormuz share of crude imports (270900)")
   (println "   iso   1995  2000  2005  2010  2015  2019  2020  2021  2022  2023  2024   seaborne-2023")
@@ -148,7 +148,17 @@
     (println "  from Gulf exporters (SAU ARE KWT IRQ QAT IRN BHR; the bound if all their crude passed Hormuz)")
     (doseq [iso ["JPN" "KOR" "IND" "CHN" "TWN"]]
       (println (str "   " iso "  " (str/join "  " (for [y [1995 2000 2005 2010 2015 2019 2020 2021 2022 2023 2024]]
-                                                     (f (g [iso y]) 2)))))))
+                                                     (f (g [iso y]) 2))))))
+    (println "  routed Hormuz over the Gulf-supplier share (the part of Gulf crude routed through Hormuz)")
+    (doseq [iso ["JPN" "KOR" "IND" "CHN" "TWN"]]
+      (println (str "   " iso "  " (str/join "  " (for [y [1995 2000 2005 2010 2015 2019 2020 2021 2022 2023 2024]]
+                                                     (let [h (share-of energy y "crude-oil" iso "hormuz") b (g [iso y])]
+                                                       (f (when (and h b (pos? b)) (/ h b)) 2))))))))
+  (println "\n  US tanker routes to East Asia (routes-years.csv; panama, cape-of-good-hope, magellan shares)")
+  (doseq [i ["JPN" "KOR" "CHN"] y [2015 2019 2021 2023 2024]]
+    (let [t (:through (get-in routes [::cp/years y "USA" i "tanker"]))]
+      (println (str "   USA->" i " " y "  panama " (f (get t "panama" 0.0) 2) "  cape " (f (get t "cape-of-good-hope" 0.0) 2)
+                    "  magellan " (f (get t "magellan" 0.0) 2) "  korea " (f (get t "korea" 0.0) 2) "  tsugaru " (f (get t "tsugaru" 0.0) 2)))))
   (doseq [[prod lbl] [["crude-oil" "crude (270900)"] ["lng" "LNG (271111)"]]]
     (println (str "\n  Malacca, Hormuz and Lombok shares of " lbl ", mean 2019-2023"))
     (doseq [iso ["JPN" "KOR" "CHN" "TWN" "IND" "WLD"]]
@@ -232,7 +242,9 @@
 
 (defn -main [& _]
   (let [t0 (System/currentTimeMillis)
-        routes (cp/read-routes (str dir "/routes.csv"))
+        routes (cp/with-structure (cp/read-routes (str dir "/routes.csv"))
+                                  (cp/read-year-routes (str dir "/routes-years.csv"))
+                                  (cp/read-modes (str dir "/routes-modes.csv")))
         _ (println "routes read" (- (System/currentTimeMillis) t0) "ms")
         subnodes (cp/read-subnodes (str dir "/subnodes.csv"))
         val-isos #{"JPN" "KOR" "IND" "CHN" "TWN" "DEU" "WLD"}
@@ -248,7 +260,7 @@
     (println "wrote" out)
     (let [ps (pair-stats routes (str dir "/hs2-pairs.csv.gz"))]
       (coverage ps)
-      (validation energy hs2 subs)
+      (validation routes energy hs2 subs)
       (asia-europe ps))
     (portwatch-check hs2 (read-closed (str dir "/routes-closed.csv")
                                       #{["CHN" "NLD" "general"] ["CHN" "DEU" "general"] ["SAU" "NLD" "tanker"] ["QAT" "GBR" "tanker"]

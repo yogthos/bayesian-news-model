@@ -3,7 +3,8 @@ they pass (bead bnm-1pq.10, docs/ESSENTIALS.md section 8 step 9). Research
 tooling; bnm.chokepoints reads what this writes.
 
     python -I scripts/routes.py energy     # BACI HS92 crude, LNG, gas, oil products, bilateral
-    python -I scripts/routes.py routes     # routes.csv, routes-closed.csv, route-ports.csv
+    python -I scripts/routes.py portwatch  # PortWatch tanker tonnes by port and year
+    python -I scripts/routes.py routes     # routes.csv, routes-years.csv, routes-modes.csv, ...
     python -I scripts/routes.py --selftest
 
 Network. MARNET as searoute-py packages it (data/raw/material/
@@ -18,11 +19,19 @@ Shanghai-Rotterdam goes over the pole.
 Chokepoints. An edge passes a chokepoint if it carries one of the
 chokepoint's searoute passage tags, or if it crosses one of the gate lines
 below (drawn across the strait from coast to coast and checked against
-plots of the network). The names follow PortWatch's 28 chokepoints; 19 are
-resolved. The rest (Bohai, Ombai, Torres, Balabac, Mindoro, Yucatan,
-Windward, Mona, Kerch) sit on lane hubs of the generalised network or in
-archipelagos where its lanes cross land, so a gate cannot tell passing
-from touching; they are left out. Two are wider than their PortWatch
+plots of the network). The names follow PortWatch's 28 chokepoints; 20 are
+resolved. Kerch is a gate across the narrows: MARNET has one lane into the
+Sea of Azov, and the Azov ports (Rostov, Azov, Taganrog, Yeysk, Temryuk,
+Mariupol, Berdyansk; Port Kavkaz at the strait's Azov end) snap north of it,
+Taman and Kerch town south. The other eight (Bohai, Ombai, Torres,
+Balabac, Mindoro, Yucatan, Windward, Mona) sit on lane hubs of the
+generalised network or in archipelagos where its lanes cross land, so a
+gate cannot tell passing from touching; they are left out. None carries a
+large share of a major importer's essentials: Bohai is inside China's
+coastal trade (Tianjin, Dalian), Yucatan, Windward and Mona carry US Gulf
+and Caribbean trade with alternatives a day away, and Ombai, Torres,
+Balabac and Mindoro are the bypasses of Lombok, Malacca and the South China
+Sea lanes, which are resolved. Two are wider than their PortWatch
 point: bosporus is the Turkish straits (Bosporus or Dardanelles tags) and
 magellan is the Magellan strait together with the Drake passage round Cape
 Horn. 'oresund' is a gate across the Kattegat, so it is every Baltic
@@ -40,9 +49,55 @@ shortest port-pair route: the ports a country uses come from its trade,
 and a cargo leaves from the coast facing its destination (Russian crude to
 Korea from Nakhodka, not the Baltic; US imports from China at Los
 Angeles, from Germany at the East and Gulf coasts). The decay length,
-2,000 km, was set before any exposure was computed and not tuned. Saudi
-crude still leaves partly from Yanbu on the Red Sea and the UAE's partly
-from Fujairah outside Hormuz, as their port weights say. Each port is snapped to the nearest network node
+2,000 km, was set before any exposure was computed and not tuned.
+
+Tanker exports (crude, LNG, oil products) are different: a country loads
+them where its fields, pipelines and terminals are, whatever the buyer, so
+the decay cannot pick the export port (it sent US crude to Japan from
+Valdez, 6% of US tanker calls, because the Gulf Coast is 11,000 km further).
+The tanker export ports are weighted by PortWatch's export_tanker tonnes
+(Daily_Ports_Data summed by port and year, `routes.py portwatch`; ports
+under 2% dropped, at most 10), and which port serves which buyer is a
+gravity model per exporter and year: the flow from port p to importer i is
+a_p x K(p, i) x b_i, with each port's tonnage share and each importer's
+seaborne tonnes of crude, LNG and products (BACI) held (Sinkhorn), and
+K(p, i) = sum over i's ports q of w_q exp(-km(p, q) / 2,000). So the US
+Gulf Coast ships what it ships and Asia gets most of it; Kozmino's ESPO
+blend goes to China, Japan and Korea, and the Baltic's Urals to Europe and
+(from 2022) India. The decay then picks only among the importer's ports
+for each export port. Saudi Arabia's split between Ras Tanura, Juaymah and
+Jubail (inside Hormuz) and Yanbu and Rabigh (Red Sea, the East-West
+pipeline) and the UAE's between Ruwais, Das and Jebel Ali and Fujairah
+(Gulf of Oman, the Habshan-Fujairah line) come from these tonnes, by year:
+the Red Sea ports (Yanbu, Rabigh, Jeddah) 23% of Saudi tanker tonnes in
+2019, 18-20% in 2021-23, 25% in 2024 (the Bab-el-Mandeb attacks); Fujairah
+35-43% of the UAE's. Fujairah is also a storage and
+bunkering hub (its tanker imports nearly equal its exports), so its export
+tonnes overstate the pipeline crude it loads; EIA (June 2025) gives the
+line's capacity, 1.8 mb/d, not its throughput, so no cited split replaces
+it. Countries whose PortWatch ports have no tanker tonnes keep the
+call-share weights.
+
+Years. PortWatch's tonnes start in 2019: a BACI data year t uses year t's
+tonnes for 2019-2025 and 2019's for 1995-2018. That is a look-ahead in the
+port structure for data years 1995-2018 (exposure years 1997-2020): e.g.
+US crude exports were near zero before 2016 (the export ban) and Corpus
+Christi's terminals date from 2018-20, Yanbu's share before 2019 is
+assumed equal to 2019's. The buyers (columns) are each year's own.
+routes-years.csv has the tanker routes of each data year; routes.csv's
+tanker rows pool 2019-2023 (tonnes and buyers). Bulk and general cargo keep
+the pooled port weights and the decay over port pairs, so their structure
+is fixed across years (the look-ahead noted in bnm.chokepoints).
+
+PortWatch misses some terminals: Kozmino (the ESPO terminal, 30-46 Mt a
+year) is added from Transneft's figures (SUPPLEMENT). Its tanker "exports"
+are cargo leaving a port, domestic included: Valdez (Swanport, 17-20 Mt of
+Alaskan crude a year, nearly all to the US West Coast) is dropped
+(DOMESTIC); kept, the gravity model sent it to the nearest foreign buyers,
+about a fifth of US tanker cargo to Japan, Korea and China. Coastal
+cargo at other ports (Houston to the US East Coast) stays in their tonnes.
+
+Each port is snapped to the nearest network node
 (distance recorded); a port over 300 km from the network is not used, nor
 any Caspian port (Aktau, Baku, Turkmenbashi: MARNET reaches the Caspian
 through the Volga-Don canal, which the oil does not take). Countries without PortWatch ports:
@@ -61,13 +116,25 @@ Africa). Borders are between each country's core: its Natural Earth
 polygons of at least a quarter of its largest polygon's area, so overseas
 and small exclaves (French Guiana, Ceuta and Melilla, Gibraltar, Northern
 Ireland, Alaska, Kaliningrad, Cabinda) make no land border. Pairs in
-MARITIME_PAIRS share a border that trade does not cross by land (the
+MARITIME_PAIRS are maritime whatever the rule says: some are near by land
+but cross a sea or a third country no corridor carries their trade through
+(Turkey with Egypt, Israel and Ukraine, Finland-Estonia, China with
+Bangladesh and Thailand); the rest share a border that trade does not cross by land (the
 Himalaya, Amazonia, Borneo, New Guinea; Egypt and Saudi Arabia across the
 Red Sea) and stay maritime; their borders do not count as land routes for
 third countries either (Singapore-Indonesia is not near-land via Borneo). Borders are
-current, 2020s ones. The flag is a pair property, not per product: Russian
-crude to China (pipeline and Pacific tankers) and Canadian crude to the US
-are non-maritime.
+current, 2020s ones. The flag is a pair property, except where a
+product's mode is known (maritime_share, routes-modes.csv): LNG is shipped
+also between land neighbours (Qatar to Kuwait; Russia's Sakhalin and Yamal
+LNG to China) unless a side is landlocked, and Russian crude to China from
+2011 is shipped beyond the capacity of the ESPO spur (15 Mt/yr 2011-17, 30
+from 2018) and the Kazakh transit (10 Mt/yr from 2014): 44% of it in 2019,
+60% in 2023. Known limitations, kept non-maritime: Russia-China coal,
+oil products, iron ore, timber and fertiliser (rail and Pacific ports
+both), Canadian crude to the US (pipeline, with some Gulf Coast tankers),
+Arctic routes (Yamal LNG over the Northern Sea Route in summer is routed
+round Europe: the Arctic passages are removed), and every other land
+pair's goods (all by land).
 
 Outputs (data/derived/supply/):
   routes.csv          exporter,importer,class,maritime,reason,routed,distance_km,chokepoints
@@ -83,11 +150,22 @@ Outputs (data/derived/supply/):
       the port-pair weight through it; stranded: the share with no other
       route (Gulf ports with Hormuz closed); extra_km: the weighted mean
       extra length over the affected port pairs that have one.
+  routes-years.csv    exporter,importer,class,year,maritime,reason,routed,distance_km,chokepoints
+      tanker routes of each BACI data year (pairs with seaborne tonnes that
+      year): export ports by the year's PortWatch tonnes, gravity on the
+      year's buyers.
+  routes-modes.csv    exporter,importer,product,year,maritime
+      the seaborne share of a pair's product where it is not the pair flag.
   route-ports.csv     iso,class,side,port,portname,source,weight,lon,lat,snap_km
+      (tanker export rows: the 2019-2023 tonnes, source portwatch-tonnes)
   hs6-energy-pairs.csv.gz  hs,year,known,hs6,exporter,importer,value,tonnes
       (energy step) BACI HS92 bilateral flows of 270900 (crude), 271111
       (LNG), 271121 (pipeline gas), 271000 (oil products), known = year + 2
       as in scripts/baci.py.
+
+Inputs beyond routes: data/raw/material/imf-portwatch/port-tanker-year.csv
+(`routes.py portwatch`: portid,portname,ISO3,year,export_tanker,
+import_tanker,portcalls_tanker,days; metric tonnes, summed on the server).
 
 Licences: MARNET EUPL-1.2 / searoute-py Apache-2.0; PortWatch IMF terms
 (attribution); Natural Earth public domain; BACI Etalab 2.0.
@@ -100,6 +178,7 @@ import json
 import math
 import os
 import sys
+import time
 from collections import defaultdict, deque
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -108,6 +187,8 @@ EARTH_KM = 6371.0088
 MARNET = "data/raw/material/sea-routes-marnet/searoute-py/marnet_searoute.geojson"
 SR_PORTS = "data/raw/material/sea-routes-marnet/searoute-py/ports.geojson"
 PW_PORTS = "data/raw/material/imf-portwatch/PortWatch_ports_database.csv"
+PW_TONNES = "data/raw/material/imf-portwatch/port-tanker-year.csv"
+TONNES_FIRST, TONNES_LAST = 2019, 2025  # full PortWatch years
 NE_ADMIN0 = "data/raw/geo/natural-earth/ne_10m_admin_0_countries.geojson"
 COUNTRIES = "resources/bnm/countries.edn"
 OUT = "data/derived/supply"
@@ -135,6 +216,10 @@ CHOKEPOINTS = {
     "makassar": ("chokepoint20", [], [[(117.0, -1.0), (119.5, -1.0)]]),
     "magellan": ("chokepoint21", [], [[(-69.3, -52.2), (-69.3, -52.7)], [(-66.0, -55.0), (-66.0, -85.0)]]),
     "bering": ("chokepoint26", ["bering"], []),
+    # across the narrows between Kerch and the Chushka spit, south of Port Kavkaz: MARNET's
+    # one lane into the Sea of Azov (the Black Sea hub at 36.4E 45.0N to 36.86E 45.62N)
+    # crosses it at about 36.59E; no other edge does
+    "kerch": ("chokepoint28", [], [[(36.40, 45.25), (36.80, 45.25)]]),
 }
 NAMES = list(CHOKEPOINTS)
 
@@ -213,7 +298,14 @@ NE_UNITS = {"KOS": "XKX", "SOL": "SOM", "CYN": "CYP", "CNM": "CYP", "ESB": "GBR"
 MARITIME_PAIRS = {frozenset(p) for p in [
     ("CHN", "IND"), ("CHN", "PAK"), ("CHN", "AFG"), ("IND", "MMR"), ("IDN", "MYS"), ("IDN", "PNG"),
     ("BRA", "PER"), ("BRA", "COL"), ("BRA", "VEN"), ("BRA", "GUY"), ("BRA", "SUR"), ("VEN", "GUY"),
-    ("COL", "PER"), ("SUR", "GUY"), ("EGY", "SAU")]}
+    ("COL", "PER"), ("SUR", "GUY"), ("EGY", "SAU"),
+    # no border, near by land (three borders, 2,000 km), but the land route crosses a
+    # third country no corridor carries this trade through: across a sea (Turkey with
+    # Egypt, Israel, Ukraine; Ukraine-Georgia; Finland-Estonia; the UAE-Iran; Norway-
+    # Poland) or round Myanmar, Laos and Malaysia (China with Bangladesh and Thailand;
+    # Singapore with Thailand and Cambodia; Hong Kong-Thailand)
+    ("EGY", "TUR"), ("ISR", "TUR"), ("TUR", "UKR"), ("GEO", "UKR"), ("EST", "FIN"), ("ARE", "IRN"),
+    ("NOR", "POL"), ("BGD", "CHN"), ("CHN", "THA"), ("SGP", "THA"), ("KHM", "SGP"), ("HKG", "THA")]}
 NEAR_HOPS, NEAR_KM = 3, 2000.0
 
 
@@ -375,10 +467,163 @@ def port_weights(rows, side, cls, min_weight=MIN_WEIGHT, max_ports=MAX_PORTS):
     tot = sum(x for _, x in w)
     if tot <= 0:
         return []
-    w = sorted(((p, x / tot) for p, x in w), key=lambda t: -t[1])
+    return _trim([(p, x / tot) for p, x in w], min_weight, max_ports)
+
+
+def _trim(w, min_weight, max_ports):
+    """Shares [(port, x)] summing to one: under min_weight dropped (the largest
+    always kept), at most max_ports, renormalised, largest first."""
+    w = sorted(w, key=lambda t: -t[1])
     keep = [(p, x) for p, x in w if x >= min_weight][:max_ports] or w[:1]
     tot = sum(x for _, x in keep)
     return [(p, x / tot) for p, x in keep]
+
+
+def tonnage_years(year):
+    """The PortWatch years whose tanker tonnes stand for a BACI data year: the
+    year itself within TONNES_FIRST..TONNES_LAST, else the nearest end (so
+    1995-2018 use 2019's ports: a look-ahead in the port structure)."""
+    return [min(max(year, TONNES_FIRST), TONNES_LAST)]
+
+
+def tonnage_weights(rows, tonnes, years, min_weight=MIN_WEIGHT, max_ports=MAX_PORTS):
+    """[(port, weight)] of a country's tanker export ports by PortWatch's
+    export_tanker tonnes summed over `years` (where the country's crude, LNG
+    and products are loaded); [] when its ports have none. tonnes: {portid
+    {year t}}."""
+    raw = [(r["portid"], sum(tonnes.get(r["portid"], {}).get(y, 0.0) for y in years)) for r in rows]
+    tot = sum(x for _, x in raw)
+    if tot <= 0:
+        return []
+    return _trim([(p, x / tot) for p, x in raw if x > 0], min_weight, max_ports)
+
+
+# Tanker terminals PortWatch does not list, with their loadings (t/yr). Kozmino,
+# the ESPO pipeline's Pacific terminal (Nakhodka's PortWatch entry is the
+# port's own 2 Mt): Transneft 35.1 Mt in 2021 (Reuters via Daily Sabah), about
+# 42 Mt in 2022 (Interfax), 42.8 Mt in 2023 and 46 expected for 2024 (S&P
+# Global, Jan 2024); 2019-20 at its 30 Mt design capacity (no figure found),
+# 2025 as 2024. Sakhalin's terminals (Prigorodnoye LNG and crude, De-Kastri)
+# are under-counted in PortWatch's Korsakov and have no supplement.
+SUPPLEMENT = {"RUS": [{"portid": "sup:kozmino", "portname": "Kozmino (ESPO terminal)", "lon": 133.05, "lat": 42.73,
+                       "tonnes": {2019: 30e6, 2020: 30e6, 2021: 35.1e6, 2022: 42e6, 2023: 42.8e6, 2024: 46e6,
+                                  2025: 46e6}}]}
+
+
+# PortWatch ports whose tanker cargo is domestic, not exported
+DOMESTIC = {"port1241"}  # Valdez (Swanport): Alaskan crude to the US West Coast (Jones Act)
+
+
+def with_supplement(iso, rows, tonnes):
+    """(rows, tonnes) with SUPPLEMENT's terminals of the country added and
+    the DOMESTIC ports dropped."""
+    rows = [r for r in rows if r["portid"] not in DOMESTIC]
+    sup = SUPPLEMENT.get(iso)
+    if not sup:
+        return rows, tonnes
+    tonnes = dict(tonnes)
+    rows = list(rows)
+    for x in sup:
+        rows.append({k: v for k, v in x.items() if k != "tonnes"})
+        tonnes[x["portid"]] = x["tonnes"]
+    return rows, tonnes
+
+
+def load_tonnes(path):
+    """{portid {year export_tanker tonnes}} of PortWatch's daily port data
+    summed by year (fetched by `routes.py portwatch`); {} if absent."""
+    out = defaultdict(dict)
+    if not os.path.exists(path):
+        return {}
+    with open(path, newline="") as f:
+        for r in csv.DictReader(f):
+            out[r["portid"]][int(r["year"])] = num(r["export_tanker"]) or 0.0
+    return dict(out)
+
+
+def fetch_tonnes(root):
+    """PortWatch Daily_Ports_Data summed by port and year on the server
+    (export_tanker, import_tanker in metric tonnes, port calls, days) ->
+    PW_TONNES."""
+    import urllib.parse
+    import urllib.request
+    url = ("https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/"
+           "Daily_Ports_Data/FeatureServer/0/query")
+    stats = [{"statisticType": "sum", "onStatisticField": k, "outStatisticFieldName": k}
+             for k in ("export_tanker", "import_tanker", "portcalls_tanker")]
+    stats.append({"statisticType": "count", "onStatisticField": "ObjectId", "outStatisticFieldName": "days"})
+    isos = sorted({r["iso"] for r in load_portwatch(os.path.join(root, PW_PORTS)).values()})
+    rows = []
+    for iso in isos:  # the whole table at once times out on the server
+        off = 0
+        while True:
+            q = urllib.parse.urlencode({
+                "where": f"ISO3 = '{iso}'", "groupByFieldsForStatistics": "portid,portname,ISO3,year",
+                "outStatistics": json.dumps(stats), "orderByFields": "portid,year",
+                "resultOffset": off, "resultRecordCount": 1000, "f": "json"})
+            for attempt in range(6):  # the service fails now and then; retry with a pause
+                try:
+                    with urllib.request.urlopen(url + "?" + q, timeout=300) as r:
+                        d = json.load(r)
+                except OSError as ex:
+                    d = {"error": str(ex)}
+                if "error" not in d:
+                    break
+                time.sleep(5 * (attempt + 1))
+            else:
+                raise SystemExit(f"PortWatch {iso}: {d['error']}")
+            fs = [ft["attributes"] for ft in d.get("features", [])]
+            rows.extend(fs)
+            if len(fs) < 1000:
+                break
+            off += len(fs)
+        print(f"  {iso}: {len(rows)} port-years", file=sys.stderr)
+    path = os.path.join(root, PW_TONNES)
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        cols = ["portid", "portname", "ISO3", "year", "export_tanker", "import_tanker", "portcalls_tanker", "days"]
+        w.writerow(cols)
+        for a in rows:
+            w.writerow([a[c] for c in cols])
+    print(f"wrote {PW_TONNES} ({len(rows)} rows)", file=sys.stderr)
+
+
+# ---------------------------------------------------------------- modes (per product)
+
+# Pipeline capacity from Russia to China, tonnes a year, from the year it opened.
+# ESPO spur Skovorodino-Mohe: 15 Mt/yr from January 2011, 30 Mt/yr from January
+# 2018 (second line Mohe-Daqing; Transneft). Rosneft's transit across
+# Kazakhstan (Atasu-Alashankou): a 7 Mt/yr swap from January 2014 extended by
+# the 2014 CNPC contract to about 10 Mt/yr (200 kb/d; Argus 2014, Enerdata).
+ESPO_SPUR = {2011: 15e6, 2018: 30e6}
+KAZ_TRANSIT = {2014: 10e6}
+
+
+def _step(table, year):
+    v = 0.0
+    for y, x in sorted(table.items()):
+        if year >= y:
+            v = x
+    return v
+
+
+def maritime_share(e, i, hs6, year, tonnes, maritime):
+    """The share of a pair's flow of one HS6 product that goes by sea, where
+    it differs from the pair's flag; None where the flag stands.
+      LNG (271111) is shipped, also between land neighbours (Qatar to Kuwait,
+        Russia's Sakhalin and Yamal LNG to China), unless a side is landlocked
+        (TRANSIT: by road or rail from the neighbour's terminal).
+      Russian crude to China (270900) from 2011: what the pipelines (ESPO
+        spur, Kazakh transit) cannot carry is shipped (Kozmino; the Baltic
+        and Black Sea from 2022). Rail after 2011 is ignored. Before 2011
+        the pair flag (land: rail and the Kazakh pipeline) stands.
+    Other products of land pairs keep the flag (see the module notes)."""
+    if hs6 == "271111" and not maritime and e not in TRANSIT and i not in TRANSIT:
+        return 1.0
+    if (e, i, hs6) == ("RUS", "CHN", "270900") and year >= 2011:
+        land = _step(ESPO_SPUR, year) + _step(KAZ_TRANSIT, year)
+        return max(0.0, 1.0 - land / tonnes) if tonnes and tonnes > 0 else 0.0
+    return None
 
 
 def num(x):
@@ -546,6 +791,85 @@ def pair_route(ep, ip, table, decay_km=DECAY_KM):
     return routed, sum(w * km for w, _, _, km, _ in parts), dict(share), parts
 
 
+def port_kernel(p, ip, table, decay_km, offset):
+    """How near export port p is to an importer: sum over its ports q of
+    wq x exp(-(km(p, q) - offset) / decay_km), reachable q only (offset keeps
+    it from underflowing; a constant per importer does not change gravity)."""
+    tp = table[p]
+    return sum(wq * math.exp(-(tp[q][0] - offset) / decay_km) for q, wq in ip if q in tp)
+
+
+def gravity(rows, cols, kern, iters=2000, tol=1e-11):
+    """Which export ports serve which importer. rows {port: share of the
+    exporter's tanker tonnes}; cols {importer: seaborne tonnes bought};
+    kern {importer {port: nearness}}. The flow port -> importer is
+    a_p x kern x b_i with the ports' row sums and the importers' column sums
+    held (Sinkhorn on the importers that buy): each port ships its tonnage,
+    and it goes to the buyers nearest it first. -> {importer {port: share}}
+    for every importer some port reaches, a_p x kern normalised (an importer
+    that does not buy gets the mix it would). With no buyers a_p is the
+    tonnage share."""
+    import numpy as np
+    ports = sorted(rows)
+    imps = [i for i in sorted(kern) if any(kern[i].get(p, 0.0) > 0 for p in ports)]
+    if not imps or not ports:
+        return {}
+    K = np.array([[kern[i].get(p, 0.0) for i in imps] for p in ports])
+    r = np.array([rows[p] for p in ports], dtype=float)
+    c = np.array([max(cols.get(i, 0.0), 0.0) for i in imps], dtype=float)
+    a = r / r.sum()
+    pos = c > 0
+    if pos.any():
+        Kp, cp = K[:, pos], c[pos] / c[pos].sum()
+        live = Kp.sum(axis=1) > 0
+        if live.any():
+            rr = np.where(live, r, 0.0)
+            rr = rr / rr.sum()
+            b = np.ones(int(pos.sum()))
+            for _ in range(iters):
+                an = np.where(live, rr / np.maximum(Kp @ b, 1e-300), 0.0)
+                b = cp / np.maximum(an @ Kp, 1e-300)
+                done = np.max(np.abs(an - a) / np.maximum(an, 1e-300)) < tol
+                a = an
+                if done:
+                    break
+    X = a[:, None] * K
+    out = {}
+    for j, i in enumerate(imps):
+        s = X[:, j].sum()
+        if s > 0:
+            out[i] = {p: float(X[k, j] / s) for k, p in enumerate(ports) if X[k, j] > 0}
+    return out
+
+
+def pair_route_mix(mix, ip, table, decay_km=DECAY_KM):
+    """One pair with the exporter's ports fixed: mix {node: share} (from
+    gravity); the decay picks among the importer's ports for each export
+    port, exp(-(km - kmin_p) / decay_km) times their weights. -> (routed, km,
+    {bit: share}, parts) as pair_route; routed the mix share with a route."""
+    raw, routed = [], 0.0
+    for p, m in mix.items():
+        tp = table[p]
+        qs = [(q, wq, tp[q]) for q, wq in ip if q in tp]
+        if not qs:
+            continue
+        routed += m * sum(wq for _, wq, _ in qs)
+        kmin = min(r[0] for _, _, r in qs)
+        ws = [wq * math.exp(-(r[0] - kmin) / decay_km) for _, wq, r in qs]
+        t = sum(ws)
+        raw.extend((m * w / t, p, q, r[0], r[1]) for (q, _, r), w in zip(qs, ws))
+    if not raw:
+        return 0.0, None, {}, []
+    tot = sum(x[0] for x in raw)
+    parts = [(w / tot, p, q, km, b) for w, p, q, km, b in raw]
+    share = defaultdict(float)
+    for w, _, _, _, b in parts:
+        for k in range(b.bit_length()):
+            if b >> k & 1:
+                share[k] += w
+    return routed, sum(w * km for w, _, _, km, _ in parts), dict(share), parts
+
+
 def closure_stats(parts, k, closed_table):
     """For chokepoint bit k: (affected, stranded, extra_km) over the port pairs whose route passes it."""
     aff = stranded = ext = 0.0
@@ -578,6 +902,23 @@ def baci_countries(path):
     return sorted(out)
 
 
+TANKER_HS6 = {"270900": "crude-oil", "271111": "lng", "271000": "oil-products"}
+BASE_YEARS = range(2019, 2024)  # the years routes.csv's tanker rows pool
+
+
+def read_tanker_flows(path):
+    """{year {(exporter, importer, hs6) tonnes}} of the tanker products in
+    hs6-energy-pairs.csv.gz (BACI HS92; flows without tonnes left out)."""
+    out = defaultdict(lambda: defaultdict(float))
+    with gzip.open(path, "rt") as f:
+        next(f)
+        for line in f:
+            _, y, _, hs6, e, i, _, t = line.rstrip("\n").split(",")
+            if hs6 in TANKER_HS6 and t:
+                out[int(y)][(e, i, hs6)] += float(t)
+    return out
+
+
 def run_routes(root, out):
     p = lambda x: os.path.join(root, x)
     edges = load_marnet(p(MARNET))
@@ -589,6 +930,9 @@ def run_routes(root, out):
         if ne == 0:
             raise SystemExit(f"chokepoint {n} has no edges")
     pw = load_portwatch(p(PW_PORTS))
+    tonnes = load_tonnes(p(PW_TONNES))
+    if not tonnes:
+        raise SystemExit(f"no {PW_TONNES}: python -I scripts/routes.py portwatch")
     i2 = iso2_to_iso3(p(COUNTRIES))
     sr = load_sr_ports(p(SR_PORTS), i2)
     borders = load_borders(p(NE_ADMIN0))
@@ -608,10 +952,22 @@ def run_routes(root, out):
     for r in pw.values():
         by_iso[r["iso"]].append(r)
     ports = {}  # (iso, cls, side) -> [(node, w, portid, name, source, lon, lat, km)]
+    pw_rows = {}  # iso -> usable PortWatch rows
+
+    def entries(sel, src):
+        lst = []
+        for r, w in sel:
+            node, km = snapped(r["portid"], r["lon"], r["lat"])
+            if km <= MAX_SNAP_KM:
+                lst.append((node, w, r["portid"], r["portname"], src, r["lon"], r["lat"], km))
+        tot = sum(x[1] for x in lst)
+        return [(x[0], x[1] / tot) + x[2:] for x in lst] if tot > 0 else []
+
     for iso in countries:
         base = ALIAS.get(iso, iso)
         rows = [r for r in by_iso.get(base, []) if not in_caspian(r["lon"], r["lat"])
                 and snapped(r["portid"], r["lon"], r["lat"])[1] <= MAX_SNAP_KM]
+        pw_rows[iso] = rows
         for cls in CLASSES:
             for side in ("export", "import"):
                 if base in TRANSIT and not rows:
@@ -626,14 +982,24 @@ def run_routes(root, out):
                     sel, src = [(best, 1.0)], "searoute"
                 else:
                     sel, src = [], "none"
-                lst = []
-                for r, w in sel:
-                    node, km = snapped(r["portid"], r["lon"], r["lat"])
-                    if km <= MAX_SNAP_KM:
-                        lst.append((node, w, r["portid"], r["portname"], src, r["lon"], r["lat"], km))
-                tot = sum(x[1] for x in lst)
-                ports[(iso, cls, side)] = [(x[0], x[1] / tot) + x[2:] for x in lst] if tot > 0 else []
-    nodes = sorted({x[0] for v in ports.values() for x in v})
+                ports[(iso, cls, side)] = entries(sel, src)
+
+    def tanker_export(iso, years):
+        """The tanker export ports for some PortWatch years: by export tonnes
+        where the country's ports have them, else the call-share weights."""
+        rows, tn = with_supplement(iso, pw_rows.get(iso) or [], tonnes)
+        ws = dict(tonnage_weights(rows, tn, years)) if rows else {}
+        if ws:
+            return entries([(r, ws[r["portid"]]) for r in rows if r["portid"] in ws], "portwatch-tonnes")
+        return ports[(iso, "tanker", "export")]
+
+    base_tonnage = [y for y in range(TONNES_FIRST, TONNES_LAST + 1) if y in BASE_YEARS]
+    tk_years = sorted({tuple(tonnage_years(y)) for y in range(1995, 2025)} | {tuple(base_tonnage)})
+    tk_ports = {(iso, ys): tanker_export(iso, list(ys)) for iso in countries for ys in tk_years}
+    for iso in countries:
+        ports[(iso, "tanker", "export")] = tk_ports[(iso, tuple(base_tonnage))]
+
+    nodes = sorted({x[0] for v in list(ports.values()) + list(tk_ports.values()) for x in v})
     print(f"{len(nodes)} port nodes; routing", file=sys.stderr)
     table = {s: net.dijkstra(s) for s in nodes}
 
@@ -646,8 +1012,83 @@ def run_routes(root, out):
             return v
     closed = {k: Lazy(k) for k in range(len(NAMES))}
     hop_cache = {}
+    flags = {(a, b): maritime_flag(ALIAS.get(a, a), ALIAS.get(b, b), nb, labels, cache=hop_cache)
+             for a in countries for b in countries if a != b}
 
+    # tanker: seaborne tonnes by exporter, importer and year, with the per-product modes
+    flows = read_tanker_flows(p(os.path.join(OUT, "hs6-energy-pairs.csv.gz")))
+    cols = defaultdict(lambda: defaultdict(float))  # (exporter, year) -> {importer: seaborne t}
     os.makedirs(p(out), exist_ok=True)
+    n_modes = 0
+    with open(p(os.path.join(out, "routes-modes.csv")), "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["exporter", "importer", "product", "year", "maritime"])
+        for y in sorted(flows):
+            for (e, i, hs6), t in sorted(flows[y].items()):
+                if (e, i) not in flags:
+                    continue
+                mar = flags[(e, i)][0]
+                sh = maritime_share(e, i, hs6, y, t, mar)
+                if sh is not None:
+                    w.writerow([e, i, TANKER_HS6[hs6], y, f"{sh:.4f}"])
+                    n_modes += 1
+                cols[(e, y)][i] += t * (float(mar) if sh is None else sh)
+    base_cols = defaultdict(lambda: defaultdict(float))
+    for (e, y), c in cols.items():
+        if y in BASE_YEARS:
+            for i, t in c.items():
+                base_cols[e][i] += t
+
+    def ip_of(b):
+        return [(x[0], x[1]) for x in ports[(b, "tanker", "import")]]
+
+    def rows_of(lst):
+        r = defaultdict(float)
+        for x in lst:
+            r[x[0]] += x[1]
+        return dict(r)
+
+    def chok(share):
+        return ";".join(f"{NAMES[k]}={share[k]:.4f}" for k in sorted(share) if share[k] >= 1e-4)
+
+    tanker_base = {}  # (e, i) -> pair_route_mix result
+    n_years = 0
+    with open(p(os.path.join(out, "routes-years.csv")), "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["exporter", "importer", "class", "year", "maritime", "reason", "routed", "distance_km",
+                    "chokepoints"])
+        for e in countries:
+            cand = sorted({x[0] for ys in tk_years for x in tk_ports[(e, ys)]})
+            if not cand:
+                continue
+            kern = {}
+            for b in countries:
+                if b == e:
+                    continue
+                ip = ip_of(b)
+                kms = [table[q0][q][0] for q0 in cand for q, _ in ip if q in table[q0]]
+                if not kms:
+                    continue
+                off = min(kms)
+                kern[b] = {q0: port_kernel(q0, ip, table, DECAY_KM, off) for q0 in cand}
+            mix = gravity(rows_of(tk_ports[(e, tuple(base_tonnage))]), base_cols.get(e, {}), kern)
+            for b, m in mix.items():
+                tanker_base[(e, b)] = pair_route_mix(m, ip_of(b), table)
+            for y in sorted(y for (x, y) in cols if x == e):
+                c = cols[(e, y)]
+                if not any(v > 0 for v in c.values()):
+                    continue
+                my = gravity(rows_of(tk_ports[(e, tuple(tonnage_years(y)))]), c, kern)
+                for b in sorted(c):
+                    if c[b] <= 0 or b not in my or (e, b) not in flags:
+                        continue
+                    routed, km, share, _ = pair_route_mix(my[b], ip_of(b), table)
+                    mar, why = flags[(e, b)]
+                    w.writerow([e, b, "tanker", y, int(mar), why, f"{routed:.4f}",
+                                "" if km is None else f"{km:.0f}", chok(share)])
+                    n_years += 1
+    print(f"wrote routes-modes.csv ({n_modes}), routes-years.csv ({n_years})", file=sys.stderr)
+
     with open(p(os.path.join(out, "route-ports.csv")), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["iso", "class", "side", "port", "portname", "source", "weight", "lon", "lat", "snap_km"])
@@ -664,14 +1105,16 @@ def run_routes(root, out):
             for b in countries:
                 if a == b:
                     continue
-                mar, why = maritime_flag(ALIAS.get(a, a), ALIAS.get(b, b), nb, labels, cache=hop_cache)
+                mar, why = flags[(a, b)]
                 for cls in CLASSES:
-                    ep = [(x[0], x[1]) for x in ports[(a, cls, "export")]]
                     ip = [(x[0], x[1]) for x in ports[(b, cls, "import")]]
-                    routed, km, share, parts = pair_route(ep, ip, table)
-                    cps = ";".join(f"{NAMES[k]}={share[k]:.4f}" for k in sorted(share) if share[k] >= 1e-4)
+                    if cls == "tanker":
+                        routed, km, share, parts = tanker_base.get((a, b), (0.0, None, {}, []))
+                    else:
+                        ep = [(x[0], x[1]) for x in ports[(a, cls, "export")]]
+                        routed, km, share, parts = pair_route(ep, ip, table)
                     w.writerow([a, b, cls, int(mar), why, f"{routed:.4f}",
-                                "" if km is None else f"{km:.0f}", cps])
+                                "" if km is None else f"{km:.0f}", chok(share)])
                     n_rows += 1
                     if mar and routed > 0:
                         for k in sorted(share):
@@ -787,6 +1230,45 @@ def selftest():
     nb2 = drop_pairs(nb, {frozenset(("B", "C"))})
     assert maritime_flag("A", "C", nb2, lab, cache={}) == (True, "sea"), "no land route over a sea-only border"
     assert in_caspian(51.2, 43.6) and not in_caspian(50.2, 26.6)
+    # tanker export ports by PortWatch export tonnes over the years asked; none -> []
+    tons = {"a": {2019: 60.0, 2020: 0.0}, "b": {2019: 39.0, 2020: 100.0}, "c": {2019: 1.0}}
+    tw = dict(tonnage_weights(rows, tons, [2019]))
+    assert abs(tw["a"] - 60 / 99) < 1e-12 and "c" not in tw, tw
+    assert dict(tonnage_weights(rows, tons, [2020])) == {"b": 1.0}
+    assert tonnage_weights(rows, {}, [2019]) == []
+    rs, ts = with_supplement("RUS", [], {})
+    assert [r["portid"] for r in rs] == ["sup:kozmino"] and ts["sup:kozmino"][2023] == 42.8e6, "Kozmino is not a PortWatch port"
+    rs, ts = with_supplement("USA", rows, tons)
+    assert rs == rows and ts == tons
+    rs, _ = with_supplement("USA", rows + [{"portid": "port1241"}], tons)
+    assert rs == rows, "Valdez's tanker cargo is domestic"
+    assert tonnage_years(2005) == [2019] and tonnage_years(2021) == [2021] and tonnage_years(2030) == [TONNES_LAST]
+    # gravity: a port's exports are fixed by its tonnage and go to the nearest buyers first
+    kern = {"X": {"A": 1.0, "B": 0.01}, "Y": {"A": 0.01, "B": 1.0}, "Z": {"A": 0.5, "B": 0.5}}
+    mix = gravity({"A": 0.9, "B": 0.1}, {"X": 0.5, "Y": 0.5}, kern)
+    xa = 0.5 * mix["X"]["A"] + 0.5 * mix["Y"]["A"]
+    assert abs(xa - 0.9) < 1e-6, "row marginal held: port A ships 90%"
+    assert abs(mix["Y"]["B"] - 0.2) < 1e-3, "B's 10% all goes to its neighbour Y, the rest of Y from A"
+    assert abs(mix["X"]["A"] - 1.0) < 1e-3
+    assert set(mix["Z"]) == {"A", "B"} and abs(sum(mix["Z"].values()) - 1) < 1e-12, "a column without trade still gets a mix"
+    m2 = gravity({"A": 1.0}, {"X": 1.0}, {"X": {"A": 1.0}, "Y": {}})
+    assert "Y" not in m2 and m2["X"] == {"A": 1.0}, "an unreachable importer has no mix"
+    m3 = gravity({"A": 0.5, "B": 0.5}, {}, kern)
+    assert abs(m3["X"]["A"] - 1.0 / 1.01) < 1e-9, "no trade at all: tonnage times kernel"
+    # a fixed exporter-port mix is not reweighted by distance: the decay picks importer ports only
+    rmix, _, shm, _ = pair_route_mix({i(W): 0.25, i(S1): 0.75}, [(i(E), 1.0)], table, decay_km=2000.0)
+    assert abs(shm[0] - 0.25) < 1e-12 and abs(rmix - 1.0) < 1e-12, shm
+    assert abs(port_kernel(i(W), [(i(E), 1.0)], table, 2000.0, 0.0) - math.exp(-dW / 2000.0)) < 1e-12
+    # modes: LNG is shipped; Russian crude to China is shipped beyond the pipelines' capacity
+    assert maritime_share("RUS", "CHN", "271111", 2019, 1e6, False) == 1.0
+    assert maritime_share("QAT", "KWT", "271111", 2019, 1e6, False) == 1.0
+    assert maritime_share("RUS", "CHN", "270900", 2019, 80e6, False) == 0.5, "30 Mt ESPO spur + 10 Mt via Kazakhstan"
+    assert maritime_share("RUS", "CHN", "270900", 2012, 30e6, False) == 0.5, "15 Mt spur, no Kazakh transit yet"
+    assert maritime_share("RUS", "CHN", "270900", 2019, 20e6, False) == 0.0
+    assert maritime_share("RUS", "CHN", "270900", 2009, 20e6, False) is None, "before the spur: the pair flag"
+    assert maritime_share("RUS", "CHN", "271000", 2019, 1e6, False) is None
+    assert maritime_share("USA", "JPN", "270900", 2019, 1e6, True) is None
+    assert maritime_share("RUS", "KAZ", "271111", 2019, 1e6, False) is None, "a landlocked buyer takes LNG by road or rail"
     print("routes.py selftest ok")
 
 
@@ -796,9 +1278,11 @@ def main():
         selftest()
         return
     root = ROOT
-    if not args or args[0] not in ("routes", "energy"):
+    if not args or args[0] not in ("routes", "energy", "portwatch"):
         raise SystemExit(__doc__)
-    if args[0] == "routes":
+    if args[0] == "portwatch":
+        fetch_tonnes(root)
+    elif args[0] == "routes":
         run_routes(root, OUT)
     else:
         run_energy(root, OUT)

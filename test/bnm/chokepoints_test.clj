@@ -58,6 +58,37 @@
         (is (close? (:total (agg ["crude-oil" "WLD"])) 150.0 1e-12))
         (is (close? (get-in agg [["crude-oil" "WLD"] :through-tonnes "hormuz"]) 980.0 1e-9) "tonnes alongside")))))
 
+(deftest year-routes-and-modes
+  (let [rt (cp/with-structure
+             routes
+             {2020 {"USA" {"KOR" {"tanker" {:maritime? true :routed 1.0 :through {"cape-of-good-hope" 1.0}}}}}}
+             {["RUS" "KOR" "crude-oil" 2020] 0.25})
+        f2019 (assoc (flow "USA" "KOR" 20.0) :year 2019)
+        f2020 (assoc (flow "USA" "KOR" 20.0) :year 2020)
+        r2020 (assoc (flow "RUS" "KOR" 10.0) :year 2020)]
+    (testing "a year's own tanker route where there is one, else the pooled route"
+      (is (= {"cape-of-good-hope" 1.0} (:through (cp/route-of rt f2020))))
+      (is (= {"panama" 0.3} (:through (cp/route-of rt f2019)))))
+    (testing "a product's mode overrides the pair's land flag"
+      (is (close? 0.25 (cp/seaborne-share (cp/route-of rt r2020)) 1e-12))
+      (is (zero? (cp/seaborne-share (cp/route-of rt (assoc r2020 :year 2019)))))
+      (is (zero? (cp/seaborne-share (cp/route-of rt (assoc r2020 :product "lng"))))))
+    (let [kor (cp/shares ((cp/aggregate rt [f2020 r2020]) ["crude-oil" "KOR"]))]
+      (is (close? (/ (* 10 0.25) 30.0) (kor "tsugaru") 1e-12) "the shipped quarter passes its lane")
+      (is (close? (/ 20.0 30.0) (kor "cape-of-good-hope") 1e-12)))))
+
+(deftest read-the-structure-files
+  (let [dir (io/file (System/getProperty "java.io.tmpdir") "bnm-cp-test")
+        yp (io/file dir "routes-years.csv")
+        mp (io/file dir "routes-modes.csv")]
+    (.mkdirs dir)
+    (spit yp (str "exporter,importer,class,year,maritime,reason,routed,distance_km,chokepoints\n"
+                  "USA,JPN,tanker,2021,1,sea,1.0000,17000,panama=0.6000;cape-of-good-hope=0.1000\n"))
+    (spit mp "exporter,importer,product,year,maritime\nRUS,CHN,crude-oil,2021,0.4500\n")
+    (is (= {"panama" 0.6 "cape-of-good-hope" 0.1}
+           (get-in (cp/read-year-routes (str yp)) [2021 "USA" "JPN" "tanker" :through])))
+    (is (= {["RUS" "CHN" "crude-oil" 2021] 0.45} (cp/read-modes (str mp))))))
+
 (deftest all-is-the-chapters-summed
   (let [fl [{:product "hs27" :class "tanker" :exporter "SAU" :importer "KOR" :value 60.0 :tonnes nil}
             {:product "hs26" :class "bulk" :exporter "SAU" :importer "KOR" :value 40.0 :tonnes nil}]
@@ -115,16 +146,30 @@
       (testing "islands and sea-only borders are"
         (is (true? (:maritime? (r "GBR" "IRL" "general"))))
         (is (true? (:maritime? (r "CHN" "IND" "general"))))
-        (is (true? (:maritime? (r "JPN" "KOR" "general")))))
+        (is (true? (:maritime? (r "JPN" "KOR" "general"))))
+        (doseq [[e i] [["CHN" "BGD"] ["CHN" "THA"] ["UKR" "TUR"] ["EGY" "TUR"] ["FIN" "EST"]]]
+          (is (true? (:maritime? (r e i "general"))) (str e "-" i ": near by land, but no land corridor carries it"))))
       (testing "Gulf crude to East Asia passes Hormuz and Malacca"
         (let [s (r "KWT" "KOR" "tanker")]
           (is (close? 1.0 (get-in s [:through "hormuz"]) 1e-3))
           (is (< 0.9 (get-in s [:through "malacca"] 0.0))))
         (is (< 0.5 (get-in (r "SAU" "KOR" "tanker") [:through "hormuz"] 0.0) 0.99)
-            "Saudi Arabia also loads at Yanbu on the Red Sea"))
+            "Saudi Arabia also loads at Yanbu on the Red Sea")
+        (is (< 0.4 (get-in (r "ARE" "KOR" "tanker") [:through "hormuz"] 0.0) 0.9)
+            "the UAE also loads at Fujairah, outside Hormuz"))
+      (testing "US tankers to East Asia leave the Gulf Coast: Panama or the Cape, not Alaska"
+        (doseq [i ["JPN" "KOR" "CHN"]]
+          (let [t (:through (r "USA" i "tanker"))]
+            (is (< 0.8 (+ (get t "panama" 0.0) (get t "cape-of-good-hope" 0.0) (get t "magellan" 0.0))) i))))
+      (testing "Russian tankers to Korea and Japan load mostly at Kozmino in the Pacific"
+        (doseq [i ["KOR" "JPN"]]
+          (is (> 0.5 (get-in (r "RUS" i "tanker") [:through "suez"] 0.0)) i)))
       (testing "Asia-Europe containers go by Suez and Bab-el-Mandeb"
         (let [s (r "CHN" "NLD" "general")]
           (is (< 0.9 (get-in s [:through "suez"] 0.0)))
           (is (< 0.9 (get-in s [:through "bab-el-mandeb"] 0.0)))))
+      (testing "the Sea of Azov's ports (Rostov, Azov, Mariupol, Berdyansk) reach the Black Sea through Kerch"
+        (is (some #(< 0.0 (get-in (r % "TUR" "general") [:through "kerch"] 0.0) 1.0) ["RUS" "UKR"]))
+        (is (contains? cp/straits "kerch")))
       (testing "a strait's share never exceeds one"
         (is (every? #(<= 0.0 % 1.0001) (for [[_ m] rt [_ c] m [_ x] c [_ s] (:through x)] s)))))))
