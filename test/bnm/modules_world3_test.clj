@@ -2,6 +2,7 @@
   (:require [bnm.engine :as eng]
             [bnm.modules.world3 :as mw]
             [bnm.world3 :as w3]
+            [clojure.edn]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- rel [a b] (/ (Math/abs (- (double a) (double b))) (max 1e-30 (Math/abs (double b)))))
@@ -47,3 +48,23 @@
         series (apply merge (vals (:emits r)))]
     (is (not= (last (get-in (w3/run) [:stocks :p1])) (last (get-in mono [:stocks :p1]))) "the change reaches the population")
     (is (< (reduce max 0.0 (for [[k xs] (:stocks mono) [a b] (map vector (series k) xs)] (rel a b))) 1e-9))))
+
+(def golden
+  "World3-03's run as it was before the sector refactor (test/resources/
+  world3-golden.edn): a digest per variable, exact."
+  (clojure.edn/read-string (slurp "test/resources/world3-golden.edn")))
+
+(defn digest [xs]
+  (let [xs (mapv double xs)]
+    [(reduce + 0.0 xs) (reduce + 0.0 (map-indexed (fn [i x] (* (inc i) x)) xs)) (first xs) (peek xs)]))
+
+(deftest both-runs-match-the-stored-golden
+  ;; pinned to the run before the refactor, not to today's code: a change
+  ;; to bnm.world3 that moved both runs together would still fail here
+  (let [mono (w3/run)
+        r (eng/run (mw/modules) {:from 1900.0 :to 2100.0})
+        series (apply merge (vals (:emits r)))]
+    (is (= (:n golden) (count (:t mono)) (count (:t r))))
+    (doseq [[part ds] (:digest golden) [k d] ds]
+      (is (= d (digest (get-in mono [part k]))) (str "bnm.world3 " part " " k))
+      (is (= d (digest (series k))) (str "engine " part " " k)))))
