@@ -52,11 +52,19 @@
                 most Russian gas within a year by reallocating imports);
                 e_H a prior: 0.05 at 3 months, 0.15 at 12, 0.30 steady
     shortfall   x (1 - rho_c) T_rc
-    loss        lambda_rH(f) x shortfall, f the shortfall over r's use of
-                i's EXIOBASE parent, lambda the value added lost in every
-                region per unit of use lost, from bnm.supply outage
-                (steady) and outage-path (3 and 12 months), interpolated
-                between the cut sizes computed (`interp-loss`)
+    loss        lambda_H(f) x f x U_r, f the shortfall over r's use of
+                i's EXIOBASE parent in the trade data (at most 1), U_r
+                r's use of the parent in the loss model (EXIOBASE 2011),
+                lambda the value added lost in every region per unit of
+                use lost, from bnm.supply outage (steady) and outage-path
+                (3 and 12 months), interpolated between the cut sizes
+                computed (`interp-loss`). The loss of a cut f in r is
+                r's share of the world's use times the world's loss at
+                f: a region the loss model sees using little of the
+                parent loses little, however much the trade data say it
+                imports under the parent's codes (Indonesian \"lignite\"
+                270210 bought by China, whose EXIOBASE lignite use is EUR
+                1.4 M, had taken the world multiplier on 10 bn USD)
 
   Region r's R sums its disruptions' losses (wherever they fall); the
   world's is the sum over regions. Each region's cut is solved alone and
@@ -268,21 +276,27 @@
     :region-of  {iso region} (a supplier's own region does not import
                 from it)
     :p          {iso P(disruption)}
-    :use        {region use of the product's parent} (same unit)
-    :lambda     (fn [region f]) loss per unit of shortfall at cut f of
+    :use        {region use of the product's parent} (same unit): the
+                shortfall over it is the cut f, at most 1
+    :lambda     (fn [region f]) loss per unit of use lost at cut f of
                 the region's use
+    :model-use  {region use of the parent in the loss model} (the
+                result's unit), optional: the loss is lambda x f x this,
+                so a region the loss model sees using none of the parent
+                loses nothing whatever it imports; without it, :use
     :x :e       the cut and the spare capacity
     :straits    {region {strait share of its imports}}, :q {strait rate},
                 :d the share of a closed strait's flow lost, :strait-world
                 {strait share of world trade}: a closure is rerouted or
                 replaced like a supplier's cut (`reallocation` with that
                 share; the region's own share where it is missing)."
-  [{:keys [world exporters importers region-of p use lambda x e straits q d strait-world] :or {d 0.5}}]
+  [{:keys [world exporters importers region-of p use lambda x e straits q d strait-world model-use] :or {d 0.5}}]
   (let [world (double world)
         loss (fn [r short] (if (pos? short)
                              (let [u (double (get use r 0.0))
-                                   f (if (pos? u) (min 1.0 (/ short u)) 1.0)]
-                               (* (double (lambda r f)) short))
+                                   f (if (pos? u) (min 1.0 (/ short u)) 1.0)
+                                   w (double (if model-use (get model-use r 0.0) (if (pos? u) u short)))]
+                               (* (double (lambda r f)) f w))
                              0.0))
         sup (into {} (for [[c v] exporters
                            :let [s (/ (double v) world) pc (double (get p c 0.0))

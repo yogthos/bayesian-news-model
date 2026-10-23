@@ -1,5 +1,6 @@
 (ns bnm.essentiality-test
   (:require [bnm.essentiality :as es]
+            [bnm.essentiality-run :as run]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b tol] (< (Math/abs (- (double a) (double b))) tol))
@@ -133,6 +134,46 @@
     (is (close? (+ (* 0.1 9.0) (* 0.2 6.0)) (regions "RB") 1e-9))
     (is (close? world (reduce + (vals regions)) 1e-9))
     (is (close? 5.1 (:risk (suppliers "X")) 1e-9))))
+
+(deftest risk-weighs-the-loss-by-the-models-use
+  ;; :model-use is each region's use of the parent in the loss model (the
+  ;; units of the result): the cut f = shortfall / use is a share of the
+  ;; region's use whatever the trade data say, and the loss is
+  ;; lambda(f) x f x the model's use, so a region the loss model sees
+  ;; using none of the parent loses nothing however much it imports
+  (testing "the loss is lambda x f x the model's use"
+    ;; X: RA f 21/700 = 0.03, loss 2 x 0.03 x 7000 = 420; RB f 0.03, 1 x 0.03 x 300 = 9
+    ;; Y: RA f 0.02, 2 x 0.02 x 7000 = 280; RB 6
+    (let [{:keys [world regions]} (es/product-risk (assoc toy :model-use {"RA" 7000.0 "RB" 300.0}))]
+      (is (close? (+ (* 0.1 420.0) (* 0.2 280.0)) (regions "RA") 1e-9))
+      (is (close? (+ (* 0.1 9.0) (* 0.2 6.0)) (regions "RB") 1e-9))
+      (is (close? world (reduce + (vals regions)) 1e-9))))
+  (testing "a region the loss model sees using none of the parent loses nothing"
+    (let [{:keys [regions]} (es/product-risk (assoc toy :model-use {"RB" 300.0}))]
+      (is (zero? (get regions "RA" 0.0)))
+      (is (close? (+ (* 0.1 9.0) (* 0.2 6.0)) (regions "RB") 1e-9))))
+  (testing "without :model-use the trade data's use is the weight: the loss as before"
+    (is (close? (:world (es/product-risk toy))
+                (:world (es/product-risk (assoc toy :model-use (:use toy)))) 1e-9))))
+
+(deftest model-use-is-the-loss-models-use-in-kusd
+  ;; region B uses 10 t of P from A (unit value 2 EUR M/t) and 5 t of its
+  ;; own (unit value 4): 40 EUR M; A uses 1 t of its own: 2 EUR M
+  (let [trade [{:product "P" :origin "A" :dest "B" :quantity 10.0}
+               {:product "P" :origin "B" :dest "B" :quantity 5.0}
+               {:product "P" :origin "A" :dest "A" :quantity 1.0}]
+        production [{:region "A" :product "P" :quantity "100" :value_2011 "200"}
+                    {:region "B" :product "P" :quantity "10" :value_2011 "40"}]]
+    (is (= {["B" "P"] 40.0 ["A" "P"] 2.0} (es/use-values trade production)))
+    (is (= {"P" {"B" (* 40.0 run/kusd-per-eur-m) "A" (* 2.0 run/kusd-per-eur-m)}}
+           (run/model-uses trade production)))))
+
+(deftest risk-never-exceeds-losing-all-use
+  ;; a shortfall above the region's use is the whole use lost, no more:
+  ;; RA uses 10 but would be short 21 of X (f capped at 1)
+  (let [t (assoc toy :use {"RA" 10.0 "RB" 300.0} :p {"X" 1.0 "Y" 0.0})
+        {:keys [regions]} (es/product-risk t)]
+    (is (close? (* 2.0 10.0) (regions "RA") 1e-9))))
 
 (deftest risk-leaves-out-own-imports
   (testing "a country region does not import from itself"

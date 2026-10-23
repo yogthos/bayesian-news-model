@@ -15,9 +15,11 @@
   known by 2013: the data stocks; the cited priors are known 2026), and
   the world's use of p, so lambda(f) = loss / (f x use). One cut for
   all regions at once: a cut per region and product (49 x 121 outages
-  each way, about a minute apiece here) is out of reach, so every region
-  shares the world's loss per unit of shortfall; the regions' R differ by
-  what and from whom they import. Propagation tolerance f x 1e-3.
+  each way, 3-20 s apiece here and longer with the path) is out of
+  reach, so a region's loss of a cut f is its share of the world's use
+  of p (in the loss model, `model-uses`) times the world's loss at f;
+  the regions' R differ by what and from whom they import and by how
+  much of p they use. Propagation tolerance f x 1e-3.
 
   The default run writes data/derived/stocks/essential.csv (iso, year
   known, variable, value) and prints the report: the ranking tables, the
@@ -178,6 +180,18 @@
                  :when (pos? tot)]
              [[d p] (- 1.0 (/ dom tot))])))
 
+(def kusd-per-eur-m
+  "kUSD per EUR M at the 2011 rate (1.392 USD per EUR): the loss model's
+  money (EXIOBASE 2011) in the trade data's unit."
+  1392.0)
+
+(defn model-uses
+  "{product {region use}}: each region's use of each EXIOBASE product in
+  the loss model (es/use-values, EUR M 2011) in kUSD (`kusd-per-eur-m`),
+  the weight of a region's loss (es/product-risk :model-use)."
+  [trade-rows production]
+  (reduce-kv (fn [m [r p] v] (assoc-in m [p r] (* kusd-per-eur-m v))) {} (es/use-values trade-rows production)))
+
 (defn- kv-list [s f]
   (if (str/blank? s) {}
       (into {} (for [kv (str/split s #";") :let [i (.lastIndexOf ^String kv ":")]]
@@ -285,7 +299,7 @@
 (defn risk-year
   "Every ranked product's risk at known year K: [{:hs6 :parent :risk
   :risk-3m :risk-12m :regions :p :top-supplier :strait-share ...}]."
-  [{:keys [k ranks trade parents losses shares exposure rates restr events region-of keyfn]} & [variant]]
+  [{:keys [k ranks trade parents losses shares model-use exposure rates restr events region-of keyfn]} & [variant]]
   (let [ev (events k)
         rr (restr k)
         q (into {} (for [[s r] (rates k)] [s (:mean r)]))
@@ -313,7 +327,8 @@
                             [hz (es/product-risk {:world (:world tr) :exporters (:exporters tr) :importers (:importers tr)
                                                   :region-of region-of :p pc :use use :lambda lam :x x
                                                   :e (es/spare hz) :straits st :q q :d strait-loss
-                                                  :strait-world (get ex "WLD")})]))
+                                                  :strait-world (get ex "WLD")
+                                                  :model-use (when (and model-use (not= variant :trade-use)) (get model-use p {}))})]))
              s (res :steady)
              top (when (seq (:suppliers s)) (apply max-key (comp :risk val) (:suppliers s)))
              wx (reduce + 0.0 (vals (:exporters tr)))]
@@ -425,6 +440,7 @@
         losses (load-loss loss-path)
         trade-rows (mapv #(update % :quantity parse-double) (read-plain (str dir "/trade.csv")))
         shares (import-shares trade-rows)
+        model-use (model-uses trade-rows (read-plain (str dir "/production.csv")))
         subnodes (cp/read-subnodes (str dir "/subnodes.csv"))
         keyfn (fn [hs6] (or (subnodes hs6) (cp/energy-products hs6) (str "hs" (subs hs6 0 2))))
         exposure (strait-exposure "data/derived/stocks/chokepoints.csv" years)
@@ -434,7 +450,7 @@
         n-codes (count (distinct (map :hs6 restr-rows)))
         fc (es/load-forecasts "data/runs/t44-world-norel" es/event-kinds)
         _ (tick "forecasts")
-        ctx {:parents parents :losses losses :shares shares :exposure exposure :keyfn keyfn
+        ctx {:parents parents :losses losses :shares shares :model-use model-use :exposure exposure :keyfn keyfn
              :rates (memoize (fn [k] (es/strait-rates closures k {})))
              :restr (memoize (fn [k] (es/restriction-rates restr-rows k {:codes n-codes})))
              :events (memoize (fn [k] (es/event-hazard fc k)))
@@ -588,7 +604,7 @@
                                        (str k ":" a "/" b))))))
     (println)
     (println "Sensitivity at K 2022 and 2023 (Spearman with the registered R; precision as above, EU at 2023)")
-    (doseq [k [2022 2023] variant [:cut-0.1 :no-restriction :no-strait]]
+    (doseq [k [2022 2023] variant [:cut-0.1 :no-restriction :no-strait :trade-use]]
       (let [trade (year-trade (- k 2))
             alt (es/rank-risk (risk-year (assoc ctx :k k :trade trade
                                                 :ranks (map #(assoc % :pct-rise (:pct %) :rank-rise (:rank %)) (ranks k)))
