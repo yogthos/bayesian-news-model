@@ -1031,6 +1031,14 @@ before any test year is scored (PRINCIPLES 9).
    - Test: the year-on-year growth of implied lithium demand correlates
      with the growth of USGS lithium production over 2012-2022, beating a
      placebo technology (e.g. mobile subscriptions).
+   - Built (bnm.tech-demand, October 2026): EVs from IEA sales via OWID
+     (BEV, PHEV for batteries), wind from IRENA split onshore and offshore,
+     PV from EIA capacity; intensities from bnm.recipes. EV battery
+     materials now agree within 6% with the separate Li-ion trade route
+     (2021-23); 5-year projections hold the recent slope unless the
+     logistic ceiling is identified and half reached (a rule chosen after
+     one failure). The registered lithium test could not run: USGS
+     lithium mine output exists only from 2021.
 7. **Edge proposal.** For each rising candidate, the overlap of importers
    with exporters of rising downstream products, weighed against a placebo.
    - Registered targets: lithium hydroxide's top proposed downstream is
