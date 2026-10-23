@@ -1190,16 +1190,54 @@ before any test year is scored (PRINCIPLES 9).
        for China-Netherlands); Panama -30% in the 2023-24 drought; Suez
        -85% during the Ever Given week.
 10. **Cells.** Cell-level HHI and cell cuts in supply/outage.
-    - Registered: cell-level concentration predicts the output loss from
-      cell-located shocks (droughts, floods, conflict onsets near plants)
-      better than country-level. If it does not, keep countries (as in the
-      A5 pilot).
+    - Registered (open): cell-level concentration predicts the output
+      loss from cell-located shocks better than country-level. If it does
+      not, keep countries (as in the A5 pilot). Design, to be registered
+      before any outcome is read:
+      - Shocks: located, dated events chosen without looking at output:
+        floods (Global Flood Database footprints), tropical cyclones
+        (IBTrACS tracks, hurricane-force wind radius), earthquakes (USGS
+        ShakeMap MMI 7 or more) and conflict onsets (UCDP GED events within
+        25 km of a plant, a cell's first in five years), 1995-2022. Each
+        shock is a set of cells: those its footprint covers.
+      - Units: (key, country, year) for the keys with production series:
+        the stages commodities (bnm.stages: steel, aluminium, alumina,
+        copper, nickel, zinc, cobalt, cement) and refinery throughput.
+      - Exposures, from assets present the year before (bnm.cell-profiles/
+        present?, no backcast) and capacity weights as in cells.csv: cell,
+        the share of the country's capacity of the key in the hit cells
+        (cell-cut on the footprint); country, the same share if capacity
+        were spread evenly over the country's land (the hit land share),
+        which is what a country-level model can know.
+      - Outcome: the log change of the country's output of the key in the
+        shock year against the mean of the three years before (bnm.stages
+        quantities), country-years with no shock as controls.
+      - Model: outcome on exposure with key-year effects, one regression
+        per exposure. Cell wins if its leave-one-year-out squared error
+        is lower than country's and the difference's block bootstrap
+        (by year, 1,000 draws) 90% interval excludes zero; with fewer than
+        50 country-years whose cell exposure is 0.05 or more, the test is
+        reported as underpowered, not read.
+      - Placebos: the footprint moved to a random land position in the
+        same country (cell exposure should lose its edge), and the shock
+        dated a year early (both exposures should predict nothing).
     - Built (bead bnm-1pq.11): data/derived/stocks/cells.csv,
       cells/<key>-hhi, -top-share (top cell in top) and -cells for 57
       processing and power keys, WLD and per country, 1990-2026, over the
       assets present in the year (bnm.cell-profiles/present?). Capacity
-      missing is the key's median; a USGS plant capacity over 100 times
-      its key's median (ore throughput, unit slips) weighs as the median.
+      missing is the key's median (over whole assets: a polygon's pieces
+      summed first); a USGS plant capacity over 100 times its key's median
+      weighs as the median. That guard hits 11 rows (10 plants), all USGS:
+      gold 30 kt (India, twice), silver 460 kt (India), 46 kt (Korea Zinc)
+      and 30 kt, indium 100 and 30 kt (China), cadmium 700 kt (Peru),
+      copper 130 Mt (Egypt) and barite 10 Mt (China), each more than the
+      world's output or near it: unit slips or ore throughput. Only one may
+      be real, a 2.4 Mt stone plant in Togo against a median of 17 kt.
+      Crude refineries, power plants and SFI's plants are not guarded, so
+      no real large refinery is touched. Hand check: the world cobalt
+      refining HHI in 2026 recomputed from assets.csv in Python is
+      0.169649 over 46 cells, top cell 4aa18 (Copperbelt) 37.89%, as in
+      cells.csv.
       Top cells 2026: Shandong (118E 37N) holds 18% of listed alumina and
       12% of aluminium smelting capacity; Zambia's Copperbelt 38% of
       cobalt refining; Baotou 16% of rare-earth processing; Ras Laffan 19%
@@ -1207,8 +1245,20 @@ before any test year is scored (PRINCIPLES 9).
       (0.001) and refineries (0.005), higher for cobalt (0.17), alumina
       (0.05) and the minor metals. bnm.cell-profiles/cell-cut gives the
       share of each bnm.supply region's capacity of each product in a set
-      of cells ({[region product] fraction}), the input outage takes; not
-      yet run against located shocks, so the registered test is open.
+      of cells ({[region product] fraction}), the input outage takes. A
+      polygon (field or mining area) is cut by its pieces in the cut
+      cells. LNG export terminals were in no product, so a cut of Ras
+      Laffan left Qatar's gas whole; they now cut the gas they ship (1
+      Mt a year per 133 mmcf/d) over the region's gas output (bnm.supply
+      production), the larger of that and the fields' loss binding.
+      Ras Laffan (cell 73fe8, 2011 assets: 14 LNG trains, 10,204 mmcf/d,
+      an ethylene cracker, 3 fields; tools/bnm/cell_profiles_run.clj cut):
+      the cut is 16.4% of the Middle East's (WM) gas, 6.1% of its
+      plastics, 0.09% of its crude. Through outage: WM gas 16.4% down;
+      fertiliser, gas power, LPG, ethane, refinery gas and plastics 15.9%;
+      steel 13.9% (DRI); chemicals 13%; Japan's plastics and refinery
+      feedstock 11.8%. Not yet run against located shocks, so the
+      registered test is open.
 
 ## 9. Downloads needed
 

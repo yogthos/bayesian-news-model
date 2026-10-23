@@ -889,45 +889,99 @@ data/derived/stocks/cells.csv.
 - Grids on cells: Kummu GDP and implied population 1990-2024 (known +2),
   harmonised lights 1992-2024 (+1), GHSL built-up, non-residential
   built-up and population, epochs 1975-2020 (+3; the projected 2025 and
-  2030 epochs left out), EDGAR CO2 for seven sectors 1990-2025 (+1). Each
-  cell's sum is split over its country parts by the crosswalk's area
-  shares (land parts for the land grids). Every grid keeps 100% of its
-  total but lights (99.6-100%: lit pixels on the high seas). The split is
-  by area, so a border cell's GDP is shared by area. The R2023A GHSL
-  back-casts its early epochs from 2018 imagery: a vintage caveat.
+  2030 epochs left out), EDGAR CO2 for seven sectors 1990-2025 (+1). In
+  a border or coast cell each block goes to the country part it lies in
+  (the fine crosswalk, as bnm.cells/locate reads it); only blocks with no
+  known part are split by area. The first run split every cell by area,
+  which moved 2.3% of world GDP across borders: Singapore had 89 bn of
+  its 547 bn (2020, PPP), the rest given to Malaysia; North Korea 328 bn
+  instead of 42 (South Korea's); Luxembourg, Bahrain, Macau and Hong
+  Kong a third to a half of theirs. Lights are digital numbers per
+  lon/lat pixel, whose area falls with cos(latitude): the first run
+  summed them unweighted, so an equal-area cell at 60 degrees counted
+  twice its lights. Weighted, Norway's and Finland's 2013 lights are 45%
+  and 46% of the first run's, Russia's 54%, the United States' 78%. Every
+  grid keeps 100% of its total but lights (99.5-100%: lit pixels on the
+  high seas). The R2023A GHSL back-casts its early epochs from 2018
+  imagery: a vintage caveat.
+- The DMSP-VIIRS join. Li et al.'s harmonised series still falls 15%
+  from 2013 to 2014 (area-weighted; 17% unweighted), and VIIRS zeroes
+  dim pixels. The overlap file in the release (DN_NTL_2013_simVIIRS) is
+  from the 2020 calibration, not v10's (1.49 times DMSP 2013, 1.78 times
+  v10's 2014), so it cannot splice. bnm.cell-profiles/splice-lights puts
+  each part's VIIRS years on the DMSP scale by its ratio of 2013 to 2014
+  (known with 2014, so no earlier profile reads it; a year's change is
+  lost): 12,356 parts by their own ratio (median 1.36, 10-90% 0.74-2.74),
+  dim parts by their country's (China 1.35, United States 1.07, India
+  1.17). The world then rises 2% from 2013 to 2014. 1,601 parts lit
+  under DMSP (DN sum 100 or more) have no usable ratio (dark under VIIRS,
+  or a ratio outside 0.2-5): their 2010-2015 steps are left out of the
+  transitions.
 - Ended assets (assets.csv end_year, end_flag, end_known): MRDS 3,935
   last production years and 124,881 past producers with no year; OGIM 24
   retired, 32 idle, 1 cancelled; SFI 2 shut, 1 mothballed; USGS 13
   closed, 466 idle. A closure counts from its source's publication, so
   an MRDS mine closed in 1950 counts until 2011.
 - Profile types (k-means, k = 5, on eleven log intensities; fitted at
-  1995, 2000, ..., 2025 on the part-years up to each, warm-started; 19,054
-  parts with at least 200 km2 of land and people). In the 2025 fit's
-  units: a poor sparse rural type (lights and GDP per head well below
-  average; 5,136 parts in 2025), a lit low-density type with high GDP
-  per head ("services", 7,856), a dense urban type ("services-2", 4,106),
-  an industrial core with plants, power and non-residential built-up four
-  sd above the mean ("processing", 951), and mining districts (mines and
-  mining area five and three sd up, 1,005). No manufacturing type
-  separates from the industrial core: EDGAR's industrial CO2 per person
-  loads on it and on the lit types alike.
-- Development paths, five-year transitions (causal fits): types are
-  sticky (88-96% stay). Extraction to processing is 18 of 2,115
-  extraction part-steps (0.9%); extraction goes to the lit or urban types
-  more often (8%). Entries into processing come from the urban types
-  (573 from services-2, 23 from services), in countries with a higher
-  investment regime at the start (mean econ/investment-regime 0.63 and
-  0.76, against 0.26-0.44 for the stayers): the state-directed pole
-  builds the new industrial cores. Too few extraction-to-processing
-  steps to read H6 (their light growth against the country, -0.04 over
-  five years, against +0.09 for extraction that stays, n = 18). The
-  2025 step is inflated by assets entering at their snapshot year (Maus
-  mining areas 2022, OGIM 2026, USGS 2016-2024): extraction parts jump
-  from 403 to 1,005. A backcast run (snapshots read back to their start
-  years, not causal) has 5 extraction-to-processing steps in 34,095.
-  Light growth between the sparse and lit types swings by about 3 log
-  points either way: dim cells (DN under 7) flicker, and the 2013/14
-  DMSP-VIIRS join drops the world's lights 17%.
+  1995, 2000, ..., 2025 on the part-years up to each, warm-started from
+  the last fit and then matched to it by the permutation of least
+  distance, so a type keeps its index; 18,904 parts with at least 200 km2
+  of land and people). No fit reordered the types; the industrial
+  centroid moves most (1.1 z in 2010, 2.0 z in 2025, as plant lists
+  enter), the others 0.05-0.3 z a step. The first run named types by the
+  largest mean z of four groups, which averaged density and built-up
+  with lights and GDP per head and called both a lit, empty type and a
+  dense one "services". Named now by five groups (extraction;
+  industrial, the larger of processing and manufacturing; urban form;
+  lights and GDP per head), in the 2025 fit's units: sparse (lights and
+  GDP per head 0.6-0.9 sd below the mean; 4,254 parts in 2025),
+  lit-sparse (lights per head 0.9 and GDP per head 0.6 sd up, about 2
+  people per km2: oil, gas and mining country and rich farmland; 7,813),
+  urban (density 1.35 and built-up 1.1 sd up; 3,435), industrial (plants
+  3.3, power 3.7 and non-residential built-up 4.4 sd up, a dense core;
+  980) and extraction (field area 2.4 sd up: oil and gas districts;
+  2,422). With the lights weighted by pixel area the high-latitude lit
+  parts no longer separate the mining districts: mine counts load on
+  lit-sparse and extraction alike. No manufacturing type separates from
+  the industrial core.
+- Development paths, five-year transitions (causal fits). A step whose
+  end type is the data's is left out: a part's type at the end of a step
+  is recomputed without the assets that entered the data in the step at
+  a snapshot's publication (PRIO petroleum 2009, MRDS 2011, USGS
+  2016-2024, GPPD and SFI 2021, Maus 2022, OGIM 2026) and with the
+  closures reported in the step but dated before it or not at all (MRDS
+  past producers in 2011, USGS idle plants); where the type differs, the
+  step is flagged (bnm.cell-profiles/without-entry, entry-flags). 1,126
+  steps are flagged (385 into 2010, 130 into 2015, 30 into 2020, 581
+  into 2025), 934 of them type changes; with the 1,320 sensor-join steps
+  (185 changes), 1,116 of 9,820 type changes are left out. The matrix
+  after the exclusions (n, share of the row):
+
+  | from \ to | extraction | industrial | lit-sparse | sparse | urban |
+  |---|---|---|---|---|---|
+  | extraction | 13,237 (98.3%) | 80 (0.6%) | 35 (0.3%) | 52 (0.4%) | 63 (0.5%) |
+  | industrial | 39 (1.0%) | 3,560 (95.5%) | 12 (0.3%) | 0 | 116 (3.1%) |
+  | lit-sparse | 32 (0.1%) | 19 (0.1%) | 29,684 (93.9%) | 1,542 (4.9%) | 332 (1.1%) |
+  | sparse | 153 (0.4%) | 0 | 4,592 (11.1%) | 35,843 (86.7%) | 745 (1.8%) |
+  | urban | 79 (0.4%) | 267 (1.3%) | 381 (1.8%) | 165 (0.8%) | 19,951 (95.7%) |
+
+  Types are sticky (87-98% stay). Extraction to industrial is 80 of
+  13,467 extraction part-steps (0.6%; 129 before the exclusions).
+  Entries into the industrial type come mostly from urban parts (267), in
+  countries with a higher investment regime at the start (mean
+  econ/investment-regime 0.70, and 0.55 for the 80 from extraction,
+  against 0.02-0.42 for the stayers): the state-directed pole builds the
+  new industrial cores. On H6, extraction parts turning industrial grow
+  their lights no faster than their country (+0.01 log points over five
+  years, n = 80) than extraction that stays (+0.13): no sign of
+  resource-based industrialisation in the lights, and too few steps to
+  say more. The 2025 jump of the first run (extraction parts 403 to
+  1,005) is gone: extraction is 2,466 parts in 2020 and 2,422 in 2025.
+  A backcast run (snapshots read back to their start years, not causal)
+  separates no extraction type. Light growth between sparse and
+  lit-sparse still swings by about 3 log points either way (-3.3, +3.1):
+  dim parts (DN under 7 per pixel) flicker, and parts under the splice's
+  100 DN threshold are not flagged.
 - Displacement on cells against bnm.stages' country D (WLD). Cell D is
   near 1 throughout (mines and plants rarely share a 91 km cell): iron
   0.86-0.94, aluminium 0.85-0.92, crude 0.91 (backcast). The country D
