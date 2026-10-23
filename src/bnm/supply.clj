@@ -1010,11 +1010,16 @@
               split by the sub-node's part of the region's use); {:product
               q}, into q's recipe, by q's use of the parent (its row
               times its output); {:final f}, to the final
-              use f (a capital good: no recipe).
+              use f (a capital good: no recipe);
+    supply    :parent for a slice of the parent with no geography of its
+              own (its :demand :parent, nothing in the chain taking it):
+              :output gives only its world total, made and shipped as the
+              parent is (each destination draws it on the parent's
+              origins there, each origin makes what it ships).
 
-  Supply shares come from production: every region draws on the origins
-  by their share of the sub-node's world output (trade rows), its use the
-  chain's (where each user is made) plus its share of the rest. A
+  Otherwise supply shares come from production: every region draws on the
+  origins by their share of the sub-node's world output (trade rows), its
+  use the chain's (where each user is made) plus its share of the rest. A
   sub-node's recipe is its parent's in its region per unit (the
   industry-technology assumption), each value share times alpha =
   (T - c)/T (T the parent's input share, c the chain's), so its inputs
@@ -1023,12 +1028,42 @@
   values (every year, at the 2011 split), trade, uses, supply shares and
   inputs less the sub-nodes'. Tonnes and value of every family (a parent
   and its sub-nodes) are conserved in output, trade, use and in each
-  recipe's inputs (`split-balances`); what had to be clamped is in
-  (:split rows) :clamped."
+  recipe's inputs (`split-balances`), but for what the split records
+  making, in (:split rows), each {:recipe [region parent input-family]
+  :tonnes :value}: :within, a chain input of the parent's own family
+  where its recipe has no row of itself (the tables hold no product as
+  its own input), and :clamped, a chain input over what the parent's row
+  held in tonnes or value (with :short, per tonne of the parent's rest),
+  or of a family it had no row of; trade and use clamps too."
   [{:keys [products recipes trade supply use production] :as rows} specs]
   (if (empty? specs)
-    (assoc rows :split {:clamped []})
-    (let [spec (into {} (map (juxt :code identity)) specs)
+    (assoc rows :split {:clamped [] :within []})
+    (let [use-tot (sum-by (juxt :region :product) (comp n* :quantity) use)
+          trade-dest (sum-by (juxt :dest :product) (comp n* :quantity) trade)
+          trade-q (sum-by (juxt :product :dest :origin) (comp n* :quantity) trade)
+          ;; {origin share} of parent p at destination d: its trade, or
+          ;; all domestic where the tables give none (as `origins`)
+          parent-origins (fn [p d] (let [t (get trade-dest [d p] 0.0)]
+                                     (if (pos? t)
+                                       (into {} (for [[[p' d' o] q] trade-q :when (and (= p p') (= d d') (pos? q))] [o (/ q t)]))
+                                       {d 1.0})))
+          parent-weights (fn [parent] (let [u (into {} (for [[[d p] q] use-tot :when (and (= p parent) (pos? q))] [d q]))]
+                                        (if (seq u) u (into {} (for [[[d p] q] trade-dest :when (and (= p parent) (pos? q))] [d q])))))
+          taken (set (mapcat (comp keys :inputs) specs))
+          specs (mapv (fn [{:keys [code parent output demand supply] :as s}]
+                        (if (= :parent supply)
+                          (do (when (or (not= :parent demand) (taken code))
+                                (throw (ex-info (str "split-subnodes: " code " follows its parent's trade only with the parent's demand and nothing in the chain taking it")
+                                                {:code code :demand demand})))
+                              (let [x (reduce + 0.0 (vals output))
+                                    w (parent-weights parent)
+                                    wt (reduce + 0.0 (vals w))]
+                                (assoc s :output (reduce-kv (fn [m d wd] (reduce-kv (fn [m o sh] (update m o (fnil + 0.0) (* x (/ wd wt) sh)))
+                                                                                    m (parent-origins parent d)))
+                                                            {} w))))
+                          s))
+                      specs)
+          spec (into {} (map (juxt :code identity)) specs)
           sub-ps (for [{:keys [code name unit group parent]} specs]
                    {:code code :name name :unit unit :group group :parent parent})
           ps (into {} (map (juxt :code identity)) (concat products sub-ps))
@@ -1072,12 +1107,9 @@
                           (reduce-kv (fn [m j a] (reduce-kv (fn [m r x] (update-in m [j r] (fnil + 0.0) (* a x))) m output))
                                      m inputs))
                         {} specs)
-          use-tot (sum-by (juxt :region :product) (comp n* :quantity) use)
-          trade-dest (sum-by (juxt :dest :product) (comp n* :quantity) trade)
           weights (fn [{:keys [parent demand]}]
                     (cond
-                      (= demand :parent) (let [u (into {} (for [[[d p] q] use-tot :when (= p parent)] [d q]))]
-                                           (if (seq u) u (into {} (for [[[d p] q] trade-dest :when (= p parent)] [d q]))))
+                      (= demand :parent) (parent-weights parent)
                       (:product demand) (sum-by :region
                                                 (fn [x] (when (and (= (:product demand) (:output x)) (= parent (:input x)))
                                                           (when-let [xq (q-of (:region x) (:output x))] (* xq (or (:phys x) 0.0)))))
@@ -1096,10 +1128,13 @@
                                  (throw (ex-info (str "split-subnodes: nowhere for " code "'s other demand to go") {:demand (:demand s)})))
                                [code (if (> o (* 1e-12 tot)) (update-vals w #(* o (/ % wt))) {})])))
           demand (fn [k] (merge-with + (chain k {}) (other k)))
-          sigma (fn [k] (let [out (into {} (filter (comp pos? val)) (get-in spec [k :output])) t (world out)]
-                          (update-vals out #(/ % t))))
+          sigma (memoize (fn [k] (let [out (into {} (filter (comp pos? val)) (get-in spec [k :output])) t (world out)]
+                                   (update-vals out #(/ % t)))))
+          origins-of (fn [k d] (if (= :parent (get-in spec [k :supply]))
+                                 (parent-origins (get-in spec [k :parent]) d)
+                                 (sigma k)))
           ;; trade
-          sub-trade (vec (for [{:keys [code]} specs [d u] (sort (demand code)) :when (pos? u) [o s] (sort (sigma code))]
+          sub-trade (vec (for [{:keys [code]} specs [d u] (sort (demand code)) :when (pos? u) [o s] (sort (origins-of code d))]
                            {:product code :origin o :dest d :quantity (* u s) :share s}))
           sub-q (sum-by (fn [{:keys [product origin dest]}] [(family product) origin dest]) :quantity sub-trade)
           [trade' clamped-trade] (rest-trade trade sub-q parents)
@@ -1187,18 +1222,34 @@
                                 row)
                               (for [x rows :let [i (:input x) ph (or (:phys x) 0.0)
                                                  used (reduce + 0.0 (for [k ks] (* (:x k) (max ph (get (:c-of k) i 0.0)))))
-                                                 ph' (/ (- (* ph xp) used) xr)]]
+                                                 ph' (/ (- (* ph xp) used) xr)
+                                                 raw (fn [s] (- s (reduce + 0.0 (for [k ks] (* (:theta k) (+ (* (:alpha k) s) (get (:cs-of k) i 0.0)))))))
+                                                 r11 (when-let [s (:share x)] (raw s))]]
                                 (reduce (fn [x [y sk]]
                                           (if-let [s (get x sk)]
-                                            (assoc x sk (max 0.0 (/ (- s (reduce + 0.0 (for [k ks] (* (:theta k) (+ (* (:alpha k) s) (get (:cs-of k) i 0.0))))))
-                                                                    tr)))
+                                            (assoc x sk (max 0.0 (/ (raw s) tr)))
                                             x))
-                                        (assoc x :phys (max 0.0 ph') ::short (when (< ph' -1e-9) (- ph'))
-                                               :family-share (:share x))
+                                        (cond-> (assoc x :phys (max 0.0 ph') :family-share (:share x))
+                                          (< ph' -1e-9) (assoc ::short (- ph') ::tonnes (* (- ph') xr))
+                                          (and r11 (< r11 -1e-12)) (assoc ::value (* (- r11) (or (v-of r p 2011) 0.0))))
                                         share-keys)))]
                      row))
-          clamped-rec (vec (for [x own :when (::short x)] {:recipe ((juxt :region :output :input) x) :short (::short x)}))
-          own (mapv #(dissoc % ::short) own)
+          ;; a chain input of a family the parent's recipe has no row of:
+          ;; inside the parent's own family (the tables hold no product as
+          ;; its own input) :within, else clamped
+          gaps (vec (for [[[r p] rows] rec-by :when (parents p)
+                          :let [has (set (map :input rows)) V (or (v-of r p 2011) 0.0)]
+                          {:keys [code inputs] :as k} (subs-of p)
+                          :let [x (get-in k [:output r])] :when (and x (pos? x))
+                          [j a] inputs :let [fj (family j)] :when (not (has fj))]
+                      {:recipe [r p fj] :tonnes (* a x) :value (* (theta [code r]) V (/ (* a (get-in price [j :world])) (get-in price [code :by r])))
+                       :within (= fj p)}))
+          clamp-of (fn [x] (when (or (::short x) (::value x))
+                             (cond-> {:recipe ((juxt :region :output :input) x) :tonnes (or (::tonnes x) 0.0) :value (or (::value x) 0.0)}
+                               (::short x) (assoc :short (::short x)))))
+          clamped-rec (into (vec (keep clamp-of own)) (for [x gaps :when (not (:within x))] (dissoc x :within)))
+          within (vec (for [x gaps :when (:within x)] (dissoc x :within)))
+          own (mapv #(dissoc % ::short ::tonnes ::value) own)
           own-keys (set (map (juxt :region :output) own))
           recipes1 (into (vec (remove #(own-keys ((juxt :region :output) %)) recipes)) own)
           ;; recipes, 2: other demand into the parents' users
@@ -1220,10 +1271,14 @@
                                        [code rho (* rho (:world (price code)) (/ 1.0 pp))]))]))
           recipes2 (vec (mapcat (fn [{:keys [region input chain] :as x}]
                                   (if-let [sp (and (not chain) (splits [region input]))]
-                                    (let [ph (or (:phys x) 0.0)]
-                                      (cons (-> x (assoc :phys (* ph (max 0.0 (- 1.0 (reduce + 0.0 (map second sp)))))
-                                                         :family-share (:share x))
-                                                (scale-shares (max 0.0 (- 1.0 (reduce + 0.0 (map #(nth % 2) sp))))))
+                                    (let [ph (or (:phys x) 0.0)
+                                          rt (reduce + 0.0 (map second sp))
+                                          gt (reduce + 0.0 (map #(nth % 2) sp))]
+                                      (cons (cond-> (-> x (assoc :phys (* ph (max 0.0 (- 1.0 rt)))
+                                                                 :family-share (:share x))
+                                                        (scale-shares (max 0.0 (- 1.0 gt))))
+                                              (> rt (+ 1.0 1e-12)) (assoc ::short (* ph (- rt 1.0)) ::tonnes (* ph (- rt 1.0) (or (q-of region (:output x)) 0.0)))
+                                              (> gt (+ 1.0 1e-12)) (assoc ::value (* (or (:share x) 0.0) (- gt 1.0) (or (v-of region (:output x) 2011) 0.0))))
                                             (for [[k rho g] sp]
                                               (-> x (assoc :input k :phys (* ph rho) :physical? (phys-pair? k (:output x)))
                                                   (dissoc :override :family-share)
@@ -1239,17 +1294,19 @@
           recipes3 (into (vec (for [{:keys [region output input] :as x} recipes2]
                                 (if-let [adds (tp [region output input])]
                                   (let [ph (reduce + 0.0 (map :phys adds)) sh (reduce + 0.0 (map :share adds))
-                                        ph' (- (or (:phys x) 0.0) ph)]
+                                        ph' (- (or (:phys x) 0.0) ph)
+                                        s11 (:share x)]
                                     (reduce (fn [x k] (if-let [s (get x k)] (assoc x k (max 0.0 (- s sh))) x))
                                             (cond-> (assoc x :phys (max 0.0 ph') :family-share (:share x))
-                                              (< ph' -1e-9) (assoc ::short (- ph')))
+                                              (< ph' -1e-9) (assoc ::short (- ph') ::tonnes (* (- ph') (or (q-of region output) 0.0)))
+                                              (< (or s11 0.0) sh) (assoc ::value (* (- sh (or s11 0.0)) (or (v-of region output 2011) 0.0))))
                                             (vals share-keys)))
                                   x)))
                          (for [{:keys [region output input phys share]} to-product]
                            {:region region :output output :input input :phys phys :physical? (phys-pair? input output)
                             :share share :share-1995 share :share-2022 share}))
-          clamped-rec (into clamped-rec (for [x recipes3 :when (::short x)] {:recipe ((juxt :region :output :input) x) :short (::short x)}))
-          recipes3 (mapv #(dissoc % ::short) recipes3)
+          clamped-rec (into clamped-rec (keep clamp-of recipes3))
+          recipes3 (mapv #(dissoc % ::short ::tonnes ::value) recipes3)
           recipes' (vec (remove #(and (or (spec (:output %)) (spec (:input %)))
                                       (zero? (or (:phys %) 0.0))
                                       (every? (fn [k] (zero? (or (get % k) 0.0))) (vals share-keys)))
@@ -1261,42 +1318,58 @@
              :supply supply'
              :use use'
              :recipes recipes'
-             :split {:specs specs :prices price
+             :split {:specs specs :prices price :within within
                      :clamped (vec (concat clamped-trade clamped-use clamped-rec))}))))
 
 (defn split-balances
   "How closely `split-subnodes` conserved each family (a parent and its
-  sub-nodes) from rows `before` to `after`: the largest relative residual
-  of output (tonnes and 2011 value, per region), trade (per origin and per
+  sub-nodes) from rows `before` to `after`: the largest relative residual,
+  over every key of either side (a flow the split created counts), of
+  output (tonnes and 2011 value, per region), trade (per origin and per
   destination; and each sub-node's shipments against its output), use
-  (per region) and inputs (per recipe and input family, in the input's
-  unit, recipes times output), and the :clamped list."
+  (per region), inputs (per recipe and input family, in the input's unit,
+  recipes times output) and input values (2011 value shares times output
+  value), the flows the split records having created set aside: the
+  :clamped (a chain input over what the parent's row held) and the
+  :within (a chain inside one family, which the tables, holding no product
+  as its own input, had no row for), both returned."
   [before after]
   (let [ps (into {} (map (juxt :code identity)) (:products after))
         fam #(or (get-in ps [% :parent]) %)
-        rel (fn [a b] (/ (Math/abs (- (double a) (double b))) (max 1e-12 (Math/abs (double a)))))
+        rel (fn [a b] (/ (Math/abs (- (double a) (double b))) (max 1e-12 (Math/abs (double a)) (Math/abs (double b)))))
         worst (fn [xs] (reduce max 0.0 xs))
         tot (fn [rows kf vf] (sum-by kf (comp n* vf) rows))
-        cmp (fn [kf vf rb ra] (let [b (tot rb kf vf) a (tot ra kf vf)]
-                                (worst (for [[k v] b :when (pos? v)] (rel v (get a k 0.0))))))
+        cmp2 (fn [b a] (worst (for [k (distinct (concat (keys b) (keys a)))] (rel (get b k 0.0) (get a k 0.0)))))
+        cmp (fn [kf vf rb ra] (cmp2 (tot rb kf vf) (tot ra kf vf)))
         qa (into {} (for [r (:production after)] [[(:region r) (:product r)] (n* (:quantity r))]))
         qb (into {} (for [r (:production before)] [[(:region r) (:product r)] (n* (:quantity r))]))
-        inputs (fn [rows q]
+        va (into {} (for [r (:production after)] [[(:region r) (:product r)] (n* (:value_2011 r))]))
+        vb (into {} (for [r (:production before)] [[(:region r) (:product r)] (n* (:value_2011 r))]))
+        inputs (fn [rows q k]
                  (sum-by (fn [x] [(:region x) (fam (:output x)) (fam (:input x))])
-                         (fn [x] (when-let [xo (q [(:region x) (:output x)])] (* xo (or (:phys x) 0.0))))
+                         (fn [x] (when-let [xo (q [(:region x) (:output x)])] (* xo (or (k x) 0.0))))
                          (:recipes rows)))
-        ib (inputs before qb)
-        ia (inputs after qa)
+        {:keys [clamped within]} (:split after)
+        made (filter :recipe (concat clamped within))
+        ;; after, less what the split recorded making, against before; relative
+        ;; to the larger of before and after as it stands
+        net (fn [b a k] (let [a' (reduce (fn [m x] (update m (:recipe x) (fnil - 0.0) (or (k x) 0.0))) a made)]
+                          (worst (for [kk (distinct (concat (keys b) (keys a)))]
+                                   (let [x (get b kk 0.0)]
+                                     (/ (Math/abs (- x (get a' kk 0.0))) (max 1e-12 (Math/abs x) (Math/abs (get a kk 0.0)))))))))
         subs (set (keep #(when (:parent %) (:code %)) (:products after)))]
     {:output (max (cmp (fn [r] [(:region r) (fam (:product r))]) :quantity (:production before) (:production after))
                   (cmp (fn [r] [(:region r) (fam (:product r))]) :value_2011 (:production before) (:production after)))
      :trade (max (cmp (fn [r] [(fam (:product r)) (:origin r)]) :quantity (:trade before) (:trade after))
                  (cmp (fn [r] [(fam (:product r)) (:dest r)]) :quantity (:trade before) (:trade after))
-                 (let [sh (tot (filter #(subs (:product %)) (:trade after)) (juxt :origin :product) :quantity)]
-                   (worst (for [[[o k] v] sh] (rel (qa [o k]) v)))))
+                 (let [sh (tot (filter #(subs (:product %)) (:trade after)) (juxt :origin :product) :quantity)
+                       out (into {} (for [[[_ p :as k] x] qa :when (and (subs p) x (pos? x))] [k x]))]
+                   (cmp2 out sh)))
      :use (cmp (fn [r] [(:region r) (fam (:product r))]) :quantity (:use before) (:use after))
-     :inputs (worst (for [[k v] ib :when (pos? v)] (rel v (get ia k 0.0))))
-     :clamped (get-in after [:split :clamped])}))
+     :inputs (net (inputs before qb :phys) (inputs after qa :phys) :tonnes)
+     :input-values (net (inputs before vb :share) (inputs after va :share) :value)
+     :clamped (vec clamped)
+     :within (vec within)}))
 
 ;; ---------------------------------------------------------------- loading
 

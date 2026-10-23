@@ -913,8 +913,9 @@
     (is (close? (* 30.0 (+ (/ 6.0 300.0) (/ (* 0.1 0.05) 0.6))) (:value_2011 (prod-row split "JP" "EV")) 1e-12)))
   (testing "balances closed: output, trade, use and the parents' inputs"
     (let [b (sup/split-balances sub-rows split)]
-      (doseq [[k v] (dissoc b :clamped)] (is (< v 1e-9) (str k " " v)))
-      (is (empty? (:clamped b))))))
+      (doseq [[k v] (dissoc b :clamped :within)] (is (< v 1e-9) (str k " " v)))
+      (is (empty? (:clamped b)))
+      (is (empty? (:within b)) "CHEM's own row holds MT's oxide"))))
 
 (deftest sub-nodes-take-supply-shares-from-production
   (let [ox (trade-of split "OX")
@@ -1030,11 +1031,13 @@
     (testing "oxides: the separation stage's world output, by its supply shares"
       (is (close? (* 0.92 109318.0) (get-in by ["C_REOX" :output "CN"]) 1e-6))
       (is (close? (uv (+ 951135.869 3110497.518) (+ 30808.916 44699.292)) (get-in by ["C_REOX" :price]) 1e-12)))
-    (testing "metal: its value in chemicals n.e.c. by trade, at its unit value, from 1.17 t of oxide"
+    (testing "metal: its value in chemicals n.e.c. by trade, at its unit value, from 1.2 t of oxide"
       (is (close? mt (reduce + (vals (get-in by ["C_REMT" :output]))) 1e-6))
-      (is (close? (/ 336.48 288.48) (get-in by ["C_REMT" :inputs "C_REOX"]) 1e-12)))
-    (testing "magnets: China about 90%, 30% rare earth"
-      (is (close? (* 0.9 mg) (get-in by ["C_NDFB" :output "CN"]) 1e-6))
+      (is (close? 1.2 (get-in by ["C_REMT" :inputs "C_REOX"]) 1e-12) "the stoichiometric 1.166 over a 97% yield")
+      (is (< (/ 336.48 288.48) re/reo-per-metal)))
+    (testing "magnets: China 92% (DOE 2022, 2020), less Germany's half point, 30% rare earth"
+      (is (close? (* 0.915 mg) (get-in by ["C_NDFB" :output "CN"]) 1e-6))
+      (is (close? 1.0 (reduce + (vals re/magnet-shares)) 1e-12))
       (is (= {"C_REMT" 0.3} (get-in by ["C_NDFB" :inputs]))))
     (testing "EV motors: the IEA's 0.5 kg of rare earths a car, as magnet, in a 70 kg motor"
       (is (close? (* 13000.0 0.07) (get-in by ["C_EVMO" :output "JP"]) 1e-9))
@@ -1048,7 +1051,10 @@
       (let [pm (get-in by ["C_PMMO" :output])
             m (get-in by ["C_PMMO" :inputs "C_NDFB"])]
         (is (close? (- mg ev-mg wind-mg) (* m (reduce + (vals pm))) 1e-6))
-        (is (close? 3.0 (/ (pm "CN") (pm "JP")) 1e-9))))))
+        (is (close? 3.0 (/ (pm "CN") (pm "JP")) 1e-9))
+        (is (= :parent (get-in by ["C_PMMO" :supply])) "then moved by split-subnodes to where its parent is shipped from")))
+    (testing "wind generators: 0.6 t of magnet per MW direct drive in 3.6 t of active parts"
+      (is (close? (/ 0.6 3.6) (get-in by ["C_WGEN" :inputs "C_NDFB"]) 1e-12)))))
 
 (deftest a-split-moves-no-row-across-the-threshold
   ;; cars' chemicals at 5.01% of their value: critical; the split takes
@@ -1076,3 +1082,75 @@
                                 {:region "R" :output "ORE" :input "SRV" :share 0.95}
                                 {:region "R" :output "ORE" :input "SRV2" :share 0.9}]})]
     (is (= :substitutable (sup/classify g "R" "ORE" "C_CHEM")))))
+
+(deftest split-balances-see-every-flow
+  ;; a flow the split created where there was none counts: the balances
+  ;; compare every key of either side, in tonnes and in value
+  (let [extra (update split :recipes conj {:region "CN" :output "ELMA" :input "CHEM" :phys 0.5 :share 0.1
+                                           :share-1995 0.1 :share-2022 0.1})
+        b (sup/split-balances sub-rows extra)]
+    (is (< 0.99 (:inputs b)))
+    (is (< 0.99 (:input-values b))))
+  (testing "a value share moved is a value residual even where the tonnes hold"
+    (let [moved (update split :recipes (fn [rs] (mapv #(if (and (= "CN" (:region %)) (= "MOTO" (:output %)) (= "CHEM" (:input %)))
+                                                         (update % :share * 1.1) %)
+                                                      rs)))
+          b (sup/split-balances sub-rows moved)]
+      (is (< (:inputs b) 1e-9))
+      (is (< 0.05 (:input-values b))))))
+
+(def ^:private no-diagonal
+  ;; as EXIOBASE's recipes are: no product is an input of itself
+  (update sub-rows :recipes (fn [rs] (vec (remove #(= (:output %) (:input %)) rs)))))
+
+(deftest a-split-records-what-it-could-not-conserve
+  (testing "a chain inside one family (oxide into metal, both chemicals) where the parent has no row of itself: :within"
+    (let [s (sup/split-subnodes no-diagonal sub-specs)
+          w (get-in s [:split :within])
+          b (sup/split-balances no-diagonal s)]
+      (is (= #{["CN" "CHEM" "CHEM"]} (set (map :recipe w))) "by region, parent and input family, as :clamped")
+      (is (close? (* 2.0 1.2) (reduce + (map :tonnes w)) 1e-9) "MT's 2 t at 1.2 t of oxide")
+      (is (close? (* 2.0 1.2 0.1) (reduce + (map :value w)) 1e-9) "at the oxide's world price")
+      (is (empty? (get-in s [:split :clamped])))
+      (doseq [k [:output :trade :use :inputs :input-values]] (is (< (b k) 1e-9) (str k " " (b k))))
+      (is (= w (:within b)))))
+  (testing "a chain input over the parent's own row, in tonnes and in value: :clamped, with the tonnes and value created"
+    ;; JP's electrical machinery has no tonnes of fabricated metal on record
+    ;; and 0.001 of its value: EV's magnets are more than both
+    (let [rows (update no-diagonal :recipes
+                       (fn [rs] (mapv #(if (and (= "JP" (:region %)) (= "ELMA" (:output %)) (= "FABM" (:input %)))
+                                         (assoc % :phys 0.0 :share 0.001 :share-1995 0.001 :share-2022 0.001) %)
+                                      rs)))
+          s (sup/split-subnodes rows sub-specs)
+          c (filter #(= ["JP" "ELMA" "FABM"] (:recipe %)) (get-in s [:split :clamped]))
+          b (sup/split-balances rows s)]
+      (is (seq c))
+      (is (close? (* 30.0 0.1) (reduce + (keep :tonnes c)) 1e-9) "EV's 30 t at 0.1 t of magnet")
+      (is (pos? (reduce + (keep :value c))))
+      (doseq [k [:output :trade :use :inputs :input-values]] (is (< (b k) 1e-9) (str k " " (b k)))))))
+
+(deftest a-sub-node-can-follow-its-parents-trade
+  ;; a slice of its parent with no geography of its own (:supply :parent):
+  ;; each destination draws it from where it draws the parent, and each
+  ;; origin makes what it ships
+  (let [pm {:code "PM" :name "magnet motors" :unit "tonnes" :group "manufactured" :parent "ELMA"
+            :output {"CN" 20.0 "JP" 10.0} :price :cost-plus :inputs {"MG" 0.1} :demand :parent :supply :parent}
+        specs [(first sub-specs) (second sub-specs) (assoc (nth sub-specs 2) :output {"CN" 2.7 "JP" 0.3}) pm]
+        s (sup/split-subnodes sub-rows specs)
+        tr (filter #(= "PM" (:product %)) (:trade s))
+        by (group-by :dest tr)
+        out (into {} (for [r (:production s) :when (= "PM" (:product r))] [(:region r) (:quantity r)]))]
+    (testing "a destination's origins are the parent's"
+      (is (= {"CN" 1.0} (into {} (for [r (by "CN")] [(:origin r) (:share r)]))))
+      (is (close? (/ 50.0 350.0) (:share (first (filter #(= "CN" (:origin %)) (by "JP")))) 1e-12)))
+    (testing "its world output is the spec's, made where it is shipped from"
+      (is (close? 30.0 (reduce + (vals out)) 1e-9))
+      (doseq [[o x] out]
+        (is (close? x (reduce + (map :quantity (filter #(= o (:origin %)) tr))) 1e-9) o)))
+    (testing "demand by the parent's use: CN 550 t of ELMA, JP 350"
+      (is (close? (* 30.0 (/ 550.0 900.0)) (reduce + (map :quantity (by "CN"))) 1e-9)))
+    (testing "balances closed"
+      (let [b (sup/split-balances sub-rows s)]
+        (doseq [k [:output :trade :use :inputs :input-values]] (is (< (b k) 1e-9) (str k " " (b k))))))
+    (testing "only with the parent's demand and nothing in the chain taking it"
+      (is (thrown? Exception (sup/split-subnodes sub-rows (conj (vec (butlast specs)) (assoc pm :demand {:final "I_GFCF"}))))))))
