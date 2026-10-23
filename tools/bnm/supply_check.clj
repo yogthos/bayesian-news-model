@@ -314,6 +314,14 @@
                    (str/join " " (for [t report-months] (format "%4s" (pct (loss (:industries (nth path (dec t))) k)))))
                    (pct (loss steady k)))))
 
+(defn- rises
+  "The largest rise of any product's availability from one month to the
+  next (a stock only falls, so a path only falls: at most tol)."
+  [path]
+  (reduce max 0.0 (for [[a b] (partition 2 1 path)
+                        k (distinct (concat (keys (:products a)) (keys (:products b))))]
+                    (- (get-in b [:products k] 1.0) (get-in a [:products k] 1.0)))))
+
 (defn- below-steady
   "The largest amount by which a path's availability falls below the
   steady state's anywhere (a stock only helps: at most tol)."
@@ -346,18 +354,19 @@
         (doseq [[p what] [["C_NFER" "N fertiliser"] ["C_POWG" "gas power"] ["C_POWN" "nuclear power"]
                           ["C_WHEA" "wheat"] ["C_STEL" "steel"] ["C_CHEM" "chemicals"]]]
           (when (get-in g [:recipes [r p]]) (path-line (str r " " what) path steady [r p]))))
-      ;; not nothing: a power station's upkeep (its CES bundle: chemicals,
-      ;; construction, metals, services) loses what the gas takes from
-      ;; them, up to 5% by month 12 (Romania's non-ferrous metals and
-      ;; construction); its fuel, the critical input, is held by its stocks
-      (let [m1 (reduce max 0.0 (map #(loss (:products (first path)) [% "C_POWN"]) nuc))
+      ;; its fuel, the critical input, is held by its stocks; its upkeep
+      ;; (construction, metals, machinery) waits for the next planned
+      ;; outage (sup/upkeep-months), so it loses near nothing in a year
+      (let [m12 (reduce max 0.0 (for [m (take 12 path) r nuc] (loss (:products m) [r "C_POWN"])))
             drawn (reduce max 0.0 (for [r nuc :let [s0 (get st [r "C_NUCF"])] :when s0]
                                     (/ (- s0 (get-in (nth path 11) [:stocks [r "C_NUCF"]] s0)) s0)))
-            m12 (reduce max 0.0 (map #(loss (:products (nth path 11)) [% "C_POWN"]) nuc))]
-        (check (< m1 0.01) (format "nuclear power loses under 1%% in month 1 in all %d European regions making it (largest %.1f%%)"
-                                   (count nuc) (* 100 m1)))
-        (check (< drawn 0.1) (format "its fuel stocks hold it: under a tenth of them drawn by month 12 (most %.1f%%); what it loses (up to %s by month 12) is its upkeep"
-                                     (* 100 drawn) (pct m12))))
+            up (for [[[r p i] m] (:upkeep (nth path 11)) :when (and (= p "C_POWN") (some #{r} nuc))] [r i m])
+            least (when (seq up) (apply min-key #(nth % 2) up))]
+        (println (format "  nuclear upkeep (%.0f months deferrable): least left at month 12 %s"
+                         sup/upkeep-months (if least (apply format "%s %s %.2f months" least) "none drawn")))
+        (check (< m12 0.01) (format "nuclear power loses under 1%% through month 12 in all %d European regions making it (largest %.2f%%)"
+                                    (count nuc) (* 100 m12)))
+        (check (< drawn 0.1) (format "its fuel stocks hold it: under a tenth of them drawn by month 12 (most %.1f%%)" (* 100 drawn))))
       (let [stored (filter #(> (get st [% "C_GASE"] 0.0) 1.0) ["DE" "FR" "IT" "NL" "PL" "AT" "HU" "CZ" "SK"])]
         (check (every? #(< (loss (:products (first path)) [% "C_NFER"]) (* 0.1 (loss steady [% "C_NFER"]))) stored)
                (str "gas storage delays the N fertiliser cut: under a tenth of its steady loss in month 1 where storage holds over a month of use ("
@@ -366,7 +375,8 @@
           (check (every? #(< (Math/abs (- (loss (:products (nth path 11)) [% "C_NFER"]) (loss steady [% "C_NFER"]))) 0.01) drained)
                  (str "and the steady loss by month 12 where the storage (under 4 months at 0.4 a month) is drawn ("
                       (str/join " " drained) ")"))))
-      (check (< (below-steady path steady) 1e-4) "no month loses more than the steady state (stocks only help)"))
+      (check (< (below-steady path steady) 1e-4) "no month loses more than the steady state (stocks only help)")
+      (check (< (rises path) 1e-4) "no product's availability rises from one month to the next (stocks only fall)"))
     (println "== shock 2 with stocks: Middle East (WM) crude output cut 50%")
     (let [cut {["WM" "C_COIL"] 0.5}
           o (sup/outage g cut {:hypergraph h})
@@ -382,6 +392,10 @@
           (path-line (str r " " what) path steady [r p])))
       (check (every? #(< (loss (:industries (first path)) [% "A_REFN"]) (loss (:industries o) [% "A_REFN"])) ["JP" "IN" "KR" "CN"])
              "crude stocks hold Asia's refining above its steady loss in month 1 (JP IN KR CN)")
+      (check (< (loss (:industries (first path)) ["CN" "A_REFN"]) (* 0.5 (loss (:industries o) ["CN" "A_REFN"])))
+             (format "China's crude stock (a prior, %.2f months) holds its refining under half its steady loss in month 1"
+                     (get st ["CN" "C_COIL"] 0.0)))
+      (check (< (rises path) 1e-4) "no product's availability rises from one month to the next")
       (let [jp (map #(loss (:industries %) ["JP" "A_REFN"]) path)]
         (check (every? (fn [[a b]] (<= a (+ b 1e-6))) (partition 2 1 jp)) "Japan's refining loss never falls back as its stocks drain"))
       (check (< (Math/abs (- (loss (:industries (last path)) ["JP" "A_REFN"]) (loss (:industries o) ["JP" "A_REFN"]))) 0.01)
