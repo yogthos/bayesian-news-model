@@ -2,7 +2,7 @@
 they pass (bead bnm-1pq.10, docs/ESSENTIALS.md section 8 step 9). Research
 tooling; bnm.chokepoints reads what this writes.
 
-    python -I scripts/routes.py energy     # BACI HS92 crude, LNG, gas, oil products, bilateral
+    python -I scripts/routes.py energy     # BACI HS92 crude, LNG, gas, oil products, iron ore, coal
     python -I scripts/routes.py portwatch  # PortWatch tanker tonnes by port and year
     python -I scripts/routes.py routes     # routes.csv, routes-years.csv, routes-modes.csv, ...
     python -I scripts/routes.py --selftest
@@ -108,6 +108,28 @@ ALIAS, and the rest (small islands, North Korea, Greenland ...) through the
 searoute-py port (ports.geojson, UN/LOCODE) nearest the country's Natural
 Earth label point. Transshipment is not modelled: a route is port to port.
 
+Ship size. Crude on long hauls goes on VLCCs, iron ore and coal on
+Capesize bulkers (VESSELS): neither fits the Neopanamax locks (Panama Canal
+Authority: beam 51.25 m, draught 15.2 m, about 120,000 dwt), and a laden
+VLCC exceeds Suez's 66 ft (20.1 m) draught (Suez Canal Authority), which a
+laden Suezmax and Capesize meet. No vessel mix by route is on disk, so the
+rule is: a port pair whose ordinary route is at least 8,000 km takes the
+big ships' lane (no Panama; for crude no Suez or Sunda either, so round
+the Cape and through Malacca or Lombok),
+unless either port reaches the open sea only through the Danish straits,
+the Bosporus or Kerch (Baltic and Black Sea crude loads Aframaxes and
+Suezmaxes and keeps Suez) or the big ships have no lane. Shorter hauls go
+by the ordinary lanes on smaller ships. Classes crude and capesize carry
+these lanes (crude with the tanker ports and gravity, capesize with the
+bulk ports); HS2 chapters 26 and 27 keep tanker and bulk lanes. SUMED, the
+pipeline round the canal for laden VLCCs (Ain Sukhna to Sidi Kerir, 2.5
+mb/d of capacity), is not modelled: long-haul crude to the Mediterranean
+and Europe goes round the Cape, which over-routes the Cape and under-routes
+Suez by what SUMED carries. Real fleets mix sizes on every lane (US crude
+to Asia also goes on Suezmaxes and Aframaxes through Panama, reverse-
+lightered VLCCs from the Gulf Coast), so a route's Panama share of 0 is the
+rule's, not an observation.
+
 Maritime flag. BACI does not record the mode. A pair is non-maritime when
 the countries share a land border, or are within three land borders and
 their Natural Earth label points are within 2,000 km (intra-European trade,
@@ -138,7 +160,8 @@ pair's goods (all by land).
 
 Outputs (data/derived/supply/):
   routes.csv          exporter,importer,class,maritime,reason,routed,distance_km,chokepoints
-      class tanker | bulk | general; routed: the share of the port-pair
+      class tanker | crude | bulk | capesize | general (crude and capesize:
+      the tanker and bulk ports on the big ships' lanes, see Ship size); routed: the share of the port-pair
       weight with a route (0 when a side has no port); distance_km: the
       weighted mean route length; chokepoints: name=share;... the share
       of the port-pair weight whose route passes the chokepoint. Written
@@ -160,7 +183,8 @@ Outputs (data/derived/supply/):
       (tanker export rows: the 2019-2023 tonnes, source portwatch-tonnes)
   hs6-energy-pairs.csv.gz  hs,year,known,hs6,exporter,importer,value,tonnes
       (energy step) BACI HS92 bilateral flows of 270900 (crude), 271111
-      (LNG), 271121 (pipeline gas), 271000 (oil products), known = year + 2
+      (LNG), 271121 (pipeline gas), 271000 (oil products), 260111 and
+      260112 (iron ore), 270111, 270112 and 270119 (coal), known = year + 2
       as in scripts/baci.py.
 
 Inputs beyond routes: data/raw/material/imf-portwatch/port-tanker-year.csv
@@ -225,9 +249,36 @@ NAMES = list(CHOKEPOINTS)
 
 CLASSES = {  # class -> PortWatch vessel-count columns
     "tanker": ["vessel_count_tanker"],
+    "crude": ["vessel_count_tanker"],
     "bulk": ["vessel_count_dry_bulk"],
+    "capesize": ["vessel_count_dry_bulk"],
     "general": ["vessel_count_container", "vessel_count_general_cargo", "vessel_count_RoRo"],
 }
+
+# Ship size. class -> (ship, straits a laden one cannot pass). Panama Canal
+# Authority, Neopanamax locks (2016): beam 51.25 m, length 366 m, draught 15.2 m
+# (50 ft, tropical fresh water), so ships up to about 120,000 dwt; a VLCC
+# (300,000 dwt, draught about 22 m) and a Capesize bulker (180,000 dwt, 18 m)
+# do not fit. Suez Canal Authority: 66 ft (20.1 m) maximum draught since 2010,
+# which admits a laden Suezmax and a laden Capesize but not a laden VLCC; VLCCs
+# go round the Cape or discharge into SUMED at Ain Sukhna and reload at Sidi
+# Kerir. SUMED is not modelled: a long-haul VLCC to the Mediterranean or Europe
+# goes round the Cape here, so the Cape is over- and Suez under-routed by what
+# SUMED carries (up to 2.5 mb/d of capacity). The Sunda strait is shallow at its
+# eastern approach (about 20 m) and laden VLCCs avoid it for Malacca or Lombok
+# (deep-draught tankers take Malacca's deep-water route or Lombok-Makassar),
+# while Capesizes use it.
+VESSELS = {"crude": ("VLCC", ["panama", "suez", "sunda"]), "capesize": ("Capesize", ["panama"])}
+# Which voyages use the big ships (no route-level vessel mix on disk): a port
+# pair whose ordinary route is at least LONG_HAUL_KM (about 4,300 nm; set before
+# any route was computed), unless either port cannot take them: a port that
+# reaches the open sea only through the Danish straits (15 m), the Bosporus or
+# Kerch (Primorsk, Ust-Luga, Novorossiysk, Gdansk: Aframax and Suezmax ports).
+# Shorter hauls and those ports go on smaller ships by the ordinary lanes; so
+# does a pair with no lane the big ships can take.
+LONG_HAUL_KM = 8000.0
+NARROW_SEAS = ["oresund", "bosporus", "kerch"]
+OPEN_SEA = (-30.0, 30.0)  # a mid-Atlantic point every big-ship port reaches without a narrow sea
 MIN_WEIGHT, MAX_PORTS, MAX_SNAP_KM, DECAY_KM = 0.02, 10, 300.0, 2000.0
 CASPIAN = (46.0, 55.5, 36.0, 47.5)  # lon, lon, lat, lat: MARNET reaches it by the Volga-Don; no port there is used
 
@@ -870,6 +921,31 @@ def pair_route_mix(mix, ip, table, decay_km=DECAY_KM):
     return routed, sum(w * km for w, _, _, km, _ in parts), dict(share), parts
 
 
+def lane_row(p, tp, vp, barred, long_km, nodes):
+    """{q: (km, bits)} from port p: the big-ship lane vp[q] where the
+    ordinary one tp[q] is at least long_km and neither port is barred and
+    the big ships have a lane, else the ordinary one."""
+    out = {}
+    for q in nodes:
+        r = tp.get(q)
+        if r is None:
+            continue
+        v = vp.get(q)
+        out[q] = v if (v is not None and r[0] >= long_km and p not in barred and q not in barred) else r
+    return out
+
+
+def lane_table(table, vtable, barred, long_km, nodes):
+    """{p: lane_row} for every port p of table (see VESSELS)."""
+    return {p: lane_row(p, table[p], vtable[p], barred, long_km, nodes) for p in table}
+
+
+def barred_ports(table, nodes, ref, mask):
+    """The ports whose route to ref (the open sea) passes a chokepoint in
+    mask (the narrow seas): they cannot take the big ships."""
+    return {p for p in nodes if ref in table[p] and table[p][ref][1] & mask}
+
+
 def closure_stats(parts, k, closed_table):
     """For chokepoint bit k: (affected, stranded, extra_km) over the port pairs whose route passes it."""
     aff = stranded = ext = 0.0
@@ -997,7 +1073,7 @@ def run_routes(root, out):
     tk_years = sorted({tuple(tonnage_years(y)) for y in range(1995, 2025)} | {tuple(base_tonnage)})
     tk_ports = {(iso, ys): tanker_export(iso, list(ys)) for iso in countries for ys in tk_years}
     for iso in countries:
-        ports[(iso, "tanker", "export")] = tk_ports[(iso, tuple(base_tonnage))]
+        ports[(iso, "tanker", "export")] = ports[(iso, "crude", "export")] = tk_ports[(iso, tuple(base_tonnage))]
 
     nodes = sorted({x[0] for v in list(ports.values()) + list(tk_ports.values()) for x in v})
     print(f"{len(nodes)} port nodes; routing", file=sys.stderr)
@@ -1011,6 +1087,30 @@ def run_routes(root, out):
             v = self[s] = net.dijkstra(s, closed=1 << self.k)
             return v
     closed = {k: Lazy(k) for k in range(len(NAMES))}
+
+    # ship size: the big ships' lanes, and the ports they cannot use
+    bit = {n: 1 << k for k, n in enumerate(NAMES)}
+    ref = net.nearest(OPEN_SEA)[0]
+    barred = barred_ports(table, nodes, ref, sum(bit[n] for n in NARROW_SEAS))
+    print(f"{len(barred)} port nodes behind a narrow sea", file=sys.stderr)
+    vmask = {v: sum(bit[n] for n in shut) for v, (_, shut) in VESSELS.items()}
+    lanes = {"tanker": table, "bulk": table, "general": table}
+    for v in VESSELS:
+        vt = {s_: net.dijkstra(s_, closed=vmask[v]) for s_ in nodes}
+        lanes[v] = lane_table(table, vt, barred, LONG_HAUL_KM, nodes)
+
+    class LaneLazy(dict):
+        """Closed tables of a vessel class: chokepoint k closed, the class's lanes kept."""
+        def __init__(self, v, k):
+            self.v, self.k = v, k
+
+        def __missing__(self, s_):
+            vp = net.dijkstra(s_, closed=vmask[self.v] | (1 << self.k))
+            r = self[s_] = lane_row(s_, closed[self.k][s_], vp, barred, LONG_HAUL_KM, nodes)
+            return r
+    closed_by = {"tanker": closed, "bulk": closed, "general": closed}
+    for v in VESSELS:
+        closed_by[v] = {k: LaneLazy(v, k) for k in range(len(NAMES))}
     hop_cache = {}
     flags = {(a, b): maritime_flag(ALIAS.get(a, a), ALIAS.get(b, b), nb, labels, cache=hop_cache)
              for a in countries for b in countries if a != b}
@@ -1051,7 +1151,7 @@ def run_routes(root, out):
     def chok(share):
         return ";".join(f"{NAMES[k]}={share[k]:.4f}" for k in sorted(share) if share[k] >= 1e-4)
 
-    tanker_base = {}  # (e, i) -> pair_route_mix result
+    tanker_base, crude_base = {}, {}  # (e, i) -> pair_route_mix result
     n_years = 0
     with open(p(os.path.join(out, "routes-years.csv")), "w", newline="") as f:
         w = csv.writer(f)
@@ -1074,6 +1174,7 @@ def run_routes(root, out):
             mix = gravity(rows_of(tk_ports[(e, tuple(base_tonnage))]), base_cols.get(e, {}), kern)
             for b, m in mix.items():
                 tanker_base[(e, b)] = pair_route_mix(m, ip_of(b), table)
+                crude_base[(e, b)] = pair_route_mix(m, ip_of(b), lanes["crude"])
             for y in sorted(y for (x, y) in cols if x == e):
                 c = cols[(e, y)]
                 if not any(v > 0 for v in c.values()):
@@ -1082,11 +1183,12 @@ def run_routes(root, out):
                 for b in sorted(c):
                     if c[b] <= 0 or b not in my or (e, b) not in flags:
                         continue
-                    routed, km, share, _ = pair_route_mix(my[b], ip_of(b), table)
                     mar, why = flags[(e, b)]
-                    w.writerow([e, b, "tanker", y, int(mar), why, f"{routed:.4f}",
-                                "" if km is None else f"{km:.0f}", chok(share)])
-                    n_years += 1
+                    for cls in ("tanker", "crude"):
+                        routed, km, share, _ = pair_route_mix(my[b], ip_of(b), lanes[cls])
+                        w.writerow([e, b, cls, y, int(mar), why, f"{routed:.4f}",
+                                    "" if km is None else f"{km:.0f}", chok(share)])
+                        n_years += 1
     print(f"wrote routes-modes.csv ({n_modes}), routes-years.csv ({n_years})", file=sys.stderr)
 
     with open(p(os.path.join(out, "route-ports.csv")), "w", newline="") as f:
@@ -1108,24 +1210,25 @@ def run_routes(root, out):
                 mar, why = flags[(a, b)]
                 for cls in CLASSES:
                     ip = [(x[0], x[1]) for x in ports[(b, cls, "import")]]
-                    if cls == "tanker":
-                        routed, km, share, parts = tanker_base.get((a, b), (0.0, None, {}, []))
+                    if cls in ("tanker", "crude"):
+                        base = tanker_base if cls == "tanker" else crude_base
+                        routed, km, share, parts = base.get((a, b), (0.0, None, {}, []))
                     else:
                         ep = [(x[0], x[1]) for x in ports[(a, cls, "export")]]
-                        routed, km, share, parts = pair_route(ep, ip, table)
+                        routed, km, share, parts = pair_route(ep, ip, lanes[cls])
                     w.writerow([a, b, cls, int(mar), why, f"{routed:.4f}",
                                 "" if km is None else f"{km:.0f}", chok(share)])
                     n_rows += 1
                     if mar and routed > 0:
                         for k in sorted(share):
-                            aff, st, ext = closure_stats(parts, k, closed[k])
+                            aff, st, ext = closure_stats(parts, k, closed_by[cls][k])
                             wc.writerow([a, b, cls, NAMES[k], f"{aff:.4f}", f"{st:.4f}",
                                          "" if ext is None else f"{ext:.0f}"])
                             n_closed += 1
     print(f"wrote routes.csv ({n_rows} rows), routes-closed.csv ({n_closed}), route-ports.csv", file=sys.stderr)
 
 
-ENERGY = {"270900", "271111", "271121", "271000"}
+ENERGY = {"270900", "271111", "271121", "271000", "260111", "260112", "270111", "270112", "270119"}
 
 
 def run_energy(root, out):
@@ -1259,6 +1362,22 @@ def selftest():
     rmix, _, shm, _ = pair_route_mix({i(W): 0.25, i(S1): 0.75}, [(i(E), 1.0)], table, decay_km=2000.0)
     assert abs(shm[0] - 0.25) < 1e-12 and abs(rmix - 1.0) < 1e-12, shm
     assert abs(port_kernel(i(W), [(i(E), 1.0)], table, 2000.0, 0.0) - math.exp(-dW / 2000.0)) < 1e-12
+    # vessel classes: a long haul between big-ship ports takes the constrained lane
+    nodes_t = [i(W), i(S1), i(E)]
+    std = {x: net.dijkstra(x) for x in nodes_t}
+    big = {x: net.dijkstra(x, closed=1) for x in nodes_t}
+    lt = lane_table(std, big, set(), 0.0, nodes_t)
+    assert lt[i(W)][i(E)][1] == 2 and lt[i(W)][i(E)][0] > std[i(W)][i(E)][0], "the strait is shut to VLCCs: round the cape"
+    assert lane_table(std, big, set(), 1e9, nodes_t)[i(W)][i(E)] == std[i(W)][i(E)], "a short haul goes on smaller ships"
+    assert lane_table(std, big, {i(W)}, 0.0, nodes_t)[i(W)][i(E)] == std[i(W)][i(E)], "a port that cannot take VLCCs"
+    assert lane_table(std, big, {i(E)}, 0.0, nodes_t)[i(W)][i(E)] == std[i(W)][i(E)], "either end"
+    net3 = Net([(W, M, "st"), (M, E, None)], {"strait": (None, ["st"], [])}, ["strait"])
+    s3 = {net3.index[W]: net3.dijkstra(net3.index[W])}
+    b3 = {net3.index[W]: net3.dijkstra(net3.index[W], closed=1)}
+    assert lane_table(s3, b3, set(), 0.0, [net3.index[E]])[net3.index[W]][net3.index[E]] == s3[net3.index[W]][net3.index[E]], \
+        "no lane for the big ships: smaller ones take the strait"
+    assert barred_ports(std, nodes_t, i(E), 1) == {i(W)}, "W reaches the open sea only through the strait"
+    assert VESSELS["crude"][1] == ["panama", "suez", "sunda"] and VESSELS["capesize"][1] == ["panama"]
     # modes: LNG is shipped; Russian crude to China is shipped beyond the pipelines' capacity
     assert maritime_share("RUS", "CHN", "271111", 2019, 1e6, False) == 1.0
     assert maritime_share("QAT", "KWT", "271111", 2019, 1e6, False) == 1.0

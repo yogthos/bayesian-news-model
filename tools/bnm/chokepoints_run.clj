@@ -154,11 +154,20 @@
       (println (str "   " iso "  " (str/join "  " (for [y [1995 2000 2005 2010 2015 2019 2020 2021 2022 2023 2024]]
                                                      (let [h (share-of energy y "crude-oil" iso "hormuz") b (g [iso y])]
                                                        (f (when (and h b (pos? b)) (/ h b)) 2))))))))
-  (println "\n  US tanker routes to East Asia (routes-years.csv; panama, cape-of-good-hope, magellan shares)")
-  (doseq [i ["JPN" "KOR" "CHN"] y [2015 2019 2021 2023 2024]]
-    (let [t (:through (get-in routes [::cp/years y "USA" i "tanker"]))]
-      (println (str "   USA->" i " " y "  panama " (f (get t "panama" 0.0) 2) "  cape " (f (get t "cape-of-good-hope" 0.0) 2)
-                    "  magellan " (f (get t "magellan" 0.0) 2) "  korea " (f (get t "korea" 0.0) 2) "  tsugaru " (f (get t "tsugaru" 0.0) 2)))))
+  (println "\n  US crude (VLCC lanes) and other tanker routes to East Asia (routes-years.csv)")
+  (doseq [cls ["crude" "tanker"] i ["JPN" "KOR" "CHN"] y [2015 2019 2023 2024]]
+    (let [t (:through (get-in routes [::cp/years y "USA" i cls]))]
+      (println (str "   " cls " USA->" i " " y "  panama " (f (get t "panama" 0.0) 2) "  cape " (f (get t "cape-of-good-hope" 0.0) 2)
+                    "  malacca " (f (get t "malacca" 0.0) 2) "  lombok " (f (get t "lombok" 0.0) 2) "  sunda " (f (get t "sunda" 0.0) 2)))))
+  (println "\n  Iron ore and coal to China: Capesize and ordinary bulk lanes (routes.csv), and China's exposure 2023")
+  (doseq [e ["BRA" "AUS" "ZAF" "CAN" "IDN" "RUS"] cls ["capesize" "bulk"]]
+    (let [t (:through (get-in routes [e "CHN" cls]))]
+      (println (str "   " cls " " e "->CHN  panama " (f (get t "panama" 0.0) 2) "  cape " (f (get t "cape-of-good-hope" 0.0) 2)
+                    "  malacca " (f (get t "malacca" 0.0) 2) "  sunda " (f (get t "sunda" 0.0) 2) "  lombok " (f (get t "lombok" 0.0) 2)))))
+  (doseq [p ["iron-ore" "coal"]]
+    (println (str "   CHN " p "  panama " (f (share-of energy 2023 p "CHN" "panama") 3) "  cape " (f (share-of energy 2023 p "CHN" "cape-of-good-hope") 3)
+                  "  malacca " (f (share-of energy 2023 p "CHN" "malacca") 3) "  sunda " (f (share-of energy 2023 p "CHN" "sunda") 3)
+                  "  lombok " (f (share-of energy 2023 p "CHN" "lombok") 3) "  seaborne " (f (share-of energy 2023 p "CHN" :seaborne) 3))))
   (doseq [[prod lbl] [["crude-oil" "crude (270900)"] ["lng" "LNG (271111)"]]]
     (println (str "\n  Malacca, Hormuz and Lombok shares of " lbl ", mean 2019-2023"))
     (doseq [iso ["JPN" "KOR" "CHN" "TWN" "IND" "WLD"]]

@@ -12,7 +12,8 @@
 
     hs2-pairs.csv.gz          every HS2 chapter
     hs6-essentials.csv.gz     the sub-nodes of subnodes.csv (HS92 codes)
-    hs6-energy-pairs.csv.gz   crude (270900), LNG (271111), oil products (271000)
+    hs6-energy-pairs.csv.gz   crude (270900), LNG (271111), oil products (271000),
+                              iron ore (260111, 260112), coal (270111, 270112, 270119)
 
   For importer i, product p and data year t, with v the value of the
   flow from exporter e and r = routes[e i class(p)]:
@@ -75,16 +76,25 @@
   (cond (tanker-hs2 hs2) "tanker" (bulk-hs2 hs2) "bulk" :else "general"))
 
 (defn hs6-class
-  "The ship class of an HS6 code: crude, oil products and LNG tankers; coal,
-  ores, graphite and other minerals of chapters 25-26 bulk; the rest as its
-  chapter (chemicals, metals and goods general)."
+  "The ship class of an HS6 code: crude its own (VLCC lanes on long hauls,
+  scripts/routes.py VESSELS); oil products and LNG tankers; iron ore
+  (2601 11, 12) and coal (2701) capesize (no Panama on long hauls); other
+  ores, graphite and minerals of chapters 25-26 bulk; the rest as its
+  chapter (chemicals, metals and goods general). HS2 chapters keep their
+  chapter class (hs2-class): chapter 26 and 27 flows are not split."
   [hs6]
-  (cond (re-find #"^(2709|2710|2711)" hs6) "tanker"
-        (re-find #"^(25|26|2701)" hs6) "bulk"
+  (cond (re-find #"^2709" hs6) "crude"
+        (re-find #"^(2710|2711)" hs6) "tanker"
+        (re-find #"^(26011|2701)" hs6) "capesize"
+        (re-find #"^(25|26)" hs6) "bulk"
         :else (let [c (hs2-class (subs hs6 0 2))] (if (= c "tanker") "general" c))))
 
 (def energy-products
-  {"270900" "crude-oil" "271111" "lng" "271000" "oil-products"})
+  "The products of hs6-energy-pairs.csv.gz: crude, LNG, oil products, and the
+  Capesize cargoes iron ore and coal."
+  {"270900" "crude-oil" "271111" "lng" "271000" "oil-products"
+   "260111" "iron-ore" "260112" "iron-ore"
+   "270111" "coal" "270112" "coal" "270119" "coal"})
 
 (defn product-name
   "Stock-name form of a sub-node name: lower case, hyphens."

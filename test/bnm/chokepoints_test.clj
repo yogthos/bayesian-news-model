@@ -30,9 +30,12 @@
   (is (= "tanker" (cp/hs2-class "27")))
   (is (= "bulk" (cp/hs2-class "26")))
   (is (= "general" (cp/hs2-class "85")))
-  (is (= "tanker" (cp/hs6-class "270900")))
+  (is (= "crude" (cp/hs6-class "270900")) "crude: VLCC lanes on long hauls")
   (is (= "tanker" (cp/hs6-class "271111")))
-  (is (= "bulk" (cp/hs6-class "270112")) "coal is bulk, though chapter 27")
+  (is (= "tanker" (cp/hs6-class "271000")))
+  (is (= "capesize" (cp/hs6-class "270112")) "coal: Capesize, though chapter 27")
+  (is (= "capesize" (cp/hs6-class "260111")) "iron ore: Capesize")
+  (is (= "bulk" (cp/hs6-class "260120")) "roasted pyrites are not iron ore")
   (is (= "bulk" (cp/hs6-class "260500")))
   (is (= "general" (cp/hs6-class "283691")))
   (is (= "general" (cp/hs6-class "850780"))))
@@ -128,7 +131,9 @@
 
 (deftest product-names
   (is (= "lithium-carbonate" (cp/product-name "lithium_carbonate")))
-  (is (= "crude-oil" (cp/energy-products "270900"))))
+  (is (= "crude-oil" (cp/energy-products "270900")))
+  (is (= "iron-ore" (cp/energy-products "260112")))
+  (is (= "coal" (cp/energy-products "270112"))))
 
 ;; ---------------------------------------------------------------- on disk
 
@@ -161,6 +166,21 @@
         (doseq [i ["JPN" "KOR" "CHN"]]
           (let [t (:through (r "USA" i "tanker"))]
             (is (< 0.8 (+ (get t "panama" 0.0) (get t "cape-of-good-hope" 0.0) (get t "magellan" 0.0))) i))))
+      (testing "laden VLCCs take neither Panama nor Suez on long hauls: US crude to Asia and Gulf crude to Europe go round the Cape"
+        (doseq [i ["JPN" "KOR" "CHN"]]
+          (let [t (:through (r "USA" i "crude"))]
+            (is (> 0.1 (get t "panama" 0.0)) i)
+            (is (< 0.8 (get t "cape-of-good-hope" 0.0)) i)
+            (is (> 0.1 (get t "sunda" 0.0)) (str i ": the Sunda strait is too shallow for laden VLCCs"))))
+        (let [t (:through (r "SAU" "NLD" "crude"))]
+          (is (close? (get t "hormuz") (get t "cape-of-good-hope") 0.02)
+              "the Gulf terminals' VLCCs round the Cape; Yanbu's Suezmaxes keep Suez"))
+        (is (< 0.5 (get-in (r "SAU" "NLD" "tanker") [:through "suez"] 0.0)) "products and LNG still use Suez"))
+      (testing "Baltic and Black Sea crude loads on smaller ships (Danish straits, Bosporus) and keeps Suez"
+        (is (< 0.3 (get-in (r "RUS" "IND" "crude") [:through "suez"] 0.0))))
+      (testing "Capesize ore and coal do not fit Panama"
+        (is (> 0.01 (get-in (r "BRA" "CHN" "capesize") [:through "panama"] 0.0)))
+        (is (< 0.3 (get-in (r "BRA" "CHN" "bulk") [:through "panama"] 0.0)) "smaller bulkers still do"))
       (testing "Russian tankers to Korea and Japan load mostly at Kozmino in the Pacific"
         (doseq [i ["KOR" "JPN"]]
           (is (> 0.5 (get-in (r "RUS" i "tanker") [:through "suez"] 0.0)) i)))
