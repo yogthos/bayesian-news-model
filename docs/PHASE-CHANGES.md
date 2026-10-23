@@ -1668,6 +1668,17 @@ country below 0 at the upper end of the 90% interval); time and space
 placebos and each hazard alone for the record. If not, countries stay the
 unit for located supply shocks.
 
+**Result, 23 October 2026 (bnm-1pq.27).** Shock years 2011-2023, 1,372
+units, 225 exposed country-years: squared error no exposure 0.0545, cell
+0.0546, country 0.0543; cell less country +0.00026 [-0.0000, +0.0005]:
+cell does not win; countries stay the unit for located supply shocks.
+Floods alone (207 exposed country-years) favour country exposure (+0.00037
+[+0.0001, +0.0006]); quakes, cyclones and conflict too few to read. Space
+placebos: 18 of 19 at or below the real footprints. With the plant lists
+dated as they are (most plants only known from their snapshot years),
+where a shock lands within a country does not yet tell its output loss
+better than how much of the country it covers.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
