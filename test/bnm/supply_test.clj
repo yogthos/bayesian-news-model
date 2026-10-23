@@ -2,7 +2,8 @@
   "bnm.supply on synthetic graphs. The checks on the EXIOBASE graph itself
   (validation, the gas and crude shocks) are in tools/bnm/supply_check.clj:
   jolt -A:tools -M -m bnm.supply-check."
-  (:require [bnm.supply :as sup]
+  (:require [bnm.rare-earths :as re]
+            [bnm.supply :as sup]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b tol] (< (Math/abs (- (double a) (double b))) tol))
@@ -826,3 +827,252 @@
       (is (nil? (:pool (row "C_STEL" "C_OTBC"))))
       (is (= :critical (:kind (row "C_STEL" "C_OTBC"))))
       (is (close? 0.7 (avail {["US" "C_OTBC"] 0.3} "C_STEL") 1e-6)))))
+
+;; ------------------------------------------------------------ sub-nodes
+
+;; A toy of the rare-earth chain (bead bnm-1pq.31): oxides OX and metal MT
+;; inside chemicals CHEM, magnets MG inside fabricated metal FABM, EV
+;; motors EV and wind generators WG inside electrical machinery ELMA.
+(def sub-rows
+  (let [prod (fn [r p q v] {:region r :product p :quantity q :unit (if (= p "MOTO") "Meuro" "tonnes")
+                            :value_1995 (* 0.5 v) :value_2011 v :value_2022 (* 2.0 v)})
+        rec (fn [r o i phys share] {:region r :output o :input i :phys phys :share share
+                                    :share-1995 share :share-2022 share})
+        use (fn [r p user kind q] {:region r :product p :user user :kind kind :quantity q})]
+    {:products [{:code "CHEM" :name "chemicals" :unit "tonnes" :group "material"}
+                {:code "FABM" :name "fabricated metal" :unit "tonnes" :group "manufactured"}
+                {:code "ELMA" :name "electrical machinery" :unit "tonnes" :group "manufactured"}
+                {:code "MOTO" :name "motor vehicles" :unit "Meuro" :group "manufactured"}
+                {:code "SRV" :name "services" :unit "Meuro" :group "service"}]
+     :production [(prod "CN" "CHEM" 1000.0 10.0) (prod "JP" "CHEM" 500.0 6.0)
+                  (prod "CN" "FABM" 800.0 8.0) (prod "JP" "FABM" 400.0 5.0)
+                  (prod "CN" "ELMA" 600.0 9.0) (prod "JP" "ELMA" 300.0 6.0)
+                  (prod "CN" "MOTO" 40.0 40.0) (prod "JP" "MOTO" 50.0 50.0)]
+     :recipes (vec (for [r ["CN" "JP"]
+                         row [(rec r "CHEM" "CHEM" 0.2 0.2) (rec r "CHEM" "SRV" 0.001 0.1)
+                              (rec r "FABM" "CHEM" 0.1 0.1) (rec r "FABM" "SRV" 0.003 0.3)
+                              (rec r "ELMA" "FABM" 0.3 0.3) (rec r "ELMA" "SRV" 0.003 0.3)
+                              (rec r "MOTO" "ELMA" 2.0 0.2) (rec r "MOTO" "CHEM" 0.05 0.02)
+                              (rec r "MOTO" "SRV" 0.3 0.3)]]
+                     row))
+     :trade [{:product "CHEM" :origin "CN" :dest "CN" :quantity 950.0 :share 1.0}
+             {:product "CHEM" :origin "CN" :dest "JP" :quantity 50.0 :share (/ 50.0 550.0)}
+             {:product "CHEM" :origin "JP" :dest "JP" :quantity 500.0 :share (/ 500.0 550.0)}
+             {:product "FABM" :origin "CN" :dest "CN" :quantity 800.0 :share 1.0}
+             {:product "FABM" :origin "JP" :dest "JP" :quantity 400.0 :share 1.0}
+             {:product "ELMA" :origin "CN" :dest "CN" :quantity 550.0 :share 1.0}
+             {:product "ELMA" :origin "CN" :dest "JP" :quantity 50.0 :share (/ 50.0 350.0)}
+             {:product "ELMA" :origin "JP" :dest "JP" :quantity 300.0 :share (/ 300.0 350.0)}]
+     :supply [{:region "CN" :industry "A_CHEM" :product "CHEM" :industry-share 1.0}
+              {:region "JP" :industry "A_CHEM" :product "CHEM" :industry-share 1.0}
+              {:region "CN" :industry "A_ELMA" :product "ELMA" :industry-share 1.0}
+              {:region "JP" :industry "A_ELMA" :product "ELMA" :industry-share 1.0}]
+     :use [(use "CN" "CHEM" "A_CHEM" "industry" 200.0) (use "CN" "CHEM" "A_FABM" "industry" 80.0)
+           (use "CN" "CHEM" "F_HOUS" "final" 670.0)
+           (use "JP" "CHEM" "A_CHEM" "industry" 100.0) (use "JP" "CHEM" "A_FABM" "industry" 40.0)
+           (use "JP" "CHEM" "F_HOUS" "final" 410.0)
+           (use "CN" "FABM" "A_ELMA" "industry" 180.0) (use "CN" "FABM" "F_HOUS" "final" 620.0)
+           (use "JP" "FABM" "A_ELMA" "industry" 90.0) (use "JP" "FABM" "F_HOUS" "final" 310.0)
+           (use "CN" "ELMA" "A_MOTO" "industry" 80.0) (use "CN" "ELMA" "I_GFCF" "final" 470.0)
+           (use "JP" "ELMA" "A_MOTO" "industry" 100.0) (use "JP" "ELMA" "I_GFCF" "final" 250.0)]}))
+
+(def sub-specs
+  [{:code "OX" :name "oxides" :unit "tonnes" :group "material" :parent "CHEM"
+    :output {"CN" 9.0 "JP" 1.0} :price 0.1 :demand :parent}
+   {:code "MT" :name "metal" :unit "tonnes" :group "material" :parent "CHEM"
+    :output {"CN" 2.0} :price 0.2 :inputs {"OX" 1.2} :demand :parent}
+   {:code "MG" :name "magnets" :unit "tonnes" :group "manufactured" :parent "FABM"
+    :output {"CN" 5.4 "JP" 0.6} :price 0.05 :inputs {"MT" 0.3} :demand :parent}
+   {:code "EV" :name "EV motors" :unit "tonnes" :group "manufactured" :parent "ELMA"
+    :output {"JP" 30.0} :price :cost-plus :inputs {"MG" 0.1} :demand {:product "MOTO"}}
+   {:code "WG" :name "wind generators" :unit "tonnes" :group "manufactured" :parent "ELMA"
+    :output {"CN" 15.0} :price :cost-plus :inputs {"MG" 0.2} :demand {:final "I_GFCF"}}])
+
+(def split (sup/split-subnodes sub-rows sub-specs))
+
+(defn- prod-row [rows r p] (first (filter #(and (= r (:region %)) (= p (:product %))) (:production rows))))
+(defn- trade-of [rows p] (filter #(= p (:product %)) (:trade rows)))
+
+(deftest sub-nodes-split-their-parents
+  (testing "no specs: the rows as they were"
+    (is (= sub-rows (dissoc (sup/split-subnodes sub-rows []) :split))))
+  (testing "the sub-nodes are products, with their parent"
+    (let [ps (into {} (map (juxt :code identity) (:products split)))]
+      (is (= "CHEM" (:parent (ps "OX"))))
+      (is (= "ELMA" (:parent (ps "WG"))))
+      (is (= "tonnes" (:unit (ps "MG"))))))
+  (testing "the parent loses exactly what its sub-nodes take, in tonnes and value, every year"
+    (let [rest (prod-row split "CN" "CHEM")]
+      (is (close? (- 1000.0 9.0 2.0) (:quantity rest) 1e-9))
+      (is (close? (- 10.0 0.9 0.4) (:value_2011 rest) 1e-9))
+      (is (close? (* 0.5 (- 10.0 0.9 0.4)) (:value_1995 rest) 1e-9))
+      (is (close? 0.9 (:value_2011 (prod-row split "CN" "OX")) 1e-9))
+      (is (close? 0.45 (:value_1995 (prod-row split "CN" "OX")) 1e-9))))
+  (testing "a cost-plus sub-node: its parent's price plus its chain inputs over the parent's input share"
+    ;; ELMA in JP: 6/300 per t, inputs 0.6 of its value; MG at 0.05 per t
+    (is (close? (* 30.0 (+ (/ 6.0 300.0) (/ (* 0.1 0.05) 0.6))) (:value_2011 (prod-row split "JP" "EV")) 1e-12)))
+  (testing "balances closed: output, trade, use and the parents' inputs"
+    (let [b (sup/split-balances sub-rows split)]
+      (doseq [[k v] (dissoc b :clamped)] (is (< v 1e-9) (str k " " v)))
+      (is (empty? (:clamped b))))))
+
+(deftest sub-nodes-take-supply-shares-from-production
+  (let [ox (trade-of split "OX")
+        by (group-by :dest ox)]
+    (testing "every destination draws on the origins by their output shares"
+      (doseq [d ["CN" "JP"]]
+        (is (= {"CN" 0.9 "JP" 0.1} (into {} (for [r (by d)] [(:origin r) (:share r)]))) d)))
+    (testing "each origin ships its output"
+      (doseq [[o x] {"CN" 9.0 "JP" 1.0}]
+        (is (close? x (reduce + (map :quantity (filter #(= o (:origin %)) ox))) 1e-9))))
+    (testing "the chain's demand where the user is made, the rest by the parent's use"
+      ;; MT in CN takes 1.2 x 2 t; the other 7.6 t go 950:550
+      (let [u (fn [d] (reduce + (map :quantity (by d))))]
+        (is (close? (+ 2.4 (* 7.6 (/ 950.0 1500.0))) (u "CN") 1e-9))
+        (is (close? (* 7.6 (/ 550.0 1500.0)) (u "JP") 1e-9))))
+    (testing "the parent's trade gives up what the sub-nodes ship"
+      ;; JP uses 7.6 x 550/1500 t of oxides, 0.9 of them CN's, and its
+      ;; metal all from CN: 0.18 t for its magnets, 0.2 x 550/1500 other.
+      ;; JP's 0.1 of CN's oxides has no chemicals flow to come out of: it
+      ;; is taken from both domestic flows and given back on CN to JP, so
+      ;; every origin's and destination's total falls by its sub-nodes'
+      (let [t (into {} (for [r (trade-of split "CHEM")] [[(:origin r) (:dest r)] r]))
+            ox-jp (* 7.6 (/ 550.0 1500.0))
+            ox-cn (+ 2.4 (* 7.6 (/ 950.0 1500.0)))
+            mt-jp (+ 0.18 (* 0.2 (/ 550.0 1500.0)))]
+        (is (close? (+ (- 50.0 (* 0.9 ox-jp) mt-jp) (* 0.1 ox-cn)) (:quantity (t ["CN" "JP"])) 1e-9))
+        (is (close? (- 500.0 (* 0.1 ox-jp) (* 0.1 ox-cn)) (:quantity (t ["JP" "JP"])) 1e-9))
+        (is (nil? (t ["JP" "CN"])))))))
+
+(deftest sub-nodes-carry-their-chain
+  (let [g (sup/graph split)
+        row (fn [r o i] (get-in g [:recipes [r o] i]))]
+    (testing "a chain input is critical whatever its share"
+      (is (= :critical (sup/classify g "CN" "MT" "OX")))
+      (is (= :critical (sup/classify g "CN" "MG" "MT")))
+      (is (= :critical (sup/classify g "JP" "EV" "MG")))
+      (is (close? 1.2 (:phys (row "CN" "MT" "OX")) 1e-12))
+      (is (close? (/ (* 1.2 0.1) 0.2) (:share (row "CN" "MT" "OX")) 1e-12) "valued at the input's world price"))
+    (testing "a sub-node keeps its parent's recipe per tonne, its chain in place of the parent's own"
+      (is (close? 0.001 (:phys (row "CN" "OX" "SRV")) 1e-12))
+      (is (close? 0.1 (:share (row "CN" "OX" "SRV")) 1e-12))
+      (is (zero? (or (:phys (row "CN" "MT" "CHEM")) 0.0)) "MT's 1.2 t of oxide covers its 0.2 t of chemicals")
+      (is (zero? (or (:share (row "CN" "MT" "SRV")) 0.0))
+          "its oxide worth 0.6 of its value, above the parent's 0.3 of inputs: nothing else is left"))
+    (testing "the other users of the parent take the sub-node's other demand with it"
+      (let [ch (:phys (row "JP" "MOTO" "CHEM")) ox (:phys (row "JP" "MOTO" "OX")) mt (:phys (row "JP" "MOTO" "MT"))]
+        (is (pos? ox))
+        (is (pos? mt))
+        (is (close? 0.05 (+ ch ox mt) 1e-12) "the parent's row split, its tonnes kept")
+        (is (close? (/ ox (+ ch ox mt)) (/ (* 7.6 (/ 550.0 1500.0)) 550.0) 1e-12)
+            "by the sub-node's other demand over the parent's use in the region")))
+    (testing "EV motors go to motor vehicles, by their output"
+      (is (close? (/ (* 30.0 (/ 50.0 90.0)) 50.0) (:phys (row "JP" "MOTO" "EV")) 1e-12))
+      (is (close? (- 2.0 (/ (* 30.0 (/ 50.0 90.0)) 50.0)) (:phys (row "JP" "MOTO" "ELMA")) 1e-12)))
+    (testing "wind generators are capital: final demand, no recipe"
+      (is (empty? (filter #(= "WG" (:input %)) (sup/recipe-rows g))))
+      (is (= #{"I_GFCF"} (set (map :user (sup/users g "CN" "WG"))))))
+    (testing "a cut of half of CN's oxides passes down the chain at CN's share of supply"
+      (let [o (sup/outage g {["CN" "OX"] 0.5})
+            a #(get-in o [:products %] 1.0)
+            mt (a ["CN" "MT"])]
+        (is (< 0.97 (a ["JP" "OX"]) 1.0) "JP's oxides feel only their chemicals, a little oxide among them")
+        (is (close? (+ (* 0.9 0.5) (* 0.1 (a ["JP" "OX"]))) mt 1e-6) "metal: 0.9 of its oxide from CN, half of it gone")
+        (doseq [n [["CN" "MG"] ["JP" "MG"] ["JP" "EV"] ["CN" "WG"]]]
+          (is (close? mt (a n) 1e-6) (str n " follows the metal")))
+        (is (< 0.9 (a ["JP" "MOTO"]) 1.0) "cars feel their EV motors, a small substitutable share")))))
+
+(deftest a-sub-node-plays-its-parents-part
+  ;; machinery in a raw product's recipe is its capital's upkeep,
+  ;; substitutable whatever its share: so is a sub-node of it
+  (let [g (sup/graph {:products [{:code "C_ELMA" :unit "tonnes" :group "manufactured"}
+                                 {:code "PM" :unit "tonnes" :group "manufactured" :parent "C_ELMA"}
+                                 {:code "ORE" :unit "tonnes" :group "raw"}]
+                      :recipes [{:region "R" :output "ORE" :input "C_ELMA" :phys 0.01 :share 0.2}
+                                {:region "R" :output "ORE" :input "PM" :phys 0.01 :share 0.2}]})]
+    (is (= :substitutable (sup/classify g "R" "ORE" "C_ELMA")))
+    (is (= :substitutable (sup/classify g "R" "ORE" "PM")))))
+
+;; ------------------------------------------------------------ rare earths
+
+(deftest separation-shares-come-from-production
+  (let [st (fn [iso y q k] {:commodity "rare-earths" :stage "separation" :iso iso :year y :quantity q
+                            :unit "t REO" :source (str "BNM-CHEM" k) :known k})
+        rows [(st "CHN" 2024 334203.0 2026) (st "MYS" 2024 21661.9 2026) (st "USA" 2024 4300.0 2026)
+              (st "CHN" 2024 300000.0 2025)]
+        chem [{:commodity "rare-earths" :stage "separation" :iso "CHN" :year 2024 :known 2026
+               :quantity 254000.0 :method "quota"}]
+        up (re/region-shares (re/separation-q rows chem :balance 2024 2026))
+        lo (re/region-shares (re/separation-q rows chem :quota 2024 2026))]
+    (is (close? (/ 334203.0 (+ 334203.0 21661.9 4300.0)) (up "CN") 1e-12) "the balance: China's upper bound, the latest edition")
+    (is (close? (/ 254000.0 (+ 254000.0 21661.9 4300.0)) (lo "CN") 1e-12) "its quota: the lower bound")
+    (is (contains? up "WA") "Malaysia in the rest of Asia")
+    (is (close? 1.0 (reduce + (vals lo)) 1e-12))
+    (is (= [2024] (re/quota-years chem 2026)))
+    (is (empty? (re/quota-years chem 2025)) "not known before its edition")))
+
+(deftest the-rare-earth-chain-is-sized-from-its-sources
+  (let [world {"284610" {:value 951135.869 :tonnes 30808.916} "284690" {:value 3110497.518 :tonnes 44699.292}
+               "280530" {:value 971408.544 :tonnes 10898.288} "850511" {:value 4218395.108 :tonnes 150926.478}}
+        sp (re/specs {:world world
+                      :split {"C_REMT" 1535.06 "C_REOX" 6418.4}
+                      :separation {:world 109318.0 :shares {"CN" 0.92 "WA" 0.08}}
+                      :ev {"JP" 13000.0 "US" 17800.0}
+                      :wind {"CN" {:onshore 17000.0 :offshore 110.0} "GB" {:onshore 700.0 :offshore 500.0}}
+                      :intensity {:onshore 14.0 :offshore 239.0}
+                      :elma {"CN" 3.0e7 "JP" 1.0e7}})
+        by (into {} (map (juxt :code identity)) sp)
+        uv (fn [v t] (* (/ v t) 1e-3 re/eur-per-usd))
+        mt (/ 1535.06 (uv 971408.544 10898.288))
+        mg (/ (* re/magnet-of-metal mt) re/re-in-magnet)
+        ev-mg (* (+ 13000.0 17800.0) (/ (* re/ev-re-kg 1e-3) re/re-in-magnet))
+        wind-mg (/ (+ (* 17.7 14.0) (* 0.61 239.0)) re/re-in-magnet)]
+    (testing "oxides: the separation stage's world output, by its supply shares"
+      (is (close? (* 0.92 109318.0) (get-in by ["C_REOX" :output "CN"]) 1e-6))
+      (is (close? (uv (+ 951135.869 3110497.518) (+ 30808.916 44699.292)) (get-in by ["C_REOX" :price]) 1e-12)))
+    (testing "metal: its value in chemicals n.e.c. by trade, at its unit value, from 1.17 t of oxide"
+      (is (close? mt (reduce + (vals (get-in by ["C_REMT" :output]))) 1e-6))
+      (is (close? (/ 336.48 288.48) (get-in by ["C_REMT" :inputs "C_REOX"]) 1e-12)))
+    (testing "magnets: China about 90%, 30% rare earth"
+      (is (close? (* 0.9 mg) (get-in by ["C_NDFB" :output "CN"]) 1e-6))
+      (is (= {"C_REMT" 0.3} (get-in by ["C_NDFB" :inputs]))))
+    (testing "EV motors: the IEA's 0.5 kg of rare earths a car, as magnet, in a 70 kg motor"
+      (is (close? (* 13000.0 0.07) (get-in by ["C_EVMO" :output "JP"]) 1e-9))
+      (is (close? (/ (/ 0.0005 0.3) 0.07) (get-in by ["C_EVMO" :inputs "C_NDFB"]) 1e-12)))
+    (testing "wind: 14 t of rare earths per GW onshore, 239 offshore, as magnet"
+      (let [w (get-in by ["C_WGEN" :output])
+            m (get-in by ["C_WGEN" :inputs "C_NDFB"])]
+        (is (close? wind-mg (* m (reduce + (vals w))) 1e-9))
+        (is (= {:final "I_GFCF"} (get-in by ["C_WGEN" :demand])))))
+    (testing "the rest of the magnets to motors and electronics, where electrical machinery is made"
+      (let [pm (get-in by ["C_PMMO" :output])
+            m (get-in by ["C_PMMO" :inputs "C_NDFB"])]
+        (is (close? (- mg ev-mg wind-mg) (* m (reduce + (vals pm))) 1e-6))
+        (is (close? 3.0 (/ (pm "CN") (pm "JP")) 1e-9))))))
+
+(deftest a-split-moves-no-row-across-the-threshold
+  ;; cars' chemicals at 5.01% of their value: critical; the split takes
+  ;; oxides and metal out of the row, and the rest stays critical, judged
+  ;; at the family's share, while the sub-nodes' own slivers are not
+  (let [rows (update sub-rows :recipes (fn [rs] (mapv #(if (and (= "MOTO" (:output %)) (= "CHEM" (:input %)))
+                                                         (assoc % :share 0.0501 :share-1995 0.0501 :share-2022 0.0501) %)
+                                                      rs)))
+        g0 (sup/graph rows)
+        g (sup/graph (sup/split-subnodes rows sub-specs))]
+    (is (= :critical (sup/classify g0 "JP" "MOTO" "CHEM")))
+    (is (< (get-in g [:recipes ["JP" "MOTO"] "CHEM" :share]) 0.05) "the rest's own share under the threshold")
+    (is (= :critical (sup/classify g "JP" "MOTO" "CHEM")))
+    (is (= :substitutable (sup/classify g "JP" "MOTO" "OX")))))
+
+(deftest a-family-share-is-scaled-with-its-row
+  ;; an output whose inputs add to more than its value has its shares
+  ;; scaled (clean-shares): a split row's family share with them, so a
+  ;; 7.2% read that is 3.7% scaled stays substitutable
+  (let [g (sup/graph {:products [{:code "C_CHEM" :unit "tonnes" :group "material"}
+                                 {:code "ORE" :unit "tonnes" :group "raw"}
+                                 {:code "SRV" :unit "Meuro" :group "service"}
+                                 {:code "SRV2" :unit "Meuro" :group "service"}]
+                      :recipes [{:region "R" :output "ORE" :input "C_CHEM" :phys 0.004 :share 0.0721 :family-share 0.0722}
+                                {:region "R" :output "ORE" :input "SRV" :share 0.95}
+                                {:region "R" :output "ORE" :input "SRV2" :share 0.9}]})]
+    (is (= :substitutable (sup/classify g "R" "ORE" "C_CHEM")))))

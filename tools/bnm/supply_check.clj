@@ -17,7 +17,12 @@
     three shocks, qualitatively: natural gas for use in Europe cut 40% (N
       fertiliser, then agriculture, steel), Middle East crude output cut
       50% (refining in Asia, against Europe and the Americas), US lignite
-      cut 10% and Indonesia's coal 50% (a station's coals one pool).
+      cut 10% and Indonesia's coal 50% (a station's coals one pool);
+    the rare-earth chain (bnm.rare-earths): its sub-nodes' sizes and the
+      split's balances, supply shares from production, China's separation
+      cut 50% down to magnets, EV motors and wind generators, the chain's
+      multipliers against chemicals n.e.c.'s, and the shocks above with
+      and without the sub-nodes.
 
   The checks marked ok/FAIL are the real-data tests (kept out of the unit
   suite, which runs on synthetic graphs: they take minutes); the run
@@ -25,7 +30,9 @@
 
     jolt -A:tools -M -m bnm.supply-check"
   (:require [bnm.csv :as csv]
+            [bnm.essentiality :as es]
             [bnm.food :as food]
+            [bnm.rare-earths :as re]
             [bnm.supply :as sup]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -493,10 +500,124 @@
       (check (apply < (take 6 pressures)) "storage pressure rises month by month as the stocks are drawn (months 1-6)")
       (check (< (below-steady path steady) 1e-4) "no month loses more than the steady state"))))
 
+;; ---------------------------------------------------------------- rare earths
+
+(defn- world-avail
+  "The output-weighted availability of `product` over regions (tonnes in
+  the graph's production rows) in an outage's :products."
+  [g products product]
+  (let [q (for [r (:production g) :when (= product (:product r))
+                :let [x (parse-double (:quantity r))] :when (pos? x)]
+            [(:region r) x])
+        t (reduce + 0.0 (map second q))]
+    (/ (reduce + 0.0 (for [[r x] q] (* x (get products [r product] 1.0)))) t)))
+
+(defn- multiplier
+  "Value added lost in the world (EUR M, 2011) per EUR of use lost when
+  every region's use of `product` is cut by `f` (steady state), as the
+  essentiality losses read it (bnm.essentiality: lambda = loss / (f x use))."
+  [g h va uses product f]
+  (let [regions (distinct (map first (keys (:recipes g))))
+        use (reduce + 0.0 (for [r regions] (get uses [r product] 0.0)))
+        cut (into {} (for [r regions :when (pos? (get uses [r product] 0.0))] [[r product] f]))
+        o (sup/outage g cut {:at :use :hypergraph h :tol (* f 1e-3)})]
+    {:use use :loss (:world (es/outage-loss va (:products o))) :lambda (/ (:world (es/outage-loss va (:products o))) (* f use))}))
+
+(defn- shift
+  "The largest change of any EXIOBASE product's availability (nodes in
+  both graphs, sub-nodes aside) between two outages' :products."
+  [g a b]
+  (let [ks (distinct (concat (keys a) (keys b)))
+        sub? #(get-in g [:products (second %) :parent])]
+    (reduce (fn [[m k0] k] (let [d (Math/abs (- (get a k 1.0) (get b k 1.0)))] (if (> d m) [d k] [m k0])))
+            [0.0 nil] (remove sub? ks))))
+
+(defn- rare-earth-report
+  "The rare-earth chain (bead bnm-1pq.31; bnm.rare-earths): its nodes and
+  sizes, the balances of the split, supply shares from production, a cut
+  of China's separation passed down to magnets, EV motors and wind
+  generators, the chain's multipliers against chemicals n.e.c.'s, and the
+  existing shocks with and without the sub-nodes."
+  [rows0 rows g h g0 h0]
+  (println "== rare earths: the chain as sub-nodes (bnm.rare-earths, bnm.supply/split-subnodes)")
+  (let [specs (get-in rows [:split :specs])
+        prod (group-by :product (:production g))
+        num #(parse-double %)]
+    (doseq [{:keys [code name parent inputs basis]} specs]
+      (let [rs (prod code)
+            t (reduce + 0.0 (map (comp num :quantity) rs))
+            v (reduce + 0.0 (map (comp num :value_2011) rs))
+            top (take 4 (sort-by (comp - second) (for [r rs] [(:region r) (/ (num (:quantity r)) t)])))]
+        (println (format "  %s %-44s in %s: %,10.0f t  EUR %,7.0f M (%5.1f EUR/kg)  %s" code name parent t v (/ (* 1e3 v) t)
+                         (str/join " " (for [[r s] top] (format "%s %.2f" r s)))))
+        (println (format "         chain %s  basis %s" (or inputs "-") (dissoc basis :split-eur-m)))))
+    (let [b (sup/split-balances rows0 rows)]
+      (println (format "  balances (largest relative residual): output %.1e, trade %.1e, use %.1e, inputs %.1e; %d clamped %s"
+                       (:output b) (:trade b) (:use b) (:inputs b) (count (:clamped b)) (vec (:clamped b))))
+      (check (every? #(< % 1e-9) ((juxt :output :trade :use :inputs) b))
+             "every family's output, trade, use and inputs conserved by the split")
+      (check (< (reduce + 0.0 (map :short (:clamped b))) 1e-2) "nothing material clamped"))
+    (let [ox-spec (first (filter #(= "C_REOX" (:code %)) specs))
+          s-cn (/ (get-in ox-spec [:output "CN"]) (reduce + (vals (:output ox-spec))))
+          lo (re/load-specs dir rows0 {:bound :quota})
+          s-lo (let [o (:output (first (filter #(= "C_REOX" (:code %)) lo)))] (/ (o "CN") (reduce + (vals o))))
+          imp (get-in g [:imports ["DE" "C_REOX"]])]
+      (println (format "  China's share of separation, %d: %.3f (balance, upper bound), %.3f (quota, lower bound); exports gave it 0.17-0.22 (essentiality review)"
+                       (get-in ox-spec [:basis :shares-year]) s-cn s-lo))
+      (println (format "  Germany draws its oxides from %s" (str/join " " (for [[o s] (sort-by (comp - val) imp)] (format "%s %.3f" o s)))))
+      (check (< (Math/abs (- (get imp "CN" 0.0) s-cn)) 1e-9) "a region's oxide supply shares are the production shares")
+      (println "== rare-earth shock: China's separation (C_REOX output) cut 50%")
+      (let [o (sup/outage g {["CN" "C_REOX"] 0.5} {:hypergraph h})
+            ps (:products o)
+            w (into {} (for [p ["C_REOX" "C_REMT" "C_NDFB" "C_EVMO" "C_WGEN" "C_PMMO" "C_MOTO" "C_ELMA" "C_CHEM"]]
+                         [p (- 1.0 (world-avail g ps p))]))
+            expect (* 0.5 s-cn)]
+        (println (format "  world loss: oxides %s, metal %s, NdFeB %s, EV motors %s, wind generators %s, magnet motors n.e.c. %s; cars %.2f%%, electrical machinery %.2f%%, chemicals %.3f%%"
+                         (pct (w "C_REOX")) (pct (w "C_REMT")) (pct (w "C_NDFB")) (pct (w "C_EVMO")) (pct (w "C_WGEN"))
+                         (pct (w "C_PMMO")) (* 100 (w "C_MOTO")) (* 100 (w "C_ELMA")) (* 100 (w "C_CHEM"))))
+        (doseq [[hz e] [["3 months" 0.05] ["12 months" 0.15] ["steady" 0.30]]]
+          (let [rho (fn [s] (min 1.0 (/ (* e (- 1.0 s)) s)))]
+            (println (format "  less reallocation at %s (bnm.essentiality, e_H %.2f): rho %.3f, NdFeB loss %s (quota bound: %s)"
+                             hz e (rho s-cn) (pct (* (w "C_NDFB") (- 1.0 (rho s-cn))))
+                             (pct (* 0.5 s-lo (- 1.0 (rho s-lo))))))))
+        (check (< (Math/abs (- (w "C_NDFB") expect)) (* 0.05 expect))
+               (format "world NdFeB loses about half of China's share of separation (%.3f against %.3f)" (w "C_NDFB") expect))
+        (check (and (< (Math/abs (- (w "C_EVMO") (w "C_NDFB"))) 0.01) (< (Math/abs (- (w "C_WGEN") (w "C_NDFB"))) 0.01))
+               "EV motors and wind generators lose with their magnets")
+        (check (< (w "C_MOTO") 0.01) "cars lose under 1% (EV motors a small part of them in 2011)")))
+    (println "== rare-earth multipliers (steady, every region's use cut 50%; value added lost per EUR of use lost)")
+    (let [va (es/value-added g (:production g))
+          va0 (es/value-added g0 (:production rows0))
+          uses (es/use-values (:trade rows) (:production g))
+          uses0 (es/use-values (:trade rows0) (map #(update-vals % (fn [v] (if (number? v) (str v) v))) (:production rows0)))
+          m (into {} (for [p ["C_REOX" "C_REMT" "C_NDFB" "C_CHEM"]] [p (multiplier g h va uses p 0.5)]))
+          m0 (multiplier g0 h0 va0 uses0 "C_CHEM" 0.5)]
+      (doseq [[p {:keys [use loss lambda]}] (sort m)]
+        (println (format "  %-7s use EUR %,10.0f M  loss %,10.0f M  lambda %.2f" p use loss lambda)))
+      (println (format "  C_CHEM without the sub-nodes: use EUR %,10.0f M  loss %,10.0f M  lambda %.2f" (:use m0) (:loss m0) (:lambda m0)))
+      (check (> (:lambda (m "C_REOX")) (:lambda m0))
+             (format "rare-earth oxides' multiplier (%.2f) above chemicals n.e.c.'s (%.2f): it reaches the magnet chain"
+                     (:lambda (m "C_REOX")) (:lambda m0))))
+    (println "== the existing shocks with and without the sub-nodes (largest change of an EXIOBASE product's availability)")
+    (doseq [[what cut opts] [["natural gas for use in Europe cut 40%" (into {} (for [r europe] [[r "C_GASE"] 0.4])) {:at :use}]
+                             ["Middle East crude output cut 50%" {["WM" "C_COIL"] 0.5} {}]]]
+      (let [a (:products (sup/outage g cut (assoc opts :hypergraph h)))
+            b (:products (sup/outage g0 cut (assoc opts :hypergraph h0)))
+            [d k] (shift g a b)]
+        ;; not zero: the magnet motors a region's machinery holds now come
+        ;; from where they are made (China 0.63), not EXIOBASE's trade, so
+        ;; Bulgaria's power-heat-lignite loop feels China's machinery under
+        ;; the crude cut (0.4%)
+        (check (< d 0.01) (format "%s: largest change %.4f (%s), under 1%%" what d k))))))
+
 (defn -main [& _]
   (if-not (.exists (io/file dir "recipes.csv"))
     (println "bnm.supply-check: no" dir "- run python -I scripts/product-graph.py first")
-    (let [g (sup/load-graph dir)]
+    (let [rows0 (sup/load-rows dir {:subnodes false})
+          specs (re/load-specs dir rows0)
+          rows (cond-> rows0 specs (sup/split-subnodes specs))
+          rows (update rows :production #(mapv (fn [r] (update-vals r (fn [v] (if (number? v) (str v) v)))) %))
+          g (assoc (sup/graph rows) :split (:split rows) :production (:production rows))]
       (size-report g)
       (rule-report g)
       (when (.exists (io/file dir "overrides.csv")) (override-report g))
@@ -506,6 +627,9 @@
       (validation-report g)
       (let [h (sup/hypergraph g)]
         (shock-report g h)
+        (when specs
+          (let [g0 (sup/graph rows0)]
+            (rare-earth-report rows0 rows g h g0 (sup/hypergraph g0))))
         (if (.exists (io/file dir "stocks.csv"))
           (stock-report g h (sup/stock-rows (str (io/file dir "stocks.csv"))))
           (println "== stocks: no" dir "stocks.csv - run python -I scripts/supply-stocks.py")))

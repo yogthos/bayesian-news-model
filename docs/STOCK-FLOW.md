@@ -939,6 +939,103 @@ availability, none bought in addition); and value shares the monetary
 tables route differently from the physical flows where the hybrid table
 has no physical row to correct them (services, goods in money).
 
+### Rare earths as sub-nodes (bead bnm-1pq.31)
+
+The essentiality review found rare earths ranked low for two reasons:
+they sat inside chemicals n.e.c. (C_CHEM), whose multiplier is that of
+the average chemical, with nothing beneath it; and trade shares hid
+China's separation: exports gave it 0.17-0.22 of rare-earth compounds
+and metal, stages.csv 0.85 and more. bnm.supply/split-subnodes now
+splits products out of their EXIOBASE parent with their own recipe,
+users and supply shares, and load-graph splits the rare-earth chain
+(bnm.rare-earths) by default ({:subnodes false} for the bare tables).
+
+The nodes, 2011 as the graph is:
+
+| node | parent | t | EUR M | made |
+|---|---|---|---|---|
+| C_REOX oxides and compounds, separated | C_CHEM | 109,318 | 4,224 | CN 0.93, WA 0.06 |
+| C_REMT metals | C_CHEM | 23,973 | 1,535 | as separation |
+| C_NDFB NdFeB magnets | C_FABM | 67,923 | 2,280 | CN 0.90, JP 0.07 |
+| C_EVMO EV traction motors | C_ELMA | 3,411 | 73 | US 0.37, JP 0.27, CN 0.11 |
+| C_WGEN permanent-magnet wind generators | C_ELMA | 13,388 | 298 | CN 0.36, GB 0.18, US 0.13 |
+| C_PMMO magnet motors and electronics n.e.c. | C_ELMA | 2,749,233 | 18,866 | by C_ELMA's output |
+
+Sizes. Oxides: the separation stage's 2011 world output (stages.csv,
+the 2026 edition), at BACI's 2011 unit value of 284610 and 284690 (54
+USD/kg; split-parent's trade share of C_CHEM would give 166 kt: the
+compounds' trade runs ahead of their output). Metal:
+C_CHEM's world output split by BACI 2011 trade (bnm.concordance/
+split-parent, 280530), at its unit value; 1.166 t of oxide per t
+(Nd2O3 over 2 Nd). Magnets: 0.85 of the metal (a prior: magnets take the
+Nd, Pr, Dy and Tb metal) over 0.3 t of rare earth per t of NdFeB (Pavel
+et al. 2017). Split-parent would make magnets 1 Mt, fourteen times the
+industry: fabricated metal is little traded, magnets much, so a trade
+share overstates them. EV motors: 48,734 battery-electric and plug-in
+cars sold in 2011 (IEA) at 70 kg of motor (DOE 2023: 40-100 kg of
+electrical steel per vehicle motor) and 0.5 kg of rare earths a car
+(IEA 2021), 1.67 kg of magnet. Wind generators: the rare earths of
+2011's additions at recipe-priors.edn's 14 t per GW onshore and 239
+offshore, as magnet, in generators of 0.65 t of magnet over 3.65 t per
+MW (DOE 2023). Magnet motors and electronics take the remaining 65 kt
+of magnet, at the EV motor's 2.4% magnet by mass, made where electrical
+machinery is. Magnets, motors and generators are valued cost-plus: the
+parent's price plus the chain inputs at their world prices over the
+parent's input share (850511's unit value, 28 USD/kg, mixes in cheaper
+magnets and lies under the metal an NdFeB magnet held at 2011's price).
+
+The split. A sub-node keeps its parent's recipe per tonne (the
+industry-technology assumption), each value share times (T - c)/T (T
+the parent's input share, c its chain's), and its chain inputs
+critical (a motor has no substitute for its magnet), a chain input
+replacing as many tonnes of the family's own row. The parent keeps the
+rest of its output, values, trade, uses, supply shares and inputs; the
+output the chain does not take goes to the parent's users (every
+recipe and final use of the parent in a region gives up the sub-node's
+part of the region's use), EV motors into motor vehicles, wind
+generators to gross fixed capital formation. A parent row that gives
+up part of itself is judged at the family's share, so no row crosses
+the critical threshold by the split (Portugal's pipeline transport, its
+machinery at 5.003% of its value, had turned substitutable). Every
+family's output, trade, use and recipe inputs are conserved to 1e-15
+(split-balances); three rows (electrical machinery's fabricated metal in
+Luxembourg, Switzerland and Germany, under 3e-4 t/t) had too little for
+the generators' magnets and were clamped.
+
+Supply shares from production. Every region draws its oxides and metal
+from the separation stage's country shares of the latest year with a
+quota (2024): China 0.927 by the balance (its upper bound), 0.905 at its
+MIIT quota (the lower bound, `{:bound :quota}`); magnets from China 0.90
+(IEA 2021; the European Commission's 2020 foresight study gives 85-90%
+of capacity), the rest an assumption (Japan 0.07, Germany 0.01, Japanese
+makers' plants in the rest of Asia 0.02). The user nodes by their own
+output. Today's concentration on 2011's structure.
+
+What it shows (tools/bnm/supply_check.clj). China's separation cut 50%:
+world oxides, metal, NdFeB, EV motors, wind generators and magnet
+motors all lose 46% (half of China's 0.927), cars 0.13%, electrical
+machinery 0.23%, chemicals 0.13%. The outage does not reallocate; at
+bnm.essentiality's spare capacity (0.05, 0.15 and 0.30 at 3 and 12
+months and steady) the others can make up 0.4-2.4% of the shortfall, so
+NdFeB loses 45-46% (44-45% at the quota bound). Multipliers (value added
+lost in the world per EUR of use lost, every region's use cut 50%,
+steady): oxides 12.8, metal 33.6, magnets 22.2, against chemicals
+n.e.c.'s 7.4 with and without the sub-nodes. The existing shocks (gas in
+Europe, Middle East crude) and the report's lines above are unchanged
+to the printed digits; the largest change of any EXIOBASE product's
+availability is 0.14% under the gas cut and 0.41% under the crude cut
+(Bulgaria's lignite, heat and coal power: the magnet motors in its
+machinery now come from where they are made, China 0.63, whose
+machinery loses 31% under the crude cut).
+
+Left out: the mine stage (the ore is inside other non-ferrous ores and
+chemical minerals); domestic preference (a pooled world market);
+battery-electric cars as a node of their own (EV motors enter motor
+vehicles as a small substitutable input, so a magnet cut barely reaches
+cars in 2011); 2011's own magnet shares (Japan larger then). The
+essentiality losses read production.csv and trade.csv themselves; they
+need bnm.supply/load-rows' :production and :trade to see the sub-nodes.
+
 ### Stocks: an outage drains a stock before it cuts a flow (bead bnm-1pq.23)
 
 `supply/outage` is instantaneous: a cut flows straight through the

@@ -29,9 +29,17 @@
                 shortfall before the cut passes on; outage is its limit.
 
   One year (2011) of structure: recipes do not change in it, and the
-  value shares of 1995 and 2022 are kept to see how they moved."
+  value shares of 1995 and 2022 are kept to see how they moved.
+
+  Sub-nodes (`split-subnodes`) are products split out of an EXIOBASE
+  parent with their own recipe, users and supply shares from production:
+  load-graph splits the rare-earth chain (bnm.rare-earths: oxides and
+  metal out of chemicals n.e.c., NdFeB magnets out of fabricated metal,
+  EV motors, wind generators and magnet motors out of electrical
+  machinery)."
   (:require [bnm.csv :as csv]
             [bnm.hypergraph :as hg]
+            [bnm.rare-earths :as re]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -245,6 +253,13 @@
 
 (declare pool)
 
+(defn root
+  "The EXIOBASE product a code stands for: a sub-node's parent
+  (`split-subnodes`), else the code. A sub-node plays its parent's part in
+  the rule's sets (equipment, yield inputs, upkeep, heat outputs)."
+  [products code]
+  (or (get-in products [code :parent]) code))
+
 (defn power-station?
   "Is `output` an electricity carrier (C_POW*, by source) or steam and
   hot water: a power station or a heat plant, whose `upkeep` is deferred
@@ -326,18 +341,25 @@
   its fuel alone: by the feedstock test, or by value share for the
   `uncalorific-fuels`; the other goods a power station buys, at any
   share, are upkeep (EXIOBASE's industry mix gives Bulgaria's wind power
-  chemicals at 18% of its value and steam at 13%)."
-  [products {:keys [input output phys share negligible]}]
-  (let [{g :group :as ip} (products input)
+  chemicals at 18% of its value and steam at 13%). A sub-node's chain
+  input (`split-subnodes`: the oxide in a metal, the magnet in a motor) is
+  critical whatever its share; a parent's row that gave up part of itself
+  to sub-nodes is judged at the family's share (:family-share), so the
+  split moves no row across the threshold."
+  [products {:keys [input output phys negligible chain family-share] :as r}]
+  (let [share (max (or (:share r) 0.0) (or family-share 0.0))
+        {g :group :as ip} (products input)
         op (products output)
         carrier? (and (= "TJ" (:unit op)) (= "energy" (:group op)))]
-    (if (and g (not= g "service")
-             (not (and (yield-inputs input) (crops output)))
-             (not (and (equipment input) (= "raw" (:group op))))
-             (or (and (or (not carrier?) (uncalorific-fuels input)) (not negligible) (>= (or share 0.0) critical-share))
-                 (feedstock? ip op input output phys)))
+    (cond
+      chain :critical
+      (and g (not= g "service")
+           (not (and (yield-inputs (root products input)) (crops output)))
+           (not (and (equipment (root products input)) (= "raw" (:group op))))
+           (or (and (or (not carrier?) (uncalorific-fuels input)) (not negligible) (>= (or share 0.0) critical-share))
+               (feedstock? ip op input output phys)))
       :critical
-      :substitutable)))
+      :else :substitutable)))
 
 (defn- clean-shares
   "Recipe rows `rs` with their value shares fit for use: a share above 1
@@ -348,14 +370,16 @@
   [rs]
   (let [rs (mapv (fn [{:keys [share] :as r}]
                    (cond (nil? share) r
-                         (or (> share 1.0) (neg? share)) (assoc r :share nil :share-raw share :share-flag :over-1)
+                         (or (> share 1.0) (neg? share)) (-> r (assoc :share nil :share-raw share :share-flag :over-1)
+                                                             (dissoc :family-share))
                          :else (assoc r :share-raw share)))
                  rs)
         tot (reduce (fn [m {:keys [region output share]}] (if share (update m [region output] (fnil + 0.0) share) m)) {} rs)]
     (mapv (fn [{:keys [region output share] :as r}]
             (let [t (tot [region output])]
               (if (and share t (>= t 1.0))
-                (assoc r :share (* share (/ max-input-share t)) :share-flag :scaled)
+                (cond-> (assoc r :share (* share (/ max-input-share t)) :share-flag :scaled)
+                  (:family-share r) (update :family-share * (/ max-input-share t)))
                 r)))
           rs)))
 
@@ -408,9 +432,10 @@
   `material-feedstock`, an energy bundle)? A material or manufactured
   good in tonnes, but for `petrochemical`, or one of `heat-outputs`."
   [products output]
-  (let [{g :group u :unit} (products output)]
-    (boolean (and (= u "tonnes") (not (petrochemical output))
-                  (or (#{"material" "manufactured"} g) (heat-outputs output))))))
+  (let [{g :group u :unit} (products output)
+        o (root products output)]
+    (boolean (and (= u "tonnes") (not (petrochemical o))
+                  (or (#{"material" "manufactured"} g) (heat-outputs o))))))
 
 (defn heat
   "The heat a row's fuel gives per unit of output, TJ (phys at the fuel's
@@ -421,7 +446,7 @@
   (let [u (get-in products [input :unit])]
     (when (and (heat-output? products output)
                (not (crude-like input))
-               (not (get-in material-feedstock [output input]))
+               (not (get-in material-feedstock [(root products output) input]))
                (or (ncv input) (= input "C_HWAT") (pool input u)))
       (* (double (or phys 0.0)) (if (= u "TJ") 1.0 (get ncv input 0.0))))))
 
@@ -779,7 +804,7 @@
                                                         (not (:negligible r)))]
                                [i r])
                     sub-in (set (map first sub-rows))
-                    upkeep? (fn [i] (and carrier? (power-station? p) (upkeep i)))
+                    upkeep? (fn [i] (and carrier? (power-station? p) (upkeep (root (:products g) i))))
                     h (reduce (fn [h [i _]] (if (upkeep? i) (hg/recipe h [:upkeep s p i] {[:use s i] 1.0} :substitutable) h))
                               h sub-rows)
                     subs (into {} (for [[i r] sub-rows] [(if (upkeep? i) [:upkeep s p i] [:use s i]) (w (:share r))]))
@@ -920,6 +945,359 @@
                              :upkeep (into {} (for [[n m] s' :when (and (not (use? n)) (< m (full n)))] [(key-of n) m]))
                              :updates k}))))))))
 
+;; -------------------------------------------------------------- sub-nodes
+
+(defn- n* [x] (cond (number? x) (double x) (and (string? x) (not (str/blank? x))) (parse-double x)))
+
+(def ^:private share-keys {1995 :share-1995 2011 :share 2022 :share-2022})
+(defn- value-key [y] (keyword (str "value_" y)))
+
+(defn- sum-by [kf vf xs] (reduce (fn [m x] (let [v (vf x)] (if v (update m (kf x) (fnil + 0.0) v) m))) {} xs))
+
+(defn- scale-shares
+  "Row `r` with its value shares (every year) times `f`."
+  [r f]
+  (reduce (fn [r k] (if-let [s (get r k)] (assoc r k (* s f)) r)) r (vals share-keys)))
+
+(defn- rest-trade
+  "The parent's trade rows less the sub-nodes' flows `sub` ({[parent origin
+  dest] t}). A flow larger than the parent's on that pair (or on a pair
+  it has none on) is moved, so that every origin's and destination's
+  total falls by exactly the sub-nodes' part: x on (o,d) is taken from
+  o's and d's domestic flows and given back on (d,o). [rows clamped]:
+  clamped, what a domestic flow could not give."
+  [trade sub parents]
+  (let [q (into {} (for [{:keys [product origin dest quantity]} trade :when (parents product)]
+                     [[product origin dest] (or (n* quantity) 0.0)]))
+        q (merge-with - q (into {} (for [[k v] sub] [k 0.0])))
+        q (reduce-kv (fn [q k v] (update q k - v)) q sub)
+        q (reduce (fn [q [p o d :as k]]
+                    (let [v (q k)]
+                      (if (and (neg? v) (not= o d))
+                        (-> q (assoc k 0.0)
+                            (update [p o o] (fnil + 0.0) v)
+                            (update [p d d] (fnil + 0.0) v)
+                            (update [p d o] (fnil - 0.0) v))
+                        q)))
+                  q (sort (keys q)))
+        clamped (vec (for [[k v] q :when (< v -1e-9)] {:trade k :short (- v)}))
+        q (update-vals q #(max 0.0 %))
+        dest (sum-by (fn [[[p _ d] _]] [p d]) val q)
+        kept (vec (remove #(parents (:product %)) trade))]
+    [(into kept (for [[[p o d] v] (sort q) :when (pos? v)]
+                  {:product p :origin o :dest d :quantity v :share (/ v (dest [p d]))}))
+     clamped]))
+
+(defn split-subnodes
+  "Rows (as `graph` takes them, with :production {:region :product
+  :quantity :unit :value_1995 :value_2011 :value_2022}, numbers or
+  strings) with sub-nodes split out of their EXIOBASE parents (bead
+  bnm-1pq.31): `specs`, upstream first, each {:code :name :unit :group
+  :parent :output {region quantity} :price :inputs {sub-node quantity per
+  unit} :demand}.
+
+    output    what the sub-node makes in each region, in the parent's
+              unit (it is taken out of the parent's, which must hold it);
+    price     EUR M per unit, or :cost-plus: the parent's price in the
+              region plus the chain inputs at their world prices over the
+              parent's input share (the inputs it inherits are worth the
+              parent's per unit, its value added the parent's share);
+    inputs    the chain: other sub-nodes it is made from, critical (a
+              motor has no substitute for its magnet), valued at their
+              world price;
+    demand    where the output the chain does not take goes: :parent, the
+              parent's uses (every recipe and final use of it in a region
+              split by the sub-node's part of the region's use); {:product
+              q}, into q's recipe, by q's use of the parent (its row
+              times its output); {:final f}, to the final
+              use f (a capital good: no recipe).
+
+  Supply shares come from production: every region draws on the origins
+  by their share of the sub-node's world output (trade rows), its use the
+  chain's (where each user is made) plus its share of the rest. A
+  sub-node's recipe is its parent's in its region per unit (the
+  industry-technology assumption), each value share times alpha =
+  (T - c)/T (T the parent's input share, c the chain's), so its inputs
+  are worth T of its value; a chain input from a family replaces as many
+  tonnes of the family's row. The parent keeps the rest: its output,
+  values (every year, at the 2011 split), trade, uses, supply shares and
+  inputs less the sub-nodes'. Tonnes and value of every family (a parent
+  and its sub-nodes) are conserved in output, trade, use and in each
+  recipe's inputs (`split-balances`); what had to be clamped is in
+  (:split rows) :clamped."
+  [{:keys [products recipes trade supply use production] :as rows} specs]
+  (if (empty? specs)
+    (assoc rows :split {:clamped []})
+    (let [spec (into {} (map (juxt :code identity)) specs)
+          sub-ps (for [{:keys [code name unit group parent]} specs]
+                   {:code code :name name :unit unit :group group :parent parent})
+          ps (into {} (map (juxt :code identity)) (concat products sub-ps))
+          family #(or (:parent (spec %)) %)
+          subs-of (group-by :parent specs)
+          parents (set (keys subs-of))
+          prod (into {} (for [r production] [[(:region r) (:product r)] r]))
+          q-of (fn [r p] (n* (:quantity (prod [r p]))))
+          v-of (fn [r p y] (n* ((value-key y) (prod [r p]))))
+          p-of (fn [r p] (let [q (q-of r p) v (v-of r p 2011)] (when (and q v (pos? q)) (/ v q))))
+          rec-by (group-by (juxt :region :output) recipes)
+          in-share (fn [r p] (min max-input-share
+                                  (reduce + 0.0 (for [x (rec-by [r p]) :let [s (:share x)] :when (and s (<= 0.0 s 1.0))] s))))
+          world (fn [m] (reduce + 0.0 (vals m)))
+          ;; prices, upstream first
+          price (reduce
+                 (fn [m {:keys [code parent output inputs] pr :price}]
+                   (let [by (into {} (for [[r x] output :when (pos? x)]
+                                       (let [pp (or (p-of r parent)
+                                                    (throw (ex-info (str "split-subnodes: " code " made where " parent " is not")
+                                                                    {:region r :parent parent})))]
+                                         [r (if (= pr :cost-plus)
+                                              (+ pp (/ (reduce + 0.0 (for [[j a] inputs] (* a (:world (m j)))))
+                                                       (max 1e-9 (in-share r parent))))
+                                              (double pr))])))]
+                     (assoc m code {:by by :world (/ (reduce + 0.0 (for [[r x] output :when (pos? x)] (* x (by r))))
+                                                     (world output))})))
+                 {} specs)
+          vk (fn [k r] (* (get-in spec [k :output r] 0.0) (get-in price [k :by r] 0.0)))
+          ;; each sub-node's part of its parent's 2011 value, and the fit
+          theta (into {} (for [{:keys [code parent output]} specs [r x] output :when (pos? x)]
+                           [[code r] (/ (vk code r) (v-of r parent 2011))]))
+          _ (doseq [[p ks] subs-of r (distinct (mapcat (comp keys :output) ks))]
+              (let [x (reduce + 0.0 (for [k ks] (get-in k [:output r] 0.0)))
+                    t (reduce + 0.0 (for [k ks] (get theta [(:code k) r] 0.0)))]
+                (when (or (>= x (q-of r p)) (>= t 1.0))
+                  (throw (ex-info (str "split-subnodes: " p "'s sub-nodes take all of it in " r)
+                                  {:region r :parent p :quantity x :value-share t})))))
+          ;; demand: the chain's where its users are made, the rest by :demand
+          chain (reduce (fn [m {:keys [output inputs]}]
+                          (reduce-kv (fn [m j a] (reduce-kv (fn [m r x] (update-in m [j r] (fnil + 0.0) (* a x))) m output))
+                                     m inputs))
+                        {} specs)
+          use-tot (sum-by (juxt :region :product) (comp n* :quantity) use)
+          trade-dest (sum-by (juxt :dest :product) (comp n* :quantity) trade)
+          weights (fn [{:keys [parent demand]}]
+                    (cond
+                      (= demand :parent) (let [u (into {} (for [[[d p] q] use-tot :when (= p parent)] [d q]))]
+                                           (if (seq u) u (into {} (for [[[d p] q] trade-dest :when (= p parent)] [d q]))))
+                      (:product demand) (sum-by :region
+                                                (fn [x] (when (and (= (:product demand) (:output x)) (= parent (:input x)))
+                                                          (when-let [xq (q-of (:region x) (:output x))] (* xq (or (:phys x) 0.0)))))
+                                                recipes)
+                      (:final demand) (sum-by :region (comp n* :quantity)
+                                              (filter #(and (= parent (:product %)) (= (:final demand) (:user %))) use))))
+          other (into {} (for [{:keys [code output] :as s} specs
+                               :let [tot (world output)
+                                     o (- tot (world (chain code {})))
+                                     w (into {} (filter (comp pos? val)) (weights s))
+                                     wt (world w)]]
+                           (do (when (< o (* -1e-9 tot))
+                                 (throw (ex-info (str "split-subnodes: the chain takes more " code " than is made")
+                                                 {:made tot :chain (world (chain code {}))})))
+                               (when (and (> o (* 1e-12 tot)) (not (pos? wt)))
+                                 (throw (ex-info (str "split-subnodes: nowhere for " code "'s other demand to go") {:demand (:demand s)})))
+                               [code (if (> o (* 1e-12 tot)) (update-vals w #(* o (/ % wt))) {})])))
+          demand (fn [k] (merge-with + (chain k {}) (other k)))
+          sigma (fn [k] (let [out (into {} (filter (comp pos? val)) (get-in spec [k :output])) t (world out)]
+                          (update-vals out #(/ % t))))
+          ;; trade
+          sub-trade (vec (for [{:keys [code]} specs [d u] (sort (demand code)) :when (pos? u) [o s] (sort (sigma code))]
+                           {:product code :origin o :dest d :quantity (* u s) :share s}))
+          sub-q (sum-by (fn [{:keys [product origin dest]}] [(family product) origin dest]) :quantity sub-trade)
+          [trade' clamped-trade] (rest-trade trade sub-q parents)
+          ;; production
+          production' (vec (concat
+                            (for [r production]
+                              (if-let [ks (seq (filter #(get-in % [:output (:region r)]) (subs-of (:product r))))]
+                                (let [reg (:region r)
+                                      x (reduce + 0.0 (for [k ks] (get-in k [:output reg])))
+                                      t (reduce + 0.0 (for [k ks] (get theta [(:code k) reg] 0.0)))]
+                                  (reduce (fn [r y] (if-let [v (n* ((value-key y) r))] (assoc r (value-key y) (* v (- 1.0 t))) r))
+                                          (assoc r :quantity (- (n* (:quantity r)) x))
+                                          (keys share-keys)))
+                                r))
+                            (for [{:keys [code parent output unit]} specs [r x] (sort output) :when (pos? x)]
+                              (into {:region r :product code :quantity x :unit unit}
+                                    (for [y (keys share-keys) :let [v (v-of r parent y)] :when v]
+                                      [(value-key y) (* v (theta [code r]))])))))
+          ;; supply: the parent's industries make its sub-nodes, by value
+          supply' (vec (mapcat (fn [{:keys [region product industry-share] :as s}]
+                                 (let [ks (filter #(theta [(:code %) region]) (subs-of product))]
+                                   (if (and (seq ks) industry-share)
+                                     (let [t (reduce + 0.0 (for [k ks] (theta [(:code k) region])))]
+                                       (cons (assoc s :industry-share (* industry-share (- 1.0 t)))
+                                             (for [k ks] (assoc s :product (:code k) :industry-share (* industry-share (theta [(:code k) region]))))))
+                                     [s])))
+                               supply))
+          ;; use: the chain's rows, the other demand over the parent's rows
+          sub-use (vec (for [{:keys [code parent] dm :demand} specs
+                             [d u] (sort (demand code)) :when (pos? u)
+                             row (concat
+                                  (for [{k :code :keys [output inputs]} specs :let [a (get inputs code)] :when a
+                                        :let [x (get output d)] :when (and x (pos? x))]
+                                    {:region d :product code :user k :kind "subnode" :quantity (* a x)})
+                                  (let [o (get-in other [code d] 0.0)
+                                        base (cond (= dm :parent) (filter #(and (= d (:region %)) (= parent (:product %))) use)
+                                                   (:final dm) (filter #(and (= d (:region %)) (= parent (:product %))
+                                                                             (= (:final dm) (:user %))) use))
+                                        bt (reduce + 0.0 (keep (comp n* :quantity) base))]
+                                    (when (pos? o)
+                                      (if (pos? bt)
+                                        (for [b base :let [q (n* (:quantity b))] :when (and q (pos? q))]
+                                          {:region d :product code :user (:user b) :kind (:kind b) :quantity (* o (/ q bt))})
+                                        [{:region d :product code :user (or (:product dm) (:final dm) parent)
+                                          :kind (if (:final dm) "final" "product") :quantity o}]))))]
+                         (assoc row :share (/ (:quantity row) u))))
+          sub-use-tot (sum-by (fn [{:keys [region product]}] [region (family product)]) :quantity sub-use)
+          use' (into (vec (for [{:keys [region product] :as u} use]
+                            (if-let [t (and (parents product) (sub-use-tot [region product]))]
+                              (let [f (- 1.0 (/ t (use-tot [region product])))]
+                                (cond-> (update u :quantity #(* (n* %) f))
+                                  (:value-share u) (update :value-share * f)
+                                  (:value-rough u) (update :value-rough * f)))
+                              u)))
+                     sub-use)
+          clamped-use (vec (for [[[d p] t] sub-use-tot :when (not (pos? (get use-tot [d p] 0.0)))] {:use [d p] :short t}))
+          ;; recipes, 1: the sub-nodes' own and their parents' rest
+          phys-pair? (fn [i o] (boolean (and (#{"tonnes" "TJ"} (get-in ps [i :unit])) (#{"tonnes" "TJ"} (get-in ps [o :unit])))))
+          own (vec (for [[[r p] rows] rec-by :when (parents p)
+                         :let [ks (filter #(get-in % [:output r]) (subs-of p))]
+                         :when (seq ks)
+                         :let [T (in-share r p)
+                               ks (for [{:keys [code inputs] :as k} ks]
+                                    (let [pk (get-in price [code :by r])
+                                          cs (into {} (for [[j a] inputs] [j (/ (* a (get-in price [j :world])) pk)]))
+                                          c (reduce + 0.0 (vals cs))]
+                                      (assoc k :x (get-in k [:output r]) :theta (theta [code r]) :cs cs
+                                             :c-of (sum-by (comp family key) val inputs)
+                                             :cs-of (sum-by (comp family key) val cs)
+                                             :alpha (if (pos? T) (max 0.0 (/ (- T c) T)) 0.0))))
+                               xp (q-of r p)
+                               xr (- xp (reduce + 0.0 (map :x ks)))
+                               tr (- 1.0 (reduce + 0.0 (map :theta ks)))]
+                         row (concat
+                              (for [{:keys [code inputs cs c-of alpha]} ks
+                                    row (concat
+                                         (for [x rows]
+                                           (-> x (assoc :output code
+                                                        :phys (max 0.0 (- (or (:phys x) 0.0) (get c-of (:input x) 0.0)))
+                                                        :physical? (phys-pair? (:input x) code))
+                                               (scale-shares alpha)))
+                                         (for [[j a] inputs]
+                                           {:region r :output code :input j :phys a :physical? (phys-pair? j code) :chain true
+                                            :share (cs j) :share-1995 (cs j) :share-2022 (cs j)}))]
+                                row)
+                              (for [x rows :let [i (:input x) ph (or (:phys x) 0.0)
+                                                 used (reduce + 0.0 (for [k ks] (* (:x k) (max ph (get (:c-of k) i 0.0)))))
+                                                 ph' (/ (- (* ph xp) used) xr)]]
+                                (reduce (fn [x [y sk]]
+                                          (if-let [s (get x sk)]
+                                            (assoc x sk (max 0.0 (/ (- s (reduce + 0.0 (for [k ks] (* (:theta k) (+ (* (:alpha k) s) (get (:cs-of k) i 0.0))))))
+                                                                    tr)))
+                                            x))
+                                        (assoc x :phys (max 0.0 ph') ::short (when (< ph' -1e-9) (- ph'))
+                                               :family-share (:share x))
+                                        share-keys)))]
+                     row))
+          clamped-rec (vec (for [x own :when (::short x)] {:recipe ((juxt :region :output :input) x) :short (::short x)}))
+          own (mapv #(dissoc % ::short) own)
+          own-keys (set (map (juxt :region :output) own))
+          recipes1 (into (vec (remove #(own-keys ((juxt :region :output) %)) recipes)) own)
+          ;; recipes, 2: other demand into the parents' users
+          pq (fn [o d] (or (p-of d o) (:world (price o))))
+          use-price (let [tv (sum-by (juxt :dest :product)
+                                     (fn [{:keys [product origin quantity]}]
+                                       (when (parents product)
+                                         (let [q (n* quantity) pp (p-of origin product)] (when (and q pp) (* q pp)))))
+                                     trade)]
+                      (into {} (for [[[d p] tq] trade-dest :when (and (parents p) (pos? tq) (tv [d p]))]
+                                 [[d p] (/ (tv [d p]) tq)])))
+          splits (into {} (for [[p ks] subs-of
+                                d (distinct (mapcat (comp keys other :code) ks))
+                                :let [ks (filter #(and (= :parent (:demand %)) (pos? (get-in other [(:code %) d] 0.0))) ks)
+                                      u (get use-tot [d p] 0.0)]
+                                :when (and (seq ks) (pos? u))]
+                            [[d p] (let [pp (or (use-price [d p]) (p-of d p) 1.0)]
+                                     (for [{:keys [code]} ks :let [rho (/ (get-in other [code d]) u)]]
+                                       [code rho (* rho (:world (price code)) (/ 1.0 pp))]))]))
+          recipes2 (vec (mapcat (fn [{:keys [region input chain] :as x}]
+                                  (if-let [sp (and (not chain) (splits [region input]))]
+                                    (let [ph (or (:phys x) 0.0)]
+                                      (cons (-> x (assoc :phys (* ph (max 0.0 (- 1.0 (reduce + 0.0 (map second sp)))))
+                                                         :family-share (:share x))
+                                                (scale-shares (max 0.0 (- 1.0 (reduce + 0.0 (map #(nth % 2) sp))))))
+                                            (for [[k rho g] sp]
+                                              (-> x (assoc :input k :phys (* ph rho) :physical? (phys-pair? k (:output x)))
+                                                  (dissoc :override :family-share)
+                                                  (scale-shares g)))))
+                                    [x]))
+                                recipes1))
+          ;; recipes, 3: other demand into a product's recipe ({:product q})
+          to-product (for [{:keys [code parent] dm :demand} specs :when (:product dm)
+                           [d o] (other code) :let [q (:product dm) xq (q-of d q)] :when (and xq (pos? xq))]
+                       {:region d :output q :input code :parent parent :phys (/ o xq)
+                        :share (/ (* (/ o xq) (:world (price code))) (or (p-of d q) 1.0))})
+          tp (group-by (juxt :region :output :parent) to-product)
+          recipes3 (into (vec (for [{:keys [region output input] :as x} recipes2]
+                                (if-let [adds (tp [region output input])]
+                                  (let [ph (reduce + 0.0 (map :phys adds)) sh (reduce + 0.0 (map :share adds))
+                                        ph' (- (or (:phys x) 0.0) ph)]
+                                    (reduce (fn [x k] (if-let [s (get x k)] (assoc x k (max 0.0 (- s sh))) x))
+                                            (cond-> (assoc x :phys (max 0.0 ph') :family-share (:share x))
+                                              (< ph' -1e-9) (assoc ::short (- ph')))
+                                            (vals share-keys)))
+                                  x)))
+                         (for [{:keys [region output input phys share]} to-product]
+                           {:region region :output output :input input :phys phys :physical? (phys-pair? input output)
+                            :share share :share-1995 share :share-2022 share}))
+          clamped-rec (into clamped-rec (for [x recipes3 :when (::short x)] {:recipe ((juxt :region :output :input) x) :short (::short x)}))
+          recipes3 (mapv #(dissoc % ::short) recipes3)
+          recipes' (vec (remove #(and (or (spec (:output %)) (spec (:input %)))
+                                      (zero? (or (:phys %) 0.0))
+                                      (every? (fn [k] (zero? (or (get % k) 0.0))) (vals share-keys)))
+                                recipes3))]
+      (assoc rows
+             :products (into (vec products) sub-ps)
+             :production production'
+             :trade (into trade' sub-trade)
+             :supply supply'
+             :use use'
+             :recipes recipes'
+             :split {:specs specs :prices price
+                     :clamped (vec (concat clamped-trade clamped-use clamped-rec))}))))
+
+(defn split-balances
+  "How closely `split-subnodes` conserved each family (a parent and its
+  sub-nodes) from rows `before` to `after`: the largest relative residual
+  of output (tonnes and 2011 value, per region), trade (per origin and per
+  destination; and each sub-node's shipments against its output), use
+  (per region) and inputs (per recipe and input family, in the input's
+  unit, recipes times output), and the :clamped list."
+  [before after]
+  (let [ps (into {} (map (juxt :code identity)) (:products after))
+        fam #(or (get-in ps [% :parent]) %)
+        rel (fn [a b] (/ (Math/abs (- (double a) (double b))) (max 1e-12 (Math/abs (double a)))))
+        worst (fn [xs] (reduce max 0.0 xs))
+        tot (fn [rows kf vf] (sum-by kf (comp n* vf) rows))
+        cmp (fn [kf vf rb ra] (let [b (tot rb kf vf) a (tot ra kf vf)]
+                                (worst (for [[k v] b :when (pos? v)] (rel v (get a k 0.0))))))
+        qa (into {} (for [r (:production after)] [[(:region r) (:product r)] (n* (:quantity r))]))
+        qb (into {} (for [r (:production before)] [[(:region r) (:product r)] (n* (:quantity r))]))
+        inputs (fn [rows q]
+                 (sum-by (fn [x] [(:region x) (fam (:output x)) (fam (:input x))])
+                         (fn [x] (when-let [xo (q [(:region x) (:output x)])] (* xo (or (:phys x) 0.0))))
+                         (:recipes rows)))
+        ib (inputs before qb)
+        ia (inputs after qa)
+        subs (set (keep #(when (:parent %) (:code %)) (:products after)))]
+    {:output (max (cmp (fn [r] [(:region r) (fam (:product r))]) :quantity (:production before) (:production after))
+                  (cmp (fn [r] [(:region r) (fam (:product r))]) :value_2011 (:production before) (:production after)))
+     :trade (max (cmp (fn [r] [(fam (:product r)) (:origin r)]) :quantity (:trade before) (:trade after))
+                 (cmp (fn [r] [(fam (:product r)) (:dest r)]) :quantity (:trade before) (:trade after))
+                 (let [sh (tot (filter #(subs (:product %)) (:trade after)) (juxt :origin :product) :quantity)]
+                   (worst (for [[[o k] v] sh] (rel (qa [o k]) v)))))
+     :use (cmp (fn [r] [(:region r) (fam (:product r))]) :quantity (:use before) (:use after))
+     :inputs (worst (for [[k v] ib :when (pos? v)] (rel v (get ia k 0.0))))
+     :clamped (get-in after [:split :clamped])}))
+
 ;; ---------------------------------------------------------------- loading
 
 (defn- num [s] (when (and s (not (str/blank? s))) (parse-double s)))
@@ -932,28 +1310,55 @@
           ks (mapv keyword (str/split h #","))]
       (mapv #(f (zipmap ks (str/split % #"," -1))) (doall ls)))))
 
+(defn- strs
+  "A production row's numbers as the CSV has them (strings), so callers
+  that read production.csv themselves take these rows as they are."
+  [r]
+  (reduce-kv (fn [r k v] (assoc r k (if (number? v) (str v) v))) r r))
+
+(defn load-rows
+  "The product graph's rows from the CSVs in `dir` (data/derived/supply):
+  {:products :recipes :trade :supply :use :production}, as `graph` takes
+  them, with the rare-earth chain split out of its parents
+  (bnm.rare-earths, `split-subnodes`) unless :subnodes is false or its
+  inputs are not in `dir`. :production rows keep production.csv's
+  columns and strings (region, product, quantity, unit, value_1995,
+  value_2011, value_2022). Options for bnm.rare-earths/load-specs (:bound,
+  :shares-year, :known) pass through."
+  ([dir] (load-rows dir {}))
+  ([dir {:keys [subnodes] :or {subnodes true} :as opts}]
+   (let [f #(str (io/file dir %))
+         prod (f "production.csv")
+         rows {:products (mapv #(select-keys % [:code :name :unit :group]) (csv/read-maps (f "products.csv") \,))
+               :recipes (read-rows (f "recipes.csv")
+                                   (fn [m] {:region (:region m) :output (:output m) :input (:input m)
+                                            :phys (num (:phys m)) :share (num (:share_2011 m))
+                                            :share-1995 (num (:share_1995 m)) :share-2022 (num (:share_2022 m))
+                                            :physical? (= "1" (:physical m))
+                                            ;; the source of a hybrid row product-graph.py
+                                            ;; overrode (its OVERRIDES; overrides.csv)
+                                            :override (not-empty (:override m))}))
+               :trade (read-rows (f "trade.csv") (fn [m] (-> m (update :quantity num) (update :share num))))
+               :supply (read-rows (f "supply.csv")
+                                  (fn [m] {:region (:region m) :industry (:industry m) :product (:product m)
+                                           :industry-share (num (:industry_share m))}))
+               :use (read-rows (f "use.csv")
+                               (fn [m] {:region (:region m) :product (:product m) :user (:user m) :kind (:kind m)
+                                        :quantity (num (:quantity m)) :share (num (:share m))
+                                        :value-share (num (:value_share m)) :value-rough (num (:value_rough m))}))
+               :production (if (.exists (io/file prod)) (read-rows prod identity) [])}
+         specs (when subnodes (re/load-specs dir rows opts))
+         rows (if specs (split-subnodes rows specs) rows)]
+     (update rows :production #(mapv strs %)))))
+
 (defn load-graph
-  "The product graph from the CSVs in `dir` (data/derived/supply)."
-  [dir]
-  (let [f #(str (io/file dir %))]
-    (graph
-     {:products (mapv #(select-keys % [:code :name :unit :group]) (csv/read-maps (f "products.csv") \,))
-      :recipes (read-rows (f "recipes.csv")
-                          (fn [m] {:region (:region m) :output (:output m) :input (:input m)
-                                   :phys (num (:phys m)) :share (num (:share_2011 m))
-                                   :share-1995 (num (:share_1995 m)) :share-2022 (num (:share_2022 m))
-                                   :physical? (= "1" (:physical m))
-                                   ;; the source of a hybrid row product-graph.py
-                                   ;; overrode (its OVERRIDES; overrides.csv)
-                                   :override (not-empty (:override m))}))
-      :trade (read-rows (f "trade.csv") (fn [m] (-> m (update :quantity num) (update :share num))))
-      :supply (read-rows (f "supply.csv")
-                         (fn [m] {:region (:region m) :industry (:industry m) :product (:product m)
-                                  :industry-share (num (:industry_share m))}))
-      :use (read-rows (f "use.csv")
-                      (fn [m] {:region (:region m) :product (:product m) :user (:user m) :kind (:kind m)
-                               :quantity (num (:quantity m)) :share (num (:share m))
-                               :value-share (num (:value_share m)) :value-rough (num (:value_rough m))}))})))
+  "The product graph from the CSVs in `dir` (data/derived/supply), the
+  rare-earth chain split out (`load-rows`, whose options it takes). The
+  rows' :split and :production ride along on the graph."
+  ([dir] (load-graph dir {}))
+  ([dir opts]
+   (let [rows (load-rows dir opts)]
+     (assoc (graph rows) :split (:split rows) :production (:production rows)))))
 
 (defn stock-rows
   "The rows of a stocks CSV (data/derived/supply/stocks.csv, written by
