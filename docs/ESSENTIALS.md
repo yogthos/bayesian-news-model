@@ -1112,6 +1112,35 @@ before any test year is scored (PRINCIPLES 9).
    - Tests: Hormuz carries about 20% of world crude and LNG in 2019-23.
      PortWatch tonnage through each chokepoint correlates with the routed
      estimate (2019-2024).
+   - Result (October 2026; scripts/routes.py, bnm.chokepoints,
+     tools/bnm/chokepoints_run.clj; stocks chokepoint/<strait>-<product>
+     in data/derived/stocks/chokepoints.csv). MARNET with 19 of PortWatch's
+     28 straits resolved; port weights from PortWatch per ship class with a
+     2,000 km distance decay across port pairs; landlocked countries through
+     a transit port; pairs with a land border or a short land route are
+     non-maritime. Of 2019-23 BACI pairs with flows, 35,314 of 38,141 are
+     seaborne and routed (71.0% of value), 1,765 land (29.0%), 1,062 small
+     ones without a port (0.01%).
+     - Hormuz, 2019-23: 30% of world crude imports by value (the "20%" is
+       of world oil use; of seaborne crude trade it is about 40%), 20% of
+       LNG. Met for LNG; crude is consistent once the base is trade.
+     - Hormuz share of crude imports, 2019-23: Japan 0.69-0.71, Korea
+       0.53-0.62 (0.70-0.73 in 2010-15), India 0.43-0.54, China 0.35-0.42.
+       Korea's 70-85% is not met in recent years: its imports from the Gulf
+       exporters are only 0.59-0.72 of the total (US, Kazakh, Mexican crude),
+       and Saudi Yanbu (11%) and UAE Fujairah (half) load outside Hormuz.
+       Still well above EXIOBASE's Korean Gulf dependence.
+     - Malacca, crude: Japan 0.93, Korea 0.72, Taiwan 0.66, China 0.57.
+       LNG splits between Malacca and Lombok/Makassar (Australian LNG).
+     - Asia to Europe, container chapters: Suez and Bab-el-Mandeb 1.00.
+     - PortWatch: routed tonnes against observed capacity across 18
+       straits, Spearman 0.69 (Pearson of logs 0.71). Oresund is over-routed
+       (the gate is the whole Kattegat) and Luzon under. Observed shocks
+       line up with the routed exposure: Bab-el-Mandeb -56% and Suez -46%
+       transits in 2024 against early 2023, the Cape +78% (routed: 15% of
+       world trade by value through each, a Cape detour of about 5,800 km
+       for China-Netherlands); Panama -30% in the 2023-24 drought; Suez
+       -85% during the Ever Given week.
 10. **Cells.** Cell-level HHI and cell cuts in supply/outage.
     - Registered: cell-level concentration predicts the output loss from
       cell-located shocks (droughts, floods, conflict onsets near plants)
