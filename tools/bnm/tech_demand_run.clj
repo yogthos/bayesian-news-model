@@ -3,12 +3,12 @@
   prints coverage and the validation (bead bnm-1pq.7):
 
     python -I scripts/tech-trade.py       # BACI EV and accumulator trade
-    python -I scripts/tech-demand-ref.py  # silver and silicon references
+    python -I scripts/tech-demand-ref.py  # silver and silicon references, EV sales and wind capacity
     jolt -A:tools -M -m bnm.tech-demand-run
 
   Validation, nothing tuned:
     1. implied world Li, Co, Ni and graphite demand from batteries (the EV
-       route and the accumulator-trade route) against world mine
+       route, BEV and PHEV sales, and the accumulator-trade route) against world mine
        production (data/derived/stocks/stages.csv, bnm.stages) after 2015:
        the ratio's order of magnitude and the direction of year-on-year
        growth;
@@ -26,8 +26,11 @@
        (bnm.tech-demand/project-growth, bead bnm-1pq.19) was set after the
        logistic's failure here was seen: a rescore on history, not a
        registered trial;
-    5. the EV route against world EV sales (DOE 2023, citing IEA): the
-       route is imports only, a lower bound."
+    5. the BACI EV imports (870380, the old route, kept as a cross-check)
+       against IEA's BEV sales, world and the largest markets; DOE 2023's
+       world EV sales against IEA's;
+    6. wind's rare earths and copper with the offshore split against the
+       onshore coefficients on all wind (the old route)."
   (:require [bnm.essentials :as ess]
             [bnm.essentials-check :as ec]
             [bnm.tech-demand :as td]
@@ -100,12 +103,16 @@
 (defn- at-t [entries t] (some #(when (= t (:t %)) (:x %)) entries))
 
 (defn- world-demand
-  "{data-year tonnes} of material m from technology k at WLD."
+  "{data-year tonnes} of material m from technology k (or the sum over a
+  set of them, the years every one has) at WLD."
   [data k m]
-  (into (sorted-map)
-        (for [{:keys [t x]} (get-in data [:adds k "WLD"])
-              :let [d (get (td/material-demand k x (:ints data) t) m)] :when d]
-          [t d])))
+  (if (set? k)
+    (let [ss (map #(world-demand data % m) k)]
+      (into (sorted-map) (for [t (keys (first ss)) :when (every? #(get % t) ss)] [t (reduce + (map #(get % t) ss))])))
+    (into (sorted-map)
+          (for [{:keys [t x]} (get-in data [:adds k "WLD"])
+                :let [d (get (td/material-demand k x (:ints data) t) m)] :when d]
+            [t d]))))
 
 (defn- yoy [series t] (let [a (series (dec t)) b (series t)] (when (and a b (pos? a) (pos? b)) (Math/log (/ b a)))))
 
@@ -114,7 +121,7 @@
 (defn- validate-batteries [data mine]
   (println "\n1. World battery-material demand against world mine production (data years)")
   (doseq [m battery-materials]
-    (let [ev (world-demand data :ev m) li (world-demand data :li-ion m) mn (get mine m {})
+    (let [ev (world-demand data #{:ev :phev} m) li (world-demand data :li-ion m) mn (get mine m {})
           ts (filter #(>= % 2015) (sort (distinct (concat (keys ev) (keys li)))))]
       (println (str "\n  " m " (t)   year  ev-route  trade-route  mine  ev/mine  trade/mine  dlog(ev)  dlog(trade)  dlog(mine)"))
       (doseq [t ts]
@@ -206,12 +213,32 @@
   {2015 716000.0 2022 10.6e6})
 
 (defn- validate-ev-sales [data]
-  (println "\n5. EV route (world 870380 imports, cars) against world EV sales (DOE 2023)")
+  (println "\n5. BACI 870380 imports (the old EV route, cars at 1.8 t) against IEA BEV car sales")
+  (println "   iso  year  imports  bev-sales  imports/sales")
+  (doseq [iso ["WLD" "CHN" "USA" "DEU" "FRA" "GBR" "NOR"]
+          t (range 2017 2025)
+          :let [im (at-t (get-in data [:ev-imports :cars iso]) t)
+                bev (at-t (get-in data [:adds :ev iso]) t)]
+          :when (or im bev)]
+    (println (str "   " iso "  " t "  " (g im) "  " (g bev) "  " (f (some-> im (/ (or bev Double/NaN))) 2))))
+  (println "   (a producer's home sales are not imports; an importer's ratio near or above 1 is re-exports and the"
+           "1.8 t a car)")
+  (println "   DOE 2023's world EV sales (all road vehicles) against IEA's cars, BEV + PHEV:")
   (doseq [[t sales] (sort-by key ev-sales)
-          :let [cars (at-t (get-in data [:adds :ev "WLD"]) t)]]
-    (println (str "   " t "  imports " (g cars) "  sales " (g sales) "  imports/sales " (f (some-> cars (/ sales)) 2))))
-  (println "   (sales include PHEVs and buses and trucks, so the ratio is a floor on trade over BEV-car sales;"
-           "no BEV-car sales on disk, so the route is not scaled: a lower bound)"))
+          :let [xs (map #(at-t (get-in data [:adds % "WLD"]) t) [:ev :phev])
+                cars (when (every? some? xs) (reduce + xs))]]
+    (println (str "   " t "  DOE " (g sales) "  IEA cars " (g cars)))))
+
+(defn- validate-wind [data]
+  (println "\n6. Wind with the offshore split against onshore coefficients on all wind (WLD, data years)")
+  (println "   material  year  onshore-GW  offshore-GW  split(t)  all-onshore(t)  split/all-onshore")
+  (doseq [m ["rare-earths" "copper" "steel"] t (range 2010 2026)
+          :let [on (at-t (get-in data [:adds :wind "WLD"]) t)
+                off (at-t (get-in data [:adds :wind-offshore "WLD"]) t)
+                split (get (world-demand data #{:wind :wind-offshore} m) t)
+                old (when (and on off) (some-> (td/material-demand :wind (+ on off) (:ints data) t) (get m)))]
+          :when (and split old)]
+    (println (str "   " m "  " t "  " (f on 1) "  " (f off 1) "  " (g split) "  " (g old) "  " (f (/ split old) 2)))))
 
 (defn- coverage [rows]
   (println "Coverage (countries with a value, first and last year known):")
@@ -230,4 +257,5 @@
     (validate-rise data rows)
     (validate-projection rows)
     (validate-ev-sales data)
+    (validate-wind data)
     (shutdown-agents)))

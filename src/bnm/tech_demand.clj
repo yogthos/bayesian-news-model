@@ -16,47 +16,54 @@
   of year t carries it; a projection moves each coefficient on by the
   prior's drift (the filter's own prediction step: `drift`).
 
-  Technologies and their units of additions:
-    :ev      battery-electric cars: BACI HS17 870380 imports, tonnes / 1.8
-             t a car (`cars`). 2017- (HS17). A LOWER BOUND on EV demand:
-             apparent supply from imports alone, so a producer's home
-             sales (China's, 60% of 2022 EV registrations by DOE's count) are missing, and the
-             world is the sum of imports, i.e. world trade. On disk the
-             DOE Critical Materials Assessment 2023 (citing IEA 2023) has
-             world EV sales of 10.6 million in 2022 (BEV and PHEV, all
-             road vehicles); the world's 870380 imports that year are 2.55
-             million cars, 24% of it. The BEV-car part of those sales is
-             not on disk, so no trade-to-sales ratio is: the route is not
-             scaled, and world EV demand is understated about three- to
-             fourfold (re-exports through hubs counted twice push the other
-             way, a little). bnm.tech-demand-run prints the comparison.
+  Technologies and their units of additions (bead bnm-1pq.25 for EV
+  sales and the wind split):
+    :ev      battery-electric cars sold: IEA Global EV Outlook 2026 via OWID
+             (data/raw/material/owid-iea-ev-sales; tech-installs.csv,
+             scripts/tech-demand-ref.py), 2010-, 62 countries, WLD IEA's
+             own world total (its rest of world included). Sales, so a
+             producer's home market counts: the old route, BACI HS17 870380
+             imports at 1.8 t a car (`cars`), was 20-44% of world BEV sales
+             in 2017-2024 and 0-9% of China's; it is kept as a cross-check
+             only (load-data's :ev-imports, bnm.tech-demand-run section 5).
+    :phev    plug-in hybrid cars sold, the same source: battery materials
+             only, a BEV's battery x `phev-battery`.
     :pv      GW of solar added: the yearly rise in EIA installed capacity
              (data/derived/material/capacity.csv power_solar), falls
              counted as zero. The intensities are per watt of module
              (ITRPV, Wp); where EIA counts inverter (AC) capacity the
              additions, and so the demand, are low by the DC/AC ratio.
-    :wind    GW of wind added, the same (power_wind). EIA does not split
-             onshore and offshore: the onshore coefficients are used, a
-             lower bound for rare earths (offshore 239 t/GW against 14) and
-             copper (8000 against 2900). The DOE assessment has offshore
-             installations of 6.2 GW in 2019 and 21.1 GW in 2021: against
-             the world's additions here (56 and 91 GW) that is 11% and 23%,
-             so rare earths from wind are low by about 3x (2019) to 5x
-             (2021), copper by 1.2-1.4x.
+    :wind    GW of onshore wind added: the yearly rise in IRENASTAT's
+             onshore capacity (data/raw/material/irena-stat), 2001-, the
+             onshore coefficients.
+    :wind-offshore  GW of offshore wind added, IRENASTAT's offshore
+             capacity: wind-offshore/copper (8000 t/GW against 2900) and
+             wind-offshore/rare-earths (239 against 14). There is no
+             offshore steel prior: the onshore one is used, a lower bound
+             (monopiles and jackets are heavier). World wind rare earths
+             are 1.2-2.3x the all-onshore figure in 2010-2020 and 3.9x in
+             2021 (20 GW offshore, China's rush), copper 1.03-1.4x.
     :li-ion  kWh of Li-ion accumulators traded: HS92 850780 imports (all
              accumulators other than lead-acid and NiCd: NiMH is in it)
              x kwh-per-tonne. A second route to battery demand, 1995-,
              kept out of the totals (an EV's battery would count twice).
-  Battery storage has no source on disk and is left out.
+             In 2021-2023 it is within 6% of the EV route's (BEV + PHEV)
+             lithium, cobalt, nickel and graphite.
+  Battery storage has no source on disk and is left out; so are EV buses,
+  vans and trucks (IEA's car series only).
 
   Adoption (bnm.technology/fit-logistic, rolling, only what is known by
   the year):
-    :ev      EV share of passenger car imports (870380 over all 8703
-             tonnes), %, cap 100; demand follows the level (a flow), the
-             car market held at its last known size.
+    :ev      BEV share of new car sales (IEA), %, cap 100; demand follows
+             the level (a flow), the car market held at its last known
+             size.
+    :phev    PHEV share of new car sales, the same.
     :pv      solar share of electricity generation (OWID), %, cap 100;
-    :wind    wind share, the same; capacity added follows the share's
-             derivative (total generation and capacity factor held).
+    :wind    wind share (onshore and offshore), the same; capacity added
+             follows the share's derivative (total generation and
+             capacity factor held).
+    :wind-offshore  offshore GW installed, no cap (the exponential arm,
+             never the logistic); additions follow the derivative.
     :li-ion  cumulative accumulator imports since 1995, no cap (the
              machinery's ceiling search, at most three times the highest
              level); additions follow the derivative.
@@ -82,18 +89,21 @@
   and by the intensity drift. It is written only when every technology in
   the total has a projection.
 
-  Known years: BACI and EIA capacity data year + 2, OWID + 1, the recipe
-  posterior of year t at t (recipes-filtered.csv's row t uses only the
-  observations known by t). A row known in Y takes each technology's
-  latest data year t <= Y and the posterior of t, so never a posterior of
-  a year after Y. Rows are by the year known; the data year they describe
+  Known years: BACI and EIA capacity data year + 2, OWID, IEA's EV sales
+  and IRENA + 1 (`install-lag`), the recipe posterior of year t at t
+  (recipes-filtered.csv's row t uses only the observations known by t).
+  A row known in Y totals the technologies at one data year t: the
+  earliest of their latest data years known by Y, a technology more than
+  `stale-gap` years behind the newest left out; each at its t entry and
+  the posterior of t, so never a posterior of a year after Y. Rows are by the year known; the data year they describe
   is tech-demand/state-year (bookkeeping). Values are as published now
   (revised), as everywhere in data/derived.
 
   Variables, per country (ISO3) and WLD (the sum of countries' additions;
   for the fits, the world's own adoption series), in tonnes:
-    tech-demand/<m>             EVs + PV + wind
-    tech-demand/<m>-<k>         one technology's part (k ev, pv, wind, and
+    tech-demand/<m>             BEVs + PHEVs + PV + onshore + offshore wind
+    tech-demand/<m>-<k>         one technology's part (k ev, phev, pv, wind,
+                                wind-offshore, and
                                 li-ion: the trade route, not in the total)
     tech-demand/<m>-growth5     projected 5-year log growth of the total
     tech-demand/<m>-li-ion-growth5  the same for the trade route
@@ -140,6 +150,20 @@
   would mean 10% more cars and demand."
   1.8)
 
+(def phev-battery
+  "A plug-in hybrid's battery over a battery-electric car's (ev/battery).
+  Stated, not fitted, and not from a source on disk: PHEV packs are about
+  15-25 kWh against the BEV prior's 55 (Chinese extended-range models of
+  2023- reach 30-40), so a third, in a range of perhaps 0.25-0.5. PHEVs
+  add no copper here (their motor and wiring are not in a prior): a lower
+  bound on copper."
+  0.33)
+
+(def stale-gap
+  "Data years a technology may lag the newest one and still join a
+  country's total (`rows-at`)."
+  2)
+
 (def min-cover
   "The share of a flow's value whose tonnes must be known for its tonnes to
   count (as bnm.essentials)."
@@ -158,6 +182,11 @@
                     "graphite" [["ev/battery" "li-ion/graphite"] 1e-3]
                     "copper" [["ev/copper"] 1e-3]}
         :kind :level :fit {:cap 100.0} :total? true}
+   :phev {:materials {"lithium" [["ev/battery" "li-ion/lithium"] (* phev-battery 1e-3)]
+                      "cobalt" [["ev/battery" "li-ion/cobalt"] (* phev-battery 1e-3)]
+                      "nickel" [["ev/battery" "li-ion/nickel"] (* phev-battery 1e-3)]
+                      "graphite" [["ev/battery" "li-ion/graphite"] (* phev-battery 1e-3)]}
+          :kind :level :fit {:cap 100.0} :total? true}
    :pv {:materials {"silicon" [["pv/silicon"] 1.0]
                     "silver" [["pv/silver"] 1.0]
                     "copper" [["pv/copper"] 1.0]
@@ -167,6 +196,10 @@
                       "steel" [["wind-onshore/steel"] 1.0]
                       "rare-earths" [["wind-onshore/rare-earths"] 1.0]}
           :kind :stock :fit {:cap 100.0} :total? true}
+   :wind-offshore {:materials {"copper" [["wind-offshore/copper"] 1.0]
+                               "steel" [["wind-onshore/steel"] 1.0]
+                               "rare-earths" [["wind-offshore/rare-earths"] 1.0]}
+                   :kind :stock :fit {} :total? true}
    :li-ion {:materials {"lithium" [["li-ion/lithium"] (* kwh-per-tonne 1e-3)]
                         "cobalt" [["li-ion/cobalt"] (* kwh-per-tonne 1e-3)]
                         "nickel" [["li-ion/nickel"] (* kwh-per-tonne 1e-3)]
@@ -351,8 +384,11 @@
   {year coefficient}} :priors {recipe prior}}."
   [{:keys [adds adopt ints priors]} iso y]
   (let [latest (into {} (for [k (keys techs) :let [e (latest-entry (get-in adds [k iso]) y)] :when e] [k e]))
-        total-ks (filter #(get-in techs [% :total?]) (keys latest))
-        t (when (seq total-ks) (reduce max (map #(:t (latest %)) total-ks)))
+        newest (some->> (filter #(get-in techs [% :total?]) (keys latest)) seq (map #(:t (latest %))) (reduce max))
+        total-ks (filter #(and (get-in techs [% :total?]) (>= (:t (latest %)) (- newest stale-gap))) (keys latest))
+        t (when (seq total-ks) (reduce min (map #(:t (latest %)) total-ks)))
+        at-t (fn [k] (some #(when (and (= t (:t %)) (<= (:known %) y)) %) (get-in adds [k iso])))
+        latest (merge latest (into {} (for [k total-ks :let [e (at-t k)] :when e] [k e])))
         obs (into {} (for [k (keys techs)] [k (tech/as-of (get-in adopt [k iso] []) y)]))
         fits (into {} (for [k (keys techs)] [k (tech/fit-logistic (obs k) (fit-opts k))]))
         demand (fn [k] (let [e (latest k)]
@@ -471,26 +507,74 @@
                 acc)))
           {} (read-csv path)))
 
+(def install-series
+  {"bev-sales" :bev-sales "phev-sales" :phev-sales "bev-share" :bev-share "phev-share" :phev-share
+   "wind-onshore" :wind-onshore "wind-offshore" :wind-offshore})
+
+(defn read-installs
+  "{series {iso entries}} from tech-installs.csv (scripts/tech-demand-ref.py),
+  known `lag` years on: :bev-sales and :phev-sales cars, :bev-share and
+  :phev-share % of new cars (IEA Global EV Outlook via OWID, WLD IEA's
+  world), :wind-onshore and :wind-offshore GW installed (IRENASTAT's MW)."
+  [path lag]
+  (let [m (reduce (fn [acc {:keys [iso year series value]}]
+                    (let [k (install-series series) x (num value) y (parse-long year)]
+                      (if (and k x)
+                        (update-in acc [k iso] (fnil conj [])
+                                   {:t y :known (+ y lag) :x (if (#{:wind-onshore :wind-offshore} k) (/ x 1000.0) x)})
+                        acc)))
+                  {} (read-csv path))]
+    (update-vals m (fn [by] (update-vals by #(vec (sort-by :t %)))))))
+
+(defn load-installs
+  "{:adds :adopt} of the technologies read-installs feeds: :ev and :phev
+  cars sold (WLD IEA's own world total, which holds the countries IEA does
+  not list; the sum of the countries where it is missing), adopted as
+  their shares of new car sales; :wind-offshore GW added (WLD the sum of
+  countries), adopted as GW installed (no cap: `logistic?` never, the
+  exponential arm); :wind onshore GW added (its adoption, OWID's wind
+  share, is load-data's)."
+  [ins]
+  (let [world-or-sum (fn [m] (if (get m "WLD") m (assoc m "WLD" (world-sum m))))
+        adds (fn [k] (let [m (update-vals (get ins k {}) additions)] (assoc (dissoc m "WLD") "WLD" (world-sum (dissoc m "WLD")))))]
+    {:adds {:ev (world-or-sum (get ins :bev-sales {}))
+            :phev (world-or-sum (get ins :phev-sales {}))
+            :wind (adds :wind-onshore)
+            :wind-offshore (adds :wind-offshore)}
+     :adopt {:ev (get ins :bev-share {})
+             :phev (get ins :phev-share {})
+             :wind-offshore (let [m (get ins :wind-offshore {})] (assoc m "WLD" (world-sum m)))}}))
+
+(def install-lag
+  "Data years before IEA's EV sales and IRENA's capacities are known: the
+  Global EV Outlook of year t+1 (spring) and IRENA's statistics of t+1
+  (March, in full by July) carry year t."
+  1)
+
 (defn load-data
-  "The model's data from the files under `dir` (the repo root)."
+  "The model's data from the files under `dir` (the repo root). EVs (BEV
+  and PHEV) are IEA's sales and wind IRENA's onshore and offshore
+  capacity (bead bnm-1pq.25); the BACI EV imports are kept under
+  :ev-imports for the cross-check only."
   [dir]
   (let [f #(str dir "/" %)
         trade (read-trade (f "data/derived/supply/tech-trade.csv"))
         cap (read-capacity (f "data/derived/material/capacity.csv") 2)
         shares (read-owid-shares (f "data/raw/material/owid-energy/owid-energy-data.csv") 1)
+        ins (load-installs (read-installs (f "data/derived/supply/tech-installs.csv") install-lag))
         sorted (fn [m] (update-vals m #(vec (sort-by :t %))))
         pv-adds (update-vals (sorted (:pv cap)) additions)
-        wind-adds (update-vals (sorted (:wind cap)) additions)
         li (:li-ion trade)
         with-world (fn [m] (assoc m "WLD" (world-sum m)))]
-    {:adds {:ev (with-world (:ev trade))
-            :pv (with-world pv-adds)
-            :wind (with-world wind-adds)
-            :li-ion (with-world li)}
-     :adopt {:ev (assoc (:ev-share trade) "WLD" (:ev-share-world trade))
-             :pv (sorted (:pv shares))
-             :wind (sorted (:wind shares))
-             :li-ion (update-vals (with-world li) cumulative)}
+    {:adds (merge (:adds ins)
+                  {:pv (with-world pv-adds)
+                   :li-ion (with-world li)})
+     :adopt (merge (:adopt ins)
+                   {:pv (sorted (:pv shares))
+                    :wind (sorted (:wind shares))
+                    :li-ion (update-vals (with-world li) cumulative)})
+     :ev-imports {:cars (with-world (:ev trade))
+                  :share (assoc (:ev-share trade) "WLD" (:ev-share-world trade))}
      :ints (read-intensities (f "data/derived/supply/recipes-filtered.csv"))
      :priors (into {} (for [p (:recipes (recipes/priors))] [(:id p) p]))}))
 

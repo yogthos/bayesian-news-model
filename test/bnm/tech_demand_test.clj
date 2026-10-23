@@ -37,7 +37,8 @@
    "li-ion/nickel" {2020 0.5} "li-ion/graphite" {2020 1.0} "ev/copper" {2020 60.0}
    "pv/silver" {2020 15.0} "pv/silicon" {2020 3000.0} "pv/copper" {2020 2800.0} "pv/steel" {2020 50000.0}
    "wind-onshore/steel" {2020 130000.0} "wind-onshore/copper" {2020 2900.0}
-   "wind-onshore/rare-earths" {2020 14.0}})
+   "wind-onshore/rare-earths" {2020 14.0}
+   "wind-offshore/copper" {2020 8000.0} "wind-offshore/rare-earths" {2020 239.0}})
 
 (deftest demand-arithmetic-and-units
   (testing "EVs: cars x kWh/car x kg/kWh, in tonnes"
@@ -53,6 +54,16 @@
       (is (close? 100000.0 (d "steel") 1e-9))))
   (testing "wind uses the onshore coefficients"
     (is (close? 28.0 ((td/material-demand :wind 2.0 ints 2020) "rare-earths") 1e-9)))
+  (testing "offshore wind: its own copper and rare earths, onshore steel (no offshore prior)"
+    (let [d (td/material-demand :wind-offshore 2.0 ints 2020)]
+      (is (close? 478.0 (d "rare-earths") 1e-9) "2 GW x 239 t/GW")
+      (is (close? 16000.0 (d "copper") 1e-9))
+      (is (close? 260000.0 (d "steel") 1e-9))))
+  (testing "PHEVs: a BEV's battery scaled by phev-battery, no copper"
+    (let [d (td/material-demand :phev 1000.0 ints 2020)]
+      (is (close? (* 5.0 td/phev-battery) (d "lithium") 1e-9))
+      (is (close? (* 50.0 td/phev-battery) (d "graphite") 1e-9))
+      (is (not (contains? d "copper")))))
   (testing "Li-ion trade: tonnes of accumulators x kWh/t x kg/kWh"
     (let [d (td/material-demand :li-ion 100.0 ints 2020)]
       (is (close? (* 100.0 td/kwh-per-tonne 0.1 1e-3) (d "lithium") 1e-9))))
@@ -136,6 +147,21 @@
     (doseq [y [2010 2014 2016]]
       (is (= (td/rows-at d "AAA" y) (td/rows-at d' "AAA" y)) (str "rows known in " y " ignore later data")))
     (is (not= (td/rows-at d "AAA" 2021) (td/rows-at d' "AAA" 2021)) "the poison is visible once known")))
+
+(deftest totals-at-a-common-data-year
+  (testing "sources known at different lags: the total is at the latest data year every technology has"
+    (let [d (-> (data)
+                (assoc-in [:adds :ev "AAA"] (vec (for [t (range 2017 2024)] {:t t :known (+ t 1) :x (* 100.0 (- t 2015))}))))
+          rs (td/rows-at d "AAA" 2023)]
+      (is (= 2021.0 (at rs "tech-demand/state-year")) "PV known two years on, EVs one: 2021")
+      (is (close? (* 600.0 50.0 0.1 1e-3) (at rs "tech-demand/lithium") 1e-9) "EVs of 2021, not 2022")
+      (is (= 2.0 (at rs "tech-demand/copper-count")) "both in the total")))
+  (testing "a technology more than stale-gap years behind the newest is left out"
+    (let [d (assoc-in (data) [:adds :ev "AAA"] [{:t 2017 :known 2018 :x 1000.0}])
+          rs (td/rows-at d "AAA" 2023)]
+      (is (= 2021.0 (at rs "tech-demand/state-year")))
+      (is (nil? (at rs "tech-demand/lithium")))
+      (is (= 1.0 (at rs "tech-demand/copper-count"))))))
 
 (deftest totals-sum-the-technologies
   (let [rs (td/rows-at (data) "AAA" 2023)]
@@ -255,6 +281,29 @@
     (is (close? 37.5 (d "cobalt") 1e-9))
     (is (close? 82.5 (d "nickel") 1e-9))))
 
+(deftest worked-installs
+  (let [ins (td/read-installs
+             (tmp (str "iso,year,series,value\n"
+                       "AAA,2020,bev-sales,1000\nAAA,2020,bev-share,4.5\nAAA,2020,phev-sales,500\n"
+                       "AAA,2019,wind-offshore,1000\nAAA,2020,wind-offshore,3000\n"
+                       "BBB,2020,wind-offshore,500\nAAA,2020,wind-onshore,7000\n"))
+             1)]
+    (is (= [{:t 2020 :known 2021 :x 1000.0}] (get-in ins [:bev-sales "AAA"])) "cars, known a year on")
+    (is (= [{:t 2020 :known 2021 :x 4.5}] (get-in ins [:bev-share "AAA"])))
+    (is (= [{:t 2019 :known 2020 :x 1.0} {:t 2020 :known 2021 :x 3.0}] (get-in ins [:wind-offshore "AAA"]))
+        "MW to GW, sorted")
+    (let [d (td/load-installs ins)]
+      (is (= [{:t 2020 :known 2021 :x 2.0}] (get-in d [:adds :wind-offshore "AAA"])) "2 GW added")
+      (is (= [{:t 2020 :known 2021 :x 2.0}] (get-in d [:adds :wind-offshore "WLD"])) "the world sums countries' additions")
+      (is (= (get-in ins [:wind-offshore "AAA"]) (get-in d [:adopt :wind-offshore "AAA"])) "offshore adoption: installed GW")
+      (is (= [{:t 2020 :known 2021 :x 1000.0}] (get-in d [:adds :ev "AAA"])))
+      (is (= [{:t 2020 :known 2021 :x 500.0}] (get-in d [:adds :phev "AAA"]))))))
+
+(deftest world-ev-is-iea-s-own
+  (let [d (td/load-installs {:bev-sales {"AAA" [{:t 2020 :known 2021 :x 10.0}] "WLD" [{:t 2020 :known 2021 :x 100.0}]}})]
+    (is (= [{:t 2020 :known 2021 :x 100.0}] (get-in d [:adds :ev "WLD"]))
+        "IEA's world total (rest of world included), not the sum of the countries listed")))
+
 (deftest worked-pv-and-wind
   (let [cap (td/read-capacity
              (tmp (str "iso,year,variable,value,unit,flag\n"
@@ -273,7 +322,7 @@
     (is (close? 2.0 (:x wd) 1e-9))
     (is (close? 5800.0 (w "copper") 1e-9) "2 GW x 2900 t/GW onshore")
     (is (close? 260000.0 (w "steel") 1e-9))
-    (is (close? 28.0 (w "rare-earths") 1e-9) "onshore 14 t/GW, not offshore 239: a lower bound")))
+    (is (close? 28.0 (w "rare-earths") 1e-9) "onshore wind: 14 t/GW (offshore is :wind-offshore)")))
 
 (deftest constants-hang-together
   (testing "a 55 kWh pack at 150 Wh/kg is about a fifth of a 1.8 t car"
