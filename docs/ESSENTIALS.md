@@ -1466,6 +1466,59 @@ before any test year is scored (PRINCIPLES 9).
       - Placebos: the footprint moved to a random land position in the
         same country (cell exposure should lose its edge), and the shock
         dated a year early (both exposures should predict nothing).
+    - Prepared (bead bnm-1pq.27; bnm.located-shocks, tools/bnm/
+      located_shocks_run.clj), developed on shock years 1991-2009 only
+      (outputs to 2010; the tool refuses later outputs without
+      --registered true):
+      - Catalogue (scripts/located-shocks.py, data/derived/hazards/, each
+        source in data/raw/hazards/ with its SOURCE.txt): USGS ComCat M6
+        and above 1990-2024 with ShakeMap MMI grids (2,694 of 5,259
+        events; those deeper than 300 km or over 250 km from land not
+        fetched), 371 reaching land at MMI 7; IBTrACS since 1980, 1,210
+        storms at hurricane force over land (R64 the mean of the quadrant
+        radii, else the median of the point's wind band, 37-79 km); DFO
+        Global Flood Records 1985-2023 (Zenodo; the Global Flood Database
+        is on Earth Engine only), 5,470 on land; and conflict onsets from
+        the project's own GDELT catalogue on cells (data/norm/gdelt-a5) in
+        place of UCDP GED, which is not held: a cell-year with 5 or more
+        assault events (CAMEO 18-20) and 2 or more per million of the
+        year's located events, the five years before each under a quarter
+        of that, 2,661 in 1990-2024. A cell is hit when the footprint
+        covers half of it. EM-DAT is registration-gated and on the manual
+        list (section 9).
+      - Changes to the design above, fixed on development years: the
+        outcome is the shock year and the next against the three years
+        before (a shock late in a year shows in the next); a unit counts
+        only where the country has a plant of the key known the year
+        before; the outcome is held to plus or minus 1 (small producers'
+        output halves or doubles for reasons no shock explains); cement
+        output is BGS's finished cement (33 countries, from 1998; stages.
+        csv has none); shocks span 1990-2024.
+      - Known plants: before 2011 only SFI's dated steel and cement plants
+        and 7 OGIM refineries are known (SFI's 3,397 undated plants count
+        from 2021, USGS's from 2016-2024, OGIM's 680 refineries from 2026).
+        The development units are steel 865 (52 countries), cement 248
+        (28) and refinery 41 (3).
+      - Development (data/runs/located-dev): 1,154 units, 263 exposed
+        country-years (234 of them from floods). Neither exposure beats no
+        exposure (squared error 0.0506; cell 0.0508, country 0.0506);
+        cell less country +0.00026, 90% interval [-0.0002, +0.0007], no
+        verdict. Slopes: cell -0.02, country +0.06. Only floods have 50
+        exposed country-years alone (no verdict); earthquakes 2, cyclones
+        29, conflict 13. Time placebo -0.00014 [-0.0008, +0.0004]; all 19
+        space placebos at or below the real footprints (mean -0.00001).
+        Coverage 0.25, (key, country) effects, no clip, and assets read
+        back to their start years (not causal: 4,435 units, all nine keys)
+        give the same: no verdict, cell no better.
+      - To register: the all arm as run in development (coverage 0.5,
+        exposure 0.05, clip 1, key-year effects, 1,000 draws, seed 1, at
+        least 50 exposed country-years), shock years 2011-2023 (outputs
+        2008-2024; 2010, whose outputs straddle the split, is in
+        neither). Without reading outputs, the window has at most 405
+        exposed country-years (`--preview true`). Expected from
+        development: cell does not win, keep countries.
+        `jolt -A:tools -M -m bnm.located-shocks-run --from 2011 --to 2023
+        --name located-test --registered true`
     - Built (bead bnm-1pq.11): data/derived/stocks/cells.csv,
       cells/<key>-hhi, -top-share (top cell in top) and -cells for 57
       processing and power keys, WLD and per country, 1990-2026, over the
@@ -1523,6 +1576,10 @@ before any test year is scored (PRINCIPLES 9).
 | IEA Critical Minerals Data Explorer / Global EV Outlook data | intensities, EV sales | small | IEA terms (account) | manual |
 | GEM plant-level trackers (steel, chemicals, cement, refineries) | plants by cell with dates | about 50-200 MB | CC BY 4.0 | manual (form) |
 | ERA5 heating degree-days | heat demand prior | small if pre-aggregated | Copernicus licence | manual (account) |
+| USGS ComCat M6+ 1990-2024 and ShakeMap MMI grids | located shocks (step 10) | 132 MB | public domain | held: scripts/located-shocks.py fetch |
+| IBTrACS v04r01 since 1980 | located shocks | 145 MB | public domain | held |
+| DFO Global Flood Records 1985-2023 | located shocks | 6 MB | CC BY 4.0 (Zenodo 19288171) | held |
+| EM-DAT | disaster losses by event, a check on the catalogue | small | non-commercial, registration | manual (account) |
 
 Not needed: UN Comtrade (BACI covers it), and v3.9 and later EXIOBASE
 (licence).

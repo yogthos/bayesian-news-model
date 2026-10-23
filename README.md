@@ -107,6 +107,9 @@ python -I scripts/cell-assets.py     # plant and resource sources read into one 
 jolt -A:tools -M -m bnm.cell-assets  # assets on cells: data/derived/cells/assets.csv
 python -I scripts/cell-grids.py      # GDP, lights, built-up, EDGAR CO2 on cells: cell-grids.csv
 jolt -A:tools -M -m bnm.cell-profiles-run  # profiles, paths, cell HHI (stocks/cells.csv), features
+python -I scripts/located-shocks.py fetch   # ShakeMap MMI grids for M6+ earthquakes
+python -I scripts/located-shocks.py build   # quakes, cyclones, floods, conflict onsets on cells (data/derived/hazards)
+jolt -A:tools -M -m bnm.located-shocks-run --from 1991 --to 2009  # cell against country exposure (development years)
 ```
 
 The crosswalk is drawn from Natural Earth's current borders (public domain) and Marine Regions' EEZs (CC BY 4.0) under `data/raw/geo/`; `bnm.cells/country-in-year` reads a cell's country for a past year (the USSR, Yugoslavia, Sudan before 2011, the two Germanys).

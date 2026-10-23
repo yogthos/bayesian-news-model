@@ -140,11 +140,13 @@
                           (format "  %-13s %6d %4d %6d   %s    %s    %s     %+.5f  %s  %-7s %+8.3f %+8.3f\n"
                                   k (:units v) (:hit-units v) (:exposed v) (fmt (:mse-null v)) (fmt (:mse-cell v))
                                   (fmt (:mse-country v)) (double (:diff v)) (fmt-ci (:interval v))
-                                  (clojure.core/name (:verdict v)) (double (:slope-cell v)) (double (:slope-country v)))))
+                                  (if (< (:exposed v) min-exposed) "under" (clojure.core/name (:verdict v)))
+                                  (double (:slope-cell v)) (double (:slope-country v)))))
              (when (seq spaces)
                (format "\nspace placebos: %d of %d at or below the all arm's difference (%+.5f); mean %+.5f\n"
                        (count (filter #(<= (:diff %) (:diff main)) spaces)) (count spaces) (double (:diff main))
                        (/ (reduce + (map :diff spaces)) (count spaces))))
+             "\nverdict \"under\": fewer than " min-exposed " exposed country-years in the arm, not read\n"
              "\nverdict (all arm): "
              (cond (not powered?) "underpowered, not read"
                    (= :cell (:verdict main)) "cell wins"
