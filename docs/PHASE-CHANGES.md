@@ -1599,6 +1599,35 @@ not recur: divergence of asset values from their own past does not time
 crashes or banking crises out of sample, as an attribution over placebos
 with the same coverage.
 
+**Results, 23 October 2026 (cells against provinces, bnm-3ka.11).**
+Violence escalation from quiet, 2015-26, 46 periods:
+
+| arm | AUC | BSS |
+|---|---|---|
+| provinces, pilot | 0.859 | 0.024 |
+| provinces, stage only | 0.807 | 0.039 |
+| provinces, features | 0.810 | 0.039 |
+| cells, pilot | 0.764 | 0.006 |
+| cells, stage only | 0.718 | 0.024 |
+| cells, features | 0.744 | 0.023 |
+| cells, shuffled (19) | 0.734-0.748 | 0.021-0.023 |
+
+1. **Cells against provinces, both with features** (primary): AUC
+   0.744 against 0.810 ([-0.105, -0.022]), BSS 0.023 against 0.039: fails.
+2. **Cells against their shuffles** (primary): above the seed-1 placebo
+   on both, but above only 16 of 19 shuffles on AUC and 13 on BSS: fails.
+3. Record: the stage recalibrates (BSS up at both levels) at a cost in
+   ranking (AUC down from the event model's), since it learns only inside
+   the window; within cells the features recover part of that (0.718 to
+   0.744), little of it specific to the cell (the shuffles reach 0.748).
+
+Provinces stay the unit inference reads. With what is now in the cells
+they still lose: a province carries a place's political identity and the
+event geocoding resolves to it, and the material and economic features,
+which say where things are, do not add to the timing of violence that
+the event streams carry. Cells stay the storage and the material layer
+(principle 11); they are not the event model's node.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
