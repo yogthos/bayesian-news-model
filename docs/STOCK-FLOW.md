@@ -760,7 +760,9 @@ physical in both units) 25,200 are critical, the energy bundles' fuels
 among them (28,669 before physical evidence decided: 3,469 rows changed,
 all from critical to substitutable). The hybrid table finds 89,048 rows
 absent or negligible, 1,483 of them at 5% of their output's value or
-more. Of the 3,469, 1,303 are single rows: feed in livestock (crops nec
+more. With the overrides and the coal pools (above) the graph has
+530,774 rows, 206,271 physical, 25,768 critical, and 88,317 absent or
+negligible (1,475 at 5% or more). Of the 3,469, 1,303 are single rows: feed in livestock (crops nec
 and food products nec in cattle, milk, meat, pigs and poultry, about
 360, the hybrid table feeding them cereals and oil cake), crude-like
 inputs at 0 t per t (crude in N fertiliser, chemicals, plastics, coke,
