@@ -650,6 +650,32 @@ of fuel, and with the stocks (below) nuclear power loses under 1% in
 the first month of the cut and 0.6-5% by month 12, its upkeep rather
 than its fuel (its fuel stocks are at most 5% drawn).
 
+Where the hybrid table records a good's flow into a product in physical
+units (both in tonnes or TJ, the good not a service), the physics
+decides, not the value share. A good at 0 per unit is absent; a fuel
+(a good with an IPCC calorific value, or a carrier in TJ: electricity
+as its pool, steam, nuclear fuel) whose heat is under 1% of the heat of
+every fuel in the recipe (`supply/negligible-heat`) is negligible.
+Either is the monetary tables routing a flow differently from the
+physical one, as gas distribution was: crude at 6-10% of the value of
+Italy's, the Netherlands' and Poland's N fertiliser, 0 t per t beside
+0.1-0.6 t of gas; natural gas at 0.3-0.9% of nuclear power's value in
+the Netherlands, Britain and Hungary, 0.01-0.3 kg per TJ against 3 TJ
+of nuclear fuel (a millionth of the heat). Such a row is not critical
+whatever its share, does not count toward a pool's or an energy
+bundle's 5%, and is left with value added in outage
+(`supply/hypergraph`), as gas distribution in a power station is. A
+material above 0 t per t is present at any tonnage: its tonnes cannot
+be read against the recipe's (an alloying metal, a catalyst), so only
+absence counts. Where there is no physical row (services; goods
+recorded in money: motor vehicles, other transport equipment, secondary
+raw materials; outputs in money) or the recipe records no tonne or TJ
+of any good (5 recipes), the value-share rule stands. The 1% is this
+model's, a prior: far above the artefacts it is for (a millionth of
+nuclear power's heat, 0 t of crude) and far below any fuel a process
+runs on; a fuel's part of the heat is read from the hybrid table
+alone.
+
 Every other input is substitutable. A product's recipe is then nested:
 the minimum of its critical inputs and a bundle, the bundle a CES of the
 substitutable inputs and value added (labour and capital, weighted by one
@@ -682,9 +708,26 @@ refineries and households draw on the same origins.
 
 Substitutable inputs below a 0.1% share are left with value added in
 outage (a CES bundle barely feels them; they are half the rows). Of
-530,416 recipe rows (48 regions, 7,118 region-products, 205,913 rows
-physical in both units) 28,671 are critical, the energy bundles' fuels
-among them.
+530,452 recipe rows (48 regions, 7,118 region-products, 205,949 rows
+physical in both units) 25,200 are critical, the energy bundles' fuels
+among them (28,669 before physical evidence decided: 3,469 rows changed,
+all from critical to substitutable). The hybrid table finds 89,048 rows
+absent or negligible, 1,483 of them at 5% of their output's value or
+more. Of the 3,469, 1,303 are single rows: feed in livestock (crops nec
+and food products nec in cattle, milk, meat, pigs and poultry, about
+360, the hybrid table feeding them cereals and oil cake), crude-like
+inputs at 0 t per t (crude in N fertiliser, chemicals, plastics, coke,
+refinery feedstocks and natural gas, about 200), chemicals nec in pulp
+and plastics (the naphtha route), metals in foundry work and other
+metals, naphtha in four countries' plastics with no naphtha row
+(Australia, Cyprus, Latvia, Malta). The other 2,166 are the fuels of 120
+energy bundles no longer critical once the negligible fuels' and
+electricity pools' shares stop counting toward 5%: most are quarrying
+and mining (sand and clay 19 regions, chemical minerals 15, stone 14,
+iron ore 8, other ores), coke ovens and their gases, pulp, and
+Poland's steel (its bundle at 4% of value without LPG at 1% of its
+value and 0.4% of its heat). No gas row of N fertiliser changed, nor
+coke in steel.
 
 ### What bnm.supply gives
 
@@ -780,9 +823,9 @@ updates to a residual of 1e-6.
 - Germany 2022: gas for use in Germany cut 26%, industry's cut from
   July 2022 to March 2023 (Moll, Schularick & Zachmann 2023, against
   2018-21). Energy-intensive output (Destatis's paper, coke and refined
-  products, chemicals, basic metals, non-metallic minerals) falls 8%
+  products, chemicals, basic metals, non-metallic minerals) falls 7%
   weighted by 2011 value added, as Destatis's index is (7% by output
-  value, where refining, large in output and thin in value added, weighs
+  value too, where refining, large in output and thin in value added, weighs
   more), the rest of manufacturing 1%: N fertiliser 26%, ceramics 21%,
   glass 19%, chemicals 18%, cement 18%, paper 15%, aluminium 9%,
   plastics 5%, steel 1%, machinery and vehicles 1%. Destatis's
@@ -796,17 +839,21 @@ updates to a residual of 1e-6.
   every user in Germany alike, households and power stations included.
   And the real fall held price and demand (gas at several times its
   price, ammonia and other gas-intensive goods imported instead) that a
-  quantity cut does not. So the model's 8% is a lower bound on what the
+  quantity cut does not. So the model's 7% is a lower bound on what the
   cut alone would do, and the calibration is not met: energy-sigma is
   not tuned to it (8% at 0.25, 7% at 1; sigma moves it little, above).
 - Natural gas for use in Europe cut 40%: N fertiliser and gas-fired
   electricity fall 40% in Germany, France, the Netherlands and Poland;
-  crops lose 2-9% (wheat 4-7%; vegetables 2% in Germany, 9% in the
-  Netherlands' greenhouses), cattle 4-7%; steel 14-33% (Germany 17%,
-  Italy 14%, France 22%, Poland 23%, the Netherlands 26%, Britain 27%,
-  Czechia 29%, Spain 33%: gas the heat of its furnaces, the loss the gas
+  crops lose 2-9% (wheat 3-6%; vegetables 2% in Germany, 9% in the
+  Netherlands' greenhouses), cattle 2-5%; steel 11-33% (Germany 11%,
+  Italy 12%, Poland 15%, France 20%, Czechia 20%, the Netherlands 26%,
+  Britain 26%, Spain 33%: gas the heat of its furnaces, the loss the gas
   share of the heat, or Italy's gas-heated coke ovens for Germany's);
-  America's N fertiliser loses 2%, China's 8%. Before the energy bundle,
+  America's N fertiliser loses 0.3%, China's 7%. Before physical
+  evidence decided (the rule above) steel lost 14-33% (Germany 17%,
+  Poland 23%, Czechia 29%), America's N fertiliser 2%, China's 8%, and
+  nuclear power 2-19% (now 1-18%: Germany 8%, France 4%, the
+  Netherlands 7%, Spain 8%). Before the energy bundle,
   the equipment rule and the scaling, crops lost 2-6% but Germany's
   vegetables 14%, and steel 13-40% (gas burnt at 0.1 t/t, or at 5% of
   value as in the Netherlands, counted as a feedstock; blast furnace gas
@@ -819,9 +866,13 @@ updates to a residual of 1e-6.
   (25% with its gas read as heat alone) and 28% in Mexico (the same
   without the override).
 - Middle East crude output cut 50%: refining falls 48% in Japan, 29% in
-  India and Indonesia, 24% in China, 17% in Korea, 11% in the rest of
-  Asia-Pacific; 2-31% in Europe and the Americas (Russia 2%, Brazil 7%,
-  the US 14%, Germany 29%). Asia's mean 26% against 15% (before the
+  India, 28% in Indonesia, 22% in China, 12% in Korea, 9% in the rest of
+  Asia-Pacific; 1-31% in Europe and the Americas (Russia 1%, Brazil 4%,
+  the US 13%, Germany 29%). Asia's mean 25% against 12% (26% against
+  15% before physical evidence decided, when crude at 0 t per t was
+  critical in some regions' coke, chemicals, plastics and gas; N
+  fertiliser now loses 5% in Italy, 4% in Hungary, 1% in
+  the US, against 7%, 15% and 14%; before the
   scaling 27% against 16%, India 33% and China 27%: smaller naphtha
   flows carry less of the Gulf's crude into Asia's other products). The import shares are EXIOBASE's, estimated where no bilateral data
   exist: Korea's is far below its known Gulf dependence (about 85%) and
@@ -836,7 +887,8 @@ tables' shares, Taiwan inside WA, region-wide rather than per user);
 reallocation of imports; stocks that refill or are managed (below, a
 stock only drains); fuel switching beyond the bundle (other fuels held at their
 availability, none bought in addition); and value shares the monetary
-tables route differently from the physical flows.
+tables route differently from the physical flows where the hybrid table
+has no physical row to correct them (services, goods in money).
 
 ### Stocks: an outage drains a stock before it cuts a flow (bead bnm-1pq.23)
 
@@ -979,43 +1031,40 @@ China's crude a prior):
     natural gas for use in Europe cut 40%
       DE N fertiliser   0%   0%  40%  40%  40%   steady 40%   (storage 1.55 months)
       DE gas power      0%   1%  40%  40%  40%          40%
-      DE nuclear power  0%   0%   0%   0%   0%           9%   (was 0 0 1 1 1)
-      DE steel          0%   1%  15%  15%  15%          17%
+      DE nuclear power  0%   0%   0%   0%   0%           8%
+      DE steel          0%   0%   9%   9%  10%          11%
       FR N fertiliser   0%   0%  40%  40%  40%          40%   (1.90)
-      FR nuclear power  0%   0%   0%   0%   0%           6%   (was 0 0 0 1 1)
-      NL nuclear power  0%   0%   2%   2%   2%           8%
-      PL N fertiliser   1%   1%  34%  40%  40%          40%   (2.06)
+      FR nuclear power  0%   0%   0%   0%   0%           4%
+      NL nuclear power  0%   0%   0%   0%   1%           7%   (was 0 0 2 2 2)
+      PL N fertiliser   0%   1%  34%  40%  40%          40%   (2.06)
       GB N fertiliser  16%  40%  40%  40%  40%          40%   (0.24)
-      GB nuclear power  0%   1%   1%   1%   1%           4%
-      GB steel          9%  26%  26%  26%  27%          27%
+      GB nuclear power  0%   0%   0%   0%   0%           2%   (was 0 1 1 1 1)
+      GB steel          9%  25%  25%  25%  25%          26%
     Middle East crude output cut 50% (refining industry)
       WM refining       2%   2%   2%  50%  50%   steady 50%   (crude 3.03 months)
       JP refining       0%   0%   0%  48%  48%          48%   (4.33)
-      IN refining       0%  27%  28%  29%  29%          29%   (0.32)
-      KR refining       0%   0%   1%  13%  16%          17%   (1.44)
-      CN refining       0%   0%   0%  22%  23%          24%   (1.13, a prior; was 19 19 19 22 23)
+      IN refining       0%  27%  27%  28%  29%          29%   (0.32)
+      KR refining       0%   0%   0%  10%  12%          12%   (1.44)
+      CN refining       0%   0%   0%  21%  22%          22%   (1.13, a prior)
       DE refining       0%   0%   0%  29%  29%          29%   (2.57)
-      US refining       0%   1%   2%   4%  14%          14%   (2.08)
+      US refining       0%   1%   2%   3%  13%          13%   (2.08)
     a wheat harvest 30% short everywhere (world stocks 3.6 months)
       RU food products  0%   0%   0%  16%  30%   steady 30%
       WM food products  0%   0%   0%  30%  30%          30%
-      CN food products  0%   0%   0%   2%   3%           6%
+      CN food products  0%   0%   0%   0%   1%           1%
       storage pressure (bnm.food, against the stocks at the start)
                         1.07 1.25 1.63 2.67 4.29
 
 Nuclear power loses nothing through month 12 in Germany and France
-(against 9% and 6% in the steady state), and at most 1.7% anywhere in
-Europe: its fuel stocks (18-30 months) are at most 5% drawn by then and
-its upkeep waits for the next planned outage (the least left at month
-12 is Belgium's construction, 3 of its 6 months). The 1.7% left, the
-Netherlands' (Britain's 1%, Hungary's less), is no upkeep: the monetary
-tables give these stations natural gas itself at 0.3-0.9% of their value
-(the Netherlands 0.87%) against 0.2 kg of it per TJ, the industry mix's
-gas as the gas-distribution row was, and a 40% cut of it costs a CES
-bundle 1-2%. The check that nuclear loses under 1% through month 12
-fails on it; treating a carrier's gas row like its gas distribution, a
-monetary route of another station's fuel, would clear it, and is left
-for a decision. European gas storage delays the N fertiliser cut by
+(against 8% and 4% in the steady state), and under 1% anywhere in
+Europe (Slovakia's 0.9% the most, the Netherlands' 0.25%): its fuel
+stocks (18-30 months) are at most 5% drawn by then and its upkeep waits
+for the next planned outage (the least left at month 12 is Belgium's
+construction, 3 of its 6 months). The Netherlands had lost 1.7%, Britain
+1%: the monetary tables give these stations natural gas itself at
+0.3-0.9% of their value against 0.2 kg of it per TJ, a millionth of
+their heat, and a 40% cut of it cost a CES bundle 1-2%. The hybrid table
+finds it negligible, so it is no input now (`supply/negligible-heat`). European gas storage delays the N fertiliser cut by
 months: none in month 1 or 3 where storage holds over a month of use,
 the whole cut by month 6 (Germany, France, Italy, the Netherlands), as
 storage carried the 2022 winter; Britain, with a week of storage, loses
