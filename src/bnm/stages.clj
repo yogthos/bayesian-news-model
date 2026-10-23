@@ -42,7 +42,18 @@
   net exports plus domestic use, China closing the mass balance against the
   mine stage, and a facility year from plant capacities; one edition per
   plant-list year (source BNM-CHEM<year>), so they read like any other.
-  Their D is mine against that stage.
+  Their D is mine against that stage. China's share there is partly a
+  residual (stages-chem.csv column mine: its own mine output; the rest is
+  the others' unprocessed ore, stock changes and losses).
+
+  An alternative, from data/derived/supply/stages-chem.csv rows of method
+  quota: rare-earth separation with China at its MIIT smelting and
+  separation quota and the others as built, written as the stage
+  separation-quota (stages/rare-earths-separation-quota-hhi, -top-share,
+  -share, ...; no D). The balance (stage separation) is primary: the quota
+  covers domestic ore only and leaves out the imported feed China
+  separates, so it is a lower bound; the balance, which takes stock
+  changes and losses, an upper one.
 
   D compares shares, each stage's of its own world total, so stages whose
   world totals differ (refined copper, lead and tin include scrap; stocks)
@@ -62,6 +73,7 @@
 (def in-path "data/derived/supply/stages.csv")
 (def plants-path "data/derived/supply/stage-plants.csv")
 (def out-path "data/derived/stocks/stages.csv")
+(def chem-path "data/derived/supply/stages-chem.csv")
 
 (def default-stale "Years past its known year a stage's data are still read." 3)
 
@@ -260,6 +272,32 @@
                (d-stocks c ch idx k stale))]
         r)))))
 
+;; ---------------------------------------------------------------- alternatives
+
+(defn alternative
+  "Stage rows of an alternative: for each edition (data year and known) of
+  a stage that has an alternative value for one country, that edition's
+  rows with the country's quantity replaced, as the stage <stage>-<tag>.
+  Editions with no alternative value are left out. alts are maps of
+  :commodity :stage :iso :year :known :quantity."
+  [rows alts tag]
+  (let [alt (into {} (map (juxt (juxt :commodity :stage :year :known) identity)) alts)]
+    (vec
+     (for [[[c s y k] rs] (group-by (juxt :commodity :stage :year :known) rows)
+           :let [a (alt [c s y k])]
+           :when a
+           r (conj (vec (remove #(= (:iso a) (:iso %)) rs))
+                   (assoc (first rs) :iso (:iso a) :quantity (:quantity a)))]
+       (assoc r :stage (str s "-" tag))))))
+
+(defn quota-alternative
+  "Stage rows of China at its separation quota (stages-chem.csv, method
+  quota), or nil when the table is not built."
+  [rows path]
+  (when (.exists (io/file path))
+    (let [alts (filter #(= "quota" (:method %)) (read-rows path))]
+      (when (seq alts) (alternative rows alts "quota")))))
+
 ;; ---------------------------------------------------------------- plants
 
 (defn plant-stocks
@@ -299,7 +337,8 @@
 (defn -main [& _]
   (let [rows (read-rows in-path)
         plants (when (.exists (io/file plants-path)) (read-rows plants-path))
-        out (concat (stocks rows) (plant-stocks plants rows))]
+        alt (quota-alternative rows chem-path)
+        out (concat (stocks rows) (when (seq alt) (stocks alt)) (plant-stocks plants rows))]
     (write-stocks out-path out)
     (println (str out-path ": " (count out) " rows, "
                   (count (distinct (map :variable out))) " variables, "

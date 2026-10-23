@@ -218,3 +218,52 @@
             tot (reduce + 0.0 (map #(parse-double (get % col)) rs))]
         (is (= n (count rs)) (str path ": rows other than the chemical stages"))
         (is (< (Math/abs (- tot sum)) (* 1e-9 sum)) (str path ": their total"))))))
+
+;; ---------------------------------------------------------------- review of bnm-1pq.15
+
+(deftest an-alternative-replaces-one-country
+  (testing "China at its quota instead of the balance, the others as built, edition by edition"
+    (let [rows [(row "re" "separation" "A" 2003 90 :known 2005) (row "re" "separation" "B" 2003 10 :known 2005)
+                (row "re" "separation" "A" 2004 95 :known 2006) (row "re" "separation" "B" 2004 5 :known 2006)
+                (row "re" "mine" "A" 2003 100 :known 2005)]
+          alts [{:commodity "re" :stage "separation" :iso "A" :year 2003 :known 2005 :quantity 40.0}]
+          alt (stg/alternative rows alts "quota")]
+      (is (= #{"separation-quota"} (set (map :stage alt))))
+      (is (= #{2003} (set (map :year alt))) "an edition with no alternative value is left out")
+      (is (= {"A" 40.0 "B" 10.0} (into {} (map (juxt :iso :quantity) alt))))
+      (let [out (stg/stocks alt)]
+        (is (close? 0.8 (value out "A" 2005 "stages/re-separation-quota-share") 1e-12))
+        (is (nil? (value out "WLD" 2005 "stages/re-d")) "no D for an alternative")))))
+
+(def ^:private chem-path "data/derived/supply/stages-chem.csv")
+
+(defn- chem-rows []
+  (when (.exists (io/file chem-path)) (vec (csv/read-maps chem-path \,))))
+
+(defn- num [s] (when (seq s) (parse-double s)))
+
+(deftest chemical-stage-review
+  (if-let [ps (chem-rows)]
+    (let [pick (fn [c iso y k] (first (filter #(= [c iso (str y) (str k)] [(:commodity %) (:iso %) (:year %) (:known %)]) ps)))]
+      (testing "a brine producer's chemical output is its mine output (USGS counts the salar's carbonate)"
+        (doseq [y [2020 2021 2022 2023 2024] iso ["CHL" "ARG"]
+                :let [p (pick "lithium" iso y 2026)]]
+          (is (= "brine" (:method p)) [iso y])
+          (is (close? (num (:quantity p)) (num (:mine p)) 1e-6) [iso y])))
+      (testing "no country outside China above its listed capacity"
+        (doseq [p ps :when (and (not= "CHN" (:iso p)) (num (:capacity p)) (#{"trade" "trade+use" "capped"} (:method p)))]
+          (is (<= (num (:quantity p)) (* 1.000001 (num (:capacity p)))) [(:commodity p) (:iso p) (:year p) (:known p)])))
+      (testing "Malaysia's rare-earth trade above Lynas's capacity is capped"
+        (is (= "capped" (:method (pick "rare-earths" "MYS" 2023 2026)))))
+      (testing "a quantity error (US rare-earth compounds to Mexico, 2004, at $0.12/kg) is screened out"
+        (is (< (num (:quantity (pick "rare-earths" "USA" 2004 2026))) 5000)))
+      (testing "China's own mine output is carried, so its residual can be read off"
+        (doseq [p ps :when (and (= "CHN" (:iso p)) (= "balance" (:method p)))]
+          (is (some? (num (:mine p))) [(:commodity p) (:year p) (:known p)])))
+      (testing "editions whose plant list misses a later-known producer are flagged"
+        (is (= "1" (:incomplete (pick "rare-earths" "CHN" 2021 2023))))
+        (is (= "0" (:incomplete (pick "rare-earths" "CHN" 2021 2026)))))
+      (testing "China at its MIIT separation quota is written as an alternative"
+        (is (= "quota" (:method (first (filter #(and (= "quota" (:method %)) (= "2022" (:year %))) ps)))))
+        (is (close? 202000.0 (num (:quantity (first (filter #(and (= "quota" (:method %)) (= "2022" (:year %))) ps)))) 1e-6))))
+    (println "  (skipped:" chem-path "not built)")))
