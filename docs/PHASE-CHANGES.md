@@ -1679,6 +1679,36 @@ dated as they are (most plants only known from their snapshot years),
 where a shock lands within a country does not yet tell its output loss
 better than how much of the country it covers.
 
+## Registered, 23 October 2026: the watch-list rule (bead bnm-82j.1)
+
+From the next trial on, every event-model trial reports, beside the
+paired Brier and log scores, the watch-list rule of bnm.watchlist. For
+each kind and year-end origin 2003-2022, the countries are ranked by the
+year node's probability of an onset in (t, t+2], using only the forecast
+made at the origin, with ties at the cutoff sharing the slots left.
+**Primary for the use:** top-10 recall on hard onsets (no onset of the
+kind in the ten years to the origin, the hard rows ranked among
+themselves), pooled over origins within a kind and over the trial's
+linked kinds with equal weights, the trial's run against its bench,
+paired on the rows both forecast. **Interval:** a paired bootstrap of
+origin years in blocks of two, 1,000 draws, 90% two-sided; a gain when
+the lower end is above zero (one-sided 5%). **Equivalence:** equivalent
+to nothing for the watch list when the upper end is below +0.03, the gain
+the power check (bnm.watchlist --power) finds 80% of the time (+0.027
+with thirteen kinds, +0.032 with seven); its null passes in at most 1% of
+draws. The check found Brier no less powerful: the rule measures the use,
+it is not more sensitive. **For the record:** k = 5, 20 and 10% of
+countries; all rows; precision; mean lead and share of onsets caught; the
+run against its placebo; persistence and climatology.
+
+The base's standing (t44-world-norel, hard onsets, top 10): recall 0.274
+against persistence 0.203 (+0.071 [+0.049, +0.092]) and climatology 0.237
+(+0.037 [+0.021, +0.058]); it trails only on sovereign defaults and
+fiscal consolidations. Rescoring trials 42-45, the gauge fix and T8b on
+this rule (a record, not a test): none gains on the primary; trials 44
+and 45 gain against their placebos on short lists, which says the
+scrambled inputs harm the ranking, not that the real ones help.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
