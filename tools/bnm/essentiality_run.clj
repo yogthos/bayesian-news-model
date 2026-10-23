@@ -47,20 +47,44 @@
     (let [[h & ls] (line-seq r) ks (mapv keyword (str/split h #","))]
       (mapv #(zipmap ks (str/split % #"," -1)) (doall ls)))))
 
+(def subnode-products
+  "subnodes.csv's sub-nodes that bnm.supply/load-graph splits out of their
+  parents (bnm.rare-earths), and the graph's product for each."
+  {"rare_earth_compounds" "C_REOX" "rare_earth_metals" "C_REMT" "permanent_magnets" "C_NDFB"})
+
+(defn subnode-parents
+  "{hs6 product}: the HS92 codes of the sub-nodes the graph splits out
+  (`subnode-products`), from subnodes.csv rows (bnm.concordance/load-subnodes)."
+  [subnodes]
+  (into {} (for [{:keys [subnode edition hs6]} subnodes
+                 :let [p (subnode-products subnode)]
+                 :when (and p (= "HS92" edition))]
+             [hs6 p])))
+
 (defn hs92-parents
-  "The EXIOBASE products HS92 codes map to."
+  "The EXIOBASE products HS92 codes map to, and the sub-nodes the graph
+  splits out of them (`subnode-products`)."
+  ([] (hs92-parents (conc/load-concordance (str dir "/concordance.csv"))))
+  ([conc]
+   (->> conc
+        (filter #(= "HS92" (:edition %)))
+        (map :product)
+        (concat (vals subnode-products))
+        distinct sort vec)))
+
+(defn graph-rows
+  "{:trade :production} of the product graph as bnm.supply/load-graph
+  builds it (bnm.supply/load-rows: the rare-earth chain split out of its
+  parents, which keep the rest), not the raw production.csv and
+  trade.csv, which hold the parents' full values."
   []
-  (->> (conc/load-concordance (str dir "/concordance.csv"))
-       (filter #(= "HS92" (:edition %)))
-       (map :product)
-       distinct sort vec))
+  (select-keys (sup/load-rows dir) [:trade :production]))
 
 (defn losses [& [only]]
   (let [t0 (System/currentTimeMillis)
         g (sup/load-graph dir)
         h (sup/hypergraph g)
-        production (read-plain (str dir "/production.csv"))
-        trade (mapv #(update % :quantity parse-double) (read-plain (str dir "/trade.csv")))
+        {:keys [production trade]} (graph-rows)
         va (es/value-added g production)
         uses (es/use-values trade production)
         stocks (sup/stocks (filter #(<= (:known %) 2013) (sup/stock-rows (str dir "/stocks.csv"))))
@@ -171,6 +195,12 @@
        (filter #(and (= "HS92" (:edition %)) (nil? (:from %))))
        (group-by :code)
        (into {} (map (fn [[c rs]] [c (:product (apply max-key :weight rs))])))))
+
+(defn parents-of
+  "{hs6 product}: `main-parents`, with the codes of the sub-nodes the
+  graph splits out going to the sub-node (`subnode-parents`)."
+  [conc subnodes]
+  (merge (main-parents conc) (subnode-parents subnodes)))
 
 (defn import-shares
   "{[region product] share of the region's use imported}, from trade.csv."
@@ -474,11 +504,11 @@
         ranks (into {} (for [k years] [k (vec (filter :rank (ess/rise world (- k 2))))]))
         _ (tick "rise ranks")
         conc (conc/load-concordance (str dir "/concordance.csv"))
-        parents (main-parents conc)
+        parents (parents-of conc (conc/load-subnodes (str dir "/subnodes.csv")))
         losses (load-loss (or loss-file loss-path))
-        trade-rows (mapv #(update % :quantity parse-double) (read-plain (str dir "/trade.csv")))
+        {trade-rows :trade production :production} (graph-rows)
         shares (import-shares trade-rows)
-        model-use (model-uses trade-rows (read-plain (str dir "/production.csv")))
+        model-use (model-uses trade-rows production)
         subnodes (cp/read-subnodes (str dir "/subnodes.csv"))
         keyfn (fn [hs6] (or (subnodes hs6) (cp/energy-products hs6) (str "hs" (subs hs6 0 2))))
         exposure (strait-exposure "data/derived/stocks/chokepoints.csv" years)

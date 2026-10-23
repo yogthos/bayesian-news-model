@@ -302,6 +302,43 @@
   (let [rows [{:known 2010 :v 1} {:known 2011 :v 2} {:known 2012 :v 3}]]
     (is (= [1 2] (map :v (es/known-by rows 2011))))))
 
+;; ---------------------------------------------------------------- rare-earth sub-nodes
+
+(def subnode-rows
+  [{:subnode "rare_earth_compounds" :edition "HS92" :code "284610" :hs6 "284610" :parent "C_CHEM"}
+   {:subnode "rare_earth_compounds" :edition "HS12" :code "284610" :hs6 "284610" :parent "C_CHEM"}
+   {:subnode "rare_earth_compounds" :edition "HS92" :code "284690" :hs6 "284690" :parent "C_CHEM"}
+   {:subnode "rare_earth_metals" :edition "HS92" :code "280530" :hs6 "280530" :parent "C_CHEM"}
+   {:subnode "permanent_magnets" :edition "HS92" :code "850511" :hs6 "850511" :parent "C_FABM"}
+   {:subnode "rare_gases" :edition "HS92" :code "280429" :hs6 "280429" :parent "C_CHEM"}])
+
+(deftest rare-earth-codes-map-to-their-sub-nodes
+  (testing "the HS92 codes of subnodes.csv go to the graph's sub-nodes, not their parents"
+    (is (= {"284610" "C_REOX" "284690" "C_REOX" "280530" "C_REMT" "850511" "C_NDFB"}
+           (run/subnode-parents subnode-rows))))
+  (testing "they override the concordance's parent; other codes keep theirs"
+    (let [conc [{:edition "HS92" :code "284610" :product "C_CHEM" :weight 1.0}
+                {:edition "HS92" :code "280429" :product "C_CHEM" :weight 1.0}
+                {:edition "HS92" :code "850511" :product "C_FABM" :weight 1.0}]]
+      (is (= {"284610" "C_REOX" "284690" "C_REOX" "280530" "C_REMT" "280429" "C_CHEM" "850511" "C_NDFB"}
+             (run/parents-of conc subnode-rows)))
+      (testing "and the sub-nodes get loss tables"
+        (is (every? (set (run/hs92-parents conc)) ["C_REOX" "C_REMT" "C_NDFB" "C_CHEM" "C_FABM"]))))))
+
+(deftest loss-model-values-take-numbers-or-strings
+  ;; bnm.supply/load-rows may give the split sub-nodes' production as numbers
+  (let [trade [{:product "P" :origin "A" :dest "B" :quantity 10.0}]
+        as-str [{:region "A" :product "P" :quantity "100" :value_2011 "200"}]
+        as-num [{:region "A" :product "P" :quantity 100.0 :value_2011 200.0}]]
+    (is (= {["B" "P"] 20.0} (es/use-values trade as-str) (es/use-values trade as-num)))))
+
+(deftest report-reads-the-split-graph
+  (when (.exists (java.io.File. "data/derived/supply/recipes.csv"))
+    (let [{:keys [trade production]} (run/graph-rows)]
+      (testing "the rare-earth sub-nodes are in the rows the report weighs losses by"
+        (is (some #(= "C_REOX" (:product %)) production))
+        (is (pos? (reduce + 0.0 (vals (get (run/model-uses trade production) "C_REOX" {})))))))))
+
 ;; ---------------------------------------------------------------- ranking and flags
 
 (deftest ranks-by-risk

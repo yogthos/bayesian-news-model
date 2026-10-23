@@ -339,13 +339,19 @@
 
 ;; ---------------------------------------------------------------- loss tables from bnm.supply
 
+(defn- ->num
+  "A number from a number or a CSV string, nil if blank."
+  [x]
+  (cond (number? x) (double x)
+        (and (string? x) (not (str/blank? x))) (parse-double x)))
+
 (defn value-added
   "{[region product] value added} (EUR M, 2011): output value (production
   rows' value_2011) times one less the recipe's input value shares."
   [g production]
   (into {} (for [r production
                  :let [k [(:region r) (:product r)]
-                       v (some-> (:value_2011 r) not-empty parse-double)
+                       v (->num (:value_2011 r))
                        ins (get-in g [:recipes k])]
                  :when (and v (pos? v))]
              [k (* v (max 0.0 (- 1.0 (reduce + 0.0 (keep :share (vals ins))))))])))
@@ -356,8 +362,8 @@
   unit value."
   [trade production]
   (let [uv (into {} (for [r production
-                          :let [q (some-> (:quantity r) not-empty parse-double)
-                                v (some-> (:value_2011 r) not-empty parse-double)]
+                          :let [q (->num (:quantity r))
+                                v (->num (:value_2011 r))]
                           :when (and q v (pos? q))]
                       [[(:region r) (:product r)] (/ v q)]))]
     (reduce (fn [m {:keys [product origin dest quantity]}]
