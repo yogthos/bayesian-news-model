@@ -85,7 +85,9 @@
             [bnm.geo-gap-test]
             [bnm.essentiality-test]
             [bnm.located-shocks-test]
-            [bnm.watchlist-test]))
+            [bnm.watchlist-test]
+            [bnm.engine-test]
+            [bnm.modules-world3-test]))
 
 (def namespaces
   '[bnm.time-test
@@ -173,7 +175,9 @@
     bnm.geo-gap-test
     bnm.essentiality-test
     bnm.located-shocks-test
-    bnm.watchlist-test])
+    bnm.watchlist-test
+    bnm.engine-test
+    bnm.modules-world3-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]

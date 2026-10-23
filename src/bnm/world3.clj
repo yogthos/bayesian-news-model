@@ -179,16 +179,19 @@
                  (assoc-in m [part k :unit] u)))
              m units))
 
-(defn- build [opts i]
+(defn- sector-models
+  "World3-03's sectors, in order, each its stock-flow pieces combined
+  (without parameters): what `build` puts side by side."
+  [opts i]
   (let [tab (partial lookup (merge tables (:tables opts)))
         ;; the policy-year switches are CLIP's (t >= threshold), as
         ;; WorldDynamics'; the 1940 health-services switch (lmhs) is strict,
         ;; as Vensim's. Only the standard run, where every pyear switch is
         ;; between equal values, checks this against Vensim.
         clip (fn [v a b k] (sf/clip a b (v :t) (v k)))]
-    (with-units
+    (array-map
+     :population
      (sf/combine
-      (sf/model {:params (merge parameters (:params opts))})
       ;; population, four cohorts (Pop4)
       (sf/model
        {:stocks (into {} (for [k [:p1 :p2 :p3 :p4]] [k {:init (i k)}]))
@@ -240,7 +243,9 @@
       (sf/smooth-n :ple :le :lpd 3 (i :ple))                                       ; Line 37 Appendix A
       (sf/smooth-n :diopc :iopc :sad 3 (i :diopc))                                 ; Line 40 Appendix A
       (sf/smooth :aiopc :iopc :ieat (i :aiopc))                                    ; Line 43 Appendix A
-      (sf/smooth-n :fcfpc :fcapc :hsid 3 (i :fcfpc))                               ; Line 46 Appendix A
+      (sf/smooth-n :fcfpc :fcapc :hsid 3 (i :fcfpc)))                              ; Line 46 Appendix A
+     :capital
+     (sf/combine
       ;; capital: industry, services, jobs
       (sf/model
        {:stocks {:ic {:init (i :ic)} :sc {:init (i :sc)}}                         ; Lines 52, 67 Appendix A
@@ -278,7 +283,9 @@
          :lf (fn [v] (* (+ (v :p2) (v :p3)) (v :lfpf)))                           ; Line 80 Appendix A
          :luf (fn [v] (/ (v :j) (v :lf)))                                         ; Line 81 Appendix A
          :cuf (fn [v] (tab :cuf (v :lufd)))}})                                    ; Line 83 Appendix A
-      (sf/smooth :lufd :luf :lufdt (i :lufd))                                      ; Line 82 Appendix A
+      (sf/smooth :lufd :luf :lufdt (i :lufd)))                                     ; Line 82 Appendix A
+     :agriculture
+     (sf/combine
       ;; agriculture
       (sf/model
        {:stocks {:al {:init (i :al)} :pal {:init (i :pal)}                        ; Lines 85, 86 Appendix A
@@ -325,7 +332,9 @@
          :falm (fn [v] (tab :falm (v :pfr)))                                      ; Line 126 Appendix A
          :fr (fn [v] (/ (v :fpc) (v :sfpc)))}})                                   ; Line 127 Appendix A
       (sf/smooth :ai :cai :alai (i :ai))                                          ; Line 99 Appendix A
-      (sf/smooth :pfr :fr :fspd (i :pfr))                                         ; Line 128 Appendix A
+      (sf/smooth :pfr :fr :fspd (i :pfr)))                                        ; Line 128 Appendix A
+     :resources
+     (sf/combine
       ;; nonrenewable resources
       (sf/model
        {:stocks {:nr {:init (i :nr)}}                                             ; Line 129 Appendix A
@@ -336,7 +345,9 @@
          :nrfr (fn [v] (/ (v :nr) (v :nri)))                                      ; Line 133 Appendix A
          :fcaor (fn [v] (clip v (v :fcaor2) (v :fcaor1) :pyear))                  ; Line 134 Appendix A
          :fcaor1 (fn [v] (tab :fcaor1 (v :nrfr)))                                 ; Line 135 Appendix A
-         :fcaor2 (fn [v] (tab :fcaor2 (v :nrfr)))}})                              ; Line 136 Appendix A
+         :fcaor2 (fn [v] (tab :fcaor2 (v :nrfr)))}}))                             ; Line 136 Appendix A
+     :pollution
+     (sf/combine
       ;; persistent pollution, through a third-order material delay (DELAY3)
       (sf/delay-n :ppapr :ppgr :pptd 3 {:init (i :ppapr) :to :ppol})            ; Line 141 Appendix A
       (sf/model
@@ -352,7 +363,9 @@
          :pptd (fn [v] (clip v (v :pptd2) (v :pptd1) :pyear))                     ; Line 141.1 Appendix A
          :ppolx (fn [v] (/ (v :ppol) (v :ppol70)))                                ; Line 143 Appendix A
          :ahlm (fn [v] (tab :ahlm (v :ppolx)))                                    ; Line 145 Appendix A
-         :ahl (fn [v] (* (v :ahl70) (v :ahlm)))}})                                ; Line 146 Appendix A
+         :ahl (fn [v] (* (v :ahl70) (v :ahlm)))}}))                               ; Line 146 Appendix A
+     :indices
+     (sf/combine
       ;; shares of output, human welfare and ecological footprint
       (sf/model
        {:aux
@@ -369,11 +382,19 @@
          :alggha (fn [v] (/ (v :al) (v :hgha)))
          :ulgha (fn [v] (/ (v :uil) (v :hgha)))}})))))
 
+(defn- build [opts i]
+  (with-units
+   (apply sf/combine (sf/model {:params (merge parameters (:params opts))}) (vals (sector-models opts i)))))
+
 (def ^:private delays
   "The perceptions and delays Vensim starts in equilibrium with their
   inputs (SMOOTH, DLINF3, DELAY3); lufd and pfr are SMOOTHI's from 1, ai
   from 5e9."
   [:ehspc :ple :diopc :aiopc :fcfpc :ppapr])
+
+(defn- inits-of [{:keys [inits start] :or {start :vensim}}]
+  (let [wd (initial)]
+    (merge (if (= start :vensim) (apply dissoc wd delays) wd) inits)))
 
 (defn model
   "World3-03's standard run as a stock-flow model, World3-03's
@@ -383,10 +404,17 @@
   equilibrium with their inputs at 1900, the default) or :worlddynamics
   (from `initial`'s values)."
   ([] (model {}))
-  ([{:keys [inits start] :or {start :vensim} :as opts}]
-   (let [wd (initial)
-         i (merge (if (= start :vensim) (apply dissoc wd delays) wd) inits)]
-     (build opts i))))
+  ([opts] (build opts (inits-of opts))))
+
+(defn sectors
+  "World3-03's sectors as stock-flow models without parameters (`model`'s
+  opts but :params), in order: :population (with its perceptions),
+  :capital, :agriculture, :resources, :pollution and :indices (the shares
+  of output, human welfare and footprint). Side by side with `parameters`
+  they are `model`; each reads the others' names through v (bnm.modules.
+  world3 declares them as engine modules)."
+  ([] (sectors {}))
+  ([opts] (sector-models opts (inits-of opts))))
 
 (defn run
   "World3-03's run (bnm.stockflow/run) of `model` with opts, from :from
