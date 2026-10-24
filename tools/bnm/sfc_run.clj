@@ -70,19 +70,24 @@
   "Given the crisis: learned to 2008, started from 2008, 2009's private
   investment (NFC, household, financial) set to the data's, the rest the
   model's. The direction of each domestic sector's change 2008 -> 2009,
-  model and data, and the unconditional one-year-ahead."
-  [panel kn]
-  (let [iso "USA" p (sfc/learn panel kn iso 2008 {}) st (sfc/init panel kn iso 2008 p)
-        open (:bsm st) ye (* (:Y st) (+ 1.0 (:n p)))
+  model and data, and the unconditional one-year-ahead. The direction is
+  the model's 2009 against the data's 2008 (:hit) and against the model's
+  own 2008, stepped from 2007 with the same parameters (:hit-own), which
+  takes the model's level error out of the direction."
+  [panel kn opts]
+  (let [iso "USA" p (sfc/learn panel kn iso 2008 opts) st (sfc/init panel kn iso 2008 p)
         x9 (sfc/observed (get-in panel [iso 2009]))
-        inv (select-keys (:inv x9) [:nfc :hh :fin])
-        cond-o (:out (sfc/accounts (dissoc st :bsm) open (sfc/property-income open p ye) (sfc/credit open ye p) inv p))
+        given (fn [st x] (:out (sfc/step-given st p #{:investment-nfc :investment-other} x 0.0)))
+        cond-o (given st x9)
+        own8 (:net-lending (given (sfc/init panel kn iso 2007 p) (sfc/observed (get-in panel [iso 2008]))))
         free-o (:out (sfc/step st p))
         d8 (fn [s] (/ (get-in panel [iso 2008 :f s :nl]) (get-in panel [iso 2008 :y])))
         d9 (fn [s] (/ (get-in panel [iso 2009 :f s :nl]) (get-in panel [iso 2009 :y])))]
     (for [s sfc/domestic]
       {:sector s :y2008 (d8 s) :data (d9 s) :given (get-in cond-o [:net-lending s]) :free (get-in free-o [:net-lending s])
-       :hit (= (pos? (- (d9 s) (d8 s))) (pos? (- (get-in cond-o [:net-lending s]) (d8 s))))})))
+       :own2008 (own8 s)
+       :hit (= (pos? (- (d9 s) (d8 s))) (pos? (- (get-in cond-o [:net-lending s]) (d8 s))))
+       :hit-own (= (pos? (- (d9 s) (d8 s))) (pos? (- (get-in cond-o [:net-lending s]) (own8 s))))})))
 
 (defn- china
   "China's households against its corporations: data, one-year-ahead and a
@@ -164,7 +169,14 @@
         run-gap (max-of (for [[_ _ _ res] runs k ["sfc/bsm-gap" "sfc/fof-gap"] v (get-in res [:emits :sfc-finance k])] v))
         run-tfm (max-of (for [[_ _ _ res] runs v (get-in res [:emits :sfc-accounts "sfc/tfm-gap"])] v))
         run-buf (max-of (for [[_ _ _ res] runs v (get-in res [:emits :sfc-accounts "sfc/buffer"])] v))
-        us (us-2009 panel kn)
+        us (us-2009 panel kn {})
+        us-r (us-2009 panel kn sfc/revised)
+        rows-r (sfc/one-year-ahead panel kn sfc/revised)
+        design-r (filter #(<= (:origin %) 2002) rows-r)
+        test-r (filter #(> (:origin %) 2002) rows-r)
+        ib (sort (map :init-buffer rows))
+        q (fn [f] (nth ib (min (dec (count ib)) (int (* f (count ib))))))
+        big (sort (distinct (map :iso (filter #(> (:init-buffer %) 0.1) rows))))
         cn (china panel kn rows)
         lines (concat
                ["# The SFC core: validation (bnm.sfc-run)" ""
@@ -175,6 +187,10 @@
                      "; buffer (redundant equation, booked to government deposits) " (format "%.2e" buffers))
                 (str "  free engine runs (" (count runs) " countries x 10 years): balance sheet and flow of funds " (format "%.2e" run-gap)
                      ", TFM " (format "%.2e" run-tfm) ", buffer " (format "%.2e" run-buf))
+                (str "  the measured balance sheet's own discrepancies, moved to the rest of the world at the start (sum of |instrument gaps|"
+                     " over GDP): median " (format "%.2e" (q 0.5)) ", 90th pct " (format "%.3f" (q 0.9)) ", max " (format "%.3f" (last ib))
+                     "; over 0.1 of GDP in " (count (filter #(> % 0.1) ib)) " of " (count ib) " origins: " (str/join " " big))
+                "  (the identities above hold on the closed sheet; this closure is the data's, not the model's, and is not in the buffer)"
                 ""
                 "## One year ahead: sector net lending over GDP, against persistence (the data year before)"]
                (score-lines "all origins" rows) [""]
@@ -186,15 +202,25 @@
                (score-lines "test origins (2003 on)" test :model-ic) [""]
                (score-lines "measured stocks (Table 720)" measured) [""]
                (score-lines "imputed stocks" imputed) [""]
+               ["## The revised rules (bnm.sfc/revised: bnm.sfc-audit's replacements, chosen on the design origins"
+                "## after the first result above had been seen; the test origins were scored once, after the choice)"]
+               (score-lines "all origins, revised" rows-r) [""]
+               (score-lines "design origins (to 2002), revised" design-r) [""]
+               (score-lines "test origins (2003 on), revised, a revision made after the first result" test-r) [""]
+               (score-lines "test origins (2003 on), revised" test-r :model-ic) [""]
                ["By country, all sectors pooled: model MAE / persistence MAE"]
                (for [[iso g] (sort-by key (group-by :iso rows)) :let [s (:all (sfc/score g))]]
                  (format "  %s  n %3d  %s / %s" iso (:n s) (f4 (:model s)) (f4 (:persistence s))))
                ["" "## Named checks" ""
                 "US 2009, given the crisis (2009's private investment as observed; learned to 2008):"
-                "  sector  2008 data  2009 data  2009 given  2009 unconditional  direction right"]
-               (for [{:keys [sector y2008 data given free hit]} us]
-                 (format "  %-6s  %9s  %9s  %10s  %18s  %s" (name sector) (f4 y2008) (f4 data) (f4 given) (f4 free) (if hit "yes" "no")))
-               [(str "  directions right: " (count (filter :hit us)) " of 4") ""
+                "  sector  2008 data  2009 data  2009 given  2009 unconditional  right (vs 2008 data)  model's own 2008  right (vs own)"]
+               (for [{:keys [sector y2008 data given free hit own2008 hit-own]} us]
+                 (format "  %-6s  %9s  %9s  %10s  %18s  %-20s  %16s  %s" (name sector) (f4 y2008) (f4 data) (f4 given) (f4 free) (if hit "yes" "no")
+                         (f4 own2008) (if hit-own "yes" "no")))
+               [(str "  directions right: " (count (filter :hit us)) " of 4 against the 2008 data, " (count (filter :hit-own us)) " of 4 against the model's own 2008")
+                (str "  revised rules: " (str/join ", " (for [{:keys [sector given own2008 hit-own]} us-r]
+                                                          (str (name sector) " " (f4 given) " (own 2008 " (f4 own2008) ", " (if hit-own "right" "wrong") ")"))))
+                ""
                 "China, households against corporations (net lending over GDP):"
                 "  one year ahead: year  hh data  hh model  nfc data  nfc model"]
                (for [[y hd hm nd nm] (:one-year cn)] (format "    %d  %s  %s  %s  %s" y (f4 hd) (f4 hm) (f4 nd) (f4 nm)))

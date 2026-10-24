@@ -309,6 +309,141 @@ government balance. The frame does not replace Keen. It is the bookkeeping
 Keen lacks: in bnm.keen, d is private debt to output from whichever source
 is longest, and nothing says the interest paid on it is someone's income.
 
+**The core as built (bnm-4hv.10), and what it shows (October 2026).**
+scripts/sfc-data.py builds the panel. Flows come from OECD Table 14 and
+stocks from Table 720 by instrument. EWN supplies the rest of the world
+where Table 720 has none. Ten countries get stocks imputed from property
+income. bnm.sfc books the transaction-flow matrix and the flow of funds,
+and bnm.modules.sfc runs them as F, R and D engine modules.
+bnm.sfc-run (validation.txt) scores the core and bnm.sfc-audit (audit.txt,
+audit-revised.txt) audits its assumptions. Both write to
+data/derived/sfc/.
+
+The core is consistent. It does not forecast better than persistence.
+
+- *Accounting.* In simulation the transaction-flow matrix, the balance
+  sheet and the flow of funds close to 4e-14 of GDP. This holds in the
+  data-driven one-year steps as well as in free runs. The redundant
+  equation's buffer is at most 9e-14 of GDP, so it hides no error. The
+  measured balance sheets are another matter, because they do not close:
+  - Each instrument's gap is moved to the rest of the world at the start.
+    The median gap is 2e-6 of GDP, the 90th percentile 0.63 and the
+    largest 2.9 (New Zealand). It is over 0.1 of GDP in 214 of 931
+    origins: BRA CHL CHN COL CRI FIN FRA IRL NZL SWE USA ZAF.
+  - Imputed stocks never close, by construction.
+  - validation.txt now reports this closure. It belongs to the data, not
+    the model, and it is not part of the buffer.
+- *Review fixes.* These are all in the "bug fixes" numbers below.
+  - Chile's S1 B1G is at basic prices, so y now adds D21X31. Before,
+    Y - C - I was 11% of GDP below X - M, and nominal growth was
+    over-forecast by 16 points a year.
+  - Exports were learned from the trade data, whose balance is not the
+    frame's Y - C - I. Each first step jumped by that gap.
+  - Rates and positions were learned on the raw balance sheet but run on
+    the closed one, so the closure earned interest. Chile's rest of the
+    world received 1.5% of GDP that the data never paid.
+  - An implicit rate was the weighted mean of yearly ratios. One year
+    with a near-empty stock wrecked it: Bulgaria's household rate in
+    2005 was 22% (true 4%), and China's financial dividend yield was 219.
+    It is now a ratio of weighted means.
+  - keen.csv was read at origin + 1, whose state is origin - 1. Employment
+    therefore lagged a year, and so did the employment persistence it was
+    scored against. It is now read at the panel's vintage, origin + 2,
+    whose state is the origin.
+  - Imputation took the nearest year's pooled rate, which is a later year
+    for France and Sweden in 1950-69. It now takes that year's rate or an
+    earlier one, and years before any measured rate are dropped. That
+    cuts 217 imputed country-years to 177.
+  - The US 2009 direction is now also scored against the model's own 2008.
+- *Leakage.* Data are the latest OECD and EWN vintages, revised. Model
+  and persistence both see them, so persistence is not favoured. Keen's
+  calibration as of origin + 2 ends at origin - 1 or earlier. The
+  half-life (1 of 1, 2, 3, 5), the rate half-life and the dividend rule
+  rank the same on the design and the test origins, so there is no sign
+  of tuning on the test origins.
+- *Signs.* New Zealand's rest-of-world B9 is flipped from 1998 because it
+  is recorded from the nation's side. After the flip it is minus S1's,
+  S1's equals the four domestic sectors' sum, and the persistent deficits
+  appear as rest-of-world lending, which is right. No other country's
+  B9, D41 or D42 is out of balance, except China's property income, off
+  by 1.3% (D41) and 2.7% (D42) of GDP in the data.
+- *US 2009 financial sector.* The data's swing is +2.7 points of GDP.
+  It comes from:
+  - financial value added, +1.0 (FISIM: margins widened);
+  - other flows, +0.7 (crisis capital transfers);
+  - lower dividends paid, +0.5;
+  - lower compensation, +0.4;
+  - the interest margin, +0.3.
+
+  The core holds financial value added as a fixed share of output and
+  has no capital-transfer rule, and investment, the one thing given, moves
+  none of these. This is a missing channel, not a bug. The miss is the
+  same under the revised rules and against the model's own 2008.
+- *China.* Signs are right in 27 of 27 one-year forecasts and 10 of 10
+  free-run years. The magnitudes are low: households 0.06-0.07 against
+  0.10-0.14 in the free run from 2009. That is the consumption and
+  other-flow rules, not the frame.
+- *Engine.* validate is empty. The balance sheet is a level from
+  :observe, which integrates last year's flow of funds through a lag-1
+  read. That is allowed, since it is not a same-year rate. Everything
+  else is a rate from :step. The engine reproduces bnm.sfc/step's output,
+  net lending and balance sheets to 1e-12. It is now tested under the
+  revised rules too.
+
+*Assumptions.* "Removed" is how much of the model's excess one-year error
+over persistence goes away when that rule alone is replaced. "oracle"
+uses next year's observed ratio and "persist" uses the origin's own
+ratio. The design origins run to 2002 (n 223), after the bug fixes. The
+model's MAE is 0.0186 against persistence's 0.0120. With every block
+given, the model's MAE is 0.0005, so the harness reproduces the data.
+
+| assumption | source | removed (oracle / persist) | the data |
+|---|---|---|---|
+| consumption C = a1 YD + a2 V(-1) | Godley-Lavoie; ridge fit, 10-year half-life | 0.61 / 0.29 | worst rule. Fitted propensity misses next year's by 0.027, last year's by 0.016 |
+| NFC investment kappa(pi) | Keen (G&CL form), fitted per country | 0.36 / 0.21 | the level misses by 0.024 against 0.010 for last year's share. dkappa on dpi has slope 0.29 (Keen's 0.55) and R2 0.10, but keeping the slope did worse on design |
+| interest: implicit rate x opening stock | accounting, rates fitted | 0.29 / 0.24 | stock revaluations and reclassifications pass straight into interest |
+| other flows (transfers, capital transfers, discrepancies) | held shares | 0.13 / -0.01 | already persistence |
+| wage share by Keen's Phillips curve | keen-run calibration | 0.11 / 0.08 | annual dlog w on Phi(lambda) - alpha: slope 0.03, R2 0.003. No Phillips curve at an annual step |
+| government grows at trend n | fiscal rule (prior) | 0.10 / 0.00 | identical to holding its share of expected output |
+| tax and contribution rates | fitted | 0.09 / 0.04 | |
+| production structure (v, omega, tp) | fitted shares | 0.05 / 0.02 | |
+| household and financial investment shares | fitted shares | 0.04 / 0.00 | |
+| exports share, import share mu | fitted (0.3 default) | -0.01 / -0.01 | the 0.3 default applies to no country-year. mu runs from 0.12 (US) to 1.95 (LUX) |
+| expected growth n | fitted | -0.03 / -0.02 | |
+| dividends as shares of output | prior (the dividend fix) | -0.05 / 0.00 | helps on design and test alike |
+| employment dl/l = (kappa - kappa-bar)/nu | Keen | not in one-step net lending | slope 1.32, R2 0.16: supported. One year ahead, MAE 0.0098 against persistence 0.0094 |
+| equity repriced at n; buffer to government deposits | accounting choices | none on net lending | |
+| wage-share and employment guards | numerical | none | one-step: 1 of 931 each. Free runs, Keen rules: w 8 of 350 (BGR, DEU, EST, POL), lambda 1. Revised rules: 0 |
+
+*The revision.* This was made after the first result had been seen.
+Replacements were tried test-first, as learn options, and chosen on the
+design origins only:
+- Godley-Lavoie consumption anchored on the observed propensity, with
+  reversion of saving to a norm (Levy Institute style);
+- the wage share reverting to a norm;
+- investment in differences with Keen's slope plus reversion;
+- interest taking a share theta of the stock change.
+
+In every case design chose zero reversion, no Keen slope and theta 0.
+Shorter half-lives (0.5) also helped. The selected set is bnm.sfc/revised.
+It amounts to holding each behavioural ratio, and the frame's identities
+still bind. As a ceiling, damped mean reversion of net lending itself
+(phi 0.2 to a 5-year norm) gets skill +0.03 (design) and +0.035 (test).
+
+| four domestic sectors, skill vs persistence | all | design (to 2002) | test (2003 on) |
+|---|---|---|---|
+| as committed (980561c), n 963 | -0.489 | -0.592 | -0.461 |
+| bug fixes, Keen rules, n 931 | -0.438 | -0.552 | -0.408 |
+| bug fixes, intercept-corrected | -0.185 | -0.260 | -0.166 |
+| revised rules (post hoc), n 931 | -0.056 | -0.045 | -0.059 |
+
+Under the revised rules on the test origins, households are at +0.003,
+NFCs -0.001, government -0.04 and the financial sector -0.35, which is
+the residual margin. The core is consistent. Its behavioural rules,
+Keen's included, carry no one-year forecast information beyond holding
+ratios. Keen's rules stay the default as the theory the coupled model is
+built on, and bnm.sfc/revised is the forecasting baseline.
+
 ### 2b. Who controls credit, and what it is allocated to
 
 State against private banking:

@@ -48,12 +48,20 @@
   employment through profits and investment, as in Keen. Equity is repriced at :rho a year,
   both sides, so revaluation sums to zero.
 
-  Learning (learn) is per country from the data years up to the origin:
-  shares and rates as exponentially weighted means (half-life 1 year,
-  chosen on the design origins to 2002 over 2, 3 and 5),
+  Learning (learn) is per country from the data years up to the origin,
+  on the balance sheets closed as init closes them: shares as
+  exponentially weighted means (half-life 1 year, the best on the design
+  origins to 2002 of 1, 2, 3 and 5), rates as ratios of weighted means,
   debt paths as weighted trends, alpha1 and alpha2 and kappa's curve by
-  weighted ridge regressions (half-life 10 years, :fit-half-life); keen-run's
-  calibration known at origin + 1.
+  weighted ridge regressions (half-life 10 years, :fit-half-life);
+  keen-run's employment and calibration as known with the origin's data
+  (origin + 2, keen-of).
+
+  The assumption audit (bnm.sfc-audit, step-given) found that none of the
+  behavioural rules beats holding its ratio one year ahead; `revised`
+  holds them (learn's :consumption, :wages, :investment, :theta), the
+  frame and its identities unchanged. Keen's rules stay the default, as
+  the theory the coupled model is built on.
 
   The data are scripts/sfc-data.py's panel (data/derived/sfc/panel.csv)."
   (:require [bnm.csv :as csv]
@@ -213,6 +221,23 @@
     (when (seq rows)
       (some->> (keys rows) (filter #(<= % t)) seq (apply max) (get rows)))))
 
+(def vintage
+  "Years after a data year that its flows and stocks are known (OECD
+  Tables 14 and 720): a forecast from origin y is made at y + 2."
+  2)
+
+(defn keen-of
+  "keen.csv's row for `iso` as known when data year `origin` is (origin +
+  vintage), describing a data year at or before origin: its state-year is
+  origin where keen-run has it by then, an older one where not, never a
+  later one."
+  [kn iso origin]
+  (let [rows (get kn iso)]
+    (some->> (keys rows)
+             (filter #(and (<= % (+ origin vintage))
+                           (<= (or (get-in rows [% "keen/state-year"]) %) origin)))
+             seq (apply max) (get rows))))
+
 (defn observed
   "Year flows in book's form from a data observation, :other being what
   the data's net lending holds beyond the modelled rows (transfers,
@@ -275,9 +300,18 @@
   follow profits, not the market value of equity) and received in
   proportion to each sector's equity holdings weighted by its yield
   (:q-a), the financial sector's share closing the row; otherwise at the
-  implicit yields on equity (:q-l)."
-  [bsm p ye]
-  (let [eq-l (fn [s] (pos bsm s :equity :l)) eq-a (fn [s] (pos bsm s :equity :a))
+  implicit yields on equity (:q-l).
+
+  With :theta below 1 and last year's opening balance sheet `prev`,
+  interest is on theta of this year's opening stock and 1 - theta of
+  last year's grown at :n (theta 0 holds interest's share of output, 1
+  is the opening stock alone): a revaluation or reclassification of the
+  stocks passes into interest a part at a time."
+  [bsm p ye & [prev]]
+  (let [th (if (and prev (:theta p)) (double (:theta p)) 1.0)
+        g1 (+ 1.0 (num (:n p)))
+        mix (fn [f s] (if (< th 1.0) (+ (* th (f bsm s)) (* (- 1.0 th) g1 (f prev s))) (f bsm s)))
+        eq-l (fn [s] (pos bsm s :equity :l)) eq-a (fn [s] (pos bsm s :equity :a))
         r (fn [k s] (num (get-in p [k s])))
         nf [:hh :nfc :gov :row]
         ds (:div-share p)
@@ -289,8 +323,8 @@
         recv (if ds
                (into {} (for [s nf] [s (if (pos? tw) (* (sum (vals paid)) (/ (wts s) tw)) 0.0)]))
                (into {} (for [s nf] [s (wts s)])))]
-    {:int-paid (into {} (for [s sectors] [s (* (r :i-l s) (ib-l bsm s))]))
-     :int-recv (into {} (for [s nf] [s (* (r :i-a s) (ib-a bsm s))]))
+    {:int-paid (into {} (for [s sectors] [s (* (r :i-l s) (mix ib-l s))]))
+     :int-recv (into {} (for [s nf] [s (* (r :i-a s) (mix ib-a s))]))
      :div-paid paid
      :div-recv recv}))
 
@@ -301,12 +335,25 @@
   (into {} (for [s [:hh :nfc]]
              [s (if-let [d (get-in p [:debt-target s])] (- (* d ye) (pos bsm s :debt :l)) 0.0)])))
 
+(defn- kappa-slope ^double [ip pi]
+  (/ (- (keen/investment ip (+ pi 1e-6)) (keen/investment ip (- pi 1e-6))) 2e-6))
+
 (defn investment
   "Gross capital formation by firms (Keen's kappa of last year's profit
   share `pi`, bnm.keen/investment), households and financial corporations
-  (shares of expected output), at expected output `ye`."
-  [p ye pi]
-  {:nfc (* ye (keen/investment (:invest p) pi))
+  (shares of expected output), at expected output `ye`.
+
+  With :investment-rule {:phi :norm} and the state's last share :kappa
+  and :pi-prev (`st`), firms' share moves in differences instead: last
+  year's share, plus Keen's slope kappa'(pi) (times :slope, 1) times the
+  change in the profit share, plus phi of the way to the norm (an error-correction form
+  of kappa(pi): Keen's response, its level anchored on the data)."
+  [p ye pi & [st]]
+  {:nfc (* ye (let [ir (:investment-rule p) k (:kappa st) pp (:pi-prev st)]
+                (if (and ir (number? k) (number? pp))
+                  (+ k (* (double (:slope ir 1.0)) (kappa-slope (:invest p) (double pi)) (- (double pi) (double pp)))
+                     (* (num (:phi ir)) (- (num (:norm ir)) k)))
+                  (keen/investment (:invest p) pi))))
    :hh (* ye (num (get-in p [:inv-share :hh])))
    :fin (* ye (num (get-in p [:inv-share :fin])))})
 
@@ -401,7 +448,10 @@
         t (inc (long (:year st)))
         ye (* (double (:Y st)) g1)
         ph (:phillips p)
-        w (if ph (clamp (* (double (:w st)) (Math/exp (- (keen/phillips ph (:lambda st)) (:alpha ph)))) w-bounds) (double (:w st)))
+        wr (:wage-rule p)
+        w (cond wr (clamp (+ (double (:w st)) (* (num (:phi wr)) (- (num (:norm wr)) (double (:w st))))) w-bounds)
+                ph (clamp (* (double (:w st)) (Math/exp (- (keen/phillips ph (:lambda st)) (:alpha ph)))) w-bounds)
+                :else (double (:w st)))
         cg (* (num (:cg st)) g1) ig (* (num (:ig st)) g1) ben (* (num (:ben st)) g1)
         inv (assoc inv :gov ig)
         itot (sum (vals inv))
@@ -437,7 +487,8 @@
         pi (profit-share x)
         lam (clamp (* (double (:lambda st)) (+ 1.0 (/ (- (/ (num (:nfc inv)) ye) (num (:kappa-bar p))) (double (get-in p [:invest :nu] 3.0)))))
                    lambda-bounds)]
-    {:state {:year t :Y Y :w w :lambda lam :pi pi :cg cg :ig ig :ben ben}
+    {:state {:year t :Y Y :w w :lambda lam :pi pi :cg cg :ig ig :ben ben
+             :pi-prev (:pi st) :kappa (/ (num (:nfc inv)) Y)}
      :fof fof
      :out {:year t :Y Y :ye ye :x x :booked booked :inv inv :yd yd
            :wage-share (/ W Y) :lambda lam :pi pi
@@ -452,17 +503,93 @@
   [st p]
   (let [open (:bsm st)
         ye (* (double (:Y st)) (+ 1.0 (num (:n p))))
-        pinc (property-income open p ye)
+        pinc (property-income open p ye (:bsm-prev st))
         cred (credit open ye p)
-        inv (investment p ye (:pi st))
-        {d :state fof :fof o :out} (accounts (dissoc st :bsm) open pinc cred inv p)
+        inv (investment p ye (:pi st) st)
+        {d :state fof :fof o :out} (accounts (dissoc st :bsm :bsm-prev) open pinc cred inv p)
         end (apply-fof open fof)
         y (:Y o)]
-    {:state (assoc d :bsm end)
+    {:state (assoc d :bsm end :bsm-prev open)
      :out (assoc o :end end :fof fof :credit cred
                  :fof-gap (fof-gap open end fof) :bsm-gap (bsm-gap end)
                  :private-debt (/ (+ (pos end :hh :debt :l) (pos end :nfc :debt :l)) y)
                  :gov-debt (/ (pos end :gov :debt :l) y))}))
+
+;; -- the assumption audit -------------------------------------------------------------
+
+(def revised
+  "learn's options for the rules the assumption audit selected on the
+  design origins (to 2002; bnm.sfc-audit, docs/COUPLED-SYSTEMS.md): the
+  propensity to consume, the wage share and firms' investment share held
+  at their last observed values (no reversion; Keen's investment slope
+  off), interest holding its share of output (theta 0), and the shares
+  and rates weighted at a half-life of half a year (0.25 did no better).
+  Chosen after the first result had been seen."
+  {:consumption {:phi 0.0} :wages {:phi 0.0} :investment {:phi 0.0 :slope 0.0} :theta 0.0
+   :half-life 0.5 :rate-half-life 0.5})
+
+(def block-docs
+  "The behavioural blocks of a year, each a rule the audit can replace by
+  observed values (step-given)."
+  {:wages "the wage share: Keen's Phillips curve (w' = w exp(Phi(lambda) - alpha))"
+   :consumption "households' consumption: C = alpha1 YD + alpha2 V(-1)"
+   :investment-nfc "firms' investment: Keen's kappa(pi) of last year's profit share"
+   :investment-other "households' and financial investment: shares of expected output"
+   :government "government consumption, investment and benefits: grow at trend nominal growth"
+   :exports "exports: a share of expected output (imports a share mu of absorption)"
+   :growth "expected nominal growth n, which scales investment, government and exports"
+   :interest "interest: sector implicit rates on the opening stocks"
+   :dividends "dividends: shares of expected output, received by yield-weighted equity"
+   :taxes "income taxes and social contributions: rates on their bases"
+   :other "other flows (transfers, capital transfers, discrepancies): shares of output"
+   :structure "the production structure: value-added shares, compensation shares, production taxes"})
+
+(def blocks (vec (sort (keys block-docs))))
+
+(defn step-given
+  "step from `st` with parameters `p`, the behavioural blocks in `given`
+  (a set of block-docs' keys) replaced by the observed values of year flows
+  `x` (bnm.sfc/observed), as ratios to its output scaled to the model's
+  expected output, and expected growth by `g` when :growth is given. With
+  x the next year's data each block's error is measured (an oracle); with
+  x the origin's, each rule is set against holding its ratio (persistence)."
+  [st p given x g]
+  (let [gv (fn [k] (contains? given k))
+        Yx (double (:Y x))
+        r (fn [v] (/ (num v) Yx))
+        shares (fn [m] (into {} (for [[k v] m] [k (r v)])))
+        a (+ (sum (vals (:cons x))) (sum (vals (:inv x))))
+        yd (+ (get-in x [:cons :hh]) (get-in x [:inv :hh]) (get-in (book x) [:nl :hh]))
+        bases (tax-bases x)
+        p (cond-> p
+            (gv :growth) (assoc :n g)
+            (gv :wages) (assoc :phillips nil)
+            (gv :consumption) (assoc :a1 (/ (get-in x [:cons :hh]) yd) :a2 0.0)
+            (gv :investment-other) (assoc :inv-share (shares (select-keys (:inv x) [:hh :fin])))
+            (gv :exports) (assoc :x (/ (+ (:nx x) (* (num (:mu p)) a)) Yx))
+            (gv :taxes) (assoc :tax (into {} (for [s [:hh :nfc :fin]] [s (if (pos? (bases s)) (/ (num (get-in x [:itax s])) (bases s)) 0.0)]))
+                               :socc (/ (num (:socc x)) (num (:W x))))
+            (gv :other) (assoc :other (shares (:other x)))
+            (gv :structure) (assoc :v (shares (select-keys (:va x) [:hh :nfc :fin]))
+                                   :omega (into {} (for [s domestic] [s (/ (num (get-in x [:comp s])) (num (:W x)))]))
+                                   :tp (into {} (for [s domestic] [s (let [v (num (get-in x [:va s]))] (if (pos? (Math/abs v)) (/ (num (get-in x [:ptax s])) v) 0.0))]))))
+        open (:bsm st)
+        g1 (+ 1.0 (num (:n p)))
+        ye (* (double (:Y st)) g1)
+        st (cond-> st
+             (gv :wages) (assoc :w (/ (num (:W x)) Yx))
+             (gv :government) (assoc :cg (/ (* (r (get-in x [:cons :gov])) ye) g1) :ig (/ (* (r (get-in x [:inv :gov])) ye) g1)
+                                     :ben (/ (* (r (:ben x)) ye) g1)))
+        model-pinc (property-income open p ye (:bsm-prev st))
+        scaled (fn [k] (into {} (for [[s v] (get x k)] [s (* (r v) ye)])))
+        pinc (cond-> model-pinc
+               (gv :interest) (assoc :int-paid (scaled :int-paid) :int-recv (scaled :int-recv))
+               (gv :dividends) (assoc :div-paid (scaled :div-paid) :div-recv (scaled :div-recv)))
+        inv (cond-> (investment p ye (:pi st) st)
+              (gv :investment-nfc) (assoc :nfc (* (r (get-in x [:inv :nfc])) ye)))
+        cred (credit open ye p)
+        {d :state fof :fof o :out} (accounts (dissoc st :bsm :bsm-prev) open pinc cred inv p)]
+    {:state (assoc d :bsm (apply-fof open fof) :bsm-prev open) :out o}))
 
 ;; -- learning -------------------------------------------------------------------------
 
@@ -541,10 +668,11 @@
     (assoc base :kappa-slope (* c1 S) :pistar (/ (- (Math/log S) c0) c1))))
 
 (defn- keen-params
-  "keen-run's calibration known at year `t`: the Phillips curve's
-  parameters and the structure (alpha beta delta nu) for kappa's span."
-  [kn iso t]
-  (when-let [r (keen-at kn iso t)]
+  "keen-run's calibration as known with data year `origin` (keen-of): the
+  Phillips curve's parameters and the structure (alpha beta delta nu) for
+  kappa's span."
+  [kn iso origin]
+  (when-let [r (keen-of kn iso origin)]
     (let [g (fn [k] (get r (str "keen/" k)))]
       (when (and (g "phi-slope") (g "l-star") (g "alpha"))
         (merge (keen/from-raw keen/gcl)
@@ -553,24 +681,51 @@
 
 (defn learn
   "The core's parameters for `iso` from the data years up to `origin`
-  (panel from read-panel, `kn` keen.csv from read-keen, known at origin +
-  1). opts: :half-life (1, chosen on the design origins to 2002 over 2, 3
-  and 5), :rate-half-life (1: interest and dividend
+  (panel from read-panel, `kn` keen.csv from read-keen as known with the
+  origin's data, keen-of). opts: :half-life (1, best on the design origins
+  to 2002 of 1, 2, 3 and 5), :rate-half-life (1: interest and dividend
   rates are persistent, and fell for most of the sample), :phillips (true;
-  false holds the wage share, a diagnostic), :mu (0.3, imports over absorption where the
-  data have no imports), :rho (equity repricing; trend nominal growth)."
-  [panel kn iso origin {:keys [half-life rate-half-life fit-half-life mu rho phillips]
+  false holds the wage share, a diagnostic), :mu (0.3, imports over
+  absorption where the data have no imports: no country-year with flows
+  lacks them), :rho (equity repricing; trend nominal growth).
+
+  The audit's replacements (bnm.sfc-audit), each off when absent:
+    :consumption {:phi :norm-half-life}  the propensity to consume out of
+        disposable income as last observed (weighted at :half-life),
+        moving phi of the way to its norm (weighted at :norm-half-life,
+        10): Godley-Lavoie's alpha1 anchored on the data, its wealth
+        effect a reversion of saving to a norm (alpha2 0);
+    :wages {:phi :norm-half-life}  the wage share moving phi of the way to
+        its norm instead of Keen's Phillips curve (:wage-rule);
+    :investment {:phi :norm-half-life :slope}  firms' share in differences
+        with Keen's slope (times :slope, 1) and phi of reversion to its
+        norm (:investment-rule);
+    :theta  the share of a change in the stocks that passes into interest
+        in the year (property-income)."
+  [panel kn iso origin {:keys [half-life rate-half-life fit-half-life mu rho phillips consumption wages investment theta]
                             :or {half-life 1.0 rate-half-life 1.0 fit-half-life 10.0 mu 0.3 phillips true}}]
   (let [hl half-life
-        obs (->> (get panel iso) vals (filter #(and (:y %) (<= (:year %) origin))) (sort-by :year) vec)
+        ;; the balance sheets closed as init closes the start (close-init), so
+        ;; rates and positions are learned on the stocks the model runs on
+        obs (->> (get panel iso) vals (filter #(and (:y %) (<= (:year %) origin))) (sort-by :year)
+                 (mapv #(cond-> % (:b %) (update :b (comp :bsm close-init)))))
         by (into {} (map (juxt :year identity)) obs)
         fl (filter :flows-ok obs)
         xs (into {} (for [o fl] [(:year o) (observed o)]))
         e (fn [f default] (ew (for [[y x] xs] [y (f x (by y))]) hl origin default))
+        e' (fn [f hl' default] (ew (for [[y x] xs] [y (f x (by y))]) hl' origin default))
         ratio (fn [a b] (when (and (finite? a) (finite? b) (> (Math/abs (double b)) 1e-9)) (/ (double a) (double b))))
         n (ew (for [o obs :let [q (by (dec (:year o)))] :when q] [(:year o) (ratio (- (:y o) (:y q)) (:y q))]) hl origin 0.04)
         prev (fn [y] (:b (by (dec y))))
-        rate (fn [k s den] (ew (for [[y x] xs :let [b (prev y)] :when b] [y (ratio (get-in x [k s]) (den b s))]) rate-half-life origin 0.0))
+        ;; a rate is the ratio of weighted means (flow and opening stock over
+        ;; the year's output), not the weighted mean of ratios: a year whose
+        ;; opening stock is near zero carries no weight, not a huge ratio
+        rate-of (fn [pairs] ; [[year flow stock]] in output ratios
+                  (let [ps (filter (fn [[_ f d]] (and (finite? f) (finite? d))) pairs)
+                        w (map #(weight rate-half-life origin (first %)) ps)
+                        sd (sum (map * w (map #(nth % 2) ps)))]
+                    (if (and (seq ps) (> (Math/abs sd) 1e-9)) (/ (sum (map * w (map second ps))) sd) 0.0)))
+        rate (fn [k s den] (rate-of (for [[y x] xs :let [b (prev y)] :when b] [y (/ (num (get-in x [k s])) (:Y x)) (/ (den b s) (:Y x))])))
         eq-l (fn [b s] (pos b s :equity :l)) eq-a (fn [b s] (pos b s :equity :a))
         stocked (filter :b obs)
         pr (fn [s k side] (ew (for [o stocked] [(:year o) (ratio (pos (:b o) s k side) (:y o))]) hl origin nil))
@@ -578,13 +733,17 @@
         trade (for [[y x] xs :let [f (:f (by y)) ex (get-in f [:row :exports]) im (get-in f [:row :imports])] :when (and ex im)]
                 [y (/ ex (:Y x)) (/ im (+ (sum (vals (:cons x))) (sum (vals (:inv x)))))])
         mu* (if (seq trade) (ew (map (fn [[y _ m]] [y m]) trade) hl origin mu) mu)
-        x* (if (seq trade) (ew (map (fn [[y xx _]] [y xx]) trade) hl origin 0.3) (+ nx-share (* mu* (- 1.0 nx-share))))
+        ;; exports as the frame's net exports plus imports, so X - mu A gives
+        ;; Y - C - I at the origin: the trade data's own balance differs by
+        ;; the statistical discrepancy (and, where B1G is at basic prices,
+        ;; product taxes), which would otherwise jump the first step
+        x* (e (fn [x _] (let [a (+ (sum (vals (:cons x))) (sum (vals (:inv x))))] (/ (+ (:nx x) (* mu* a)) (:Y x)))) (+ nx-share (* mu* (- 1.0 nx-share))))
         cons-rows (for [[y x] xs :let [b (prev y) Y (:Y x)] :when b]
                     [(weight fit-half-life origin y) (/ (+ (get-in x [:cons :hh]) (get-in x [:inv :hh]) (get-in (book x) [:nl :hh])) Y)
                      (/ (nfw b :hh) Y) (/ (get-in x [:cons :hh]) Y)])
-        kp (or (keen-params kn iso (inc origin)) (merge (keen/from-raw keen/gcl) {:phi-slope nil}))
+        kp (or (keen-params kn iso origin) (merge (keen/from-raw keen/gcl) {:phi-slope nil}))
         base (select-keys kp [:kappa0 :nu :alpha :beta :delta :kappa-max])
-        prior (if-let [ks (get-in (keen-at kn iso (inc origin)) ["keen/kappa-slope"])]
+        prior (if-let [ks (get-in (keen-of kn iso origin) ["keen/kappa-slope"])]
                 (/ ks (max 1e-6 (- (* (:nu base) (+ (:alpha base) (:beta base) (:delta base))) (:kappa0 base))))
                 20.0)
         inv-rows (for [[y x] xs :let [q (xs (dec y))] :when q]
@@ -603,8 +762,8 @@
       :i-a (into {} (for [s [:hh :nfc :gov :row]] [s (rate :int-recv s ib-a)]))
       :q-l (into {} (for [s sectors] [s (rate :div-paid s eq-l)]))
       :q-a (assoc (into {} (for [s [:hh :nfc :gov :row]] [s (rate :div-recv s eq-a)]))
-                  :fin (ew (for [o fl :let [b (prev (:year o)) d (get-in o [:f :fin :div_recv])] :when (and b d)]
-                             [(:year o) (ratio d (eq-a b :fin))]) rate-half-life origin 0.0))
+                  :fin (rate-of (for [o fl :let [b (prev (:year o)) d (get-in o [:f :fin :div_recv])] :when (and b d)]
+                                  [(:year o) (/ d (:y o)) (/ (eq-a b :fin) (:y o))])))
       :div-share (into {} (for [s sectors] [s (e (fn [x _] (/ (get-in x [:div-paid s]) (:Y x))) 0.0)]))
       :target (into {} (for [s sectors]
                          [s (into {} (for [k instruments]
@@ -618,21 +777,40 @@
       :phillips (when (and phillips (:phi-slope kp)) (select-keys kp [:alpha :ustar :phi-slope :phi-max]))
       :invest (fit-investment inv-rows base prior)
       :kappa-bar (e (fn [x _] (/ (get-in x [:inv :nfc]) (:Y x))) 0.1)}
-     (fit-consumption cons-rows))))
+     (if consumption
+       (let [prop (fn [hl'] (ew (for [[y x] xs :let [yd (+ (get-in x [:cons :hh]) (get-in x [:inv :hh]) (get-in (book x) [:nl :hh]))]]
+                                  [y (ratio (get-in x [:cons :hh]) yd)]) hl' origin 0.9))
+             c (prop hl)]
+         {:a1 (+ c (* (num (:phi consumption)) (- (prop (double (:norm-half-life consumption 10.0))) c))) :a2 0.0})
+       (fit-consumption cons-rows))
+     (when wages
+       {:wage-rule {:phi (num (:phi wages))
+                    :norm (e' (fn [x _] (ratio (:W x) (:Y x))) (double (:norm-half-life wages 10.0)) 0.6)}})
+     (when investment
+       {:investment-rule {:phi (num (:phi investment)) :slope (double (:slope investment 1.0))
+                          :norm (e' (fn [x _] (/ (get-in x [:inv :nfc]) (:Y x))) (double (:norm-half-life investment 10.0)) 0.1)}})
+     (when theta {:theta (double theta)}))))
 
 (defn init
   "The state at the end of data year `origin`: its balance sheet closed on
   the rest of the world (:init-buffer the discrepancy moved), output, the
-  wage share, keen-run's employment rate (known at origin + 1; 0.95 when
-  none), the profit share, government spending and benefits."
+  wage share, keen-run's employment rate for the origin year (keen-of: as
+  known at origin + 2, when the origin's flows are; 0.95 when none), the
+  profit share, government spending and benefits; firms' investment share
+  (:kappa), and where the year before has them its profit share
+  (:pi-prev) and closed balance sheet (:bsm-prev)."
   [panel kn iso origin p]
   (let [ob (get-in panel [iso origin])
         x (observed ob)
         {:keys [bsm buffer]} (close-init (:b ob))
-        lam (get (keen-at kn iso (inc origin)) "keen/lambda")]
-    {:year origin :Y (:Y x) :w (/ (:W x) (:Y x)) :lambda (or lam 0.95) :pi (profit-share x)
-     :cg (get-in x [:cons :gov]) :ig (get-in x [:inv :gov]) :ben (:ben x)
-     :bsm bsm :init-buffer buffer}))
+        lam (get (keen-of kn iso origin) "keen/lambda")
+        pv (get-in panel [iso (dec origin)])]
+    (cond-> {:year origin :Y (:Y x) :w (/ (:W x) (:Y x)) :lambda (or lam 0.95) :pi (profit-share x)
+             :cg (get-in x [:cons :gov]) :ig (get-in x [:inv :gov]) :ben (:ben x)
+             :kappa (/ (num (get-in x [:inv :nfc])) (:Y x))
+             :bsm bsm :init-buffer buffer}
+      (and pv (:b pv)) (assoc :bsm-prev (:bsm (close-init (:b pv))))
+      (and pv (:flows-ok pv) (:y pv)) (assoc :pi-prev (profit-share (observed pv))))))
 
 ;; -- validation ---------------------------------------------------------------------------
 
@@ -643,17 +821,20 @@
   1, at least :min-years (5) years of flows up to y): learn on the data up
   to y, start from y, step one year. Rows {:iso :origin :year :source
   :model :persistence :data (net lending over output by sector) :w-model
-  :w-data :lambda-model :d-model :d-data :buffer :identity}. :model-ic is
+  :w-data :lambda-model :d-model :d-data :buffer :identity :init-buffer
+  (the measured balance sheet's discrepancies that init moved to the rest
+  of the world, summed in absolute value, over output)}. :model-ic is
   the model's change applied to the observed level (an intercept
   correction): the data at y plus the model's y + 1 less its own y (the
-  same parameters stepped from y - 1), where y - 1 has stocks."
-  [panel kn {:keys [min-years isos] :or {min-years 5} :as opts}]
+  same parameters stepped from y - 1), where y - 1 has stocks. opts:
+  :origin? (a predicate on y: the design origins alone, say) and learn's."
+  [panel kn {:keys [min-years isos origin?] :or {min-years 5 origin? (constantly true)} :as opts}]
   (vec
    (for [iso (sort (or isos (keys panel)))
          :let [obs (get panel iso)]
          y (sort (keys obs))
          :let [ob (obs y) nx (obs (inc y))]
-         :when (and (ok-year? ob) (:b ob) (ok-year? nx)
+         :when (and (origin? y) (ok-year? ob) (:b ob) (ok-year? nx)
                     (>= (count (filter #(and (<= (key %) y) (:flows-ok (val %))) obs)) min-years))
          :let [p (learn panel kn iso y opts)
                st (init panel kn iso y p)
@@ -675,7 +856,9 @@
       :lambda-model (:lambda s) :lambda-prev (:lambda st)
       :d-model (:private-debt o)
       :d-data (when (:b nx) (/ (+ (pos (:b nx) :hh :debt :l) (pos (:b nx) :nfc :debt :l)) (:y nx)))
-      :buffer (/ (:buffer o) (:Y o)) :identity (/ (max (:tfm-gap o) (:fof-gap o) (:bsm-gap o)) (:Y o))
+      :buffer (/ (:buffer o) (:Y o))
+      :init-buffer (/ (sum (map #(Math/abs (double %)) (vals (:init-buffer st)))) (:Y st))
+      :identity (/ (max (:tfm-gap o) (:fof-gap o) (:bsm-gap o)) (:Y o))
       :nl-gov-closure (- (/ (nl-d :gov) (:Y xd)) (nld :gov))
       :nl-p-check (- (/ (nl-p :hh) (:Y xp)) (nlp :hh))})))
 

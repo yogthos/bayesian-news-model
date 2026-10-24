@@ -80,7 +80,7 @@ AGGREGATES = {"EU", "EA20", "EU27_2020"}
 
 # (item, transaction, accounting entry): C resources/received, D uses/paid
 FLOW_ITEMS = [
-    ("va", "B1G", "C"), ("comp_paid", "D1", "D"), ("comp_recv", "D1", "C"),
+    ("va", "B1G", "C"), ("d21x31", "D21X31", "C"), ("comp_paid", "D1", "D"), ("comp_recv", "D1", "C"),
     ("os", "B2A3G", "C"), ("os_b2g", "B2G", "C"), ("mixed", "B3G", "C"),
     ("d2_recv", "D2", "C"), ("d2_paid", "D2", "D"), ("d3_recv", "D3", "C"), ("d3_paid", "D3", "D"),
     ("int_recv", "D41", "C"), ("int_paid", "D41", "D"),
@@ -283,6 +283,19 @@ EWN_NAMES = {"China,P.R.: Mainland": "CHN", "United States": "USA"}
 
 # -- the panel ----------------------------------------------------------------------
 
+def gdp(w):
+    """GDP at market prices. S1's B1G is GDP for most countries, but for
+    some (Chile) it is value added at basic prices and taxes less subsidies
+    on products (D21X31) come on top: y is B1G + D21X31 where that is the
+    nearer to final expenditure C + I + X - M, else B1G."""
+    spend = (sum(w[c] for c in ["hh_cons", "gov_cons"] + [f"{s}_gcf" for s in DOMESTIC])
+             + w["row_exports"] - w["row_imports"])
+    va = w["tot_va"]
+    with_tax = va + w["tot_d21x31"]
+    use = w["tot_d21x31"].notna() & spend.notna() & ((with_tax - spend).abs() < (va - spend).abs())
+    return with_tax.where(use, va)
+
+
 def build_panel(fl, agg):
     """Wide: one row per iso-year with y (S1 B1G), each sector's flows
     (s_item) and stocks (s_money_a ...)."""
@@ -293,7 +306,7 @@ def build_panel(fl, agg):
             if f"{s}_{k}" not in w:
                 w[f"{s}_{k}"] = np.nan
     w = w.reset_index()
-    w["y"] = w.get("tot_va")
+    w["y"] = gdp(w)
     st = agg.set_index(["iso", "year", "sector"])
     cols = [c for c in agg.columns if c not in ("iso", "year", "sector")]
     sw = st[cols].unstack("sector")
@@ -345,8 +358,12 @@ def flows_complete(p):
 
 def impute_stocks(p):
     """Gross positions from property income at the year's pooled implicit
-    rates, for country-years with complete flows and no balance sheet.
-    The rest of the world from EWN when present (ewn_assets/ewn_liab in
+    rates, for country-years with complete flows and no balance sheet:
+    each year's own pooled rate, else the latest earlier year's, never a
+    later year's: a year before every measured interest rate is left
+    unimputed, and a position whose rate has no year at or before it (gov
+    equity, measured from 1992 and 2007) is missing, read as 0. The
+    rest of the world from EWN when present (ewn_assets/ewn_liab in
     national currency), else from the same imputation."""
     have = p.stocks_ok & p.flows_ok
     rates = {}
@@ -361,13 +378,13 @@ def impute_stocks(p):
     need = ~p.stocks_ok & p.flows_ok
     for i in out.index[need]:
         y = out.at[i, "year"]
+        if not all((rates[(s, nm)].index <= y).any() for s in SECTORS for nm in ["il", "ia"]):
+            continue
         for s in SECTORS:
             def rate(nm):
                 ser = rates[(s, nm)]
-                if y in ser.index:
-                    return ser[y]
-                near = ser.index[np.argmin(np.abs(ser.index - y))] if len(ser) else None
-                return ser[near] if near is not None else np.nan
+                past = ser[ser.index <= y]
+                return past.iloc[-1] if len(past) else np.nan
             ip, ir, dp, dr = (out.at[i, f"{s}_{c}"] if f"{s}_{c}" in out else np.nan
                               for c in ["int_paid", "int_recv", "div_paid", "div_recv"])
             vals = {"money_a": 0.0, "money_l": 0.0, "other_a": 0.0, "other_l": 0.0,
@@ -569,7 +586,49 @@ def main():
     print(cov)
 
 
+def _toy_panel(rows):
+    """A panel with the columns impute_stocks reads: rows of (iso, year,
+    measured?, interest paid by hh, hh debt liabilities)."""
+    recs = []
+    for iso, year, measured, ip, debt in rows:
+        r = {"iso": iso, "year": year, "stocks_ok": measured, "flows_ok": True, "ewn_debt_a": np.nan,
+             "stocks_source": "oecd-t720" if measured else None}
+        for s in SECTORS:
+            for k in INSTRUMENTS:
+                for side in ["a", "l"]:
+                    r[f"{s}_{k}_{side}"] = (debt if (s, k, side) == ("hh", "debt", "l") else 10.0) if measured else np.nan
+            for c in ["int_paid", "int_recv", "div_paid", "div_recv"]:
+                r[f"{s}_{c}"] = 1.0
+        r["hh_int_paid"] = ip
+        recs.append(r)
+    return pd.DataFrame(recs)
+
+
+def test_impute_causal():
+    """An imputed year uses pooled rates from that year or before, never a
+    later one; a year before any measured one is not imputed."""
+    p = _toy_panel([("A", 2000, True, 5.0, 100.0), ("A", 2001, True, 10.0, 100.0),
+                    ("B", 1999, False, 4.0, 0.0), ("B", 2000, False, 4.0, 0.0), ("B", 2002, False, 4.0, 0.0)])
+    out = impute_stocks(p).set_index(["iso", "year"])
+    assert pd.isna(out.loc[("B", 1999), "stocks_source"]), "no rate at or before 1999"
+    # hh's rate on liabilities is interest over money + debt liabilities (110 at A)
+    assert abs(out.loc[("B", 2000), "hh_debt_l"] - 4.0 / (5.0 / 110.0)) < 1e-9, "2000's own rate"
+    assert abs(out.loc[("B", 2002), "hh_debt_l"] - 4.0 / (10.0 / 110.0)) < 1e-9, "2001's, the latest before 2002"
+
+
+def test_gdp():
+    """y is GDP at market prices: B1G plus taxes less subsidies on products
+    where S1's B1G is at basic prices (Chile), so it equals C + I + X - M."""
+    t = pd.DataFrame({"iso": ["X", "Y"], "year": [2000, 2000], "tot_va": [90.0, 100.0], "tot_d21x31": [10.0, 9.0],
+                      "hh_cons": [60.0, 60.0], "gov_cons": [20.0, 20.0], "hh_gcf": [5.0, 5.0], "nfc_gcf": [15.0, 15.0],
+                      "fin_gcf": [0.0, 0.0], "gov_gcf": [3.0, 3.0], "row_exports": [30.0, 30.0], "row_imports": [33.0, 33.0]})
+    y = gdp(t)
+    assert list(y) == [100.0, 100.0], list(y)
+
+
 def test():
+    test_impute_causal()
+    test_gdp()
     p = pd.read_csv(os.path.join(OUT, "panel.csv"))
     r = pd.read_csv(os.path.join(OUT, "residuals.csv"))
     assert (p.known_flows == p.year + 2).all(), "flows known at y + 2"
@@ -585,6 +644,10 @@ def test():
     assert "CHN" in set(p[p.stocks_source.eq("imputed")].iso), "China imputed"
     us = p[(p.iso == "USA") & (p.year == 2009)].iloc[0]
     assert us.gov_nl / us.y < -0.08 and us.hh_nl / us.y > 0.02
+    f = p[ok & p.row_exports.notna() & p.row_imports.notna()]
+    spend = sum(f[c] for c in ["hh_cons", "gov_cons"] + [f"{s}_gcf" for s in DOMESTIC]) + f.row_exports - f.row_imports
+    gap = ((f.y - spend) / f.y).abs().groupby(f.iso).median()
+    assert (gap < 0.01).all(), gap[gap >= 0.01].to_dict()
     print("sfc-data self-test: ok")
 
 

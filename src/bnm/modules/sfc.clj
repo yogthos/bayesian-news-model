@@ -67,7 +67,7 @@
      :stocks {:bsm {:unit level-unit :info false}}
      :params {:sfc {:value p}}
      :observes (filterv #(= "sfc/bsm" (:var %)) observes)
-     :init {:bsm (:bsm st) :Y (:Y st)}
+     :init {:bsm (:bsm st) :Y (:Y st) :bsm-prev (:bsm-prev st)}
      :observe (fn [state in _ _]
                 (let [open (opening state in)
                       fof (get in "sfc/fof")
@@ -80,7 +80,9 @@
                    open (opening state in)
                    y0 (or (get in "sfc/output") (:Y state))
                    ye (* y0 (+ 1.0 (double (:n p))))
-                   pinc (sfc/property-income open p ye)
+                   ;; last year's opening balance sheet, for interest's theta
+                   prev (if (get in "sfc/fof") (:bsm state) (:bsm-prev state))
+                   pinc (sfc/property-income open p ye prev)
                    cred (sfc/credit open ye p)]
                {:state {:bsm open :Y y0}
                 :emits {"sfc/property-income" pinc "sfc/credit" cred
@@ -95,18 +97,23 @@
   {:module :sfc-firms :group :R :place (keyword iso) :dt 1
    :doc "Investment by sector: firms' by Keen's kappa(pi) (bnm.keen/investment)"
    :reads [{:var "sfc/output" :unit level-unit :lag 1 :from :sfc-accounts}
-           {:var "sfc/nfc-profit-share" :unit ratio :lag 1 :from :sfc-accounts}]
+           {:var "sfc/nfc-profit-share" :unit ratio :lag 1 :from :sfc-accounts}
+           {:var "sfc/nfc-investment-share" :unit ratio :lag 1 :from :sfc-accounts}]
    :emits [(e "sfc/investment" mat) (e "sfc/nfc-investment" ratio)]
    :stocks {}
    :params {:sfc {:value p}}
-   :init {:Y (:Y st) :pi (:pi st)}
+   :init (select-keys st [:Y :pi :pi-prev :kappa])
    :step (fn [state in ps _ _]
            (let [p (:sfc ps)
                  y0 (or (get in "sfc/output") (:Y state))
-                 pi (or (get in "sfc/nfc-profit-share") (:pi state))
+                 read-pi (get in "sfc/nfc-profit-share")
+                 pi (or read-pi (:pi state))
+                 ;; the profit share the year before pi: last step's, or the start's
+                 pi-prev (if read-pi (:pi state) (:pi-prev state))
+                 kappa (or (get in "sfc/nfc-investment-share") (:kappa state))
                  ye (* y0 (+ 1.0 (double (:n p))))
-                 inv (sfc/investment p ye pi)]
-             {:state state
+                 inv (sfc/investment p ye pi {:kappa kappa :pi-prev pi-prev})]
+             {:state (assoc state :pi pi :pi-prev pi-prev :kappa kappa)
               :emits {"sfc/investment" inv "sfc/nfc-investment" (/ (:nfc inv) ye)}}))})
 
 (defn accounts-module
@@ -122,13 +129,13 @@
            (e "sfc/net-lending-gov" ratio :D4) (e "sfc/net-lending-row" ratio)
            (e "sfc/tfm-gap" ratio) (e "sfc/buffer" ratio)
            (e "sfc/wage-share" "share of GDP" :D1) (e "sfc/employment" "rate" :D1)
-           (e "sfc/nfc-profit-share" ratio :R1)
+           (e "sfc/nfc-profit-share" ratio :R1) (e "sfc/nfc-investment-share" ratio)
            (e "sfc/gov-debt" ratio :D4) (e "sfc/hh-saving-rate" "share of disposable income" :D5)
            (e "sfc/private-debt" ratio) (e "sfc/hh-debt" ratio) (e "sfc/nfc-debt" ratio)]
    :stocks {:w {:unit "share of GDP"} :lambda {:unit "rate"}}
    :params {:sfc {:value p}}
    :observes (filterv #(not= "sfc/bsm" (:var %)) observes)
-   :init (dissoc st :bsm :init-buffer)
+   :init (dissoc st :bsm :bsm-prev :init-buffer)
    :step (fn [state in ps _ _]
            (let [p (:sfc ps)
                  open (get in "sfc/bsm")
@@ -142,7 +149,7 @@
                       "sfc/net-lending-gov" (:gov nl) "sfc/net-lending-row" (:row nl)
                       "sfc/tfm-gap" (/ (:tfm-gap o) y) "sfc/buffer" (/ (:buffer o) y)
                       "sfc/wage-share" (:wage-share o) "sfc/employment" (:lambda o)
-                      "sfc/nfc-profit-share" (:pi o)
+                      "sfc/nfc-profit-share" (:pi o) "sfc/nfc-investment-share" (:kappa d)
                       "sfc/gov-debt" (ratio-of (sfc/pos end :gov :debt :l) y)
                       "sfc/hh-saving-rate" (:hh-saving-rate o)
                       "sfc/private-debt" (/ (+ (sfc/pos end :hh :debt :l) (sfc/pos end :nfc :debt :l)) y)

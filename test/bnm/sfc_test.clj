@@ -238,3 +238,164 @@
       (is (empty? (filter (levels f) (keys (:emits st)))) "the step emits no level")
       (is (= (:bsm st0) (get lv "sfc/bsm")) "the first year's opening balance sheet is the start"))
     (is (every? #(empty? (levels %)) (rest ms)) "firms and accounts emit rates only")))
+
+;; -- review fixes (bnm-4hv.10 review) -----------------------------------------------------
+
+(defn- with-trade
+  "The simulated panel with the rest of the world's exports and imports
+  written in, their balance off the frame's net exports by `gap` of output
+  (a statistical discrepancy, or product taxes outside B1G)."
+  [panel gap]
+  (into {} (for [[y ob] panel :let [x (when (:f ob) (sfc/observed ob))]]
+             [y (if x
+                  (let [a (+ (reduce + (vals (:cons x))) (reduce + (vals (:inv x))))]
+                    (-> ob (assoc-in [:f :row :imports] (* 0.3 a))
+                        (assoc-in [:f :row :exports] (+ (:nx x) (* 0.3 a) (* gap (:Y x))))))
+                  ob)])))
+
+(deftest exports-are-learned-in-the-frames-net-exports
+  ;; X - mu A must give the frame's net exports at the origin, whatever the
+  ;; trade data's own balance: else the first step jumps by the gap
+  (let [panel {"SIM" (with-trade (sim-panel 30) 0.05)}
+        p (sfc/learn panel {} "SIM" 2025 {})
+        x (sfc/observed (get-in panel ["SIM" 2025]))
+        a (/ (+ (reduce + (vals (:cons x))) (reduce + (vals (:inv x)))) (:Y x))]
+    (is (< (Math/abs (- 0.3 (:mu p))) 1e-9))
+    (is (< (Math/abs (- (- (:x p) (* (:mu p) a)) (/ (:nx x) (:Y x)))) 2e-3)
+        (str "x " (:x p) " gives net exports " (- (:x p) (* (:mu p) a)) ", the frame's " (/ (:nx x) (:Y x))))))
+
+(deftest keen-is-read-at-the-panels-vintage
+  ;; the origin's flows are known at origin + 2: employment is the origin
+  ;; year's, from keen.csv's row of that vintage, not origin - 1's
+  (let [panel {"SIM" (sim-panel 12)}
+        row (fn [sy lam] {"keen/lambda" lam "keen/state-year" (double sy) "keen/phi-slope" 1.0 "keen/l-star" 0.94
+                          "keen/alpha" 0.02 "keen/beta" 0.01 "keen/delta" 0.05 "keen/nu" 3.0})
+        kn {"SIM" {2006 (row 2004 0.90) 2007 (row 2005 0.93) 2008 (row 2006 0.99)}}
+        p (sfc/learn panel kn "SIM" 2005 {})]
+    (is (= 0.93 (:lambda (sfc/init panel kn "SIM" 2005 p))) "state-year 2005, known 2007")
+    (is (= 0.90 (:lambda (sfc/init panel {"SIM" (dissoc (kn "SIM") 2007)} "SIM" 2005 p)))
+        "an older state when the origin's is not out by origin + 2; never a later one")))
+
+(defn- perturb-b
+  "Every balance sheet in `panel` with households' debt assets raised by
+  `g` of output and nothing else: a measured discrepancy in the debt row."
+  [panel g]
+  (into {} (for [[y ob] panel] [y (cond-> ob (:b ob) (update-in [:b :hh :debt :a] + (* g (:y ob))))])))
+
+(deftest learning-uses-the-closed-balance-sheet-the-model-runs-on
+  ;; a measured discrepancy is closed on the rest of the world at the start;
+  ;; its rates must be learned on those closed stocks, else the closure
+  ;; earns interest the data never paid
+  (let [clean {"SIM" (sim-panel 30)}
+        bad {"SIM" (perturb-b (clean "SIM") 0.5)}
+        row-int (fn [panel]
+                  (let [p (sfc/learn panel {} "SIM" 2025 {})
+                        st (sfc/init panel {} "SIM" 2025 p)
+                        ye (* (:Y st) (+ 1.0 (:n p)))]
+                    (/ (get-in (sfc/property-income (:bsm st) p ye) [:int-paid :row]) ye)))]
+    (let [st (sfc/init bad {} "SIM" 2025 (sfc/learn bad {} "SIM" 2025 {}))]
+      (is (< 0.4 (/ (get-in st [:init-buffer :debt]) (:Y st)) 0.6)))
+    (is (< (Math/abs (- (row-int bad) (row-int clean))) 1e-3)
+        (str "rest of the world's interest paid " (row-int bad) " against " (row-int clean)))))
+
+(deftest implicit-rates-are-robust-to-a-tiny-stock
+  ;; one year whose opening stock is near zero (a break, a hyperinflation)
+  ;; must not carry its ratio into the rate a decade on
+  (let [panel {"SIM" (update-in (sim-panel 30) [2003 :b :hh :debt :l] * 1e-4)}
+        p (sfc/learn panel {} "SIM" 2012 {})]
+    (is (< (Math/abs (- 0.04 (get-in p [:i-l :hh]))) 2e-3) (str "hh rate " (get-in p [:i-l :hh])))))
+
+(deftest one-year-ahead-reports-the-starting-closure
+  (let [panel {"SIM" (perturb-b (sim-panel 30) 0.5)}
+        rows (sfc/one-year-ahead panel (sim-keen 30) {:min-years 8})]
+    (is (seq rows))
+    (is (every? #(< 0.4 (:init-buffer %) 0.6) rows) "the discrepancy moved to the rest of the world, over output")))
+
+;; -- the assumption audit: behavioural blocks replaced by observed values ------------
+
+(deftest given-blocks-reproduce-the-observed-year
+  ;; a wrong model handed every block of the true year reproduces its net
+  ;; lending; handed none, it does not
+  (let [{s1 :state o1 :out} (sfc/step st0 p0)
+        x1 (sfc/observed (sfc/obs-of s1 o1))
+        g (- (/ (:Y o1) (:Y st0)) 1.0)
+        wrong (-> p0 (assoc :a1 0.6 :a2 0.0 :x 0.2 :mu 0.25 :socc 0.1 :n 0.0)
+                  (assoc-in [:tax :hh] 0.3) (assoc-in [:v :nfc] 0.5) (assoc-in [:i-l :hh] 0.08)
+                  (assoc-in [:other :row] 0.01) (assoc :div-share {:nfc 0.05}))
+        nl (fn [o] (:net-lending o))
+        gap (fn [o] (apply max (for [s sfc/sectors] (Math/abs (- ((nl o) s) ((nl o1) s))))))]
+    (is (= (set sfc/blocks) (set (keys sfc/block-docs))))
+    (is (< 1e-3 (gap (:out (sfc/step-given st0 wrong #{} x1 g)))) "the wrong model misses")
+    (is (< (gap (:out (sfc/step-given st0 wrong (set sfc/blocks) x1 g))) 1e-9) "given everything, it is the data")
+    (is (< (Math/abs (- (:Y o1) (:Y (:out (sfc/step-given st0 wrong (set sfc/blocks) x1 g))))) (* 1e-9 (:Y o1))))
+    (testing "one block given sets that block only"
+      (let [o (:out (sfc/step-given st0 wrong #{:consumption} x1 g))
+            prop (fn [x] (/ (get-in x [:cons :hh]) (+ (get-in x [:cons :hh]) (get-in x [:inv :hh]) (get-in (sfc/book x) [:nl :hh]))))]
+        (is (< (Math/abs (- (prop (:x o)) (prop x1))) 1e-9) "households consume the observed share of disposable income")
+        (is (< 1e-3 (gap o)))))))
+
+;; -- revised rules (the audit's replacements, selectable) ------------------------------
+
+(def st1 (assoc st0 :pi-prev 0.17 :kappa 0.11
+                :bsm-prev (into {} (for [[s m] bsm0] [s (into {} (for [[k v] m] [k (into {} (for [[sd x] v] [sd (* 0.9 x)]))]))]))))
+
+(deftest wage-rule-reverts-to-its-norm
+  (let [p (assoc p0 :wage-rule {:phi 0.25 :norm 0.5})
+        {s :state} (sfc/step st1 p)]
+    (is (< (Math/abs (- (:w s) (+ 0.6 (* 0.25 (- 0.5 0.6))))) 1e-12))
+    (is (= 0.6 (:w (:state (sfc/step st1 (assoc p0 :wage-rule {:phi 0.0 :norm 0.5}))))) "phi 0 holds it")))
+
+(deftest investment-in-differences-keeps-keens-slope
+  (let [ir {:phi 0.2 :norm 0.12}
+        p (assoc p0 :investment-rule ir)
+        ye (* 100.0 1.04)
+        slope (/ (- (keen/investment (:invest p0) (+ 0.18 1e-6)) (keen/investment (:invest p0) (- 0.18 1e-6))) 2e-6)
+        want (+ 0.11 (* slope (- 0.18 0.17)) (* 0.2 (- 0.12 0.11)))
+        {s :state o :out} (sfc/step st1 p)]
+    (is (< (Math/abs (- (/ (get-in o [:inv :nfc]) ye) want)) 1e-6))
+    (is (< (Math/abs (- (:kappa s) (/ (get-in o [:inv :nfc]) (:Y o)))) 1e-12) "the state carries the share")
+    (is (= 0.18 (:pi-prev s)))
+    (is (< (Math/abs (- (/ (get-in (sfc/step st0 p) [:out :inv :nfc]) ye) (keen/investment (:invest p0) 0.18))) 1e-12)
+        "without last year's share, Keen's level")))
+
+(deftest interest-passes-through-a-share-of-the-stock-change
+  (let [ye 104.0
+        il (fn [b] (+ (sfc/pos b :hh :money :l) (sfc/pos b :hh :debt :l)))
+        paid (fn [theta] (get-in (sfc/property-income (:bsm st1) (assoc p0 :theta theta) ye (:bsm-prev st1)) [:int-paid :hh]))]
+    (is (< (Math/abs (- (paid 1.0) (* 0.04 (il bsm0)))) 1e-12) "theta 1: the opening stock")
+    (is (< (Math/abs (- (paid 0.0) (* 0.04 (il (:bsm-prev st1)) 1.04))) 1e-12) "theta 0: last year's stock grown at n")
+    (is (< (Math/abs (- (paid 0.5) (* 0.5 (+ (paid 0.0) (paid 1.0))))) 1e-12))
+    (testing "the identities hold under every rule"
+      (let [p (assoc p0 :theta 0.3 :wage-rule {:phi 0.2 :norm 0.55} :investment-rule {:phi 0.1 :norm 0.12})
+            steps (rest (run-steps st1 p 20))]
+        (doseq [[s o] steps]
+          (is (< (sfc/tfm-gap (:booked o)) (* 1e-10 (:Y o))))
+          (is (< (sfc/bsm-gap (:bsm s)) (* 1e-10 (:Y o))))
+          (is (< (:fof-gap o) (* 1e-10 (:Y o)))))))))
+
+(deftest learning-the-revised-rules
+  (let [panel {"SIM" (sim-panel 30)}
+        p (sfc/learn panel {} "SIM" 2025 {:consumption {:phi 0.0} :wages {:phi 0.3} :investment {:phi 0.2} :theta 0.4})
+        x (sfc/observed (get-in panel ["SIM" 2025]))
+        prop (/ (get-in x [:cons :hh]) (+ (get-in x [:cons :hh]) (get-in x [:inv :hh]) (get-in (sfc/book x) [:nl :hh])))]
+    (is (= 0.0 (:a2 p)))
+    (is (< (Math/abs (- (:a1 p) prop)) 0.02) "the propensity, as last observed")
+    (is (= 0.3 (get-in p [:wage-rule :phi])))
+    (is (number? (get-in p [:wage-rule :norm])))
+    (is (= 0.2 (get-in p [:investment-rule :phi])))
+    (is (= 0.4 (:theta p)))
+    (let [st (sfc/init panel {} "SIM" 2025 p)]
+      (is (some? (:bsm-prev st)))
+      (is (number? (:kappa st)))
+      (is (number? (:pi-prev st))))))
+
+(deftest modules-reproduce-the-step-under-the-revised-rules
+  (let [p (assoc p0 :theta 0.3 :wage-rule {:phi 0.2 :norm 0.55} :investment-rule {:phi 0.1 :norm 0.12})
+        ms (msfc/modules "SIM" st1 p)
+        n 8
+        direct (rest (run-steps st1 p n))
+        r (eng/run ms {:from 2001 :to (+ 2000 n)})
+        em (:emits r)]
+    (is (empty? (eng/validate ms)))
+    (doseq [[i [_ o]] (map-indexed vector direct)]
+      (is (< (Math/abs (- (:Y o) (get-in em [:sfc-accounts "sfc/output" i]))) (* 1e-12 (:Y o))) (str "year " i)))))
