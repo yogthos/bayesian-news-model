@@ -395,6 +395,10 @@
              :events (constantly {:default 0.1}) :region-of {}
              :stage-shares (constantly {["iron" "mine"] {"AUS" 0.5 "CHN" 0.5}})}]
     (is (= [:stage :world] (map :basis (run/risk-year ctx :no-strait))))
+    (testing "a stage producer without a surplus supplies nobody else (the surplus reaches product-risk)"
+      (let [ctx (assoc-in ctx [:trade "260111" :net] {"AUS" 60.0})
+            r (first (run/risk-year (assoc ctx :events (constantly {"AUS" 0.0 :default 0.1})) :no-strait))]
+        (is (zero? (:risk r)))))
     (doseq [v [:world-shares :export-shares]]
       (is (= [:world :world] (map :basis (run/risk-year ctx v)))))))
 

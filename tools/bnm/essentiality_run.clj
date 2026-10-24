@@ -437,7 +437,7 @@
                                       lam (fn [_ f] (/ (es/interp-loss tbl f) (* (max f 1e-12) (:use tbl))))]]
                             [hz (es/product-risk {:world (:world tr) :exporters (:exporters tr) :importers (:importers tr)
                                                   :region-of region-of :p pc :use use :lambda lam :x x
-                                                  :flows (:flows tr)
+                                                  :flows (:flows tr) :slice-shares (:slice-shares tr)
                                                   :e (es/spare hz) :straits st :q q :d strait-loss
                                                   :strait-world (get ex "WLD")
                                                   :model-use (when (and model-use (not= variant :trade-use)) (get model-use p {}))})]))
