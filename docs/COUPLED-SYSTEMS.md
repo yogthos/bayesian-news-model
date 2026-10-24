@@ -2068,6 +2068,21 @@ from data.
   median skill against B. The bound is the larger of the two, or +0.025
   if that is larger.
 
+**Power on the scored rows, 24 October 2026**, before the outcome was
+read (scripts/allocation-test.py --rows, then allocation-power.py --rows;
+400 simulations, 1,000 draws). control/state's coverage leaves 2,096
+paired rows in 86 countries, 931 test rows in 85 (S2: 2,092 and 931).
+The placebo map runs over 86 countries.
+
+| regressor | phi .9, rho .2: 80% at | phi .7, rho 0: 80% at | bound |
+|---|---|---|---|
+| primary (and S1, the same rows) | R^2 0.05, skill +0.0363 | R^2 0.04, skill +0.0374 | +0.0374 |
+| S2 | R^2 0.05, skill +0.0363 | R^2 0.04, skill +0.0375 | +0.0375 |
+
+Nulls pass 0.5% of the time. Losing 144 test rows costs power: the
+detectable effect is now about 4-5% of the outcome's variance, not 3%,
+and the bound rises from +0.025 to about +0.037.
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
