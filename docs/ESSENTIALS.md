@@ -1465,6 +1465,58 @@ before any test year is scored (PRINCIPLES 9).
      - Sensitivity: export shares for every code (the old supplier
        basis) give Spearman 0.992 (K = 2022) and 0.990 (K = 2023) with
        this R.
+   - Tradable surplus (bnm-1pq.32 continued: 38dc995, 53fa4f3, 7cb485d;
+     still a change made after the registered result). The run above
+     had a bug: a producer that uses all it makes got a slice of every
+     other country's imports. A stage producer now supplies third
+     countries in proportion to its tradable surplus. That is production
+     less apparent domestic use (production + imports - exports), which
+     is its net exports of the code. The value comes from the BACI year
+     known by K, floored at 0 (essentiality-trade.csv.gz's new `net`
+     column; `es/surplus-shares`). A country that produces nothing is
+     never a supplier. The surplus shares are also the suppliers' shares
+     in the reallocation: the others replace a cut from the traded
+     market, and China's ore, used at home, is not spare. A producer's
+     own region is supplied by its own production, which R leaves out,
+     as before. Where no producer has a surplus, the production shares
+     stand. On the first rerun 38dc995 changed nothing: `risk-year`
+     dropped the new key before `product-risk`. 53fa4f3 fixed that, with
+     a test.
+     - Checks against the data (net exporters, data year 2021):
+       - iron ore 260111: Australia and Brazil (127 and 44 bn USD net),
+         then Canada and South Africa. China drops out.
+       - copper concentrate 260300: Chile and Peru. China, the largest
+         net importer, drops out.
+       - copper cathode 740311: Chile and Congo. China drops out.
+       - unwrought aluminium 760110: India, Russia and Canada. China
+         drops out.
+       - natural graphite 250410: China, the largest net exporter, stays
+         first (then Madagascar, Brazil and Mozambique).
+     - What moves, against the run above:
+       - iron ore returns to rank 2 at K = 2023 (43 bn, Australia 0.89
+         of it) and K = 2026 (45 bn).
+       - bauxite (260600) is rank 1 at K = 2026 (74 bn, Guinea).
+       - aluminium and copper cathode fall to about rank 3,000. Their
+         surplus is spread over many producers, each under the
+         reallocation threshold.
+       - graphite stays at 8-19, with China its supplier.
+       - cobalt oxides go back to rank 7 at 2020.
+       - against export shares for every code: Spearman 0.998 (K = 2022)
+         and 0.996 (K = 2023).
+     - Targets, registered -> stage shares (above) -> surplus:
+       - lithium: met -> met -> met (hydroxide 115 and 102 at 2021-22,
+         carbonate 220 at 2020).
+       - cobalt: met -> met -> met (oxides 7 at 2020, ore 468 at 2022).
+       - rare earths: not met -> not met -> not met (cerium compounds
+         834-904 at K = 2020-22). The separation stage is first known at
+         2023, after the window.
+       - precision: EU 2 against rise 4 (p 0.03), back from 3; USGS 2
+         against 3 (p 0.04). R beats random but not rise.
+       - back-test: restrictions 0.536 against 0.424 (difference 0.112,
+         placebo 0.076, p 0.11). The p 0.007 of the run above came with
+         the bug and does not survive it. Unit-value spikes still show
+         nothing (p 0.96).
+       - gas for European fertiliser: unchanged, 3 of 6.
 9. **Chokepoints.** Route BACI bilateral seaborne flows on a sea network
    and compute each chokepoint's share by product and year.
    - Tests: Hormuz carries about 20% of world crude and LNG in 2019-23.
