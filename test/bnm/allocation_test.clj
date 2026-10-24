@@ -20,6 +20,16 @@
     (is (close? 0.25 (get (al/shares spec {"Total" 200.0 "C" 50.0 "HH" 80.0}) "C")))
     (is (nil? (get (al/shares spec {"C" 50.0}) "C")) "no total, no share")))
 
+(deftest nontradable-is-the-papers-and-the-same-sections-in-each-source
+  (testing "Müller-Verner: FL + GI + HJ (construction, real estate, trade, hospitality, transport and communication)"
+    (let [g (get-in (al/credit-spec ["mv" "credit"]) [:groups "nontradable"])]
+      (is (close? 21.0 (al/group-value {"F" 1.0 "L" 2.0 "G" 3.0 "I" 4.0 "H" 5.0 "J" 6.0} g)))
+      (is (close? 10.0 (al/group-value {"FL" 3.0 "GI" 3.0 "HJ" 4.0} g)))
+      (is (nil? (al/group-value {"F" 1.0 "L" 2.0 "G" 3.0 "I" 4.0} g)) "no H and J, no group")))
+  (testing "ECB: the same sections, L only as part of LMN"
+    (let [g (get-in (al/credit-spec ["ecb-nace" "credit"]) [:groups "nontradable"])]
+      (is (= #{"nfc-F" "nfc-G" "nfc-HJ" "nfc-I" "nfc-LMN"} (set g))))))
+
 (deftest new-credit-and-share-changes-come-from-two-years-of-one-source
   (let [spec (al/credit-spec ["mv" "credit"])
         a {"Total" 100.0 "C" 30.0 "HH" 20.0}
@@ -31,6 +41,12 @@
     (testing "no new-credit share when total credit does not grow"
       (is (nil? (get-in (al/flows spec a (assoc b "Total" 100.0)) [:new-share "C"])))
       (is (some? (get-in (al/flows spec a (assoc b "Total" 90.0)) [:share-change "C"]))))
+    (testing "ECB loans of a state outside the euro are in EUR at current rates: no new-credit share"
+      (let [ecb (al/credit-spec ["ecb" "credit"])
+            a {"hh" 40.0 "nfc" 60.0} b {"hh" 50.0 "nfc" 70.0}]
+        (is (close? 0.5 (get-in (al/flows ecb a b "DEU") [:new-share "hh"])))
+        (is (empty? (:new-share (al/flows ecb a b "GBR"))))
+        (is (some? (get-in (al/flows ecb a b "GBR") [:share-change "hh"])) "its share changes are ratios within a year")))
     (testing "a ratio-to-GDP source gives share changes, not new-credit shares"
       (let [bis (al/credit-spec ["bis" "credit"])
             f (al/flows bis {"hh" 40.0 "nfc" 60.0} {"hh" 50.0 "nfc" 50.0})]
@@ -88,7 +104,8 @@
           (row "KOR" y "wiod" "capital" s v))
         (for [[s v] [["D27t28" 30.0] ["F" 70.0]]] (row "KOR" 1990 "lrwiod" "gfcf-product" s v)))))
 
-(def links {:products {"C_STEL" "C24-C25" "C_IRON" "B"} :stages [["copper" "smelter"] ["copper" "mine"]]})
+(def links {:products {"C_STEL" "C24-C25" "C_IRON" "B"}
+            :stages {["copper" "smelter"] {"KOR" 1990} ["copper" "mine"] {"KOR" 2010 "CHL" 1980}}})
 
 (defn- ms [] (mal/modules (al/index panel) links))
 
@@ -137,15 +154,30 @@
       (is (close? (Math/log 1.1) (parse-double (second (second (first (inv "investment/klems/capital-growth-C24-C25")))))))
       (let [cap (inv "capacity/growth/C_STEL")]
         (is (= (inv "investment/klems/capital-growth-C24-C25") cap) "a product carries its industry's growth"))
-      (is (= (map second (inv "investment/klems/capital-growth-B")) (map second (inv "capacity/growth/stage/copper-mine"))))
       (is (= (map second (inv "investment/klems/capital-growth-C24-C25")) (map second (inv "capacity/growth/stage/copper-smelter"))))
+      (is (seq (inv "investment/klems/capital-growth-B")))
+      (is (nil? (inv "capacity/growth/stage/copper-mine"))
+          "a stage carries a country's growth only once the stage table knows the country has it (KOR's mine from 2010)")
       (is (close? (Math/log (/ (/ 60.0 520) (/ 50.0 500)))
                   (parse-double (second (second (first (inv "capacity/relative-growth/C_STEL")))))))
       (is (= [[1993 ["KOR" (str 0.3) 1990 "lrwiod"]]] (inv "investment/lrwiod/gfcf-product-share-D27t28"))))
     (testing "credit shares reach the investment module's industries a year later"
       (let [c (al "allocation/mv/share-C") ic (inv "investment/credit-share-C")]
         (is (seq ic))
-        (is (= (map (fn [[t rw]] [(inc t) rw]) c) ic))))))
+        (is (= (map (fn [[t rw]] [(inc t) rw]) c) ic))
+        (is (= 3 (get-in (eng/emit-for (second (ms)) "investment/credit-share-C") [:known :data-year]))
+            "Müller-Verner's +2 and the year's lag")))))
+
+(deftest stage-links-come-from-the-stage-table-by-country-and-known-year
+  (let [dir (doto (io/file (System/getProperty "java.io.tmpdir") (str "bnm-alloc-" (System/nanoTime))) .mkdirs)
+        st (io/file dir "stages.csv")]
+    (spit st (str "commodity,stage,iso,year,quantity,unit,source,known\n"
+                  "copper,smelter,CHL,1990,1,t,BGS,1992\n"
+                  "copper,smelter,CHL,1985,1,t,BGS,1987\n"
+                  "copper,mine,PER,2000,1,t,BGS,2002\n"
+                  "gold,mine,ZAF,2000,1,t,BGS,2002\n"))
+    (is (= {["copper" "smelter"] {"CHL" 1987} ["copper" "mine"] {"PER" 2002} ["gold" "mine"] {"ZAF" 2002}}
+           (:stages (al/load-links "no-such-concordance.csv" (str st)))))))
 
 ;; -- the data on disk (skipped when the panel has not been built) ---------------------------
 

@@ -18,8 +18,10 @@
                  the link to the product graph and the stages,
                  capacity/growth/<product> and capacity/growth/stage/
                  <commodity>-<stage> (klems), capacity/relative-growth/...
-                 (wiod), for every product and stage whose industry the
-                 concordance gives; and the credit shares of the ISIC
+                 (wiod), for every product whose industry the concordance
+                 gives, and every stage in the countries the stage table
+                 has it in (from the year that is known); and the credit
+                 shares of the ISIC
                  sections that are also its industries, read from
                  :allocation a year late (investment/credit-share-<section>),
                  the financing side of 5.2.
@@ -85,7 +87,8 @@
     {:module :allocation :group :F :place :country :dt 1
      :doc "Credit by sector as known: shares of the stock, share changes and shares of new credit (bnm.allocation)"
      :reads [(src "mv/credit" "LCU" "mv" 2) (src "bis/credit" "% GDP" "bis" 1) (src "pboc/credit" "CNY 100m" "pboc" 1)
-             (src "pboc/tsf" "CNY tn" "pboc" 1) (src "ecb/credit" "national currency, millions" "ecb" 1)]
+             (src "pboc-rmb/credit" "CNY 100m" "pboc" 1) (src "pboc/tsf" "CNY tn" "pboc" 1)
+             (src "ecb/credit" "EUR m" "ecb" 1) (src "ecb-nace/credit" "EUR m" "ecb" 1)]
      :emits (credit-emits)
      :stocks {:credit {:unit "credit stocks by sector, as known" :info true}}
      :params {}
@@ -104,7 +107,7 @@
                                      b (get-in idx [source measure iso year])]
                                  (if-not a
                                    acc
-                                   (let [{:keys [share-change new-share]} (al/flows spec a b)
+                                   (let [{:keys [share-change new-share]} (al/flows spec a b iso)
                                          acc (reduce (fn [acc [g x]] (push acc (credit-var spec "share-change" g) [iso (al/fmt x) year source]))
                                                      acc (sort share-change))]
                                      (reduce (fn [acc [g x]] (push acc (credit-var spec "new-share" g) [iso (al/fmt x) year source]))
@@ -132,26 +135,31 @@
         (for [p al/lrwiod-products]
           {:var (iv "lrwiod" "gfcf-product-share" p) :unit "share of gross fixed capital formation" :known {:data-year 3}})
         (for [g credit-sections]
-          {:var (str "investment/credit-share-" g) :unit "share of private credit" :known {:data-year 2} :channel :F1})
+          {:var (str "investment/credit-share-" g) :unit "share of private credit" :known {:data-year 3} :channel :F1})
         [{:var "capacity/growth/*" :unit "log change per year" :known {:data-year 2} :channel :R6}
          {:var "capacity/relative-growth/*" :unit "log change against the economy's capital" :known {:data-year 3} :channel :R6}])))
 
 (defn- link-targets
-  "{industry [node ...]}: the product graph's products and the stages
-  (\"stage/<commodity>-<stage>\") each industry's growth is carried to."
+  "{industry [[node countries] ...]}: the product graph's products (every
+  country, countries nil) and the stages (\"stage/<commodity>-<stage>\",
+  countries {iso first year known}) each industry's growth is carried to."
   [{:keys [products stages]}]
-  (reduce (fn [m [node ind]] (if ind (update m ind (fnil conj []) node) m))
+  (reduce (fn [m [node ind cs]] (if ind (update m ind (fnil conj []) [node cs]) m))
           {}
-          (concat (sort products)
-                  (for [[c s] stages] [(str "stage/" c "-" s) (al/stage-industry c s)]))))
+          (concat (for [[p ind] (sort products)] [p ind nil])
+                  (for [[[c s] cs] (sort-by key stages)] [(str "stage/" c "-" s) (al/stage-industry c s) cs]))))
 
 (defn investment-module
   [idx links]
   (let [bk (by-known idx [["klems" "capital"] ["klems" "gfcf"] ["klems" "capital-volume"] ["wiod" "capital"] ["lrwiod" "gfcf-product"]])
         targets (link-targets links)
         at (fn [s m iso y] (get-in idx [s m iso y]))
-        link (fn [acc prefix ind row]
-               (reduce (fn [acc node] (push acc (str prefix node) row)) acc (get targets ind)))]
+        link (fn [acc prefix ind [iso :as row] t]
+               (reduce (fn [acc [node cs]]
+                         (if (or (nil? cs) (some-> (get cs iso) (<= t)))
+                           (push acc (str prefix node) row)
+                           acc))
+                       acc (get targets ind)))]
     {:module :investment :group :R :place :country :dt 1
      :doc "Investment and capital by industry, and the link to capacity in the product graph and stages (bnm.allocation)"
      :reads (into [(src "klems/capital-accounts" "LCU m" "klems" 2) (src "wiod/capital" "LCU m" "wiod" 3)
@@ -182,7 +190,7 @@
                                 (reduce (fn [acc ind]
                                           (if-let [g (al/log-growth (get a ind) (get b ind))]
                                             (let [row [iso (al/fmt g) y s]]
-                                              (-> acc (push (iv s "capital-growth" ind) row) (link "capacity/growth/" ind row)))
+                                              (-> acc (push (iv s "capital-growth" ind) row) (link "capacity/growth/" ind row t)))
                                             acc))
                                         acc al/industries))
                               ["wiod" "capital"]
@@ -190,7 +198,7 @@
                                 (reduce (fn [acc ind]
                                           (if-let [g (al/relative-growth (get a ind) (get a "TOT") (get b ind) (get b "TOT"))]
                                             (let [row [iso (al/fmt g) y s]]
-                                              (-> acc (push (iv s "relative-capital-growth" ind) row) (link "capacity/relative-growth/" ind row)))
+                                              (-> acc (push (iv s "relative-capital-growth" ind) row) (link "capacity/relative-growth/" ind row t)))
                                             acc))
                                         acc al/industries))
                               ["lrwiod" "gfcf-product"]
@@ -207,7 +215,7 @@
 
 (defn modules
   "The allocation channel's two modules over bnm.allocation/index `idx`,
-  with `links` {:products {product industry} :stages [[commodity stage]]}
-  (bnm.allocation/load-links)."
+  with `links` {:products {product industry} :stages {[commodity stage]
+  {iso first year known}}} (bnm.allocation/load-links)."
   [idx links]
   [(allocation-module idx) (investment-module idx links)])

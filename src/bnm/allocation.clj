@@ -17,13 +17,17 @@
     mv        Müller-Verner, over total private credit: households (HH),
               non-financial corporations (NFC), the ISIC sections A, B, C
               (manufacturing), F, G, I, K, L (real estate), tradable (A +
-              B + C) and non-tradable (F + L + G + I, the paper's).
+              B + C) and non-tradable (F + L + G + I + H + J, the paper's
+              FL + GI + HJ).
     bis       BIS, households and NFCs over their sum (both % of GDP).
     ecb       ECB MFI loans, households (and house purchase, consumption)
-              and NFCs over their sum.
+              and NFCs over their sum. In EUR: the states outside the
+              euro (`ecb-floating`) are converted at current rates, so
+              they get no new-credit share.
     ecb-nace  ECB loans to euro-area NFCs (iso EMU) by NACE group, over
               their sum: tradable (A + B + C), non-tradable (F + G + I +
-              LMN), C, F, LMN.
+              HJ + LMN: the paper's sections, with M and N because the ECB
+              reports L only within LMN), C, F, LMN.
     pboc      PBoC loans to households (consumption, operating) and to
               enterprises (of which medium and long term) over their sum;
               pboc-rmb the same from the RMB-only table, a source of its
@@ -34,7 +38,10 @@
   Flows (`flows`) between two consecutive data years of one source: the
   share change, 100 (s_t - s_t-1) in percentage points, and where the
   source is in currency, the share of new credit, the group's change over
-  the total's when the total grew.
+  the total's when the total grew (undefined when it did not: the ratio's
+  sign would flip). It is the share of the net new credit, so it is not
+  bounded by 0 and 1: when the total barely grows, a group that grows
+  while another shrinks takes a large multiple of it.
 
   Investment: shares of an industry in gross fixed capital formation and
   in the capital stock (EU KLEMS, WIOD SEA), the real growth of its
@@ -47,9 +54,12 @@
   (`industry-of-division`), the division with the most concordance weight
   (data/derived/supply/concordance.csv); a mineral stage's is its NACE
   group (`stage-industry`: mines B, smelters and refineries C24-C25,
-  chemical and separation stages C20). A product or stage carries its
-  industry's capital growth: the capacity growth the 5.2 model will learn
-  from the credit and profits that finance it."
+  chemical and separation stages C20). A product carries its industry's
+  capital growth in every country; a stage only in the countries the
+  stage table has it in, from the first year that is known. That is the
+  capacity growth the 5.2 model will learn from the credit and profits
+  that finance it. One industry's growth is carried to many nodes, so a
+  reader pooling the nodes counts it once per industry, not per node."
   (:require [bnm.csv :as csv]))
 
 (def lags
@@ -80,7 +90,7 @@
   {"HH" ["HH"] "NFC" ["NFC"]
    "A" ["A"] "B" ["B"] "C" ["C"] "F" ["F"] "G" ["G"] "I" ["I"] "K" ["K"] "L" ["L"]
    "tradable" ["A" (either "B" "C" "BC")]
-   "nontradable" [(either "F" "L" "FL") (either "G" "I" "GI")]})
+   "nontradable" [(either "F" "L" "FL") (either "G" "I" "GI") (either "H" "J" "HJ")]})
 
 (def ^:private nace ["A" "B" "C" "DE" "F" "G" "HJ" "I" "LMN" "Z"])
 (defn- nfc [s] (str "nfc-" s))
@@ -95,7 +105,7 @@
                      :groups {"hh" ["hh"] "nfc" ["nfc"] "hh-house" ["hh-house"] "hh-consumption" ["hh-consumption"]}}
    ["ecb-nace" "credit"] {:label "ecb-nace" :unit "share of MFI loans to NFCs" :flows true
                           :total (mapv nfc nace)
-                          :groups {"tradable" (mapv nfc ["A" "B" "C"]) "nontradable" (mapv nfc ["F" "G" "I" "LMN"])
+                          :groups {"tradable" (mapv nfc ["A" "B" "C"]) "nontradable" (mapv nfc ["F" "G" "HJ" "I" "LMN"])
                                    "C" [(nfc "C")] "F" [(nfc "F")] "LMN" [(nfc "LMN")]}}
    ["pboc" "credit"] {:label "pboc" :unit "share of loans to households and enterprises" :flows true
                       :total ["hh" "enterprise"]
@@ -107,6 +117,12 @@
                    :groups {"loans" ["rmb-loans" "fx-loans"]
                             "shadow" ["entrusted-loans" "trust-loans" "undiscounted-acceptances"]
                             "bonds" ["corporate-bonds"] "equity" ["equity"]}}})
+
+(def ecb-floating
+  "The states in the ECB's country series whose currency floats against
+  the euro over their span: their loans are in EUR at current rates, so a
+  change between two years mixes new credit with the exchange rate."
+  #{"CZE" "GBR" "HUN" "POL" "ROU" "SWE"})
 
 (defn credit-spec
   "The groups of credit source and measure [source measure]: {:label (the
@@ -148,19 +164,21 @@
 
 (defn flows
   "{:share-change {group pp} :new-share {group share}} from sector maps
-  `a` (year t-1) and `b` (year t) of one source: the share's change in
-  percentage points, and where the spec has :flows, the group's share of
-  new credit when the total grew."
-  [spec a b]
+  `a` (year t-1) and `b` (year t) of one source (of country `iso`): the
+  share's change in percentage points, and where the spec has :flows (and
+  the country is not one of `ecb-floating` for the ECB), the group's share
+  of new credit when the total grew."
+  ([spec a b] (flows spec a b nil))
+  ([spec a b iso]
   (let [sa (shares spec a) sb (shares spec b)
         ta (totals spec a) tb (totals spec b)
         dt (when (and (:total ta) (:total tb)) (- (:total tb) (:total ta)))]
     (cond-> {:share-change (into {} (for [[g s] sb :let [s0 (get sa g)] :when s0] [g (* 100.0 (- s s0))]))}
-      (:flows spec)
+      (and (:flows spec) (not (and (= "ecb" (:label spec)) (ecb-floating iso))))
       (assoc :new-share (if (and dt (pos? dt))
                           (into {} (for [g (keys (:groups spec)) :let [x (get ta g) y (get tb g)] :when (and x y)]
                                      [g (/ (- y x) dt)]))
-                          {})))))
+                          {}))))))
 
 ;; -- investment and capital ----------------------------------------------------------------
 
@@ -238,9 +256,10 @@
     nil))
 
 (defn load-links
-  "{:products {product industry} :stages [[commodity stage] ...]} from the
-  concordance (bnm.concordance's table) and the stage table, where they
-  exist on disk."
+  "{:products {product industry} :stages {[commodity stage] {iso known}}}
+  from the concordance (bnm.concordance's table) and the stage table,
+  where they exist on disk: a stage's countries, each with the first year
+  the table knows it has the stage."
   [concordance-path stages-path]
   (let [ex? #(.exists (java.io.File. ^String %))]
     {:products (if (ex? concordance-path)
@@ -248,10 +267,12 @@
                                           (csv/read-maps concordance-path \,)))
                  {})
      :stages (if (ex? stages-path)
-               (vec (sort (distinct (for [r (csv/read-maps stages-path \,)
-                                          :when (stage-industry (:commodity r) (:stage r))]
-                                      [(:commodity r) (:stage r)]))))
-               [])}))
+               (reduce (fn [m r]
+                         (if-let [k (and (stage-industry (:commodity r) (:stage r)) (parse-long (str (:known r))))]
+                           (update-in m [[(:commodity r) (:stage r)] (:iso r)] #(if % (min % k) k))
+                           m))
+                       {} (csv/read-maps stages-path \,))
+               {})}))
 
 (defn fmt
   "A value as the coupled table writes it."

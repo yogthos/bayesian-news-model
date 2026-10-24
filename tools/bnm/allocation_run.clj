@@ -9,7 +9,7 @@
   The declarations are validated first (bnm.engine/check!), and every row
   is checked against its known year as it is emitted.
 
-  Usage: jolt -A:tools run -m bnm.allocation-run [from to]"
+  Usage: jolt -A:tools -M -m bnm.allocation-run [from to]"
   (:require [bnm.allocation :as al]
             [bnm.engine :as eng]
             [bnm.modules.allocation :as mal]))
