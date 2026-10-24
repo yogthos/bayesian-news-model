@@ -134,12 +134,12 @@
     (is (empty? (eng/validate mods)))
     (is (= #{:keen :credit :food :food-world :tension :energy :technology :cycles :stages :migration
              :econ-factors :econ-structure :econ-divergence :econ-coupling :geo-gap :cells :chokepoints
-             :essential :tech-demand}
+             :essential :tech-demand :control}
            ids))
     (is (= (set (map #(str "data/derived/stocks/" % ".csv")
                      ["keen" "credit" "food" "tension" "energy" "technology" "cycles" "stages" "migration"
                       "econ-factors" "econ-structure" "econ-divergence" "econ-coupling" "geo-capability"
-                      "cells" "chokepoints" "essential" "tech-demand"]))
+                      "cells" "chokepoints" "essential" "tech-demand" "control"]))
            (set (map :table mods)))
         "every stock table bnm.states reads")
     (testing "the causal order"
@@ -154,8 +154,8 @@
     (testing "emits map onto the typed channels (section 4c)"
       (is (every? #(or (nil? %) (ms/channels %)) (map :channel (mapcat :emits mods))))
       (is (every? (fn [m] (some :channel (:emits m))) mods) "every model has a channel")
-      (is (= {:technology #{:R10} :tech-demand #{:R9} :chokepoints #{:W4}}
-             (into {} (for [m mods :when (#{:technology :tech-demand :chokepoints} (:module m))]
+      (is (= {:technology #{:R10} :tech-demand #{:R9} :chokepoints #{:W4} :control #{:C1 :C3}}
+             (into {} (for [m mods :when (#{:technology :tech-demand :chokepoints :control} (:module m))]
                         [(:module m) (set (keep :channel (:emits m)))])))))))
 
 (deftest the-default-states-read-the-same-from-the-coupled-table

@@ -171,3 +171,61 @@
       (is (= 4 (:k (c/score fit x spec))))
       (testing "either component alone scores the composite"
         (is (= 2 (:k (c/score fit (select-keys x ["own" "pubk2"]) spec))))))))
+
+;; A near-Heywood world: "own" reads the factor almost without noise, the
+;; rest weakly, so ML drives own's uniqueness to its bound.
+(def heywood-rows
+  (vec (for [[i c] (map-indexed vector countries)
+             y (range 1990 2011)
+             [j a e] [["own" 1.0 0.02] ["bank" 0.4 1.0] ["open" -0.4 1.0] ["pubk" 0.3 1.0]]
+             :let [s (s-level i)]]
+         {:iso c :year y :known (+ y 1) :indicator j
+          :value (+ 10.0 (* a s) (* e (noise i j y)))})))
+
+(deftest a-uniqueness-bound-holds
+  (let [ml (c/fit-rows heywood-rows spec1)
+        bounded (c/fit-rows heywood-rows (assoc spec1 :psi-floor 0.2))]
+    (testing "ML runs own's uniqueness under 0.2: improper by the registered rule"
+      (is (< (get-in ml [:psi "own"]) 0.2))
+      (is (c/improper? ml 0.2)))
+    (testing "the spec's bound holds every uniqueness at 0.2 or more, and the fit is not improper below it"
+      (is (every? #(>= % (- 0.2 1e-12)) (vals (:psi bounded))))
+      (is (not (c/improper? bounded 0.19))))
+    (testing "the bound moves weight off the one indicator: the others' loadings rise"
+      (is (< (first (get-in bounded [:loading "own"])) (first (get-in ml [:loading "own"]))))
+      (is (> (Math/abs (double (first (get-in bounded [:loading "open"]))))
+             (Math/abs (double (first (get-in ml [:loading "open"])))))))
+    (testing "an explicit option overrides the spec's bound"
+      (is (< (get-in (c/fit-rows heywood-rows (assoc spec1 :psi-floor 0.2) {:psi-floor 0.005}) [:psi "own"]) 0.2)))
+    (testing "expanding keeps the spec's bound"
+      (let [res (c/expanding heywood-rows [2005] (assoc spec1 :psi-floor 0.2))]
+        (is (every? #(>= % (- 0.2 1e-12)) (vals (get-in res [:fits 2005 :psi]))))))))
+
+(deftest equal-weight-composite
+  (let [fit (c/fit-rows rows spec1)
+        z (#'bnm.control/standardise (x-of rows "C30" 2000) (:stats fit) 4.0)]
+    (testing "the mean of the signed z a row holds"
+      (is (close? 1e-12 (/ (- (z "own") (z "open")) 2.0)
+                  (first (:f (c/equal-score fit (select-keys (x-of rows "C30" 2000) ["own" "open"]) spec1))))))
+    (testing "fewer than the axis's :min-k signed indicators, no score"
+      (is (nil? (c/equal-score fit (select-keys (x-of rows "C30" 2000) ["own"]) (assoc-in spec1 [:axes 0 :min-k] 2)))))
+    (testing "it orders countries as the state level does"
+      (let [es (map #(first (:f (c/equal-score fit (x-of rows (countries %) 2000) spec1))) (range 60))]
+        (is (> (corr es (map s-level (range 60))) 0.95))))
+    (testing "expanding takes it as the scorer"
+      (let [res (c/expanding rows [2005] spec1 {:scorer c/equal-score})
+            s (first (filter #(= "C30" (:iso %)) (:scores res)))]
+        (is (= 4 (:k s)))
+        (is (close? 1e-12 (first (:f s))
+                    (first (:f (c/equal-score (get-in res [:fits 2005]) (x-of rows "C30" 2004) spec1)))))))))
+
+(deftest the-specs
+  (testing "the repression gap is a state indicator, signed +; the stock spec bounds uniqueness at 0.2"
+    (is (= 1 (get-in c/spec-1 [:axes 0 :signs "repression"])))
+    (is (some #{"repression"} (:indicators c/spec-1)))
+    (is (= 0.2 (:psi-floor c/spec-1) (:psi-floor c/spec-2))))
+  (testing "without drops an indicator from the indicators and the signs"
+    (let [s (c/without c/spec-1 "state-own")]
+      (is (not (some #{"state-own"} (:indicators s))))
+      (is (nil? (get-in s [:axes 0 :signs "state-own"])))
+      (is (= 0.2 (:psi-floor s))))))

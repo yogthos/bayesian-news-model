@@ -33,10 +33,19 @@
              + state bank share, state ownership (V-Dem v2clstown negated),
                public capital (the mean z of ICSD's public share of capital
                and WID's net public wealth, `composites`), expropriation
-               acts, OECD PMR public ownership; - capital-account openness.
+               acts, OECD PMR public ownership, the financial repression
+               gap; - capital-account openness.
              Capture and wealth concentration are free on it.
     capture  the second axis tried: + political corruption (v2x_corr) and
              top 1% wealth share; state-own fixed at 0 on it, the rest free.
+
+  Uniqueness bound (docs/COUPLED-SYSTEMS.md 4d, registered before the
+  alternatives were scored): run to convergence, the ML one-axis fit takes
+  state-own's uniqueness to the floor (a Heywood case: the axis is that one
+  series), so the stock specs carry :psi-floor 0.2 (`psi-bound`); the run
+  tool applies the rule (`improper?`) and writes the ML fit, the
+  equal-weight composite (`equal-score`) and the fit without state-own
+  (`without`) beside it.
 
   The second axis is kept only if it is stable, by a rule fixed before it
   was fitted (`stability`): Tucker congruence of its loadings of at least
@@ -75,26 +84,44 @@
 
 (def state-signs
   {"state-bank-share" 1 "state-own" 1 "public-capital" 1
-   "exprop-10y" 1 "pmr-public-owner" 1 "ka-open" -1})
+   "exprop-10y" 1 "pmr-public-owner" 1 "repression" 1 "ka-open" -1})
 
 (def state-raw
-  ["state-bank-share" "state-own" "public-k-share" "public-wealth-ni" "exprop-10y" "pmr-public-owner" "ka-open"])
+  ["state-bank-share" "state-own" "public-k-share" "public-wealth-ni" "exprop-10y" "pmr-public-owner"
+   "repression" "ka-open"])
+
+(def psi-bound
+  "The uniqueness bound of the registered specification rule
+  (docs/COUPLED-SYSTEMS.md 4d): the ML fit runs state-own's uniqueness to
+  zero (a Heywood case, the axis that one indicator), so the stock fits
+  bound every uniqueness at 0.2."
+  0.2)
 
 (def spec-1
   {:indicators (vec (sort state-raw))
    :composites composites
+   :psi-floor psi-bound
    :axes [{:name "state" :signs state-signs :min-k 2}]})
 
 (def spec-2
   {:indicators (vec (sort (concat state-raw ["corruption" "top1-wealth"])))
    :composites composites
+   :psi-floor psi-bound
    :axes [{:name "state" :signs state-signs :min-k 2}
           {:name "capture" :signs {"corruption" 1 "top1-wealth" 1} :zero #{"state-own"} :min-k 1}]})
+
+(defn without
+  "`spec` without indicator `ind` (from its indicators and every axis's
+  signs and zeros)."
+  [spec ind]
+  (-> spec
+      (update :indicators #(vec (remove #{ind} %)))
+      (update :axes (fn [axes] (mapv #(-> % (update :signs dissoc ind) (update :zero (fnil disj #{}) ind)) axes)))))
 
 (def indicator-stocks
   "The indicators written as control/<indicator> stocks."
   #{"state-bank-share" "bank-brss" "state-own" "public-k-share" "public-wealth-ni" "ka-open"
-    "ka-restrict" "exprop-10y" "pmr-public-owner" "top1-wealth" "corruption" "execorr" "pubcorr"})
+    "ka-restrict" "exprop-10y" "pmr-public-owner" "repression" "top1-wealth" "corruption" "execorr" "pubcorr"})
 
 (def defaults {:min-obs 30 :stale 5 :clip 4.0 :max-iter 5000 :tol 1e-5 :psi-floor 0.005 :tau 1.0})
 
@@ -323,7 +350,7 @@
   :objective :objectives {start value} :start start-kept :axes names}."
   ([obs spec] (fit-obs obs spec {}))
   ([obs spec opts]
-   (let [{:keys [min-obs clip start tau] :as opts} (merge defaults opts)
+   (let [{:keys [min-obs clip start tau] :as opts} (merge defaults (select-keys spec [:psi-floor]) opts)
          axes (:axes spec) k (count axes)
          stats (into {} (filter #(>= (:n (val %)) min-obs) (moments obs (:indicators spec) clip)))
          composites (:composites spec)
@@ -360,6 +387,12 @@
   "fit-obs over the country-years of long `rows`."
   ([rows spec] (fit-rows rows spec {}))
   ([rows spec opts] (fit-obs (vals (ef/observations rows)) spec opts)))
+
+(defn improper?
+  "Whether some uniqueness of `fit` is at or below `bound` (the registered
+  rule's test of a Heywood case)."
+  [fit bound]
+  (boolean (some #(<= % bound) (vals (:psi fit)))))
 
 (defn pinned
   "[indicator axis] pairs whose signed loading sits at its bound: the data
@@ -399,13 +432,34 @@
 
 ;; ---------------------------------------------------------------- expanding window
 
+(defn equal-score
+  "The equal-weight composite of raw values `x` under `fit`'s
+  standardisation, per axis of `spec`: the mean of sign_j z_j over the
+  axis's signed indicators x holds (composites joined first), the shape of
+  `score` with :sd nil. nil when no axis has its :min-k. A sensitivity
+  check (docs/COUPLED-SYSTEMS.md 4d), not a stock."
+  [fit x spec]
+  (when fit
+    (let [{:keys [stats composites]} fit
+          z (-> (standardise (select-keys x (keys stats)) stats (:clip defaults)) (compose composites))
+          per (mapv (fn [{:keys [signs min-k]}]
+                      (let [vs (keep (fn [[j sg]] (when-let [v (z j)] (* sg v))) signs)]
+                        (when (>= (count vs) (or min-k 1)) (/ (reduce + vs) (count vs)))))
+                    (:axes spec))]
+      (when (some some? per)
+        {:f (mapv #(or % 0.0) per)
+         :sd (vec (repeat (count per) nil))
+         :k (count (filter (set (mapcat (comp keys :signs) (:axes spec))) (keys z)))
+         :ok (mapv some? per)}))))
+
 (defn expanding
   "Fits for each year of `years` (ascending) on the rows known by then, and
   each country's scores at each year. Returns {:fits {y fit} :scores [{:iso
-  :year :f :sd :k :ok :data-year}]}."
+  :year :f :sd :k :ok :data-year}]}. opts: fit-obs's, :stale, and
+  :scorer (fn [fit x spec]), `score` by default."
   ([rows years spec] (expanding rows years spec {}))
   ([rows years spec opts]
-   (let [{:keys [stale] :as opts} (merge defaults opts)
+   (let [{:keys [stale scorer] :or {scorer score}} (merge defaults opts)
          inds (set (:indicators spec))
          by-known (sort-by :known (filter #(inds (:indicator %)) rows))]
      (loop [[y & more] years start nil fits {} scores (transient [])]
@@ -415,7 +469,7 @@
                fit (fit-obs (vals (ef/observations known)) spec (assoc opts :start start))
                snap (when fit (snapshot known y stale))
                scores (reduce (fn [acc [iso {:keys [x t]}]]
-                                (let [s (score fit x spec)]
+                                (let [s (scorer fit x spec)]
                                   (if (and s (some true? (:ok s)))
                                     (conj! acc (assoc s :iso iso :year y
                                                       :data-year (apply max (vals (select-keys t (keys (:stats fit)))))))

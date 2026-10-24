@@ -169,6 +169,15 @@
             (out "econ/financialisation" "SD units" 1 :C2) (out "econ/financialisation-cfa" "SD units" 1 :C2)
             (out "econ/financial-depth" "SD units" 1 :C2) (out "econ/market-size" "SD units" 1 :C2)
             (out "econ/*-n" "count" 1) (out "econ/*-sd" "SD units" 1)]}
+   {:module :control :group :C :place :country :table "data/derived/stocks/control.csv" :tool 'bnm.control-run
+    :doc "The control vector: state against private control of capital and credit, a factor with sign priors (bnm.control)"
+    :reads [(src "control/indicators" "mixed"
+                 "data/derived/control/control-indicators.csv (Panizza, BRSS, Bundesbank, V-Dem, ICSD, WID, KAOPEN, FKRSU, expropriation acts, OECD PMR, WDI)" 1)]
+    :emits [(out "control/state" "SD units" 1 :C1) (out "control/ka-open" "index 0-1" 2 :C3)
+            (out "control/*-sd" "SD units" 1) (out "control/n" "count" 1) (out "control/*" "mixed" 1)
+            (out "control/ka-restrict" "share" 2) (out "control/bank-brss" "share" 2)
+            (out "control/public-k-share" "share" 2) (out "control/public-wealth-ni" "ratio to national income" 2)
+            (out "control/pmr-public-owner" "index 0-6" 2) (out "control/top1-wealth" "share" 2)]}
    {:module :econ-divergence :group :F :place :country :table "data/derived/stocks/econ-divergence.csv" :tool 'bnm.econ-divergence
     :doc "Asset prices against fundamentals (bnm.econ-divergence)"
     :reads [(src "econ/divergence-inputs" "mixed" "data/derived/econ/divergence-inputs.csv (JST, WID, WDI)" 1)]

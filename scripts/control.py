@@ -10,10 +10,14 @@ and data/derived/control/control-indicators-coverage.txt.
 
 Known years are each source's release lag; the values are today's
 vintages read as if published then (the caveat every stock file carries):
-  Panizza bank ownership +2; BRSS the wave's release year; V-Dem +1;
-  ICSD and WID +2 (as scripts/econ-factors.py); KAOPEN and FKRSU +1;
-  expropriation acts 0 (an act is public when it happens; the compilation
-  is later); OECD PMR +2; PWT +3.
+  Panizza bank ownership +2; BRSS the wave's release year (2021 for the
+  2019 wave, read from the corrected release); V-Dem +1; ICSD and WID +2
+  (as scripts/econ-factors.py); KAOPEN and FKRSU +2 (the 2023 KAOPEN and
+  the 2021 FKRSU update came out two years after their last year);
+  expropriation acts +1 (an act is reported when it happens, but the
+  window to the end of y is complete only after y; the channel table's
+  P3; the compilation itself is later); OECD PMR +2; PWT +3; the Bundesbank's banking groups and WDI
+  rates +1.
 
 Indicators (the doc's stock in brackets):
   state-bank-share  [c-bank] government-owned banks' share of banking
@@ -22,7 +26,10 @@ Indicators (the doc's stock in brackets):
                     BRSS's definition; BRSS fills country-years Panizza
                     lacks (waves c.1999, 2001, 2005, 2008-10, 2011-16).
                     No level adjustment: one would need the overlap, which
-                    for early fills lies in the future.
+                    for early fills lies in the future. Germany is the
+                    Bundesbank's Landesbanken and savings banks over all
+                    banks (balance sheet totals, December, +1, 1995 on),
+                    replacing both: Panizza codes them only in part.
   state-own         [c-own] V-Dem v2clstown negated, so high = more of the
                     economy owned or directly controlled by the state.
   public-k-share    [c-pubk] general government's share of the capital
@@ -44,6 +51,12 @@ Indicators (the doc's stock in brackets):
                     (shwealj992 p99p100), rows WID rates as measured
                     (data_quality >= 1) only: the rest are regional
                     imputations.
+  repression        [c-repr] the financial repression gap: real GDP growth
+                    less the real deposit rate (Fisher), points, the mean
+                    of the five years to y (at least three, y among them).
+                    WDI FR.INR.DPST, FP.CPI.TOTL.ZG, NY.GDP.MKTP.KD.ZG,
+                    +1. Deposit rates are national definitions; the euro
+                    area's members have none after 1998.
   corruption        [c-capt] V-Dem political corruption index v2x_corr.
 Written as stocks but not in the factor:
   ka-restrict       FKRSU capital-control restrictions, mean of the 0/1
@@ -75,14 +88,16 @@ ECON = D('derived', 'econ', 'econ-indicators.csv')
 STOCKS = D('derived', 'stocks', 'control.csv')
 CHECK = D('derived', 'control', 'control-check.txt')
 FIXED = D('derived', 'control', 'control-fixed.csv')
+VARIANTS = D('derived', 'control', 'control-variants.csv')
 
-LAG = {'panizza': 2, 'vdem': 1, 'kaopen': 1, 'fkrsu': 1, 'exprop': 0, 'pmr': 2}
+LAG = {'panizza': 2, 'vdem': 1, 'kaopen': 2, 'fkrsu': 2, 'exprop': 1, 'pmr': 2, 'bbk': 1, 'wdi': 1}
 # BRSS: data year -> the wave's release year (SOURCE.txt)
+# (the 2019 wave's values are read from the April 2021 corrected release)
 BRSS_KNOWN = {1999: 2001, 2001: 2004, 2005: 2008, 2008: 2012, 2009: 2012, 2010: 2012,
-              2011: 2019, 2012: 2019, 2013: 2019, 2014: 2019, 2015: 2019, 2016: 2019}
+              2011: 2021, 2012: 2021, 2013: 2021, 2014: 2021, 2015: 2021, 2016: 2021}
 
 FACTOR = ['state-bank-share', 'state-own', 'public-k-share', 'public-wealth-ni', 'ka-open',
-          'exprop-10y', 'pmr-public-owner', 'top1-wealth', 'corruption']
+          'exprop-10y', 'pmr-public-owner', 'repression', 'top1-wealth', 'corruption']
 
 
 # ---------------------------------------------------------------- helpers
@@ -226,12 +241,93 @@ def brss():
     return frame(d.iso, d.year, d.value, 'bank-brss', known=d.year.map(BRSS_KNOWN))
 
 
-def bank_share(pz, br):
-    """Panizza where it has the country-year, BRSS where it does not."""
+def bbk_december(lines):
+    """{year: value} of the December observations of a Bundesbank CSV
+    download (lines of text), missing ('-') left out."""
+    out = {}
+    import csv
+    for r in csv.reader(lines):
+        if len(r) >= 2 and len(r[0]) == 7 and r[0][4] == '-' and r[0].endswith('-12'):
+            try:
+                out[int(r[0][:4])] = float(r[1])
+            except ValueError:
+                pass
+    return out
+
+
+def germany_banks(total, landesbanken, sparkassen):
+    """Germany's state bank share: Landesbanken and savings banks over all
+    categories of banks (balance sheet totals, {year: value}), known a year
+    later."""
+    ys = sorted(set(total) & set(landesbanken) & set(sparkassen))
+    v = [(landesbanken[y] + sparkassen[y]) / total[y] for y in ys]
+    return frame(['DEU'] * len(ys), ys, v, 'state-bank-share', LAG['bbk'])
+
+
+BANK_FIRST = 1995  # Panizza's first year: before it Germany would be the bank share's only country
+
+
+def bundesbank():
+    p = lambda k: open(RAW('econ', 'bbk-banking-groups', f'BBBK1.M.{k}.csv'), encoding='utf-8-sig').read().splitlines()
+    d = germany_banks(bbk_december(p('OU0308')), bbk_december(p('OU1024')), bbk_december(p('OU1074')))
+    return d[d.year >= BANK_FIRST]
+
+
+def bank_share(pz, br, de=None):
+    """Panizza where it has the country-year, BRSS where it does not; for
+    Germany the Bundesbank's banking groups (`de`) alone: Panizza codes
+    the Landesbanken and savings banks only in part (its share falls from
+    0.2 to 0.015 by 2012, while BRSS reports 0.37-0.40 and the Bundesbank's
+    groups 0.29-0.36)."""
     have = set(zip(pz.iso, pz.year))
     fill = br[[(i, y) not in have for i, y in zip(br.iso, br.year)]].copy()
     fill['indicator'] = 'state-bank-share'
-    return pd.concat([pz, fill], ignore_index=True)
+    d = pd.concat([pz, fill], ignore_index=True)
+    if de is not None:
+        d = pd.concat([d[d.iso != 'DEU'], de], ignore_index=True)
+    return d
+
+
+# ---------------------------------------------------------------- repression
+
+def wdi_zip(code):
+    import io
+    import zipfile
+    z = zipfile.ZipFile(RAW('econ', 'wdi-finance-structure', f'{code}.zip'))
+    name = [n for n in z.namelist() if n.startswith('API_')][0]
+    w = pd.read_csv(io.TextIOWrapper(z.open(name), encoding='utf-8-sig'), skiprows=4)
+    w = w.melt(id_vars=['Country Code'], value_vars=[c for c in w.columns if c.isdigit()], var_name='year', value_name='v')
+    return w.rename(columns={'Country Code': 'iso'}).assign(year=lambda d: d.year.astype(int)).dropna()
+
+
+def wdi_json(code):
+    import json
+    w = json.load(open(RAW('slow', 'worldbank', f'{code}.json')))[1]
+    d = pd.DataFrame([(x['countryiso3code'], int(x['date']), x['value']) for x in w if x['countryiso3code']],
+                     columns=['iso', 'year', 'v'])
+    return d.dropna()
+
+
+def repression(dep, cpi, growth, window=5, min_years=3):
+    """[c-repr] the financial repression gap: real GDP growth less the real
+    deposit rate (Fisher: (1 + i) / (1 + inflation) - 1), in points, the
+    mean over the `window` years to y of those it has (at least
+    `min_years`, y among them). High = deposits paid well below growth.
+    Inputs are frames iso, year, v in percent (WDI FR.INR.DPST,
+    FP.CPI.TOTL.ZG, NY.GDP.MKTP.KD.ZG); known a year later."""
+    m = dep.merge(cpi, on=['iso', 'year'], suffixes=('_i', '_p')).merge(growth.rename(columns={'v': 'v_g'}), on=['iso', 'year'])
+    m = m.dropna()
+    m = m[m.v_p > -100]
+    m['gap'] = m.v_g - 100.0 * ((1 + m.v_i / 100.0) / (1 + m.v_p / 100.0) - 1)
+    rows = []
+    for iso, g in m.groupby('iso'):
+        s = g.set_index('year').gap
+        for y in s.index:
+            w = s[(s.index > y - window) & (s.index <= y)]
+            if len(w) >= min_years:
+                rows.append((iso, y, w.mean()))
+    d = pd.DataFrame(rows, columns=['iso', 'year', 'value'])
+    return frame(d.iso, d.year, d.value, 'repression', LAG['wdi'])
 
 
 # ---------------------------------------------------------------- V-Dem
@@ -321,7 +417,7 @@ def wid_top1():
 
 # ---------------------------------------------------------------- main
 
-def coverage(d, br, pz):
+def coverage(d, br, pz, de):
     lines = ['indicator coverage (countries, data years, rows, known - data year)', '']
     for i, g in d.groupby('indicator'):
         lag = (g.known - g.year)
@@ -330,6 +426,11 @@ def coverage(d, br, pz):
     m = pz.merge(br, on=['iso', 'year'], suffixes=('_p', '_b'))
     lines += ['', f'bank share, Panizza SOE3 against BRSS on {len(m)} shared country-years: '
               f'r = {np.corrcoef(m.value_p, m.value_b)[0, 1]:.2f}, mean BRSS - Panizza = {(m.value_b - m.value_p).mean():+.3f}']
+    for nm, src in [('Panizza', pz), ('BRSS', br)]:
+        g = src[src.iso == 'DEU'].merge(de, on=['iso', 'year'], suffixes=('_s', '_d'))
+        if len(g):
+            lines.append(f'Germany, Bundesbank groups against {nm} on {len(g)} years: mean {g.value_d.mean():.3f} '
+                         f'against {g.value_s.mean():.3f} (the Bundesbank series replaces both)')
     ka = d[d.indicator == 'ka-open'].merge(d[d.indicator == 'ka-restrict'], on=['iso', 'year'])
     if len(ka):
         lines.append(f'KAOPEN against FKRSU restrictions on {len(ka)} country-years: '
@@ -343,8 +444,8 @@ def coverage(d, br, pz):
 
 def build():
     universe = countries()
-    pz, br = panizza(), brss()
-    parts = [bank_share(pz, br), br]
+    pz, br, de = panizza(), brss(), bundesbank()
+    parts = [bank_share(pz, br, de), br]
     vd = vdem()
     parts += vd
     parts.append(econ_indicators())
@@ -354,13 +455,14 @@ def build():
     parts.append(exprop(exprop_acts(), set(vd[0].iso) & universe))
     parts.append(pmr())
     parts.append(wid_top1())
+    parts.append(repression(wdi_zip('FR.INR.DPST'), wdi_json('FP.CPI.TOTL.ZG'), wdi_json('NY.GDP.MKTP.KD.ZG')))
     d = pd.concat(parts, ignore_index=True)
     d = d[d.iso.isin(universe)].sort_values(['iso', 'indicator', 'year'])
     assert (d.known >= d.year).all()
     assert not d.duplicated(['iso', 'year', 'indicator']).any(), d[d.duplicated(['iso', 'year', 'indicator'], keep=False)].head()
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     d.to_csv(OUT, index=False)
-    c = coverage(d, br, pz)
+    c = coverage(d, br, pz, de)
     open(COV, 'w').write(c + '\n')
     print(c)
     print(len(d), 'rows to', OUT)
@@ -374,11 +476,33 @@ def selftest():
     e = exprop(acts, {'BBB'}, first=1969, last=1975).set_index(['iso', 'year']).value
     assert e['AAA', 1969] == np.log1p(2) and e['AAA', 1974] == np.log1p(1) and e['AAA', 1975] == 0.0
     assert e['BBB', 1970] == 0.0
+    # an act is known the year after it (the channel table's P3, +1), not the year itself
+    ek = exprop(acts, {'BBB'}, first=1969, last=1975)
+    assert (ek.known == ek.year + 1).all()
     # the splice keeps Panizza and fills from BRSS only where Panizza is missing
     pz = frame(['X', 'X'], [2000, 2001], [0.5, 0.4], 'state-bank-share', 2)
     br = frame(['X', 'X', 'Y'], [2001, 2005, 2005], [0.9, 0.3, 0.2], 'bank-brss', known=[2004, 2008, 2008])
     s = bank_share(pz, br).set_index(['iso', 'year'])
     assert s.loc[('X', 2001), 'value'] == 0.4 and s.loc[('X', 2005), 'known'] == 2008 and len(s) == 4
+    # Germany from the Bundesbank's banking groups, replacing Panizza and BRSS
+    de = germany_banks({2000: 100.0, 2001: 200.0}, {2000: 20.0, 2001: 30.0}, {2000: 15.0, 2001: 40.0})
+    assert list(de.value) == [0.35, 0.35] and list(de.known) == [2001, 2002] and set(de.iso) == {'DEU'}
+    pz2 = frame(['DEU', 'X'], [2000, 2000], [0.01, 0.5], 'state-bank-share', 2)
+    br2 = frame(['DEU'], [2005], [0.4], 'bank-brss', known=[2008])
+    s2 = bank_share(pz2, br2, de)
+    assert sorted(s2[s2.iso == 'DEU'].year) == [2000, 2001] and s2[s2.iso == 'DEU'].value.eq(0.35).all()
+    assert s2[s2.iso == 'X'].value.iloc[0] == 0.5
+    m = bbk_december(['"",K', '1999-11,1.0,', '1999-12,2.5,', '2000-12,-,Nothing exists', '2001-12,3.0,Provisional value'])
+    assert m == {1999: 2.5, 2001: 3.0}, m
+    # the repression gap: growth less the Fisher real deposit rate, five-year
+    # mean of at least three years, known a year later
+    wd = lambda vs: pd.DataFrame({'iso': 'A', 'year': range(2000, 2000 + len(vs)), 'v': vs})
+    r = repression(wd([10.0] * 5), wd([10.0] * 5), wd([3.0] * 5)).set_index('year')
+    assert list(r.index) == [2002, 2003, 2004] and np.allclose(r.value, 3.0) and (r.known == r.index + 1).all()
+    h = repression(wd([100.0] * 3), wd([300.0] * 3), wd([0.0] * 3)).set_index('year')
+    assert np.isclose(h.value[2002], 50.0)
+    g = repression(wd([5.0, np.nan, 5.0, 5.0]), wd([0.0] * 4), wd([0.0, 0.0, 0.0, 9.0])).set_index('year')
+    assert list(g.index) == [2003] and np.isclose(g.value[2003], (-5 - 5 + 4) / 3)
     assert name_iso('Korea, Rep.') == 'KOR' and name_iso('United States') == 'USA'
     assert name_iso("CHINA-PEOPLE'S REP.") == 'CHN' and name_iso('Macedonia, Republic of ') == 'MKD'
     # the written table: nothing dated before it is known
@@ -390,11 +514,34 @@ def selftest():
         so = t[(t.indicator == 'state-own') & (t.iso == 'CHN') & (t.year == 1990)].value
         sg = t[(t.indicator == 'state-own') & (t.iso == 'USA') & (t.year == 1990)].value
         assert so.iloc[0] > sg.iloc[0], 'state-own must be high for China'
+        # each source's lag as released: the 2023 KAOPEN (data to 2023) and
+        # the 2021 FKRSU update (to 2019) came out two years after their last
+        # year; the 2019 BRSS wave is read from the April 2021 corrected file
+        lag = (t.known - t.year).groupby(t.indicator)
+        want = {'ka-open': 2, 'ka-restrict': 2, 'exprop-10y': 1, 'state-own': 1, 'repression': 1}
+        for i, k in want.items():
+            assert lag.min()[i] == k and lag.max()[i] == k, (i, lag.min()[i], lag.max()[i])
+        # Germany's series starts with Panizza's (1995): earlier, it would be the
+        # indicator's only country and set its scale alone
+        assert t[(t.indicator == 'state-bank-share')].year.min() == 1995
+        b = t[(t.indicator == 'bank-brss') & (t.year >= 2011)]
+        assert (b.known == 2021).all()
     print('ok')
 
 
 # ---------------------------------------------------------------- validation
 
+EVENTS = [('CHN', 1988, 2005, '-', "China's reforms, SOE retrenchment"),
+          ('RUS', 1990, 2000, '-', "Russia's privatisation"),
+          ('RUS', 2000, 2012, '+', "Russia's re-statisation"),
+          ('VEN', 2000, 2012, '+', "Venezuela's nationalisations"),
+          ('GBR', 1979, 1995, '-', "Britain's privatisation"),
+          ('ARG', 1988, 2000, '-', 'Argentina, Menem privatisations'),
+          ('MEX', 1985, 2000, '-', 'Mexico privatisations'),
+          ('BRA', 1989, 2002, '-', 'Brazil privatisations'),
+          ('PER', 1989, 2000, '-', 'Peru privatisations'),
+          ('CHL', 1974, 1990, '-', 'Chile privatisations'),
+          ('BOL', 2004, 2012, '+', "Bolivia's nationalisations")]
 GULF = ['SAU', 'ARE', 'QAT', 'KWT', 'OMN', 'BHR']
 NAMED = ['CHN', 'VNM'] + GULF + ['DEU', 'JPN', 'KOR', 'USA', 'GBR']
 
@@ -431,18 +578,7 @@ def check():
         p('\nKorea over time:', '  '.join(f'{y} {a.loc["KOR", y]:+.2f}' for y in range(1980, 2027, 5)
                                          if y in a.columns and pd.notna(a.loc['KOR', y])))
         p('\nevent checks, windows set before the fit (score change; the expected sign in brackets):')
-        events = [('CHN', 1988, 2005, '-', "China's reforms, SOE retrenchment"),
-                  ('RUS', 1990, 2000, '-', "Russia's privatisation"),
-                  ('RUS', 2000, 2012, '+', "Russia's re-statisation"),
-                  ('VEN', 2000, 2012, '+', "Venezuela's nationalisations"),
-                  ('GBR', 1979, 1995, '-', "Britain's privatisation"),
-                  ('ARG', 1988, 2000, '-', 'Argentina, Menem privatisations'),
-                  ('MEX', 1985, 2000, '-', 'Mexico privatisations'),
-                  ('BRA', 1989, 2002, '-', 'Brazil privatisations'),
-                  ('PER', 1989, 2000, '-', 'Peru privatisations'),
-                  ('CHL', 1974, 1990, '-', 'Chile privatisations'),
-                  ('BOL', 2004, 2012, '+', "Bolivia's nationalisations")]
-        for iso, y0, y1, sign, label in events:
+        for iso, y0, y1, sign, label in EVENTS:
             if iso in a.index and y0 in a.columns and y1 in a.columns and pd.notna(a.loc[iso, y0]) and pd.notna(a.loc[iso, y1]):
                 dlt = a.loc[iso, y1] - a.loc[iso, y0]
                 ok = (dlt < 0) if sign == '-' else (dlt > 0)
@@ -464,9 +600,83 @@ def check():
             rk = res.rank(ascending=False)
             p(f'  {y}: n={len(x)} slope {b[0]:+.2f} R2 {r2:.2f}; residual rank: '
               + '  '.join(f'{i} {res[i]:+.2f} ({int(rk[i])})' for i in NAMED if i in res.index))
+    if os.path.exists(VARIANTS):
+        variants(pd.read_csv(VARIANTS), s, ind, p)
     text = '\n'.join(out)
     open(CHECK, 'w').write(text + '\n')
     print(text)
+
+
+def events_hit(a):
+    """(right sign, scored) of EVENTS on the wide table `a` (iso x year)."""
+    hit = n = 0
+    for iso, y0, y1, sign, _ in EVENTS:
+        if iso in a.index and y0 in a.columns and y1 in a.columns and pd.notna(a.loc[iso, y0]) and pd.notna(a.loc[iso, y1]):
+            d = a.loc[iso, y1] - a.loc[iso, y0]
+            n += 1
+            hit += int(d < 0 if sign == '-' else d > 0)
+    return hit, n
+
+
+def variants(v, s, ind, p):
+    """The registered rule's alternatives side by side (docs/COUPLED-
+    SYSTEMS.md 4d): rank agreement, state-own alone, events, income and
+    where Germany, Japan and Korea land."""
+    w = {k: g.pivot(index='iso', columns='year', values='value') for k, g in v.groupby('variant')}
+    so = ind[ind.indicator == 'state-own'].assign(year=lambda d: d.year + 1)
+    w['state-own alone'] = so[so.year <= 2026].pivot(index='iso', columns='year', values='value')
+    names = ['stock', 'ml', 'equal', 'no-own', 'state-own alone']
+    names = [n for n in names if n in w]
+    long = {n: w[n].stack().rename(n) for n in names}
+    j = pd.concat(long.values(), axis=1)
+    j = j[(j.index.get_level_values(1) >= 1995) & (j.index.get_level_values(1) <= 2025)]
+    p('\n==== variants of control/state (rule: docs/COUPLED-SYSTEMS.md 4d; the stock is fixed by it)')
+    p('Spearman, pooled country-years 1995-2025 holding both (state-own alone: V-Dem, data year Y-1):')
+    for a_ in names:
+        p(f'  {a_:16s} ' + '  '.join(f'{b:>8s} {j[[a_, b]].dropna().corr("spearman").iloc[0, 1]:+.3f}' for b in names if b != a_))
+    p('Spearman within each year, median over 1995-2025:')
+    for a_ in names:
+        cells = []
+        for b in names:
+            if b == a_:
+                continue
+            rs = [j.xs(y, level=1)[[a_, b]].dropna().corr('spearman').iloc[0, 1] for y in range(1995, 2026)
+                  if y in j.index.get_level_values(1)]
+            cells.append(f'{b:>8s} {np.nanmedian(rs):+.3f}')
+        p(f'  {a_:16s} ' + '  '.join(cells))
+    p('within-country changes (5-year differences), Spearman against the stock\'s:')
+    st = w['stock']
+    d5 = lambda t: (t - t.shift(5, axis=1)).stack()
+    for n in names:
+        if n != 'stock':
+            x = pd.concat([d5(st).rename('a'), d5(w[n]).rename('b')], axis=1).dropna()
+            p(f'  {n:16s} {x.corr("spearman").iloc[0, 1]:+.3f} over {len(x)}')
+    inc = ind[ind.indicator == 'log-gdp-pc']
+    for n in names:
+        a = w[n]
+        h, k = events_hit(a)
+        r2 = []
+        for y in [1995, 2005, 2015, 2022]:
+            if y in a.columns:
+                g = inc[inc.year == y - 1].set_index('iso').value
+                x = pd.concat([a[y].rename('f'), g.rename('inc')], axis=1).dropna()
+                r2.append(f'{y} {np.corrcoef(x.inc, x.f)[0, 1] ** 2:.2f}')
+        p(f'\n{n}: events right sign {h} of {k}; R2 on log income ' + ', '.join(r2))
+        for y in [1995, 2005, 2015, 2025]:
+            if y in a.columns:
+                col = a[y].dropna()
+                r = col.rank(ascending=False)
+                p(f'  {y} n={len(col)}: ' + '  '.join(f'{i} {int(r[i])}' for i in ['DEU', 'JPN', 'KOR', 'USA', 'GBR', 'CHN'] if i in r.index))
+    # comparability: the stock with and without V-Dem's state-own
+    k = s[s.variable == 'control/n'].set_index(['iso', 'year']).value
+    sd = s[s.variable == 'control/state-sd'].set_index(['iso', 'year']).value
+    st_l = st.stack()
+    has = pd.Series([(i, y) in set(so.set_index(['iso', 'year']).index) for i, y in st_l.index], index=st_l.index)
+    p('\ncomparability: stock rows with and without state-own (by the snapshot\'s V-Dem year Y-1 only; a stale V-Dem value counts as without here)')
+    for flag, lab in [(True, 'with'), (False, 'without')]:
+        x = st_l[has == flag]
+        p(f'  {lab:8s} {len(x):6d} rows, mean |score| {x.abs().mean():.2f}, mean posterior SD {sd.reindex(x.index).mean():.2f}')
+    p('  control/n distribution: ' + ', '.join(f'{int(n)}: {c}' for n, c in k.value_counts().sort_index().items()))
 
 
 if __name__ == '__main__':

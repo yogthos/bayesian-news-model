@@ -7,6 +7,14 @@
     data/derived/control/control-loadings.csv
                                         spec,year,indicator,axis,loading,psi,n,rows,iter,
                                         start,objective (the EM start kept)
+    data/derived/control/control-variants.csv
+                                        iso,year,variant,value: control/state
+                                        under the registered rule's stock and
+                                        its alternatives (ml, the unbounded
+                                        fit; equal, the equal-weight
+                                        composite; no-own, the bounded fit
+                                        without state-own), causal, for the
+                                        sensitivity checks
     data/derived/control/control-fixed.csv
                                         iso,year,axis,value: every year's
                                         snapshot scored under the last fit,
@@ -26,6 +34,8 @@
 (def out-path "data/derived/stocks/control.csv")
 (def loadings-path "data/derived/control/control-loadings.csv")
 (def fixed-path "data/derived/control/control-fixed.csv")
+(def variants-path "data/derived/control/control-variants.csv")
+(def ml-floor 0.005)
 (def years (range 1975 2028))
 (def stability-years [1995 2000 2005 2010 2015 2020 2027])
 (def threshold 0.90)
@@ -60,6 +70,19 @@
           [a {:keys [name]}] (map-indexed vector (:axes spec)) :when (nth (:ok s) a)]
       [iso y name (nth (:f s) a)])))
 
+(defn- equal-rows
+  "control/state's equal-weight composite at each year of `res`'s fits
+  (the stock's standardisation), each country's snapshot as `expanding`
+  scores it."
+  [rows spec res]
+  (let [inds (set (:indicators spec))
+        rs (sort-by :known (filterv #(inds (:indicator %)) rows))]
+    (for [[y fit] (sort-by key (:fits res))
+          :let [snap (#'bnm.econ-factors/snapshot (take-while #(<= (:known %) y) rs) y 5)]
+          [iso {:keys [x]}] (sort-by key snap)
+          :let [s (c/equal-score fit x spec)] :when (and s (first (:ok s)))]
+      [iso y (first (:f s))])))
+
 (defn- corr [ps]
   (let [n (count ps) xs (map first ps) ys (map second ps)
         mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
@@ -72,7 +95,18 @@
   (let [rows (read-rows in-path)
         t0 (System/currentTimeMillis)
         _ (println (count rows) "indicator rows")
-        st (c/stability rows c/spec-2 {:years stability-years :ref 2027})
+        ;; the registered rule (docs/COUPLED-SYSTEMS.md 4d), step 1: the ML
+        ;; fit at the last year, run to convergence
+        ml-spec (assoc c/spec-1 :psi-floor ml-floor)
+        ml (c/fit-rows rows ml-spec {:tol 1e-7 :max-iter 40000})
+        improper (c/improper? ml c/psi-bound)
+        _ (println "\nML one-axis fit at 2027 to convergence: iter" (:iter ml) "converged" (:converged ml)
+                   "min uniqueness" (format "%.4f" (apply min (vals (:psi ml))))
+                   (if improper "improper: the stock is the bounded fit" "proper: the stock is the ML fit"))
+        _ (show-fit "ML 2027" ml-spec ml)
+        spec-1 (if improper c/spec-1 ml-spec)
+        spec-2 (if improper c/spec-2 (assoc c/spec-2 :psi-floor ml-floor))
+        st (c/stability rows spec-2 {:years stability-years :ref 2027})
         _ (println "\nsecond-axis rule (Tucker congruence against the 2027 fit; halves by ISO hash), threshold" threshold)
         _ (doseq [[a {:keys [min by-year]}] (:over-time st)]
             (println (format "  %-8s over time min %.3f  %s  split-half %.3f" a min
@@ -81,11 +115,15 @@
         keep2 (and (>= (get-in st [:over-time "capture" :min]) threshold)
                    (>= ((:split-half st) "capture") threshold))
         _ (println "  second axis" (if keep2 "kept: stocks from the two-axis fit" "not stable: stocks from the one-axis fit"))
-        r1 (c/expanding rows years c/spec-1)
+        r1 (c/expanding rows years spec-1)
         _ (println "one-axis expanding fits" (count (:fits r1)) (- (System/currentTimeMillis) t0) "ms")
-        r2 (c/expanding rows years c/spec-2)
+        r2 (c/expanding rows years spec-2)
         _ (println "two-axis expanding fits" (count (:fits r2)) (- (System/currentTimeMillis) t0) "ms")
-        [spec res] (if keep2 [c/spec-2 r2] [c/spec-1 r1])
+        [spec res] (if keep2 [spec-2 r2] [spec-1 r1])
+        no-own-spec (c/without c/spec-1 "state-own")
+        r-ml (if improper (c/expanding rows years ml-spec) r1)
+        r-no (c/expanding rows years no-own-spec)
+        _ (println "variant expanding fits" (- (System/currentTimeMillis) t0) "ms")
         out (concat (c/stock-rows res spec) (c/indicator-rows rows c/indicator-stocks))]
     (with-open [w (io/writer out-path)]
       (.write w "iso,year,variable,value,data_year\n")
@@ -94,20 +132,30 @@
     (println (count out) "rows to" out-path)
     (with-open [w (io/writer loadings-path)]
       (.write w "spec,year,indicator,axis,loading,psi,n,rows,iter,start,objective\n")
-      (doseq [[sname sp r] [["one-axis" c/spec-1 r1] ["two-axis" c/spec-2 r2]]
+      (doseq [[sname sp r] [["one-axis" spec-1 r1] ["two-axis" spec-2 r2] ["one-axis-ml" ml-spec r-ml]]
               [y fit] (sort-by key (:fits r))
               ind (sort (keys (:loading fit))) :let [l (get-in fit [:loading ind])] :when l
               [a ax] (map-indexed vector (:axes fit))]
         (.write w (str sname "," y "," ind "," ax "," (nth l a) "," (get-in fit [:psi ind]) ","
                        (get-in fit [:stats ind :n]) "," (:n fit) "," (:iter fit) "," (name (:start fit)) "," (:objective fit) "\n"))))
     (println "loadings to" loadings-path)
+    (with-open [w (io/writer variants-path)]
+      (.write w "iso,year,variant,value\n")
+      (let [one (fn [r] (for [{:keys [iso year f ok]} (:scores r) :when (first ok)] [iso year (first f)]))]
+        (doseq [[v ps] [["stock" (one res)] ["ml" (one r-ml)] ["equal" (equal-rows rows spec-1 r1)] ["no-own" (one r-no)]]
+                [iso y x] ps]
+          (.write w (str iso "," y "," v "," x "\n")))))
+    (println "variants to" variants-path)
+    (doseq [[nm sp r] [["no-own" no-own-spec r-no]] :let [fit (get-in r [:fits 2027])] :when fit]
+      (println "\n" nm "loadings at 2027:")
+      (show-fit 2027 sp fit))
     (let [fit (get-in res [:fits 2027])]
       (with-open [w (io/writer fixed-path)]
         (.write w "iso,year,axis,value\n")
         (doseq [[iso y a v] (fixed-rows rows spec fit)]
           (.write w (str iso "," y "," a "," v "\n")))))
     (println "fixed-fit scores to" fixed-path)
-    (doseq [[sname sp r] [["one-axis" c/spec-1 r1] ["two-axis" c/spec-2 r2]]]
+    (doseq [[sname sp r] [["one-axis" spec-1 r1] ["two-axis" spec-2 r2] ["one-axis ML" ml-spec r-ml]]]
       (println "\n" sname "loadings by year known:")
       (doseq [y [1985 1995 2005 2015 2027] :let [fit (get-in r [:fits y])] :when fit]
         (show-fit y sp fit)))
