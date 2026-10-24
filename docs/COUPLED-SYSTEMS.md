@@ -1153,6 +1153,106 @@ alternatives was computed):
 
 The same bound applies to the two-axis fit the second-axis rule tests.
 
+**What was built.** scripts/control.py assembles the indicators with
+known years; bnm.control fits a factor with sign priors by EM over an
+expanding window (the fit for year Y on rows known by Y, standardised on
+them, warm-started from Y-1's fit and from the prior's start, the better
+log posterior kept); bnm.control-run writes data/derived/stocks/control.csv
+(control/state, -sd, control/n and the indicators as control/<name>) and
+data/derived/control/ (loadings, the variants, the fixed-fit diagnostic).
+Control is an engine module (group C, emits C1 and C3; all known at +1 or
+later, ka-open and the ICSD, WID, PMR and BRSS stocks at +2). Run on the
+indicators below it reproduces its table exactly through the engine.
+
+Indicators of the state axis (sign): state bank share (+; Panizza SOE3,
+BRSS where Panizza has nothing, Germany from the Bundesbank's banking
+groups), V-Dem state ownership (+), public capital (+; the mean z of ICSD's
+public share of capital and WID's net public wealth), expropriation acts
+in ten years (+), OECD PMR public ownership (+), the financial repression
+gap (+) and KAOPEN (-).
+
+- Germany. Panizza codes the Landesbanken and savings banks only in part
+  (its share falls from 0.20 in 1999 to 0.015 by 2012; mean 0.08 over
+  1995-2020), while BRSS reports 0.37-0.40. Germany's series is now the
+  Bundesbank's Landesbanken plus savings banks over all banks (balance
+  sheet totals, December; data/raw/econ/bbk-banking-groups): 0.38 in
+  1995, 0.35 in 2001, 0.29 in 2013, 0.23 in 2025. It starts in 1995 with
+  Panizza: earlier it would be the indicator's only country.
+- Japan is unchanged. Japan Post Bank (the postal savings system until
+  2007) is in neither source, and the open series that has it (the Bank of
+  Japan's flow of funds, sector "postal savings") ends at 2007Q1, after
+  which Japan Post Bank is inside "banks"; a series across the
+  privatisation would need its annual reports, and whether it counts as
+  state-owned after the 2015 listing depends on reading ownership through
+  Japan Post Holdings.
+- The repression gap (c-repr): real GDP growth less the real deposit rate
+  (Fisher), the five-year mean to y (three years at least, y among them),
+  WDI FR.INR.DPST, FP.CPI.TOTL.ZG and NY.GDP.MKTP.KD.ZG, +1. 151
+  countries, 4,265 country-years; none for the United States, India or
+  the euro area after 1998 (WDI has no deposit rate for them). China runs
+  at 6-15 points, Japan near 0 since the 1990s.
+- Known years corrected: expropriation acts +1 (was 0; the channel table's
+  P3), KAOPEN and FKRSU +2 (the 2023 KAOPEN and the 2021 FKRSU update came
+  out two years after their last year), BRSS's 2019 wave 2021 (it is read
+  from the April 2021 corrected file).
+- Expropriation data end in 2014 and are carried at most five data years
+  (to the stock of 2020), as every indicator is. With the bound its
+  loading is 0.20 and its uniqueness 0.96, so its weight is small and its
+  dropping out moves scores little; the counts are developing countries
+  only (zero elsewhere by assumption).
+
+**The near-Heywood fit.** The one-axis ML fit is a Heywood case: run to
+convergence (31,049 EM steps) state-own's uniqueness goes to 0.015 with a
+loading of 0.99. The 0.03 first reported was EM stopping on its way down
+(tolerance 1e-5). Under that fit a country's score is its V-Dem state
+ownership: the posterior weight on state-own (loading over uniqueness) is
+about 140 times the next indicator's. By the registered rule the stock is the bounded fit. Its
+loadings at 2027: state-own 0.89 (uniqueness at the bound), ka-open -0.46,
+state bank share 0.38, public capital 0.36, repression 0.31, PMR 0.27,
+expropriation 0.20; state-own's weight is now about 9 times the next.
+The bound costs 90 log-posterior units over 14,907 country-years.
+
+Variants (data/derived/control/control-check.txt; Spearman pooled over
+country-years 1995-2025):
+
+| | stock (bounded) | ML | equal weight | without state-own | state-own alone |
+|---|---|---|---|---|---|
+| rank r with the stock | 1 | 0.98 | 0.83 | 0.56 | 0.97 |
+| rank r with state-own alone | 0.97 | 0.99 | 0.72 | 0.43 | 1 |
+| 5-year changes, rank r with the stock's | 1 | 0.92 | 0.73 | 0.42 | 0.81 |
+| events with the right sign | 10/10 | 10/10 | 8/10 | 6/10 | 11/11 |
+| R² on log income (1995-2022) | 0.03-0.05 | 0.01-0.03 | 0.09-0.13 | 0.06-0.16 | 0.02-0.04 |
+| rank of DEU / JPN / KOR in 2015 (of 201) | 197 / 201 / 127 | 197 / 201 / 134 | 193 / 196 / 108 | 151 / 188 / 111 | 172 / 176 / 109 (of 176) |
+
+The stock's rank correlation with state-own alone is 0.97, over the
+rule's 0.95: **control/state is V-Dem's state ownership with small
+corrections**. The other indicators share little with it or with each
+other. Without state-own the axis is another thing (rank r 0.56 with the
+stock) that gets 6 of 10 events right. The event checks and the low income
+R² are V-Dem's coders' judgements; they do not show that the bank,
+capital, openness and repression stocks measure one state direction.
+Germany and Japan stay with the United States under every variant that
+holds state-own. The Bundesbank series moves Germany only where state-own
+weighs little: under equal weights it is 155th of 196 in 2025 against
+186th in the stock, and without state-own 117th.
+
+Second axis: still not stable (capture's congruence over time 0.54 at
+1995 against 2027, split-half 0.61; threshold 0.90). The stocks carry the
+one-axis fit; at 2010 and 2025 its scores correlate 0.997 with the
+two-axis fit's state axis.
+
+Missing indicators drop out of a row's likelihood (missing at random) and
+the posterior mean shrinks toward 0 as fewer are held: a row with V-Dem
+has a mean posterior SD of 0.43 and a mean |score| of 0.73, a row without
+it 0.79 and 0.42 (2,162 of 10,918 rows 1995-2025, the 30 countries V-Dem
+does not code among them). Scores with different control/n are not
+comparable as levels; a reader should weight by control/state-sd, and a
+change in a country's control/n can move its score when nothing changed.
+
+Not done: a second measured state source independent of V-Dem
+(La Porta's government ownership of banks, the OECD SOE dataset) is what
+the axis would need to be a latent rather than one series.
+
 ## 5. The loop: control -> allocation -> production -> distribution -> politics -> control
 
 Each link: its mechanism, the literature, how it is measured, the sign
