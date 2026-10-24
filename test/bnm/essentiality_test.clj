@@ -369,13 +369,13 @@
       (is (close? 60.0 (get-in (es/slices b) ["RA" "AUS"]) 1e-9))
       (is (zero? (get-in (es/slices b) ["RA" "CHN"] 0.0)))
       (is (close? 100.0 (reduce + (vals (get (es/slices b) "RA"))) 1e-9)))
-    (testing "the production share still sets how much of world supply the others replace"
-      ;; AUS: slice 60; replaced e (1 - 0.3) / (x 0.3) = 0.1 x 0.7 / 0.15 = 0.467
-      ;; of its production share 0.3, not of a surplus share 0.6;
-      ;; short 0.5 x 0.533 x 60 = 16, loss 1 x 16/1000 x 1000
-      (is (close? 0.3 (get-in b [:exporters "AUS"]) 1e-12))
+    (testing "the others replace from the traded market: the surplus share, not the production share"
+      ;; AUS: slice 60; replaced e (1 - 0.6) / (x 0.6) = 0.1 x 0.4 / 0.3 = 0.133
+      ;; (with its production share 0.3 it would be 0.467: China's ore,
+      ;; used at home, is not spare); short 0.5 x 0.867 x 60 = 26
+      (is (close? 0.6 (/ (get-in b [:exporters "AUS"]) (:world b)) 1e-12))
       (let [m {:region-of {} :p {"AUS" 1.0} :use {"RA" 1000.0} :lambda (fn [_ _] 1.0) :x 0.5 :e 0.1}]
-        (is (close? (* 0.5 (- 1.0 (/ 0.07 0.15)) 60.0) (:world (es/product-risk (merge m b))) 1e-9))))
+        (is (close? (* 0.5 (- 1.0 (/ 0.04 0.3)) 60.0) (:world (es/product-risk (merge m b))) 1e-9))))
     (testing "without a surplus the stage's production shares split the imports, as before"
       (is (close? 50.0 (get-in (es/slices (es/supplier-basis (dissoc tr :net) stage)) ["RA" "CHN"]) 1e-9))))
   (testing "parsed from essentiality-trade.csv.gz: the net exporters"

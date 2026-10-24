@@ -276,15 +276,10 @@
   summed over the region's countries) the slice is what the region bought
   from the supplier, so a region's slices add up to its imports; without,
   the fallback: its imports x the supplier's share of world exports (the
-  listed :exporters only, the rest stay in :world). With :slice-shares
-  ({iso share}, `supplier-basis`) the imports are split by those instead
-  (a stage's producers by their surplus)."
-  [{:keys [world exporters importers flows slice-shares]}]
-  (cond
-    flows (into {} (for [[r _] importers] [r (get flows r {})]))
-    slice-shares (into {} (for [[r m] importers]
-                            [r (into {} (for [[c sh] slice-shares] [c (* (double m) (double sh))]))]))
-    :else
+  listed :exporters only, the rest stay in :world)."
+  [{:keys [world exporters importers flows]}]
+  (if flows
+    (into {} (for [[r _] importers] [r (get flows r {})]))
     (let [world (double world)]
       (into {} (for [[r m] importers]
                  [r (into {} (for [[c v] exporters] [c (* (double m) (/ (double v) world))]))])))))
@@ -328,15 +323,18 @@
                 imports is its share of the producers' surplus (`surplus-
                 shares` of :net, the code's net exporters), where any has
                 one: a country that uses all it makes (China's iron ore)
-                supplies nobody else. Its production share still sets how
-                much of world supply the others replace.
+                supplies nobody else, and what the others can replace is
+                the traded market's (the surplus shares are the suppliers'
+                shares in `reallocation` too). Its own region's supply is
+                its production, which R leaves out (no region imports from
+                itself). No producer with a surplus: the production
+                shares.
     :bilateral  no stage, BACI's bilateral flows (`slices`)
     :world      neither, world export shares
   The importers stay the trade data's."
   [tr stage]
   (if (seq stage)
-    (assoc tr :world 1.0 :exporters stage :flows nil :basis :stage
-           :slice-shares (surplus-shares stage (:net tr)))
+    (assoc tr :world 1.0 :exporters (or (surplus-shares stage (:net tr)) stage) :flows nil :basis :stage)
     (assoc tr :basis (if (:flows tr) :bilateral :world))))
 
 (defn product-risk
