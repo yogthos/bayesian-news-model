@@ -994,6 +994,30 @@ edges (Keen's three stocks, tension's smoothing). The table lists the
 cross-module ones. The engine builds the graph from the modules'
 declarations (section 6), so the table is a check on it, not its source.
 
+### 4d. The control layer as built (bnm-4hv.2)
+
+**Specification rule for control/state** (registered 2026-10-23, after
+the maximum-likelihood fit was found to run to the uniqueness bound and
+before any event check, income regression or country placement of the
+alternatives was computed):
+
+1. The one-axis ML fit, run to convergence (tolerance 1e-7 on the
+   loadings), is improper if any indicator's uniqueness ends at 0.2 or
+   less. An improper fit is not adopted: the axis would be that
+   indicator, not a latent over the stocks.
+2. The stock is then the one-axis fit with every uniqueness bounded below
+   at 0.2 (no single indicator's reliability above 0.8), the usual remedy
+   for a Heywood case; the loadings stay learned (principle 2).
+3. The equal-weight composite (the mean of the signed standardised
+   indicators a country-year holds, at least two) and the bounded fit
+   without state-own are sensitivity checks, reported beside it, not
+   candidates.
+4. The event checks and the income regression do not change 1-3. If the
+   stock's rank correlation with state-own alone is 0.95 or more, this
+   section says the axis is state-own.
+
+The same bound applies to the two-axis fit the second-axis rule tests.
+
 ## 5. The loop: control -> allocation -> production -> distribution -> politics -> control
 
 Each link: its mechanism, the literature, how it is measured, the sign
