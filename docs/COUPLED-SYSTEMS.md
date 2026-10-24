@@ -2083,6 +2083,53 @@ Nulls pass 0.5% of the time. Losing 144 test rows costs power: the
 detectable effect is now about 4-5% of the outcome's variance, not 3%,
 and the bound rises from +0.025 to about +0.037.
 
+**Results, 24 October 2026** (scripts/allocation-test.py, run once after
+the power above; 931 test rows in 85 countries, 2,000 draws).
+
+The primary is **equivalent to nothing**. control/state does not forecast
+the manufacturing share of new credit beyond persistence and income.
+
+| comparison | skill | 90% interval |
+|---|---|---|
+| M vs B | -0.0003 | [-0.0025, +0.0019] |
+| M vs P | +0.0070 | [+0.0025, +0.0117] |
+
+The lower end against B is below 0, so the intersection-union test fails.
+The upper end against B, +0.0019, is below the bound of +0.0374, and
+below the registered +0.025 too. M beats the placebo only because the
+placebo's borrowed series adds noise to B; it does not beat B. Under the
+addendum, control/state is in effect V-Dem's state ownership, so this
+says that expert-coded state ownership does not lead allocation within
+countries at this power. It says nothing for the other control stocks,
+which are S2's test.
+
+Secondaries, Holm over S1 and S2: neither passes.
+
+| | M vs B | M vs P | p (IU) | Holm | verdict |
+|---|---|---|---|---|---|
+| S1 equal | +0.0013 [-0.0016, +0.0042] | -0.0023 [-0.0084, +0.0025] | 0.77 | 1.00 | equivalent to nothing |
+| S2 no-own | -0.0071 [-0.0176, +0.0024] | -0.0159 [-0.0281, -0.0056] | 1.00 | 1.00 | equivalent to nothing |
+
+S2 does worse than its placebo. The measured stocks without state-own
+carry no allocation signal either.
+
+For the record (not tests):
+- Full-sample within beta on all 2,096 paired rows: control/state
+  +0.137 (clustered SE 0.159), S1 +0.161 (0.165), S2 -0.143 (0.118). The
+  primary's sign matches the prior; none is distinguishable from 0.
+- The primary at fit year to-1 gives the same rows and the same numbers:
+  on the scored rows the two readings pick the same value everywhere.
+- By era: 2003-2007, M vs B -0.0038 [-0.0069, -0.0013]; 2008-2014, M vs B
+  +0.0040 [+0.0006, +0.0074] and M vs P +0.0087 [+0.0036, +0.0139]. The
+  later era's small gain is not registered and is not a result.
+- Against persistence alone (B without income): -0.0457 [-0.0746,
+  -0.0221]. Income itself adds error out of sample.
+- Tradable share (A + B + C, 845 test rows): M vs B +0.0099 [-0.0002,
+  +0.0204], M vs P +0.0094 [-0.0004, +0.0196], beta +0.49 (SE 0.30).
+  Household share (994 test rows): M vs B +0.0073 [-0.0025, +0.0163],
+  M vs P +0.0082 [-0.0016, +0.0172], beta -0.56 (SE 0.18), the prior's
+  sign. Neither interval clears 0.
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
