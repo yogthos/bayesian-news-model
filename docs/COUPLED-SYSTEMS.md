@@ -1769,6 +1769,123 @@ B is T4's recalibrated base, the same rows and machinery
 
   Registered as predictions before the run.
 
+### 9d. The allocation test (bnm-4hv.12)
+
+**Registered 24 October 2026**, before any allocation outcome was
+computed: no change in a credit share from Müller-Verner has been read,
+alone or against control/state. The power check below reads only which
+country-years hold total, household and manufacturing credit, never
+their values. The control layer's specification is still under review
+(4d). The test names its regressor as `control/state`, the state axis of
+bnm.control as that review settles it (data/derived/stocks/control.csv,
+signed so that more state direction is higher). Nothing below is chosen
+after that review.
+
+**Question.** Does who controls finance predict where new credit goes
+within a country (5.1)? If it does, a country's control/state should
+lead its manufacturing share of private credit, beyond what that share's
+own recent change and the country's income give. It should also beat
+the same regressor taken from another country (principle 5).
+
+**Data.**
+- Müller-Verner (data/raw/slow/mullerverner, Build/MuellerVerner.dta)
+  gives the country-years with total private credit (Total), households
+  (HH) and manufacturing (C) at year end: 3,175 country-years in 98
+  countries, 1950-2014. Known at +2 (channel F1, national sources).
+- s[c,t] = C / Total. The **outcome** is
+  y[c,t] = 100 (s[c,t] - s[c,t-1]), the change in the manufacturing share
+  of private credit in percentage points.
+  - It is the allocation of the year's new credit measured against the
+    stock's. New credit to manufacturing above the stock's share raises
+    s, and below it lowers s.
+  - It is bounded and defined in years when total credit falls. Loans
+    are at book value, so it is revaluation-free.
+  - A row needs s at t, t-1 and t-2, so that its own lag exists: 2,950
+    rows in 98 countries.
+- **Income** is log real GDP per head (Maddison Project 2023, gdppc),
+  known at +1.
+- **The regressor** is control/state, each country-year's value as its
+  stock table dates it (the year known, with its data year).
+
+**Design.** One-step-ahead forecasts at yearly origins, with an expanding
+window. At origin `to`:
+- every input is read at data years up to to-2: Müller-Verner's last
+  known year at to is to-2, and control/state and income are taken at
+  their latest data year at or before to-2, as known by to;
+- the target is y for data year t = to-1, the first year not yet
+  published;
+- the models are fitted on the rows whose target year is at most to-2,
+  using only what was known at the origin for each row's inputs.
+
+The three models are OLS with country intercepts (the within estimator):
+- **B (baseline: persistence and income).**
+  y[c,t] = a_c + rho y[c,t-1] + lambda ln(income[c,t-1]) + e.
+- **M (control).** B + beta control/state[c,t-1].
+- **P (placebo).** B + beta control/state[c',t-1]. c' is a fixed
+  derangement of the countries, drawn once with seed 20261024 among the
+  countries that have control/state. It is the same series at the same
+  years from another country, so it keeps the panel's common timing and
+  moves the place.
+
+A country with fewer than five training rows takes the pooled intercept.
+A row enters only where all three models can score it (the regressor and
+the placebo's regressor both present), so the comparisons are paired.
+
+**Split.**
+- Design years are targets up to 2002. They are fitted, never scored.
+- Test years are targets 2003-2014 (origins 2004-2015), the 1,075 test
+  rows of the mask in 97 countries (fewer where control/state is
+  missing).
+- Müller-Verner ends in 2014, so nothing later exists to test.
+
+**Primary metric.** Skill against X = 1 - SSE_M / SSE_X, pooled over the
+test rows, for X = B and X = P. Its interval comes from resampling
+countries with replacement (2,000 draws), 90% two-sided.
+
+**Pass.** Both lower ends are above 0, against B and against P: one-sided
+5% each, an intersection-union test, so no multiplicity correction. If
+the gain over B passes and the gain over P does not, the result is the
+period's or the panel's, not the mechanism's. It is reported as a
+failure of the primary.
+
+**Equivalence bound.** The result is equivalent to nothing for allocation
+when the upper end of the skill against B is below +0.025.
+
+**Power** (scripts/allocation-power.py, on the mask above; 400
+simulations, 1,000 bootstrap draws). A standardised within-country AR(1)
+regressor leads an outcome whose noise has SD 1. The effect is the
+partial R^2 the regressor explains.
+
+| persistence of regressor, outcome | partial R^2 at 80% pass | skill against B there | null pass rate |
+|---|---|---|---|
+| 0.9, 0.2 | about 0.035 | about +0.024 | 1.3% |
+| 0.7, 0.0 | about 0.026 | about +0.023 | 1.0% |
+
+So the test finds an effect of about 3% of the outcome's variance four
+times in five, which is the equivalence bound's +0.025 in skill. Below
+about 1% it is blind. The bound is recomputed by the same script on the
+rows actually scored (control/state's coverage of the mask) before the
+outcome is read. If the recomputed 80%-power skill is larger, that is
+the bound, and it is reported.
+
+**Sign prior** (principle 4, 5.1). beta > 0: more state direction, more
+of new credit to manufacturing.
+
+**For the record (not tests).**
+- The full-sample within-country beta on design and test rows, with
+  country-clustered standard errors, and its sign.
+- The same design on the tradable share (A + B + C, with the BC
+  combination; prior beta > 0) and on the household share (HH; prior
+  beta < 0).
+- The skill by era (2003-2007, 2008-2014).
+- Skill against persistence alone (B without income).
+
+**Not changed after the outcome is read:** the outcome, the three models,
+the split, the derangement's seed, the metric, the interval, the pass
+rule and the bound (other than its recomputation above). The test is
+outside the event model's decision eras, so it is not a line in
+docs/TRIALS.md.
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
