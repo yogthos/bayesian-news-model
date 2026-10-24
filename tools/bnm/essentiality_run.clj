@@ -240,13 +240,15 @@
   :exporters {iso3 kUSD} :importers {region kUSD} :bilateral :flows}.
   :flows {region {iso3 kUSD}} is BACI's bilateral split of each region's
   imports (every exporter), nil where the code has none (:bilateral false:
-  the world-share fallback)."
+  the world-share fallback). :net {iso3 kUSD} the net exporters (exports
+  less imports, positive, at least 0.1% of world exports)."
   [l]
-  (let [[y k hs6 w xs ms how pairs] (str/split l #"," -1)
+  (let [[y k hs6 w xs ms how pairs net] (str/split l #"," -1)
         bil (= how "bilateral")]
     {:year (parse-long y) :known (parse-long k) :hs6 hs6 :world (parse-double w)
      :exporters (kv-list xs parse-double) :importers (kv-list ms parse-double)
-     :bilateral bil :flows (when bil (pair-list pairs))}))
+     :bilateral bil :flows (when bil (pair-list pairs))
+     :net (kv-list net parse-double)}))
 
 (defn trade-as-known
   "{hs6 row} of the latest data year known by K (:known <= K; BACI's year

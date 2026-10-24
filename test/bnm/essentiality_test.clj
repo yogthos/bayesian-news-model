@@ -351,6 +351,37 @@
       (is (zero? (:world (es/product-risk m))))
       (is (pos? (:world (es/product-risk (merge m (es/supplier-basis m {"CHN" 0.9 "JPN" 0.1})))))))))
 
+(deftest stage-suppliers-to-others-are-their-surplus
+  ;; iron ore: China mines 0.5 of the world's ore and imports more than it
+  ;; exports; Australia and Brazil export what they mine
+  (let [stage {"CHN" 0.5 "AUS" 0.3 "BRA" 0.2}
+        net {"AUS" 90.0 "BRA" 60.0 "SGP" 5.0}
+        tr {:world 100.0 :exporters {"AUS" 55.0 "BRA" 45.0} :importers {"RA" 100.0} :net net}
+        b (es/supplier-basis tr stage)]
+    (testing "a producer's slice of others' imports is its share of the producers' surplus (net exports, floored at 0)"
+      (is (= {"AUS" 0.6 "BRA" 0.4} (es/surplus-shares stage net))))
+    (testing "a country that produces nothing is no supplier, whatever it re-exports"
+      (is (nil? (get (es/surplus-shares stage net) "SGP"))))
+    (testing "no producer with a surplus: nil (the production shares stand)"
+      (is (nil? (es/surplus-shares stage {"CHN" 0.0 "SGP" 5.0})))
+      (is (nil? (es/surplus-shares stage nil))))
+    (testing "a third country's imports are split by the surplus, and add up to them"
+      (is (close? 60.0 (get-in (es/slices b) ["RA" "AUS"]) 1e-9))
+      (is (zero? (get-in (es/slices b) ["RA" "CHN"] 0.0)))
+      (is (close? 100.0 (reduce + (vals (get (es/slices b) "RA"))) 1e-9)))
+    (testing "the production share still sets how much of world supply the others replace"
+      ;; AUS: slice 60; replaced e (1 - 0.3) / (x 0.3) = 0.1 x 0.7 / 0.15 = 0.467
+      ;; of its production share 0.3, not of a surplus share 0.6;
+      ;; short 0.5 x 0.533 x 60 = 16, loss 1 x 16/1000 x 1000
+      (is (close? 0.3 (get-in b [:exporters "AUS"]) 1e-12))
+      (let [m {:region-of {} :p {"AUS" 1.0} :use {"RA" 1000.0} :lambda (fn [_ _] 1.0) :x 0.5 :e 0.1}]
+        (is (close? (* 0.5 (- 1.0 (/ 0.07 0.15)) 60.0) (:world (es/product-risk (merge m b))) 1e-9))))
+    (testing "without a surplus the stage's production shares split the imports, as before"
+      (is (close? 50.0 (get-in (es/slices (es/supplier-basis (dissoc tr :net) stage)) ["RA" "CHN"]) 1e-9))))
+  (testing "parsed from essentiality-trade.csv.gz: the net exporters"
+    (is (= {"AUS" 90.0} (:net (run/parse-trade-line "2020,2022,260111,100,AUS:90,CN:100,world,,AUS:90"))))
+    (is (= {} (:net (run/parse-trade-line "2020,2022,260111,100,AUS:90,CN:100,world,"))))))
+
 (deftest risk-year-runs-without-stage-shares
   ;; the :world-shares and :export-shares variants read no stage table
   (let [ctx {:k 2022 :ranks [{:hs6 "260111"} {:hs6 "120100"}]

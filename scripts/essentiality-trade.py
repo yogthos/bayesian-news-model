@@ -5,7 +5,7 @@ need not read 42 million rows.
 
 Writes data/derived/supply/essentiality-trade.csv.gz:
 
-  year,known,hs6,world,exporters,importers,slices,flows
+  year,known,hs6,world,exporters,importers,slices,flows,net
     one row per HS92 product and data year, 2008 on
     world      the product's world exports (kUSD)
     exporters  iso3:kUSD;... the exporters with at least 0.1% of world
@@ -21,6 +21,9 @@ Writes data/derived/supply/essentiality-trade.csv.gz:
     flows      region/iso:kUSD;... each region's imports by exporter,
                every exporter (so a region's flows add up to its imports),
                blank for world
+    net        iso3:kUSD;... the net exporters (exports less imports, those
+               with at least 0.1% of world exports): a stage producer's
+               tradable surplus for bnm.essentiality/surplus-shares
 
     python -I scripts/essentiality-trade.py
     python -I scripts/essentiality-trade.py --selftest
@@ -82,8 +85,10 @@ def row(key, rows, region, pairs=None):
             imports[region.get(iso, "WA")] += m
     xs = ";".join(f"{iso}:{x:.6g}" for iso, x, _ in sorted(rows, key=lambda r: -r[1]) if x >= MIN_X * tx)
     ms = ";".join(f"{r}:{m:.6g}" for r, m in sorted(imports.items()))
+    net = ";".join(f"{iso}:{x - m:.6g}" for iso, x, m in sorted(rows, key=lambda r: r[2] - r[1])
+                   if x - m >= MIN_X * tx)
     if pairs is None:
-        return [year, known, hs6, f"{tx:.6g}", xs, ms, "world", ""]
+        return [year, known, hs6, f"{tx:.6g}", xs, ms, "world", "", net]
     by_r = collections.Counter()
     for (r, _), v in pairs.items():
         by_r[r] += v
@@ -91,7 +96,7 @@ def row(key, rows, region, pairs=None):
         a, b = by_r.get(r, 0.0), imports.get(r, 0.0)
         assert abs(a - b) <= 1e-6 * max(a, b) + 1e-3, (key, r, a, b)
     fs = ";".join(f"{r}/{ex}:{v:.6g}" for (r, ex), v in sorted(pairs.items()))
-    return [year, known, hs6, f"{tx:.6g}", xs, ms, "bilateral", fs]
+    return [year, known, hs6, f"{tx:.6g}", xs, ms, "bilateral", fs, net]
 
 
 def main():
@@ -108,7 +113,7 @@ def main():
     n = 0
     with gzip.open(OUT, "wt", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["year", "known", "hs6", "world", "exporters", "importers", "slices", "flows"])
+        w.writerow(["year", "known", "hs6", "world", "exporters", "importers", "slices", "flows", "net"])
         for key in sorted(groups):
             out = row(key, groups[key], region, pairs.get(key))
             if out:
@@ -126,7 +131,9 @@ def selftest():
     out = row(("2020", "2022", "270210"), rows, region, pairs)
     assert out[6] == "bilateral" and out[5] == "RA:70;RB:30", out
     assert out[7] == "RA/AAA:30;RA/CCC:40;RB/AAA:30", out
-    assert row(("2020", "2022", "010111"), rows, region)[6:] == ["world", ""]
+    # net exporters: AAA 60 - 30, CCC 40 - 30; BBB imports only
+    assert out[8] == "AAA:30;CCC:10", out
+    assert row(("2020", "2022", "010111"), rows, region)[6:] == ["world", "", "AAA:30;CCC:10"]
     try:
         row(("2020", "2022", "270210"), rows, region, {("RA", "CCC"): 70.0})
     except AssertionError:

@@ -276,10 +276,15 @@
   summed over the region's countries) the slice is what the region bought
   from the supplier, so a region's slices add up to its imports; without,
   the fallback: its imports x the supplier's share of world exports (the
-  listed :exporters only, the rest stay in :world)."
-  [{:keys [world exporters importers flows]}]
-  (if flows
-    (into {} (for [[r _] importers] [r (get flows r {})]))
+  listed :exporters only, the rest stay in :world). With :slice-shares
+  ({iso share}, `supplier-basis`) the imports are split by those instead
+  (a stage's producers by their surplus)."
+  [{:keys [world exporters importers flows slice-shares]}]
+  (cond
+    flows (into {} (for [[r _] importers] [r (get flows r {})]))
+    slice-shares (into {} (for [[r m] importers]
+                            [r (into {} (for [[c sh] slice-shares] [c (* (double m) (double sh))]))]))
+    :else
     (let [world (double world)]
       (into {} (for [[r m] importers]
                  [r (into {} (for [[c v] exporters] [c (* (double m) (/ (double v) world))]))])))))
@@ -299,6 +304,18 @@
                   :when (seq sh)]
               [cs sh]))))
 
+(defn surplus-shares
+  "{iso share}: the stage's producers (`stage`, {iso production share})
+  by their tradable surplus, production less apparent domestic use
+  (production + imports - exports), i.e. net exports (`net`, {iso kUSD}
+  of the code, positive only), floored at 0. A country that produces
+  nothing is left out however much it re-exports. nil when no producer
+  has a surplus (or `net` is unknown)."
+  [stage net]
+  (let [sur (into {} (for [[c _] stage :let [v (double (get net c 0.0))] :when (pos? v)] [c v]))
+        tot (reduce + 0.0 (vals sur))]
+    (when (pos? tot) (update-vals sur #(/ % tot)))))
+
 (defn supplier-basis
   "The supplier side of one product's trade row ({:world :exporters
   :importers :flows}) for `product-risk`, :basis saying which:
@@ -307,13 +324,19 @@
                 each importer's imports are split by them (a processor's
                 feed comes from where the stage is, not where the last
                 shipper is: Japan's cerium compounds from Chinese
-                separation)
+                separation); a producer's slice of a third country's
+                imports is its share of the producers' surplus (`surplus-
+                shares` of :net, the code's net exporters), where any has
+                one: a country that uses all it makes (China's iron ore)
+                supplies nobody else. Its production share still sets how
+                much of world supply the others replace.
     :bilateral  no stage, BACI's bilateral flows (`slices`)
     :world      neither, world export shares
   The importers stay the trade data's."
   [tr stage]
   (if (seq stage)
-    (assoc tr :world 1.0 :exporters stage :flows nil :basis :stage)
+    (assoc tr :world 1.0 :exporters stage :flows nil :basis :stage
+           :slice-shares (surplus-shares stage (:net tr)))
     (assoc tr :basis (if (:flows tr) :bilateral :world))))
 
 (defn product-risk
