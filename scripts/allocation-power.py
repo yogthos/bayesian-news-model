@@ -31,7 +31,12 @@ A country with fewer than five training rows takes the pooled intercept,
 as registered. The placebo's map is `derange`: uniform over derangements
 of the sorted countries.
 
+The bound is recomputed on the rows actually scored by passing them with
+`--rows` (a c,t csv from scripts/allocation-test.py --rows), in place of the
+mask from the .dta.
+
 Usage: python -I scripts/allocation-power.py <MuellerVerner.dta> [--sims N] [--boot N]
+       python -I scripts/allocation-power.py --rows <rows.csv> [--sims N] [--boot N]
        python -I scripts/allocation-power.py --selftest
 """
 import argparse
@@ -126,14 +131,15 @@ def simulate(m, r2, rho, phi, rng, test_years, nboot):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("dta")
+    ap.add_argument("dta", nargs="?")
+    ap.add_argument("--rows")
     ap.add_argument("--sims", type=int, default=400)
     ap.add_argument("--boot", type=int, default=1000)
     ap.add_argument("--rho", type=float, default=0.2)
     ap.add_argument("--phi", type=float, default=0.9)
     ap.add_argument("--seed", type=int, default=20261024)
     a = ap.parse_args()
-    m = mask(a.dta)
+    m = pd.read_csv(a.rows) if a.rows else mask(a.dta)
     test_years = range(2003, 2015)
     print(f"mask: {len(m)} outcome rows with a lag, {m.c.nunique()} countries, "
           f"{int((m.t >= 2003).sum())} test rows (2003-2014), {m[m.t >= 2003].c.nunique()} test countries")
