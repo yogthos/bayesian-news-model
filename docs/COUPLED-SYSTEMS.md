@@ -1986,6 +1986,64 @@ rule and the bound (other than its recomputation above). The test is
 outside the event model's decision eras, so it is not a line in
 docs/TRIALS.md.
 
+**Addendum, 24 October 2026.** Written after the control review landed
+(bf49f19, 7e6c964, 32a104e) and before any outcome was read. Since
+e65340a, nothing from Müller-Verner has been computed against any
+control series.
+
+*What the regressor is.* In the review's specification, control/state is
+the one-axis fit with every uniqueness bounded at 0.2. Its rank
+correlation with V-Dem's state ownership of the economy alone is 0.97
+(4d), over the rule's 0.95. So the primary regressor is, in effect,
+V-Dem's v2clstown with small corrections from the bank, capital,
+openness, repression, PMR and expropriation stocks. This changes what
+the test can say.
+- *A pass shows* that, within countries, expert-coded state ownership of
+  the economy leads the manufacturing share of new credit, beyond
+  persistence, income and the same series from another country.
+- *A pass does not show* that a latent state direction, measured jointly
+  by state banks, public capital, capital controls and financial
+  repression, moves allocation. Those stocks share little with
+  state-own (4d), and their own test is the without-state-own variant
+  below.
+- *Hindsight.* V-Dem's coders rate past years with later knowledge, so a
+  rating for year t-1 may reflect credit policy the coder saw afterwards.
+  Its known rule (+1) does not cover that. A pass on the primary alone
+  cannot rule out that the coders read allocation into ownership. The
+  without-state-own variant, built from measured stocks, is not exposed
+  to this.
+- *A failure* says that expert-coded ownership does not lead allocation
+  within countries at this power. It does not speak for the other stocks.
+
+*Secondary regressors* (pre-specified; reported, not primary). They come
+from data/derived/control/control-variants.csv, as written by the
+reviewed bnm.control-run:
+- **S1, the equal-weight composite** (variant `equal`): the mean of the
+  signed standardised indicators.
+- **S2, the bounded fit without state-own** (variant `no-own`).
+
+Each enters exactly as control/state does in M and P: the same models,
+split, derangement seed, metric, bootstrap and pass rule (both lower ends
+above 0, against B and against P). The variants file has no data-year
+column. Its year is the year of the causal fit, so at origin `to` the
+row for year to-1 is read, the last fit made before the origin. The
+primary is also reported under that alignment, beside its registered
+one, so the three can be compared on the same reading.
+
+Each variant is scored on its own paired rows. For each, the one-sided
+p-value of a comparison is the share of the 2,000 country-resampled
+draws whose skill is at most 0. Its p is the larger of its two p-values
+(against B and against P), which is the intersection-union test. Holm's
+procedure runs over S1 and S2 at a familywise 5%. The primary is not in
+that family: it keeps its own 5% test as registered. Each variant's
+equivalence bound is recomputed by scripts/allocation-power.py on its
+own rows, by the rule above, before its outcome is read.
+
+The sign prior is beta > 0 for both. If S2 passes after Holm and the
+primary does not, the measured stocks carry the allocation signal and
+the coded ownership does not. That is reported as such, not as a pass of
+the primary.
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
