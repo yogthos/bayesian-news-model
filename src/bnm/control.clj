@@ -31,7 +31,8 @@
   Axes (`spec-1`, `spec-2`):
     state    state against private control of capital and credit:
              + state bank share, state ownership (V-Dem v2clstown negated),
-               public capital share (ICSD), net public wealth, expropriation
+               public capital (the mean z of ICSD's public share of capital
+               and WID's net public wealth, `composites`), expropriation
                acts, OECD PMR public ownership; - capital-account openness.
              Capture and wealth concentration are free on it.
     capture  the second axis tried: + political corruption (v2x_corr) and
@@ -64,16 +65,29 @@
 (def ^:private standardise #'ef/standardise)
 (def ^:private snapshot #'ef/snapshot)
 
+(def composites
+  "c-pubk is one stock measured twice (ICSD's public share of capital and
+  WID's net public wealth): as two indicators the pair forms a doublet that
+  competes with state-own for the factor, and the one-axis likelihood has
+  two modes that trade places between years (1984-2004 against the rest).
+  It enters as one indicator, the mean of the two z."
+  {"public-capital" ["public-k-share" "public-wealth-ni"]})
+
 (def state-signs
-  {"state-bank-share" 1 "state-own" 1 "public-k-share" 1 "public-wealth-ni" 1
+  {"state-bank-share" 1 "state-own" 1 "public-capital" 1
    "exprop-10y" 1 "pmr-public-owner" 1 "ka-open" -1})
 
+(def state-raw
+  ["state-bank-share" "state-own" "public-k-share" "public-wealth-ni" "exprop-10y" "pmr-public-owner" "ka-open"])
+
 (def spec-1
-  {:indicators (vec (sort (keys state-signs)))
+  {:indicators (vec (sort state-raw))
+   :composites composites
    :axes [{:name "state" :signs state-signs :min-k 2}]})
 
 (def spec-2
-  {:indicators (vec (sort (concat (keys state-signs) ["corruption" "top1-wealth"])))
+  {:indicators (vec (sort (concat state-raw ["corruption" "top1-wealth"])))
+   :composites composites
    :axes [{:name "state" :signs state-signs :min-k 2}
           {:name "capture" :signs {"corruption" 1 "top1-wealth" 1} :zero #{"state-own"} :min-k 1}]})
 
@@ -261,6 +275,24 @@
   (let [ks (vec (filter pos (keys z)))]
     [(int-array (map pos ks)) (double-array (map z ks))]))
 
+(defn- model-inds
+  "The fit's indicators: those of `inds` (with stats), each composite's
+  components replaced by the composite (when any component has stats)."
+  [inds composites]
+  (let [comp-of (into {} (for [[c js] composites j js] [j c]))]
+    (vec (distinct (map #(get comp-of % %) inds)))))
+
+(defn- compose
+  "Standardised row `z` with each composite's components replaced by the
+  mean of those the row holds."
+  [z composites]
+  (reduce (fn [z [c js]]
+            (let [vs (keep z js)]
+              (if (seq vs)
+                (assoc (apply dissoc z js) c (/ (reduce + vs) (count vs)))
+                z)))
+          z composites))
+
 (defn- em
   "EM from loadings `l0` and noise `p0` to convergence: [l psi iter converged]."
   [rows m k l0 p0 c {:keys [max-iter tol psi-floor tau]}]
@@ -294,10 +326,13 @@
    (let [{:keys [min-obs clip start tau] :as opts} (merge defaults opts)
          axes (:axes spec) k (count axes)
          stats (into {} (filter #(>= (:n (val %)) min-obs) (moments obs (:indicators spec) clip)))
-         inds (vec (filter stats (:indicators spec)))
+         composites (:composites spec)
+         raw (vec (filter stats (:indicators spec)))
+         inds (model-inds raw composites)
          pos (zipmap inds (range))
          m (count inds)
-         rows (->> obs (map #(standardise (select-keys % inds) stats clip)) (filter seq) (mapv #(pack % pos)))
+         rows (->> obs (map #(compose (standardise (select-keys % raw) stats clip) composites))
+                   (filter seq) (mapv #(pack % pos)))
          c (codes spec inds)
          init (fn [j a] (let [code (aget c (+ (* j k) a))]
                           (case (int code) 9 0.0 1 0.5 -1 -0.5 0.1)))
@@ -318,6 +353,7 @@
           :stats stats :n (count rows) :iter (:iter best) :converged (:converged best)
           :objective (:objective best) :start (:start best)
           :objectives (into {} (map (juxt :start :objective) runs))
+          :composites composites
           :axes (mapv :name axes)})))))
 
 (defn fit-rows
@@ -343,11 +379,13 @@
   ([fit x] (score fit x nil))
   ([fit x spec]
    (when fit
-     (let [{:keys [loading psi stats]} fit
+     (let [{:keys [loading psi stats composites]} fit
            inds (vec (keys loading))
            k (count (val (first loading)))
            pos (zipmap inds (range))
-           z (standardise (select-keys x inds) stats (:clip defaults))]
+           z (-> (standardise (select-keys x (keys stats)) stats (:clip defaults))
+                 (compose composites)
+                 (select-keys inds))]
        (when (seq z)
          (when-let [[^doubles mu ^doubles s n]
                     (posterior (pack z pos) (double-array (mapcat loading inds)) (double-array (map psi inds)) k)]
@@ -380,7 +418,7 @@
                                 (let [s (score fit x spec)]
                                   (if (and s (some true? (:ok s)))
                                     (conj! acc (assoc s :iso iso :year y
-                                                      :data-year (apply max (vals (select-keys t (keys (:loading fit)))))))
+                                                      :data-year (apply max (vals (select-keys t (keys (:stats fit)))))))
                                     acc)))
                               scores (sort-by key snap))]
            (recur more (or fit start) (cond-> fits fit (assoc y fit)) scores)))))))
@@ -392,7 +430,7 @@
   between fits at `ref` on the countries of two halves (by the parity of a
   stable hash of the ISO code)."
   [rows spec {:keys [years ref] :as opts}]
-  (let [inds (:indicators spec)
+  (let [inds (model-inds (:indicators spec) (:composites spec))
         fit-at (fn [rs y] (fit-rows (filterv #(<= (:known %) y) rs) spec opts))
         r (fit-at rows ref)
         col (fn [fit a] (mapv #(get-in fit [:loading % a] 0.0) inds))

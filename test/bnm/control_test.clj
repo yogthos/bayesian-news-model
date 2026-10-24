@@ -156,3 +156,18 @@
           warm (c/fit-rows rows spec2 {:start wrong})]
       (doseq [j (keys truth) k [0 1]]
         (is (close? 0.02 (nth ((:loading cold) j) k) (nth ((:loading warm) j) k)) [j k])))))
+
+(deftest composites-join-one-stock
+  (testing "two measures of one stock enter as one indicator: the mean of their z"
+    (let [rs (into rows (for [r rows :when (= "pubk" (:indicator r))]
+                         (-> r (assoc :indicator "pubk2") (update :value #(+ 3.0 (* 2.0 %) (* 0.3 (noise (:iso r) (:year r))))))))
+          spec (assoc spec1 :indicators ["own" "bank" "open" "pubk" "pubk2"]
+                      :composites {"pub" ["pubk" "pubk2"]}
+                      :axes [{:name "state" :signs {"own" 1 "bank" 1 "open" -1 "pub" 1} :min-k 1}])
+          fit (c/fit-rows rs spec)
+          x (x-of rs "C30" 2000)]
+      (is (= #{"own" "bank" "open" "pub"} (set (keys (:loading fit)))))
+      (is (pos? (first ((:loading fit) "pub"))))
+      (is (= 4 (:k (c/score fit x spec))))
+      (testing "either component alone scores the composite"
+        (is (= 2 (:k (c/score fit (select-keys x ["own" "pubk2"]) spec))))))))

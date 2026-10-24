@@ -44,7 +44,7 @@
   (println " " label "rows" (:n fit) "iter" (:iter fit) (if (:converged fit) "" "(not converged)")
            "pinned" (vec (c/pinned fit spec)) "start kept" (:start fit)
            "log posterior" (into {} (for [[s v] (:objectives fit)] [s (format "%.1f" v)])))
-  (doseq [ind (:indicators spec) :let [l (get-in fit [:loading ind])] :when l]
+  (doseq [ind (sort (keys (:loading fit))) :let [l (get-in fit [:loading ind])] :when l]
     (println (format "    %-18s %s  psi %.2f" ind
                      (apply str (map #(format " %+.2f" %) l)) (get-in fit [:psi ind])))))
 
@@ -96,7 +96,7 @@
       (.write w "spec,year,indicator,axis,loading,psi,n,rows,iter,start,objective\n")
       (doseq [[sname sp r] [["one-axis" c/spec-1 r1] ["two-axis" c/spec-2 r2]]
               [y fit] (sort-by key (:fits r))
-              ind (:indicators sp) :let [l (get-in fit [:loading ind])] :when l
+              ind (sort (keys (:loading fit))) :let [l (get-in fit [:loading ind])] :when l
               [a ax] (map-indexed vector (:axes fit))]
         (.write w (str sname "," y "," ind "," ax "," (nth l a) "," (get-in fit [:psi ind]) ","
                        (get-in fit [:stats ind :n]) "," (:n fit) "," (:iter fit) "," (name (:start fit)) "," (:objective fit) "\n"))))
