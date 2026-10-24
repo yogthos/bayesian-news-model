@@ -27,7 +27,12 @@ Prints, per partial R^2, the share of simulations that pass and the median
 skill, and the null's pass rate. The equivalence bound is the smallest
 skill that passes 80% of the time.
 
-Usage: python -I scripts/allocation-power.py <MuellerVerner.dta> [--sims N]
+A country with fewer than five training rows takes the pooled intercept,
+as registered. The placebo's map is `derange`: uniform over derangements
+of the sorted countries.
+
+Usage: python -I scripts/allocation-power.py <MuellerVerner.dta> [--sims N] [--boot N]
+       python -I scripts/allocation-power.py --selftest
 """
 import argparse
 
@@ -45,15 +50,32 @@ def mask(path):
     return pd.DataFrame(rows, columns=["c", "t"])
 
 
+MIN_ROWS = 5
+
+
+def derange(countries, rng):
+    """{c c'}: a derangement of `countries` (no country maps to itself),
+    uniform over derangements, drawn by `rng` from the sorted countries, so
+    the same countries and seed give the same map whatever their order."""
+    cs = np.array(sorted(set(countries)))
+    assert len(cs) > 1, "a derangement needs two countries"
+    while True:
+        p = rng.permutation(cs)
+        if not (p == cs).any():
+            return dict(zip(cs.tolist(), p.tolist()))
+
+
 def within_fit(Xtr, ytr, gtr):
-    """OLS with country intercepts: the coefficients and each country's
-    intercept (its training mean of y - X b)."""
+    """OLS with country intercepts: the coefficients, each country's
+    intercept (its training mean of y - X b) where it has at least MIN_ROWS
+    training rows, and the pooled intercept the others take."""
     df = pd.DataFrame(Xtr)
     mx = df.groupby(gtr).transform("mean").to_numpy()
     my = pd.Series(ytr).groupby(gtr).transform("mean").to_numpy()
     Xd, yd = Xtr - mx, ytr - my
     b, *_ = np.linalg.lstsq(Xd, yd, rcond=None)
-    a = pd.Series(ytr - Xtr @ b).groupby(gtr).mean()
+    r = pd.Series(ytr - Xtr @ b).groupby(gtr)
+    a = r.mean()[r.size() >= MIN_ROWS]
     return b, a, float(np.mean(ytr - Xtr @ b))
 
 
@@ -67,7 +89,7 @@ def simulate(m, r2, rho, phi, rng, test_years, nboot):
         for _ in span[1:]:
             xs.append(phi * xs[-1] + np.sqrt(1 - phi ** 2) * rng.standard_normal())
         x[c] = dict(zip(span, xs))
-    perm = dict(zip(countries, np.roll(rng.permutation(countries), 1)))
+    perm = derange(countries, rng)
     for c in countries:
         ys = {span[0]: rng.standard_normal()}
         for t in span[1:]:
@@ -105,8 +127,8 @@ def simulate(m, r2, rho, phi, rng, test_years, nboot):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dta")
-    ap.add_argument("--sims", type=int, default=300)
-    ap.add_argument("--boot", type=int, default=500)
+    ap.add_argument("--sims", type=int, default=400)
+    ap.add_argument("--boot", type=int, default=1000)
     ap.add_argument("--rho", type=float, default=0.2)
     ap.add_argument("--phi", type=float, default=0.9)
     ap.add_argument("--seed", type=int, default=20261024)
@@ -125,5 +147,28 @@ def main():
         print(f"partial R2 {r2:.3f}: pass {passes:.3f}, skill vs B median {sk:+.4f} [{hi[0]:+.4f}, {hi[1]:+.4f}]")
 
 
+def selftest():
+    """Checks on toy inputs: python -I scripts/allocation-power.py --selftest."""
+    cs = np.array([f"C{i:02d}" for i in range(30)])
+    for seed in range(300):
+        p = derange(cs, np.random.default_rng(seed))
+        assert sorted(p) == sorted(cs) and sorted(p.values()) == sorted(cs), "a permutation"
+        assert all(p[c] != c for c in cs), f"a fixed point at seed {seed}"
+    assert derange(cs, np.random.default_rng(20261024)) == derange(cs[::-1], np.random.default_rng(20261024)), \
+        "the same countries and seed give the same derangement, whatever their order"
+    # a country with fewer than MIN_ROWS training rows takes the pooled intercept
+    g = np.array(["A"] * 6 + ["B"] * 3)
+    X = np.arange(9.0)[:, None]
+    y = np.r_[np.full(6, 1.0), np.full(3, 5.0)] + 0.5 * X[:, 0]
+    b, a, a0 = within_fit(X, y, g)
+    assert abs(b[0] - 0.5) < 1e-9 and abs(a["A"] - 1.0) < 1e-9, (b, a)
+    assert "B" not in a.index, "three rows: pooled"
+    print("allocation-power selftest ok")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if sys.argv[1:] == ["--selftest"]:
+        selftest()
+    else:
+        main()
