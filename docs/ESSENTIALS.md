@@ -1411,6 +1411,60 @@ before any test year is scored (PRINCIPLES 9).
        not P x the supplier's slice. Magnets (850511, not a registered
        code) rank 76-80 at K = 2020-22, against 55-64 before: C_NDFB's
        multiplier is close to C_FABM's, and its use is smaller.
+   - Supplier shares from production stages (bead bnm-1pq.32, 22c84cf;
+     a change made after the registered result, decided after the
+     rare-earth miss above). Where data/derived/supply/stages.csv has a
+     stage for the code, R takes its suppliers and their shares from that
+     stage's country shares as known by K (bnm.stages/as-of, stale after 3
+     years), and splits each importer's imports by them. The mapping is
+     `stage-codes`: ores go to the mine; unwrought or refined metal to
+     the smelter or refinery; alumina to the alumina refinery;
+     crude-steel semis to the steel stage. Compounds go to the chemical
+     or separation stage (lithium salts, rare-earth compounds and
+     metals), or else to the most downstream stage (cobalt oxides and
+     nickel sulphate to the refinery). Pooled codes (253090, 811291,
+     261590) and metals without their stage keep export shares, so the
+     rule covers every stage commodity, not only the target's. That puts
+     33-43 codes a year on stage shares, 3-6 of each year's top 20.
+     Elsewhere it is bilateral flows or world export shares, as before.
+     Losses are unchanged; the default run was rerun.
+     - What moves: China's smelting and refining take the supplier side
+       of aluminium (760110, 760120: rank 6-10), copper cathode and
+       unrefined copper (740311 rank 4 at K = 2026, 740200 16), natural
+       graphite (250410, rank 4 at K = 2023) and steel semis. Iron ore
+       falls from 30 to 5 bn at K = 2023 (rank 10). Most of its iron-mine
+       share is Chinese ore that China does not export, and that ore
+       still takes a slice of every other importer's imports, and with
+       it some of Australia's. That is the cost of production shares for
+       a stage whose largest producer is also its largest importer. It
+       is not corrected here.
+     - Targets, registered -> previous record -> stage shares:
+       - lithium: met -> met -> met (hydroxide 122 and 111 at 2021-22,
+         carbonate 226 at 2020). Lithium's chemical stage is known only
+         from K = 2023, so these ranks still read export shares.
+       - cobalt: met -> met -> met. Oxides fall from rank 12 to 56 at
+         2020 (0.015), now on the refinery stage. Ore is 606 at 2022.
+       - rare earths: not met -> not met -> not met. The separation
+         stage is first known at K = 2023 (BNM-CHEM2023), so K = 2020-22
+         still read export shares (cerium compounds 847-916). From K =
+         2023 the codes rank high: metals (280530) 37, 40, 28 and 40 at
+         K = 2023-26 (top 1%); cerium compounds 68, 98, 102 and 164;
+         other compounds 24 at K = 2026. Causally, the registered window
+         cannot use them.
+       - precision: EU 2023 R 3 hits against rise 4 (p 0.002), from 2.
+         USGS 2022: 2 against 3 (p 0.04), unchanged. R beats random but
+         not rise.
+       - back-test: restrictions in K+1..K+3 on 0.541 of the top decile's
+         covered codes against 0.419 (difference 0.121), against a
+         placebo of 0.038 (p 0.007, from 0.09). Unit-value spikes still
+         show nothing (p 0.95). The restriction result is descriptive
+         and comes after the decision. Shuffling within chapter now
+         separates less because the stage codes concentrate in chapters
+         26, 72, 74 and 76.
+       - gas for European fertiliser: does not read R; unchanged, 3 of 6.
+     - Sensitivity: export shares for every code (the old supplier
+       basis) give Spearman 0.992 (K = 2022) and 0.990 (K = 2023) with
+       this R.
 9. **Chokepoints.** Route BACI bilateral seaborne flows on a sea network
    and compute each chokepoint's share by product and year.
    - Tests: Hormuz carries about 20% of world crude and LNG in 2019-23.
