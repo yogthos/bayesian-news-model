@@ -2044,6 +2044,30 @@ primary does not, the measured stocks carry the allocation signal and
 the coded ownership does not. That is reported as such, not as a pass of
 the primary.
 
+**Second addendum, 24 October 2026.** Written before any outcome was
+read. It pins mechanics the registration left open; none of it is chosen
+from data.
+- *Placebo map.* `derange(sorted countries, numpy default_rng(20261024))`,
+  with `derange` as in scripts/allocation-power.py (e5ca51a), computed
+  once. The countries are those with any control/state value, read as
+  registered, on a row of the scored panel (the mask's outcome rows with
+  income). The same map applies to S1 and S2; it is not redrawn on their
+  countries. A row whose partner has no value at that reading drops from
+  all three models.
+- *Correction.* The mask starts in 1940, not 1950: 3,175 country-years
+  1940-2014, the first outcome row in 1942. The other counts stand.
+- *Rows.* Each row's inputs are read once, at its own origin (target year
+  + 1). The paired rows (all three models present) are both the training
+  and the scored rows, for each regressor on its own.
+- *Bootstrap.* For each regressor, a fresh `default_rng(20261024)` draws
+  a 2,000 x n matrix of indices into the n sorted scored countries. The
+  same draws serve the comparison against B and against P. The interval
+  is the 5% and 95% quantiles of the draws' skill.
+- *Bound.* From each of the two power settings, the first partial R^2 on
+  the script's grid that passes in at least 80% of simulations, and its
+  median skill against B. The bound is the larger of the two, or +0.025
+  if that is larger.
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
