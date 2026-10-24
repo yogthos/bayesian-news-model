@@ -31,23 +31,41 @@ project's rules, docs/PRINCIPLES.md 7 and COUPLED-SYSTEMS.md 4c):
             column): +1.
   ecb       ECB BSI: MFI loans to households (and for consumption, house
             purchase, other) and NFCs by euro-area member and other EU
-            states, December, national currency millions: +1.
+            states, December, EUR millions (the states outside the euro
+            converted at current exchange rates): +1.
   ecb-nace  ECB BSI: loans to euro-area NFCs by NACE group (A, B, C, DE,
-            F, G, HJ, I, LMN, Z), Q4, EUR millions, iso EMU: +1.
+            F, G, HJ, I, LMN, Z), Q4, EUR millions, iso EMU: +1. An ECB
+            estimate from national sources, in NACE Rev. 2 (adopted
+            December 2006), so the years before 2008 are a back-estimate,
+            not a +1 release; stocks are not adjusted for write-offs,
+            reclassifications or securitisation.
   klems     EU KLEMS & INTANProd 2023: gross fixed capital formation
             (I_GFCF, current prices), capital stock (K_GFCF, current) and
             its volume index (Kq_GFCF) by NACE industry, 1995-2021: +2.
   wiod      WIOD 2016 Socio-Economic Accounts: nominal capital stock K by
             industry, 2000-2014, 43 countries, aggregated to the EU KLEMS
-            industries: +3 (an input-output release).
+            industries (T and U, households as employers and
+            extraterritorial bodies, only in TOT, as in EU KLEMS's R-S):
+            +3 (an input-output release).
   lrwiod    Long-run WIOD 1.1 national tables: gross fixed capital
             formation by product (column xGFCF), USD millions, 1965-2000,
-            25 countries: +3.
+            25 countries: +3. The national tables exist only for benchmark
+            years; the others are interpolated between benchmarks by GRAS
+            (Woltjer, Gouma and Timmer 2021, GGDC memo 190), so a
+            non-benchmark year's product shares use a later benchmark and
+            +3 does not cover them (released 2021, so all of it is
+            hindsight before then).
 
 A value's known year is its data year plus the lag; the vintage is not
 modelled (these are the latest vintages, revised since first release).
+The lag is the national release's (docs/PRINCIPLES.md 7), not the
+compilation's: Müller-Verner was compiled once (v1.0, 2023) from
+national sources, with the breaks its country sheets adjust; EU KLEMS
+began in 2007 (NACE Rev. 2 from 2012) and WIOD in 2012, so their years
+before those releases were not known at +2 or +3 in any edition.
 
 Usage: python -I scripts/allocation-data.py
+       python -I scripts/allocation-data.py --selftest
 """
 import csv
 import html
@@ -183,16 +201,23 @@ TSF = {"人民币贷款": "rmb-loans", "外币贷款": "fx-loans", "委托贷款
        "社会融资规模存量": "total"}
 
 
+PERIOD = re.compile(r"\d{4}\.(\d{1,2}|Q\d)")
+
+
 def tsf_stock(table, year):
-    j = None
-    for r in table:
-        for i, c in enumerate(r):
-            if re.fullmatch(rf"{year}\.(12|Q4)", c):
-                j = i
+    """{instrument stock} at December (Q4 in 2015's table) from the table's
+    main block: the rows under its first header of periods, up to the next
+    header. The later blocks are notes restating other years, in other
+    columns and units, and are not read."""
+    heads = [i for i, r in enumerate(table) if any(PERIOD.fullmatch(c.strip()) for c in r)]
+    if not heads:
+        return {}
+    j = next((i for i, c in enumerate(table[heads[0]]) if re.fullmatch(rf"{year}\.(12|Q4)", c.strip())), None)
     if j is None:
         return {}
+    end = heads[1] if len(heads) > 1 else len(table)
     out = {}
-    for r in table:
+    for r in table[heads[0] + 1:end]:
         if len(r) <= j:
             continue
         lab = re.sub(r"^其中[:：]", "", r[0])
@@ -276,18 +301,18 @@ WIOD_TO_KLEMS = {
     "H49": "H", "H50": "H", "H51": "H", "H52": "H", "H53": "H", "I": "I", "J58": "J", "J59_J60": "J",
     "J61": "J", "J62_J63": "J", "K64": "K", "K65": "K", "K66": "K", "L68": "L", "M69_M70": "M-N",
     "M71": "M-N", "M72": "M-N", "M73": "M-N", "M74_M75": "M-N", "N": "M-N", "O84": "O-Q", "P85": "O-Q",
-    "Q": "O-Q", "R_S": "R-S", "T": "R-S", "U": "R-S"}
+    "Q": "O-Q", "R_S": "R-S", "T": None, "U": None}
 
 
 def wiod():
     d = pd.read_excel(os.path.join(RAW, "io", "wiod2016", "Socio_Economic_Accounts.xlsx"), sheet_name="DATA")
     d = d[d.variable == "K"]
     years = [c for c in d.columns if isinstance(c, int)]
-    d = d.assign(ind=d.code.map(WIOD_TO_KLEMS))
     missing = set(d.code) - set(WIOD_TO_KLEMS)
     assert not missing, missing
-    g = d.groupby(["country", "ind"])[years].sum(min_count=1)
-    manuf = d[d.ind.str.startswith("C")].groupby("country")[years].sum(min_count=1)
+    d = d.assign(ind=d.code.map(WIOD_TO_KLEMS))
+    g = d.dropna(subset=["ind"]).groupby(["country", "ind"])[years].sum(min_count=1)
+    manuf = d[d.ind.str.startswith("C", na=False)].groupby("country")[years].sum(min_count=1)
     tot = d.groupby("country")[years].sum(min_count=1)
     for (iso, ind), r in g.iterrows():
         for y in years:
@@ -328,5 +353,31 @@ def main():
     print(cov, end="")
 
 
+def selftest():
+    """Checks on toy tables: python -I scripts/allocation-data.py --selftest."""
+    # a TSF stock table whose notes restate other years below the main block,
+    # with this year's December in another column: only the main block counts
+    t = [["", "2018.1", "", "2018.12", ""],
+         ["社会融资规模存量", "180.0", "1", "190.0", "1"],
+         ["其中:人民币贷款", "121.7", "1", "134.7", "1"],
+         ["委托贷款", "13.9", "1", "12.4", "1"],
+         ["注：1. restated", "", "", "", ""],
+         ["", "2018.7", "2018.12", "", ""],
+         ["人民币贷款", "128.0", "4805", "", ""],
+         ["贷款核销", "1.0", "15406", "", ""]]
+    got = tsf_stock(t, 2018)
+    assert got == {"total": 190.0, "rmb-loans": 134.7, "entrusted-loans": 12.4}, got
+    # December found only in a notes block: the main block has no December
+    assert tsf_stock([["", "2019.1"], ["人民币贷款", "1.0"], ["", "2019.12"], ["人民币贷款", "9.0"]], 2019) == {}
+    # WIOD: households as employers and extraterritorial bodies are not R-S
+    # (EU KLEMS's R-S is R and S); they stay in the total
+    assert WIOD_TO_KLEMS["T"] is None and WIOD_TO_KLEMS["U"] is None
+    print("allocation-data selftest ok")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if sys.argv[1:] == ["--selftest"]:
+        selftest()
+    else:
+        main()
