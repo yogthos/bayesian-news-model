@@ -169,17 +169,6 @@
   ([panel kn iso opts]
    (fn [t] (sfc/learn (known-panel panel t) kn iso (- t sfc/vintage) opts))))
 
-(defn fiscal-at
-  "(fn [t]) -> {:cg :ig :ben} government consumption, investment and
-  benefits over output in `iso`'s latest data year whose flows are known
-  at t (known-panel), or nil."
-  [panel iso]
-  (fn [t]
-    (when-let [ob (some->> (get (known-panel {iso (get panel iso)} t) iso)
-                           (filter (fn [[_ ob]] (and (:flows-ok ob) (:y ob)))) seq (apply max-key key) val)]
-      (let [x (sfc/observed ob) Y (double (:Y x))]
-        {:cg (/ (double (get-in x [:cons :gov])) Y) :ig (/ (double (get-in x [:inv :gov])) Y) :ben (/ (double (:ben x)) Y)}))))
-
 (defn observations
   "(fn [t]) -> [{:year y :what w :y value :sd sd} ...]: what becomes known
   at t of `iso` in the SFC `panel` (bnm.sfc/read-panel) and keen.csv `kn`
@@ -264,12 +253,8 @@
   observation corrects, kept its draw for decades and drove the
   innovations up threefold), the recalibration of 6c (the state alone
   cannot move what the parameters hold, the learned positions' targets
-  among them). :fiscal (fn [t]) -> {:cg :ig :ben} or nil (fiscal-at):
-  government consumption, investment and benefits set to those shares of
-  each member's output, levels the accounts otherwise carry from the
-  start grown at trend, which drift from the data for decades as output
-  leaves its trend (bnm-2zk). `ids` are all three modules' ids."
-  [{:keys [ids obs keep-years max-inflation relearn fiscal] :or {keep-years 6 max-inflation 3.0}}]
+  among them). `ids` are all three modules' ids."
+  [{:keys [ids obs keep-years max-inflation relearn] :or {keep-years 6 max-inflation 3.0}}]
   (let [fin (:sfc-finance ids) acc (:sfc-accounts ids)]
     {:record (fn [mem rn t]
                (if-not ((:stepped rn) fin)
@@ -323,15 +308,12 @@
                           mems (mapv #(update %1 :years from-vector ys %2) memories post)
                           [wlo whi] sfc/w-bounds [llo lhi] sfc/lambda-bounds
                           p-now (when relearn (relearn t))
-                          f-now (when fiscal (fiscal t))
                           rs (mapv (fn [rn mem]
                                      (let [now (get-in mem [:years (long t)])
                                            w (max wlo (min whi (:w now))) l (max llo (min lhi (:lambda now)))]
                                        (cond-> (eng/update-states rn (fn [st] (-> st
                                                                                   (update fin assoc :bsm (:open now) :open (:end now) :fof (:fof now))
-                                                                                  (update acc (fn [a] (cond-> (assoc a :w w :lambda l)
-                                                                                                        f-now (assoc :cg (* (:cg f-now) (:Y a)) :ig (* (:ig f-now) (:Y a))
-                                                                                                                     :ben (* (:ben f-now) (:Y a)))))))))
+                                                                                  (update acc assoc :w w :lambda l))))
                                          p-now (eng/update-params (fn [ps] (reduce #(assoc-in %1 [%2 :sfc] p-now) ps (vals ids)))))))
                                    runners mems)
                           mean-h (fn [hs] (mapv #(/ (reduce + 0.0 %) (count hs)) (apply map vector hs)))
@@ -393,7 +375,7 @@
         st (sfc/init panel kn iso start p)
         ids (ids-of iso)
         an (analysis {:ids ids :obs (observations panel kn iso {})
-                      :relearn (relearn-at panel kn iso) :fiscal (fiscal-at panel iso)})
+                      :relearn (relearn-at panel kn iso)})
         r (cp/run-ensemble (members-of iso st p {:members members :seed seed})
                         {:members members :from (inc start) :to (+ origin years) :assimilate-through origin
                          :analyses (if (> members 1) [an] []) :keep true :seed (inc seed)})
