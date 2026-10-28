@@ -264,6 +264,24 @@ WB = {
 }
 
 
+# The API publishes some missing values as 0, not null (bnm-as1): Venezuela's
+# trade and sector shares 1991-2011, Brazil's sector shares 1960-1980,
+# Romania's private credit 1993-95, Hungary's and the other planned
+# economies' FDI in the 1980s. Where 0 is impossible (a share of output that
+# is never nil, a measured net flow, a stock of debt or money) a 0 is a gap.
+# Where it is possible (rents, export shares, military spending, internet
+# users in 1990, a growth rate rounded at the source) it is kept.
+WB_ZERO_IS_GAP = {
+    "NE.TRD.GNFS.ZS", "NV.AGR.TOTL.ZS", "NV.IND.MANF.ZS", "NV.SRV.TOTL.ZS",
+    "FS.AST.PRVT.GD.ZS", "FM.LBL.BMNY.GD.ZS", "DT.DOD.DECT.GN.ZS", "BX.KLT.DINV.WD.GD.ZS",
+}
+# counts the API fills with 0 for the years before a country reports
+# (Serbia's, Montenegro's and Kosovo's articles until 2007, counted under
+# Serbia and Montenegro; South Sudan's and Timor-Leste's before they
+# existed): zeros before the first nonzero value are gaps
+WB_LEADING_ZERO_IS_GAP = {"IP.JRN.ARTC.SC"}
+
+
 def worldbank():
     for code, (name, tr, desc) in WB.items():
         path = os.path.join(RAW, "worldbank", code + ".json")
@@ -272,10 +290,21 @@ def worldbank():
         d = json.load(open(path))
         if not isinstance(d, list) or len(d) < 2 or not d[1]:
             continue
+        first = {}  # country -> the first year with a nonzero value
+        if code in WB_LEADING_ZERO_IS_GAP:
+            for r in d[1]:
+                if r.get("value") not in (None, 0):
+                    c, y = r.get("countryiso3code"), int(r["date"][:4])
+                    first[c] = min(y, first.get(c, y))
         for r in d[1]:
             iso = r.get("countryiso3code")
-            if iso in ISO3 and r.get("value") is not None:
-                emit(iso, name, "a", period_end("a", r["date"]), 9, r["value"])
+            v = r.get("value")
+            if iso not in ISO3 or v is None:
+                continue
+            if v == 0 and (code in WB_ZERO_IS_GAP or
+                           (code in WB_LEADING_ZERO_IS_GAP and int(r["date"][:4]) < first.get(iso, 10000))):
+                continue
+            emit(iso, name, "a", period_end("a", r["date"]), 9, v)
         var(name, tr, "a", "World Bank WDI " + code, desc)
 
 
