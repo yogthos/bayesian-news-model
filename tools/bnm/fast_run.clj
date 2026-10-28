@@ -7,8 +7,11 @@
                                      [--end m] [--kinds a,b] [--smoke true]
 
   --family none runs the base itself (a regression check against
-  t44-world-norel). With --placebo, each country reads the family's inputs
-  at the next country in sorted order (bnm.world-run/placebo-source).
+  t44-world-norel). --family noise (reported only, not a trial) puts a
+  group of nine standard normal draws per country and origin at the
+  quarter nodes, FSa's width: what a group of that width costs by itself.
+  With --placebo, each country reads the family's inputs at the next
+  country in sorted order (bnm.world-run/placebo-source).
 
   Without relations the kinds do not read each other, so each kind's
   lattice runs on its own (the same forecasts as stepping them together).
@@ -41,12 +44,14 @@
        :fertiliser (g "economy/agriculture_share")
        :open (g "trade/openness")})))
 
-(def group-of {:commodities :fast/commodities :fx :fast/fx :ports :fast/ports})
+(def group-of {:commodities :fast/commodities :fx :fast/fx :ports :fast/ports :noise :fast/noise})
+
+(def noise-width "The noise group's width: FSa's nine." 9)
 
 (defn -main [& args]
   (let [{:keys [out family placebo end kinds smoke]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         family (keyword (or family "none"))
-        _ (when-not (or (= family :none) (fast/families family))
+        _ (when-not (or (#{:none :noise} family) (fast/families family))
             (throw (ex-info (str "bnm.fast-run: no family " family) {})))
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
@@ -54,13 +59,16 @@
         ks (if kinds (str/split kinds #",") (sort (keys kinds/tiers)))
         countries (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats)))
         source (if (= "true" placebo) (wr/placebo-source countries) identity)
-        inputs (when (not= family :none)
+        inputs (case family
+                 :none nil
+                 :noise (fast/noise-inputs noise-width 1)
                  (fast/family-inputs family (fast/read-series series-path)
                                      (exposure-fn (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")))))
+        width (if (= family :noise) noise-width (count (fast/families family)))
         _ (println "building" (count ks) "kinds, family" (name family) (if (= "true" placebo) "(placebo)" ""))
         specs (into {} (for [[k sp] (wr/build-specs ks end cats)]
                          [k (cond-> sp
-                              inputs (fast/with-fast inputs (count (fast/families family)) (group-of family) source)
+                              inputs (fast/with-fast inputs width (group-of family) source)
                               (= "true" smoke) (assoc :trace :inputs))]))
         _ (println "running")
         finished (into {} (pmap (fn [[k sp]] (let [r (lt/run sp)] (println "done" k) [k r])) specs))]

@@ -1,5 +1,7 @@
 (ns bnm.fast-test
-  (:require [bnm.fast :as f]
+  (:require [augur.math :as m]
+            [bnm.fast :as f]
+            [bnm.fast-run :as fr]
             [bnm.lattice :as lt]
             [bnm.stocks :as sk]
             [clojure.test :refer [deftest is testing]]))
@@ -111,3 +113,88 @@
 
 (deftest no-spec-with-relations
   (is (thrown? clojure.lang.ExceptionInfo (f/with-fast (assoc sp :relations identity) (constantly []) 0 :fast/x identity))))
+
+;; --- honesty: nothing published after the origin moves a forecast -------------
+
+(defn- noisy
+  "A monthly series from month 0 to `n`, each value available `lag` months
+  after its period, a random walk from `seed`."
+  [seed n lag]
+  (let [g (m/rng seed)]
+    (vec (map-indexed (fn [i x] [i (+ i lag) x]) (reductions + (repeatedly n #(* 0.05 (m/normal! g))))))))
+
+(defn- perturb-after
+  "Entries [period available value] with every value available after `t`
+  replaced by a random one."
+  [es t seed]
+  (let [g (m/rng seed)]
+    (mapv (fn [[p a v]] [p a (if (> a t) (* 10.0 (m/normal! g)) v)]) es)))
+
+(def ^:private units ["AAA" "BBB" "CCC"])
+
+(defn- raw-fast [n]
+  (merge {["world" "fast/food"] (noisy 1 n 1) ["world" "fast/energy"] (noisy 2 n 1)
+          ["world" "fast/fertiliser"] (noisy 3 n 1) ["world" "fast/chokepoints"] (noisy 4 n 1)}
+         (into {} (for [[i c] (map-indexed vector units) v ["fast/fx" "fast/spread" "fast/portcalls"]]
+                    [[c v] (noisy (+ 10 (* 3 i) (count v)) n 1)]))))
+
+(defn- raw-slow
+  "Annual shares (percent) by year end, published nine months later, as
+  data/slow/series.tsv has them."
+  [n]
+  (into {} (for [[i c] (map-indexed vector units)
+                 v ["food/imports_share" "energy/fuel_imports_share" "energy/fuel_exports_share"
+                    "economy/agriculture_share" "trade/openness"]]
+             [[c v] (vec (for [y (range (quot n 12))] [(+ 11 (* 12 y)) (+ 20 (* 12 y)) (+ 5.0 i (* 0.7 y) (count v))]))])))
+
+(defn- as-series [m] (update-vals m sk/series))
+
+(def ^:private honest-spec
+  {:scales [{:name :quarter-lead :per 1 :horizon 1 :discount 0.99}]
+   :levels [[:country units] [:region ["Reg"]]]
+   :parent {"AAA" "Reg" "BBB" "Reg" "CCC" "Reg"}
+   :start 0 :forget 0.99
+   :gauges (fn [_ place t] [(Math/sin (+ t (count place)))]) :gauge-width {:quarter-lead 1}})
+
+(deftest nothing-after-the-origin-moves-the-forecasts
+  ;; every series and exposure perturbed after the origin T: every input
+  ;; and every forecast at or before T is the same
+  (let [n 160 T 110
+        target (fn [_ place t] (when (< (inc t) n) {:y (odd? (+ t (count place) (mod t 7))) :known-at (inc t)}))
+        fast (raw-fast n) slow (raw-slow n)
+        fast' (into {} (for [[k es] fast] [k (perturb-after es T (hash k))]))
+        ;; the exposures are read two years back: what came after T-24
+        slow' (into {} (for [[k es] slow] [k (perturb-after es (- T 24) (hash k))]))]
+    (doseq [family (keys f/families)
+            :let [width (count (f/families family))
+                  run (fn [fs sl]
+                        (let [inputs (f/family-inputs family (as-series fs) (fr/exposure-fn (as-series sl)))]
+                          [inputs (lt/run (f/with-fast (assoc honest-spec :end (dec n) :target target)
+                                                       inputs width :fast/x identity))]))
+                  [in r] (run fast slow)
+                  [in' r'] (run fast' slow')
+                  upto (fn [r] (filterv #(<= (:origin %) T) (:forecasts r)))]]
+      (testing (name family)
+        (is (every? (fn [[c t]] (= (in c t) (in' c t))) (for [c units t (range (inc T))] [c t])) "the inputs")
+        (is (some (fn [[c t]] (not= (in c t) (in' c t))) (for [c units t (range (inc T) n)] [c t]))
+            "the perturbation reaches the inputs after T")
+        (is (pos? (count (upto r))))
+        (is (= (upto r) (upto r')) "the forecasts to T")
+        (is (not= (:forecasts r) (:forecasts r')) "and moves them after")))))
+
+(deftest a-noise-group-for-the-cost-of-a-group
+  ;; the reported-only diagnostic: inputs of pure noise, known everywhere,
+  ;; the same at every read (every level and both quarters read one value)
+  (let [noise (f/noise-inputs 9 1)
+        a (noise "AAA" 120)]
+    (is (= 9 (count a)))
+    (is (every? double? a))
+    (is (= a (noise "AAA" 120)) "the same draw at every read")
+    (is (not= a (noise "AAA" 123)))
+    (is (not= a (noise "AAB" 120)))
+    (is (not= a ((f/noise-inputs 9 2) "AAA" 120)) "another seed, other noise")
+    (let [xs (for [c ["AAA" "BBB" "CCC" "DDD"] t (range 0 1200 3)] (first (noise c t)))
+          mu (/ (reduce + xs) (count xs))
+          sd (Math/sqrt (/ (reduce + (map #(* (- % mu) (- % mu)) xs)) (count xs)))]
+      (is (< (Math/abs mu) 0.1))
+      (is (< 0.9 sd 1.1)))))

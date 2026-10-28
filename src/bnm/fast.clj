@@ -29,7 +29,8 @@
   node without it in the averaging, as trials 43-45 nested links); the
   year and half-decade nodes read nothing new, and see it only through
   the quarters' states passed up."
-  (:require [bnm.stocks :as sk]
+  (:require [augur.math :as m]
+            [bnm.stocks :as sk]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -139,6 +140,17 @@
       (fn [c t]
         (let [s (fast [c "fast/portcalls"])]
           [(year-on-year s t) (surprise s t 12) (volatility s t) (x* (choke t) (:open (exposure c t)))])))))
+
+(defn noise-inputs
+  "(fn [country t]) -> `width` standard normal draws, known everywhere and
+  the same at every read (seeded by `seed`, the country and t): a group
+  with nothing in it, for the reported-only diagnostic of what adding a
+  group of that width costs the quarter nodes by itself."
+  [width seed]
+  (fn [c t]
+    (let [code (reduce (fn [acc ch] (+ (* 131 acc) (long (int ch)))) 7 (seq c))
+          g (m/rng (+ (* 1000003 (long seed)) (* 7919 (long t)) (mod code 1000000007)))]
+      (vec (repeatedly width #(m/normal! g))))))
 
 ;; --- the quarter node's nested group ------------------------------------------
 
