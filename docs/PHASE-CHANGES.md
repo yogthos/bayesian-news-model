@@ -1165,6 +1165,29 @@ exposure did not survive the change of period. Next (bnm-3qu): the
 total-effect attribution (T4), which asks the drivers' question the
 increment cannot, and the base's calibration by stock regime (T2).
 
+**Correction after the outcome, 28 October 2026 (trial T1, bead
+bnm-0cf).** A fix made after the result was seen; the registered result
+above stands as run. The test rows held the base's warm-up rows as
+offsets: before the year node has read a published outcome of a kind it sits
+at its prior, p near 0.5 for every country (the origins whose fit-cut
+is before the kind's first origin: currency crises 1961-1964, inflation
+crises 1960-1963, market crashes 1961-1963, protest and violence surges
+1979-1981, food price shocks 2003-2006). bnm.warm-up now keeps those
+rows out of every fit and recalibration. Here that is food price shocks, food import exposure's
+second kind, at origins 2003-2006. Rerun on the fixed code
+(data/runs/sequencing/horizon-t1-registered-0cf-fix.tsv; the unfixed code
+reproduces the registered file exactly):
+1. (a) slow states: unchanged, +0.100, p 0.154: level.
+2. **(b) fast states: +0.143 (null -0.006, sd 0.067), p 0.015: passes**
+   (registered +0.078, p 0.109, level). Food import exposure's s c12 is
+   +0.102 (was -0.027), reserves' unchanged at +0.183; with no offset
+   +0.069, p 0.154 (was +0.060, p 0.179).
+**The verdict on (b) changes from level to pass**, through a fix made
+after the outcome, so it is read as that, not as a registered pass. Food
+import exposure keeps its design-year sign out of sample, at a fifth of
+its design-year size. The design-year numbers quoted in the registration
+were not rerun.
+
 ## Pre-registered, 22 October 2026: the base's calibration by stock regime (trial T2) and its plain recalibration (trial T8)
 
 Registered before any outcome after 2002 is read for these tests. On the
@@ -1261,6 +1284,24 @@ country's history they add nothing, as the design years said. The
 drivers are real for where conflict happens; for when anything happens,
 and for the economic kinds at all, these states do not carry it.
 
+**Correction after the outcome, 28 October 2026 (trial T4, bead
+bnm-0cf).** A fix made after the result was seen; the registered result
+above stands as run. The fits on 1960-2000 held the base's warm-up rows:
+before the year node has read a published outcome of a kind it sits
+at its prior, p near 0.5 for every country (the origins whose fit-cut
+is before the kind's first origin: currency crises 1961-1964, inflation
+crises 1960-1963, market crashes 1961-1963, protest and violence surges
+1979-1981, food price shocks 2003-2006). bnm.warm-up now keeps those
+rows out of every fit and recalibration. Rerun on the fixed code with the registered penalties and the
+same ten kinds (data/runs/sequencing/attribution-t4-registered-0cf-fix.tsv;
+the unfixed code reproduces the registered file exactly): (1) S - P', log,
++0.0011 [-0.0006, +0.0027] (was +0.0010 [-0.0007, +0.0027]): level; (2)
+where over when +0.0026 [+0.0013, +0.0037]: passes; (3) over the
+recalibrated base, log +0.0001 [-0.0007, +0.0008], Brier -0.00005
+[-0.0003, +0.00018]: equivalent to nothing; (4) per group material
++0.0035 and social +0.0022 pass, technology +0.0003 and financial -0.0001
+do not; the base's own skill +0.0103. No verdict changes.
+
 **Results, 22 October 2026 (trials T2 and T8).** Origins 2003-2020,
 everything fitted on 1960-2002, 200 permutations:
 1. **T2 primary, the regime's slope shift d > 0**: financial +0.146 (p
@@ -1290,6 +1331,32 @@ is not stable, so any recalibration has to be learned as the base runs
 (online, from past origins only: bnm-3qu.9). The one state effect that
 keeps showing, the credit gap's level shift with house prices, is the
 financial cycle the literature names, on too few onsets to stand alone.
+
+**Correction after the outcome, 28 October 2026 (trials T2 and T8, bead
+bnm-0cf).** A fix made after the result was seen; the registered results
+above stand as run. The recalibrations fitted on 1960-2002 held the
+base's warm-up rows: before the year node has read a published outcome of a kind it sits
+at its prior, p near 0.5 for every country (the origins whose fit-cut
+is before the kind's first origin: currency crises 1961-1964, inflation
+crises 1960-1963, market crashes 1961-1963, protest and violence surges
+1979-1981, food price shocks 2003-2006). bnm.warm-up now keeps those
+rows out of every fit and recalibration. Here that is currency crises (financial) and
+protest and violence surges (social). Rerun on the fixed code
+(data/runs/sequencing/calibration-t2-registered-0cf-fix.tsv; the unfixed
+code reproduces the registered file exactly):
+1. T2 primary, d > 0: financial +0.155 (p 0.104), social +0.095 (p
+   0.199): neither passes, as registered. The financial level shift c
+   +0.416 (z 5.5, permutation p 0.010), its placebo +0.291.
+2. T2, the regime against the plain recalibration, log per row:
+   financial -0.00051 [-0.00071, -0.00032], social +0.00020 [+0.00012,
+   +0.00028]: passes for the social group only, as registered.
+3. T8, the plain recalibration against the raw base: financial +0.0037
+   [-0.0045, +0.0121], social -0.0086 [-0.0103, -0.0066]: fails, as
+   registered: without the warm-up rows the fixed recalibration still
+   loses for the social kinds.
+4. Record: terciles financial p 0.040, social 0.30; credit gap x house
+   prices unchanged; food import share x grain prices level.
+No verdict changes.
 
 ## Pre-registered, 23 October 2026: the base recalibrated online (trial T8, second form)
 
@@ -1333,6 +1400,27 @@ The base's miscalibration on the design years was its early learning: by
 recalibration can make it. Neither a fixed nor an online recalibration
 improves it in the test years, and the online one does no harm. The base
 stays as it is.
+
+**Correction after the outcome, 28 October 2026 (trial T8b, bead
+bnm-0cf).** A fix made after the result was seen; the registered result
+above stands as run. The online recalibration learned from the base's
+warm-up rows: before the year node has read a published outcome of a kind it sits
+at its prior, p near 0.5 for every country (the origins whose fit-cut
+is before the kind's first origin: currency crises 1961-1964, inflation
+crises 1960-1963, market crashes 1961-1963, protest and violence surges
+1979-1981, food price shocks 2003-2006). bnm.warm-up now keeps those
+rows out of every fit and recalibration; a kind now waits for its first real forecast's
+outcome. Rerun on the fixed code
+(data/runs/sequencing/recalibrate-online-2003-2022-0cf-fix.tsv; the
+unfixed code reproduces the registered file exactly): (1) online against
+the raw base, financial and social pooled, log +0.0002 [-0.0015, +0.0019]
+(was +0.0001 [-0.0016, +0.0019]): level; (2) Brier -0.0002 [-0.0007,
++0.0003]: no harm; (3) per kind, inflation crises -0.0012, wars -0.0013
+and now sovereign defaults -0.0022 [-0.0045, -0.00001] exclude zero, all
+small losses; no reversion +0.0011, unpooled +0.0005: level. For the
+record, food price shocks (outside the primary) turn from +0.006 to
+-0.018 log [-0.050, +0.009], and their Brier from -0.004 to +0.009
+[+0.0002, +0.024], a small harm. No verdict changes.
 
 ## Pre-registered, 23 October 2026: named stock x trigger interactions and the principal contradiction (trial T3)
 
@@ -1378,6 +1466,23 @@ Interactions as named do not carry onsets past the recalibrated base;
 the gauges help a little only averaged together, which is the opposite
 of one principal contradiction steering the rest.
 
+**Correction after the outcome, 28 October 2026 (trial T3, bead
+bnm-0cf).** A fix made after the result was seen; the registered result
+above stands as run. The recalibrations and scales fitted on 1960-2002
+held the base's warm-up rows: before the year node has read a published outcome of a kind it sits
+at its prior, p near 0.5 for every country (the origins whose fit-cut
+is before the kind's first origin: currency crises 1961-1964, inflation
+crises 1960-1963, market crashes 1961-1963, protest and violence surges
+1979-1981, food price shocks 2003-2006). bnm.warm-up now keeps those
+rows out of every fit and recalibration. Rerun on the fixed code
+(data/runs/sequencing/interactions-t3-test-0cf-fix.tsv; the unfixed code
+reproduces the registered file exactly): the four pairs and the financial
+group's principal contradiction are unchanged to the digit (none passes
+Holm; argmax against the mean -0.0013 [-0.0017, -0.0008]: falsified).
+Only the political group's record moves: its gauges' levels over the
+recalibration -0.0011 [-0.0021, +0.0008] (was -0.0004), the pairs over
+the levels -0.0007 (was -0.0003). No verdict changes.
+
 **Erratum, 23 October 2026 (trials 44, 45 and T0).** The design-year
 diagnostics that chose trial 44's links and warnings and trial 45's
 states (bnm.relation-diag, bnm.ews-diag, bnm.state-diag) kept year-end
@@ -1388,6 +1493,30 @@ design-origin?: the window must close by the end of `to`); the selections
 recorded above stand as run. Both trials were level against their
 benches, so the leak bought them nothing visible; it is recorded so their
 selections are not read as clean. Found by the T6 tool's author.
+
+**Correction, 28 October 2026 (trials 44 and 45, bead bnm-0cf).** The
+same diagnostics read the base's warm-up rows as offsets: before the
+year node has read a published outcome of a kind it sits at its prior,
+p near 0.5 for every country (currency crises 1961-1964, inflation
+crises 1960-1963, market crashes 1961-1963, protest and violence surges
+1979-1981). bnm.warm-up now leaves them out. Rerun on t44-world-norel
+(origins 1960-2000, as the erratum above fixed them), unfixed against
+fixed code (data/runs/sequencing/graph-t45-0cf-{base,fix}.edn,
+ews-t45-0cf-*, states-t45-0cf-*): the warnings (growth collapses, log
+variance of growth) and the states (coups: arable land; fiscal
+consolidations: grain and rice use; wars: tension's expected progress;
+not trial 45's three, for reasons outside this fix) are the same either
+way. The links are not: of the four edges the
+current code keeps without the fix (conflict onsets to violence surges
+and to war onsets, growth collapses to protest surges, inflation crises
+to banking crises), the two into protest and violence surges, whose
+warm-up rows are 1979-1981, do not pass with it. Trial 45's world run
+read graph-t45 with five edges, three of them now unsupported (violence
+surges to war onsets already fails on the current code without the
+fix); trial 44's links were
+chosen by the earlier, unclustered test and cannot be rerun as chosen.
+Both trials were level against their benches; their world runs were not
+rerun (hours each), so whether their scores move is open.
 
 ## Pre-registered, 23 October 2026: early warnings reframed (trial T6)
 
@@ -1598,6 +1727,20 @@ fails (market crashes -0.0100, banking crises -0.0003); (2) its "where"
 not recur: divergence of asset values from their own past does not time
 crashes or banking crises out of sample, as an attribution over placebos
 with the same coverage.
+
+**Correction after the outcome, 28 October 2026 (H4, bead bnm-0cf).** A
+fix made after the result was seen; the registered result above stands
+as run. The fits on 1960-2000 held the base's warm-up rows: before the year node has read a published outcome of a kind it sits
+at its prior, p near 0.5 for every country (the origins whose fit-cut
+is before the kind's first origin: currency crises 1961-1964, inflation
+crises 1960-1963, market crashes 1961-1963, protest and violence surges
+1979-1981, food price shocks 2003-2006). bnm.warm-up now keeps those
+rows out of every fit and recalibration. Here
+that is market crashes at 1961-1963. Rerun on the fixed code
+(data/runs/sequencing/divergence-h4-registered-0cf-fix.tsv; the unfixed
+code reproduces the registered file exactly): (1) the composite's timing
+over its placebo, log -0.0053 [-0.0144, +0.0086]: fails; (2) its "where"
+-0.00002 [-0.0011, +0.0010]: level. No verdict changes.
 
 **Results, 23 October 2026 (cells against provinces, bnm-3ka.11).**
 Violence escalation from quiet, 2015-26, 46 periods:
@@ -1877,6 +2020,21 @@ Turkey through the Bosporus, not through export shortfalls (Ukraine's
 the 2022 fertiliser and gas cuts arrive only at 2024 and 2023, outside
 the scored years, and the European gas cut never shows as a production
 shortfall (Russia's 2022 gas output fell under 10%).
+
+**Correction, 28 October 2026 (trial SS's power check, bead bnm-0cf).**
+The power check that set the registered bound drew its outcomes from the
+base's hard rows, food price shocks' warm-up rows (2003-2006, p near 0.5)
+among them: coin flips on four years of a kind's rows. With them left
+out (bnm.warm-up; data/runs/sequencing/shock-trial-power-0cf-fix.txt; the
+unfixed code reproduces shock-trial-power.txt exactly) the gain found 80%
+of the time is +0.051, not +0.047 (beta 0.5: power 0.79, gain +0.049).
+The registered bound stays +0.047; the primary's upper end, +0.012
+registered and +0.016 after the review, is below either. The same
+correction moves the watch list's thirteen-kind check from +0.027 to
++0.024 (data/runs/sequencing/watchlist-power-0cf-fix.txt), under the
+rule's +0.03 either way. The shock trial's own warm-up fix (review item
+1) now lives in bnm.warm-up, shared with every other fit; its output is
+unchanged.
 
 ## Pre-registered, 28 October 2026: fast signals at the quarter node, commodity prices (trial FSa, bead bnm-82j.2)
 
