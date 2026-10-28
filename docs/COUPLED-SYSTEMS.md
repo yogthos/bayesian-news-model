@@ -1759,6 +1759,53 @@ Three kinds of check, each a smoke test or a diagnostic written every year:
     sheets, and the free run is sensitive to years that a half-life of
     one should make negligible.
     data/derived/coupled/assimilation.txt has the figures.
+  - *Review* (October 2026; fixes made after the results above):
+    - Causality. Relearning read every data year up to t - 2 whatever
+      its publication year; it now reads the panel as known at t
+      (bnm.sfc-analysis/known-panel, relearn-at). Every year in today's
+      panel is published two years on, so no figure moves. A test
+      changes everything first known after a free run's origin, and a
+      data year published late, and the free run does not move.
+    - Spans. A module's last emits were read after its span ended, so
+      the consistency module wrote 15 gaps from stale SFC values (BRA
+      and BGR 2022-23). The engine no longer carries them; each Keen
+      edge's rows fall from 344 to 339, the golden checks are
+      unchanged (rerun, all same).
+    - The projection is Euclidean, not weighted by the ensemble's
+      covariance. It makes no difference here: every member's identities
+      have the same right-hand side (the buffers are below 1e-13 of
+      output), so the update keeps them and the projection moves a member
+      by 1e-14 of the update (DEU, ITA, USA, NLD). augur v0.12.1 says so
+      and tests it at 1e7 and with zero and repeated rows.
+    - Relearning gives every member the same parameters, so the trend
+      growth spread of perturb is gone after the first analysis. Keeping
+      each member's draw was tried and tripled the innovations (a growth
+      no observation corrects compounds), so the members share them and
+      their spread is the state's.
+    - The inflation binds: at the cap of 3 in most analyses, and the
+      misfit after the update stays 3-18 sd units. A cap of 10 or 100
+      makes the innovations larger (to 2,000 sd units) and the free runs
+      no better (AUT, DEU, FRA, ITA, USA, BEL). The members' spread in
+      private debt is 0.2-0.5% of its level against misfits of many sd:
+      the ensemble is underdispersed for model error, not for sampling.
+    - Against a restart (one member, learned on what is known at the
+      origin, started from the latest known data year, phase A's free
+      run), the assimilated free run loses in 25 of 32 countries (median
+      net lending error 0.067 against 0.030; persistence 0.027; 16
+      members). It also moves with the seed: FRA 0.035, 0.098 and 0.153
+      on seeds 1, 3 and 5. The 9 of 32 above is one seed. bnm-cvs should
+      score the restart, not the smoother, until the analysis carries
+      model error.
+    - France (bnm-2zk). The channel is the government's consumption,
+      investment and benefits: levels the accounts carry from the start
+      year grown at trend, never analysed or relearned. By 2018 FRA's
+      members had consumption 0.18 and benefits 0.15 of output against
+      the data's 0.24 and 0.22, and the pre-1995 sheets set that path.
+      Setting them to the latest known shares at each analysis removes
+      the dependence (old and new sheets both 0.035 on seed 1), but takes
+      the count to 3 of 32 and the innovations to 2,093 sd units: a jump
+      of points of GDP in spending each year is a shock. The shares need
+      to be in the analysed state; that is left open.
   - *Golden checks* (bnm.coupled-run): with one member and no
     assimilation, the run reproduces phase A exactly. The stock modules'
     rows match bnm.engine-run's table line for line (7,963,260 rows), and
@@ -1786,12 +1833,12 @@ Three kinds of check, each a smoke test or a diagnostic written every year:
       BIS's private credit where BIS has the country, so for ZAF, COL,
       BRA and CHN the agreement is partly by construction. CRI's d is
       WDI's private credit, so CRI's agreement is not. The largest gaps
-      left are BGR 0.95, IRL 0.89, HRV 0.80, LUX 0.73 and LVA 0.60, all
-      measured stocks.
+      left are IRL 0.89, BGR 0.88, HRV 0.80, LUX 0.73 and LVA 0.60, all
+      measured stocks (BGR 0.95 with the stale rows the review removed).
     - Wage share against Keen's omega: the SFC share is on average 0.10
       lower (D1/GDP against PWT's labour share, which counts mixed
-      income), most of all in GRC, PRT and SVN.
-    - Employment: median 0.015, with BGR 0.33 off.
+      income), most of all in GRC, BGR, PRT and SVN.
+    - Employment: median 0.015, with BGR 0.26 off (0.33 with stale rows).
     - NFC investment against KLEMS's NFC industries: median 0.013 of
       GDP. On the data alone (Table 14 S11 P5 against KLEMS) the median
       is 0.014; IRL is 0.16 (multinationals).
