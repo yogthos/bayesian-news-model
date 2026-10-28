@@ -1,5 +1,5 @@
 (ns bnm.capacity
-  "Capacity from investment (bead bnm-4hv.11; docs/COUPLED-SYSTEMS.md 5.3):
+  "Capacity from investment (bead bnm-4hv.11; docs/COUPLED-SYSTEMS.md 5.2a):
   investment by industry, financed by credit and retained profits, and the
   part of it that completes into capacity in a later year, through a time
   to build.
@@ -49,7 +49,7 @@
           "S&P Global Market Intelligence (2024): mines started in 2020-23 took 17.9 years from discovery; the construction part is the prior's, exploration comes before any GFCF counted here"])
      "C19"
      (mk {2 0.15 3 0.35 4 0.3 5 0.1 6 0.1}
-         ["greenfield refineries: BP's planned US refinery, construction 2011 to start-up 2015 (4 years); Irving Oil's Eider Rock, 4 years planned, 8 later estimated (Petroleum News, 7 Dec 2008)"
+         ["greenfield refineries: Irving Oil and BP's Eider Rock (Saint John, New Brunswick), construction planned 2011 to start-up 2015 (4 years), re-planned in November 2008 as two phases over 8 years (Petroleum News, 7 Dec 2008), then shelved: a plan, not a build"
           "most capacity change is expansion and debottlenecking, nearer Koeva's two years: the mode is 3"])
      "C20"
      (mk {1 0.2 2 0.5 3 0.3}
@@ -62,7 +62,7 @@
      "D-E"
      (mk {2 0.1 3 0.25 4 0.3 5 0.15 6 0.1 7 0.1}
          ["EIA, Assumptions to AEO2022, Electricity Market Module, Table 3 (March 2022): lead times 2 years (solar PV, combustion turbines), 3 (combined cycle, onshore wind), 4 (coal, hydro, offshore wind, biomass), 6 (nuclear)"
-          "observed: GEM Integrated Power Tracker (September 2026), capacity under construction over mean additions 2021-2025 (Little's law, scripts/time-to-build.py): all 4.4 years; coal 4.2, oil and gas 4.4, wind 3.6, solar 3.1, nuclear 12.9, hydro 13.7"])}))
+          "observed: GEM Integrated Power Tracker (September 2026), capacity under construction over mean additions 2021-2025 (Little's law, scripts/time-to-build.py): all 4.4 years; coal 4.2, oil and gas 4.4, wind 3.6, solar 3.1, nuclear 12.9, hydro 13.7. These read long: the pipelines grew, and past additions against today's pipeline overstate the time. Adjusted for the growth (constant rate, fixed build time): all 2.6, coal 2.5, oil and gas 3.1, wind 3.1, solar 1.2; nuclear and hydro not steady"])}))
 
 (defn prior
   "The time-to-build prior of `industry`, the default when it has none."
