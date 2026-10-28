@@ -20,6 +20,7 @@
             [bnm.factors :as fac]
             [bnm.kinds :as kinds]
             [bnm.relation-diag :as rd]
+            [bnm.warm-up :as wu]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -70,7 +71,8 @@
         paths (if states (str/split states #",") (default-paths))
         st (states/read-states paths)
         ks (sort (keys kinds/tiers))
-        years (into {} (pmap (fn [kd] [kd (rd/read-year run kd)]) ks))
+        ;; the base's warm-up rows (bnm.warm-up) are no offset to test a state past
+        years (into {} (pmap (fn [kd] [kd (wu/drop-node (rd/read-year run kd) (wu/known-lag kd))]) ks))
         places (set (mapcat keys (vals years)))
         tree (fac/place-tree places)
         cs (sort (filter tree places))

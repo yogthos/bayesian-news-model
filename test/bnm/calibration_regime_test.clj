@@ -1,6 +1,7 @@
 (ns bnm.calibration-regime-test
   (:require [augur.math :as m]
             [bnm.calibration-regime :as cr]
+            [bnm.relation-diag]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b eps] (< (Math/abs (- (double a) (double b))) eps))
@@ -164,3 +165,12 @@
         p (cr/permute-panel panel (m/rng 4))]
     (is (= (set (vals panel)) (set (vals p))) "each series kept whole, years and all")
     (is (= (set (keys panel)) (set (keys p))))))
+
+(deftest the-base-s-warm-up-rows-are-not-recalibrated
+  ;; before the year node has read an outcome it sits at its prior, p 0.5
+  ;; for every country (bnm-0cf): those rows enter no fit
+  (let [node {"AAA" (into (sorted-map) (for [t (range 1950 2000)] [(+ 11 (* 12 t)) [(if (< t 1963) 0.5 0.05) (when (>= t 1960) false)]]))}
+        cat {:onsets {"AAA" (sorted-set (+ 2 (* 12 1975)))} :busy {} :from {"AAA" 0} :through {"AAA" (* 12 2100)} :known-lag 3}
+        fr (with-redefs [bnm.relation-diag/read-year (fn [_ _] node)]
+             (cr/frames-of "run" {"k" cat} ["k"] 1950 2002))]
+    (is (= (range 1963 2000) (map :t (fr "k"))))))

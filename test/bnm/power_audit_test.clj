@@ -160,3 +160,11 @@
     (is (< (Math/abs score) 1e-6))
     (is (< 0.3 b 0.7) (str b))
     (is (< (Math/abs (- e (pa/fit-offset (mapv :o rows) nil ys))) 1e-6))))
+
+(deftest the-base-s-warm-up-rows-are-left-out
+  ;; outcomes are redrawn from the base: its warm-up forecasts (p 0.5 before
+  ;; it has read an outcome, bnm-0cf) would draw coin flips
+  (let [years {"AAA" (into (sorted-map) (for [t (range 1950 1990)] [(+ 11 (* 12 t)) [(if (< t 1963) 0.5 0.05) (when (>= t 1960) false)]]))}]
+    (is (= (range 1960 1990) (map :t (pa/year-rows years ["AAA"] 1950 2002))) "without a lag: as before")
+    (is (= (range 1963 1990) (map :t (pa/year-rows years ["AAA"] 1950 2002 3))))
+    (is (= (range 1964 1990) (map :t (pa/year-rows years ["AAA"] 1950 2002 18))))))

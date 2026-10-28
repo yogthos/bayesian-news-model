@@ -32,6 +32,7 @@
             [bnm.kinds :as kinds]
             [bnm.paired :as pd]
             [bnm.relation-diag :as rd]
+            [bnm.warm-up :as wu]
             [clojure.string :as str]))
 
 (def odds-ratios [1.0 1.1 1.2 1.35 1.5 1.8 2.5])
@@ -49,11 +50,16 @@
   "[{:c :t :p :o :y}] of a kind's year node (`years` {country (sorted-map
   origin [p y])}, bnm.relation-diag/read-year): year-end origins of the
   countries `cs`, resolved, their years from `from` to `to`; :o the
-  forecast's log odds, as bnm.state-diag/rows reads it."
-  [years cs from to]
-  (vec (for [c cs [o [p y]] (get years c)
-             :when (and (some? y) (= 11 (mod o 12)) (<= from (quot o 12) to))]
-         {:c c :t (quot o 12) :p (double p) :o (logit p) :y y})))
+  forecast's log odds, as bnm.state-diag/rows reads it. With the
+  catalogue's `lag`, the base's warm-up rows (bnm.warm-up: p near 0.5
+  before it has read an outcome) are left out: outcomes drawn from them
+  would be coin flips."
+  ([years cs from to] (year-rows years cs from to nil))
+  ([years cs from to lag]
+   (let [years (if lag (wu/drop-node years lag) years)]
+     (vec (for [c cs [o [p y]] (get years c)
+                :when (and (some? y) (= 11 (mod o 12)) (<= from (quot o 12) to))]
+            {:c c :t (quot o 12) :p (double p) :o (logit p) :y y})))))
 
 ;; a standard normal on 21 points, for expectations over a year shock
 (def ^:private nodes (mapv #(/ % 3.5) (range -10 11)))
@@ -334,7 +340,7 @@
         places (set (mapcat keys (vals years)))
         tree (fac/place-tree places)
         cs (vec (sort (filter tree places)))
-        all-rows (into (sorted-map) (for [kd ks] [kd (year-rows (years kd) cs 1960 2022)]))
+        all-rows (into (sorted-map) (for [kd ks] [kd (year-rows (years kd) cs 1960 2022 (wu/known-lag kd))]))
         ;; as state-diag: a kind needs five design-year onsets to be tried
         rows (into (sorted-map) (filter (fn [[_ rs]] (>= (count (filter #(and (:y %) (<= (:t %) 2000)) rs)) 5)) all-rows))
         ks (vec (keys rows))

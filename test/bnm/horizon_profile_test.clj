@@ -1,6 +1,7 @@
 (ns bnm.horizon-profile-test
   (:require [augur.math :as m]
             [bnm.horizon-profile :as hp]
+            [bnm.relation-diag]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b eps] (< (Math/abs (- (double a) (double b))) eps))
@@ -232,3 +233,11 @@
   ;; 2021 at least, the last origin of a run to 2022
   (is (= 1950 (first hp/years)))
   (is (<= 2021 (last hp/years))))
+
+(deftest the-base-s-warm-up-is-no-offset
+  ;; the year node at its prior before it has read an outcome (bnm-0cf)
+  (let [node {"AAA" (into (sorted-map) (for [t (range 1950 2000)] [(+ 11 (* 12 t)) [(if (< t 1963) 0.5 0.05) (when (>= t 1960) false)]]))}
+        {:keys [cells base]} (with-redefs [bnm.relation-diag/read-year (fn [_ _] node)] (#'hp/cells-of "run" "k" 3))]
+    (is (= (range 1963 2000) (map second cells)))
+    (is (nil? (base "AAA" 1962)))
+    (is (some? (base "AAA" 1963)))))

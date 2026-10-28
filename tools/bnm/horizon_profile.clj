@@ -66,6 +66,7 @@
             [bnm.lattice-banking :as lb]
             [bnm.relation-diag :as rd]
             [bnm.states :as states]
+            [bnm.warm-up :as wu]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -334,9 +335,10 @@
 ;; --- the run ----------------------------------------------------------------------
 
 (defn- cells-of
-  "{kind {:cells [[c t]] :base (fn [c t])}} from a run's year node."
-  [run kind]
-  (let [yr (rd/read-year run kind)]
+  "{kind {:cells [[c t]] :base (fn [c t])}} from a run's year node, the
+  base's warm-up origins at the catalogue's `lag` (bnm.warm-up) left out."
+  [run kind lag]
+  (let [yr (wu/drop-node (rd/read-year run kind) lag)]
     {:cells (for [[c byo] yr [o _] byo :when (= 11 (mod o 12))] [c (quot o 12)])
      :base (fn [c t] (when-let [[p _] (get-in yr [c (+ (* 12 t) 11)])] (annual-logit p 24)))}))
 
@@ -353,7 +355,7 @@
         cats (kinds/catalogues)
         raw-panels (state-panels)
         ks (distinct (mapcat :kinds named))
-        bases (into {} (for [k ks] [k (cells-of run k)]))
+        bases (into {} (for [k ks] [k (cells-of run k (:known-lag (cats k) 0))]))
         buf (StringBuilder.)
         say (fn [s] (println s) (flush) (.append buf (str s "\n")))
         ;; the rows of a state, a kind, h and a reader

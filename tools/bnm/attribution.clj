@@ -75,6 +75,7 @@
             [bnm.kinds]
             [bnm.relation-diag :as rd]
             [bnm.states :as states]
+            [bnm.warm-up :as wu]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -125,10 +126,11 @@
           [{:fit [from split] :score [(inc split) to]} {:fit [(inc split) to] :score [from split]}])))
 
 (defn split-rows
-  "{:fit :score} of `rows` ({:t}) for a split."
+  "{:fit :score} of `rows` ({:t}) for a split; the base's warm-up rows
+  (marked :warm-up by `year-rows`, bnm.warm-up) are never fitted."
   [rows {:keys [fit score]}]
   (let [f (set (era-origins fit)) s (set (era-origins score))]
-    {:fit (filterv #(f (:t %)) rows) :score (filterv #(s (:t %)) rows)}))
+    {:fit (wu/fit-rows (filterv #(f (:t %)) rows)) :score (filterv #(s (:t %)) rows)}))
 
 ;; --- reading --------------------------------------------------------------------------
 
@@ -582,13 +584,20 @@
     (merge (hp/state-panels)
            {"arable-land" (kp "arable_land") "grain-use" (kp "food/grains-use") "power-capacity" (kp "power_total")})))
 
+(defn node-rows
+  "[{:c :t :y :p :warm-up}] of a year node (bnm.relation-diag/read-year):
+  countries, year-end origins with a resolved outcome; :warm-up the base's
+  warm-up rows at the catalogue's `lag` (bnm.warm-up), which no fit reads."
+  [node lag]
+  (let [w (wu/warm-up-origins node lag)]
+    (vec (for [[c byo] node [o [p y]] byo
+               :when (and (some? y) (= 11 (mod o 12)))]
+           {:c c :t (quot o 12) :y y :p p :warm-up (contains? w (quot o 12))}))))
+
 (defn year-rows
-  "[{:c :t :y :p}] of a kind's year node: countries, year-end origins with
-  a resolved outcome."
+  "`node-rows` of a run's year node for a kind."
   [run kind]
-  (vec (for [[c byo] (rd/read-year run kind) [o [p y]] byo
-             :when (and (some? y) (= 11 (mod o 12)))]
-         {:c c :t (quot o 12) :y y :p p})))
+  (node-rows (rd/read-year run kind) (wu/known-lag kind)))
 
 (defn parse-opts [args]
   (let [o (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))

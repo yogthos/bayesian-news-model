@@ -43,6 +43,7 @@
             [bnm.attribution :as at]
             [bnm.kinds :as kinds]
             [bnm.supply-shocks :as ss]
+            [bnm.warm-up :as wu]
             [bnm.watchlist :as wl]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -57,12 +58,6 @@
 (def panel-path "data/derived/stocks/supply-shocks.csv")
 
 ;; --- pieces ---------------------------------------------------------------------------
-
-(defn fit-cut
-  "The last origin whose outcome is published by year end t: its window
-  (o, o+2] closed and the catalogue's `lag` months passed."
-  [t lag]
-  (- t 2 (long (Math/ceil (/ lag 12.0)))))
 
 (defn feature [l] (if (nil? l) 0.0 (Math/log1p (/ (max 0.0 (double l)) scale))))
 
@@ -98,25 +93,20 @@
   {:t (:t r) :y (:y r) :o 0.0
    :x (double-array (cons (logit (:p r)) (when src (get-in r [:x src]))))})
 
-(defn warm-up?
-  "Whether the base's forecast at origin `t` came before it had read any
-  published outcome of a kind whose first origin is `first-origin`: its
-  year node is still at its prior (p near 0.5 for every country), not a
-  forecast to recalibrate."
-  [t lag first-origin]
-  (< (fit-cut t lag) first-origin))
-
 (defn forecasts
   "Rows of one kind with :p {:base :bp :s :plc :tim} at origins from..to,
   each origin's models fitted on the rows from `fit-from` to its fit-cut,
-  the base's warm-up rows left out (`first-origin`, the kind's first
-  origin, defaults to the rows' first)."
+  the base's warm-up rows left out (bnm.warm-up): with `first-origin` (the
+  kind's first origin) marked here, else the rows' own :warm-up marks
+  (bnm.attribution/year-rows), else marked from the rows' first origin."
   [rows {:keys [lag from to fit-from first-origin]}]
-  (let [first-origin (or first-origin (reduce min (map :t rows)))]
+  (let [fitted (wu/fit-rows (cond first-origin (wu/mark rows lag first-origin)
+                                  (some #(contains? % :warm-up) rows) rows
+                                  :else (wu/mark rows lag (reduce min (map :t rows)))))]
     (vec (apply concat
                 (pmap (fn [t]
-                        (let [cut (fit-cut t lag)
-                              fit (filterv #(and (<= fit-from (:t %) cut) (not (warm-up? (:t %) lag first-origin))) rows)
+                        (let [cut (wu/fit-cut t lag)
+                              fit (filterv #(<= fit-from (:t %) cut) fitted)
                               score (filterv #(= t (:t %)) rows)
                               base (fn [r] (assoc r :p (zipmap [:base :bp :s :plc :tim] (repeat (:p r)))))]
                           (if (< (count (filter :y fit)) min-onsets)
@@ -304,8 +294,7 @@
             perm (ss/derangement isos seed)
             scored (into {} (for [kd kds]
                               [kd (forecasts (with-features (rows kd) panels perm (cats kd))
-                                             {:lag (:known-lag (cats kd) 0) :from from :to to :fit-from 1980
-                                              :first-origin (reduce min (map :t (at/year-rows run kd)))})]))
+                                             {:lag (:known-lag (cats kd) 0) :from from :to to :fit-from 1980})]))
             o (assoc opts :from from :to to)]
         (say (format "Supply shocks as event triggers (bnm.shock-trial), %s, run %s, kinds %s"
                      (if design "design years" "registered test") run (str/join "," kds)))

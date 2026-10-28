@@ -1,6 +1,7 @@
 (ns bnm.recalibrate-online-test
   (:require [augur.math :as m]
             [bnm.recalibrate-online :as ro]
+            [bnm.relation-diag]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]))
 
@@ -225,3 +226,24 @@
     (is (= ["t44-world-norel" 1981 2002 1960 1] ((juxt :run :from :to :learn-from :lag) o))))
   (let [o (ro/parse-opts ["--from" "2003" "--to" "2022" "--run" "x"])]
     (is (= ["x" 2003 2022 1960] ((juxt :run :from :to :learn-from) o)))))
+
+(deftest the-base-s-warm-up-rows-are-not-learned-from
+  ;; before the year node has read an outcome it sits at its prior (bnm-0cf):
+  ;; marked rows are forecast but never learned from
+  (let [rows (synthetic 21 80 (constantly [-0.5 0.7]))
+        marked (mapv #(assoc % :warm-up (< (:t %) 1965)) rows)
+        flipped (mapv #(if (:warm-up %) (update % :y not) %) marked)
+        a (ro/run-online {"k" marked} opts)
+        b (ro/run-online {"k" flipped} opts)]
+    (is (= (map :p (get-in a [:forecasts "k"])) (map :p (get-in b [:forecasts "k"]))))
+    (is (every? #(close? (:p %) (expit (:L %)) 1e-12) (filter #(< (:t %) 1967) (get-in a [:forecasts "k"])))
+        "the base until a real forecast's window has closed")))
+
+(deftest frames-mark-the-base-s-warm-up
+  (let [node {"AAA" (into (sorted-map) (for [t (range 1950 2000)] [(+ 11 (* 12 t)) [(if (< t 1963) 0.5 0.05) (when (>= t 1960) false)]]))}
+        base {"AAA" (into (sorted-map) (for [t (range 1950 2000)] [t (if (< t 1963) 0.0 -2.9)]))}
+        cat {:onsets {"AAA" (sorted-set (+ 2 (* 12 1975)))} :busy {} :from {"AAA" 0} :through {"AAA" (* 12 2100)} :known-lag 3}
+        fr (with-redefs [bnm.relation-diag/read-year (fn [_ _] node)
+                         ro/read-base (fn [_] base)]
+             (ro/frames-of "run" {"k" cat} ["k"] 1950 2002))]
+    (is (= (set (range 1950 1963)) (set (map :t (filter :warm-up (fr "k"))))))))

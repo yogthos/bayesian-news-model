@@ -1,14 +1,10 @@
 (ns bnm.shock-trial-test
   (:require [augur.math :as m]
             [bnm.shock-trial :as st]
+            [bnm.warm-up :as wu]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b] (and (some? a) (< (Math/abs (- (double a) (double b))) 1e-9)))
-
-(deftest the-last-origin-a-fit-may-read
-  (is (= 2007 (st/fit-cut 2010 3)) "window closed at the end of 2009, published within a year")
-  (is (= 2006 (st/fit-cut 2010 18)) "eighteen months to publish: two more years")
-  (is (= 2008 (st/fit-cut 2010 0))))
 
 (deftest feature-scale
   (is (close? 0.0 (st/feature nil)) "missing is no shock")
@@ -76,11 +72,11 @@
   ;; before the base has read any published outcome (fit-cut of the origin before the kind's first
   ;; origin) its year node sits at its prior, p near 0.5 for every country: not a forecast to recalibrate
   (let [g (m/rng 5)
-        rows (mapv (fn [r] (if (< (st/fit-cut (:t r) 3) 1990)
+        rows (mapv (fn [r] (if (< (wu/fit-cut (:t r) 3) 1990)
                              (assoc r :p (+ 0.5 (* 0.001 (m/next-double! g))))
                              r))
                    (synthetic 3))
-        flip (mapv #(if (< (st/fit-cut (:t %) 3) 1990) (update % :y not) %) rows)
+        flip (mapv #(if (< (wu/fit-cut (:t %) 3) 1990) (update % :y not) %) rows)
         out (st/forecasts rows {:lag 3 :from 2000 :to 2004 :fit-from 1990})
         out2 (st/forecasts flip {:lag 3 :from 2000 :to 2004 :fit-from 1990})]
     (is (= (map #(get-in % [:p :bp]) out) (map #(get-in % [:p :bp]) out2))
@@ -89,4 +85,8 @@
     (testing "the first origin can be given (rows before the trial's window)"
       (let [late (st/forecasts (filterv #(>= (:t %) 1991) rows) {:lag 3 :from 2000 :to 2004 :fit-from 1990 :first-origin 1990})]
         (is (= (map #(get-in % [:p :bp]) out) (map #(get-in % [:p :bp]) late))
-            "1991-92 are warm-up rows of a kind that starts in 1990, wherever the rows passed start")))))
+            "1991-92 are warm-up rows of a kind that starts in 1990, wherever the rows passed start")))
+    (testing "rows marked by the year node's reader (bnm.attribution/year-rows) need no first origin"
+      (let [marked (wu/mark (filterv #(>= (:t %) 1991) rows) 3 1990)
+            late (st/forecasts marked {:lag 3 :from 2000 :to 2004 :fit-from 1990})]
+        (is (= (map #(get-in % [:p :bp]) out) (map #(get-in % [:p :bp]) late)))))))

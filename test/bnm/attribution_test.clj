@@ -198,3 +198,25 @@
     (is (pos? (point res "skill-B")))
     (is (< (Math/abs (point res "share")) 0.1) (str "share " (point res "share")))
     (is (< (Math/abs (point res "shapley-share")) 0.1))))
+
+;; --- the base's warm-up rows (bnm-0cf) ------------------------------------------------------
+
+(def ^:private warm-node
+  "A year node: forecasts from 1950, outcomes from 1960; the base at its
+  prior (p 0.5) until it has read one."
+  {"AAA" (into (sorted-map) (for [t (range 1950 1990)] [(+ 11 (* 12 t)) [(if (< t 1963) 0.5 0.05) (when (>= t 1960) (= 0 (mod t 7)))]]))})
+
+(deftest year-rows-mark-the-base-s-warm-up
+  (let [rs (at/node-rows warm-node 3)]
+    (is (= (range 1960 1990) (map :t rs)) "resolved year ends only")
+    (is (= #{1960 1961 1962} (set (map :t (filter :warm-up rs)))) "fit-cut of 1962 is 1959, before the first origin")))
+
+(deftest no-warm-up-row-reaches-a-fit
+  (let [rows (at/node-rows warm-node 3)
+        {:keys [fit score]} (at/split-rows rows {:fit [1960 1975] :score [1976 1989]})
+        {fit2 :fit score2 :score} (at/split-rows rows {:fit [1976 1989] :score [1960 1975]})]
+    (is (seq fit))
+    (is (not-any? :warm-up fit) "fitted from 1963")
+    (is (= 1963 (apply min (map :t fit))))
+    (is (not-any? :warm-up fit2))
+    (is (= 1960 (apply min (map :t score2))) "scored rows keep them")))

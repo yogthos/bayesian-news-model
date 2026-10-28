@@ -122,3 +122,11 @@
   (is (= (/ 1.0 5) (er/perm-p 2.0 [0.0 1.0 -1.0 0.5] 1)))
   (is (= (/ 5.0 5) (er/perm-p 2.0 [0.0 1.0 -1.0 0.5] -1)))
   (is (= (/ 2.0 5) (er/perm-p -2.0 [0.0 1.0 -3.0 0.5] -1))))
+
+(deftest the-base-s-warm-up-rows-are-not-fitted
+  ;; the year node at its prior (bnm-0cf) is no offset to fit a warning past
+  (let [cat {:onsets {"AAA" (sorted-set (+ 2 (* 12 1990)))} :busy {} :from {"AAA" 0} :through {"AAA" (mo 2020)}}
+        rs (er/kind-rows {:cat cat :kind "k" :cells (for [t (range 1980 2001)] ["AAA" t])
+                          :offset (fn [_ _] -3.0) :read (fn [_ t] (double t))
+                          :from 1980 :to 2002 :k 3 :warm-up #{1980 1981 1982}})]
+    (is (= (range 1983 2001) (map :t rs)))))

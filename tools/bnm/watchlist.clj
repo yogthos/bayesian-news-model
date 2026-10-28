@@ -45,6 +45,8 @@
   (:require [augur.math :as m]
             [bnm.kinds :as kinds]
             [bnm.paired :as pd]
+            [bnm.relation-diag :as rd]
+            [bnm.warm-up :as wu]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -397,7 +399,12 @@
 
 (defn report-power [say run cats betas sims {:keys [from to kinds] :as opts}]
   (let [kds (or kinds (all-kinds run))
-        rows (into {} (for [kd kds] [kd (mapv #(assoc % :p {:b (get-in % [:p :m])}) (kind-rows {:m run} kd (cats kd) from to))]))
+        ;; outcomes are drawn from the base: its warm-up rows (bnm.warm-up, p
+        ;; near 0.5 before it has read an outcome) would draw coin flips
+        rows (into {} (for [kd kds
+                            :let [w (wu/warm-up-origins (rd/read-year run kd) (:known-lag (cats kd) 0))]]
+                        [kd (vec (for [r (kind-rows {:m run} kd (cats kd) from to) :when (not (w (:t r)))]
+                                   (assoc r :p {:b (get-in r [:p :m])})))]))
         res (power rows betas sims opts)]
     (say (format "C. Power on %s's hard rows, origins %d-%d, %d kinds: outcomes redrawn, a signal of log-odds size beta per row" run from to (count kds)))
     (say (format "   known only to the model; %d draws a size, %d bootstrap draws each. Share finding it (lower 90%% bound > 0):" sims (:reps opts)))

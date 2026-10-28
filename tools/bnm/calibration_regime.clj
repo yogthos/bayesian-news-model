@@ -61,6 +61,7 @@
             [bnm.lattice-banking :as lb]
             [bnm.macrohistory :as mh]
             [bnm.relation-diag :as rd]
+            [bnm.warm-up :as wu]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -351,10 +352,11 @@
 (defn frames-of
   "{kind [{:kind :c :t :g :L :y}]}: the year node's year-end forecasts
   (log odds of an onset in 24 months) and outcomes, origins from `from`,
-  outcome windows ending by `to`."
+  outcome windows ending by `to`; the base's warm-up rows (bnm.warm-up: at
+  its prior before it has read an outcome) left out."
   [run cats kinds from to]
   (into {} (for [k kinds
-                 :let [yr (rd/read-year run k)]]
+                 :let [yr (wu/drop-node (rd/read-year run k) (:known-lag (cats k) 0))]]
              [k (rows {:cells (for [[c byo] yr [o _] byo :when (= 11 (mod o 12))] [c (quot o 12)])
                        :kind k :from from :to to
                        :base (fn [c t] (when-let [[p _] (get-in yr [c (+ (* 12 t) 11)])] (m/logit (max 1e-6 (min (- 1.0 1e-6) p)))))

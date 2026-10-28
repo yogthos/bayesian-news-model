@@ -76,6 +76,7 @@
             [bnm.political-gauges :as pg]
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
+            [bnm.warm-up :as wu]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -120,6 +121,12 @@
   "The rows whose origin is in `origins`: nothing else is read."
   [rows origins]
   (filterv #(contains? origins (:t %)) rows))
+
+(defn fit-rows-of
+  "The rows a fit on `origins` reads: in the span, the base's warm-up rows
+  (marked by attribution/year-rows, bnm.warm-up) left out."
+  [rows origins]
+  (wu/fit-rows (in-span rows origins)))
 
 ;; --- dropout --------------------------------------------------------------------------
 
@@ -329,7 +336,7 @@
   [{:keys [rows-by-kind splits] :as ctx} models pens]
   (vec (apply concat
               (pmap (fn [[kind {:keys [fit eras]}]]
-                      (let [fit-rows (in-span (rows-by-kind kind) fit)]
+                      (let [fit-rows (fit-rows-of (rows-by-kind kind) fit)]
                         (if (< (count (filter :y fit-rows)) 5)
                           []
                           (fit-kind (assoc ctx :kind kind :fit fit-rows :models models :pens pens

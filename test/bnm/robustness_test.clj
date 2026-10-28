@@ -180,3 +180,9 @@
       (doseq [r (:results res)
               :when (and (= "dropout" (:criterion r)) (= "loss-G" (:stat r)) (= "events" (:scenario r)) (= "log" (:score r)))]
         (is (<= (:lo r) (:value r) (:hi r)))))))
+
+(deftest no-warm-up-row-reaches-a-fit
+  ;; the base's warm-up rows (bnm-0cf, at/year-rows marks them) are cut from every fit
+  (let [rows (vec (for [t (range 1979 1995)] {:c "A" :t t :y (odd? t) :p 0.1 :warm-up (< t 1982)}))
+        fit (rb/fit-rows-of rows (set (range 1979 1990)))]
+    (is (= (range 1982 1990) (map :t fit)))))

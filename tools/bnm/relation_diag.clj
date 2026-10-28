@@ -26,6 +26,7 @@
             [bnm.factors :as fac]
             [bnm.kinds :as kinds]
             [bnm.relations :as rl]
+            [bnm.warm-up :as wu]
             [bnm.world-run :as wr]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -179,7 +180,9 @@
         say (fn [s] (println s) (.append out (str s "\n")))]
     (say (str "edge\tform\tn\tpos\tlr\tcoef\tplacebo-lr\tplacebo-coef"))
     (doseq [[[j k] e] (sort-by key graph)
-            :let [fk (years k) fj (years j) cj (cats j)
+            ;; the child's rows without the base's warm-up (bnm.warm-up); the
+            ;; parent's forms read its node as the world run did
+            :let [fk (wu/drop-node (years k) (:known-lag (cats k) 0)) fj (years j) cj (cats j)
                   places (vec (sort (filter tree (keys fk))))
                   other (zipmap places (concat (rest places) [(first places)]))
                   ;; the places on the gazetteer's tree only, so raw and own forms

@@ -80,6 +80,8 @@
             [augur.math :as m]
             [bnm.kinds :as kinds]
             [bnm.lattice-banking :as lb]
+            [bnm.relation-diag :as rd]
+            [bnm.warm-up :as wu]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -149,7 +151,8 @@
   "`by-kind` {kind [{:c :t :L :y}]}, :y nil where unknown. Year by year
   from the first origin to the last: each kind learns from the rows of
   origin t - 2 - lag (their windows (t', t' + 2] closed by t and known
-  `lag` years later; :lags {kind lag} over :lag), first reverting toward
+  `lag` years later; :lags {kind lag} over :lag; never a row marked
+  :warm-up, the base's warm-up), first reverting toward
   the identity, or the pooled target, and discounting; then it forecasts
   the rows of origin t. A kind that has learned nothing yet (no :start,
   no resolved row) is the base: its state waits, undiscounted, for its
@@ -179,7 +182,7 @@
                              (mapv #(/ % (count ms)) (reduce #(mapv + %1 %2) ms))))
                   target (if pooled (mapv #(+ (* (- 1.0 pool) %1) (* pool %2)) id pooled) id)
                   learned (into {} (for [k ks]
-                                     [k (vec (for [r (get-in idx [k (- t 2 (lag-of k))]) :when (some? (:y r))]
+                                     [k (vec (for [r (get-in idx [k (- t 2 (lag-of k))]) :when (and (some? (:y r)) (not (:warm-up r)))]
                                                {:x (x-of opts (:L r)) :y (:y r)}))]))
                   seen (into seen (filter #(seq (learned %)) ks))
                   states (into {} (for [k ks]
@@ -270,13 +273,16 @@
 (defn frames-of
   "{kind rows}: the run's year-node forecasts (countries) and outcomes from
   the kind's catalogue (as the lattice's :target computes them, its
-  current vintage)."
+  current vintage), the base's warm-up rows (bnm.warm-up: at its prior
+  before it has read an outcome) marked :warm-up, never learned from."
   [run cats ks from to]
-  (into {} (for [k ks :let [yr (read-base (str "data/runs/" run "/" k "/forecasts.tsv"))]]
-             [k (rows-of {:cells (for [[c byt] yr [t _] byt] [c t])
-                          :kind k :from from :to to
-                          :base (fn [c t] (get-in yr [c t]))
-                          :outcome (fn [c t] (let [o (+ (* 12 t) 11)] (#'lb/onset-in? (cats k) c o o (+ o 24))))})])))
+  (into {} (for [k ks :let [yr (read-base (str "data/runs/" run "/" k "/forecasts.tsv"))
+                            w (wu/warm-up-origins (rd/read-year run k) (:known-lag (cats k) 0))]]
+             [k (mapv #(assoc % :warm-up (contains? w (:t %)))
+                      (rows-of {:cells (for [[c byt] yr [t _] byt] [c t])
+                                :kind k :from from :to to
+                                :base (fn [c t] (get-in yr [c t]))
+                                :outcome (fn [c t] (let [o (+ (* 12 t) 11)] (#'lb/onset-in? (cats k) c o o (+ o 24))))}))])))
 
 (defn forecast-lines
   "Year-node rows in the lattice's forecasts.tsv format."

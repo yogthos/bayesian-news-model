@@ -48,6 +48,7 @@
             [bnm.named :as nm]
             [bnm.relation-diag :as rd]
             [bnm.slow-train :as st]
+            [bnm.warm-up :as wu]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -142,11 +143,12 @@
   from `from` and its window's end no later than `to`, where the offset,
   the outcome (from `cat` cut at `to`) and the read are known; :post
   whether the origin lies in the post-crisis window of the kind's onsets
-  at the country (`k` years)."
-  [{:keys [cat kind cells offset read from to k]}]
+  at the country (`k` years). Origins in `warm-up` (a set: the base's
+  warm-up, bnm.warm-up) are no rows: the offset there is the prior."
+  [{:keys [cat kind cells offset read from to k warm-up]}]
   (let [cat (truncate cat to)]
     (vec (for [[c t] cells
-               :when (and (>= t from) (<= (+ t 2) to))
+               :when (and (>= t from) (<= (+ t 2) to) (not (contains? warm-up t)))
                :let [o (offset c t)]
                :when (some? o)
                :let [y (outcome cat c t)]
@@ -306,6 +308,7 @@
         ;; each kind's rows with the read left open, once
         frame (into {} (for [kd ks]
                          [kd (kind-rows {:cat (cats kd) :kind kd :to to :from from :k k
+                                         :warm-up (wu/warm-up-origins (rd/read-year run kd) (:known-lag (cats kd) 0))
                                          :cells (for [[c byt] (bases kd) [t _] byt] [c t])
                                          :offset (fn [c t] (get-in bases [kd c t]))
                                          :read (constantly 0.0)})]))

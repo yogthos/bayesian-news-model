@@ -95,6 +95,7 @@
             [bnm.capacity-test]
             [bnm.supply-shocks-test]
             [bnm.shock-trial-test]
+            [bnm.warm-up-test]
             [bnm.fast-test]
             [bnm.fast-score-test]))
 
@@ -194,6 +195,7 @@
     bnm.capacity-test
     bnm.supply-shocks-test
     bnm.shock-trial-test
+    bnm.warm-up-test
     bnm.fast-test
     bnm.fast-score-test])
 

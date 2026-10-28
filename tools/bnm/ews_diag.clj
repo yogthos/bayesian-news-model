@@ -17,6 +17,7 @@
             [bnm.named :as nm]
             [bnm.relation-diag :as rd]
             [bnm.slow-train :as st]
+            [bnm.warm-up :as wu]
             [clojure.string :as str]))
 
 (def series ["economy/gdp_growth" "economy/inflation" "food/food_inflation"])
@@ -55,7 +56,8 @@
         window (or (some-> window parse-long) 12)
         db (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))
         ks (sort (keys kinds/tiers))
-        years (into {} (pmap (fn [k] [k (rd/read-year run k)]) ks))
+        ;; the base's warm-up rows (bnm.warm-up) are no offset to test a warning past
+        years (into {} (pmap (fn [k] [k (wu/drop-node (rd/read-year run k) (wu/known-lag k))]) ks))
         places (set (mapcat keys (vals years)))
         tree (fac/place-tree places)
         cs (sort (filter tree places))
