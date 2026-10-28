@@ -1,8 +1,10 @@
 (ns bnm.allocation-test
   (:require [bnm.allocation :as al]
+            [bnm.capacity :as cap]
             [bnm.engine :as eng]
             [bnm.modules.allocation :as mal]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b] (and (number? a) (number? b) (< (Math/abs (- (double a) (double b))) 1e-9)))
@@ -102,10 +104,18 @@
           (row "KOR" y "klems" m s v))
         (for [[y k kt] [[2000 50.0 500.0] [2001 60.0 520.0]] [s v] [["C24-C25" k] ["TOT" kt]]]
           (row "KOR" y "wiod" "capital" s v))
-        (for [[s v] [["D27t28" 30.0] ["F" 70.0]]] (row "KOR" 1990 "lrwiod" "gfcf-product" s v)))))
+        (for [[s v] [["D27t28" 30.0] ["F" 70.0]]] (row "KOR" 1990 "lrwiod" "gfcf-product" s v))
+        ;; a pipeline: six years of basic-metals investment, the NFC accounts and credit
+        (for [y (range 1995 2001) [m s v] [["gfcf" "TOT" 50.0] ["gfcf" "C24-C25" (- y 1990.0)]
+                                           ["capital" "TOT" 1000.0] ["capital" "C24-C25" 100.0]]]
+          (row "AUT" y "klems" m s v))
+        (for [[s v] [["C24-C25" 30.0] ["D-E" 70.0] ["L" 1000.0]]] (row "AUT" 1999 "klems" "gos" s v))
+        (for [[s v] [["b8g" 80.0] ["nl" -20.0] ["gcf" 95.0]]] (row "AUT" 1999 "sfc" "nfc" s v))
+        (for [[s v] [["Total" 200.0] ["NFC" 100.0] ["C" 30.0]]] (row "AUT" 1999 "mv" "credit" s v)))))
 
 (def links {:products {"C_STEL" "C24-C25" "C_IRON" "B"}
-            :stages {["copper" "smelter"] {"KOR" 1990} ["copper" "mine"] {"KOR" 2010 "CHL" 1980}}})
+            :stages {["copper" "smelter"] {"KOR" 1990} ["copper" "mine"] {"KOR" 2010 "CHL" 1980}
+                     ["aluminium" "smelter"] {"AUT" 1990}}})
 
 (defn- ms [] (mal/modules (al/index panel) links))
 
@@ -140,8 +150,13 @@
     (testing "each source's rows appear at data year + its lag, no sooner"
       (is (= [[2002 ["KOR" (str 0.3) 2000 "mv"]]] (filter #(= 2000 (nth (second %) 2)) (al "allocation/mv/share-C"))))
       (is (= #{2001 2002} (set (map first (al "allocation/bis/share-hh")))))
-      (doseq [[v rs] (merge al inv) [t [_ _ dy src]] rs]
-        (is (>= (- t dy) (al/lags src)) (str v " " src " " dy " at " t))))
+      (doseq [[v rs] al [t [_ _ dy src]] rs]
+        (is (>= (- t dy) (al/lags src)) (str v " " src " " dy " at " t)))
+      (doseq [[v rs] inv [t [_ _ dy src]] rs
+              :let [k (get-in (eng/emit-for (second (ms)) v) [:known :data-year])]]
+        (is (>= (- t dy) k) (str v " " src " " dy " at " t))
+        (when-not (or (re-find #"completion-rate" v) (= v "investment/credit-share-C") (re-find #"credit-share" v))
+          (is (>= (- t dy) (al/lags src)) (str v " " src " " dy " at " t)))))
     (testing "rates"
       (is (= [[2003 ["KOR" (str 0.1) 2001 "mv"]] [2004 ["KOR" (str 0.1) 2002 "mv"]]] (al "allocation/mv/new-share-C")))
       (is (close? 10.0 (parse-double (second (second (first (al "allocation/bis/share-change-hh")))))))
@@ -168,6 +183,45 @@
         (is (= 3 (get-in (eng/emit-for (second (ms)) "investment/credit-share-C") [:known :data-year]))
             "Müller-Verner's +2 and the year's lag")))))
 
+;; -- capacity from investment (bead bnm-4hv.11) ----------------------------------------------------
+
+(deftest investment-completes-into-capacity-through-the-time-to-build
+  (let [r (run)
+        inv (emitted r :investment)
+        rows (fn [v] (filter #(= "AUT" (first (second %))) (inv v)))
+        val-of (fn [[_ rw]] (parse-double (second rw)))]
+    (testing "the investment rate: the year's GFCF over the opening capital stock, at the source's known year"
+      (is (= [[1998 1996] [1999 1997] [2000 1998] [2001 1999] [2002 2000]]
+             (map (fn [[t rw]] [t (nth rw 2)]) (rows "investment/klems/investment-rate-C24-C25"))))
+      (is (close? 0.06 (val-of (first (rows "investment/klems/investment-rate-C24-C25"))))))
+    (testing "the completion rate for year y is emitted once y-1's investment is known (y + 1), from investment before y"
+      (let [cr (rows "investment/klems/completion-rate-C24-C25")
+            rates (into {} (for [y (range 1996 2001)] [y (/ (- y 1990.0) 100.0)]))
+            p (:p (cap/prior "C24-C25"))]
+        (is (= [[2000 1999] [2001 2000] [2002 2001]] (map (fn [[t rw]] [t (nth rw 2)]) cr))
+            "1998 would need 1995's rate, whose opening stock is not there")
+        (is (close? (cap/completion-rate p rates 2001) (val-of (last cr))))
+        (is (= 1 (get-in (eng/emit-for (second (ms)) "investment/klems/completion-rate-C24-C25") [:known :data-year])))))
+    (testing "capacity: the industry's completion rate carried to its products and stages, the investment module's only"
+      (is (= (map second (rows "investment/klems/completion-rate-C24-C25"))
+             (map second (rows "capacity/completion-rate/stage/aluminium-smelter"))))
+      (is (= (map second (rows "investment/klems/completion-rate-C24-C25"))
+             (map second (rows "capacity/completion-rate/C_STEL")))))
+    (testing "financed investment: retained profits by surplus plus external finance by credit"
+      (let [f (rows "investment/financed-C24-C25")]
+        (is (= [[2001 ["AUT" (str 30.0) 1999 "sfc"]]] f) "80 x 0.3 of surplus + 20 x 0.3 of NFC credit")
+        (is (= [[2001 ["AUT" (str 70.0) 1999 "sfc"]]] (rows "investment/financed-D-E")))
+        (is (close? 0.3 (val-of (first (rows "investment/financed-rate-C24-C25")))) "over the opening stock, 100")
+        (is (empty? (rows "investment/financed-rate-D-E")) "no capital stock, no rate")
+        (is (empty? (rows "investment/financed-L")) "real estate is not an NFC industry here")))))
+
+(deftest only-the-investment-module-emits-capacity
+  (let [cap? (fn [e] (str/starts-with? (str (:var e)) "capacity/"))]
+    (is (= [:investment] (vec (for [m (ms) :when (some cap? (:emits m))] (:module m))))))
+  (testing "no other module's source declares a capacity/ emit"
+    (doseq [f (.listFiles (io/file "src/bnm/modules")) :when (not= "allocation.clj" (.getName f))]
+      (is (not (re-find #"\"capacity/" (slurp f))) (.getName f)))))
+
 (deftest stage-links-come-from-the-stage-table-by-country-and-known-year
   (let [dir (doto (io/file (System/getProperty "java.io.tmpdir") (str "bnm-alloc-" (System/nanoTime))) .mkdirs)
         st (io/file dir "stages.csv")]
@@ -187,7 +241,7 @@
   (when (.exists (io/file panel-path))
     (let [rows (al/read-panel panel-path)
           idx (al/index rows)]
-      (is (= #{"mv" "bis" "pboc" "pboc-rmb" "ecb" "ecb-nace" "klems" "wiod" "lrwiod"} (set (map :source rows))))
+      (is (= #{"mv" "bis" "pboc" "pboc-rmb" "ecb" "ecb-nace" "klems" "wiod" "lrwiod" "sfc"} (set (map :source rows))))
       (is (every? #(= (:known %) (+ (:year %) (al/lags (:source %)))) rows) "every row's known year is its source's lag")
       (is (< 3000 (count (for [[_ ys] (get-in idx ["mv" "credit"]) [_ m] ys
                                :when (get (al/shares (al/credit-spec ["mv" "credit"]) m) "C")] 1)))

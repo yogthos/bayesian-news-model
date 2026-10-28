@@ -25,6 +25,19 @@
                  sections that are also its industries, read from
                  :allocation a year late (investment/credit-share-<section>),
                  the financing side of 5.2.
+                 Capacity from investment (bnm.capacity, bead bnm-4hv.11):
+                 the investment rate (investment/klems/investment-rate-
+                 <industry>, GFCF over the opening stock); the completion
+                 rate, the investment already made that completes in data
+                 year y through the industry's time to build (investment/
+                 klems/completion-rate-<industry>, emitted at y + 1, once
+                 y - 1's investment is known); financed investment, NFC
+                 retained profits by surplus plus external finance by the
+                 credit shares (investment/financed-<industry>, its rate
+                 and completion rate); and both completion rates carried to
+                 the products and stages as capacity/completion-rate/<node>
+                 and capacity/financed-completion-rate/<node>. No other
+                 module emits capacity/*.
 
   A source's rows enter at their known year (data year + `bnm.allocation/
   lags`), each source under its own variables so each is checked against
@@ -35,7 +48,8 @@
 
   The control layer's choice of the mix (the Dirichlet DLM of 5.1) is not
   here: it is the registered test's model (COUPLED-SYSTEMS.md 9d)."
-  (:require [bnm.allocation :as al]))
+  (:require [bnm.allocation :as al]
+            [bnm.capacity :as cap]))
 
 ;; -- rows by the year they become known ------------------------------------------------------
 
@@ -77,7 +91,9 @@
    "ecb" "data/raw/econ/ecb-mfi-loans-by-sector"
    "klems" "data/raw/econ/euklems-intanprod-2023/capital_accounts.csv"
    "wiod" "data/raw/io/wiod2016/Socio_Economic_Accounts.xlsx"
-   "lrwiod" "data/raw/io/lrwiod/lr_wiod_niot_final.csv"})
+   "lrwiod" "data/raw/io/lrwiod/lr_wiod_niot_final.csv"
+   "klems-na" "data/raw/econ/euklems-intanprod-2023/national_accounts.csv"
+   "sfc" "data/derived/sfc/panel.csv (scripts/sfc-data.py: OECD Table 14 S11 B8G, B9, P5)"})
 
 (defn- src [v unit s lag] {:var v :unit unit :source (str (sources s) " via data/derived/allocation/panel.csv") :known {:data-year lag}})
 
@@ -136,8 +152,39 @@
           {:var (iv "lrwiod" "gfcf-product-share" p) :unit "share of gross fixed capital formation" :known {:data-year 3}})
         (for [g credit-sections]
           {:var (str "investment/credit-share-" g) :unit "share of private credit" :known {:data-year 3} :channel :F1})
+        (for [ind al/industries]
+          {:var (iv "klems" "investment-rate" ind) :unit "GFCF over the opening capital stock" :known {:data-year 2} :channel :R3})
+        (for [ind al/industries]
+          {:var (iv "klems" "completion-rate" ind) :unit "share of the capital stock completing" :known {:data-year 1} :channel :R6})
+        (for [ind cap/nfc-industries]
+          {:var (str "investment/financed-" ind) :unit "LCU m" :known {:data-year 2} :channel :F1})
+        (for [ind cap/nfc-industries]
+          {:var (str "investment/financed-rate-" ind) :unit "financed investment over the opening capital stock" :known {:data-year 2} :channel :F1})
+        (for [ind cap/nfc-industries]
+          {:var (str "investment/financed-completion-rate-" ind) :unit "share of the capital stock completing" :known {:data-year 1} :channel :R6})
         [{:var "capacity/growth/*" :unit "log change per year" :known {:data-year 2} :channel :R6}
-         {:var "capacity/relative-growth/*" :unit "log change against the economy's capital" :known {:data-year 3} :channel :R6}])))
+         {:var "capacity/relative-growth/*" :unit "log change against the economy's capital" :known {:data-year 3} :channel :R6}
+         {:var "capacity/completion-rate/*" :unit "share of the capital stock completing" :known {:data-year 1} :channel :R6}
+         {:var "capacity/financed-completion-rate/*" :unit "share of the capital stock completing" :known {:data-year 1} :channel :R6}])))
+
+;; -- capacity from investment -------------------------------------------------------------------
+
+(defn- rates
+  "{year rate} of `iso`'s `industry` up to data year `upto`, rate the
+  year's investment over the opening stock: `inv-of` gives a year's
+  investment."
+  [idx iso industry upto inv-of]
+  (into {} (for [[y m] (get-in idx ["klems" "capital" iso])
+                 :let [i (inv-of (inc y))
+                       r (when (<= (inc y) upto) (cap/investment-rate i (get m industry)))]
+                 :when r]
+             [(inc y) r])))
+
+(defn- financed
+  "{industry LCU m} financed in `iso`'s data year `y` (bnm.capacity/financed-investment)."
+  [idx iso y]
+  (cap/financed-investment (get-in idx ["sfc" "nfc" iso y]) (get-in idx ["klems" "gos" iso y])
+                           (al/shares (al/credit-spec ["mv" "credit"]) (get-in idx ["mv" "credit" iso y]))))
 
 (defn- link-targets
   "{industry [[node countries] ...]}: the product graph's products (every
@@ -159,11 +206,36 @@
                          (if (or (nil? cs) (some-> (get cs iso) (<= t)))
                            (push acc (str prefix node) row)
                            acc))
-                       acc (get targets ind)))]
+                       acc (get targets ind)))
+        ;; data year y's investment became known at t: its rates, financed
+        ;; investment, and the completions of y + 1 (investment up to y)
+        pipeline (fn [acc iso y t]
+                   (let [fin (into {} (for [d (range (- y 8) (inc y))] [d (financed idx iso d)]))
+                         acc (reduce (fn [acc ind]
+                                       (let [rs (rates idx iso ind y #(get (at "klems" "gfcf" iso %) ind))
+                                             p (:p (cap/prior ind))
+                                             acc (if-let [r (get rs y)] (push acc (iv "klems" "investment-rate" ind) [iso (al/fmt r) y "klems"]) acc)]
+                                         (if-let [c (cap/completion-rate p rs (inc y))]
+                                           (let [row [iso (al/fmt c) (inc y) "klems"]]
+                                             (-> acc (push (iv "klems" "completion-rate" ind) row) (link "capacity/completion-rate/" ind row t)))
+                                           acc)))
+                                     acc al/industries)]
+                     (reduce (fn [acc ind]
+                               (let [rs (rates idx iso ind y #(get-in fin [% ind]))
+                                     acc (if-let [f (get-in fin [y ind])] (push acc (str "investment/financed-" ind) [iso (al/fmt f) y "sfc"]) acc)
+                                     acc (if-let [r (get rs y)] (push acc (str "investment/financed-rate-" ind) [iso (al/fmt r) y "sfc"]) acc)]
+                                 (if-let [c (cap/completion-rate (:p (cap/prior ind)) rs (inc y))]
+                                   (let [row [iso (al/fmt c) (inc y) "sfc"]]
+                                     (-> acc (push (str "investment/financed-completion-rate-" ind) row)
+                                         (link "capacity/financed-completion-rate/" ind row t)))
+                                   acc)))
+                             acc cap/nfc-industries)))]
     {:module :investment :group :R :place :country :dt 1
      :doc "Investment and capital by industry, and the link to capacity in the product graph and stages (bnm.allocation)"
      :reads (into [(src "klems/capital-accounts" "LCU m" "klems" 2) (src "wiod/capital" "LCU m" "wiod" 3)
                    (src "lrwiod/gfcf" "USD m" "lrwiod" 3)
+                   (src "klems/gos" "LCU m" "klems-na" 2) (src "sfc/nfc" "LCU m" "sfc" 2)
+                   (src "mv/credit-shares" "share of private credit" "mv" 2)
                    {:var "supply/concordance" :unit "weight" :source "data/derived/supply/concordance.csv" :known {:data-year 0}}]
                   (for [g credit-sections]
                     {:var (str "allocation/mv/share-" g) :unit "share of private credit" :lag 1 :from :allocation :known {:data-year 2}}))
@@ -183,8 +255,9 @@
                           (fn [acc [[s m] iso y]]
                             (case [s m]
                               ["klems" "gfcf"]
-                              (reduce (fn [acc [ind x]] (if (some #{ind} al/industries) (push acc (iv s "gfcf-share" ind) [iso (al/fmt x) y s]) acc))
-                                      acc (sort (al/industry-shares (at s m iso y))))
+                              (-> (reduce (fn [acc [ind x]] (if (some #{ind} al/industries) (push acc (iv s "gfcf-share" ind) [iso (al/fmt x) y s]) acc))
+                                          acc (sort (al/industry-shares (at s m iso y))))
+                                  (pipeline iso y t))
                               ["klems" "capital-volume"]
                               (let [a (at s m iso (dec y)) b (at s m iso y)]
                                 (reduce (fn [acc ind]

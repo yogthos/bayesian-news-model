@@ -48,7 +48,9 @@
   capital (KLEMS volume), its capital's growth against the economy's
   (WIOD, nominal, so a common capital-goods price cancels), and the
   product shares of investment demand (LR-WIOD). Industries are EU KLEMS's
-  NACE groups (`industries`).
+  NACE groups (`industries`). For the financing of investment (bnm.capacity):
+  gross operating surplus by industry (klems gos) and the SFC core's
+  measured NFC accounts (sfc nfc: b8g, nl, gcf).
 
   The link: an EXIOBASE product's industry is that of its CPA division
   (`industry-of-division`), the division with the most concordance weight
@@ -64,7 +66,7 @@
 
 (def lags
   "Each source's publication lag in years (scripts/allocation-data.py)."
-  {"mv" 2 "bis" 1 "pboc" 1 "pboc-rmb" 1 "ecb" 1 "ecb-nace" 1 "klems" 2 "wiod" 3 "lrwiod" 3})
+  {"mv" 2 "bis" 1 "pboc" 1 "pboc-rmb" 1 "ecb" 1 "ecb-nace" 1 "klems" 2 "wiod" 3 "lrwiod" 3 "sfc" 2})
 
 ;; -- the panel -------------------------------------------------------------------------
 

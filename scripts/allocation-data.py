@@ -42,6 +42,14 @@ project's rules, docs/PRINCIPLES.md 7 and COUPLED-SYSTEMS.md 4c):
   klems     EU KLEMS & INTANProd 2023: gross fixed capital formation
             (I_GFCF, current prices), capital stock (K_GFCF, current) and
             its volume index (Kq_GFCF) by NACE industry, 1995-2021: +2.
+            Gross operating surplus by industry (measure gos: VA_CP - COMP
+            from the national accounts, floored at 0; it includes the
+            self-employed's mixed income): +2.
+  sfc       The SFC core's measured NFC accounts (data/derived/sfc/
+            panel.csv, scripts/sfc-data.py from OECD Table 14): gross
+            saving B8G (b8g, retained profits), net lending B9 (nl) and
+            gross capital formation (gcf), national currency millions:
+            +2 (bnm.sfc/vintage, its known_flows).
   wiod      WIOD 2016 Socio-Economic Accounts: nominal capital stock K by
             industry, 2000-2014, 43 countries, aggregated to the EU KLEMS
             industries (T and U, households as employers and
@@ -80,7 +88,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW = os.path.join(ROOT, "data", "raw")
 OUT = os.path.join(ROOT, "data", "derived", "allocation")
 
-LAG = {"mv": 2, "bis": 1, "pboc": 1, "pboc-rmb": 1, "ecb": 1, "ecb-nace": 1, "klems": 2, "wiod": 3, "lrwiod": 3}
+LAG = {"mv": 2, "bis": 1, "pboc": 1, "pboc-rmb": 1, "ecb": 1, "ecb-nace": 1, "klems": 2, "wiod": 3, "lrwiod": 3, "sfc": 2}
 
 edn = open(os.path.join(ROOT, "resources", "bnm", "countries.edn"), encoding="utf-8").read()
 ISO2 = dict(re.findall(r':iso2 "([A-Z]{2})",\s*:iso3 "([A-Z]{3})"', edn))
@@ -290,6 +298,29 @@ def klems():
         add(iso, r.year, "klems", "gfcf", r.nace_r2_code, r.I_GFCF, "LCU m")
         add(iso, r.year, "klems", "capital", r.nace_r2_code, r.K_GFCF, "LCU m")
         add(iso, r.year, "klems", "capital-volume", r.nace_r2_code, r.Kq_GFCF, "index")
+    na = pd.read_csv(os.path.join(RAW, "econ", "euklems-intanprod-2023", "national_accounts.csv"),
+                     usecols=["nace_r2_code", "geo_code", "year", "VA_CP", "COMP"])
+    na = na[na.nace_r2_code.isin(KLEMS_IND)]
+    for r in na.itertuples(index=False):
+        iso = ISO2.get(r.geo_code)
+        if iso:
+            add(iso, r.year, "klems", "gos", r.nace_r2_code, gos(r.VA_CP, r.COMP), "LCU m")
+
+
+def gos(va, comp):
+    """Gross operating surplus (and mixed income): value added less
+    compensation, floored at 0; None when either is missing."""
+    if va is None or comp is None or pd.isna(va) or pd.isna(comp):
+        return None
+    return max(0.0, float(va) - float(comp))
+
+
+def sfc():
+    path = os.path.join(ROOT, "data", "derived", "sfc", "panel.csv")
+    d = pd.read_csv(path, usecols=["iso", "year", "nfc_b8g", "nfc_nl", "nfc_gcf"])
+    for r in d.itertuples(index=False):
+        for sector, v in (("b8g", r.nfc_b8g), ("nl", r.nfc_nl), ("gcf", r.nfc_gcf)):
+            add(r.iso, r.year, "sfc", "nfc", sector, v, "LCU m")
 
 
 WIOD_TO_KLEMS = {
@@ -340,7 +371,7 @@ def coverage():
 
 
 def main():
-    for f in (mv, bis, pboc, ecb, klems, wiod, lrwiod):
+    for f in (mv, bis, pboc, ecb, klems, sfc, wiod, lrwiod):
         f()
     os.makedirs(OUT, exist_ok=True)
     rows.sort()
@@ -372,6 +403,7 @@ def selftest():
     # WIOD: households as employers and extraterritorial bodies are not R-S
     # (EU KLEMS's R-S is R and S); they stay in the total
     assert WIOD_TO_KLEMS["T"] is None and WIOD_TO_KLEMS["U"] is None
+    assert gos(100.0, 60.0) == 40.0 and gos(50.0, 60.0) == 0.0 and gos(float("nan"), 1.0) is None
     print("allocation-data selftest ok")
 
 
