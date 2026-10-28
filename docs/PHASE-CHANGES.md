@@ -1878,6 +1878,97 @@ the 2022 fertiliser and gas cuts arrive only at 2024 and 2023, outside
 the scored years, and the European gas cut never shows as a production
 shortfall (Russia's 2022 gas output fell under 10%).
 
+## Pre-registered, 28 October 2026: fast signals at the quarter node, commodity prices (trial FSa, bead bnm-82j.2)
+
+Registered before any run with the family. The slow drivers did not time
+onsets (trials 45, T1-T9); what timing the event model has came from fast
+signals. Bead bnm-82j.2 adds fast market and shipping series at the
+quarter node, one family at a time, each a trial of its own: FSa
+commodity prices, FSb exchange rates and sovereign spreads, FSc port
+traffic (registered after this one, each before its run). News intensity,
+the fourth family the bead names, is already in: the quarter nodes of the
+eight kinds on bnm.named's political inputs read the protest, violence and
+coercion channels' three- and twelve-month rises (GDELT counts per 1,000
+reported, monthly); the five financial kinds' quarters read the financial
+inputs instead. It is not a trial here.
+
+**The inputs** (bnm.fast, scripts/fast-data.py, data/fast/series.tsv).
+World Bank Pink Sheet monthly indices, nominal dollars, 1960-2026
+(data/raw/fast-pinksheet): energy, food and fertilisers, logs. Each is
+read at a quarter-end origin t only from months published by then (a
+month is known one month after it: the sheet comes out on the second
+business day after; one current vintage, the history rarely revised, no
+real-time vintages exist), the latest no more than six months old, and
+summarized by three operators fixed here, not tuned:
+- change: the latest month less three months before;
+- surprise: the latest month less the least-squares line through the 24
+  months before it (at least 12 known), carried to its month;
+- volatility: the standard deviation of the monthly changes over the
+  twelve months to the latest.
+A world price lands where the country is exposed to it, so each of the
+nine is multiplied by the country's exposure, read two years before t
+(WDI, as bnm.named/structure reads exposures: fixed before the shock and
+past WDI's revisions), as a fraction: food by food imports' share of
+merchandise imports, energy by fuel imports' share less fuel exports'
+share, fertiliser by agriculture's share of output. Nine inputs, unknown
+(nil, the lattice's running mean) where the exposure is: of the 183
+countries in the catalogues, known in 2003 for 155 (food), 145 (energy)
+and 166 (fertiliser), in 2022 for 162, 159 and 175. Above the countries
+a place reads its countries' mean of each input over those known.
+
+**The model.** The world without relations (bnm.world-run, the base
+t44-world-norel) with the nine as one nested group at both quarter nodes
+(lead and w2) of all thirteen kinds (bnm.fast/with-fast,
+bnm.fast-run --family commodities): the averaging sets the node with the
+group against the node without it, the group's coefficients at prior mean
+0 with the spec's shrinkage variance (0.1), as trials 43-45 nested their
+links. Nothing else changes: the year and half-decade nodes read nothing
+new and see the group only through the quarters' states passed up (each
+finer scale's last and mean state over the year, the :up group). Kinds
+run on their own, as without relations they do not read each other.
+Runs: **fs-a** and **fs-a-placebo** (each country reads the nine at the
+next country in sorted order, bnm.world-run/placebo-source: the world
+prices' timing kept, the exposure another country's). Bench:
+t44-world-norel, rebuilt on this code by bnm.fast-run --family none as
+**fs-norel**: all thirteen kinds' forecasts.tsv byte-identical to
+t44-world-norel's, so the runner adds nothing but the group.
+
+**Design and test.** Nothing is chosen on data: the operators, windows,
+exposures and the group are fixed above. The design years (origins
+1980-2002) are scored first by the same rule, for the record. Test:
+origins 2003-2022 (outcomes to 2024; 2023 on stays locked).
+
+**Tests** (bnm.fast-score), all thirteen kinds weighed equally, 1,000
+draws of two-year blocks of origins (seed 1), 90% intervals:
+1. (primary) the watch-list rule (bnm-82j.1): top-10 recall on hard
+   onsets of the year node's forecasts, fs-a less the bench. A gain when
+   the lower end is above 0 and the one-sided bootstrap p (the share of
+   draws at or below 0) passes Holm at 5% across the three families
+   (FSa, FSb, FSc);
+2. placebo: the gain is the prices' only if fs-a also beats fs-a-placebo
+   on 1 (lower end above 0);
+3. harm bound: no harm while the year nodes' pooled paired Brier (bench
+   loss less run loss, 2003-2022, bnm.paired/world-pair) has its lower
+   end at or above -0.0003 (about a quarter of trial 42's loss) and the
+   primary's lower end is at or above -0.03;
+4. the family is adopted when 1, 2 and 3 hold; equivalent to nothing
+   when the primary's upper end is below +0.03 (the rule's bound); level
+   otherwise;
+5. for the record: k = 5, 20, 10%, all rows, precision, lead and share
+   caught, against the bench and the placebo; the run and the base
+   against persistence and climatology; paired Brier and log of the year
+   and of the quarter nodes on their own outcomes, against the bench and
+   the placebo, per kind.
+
+**Power** (bnm.watchlist power on t44-world-norel's hard rows, a signal
+of log-odds size beta per row known only to the model, 100 draws each,
+data/runs/fast-power/watchlist-power.txt): on origins 2003-2022 and
+thirteen kinds, the recall test finds a mean gain of +0.033 80% of the
+time (between beta 0.25, +0.015 found 60%, and 0.5, +0.049 found 99%), and its null passes
+in at most 1% of draws. The family can only reach the year node's
+ranking through the quarters' states, so its effect there is diluted;
+the quarter nodes' own scores (5) say whether it times onsets at all.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
