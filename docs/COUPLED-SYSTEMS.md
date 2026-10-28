@@ -2269,6 +2269,62 @@ paired rows with country-clustered standard errors; skill by era
 predictor and its priors, the models, the fallback, the split, the seed,
 the metric, the interval, the pass rule and the bound.
 
+**Results, 28 October 2026** (scripts/capacity-test.py, data/derived/
+capacity/test.txt; 3,149 test rows in 27 countries, targets 2003-2022,
+2,000 draws). The placebo map covers the 27 KLEMS countries with
+completion rates.
+
+The primary **fails and is equivalent to nothing**. Investment already
+made, completing through the priors, does not forecast next year's
+capacity growth beyond the growth's own mean.
+
+| comparison | skill | 90% interval |
+|---|---|---|
+| M vs B (persistence) | +0.526 | [+0.502, +0.549] |
+| M vs A (mean) | -0.008 | [-0.014, -0.002] |
+| M vs P (placebo) | -0.010 | [-0.018, -0.003] |
+
+M beats persistence by half its error, as registered it would without
+information: yearly capacity and output growth reverts, so last year's
+growth is a poor forecast and any mean beats it. Against the mean and the
+placebo M loses, both intervals below 0. The upper end against A,
+-0.002, is below the +0.02 bound.
+
+*Bug found after the first run, fixed, rerun.* UNSD codes France as 251
+(with Monaco) and Italy as 382 (with San Marino), which the M49 map
+dropped, so France had no power or refining rows and Italy none. With
+them (the table above) the numbers barely move: as first run, 3,069 test
+rows, M vs A -0.008 [-0.014, -0.003], M vs P -0.010 [-0.018, -0.003].
+
+Secondary S1 (financed completion rate, 3,007 test rows in 25 countries):
+M vs B +0.528 [+0.501, +0.552], M vs A -0.006 [-0.011, -0.002], M vs P
++0.009 [-0.016, +0.038]; IU p 0.998, equivalent to nothing.
+
+For the record (not tests):
+- By family (primary): power 448 test rows, M vs A -0.026, b +0.016
+  (clustered SE 0.104); refining 233, M vs A -0.024, b +0.064 (0.054);
+  stages 2,468, M vs A -0.008, b +0.274 (0.191). Every slope has the
+  prior's sign and none is distinguishable from 0.
+- By era (M vs A): 2003-2007 -0.026 [-0.058, -0.000]; 2008-2014 -0.006
+  [-0.012, +0.000]; 2015-2022 -0.002 [-0.006, +0.002].
+- M against a zero-growth forecast: -0.012.
+- S1's refining rows lose badly to the mean (-0.20) when the pooled
+  slope meets Germany's financed rate for refining (0.25-0.35 of capital
+  a year against a KLEMS investment rate near 0.05): splitting retained
+  profits by operating surplus over-finances high-margin industries.
+
+*What this says.* At the yearly step and at these priors, an industry's
+investment rate (or its financed rate) carries no information about the
+next year's capacity growth of its plants beyond the mean, in the EU,
+the UK, the US and Japan, 2003-2022. Capacity growth of a country's power
+system, refineries and smelters is lumpy (one plant is a large share) and
+the industry's investment is spread over many plants, most of them not
+these. The completion rates stay in the engine as the accounting link
+from investment to capacity; nothing reads them as a forecast. Learning
+the time to build from the data (principle 2) and reading capacity at a
+coarser step (half-decade) are the next designs, each to be registered
+before it is scored.
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
@@ -2306,7 +2362,8 @@ By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
      5.1 registered first. This is the test with power: about 3,200
      country-years.
    - Then capacity from investment (EU KLEMS, EXIOBASE GFCF) into
-     bnm.supply and bnm.stages.
+     bnm.supply and bnm.stages. Built (5.2a); its registered test (9e)
+     is equivalent to nothing at the yearly step.
    - The China gap needs PBoC loans by industry.
 5. **Real to political** (bnm-4hv.4).
    - bnm.tension reads D1-D4, R4 and R5 from the engine.

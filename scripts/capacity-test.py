@@ -44,8 +44,13 @@ STAGE_INDUSTRY = {"smelter": "C24-C25", "refinery": "C24-C25", "mine": "B"}
 
 # -- targets ----------------------------------------------------------------------------------
 
+UNSD_AREAS = {251: "FRA", 382: "ITA", 757: "CHE", 579: "NOR", 412: "XKX"}
+
+
 def m49_iso3():
-    return {int(c.numeric): c.alpha_3 for c in pycountry.countries}
+    """M49 to ISO3, with UNSD's own codes for areas that include a
+    neighbour (France with Monaco, Italy with San Marino, ...)."""
+    return {int(c.numeric): c.alpha_3 for c in pycountry.countries} | UNSD_AREAS
 
 
 def unsd_series(path, transaction, family, industry):
@@ -251,6 +256,7 @@ def main():
 
 
 def selftest():
+    assert m49_iso3()[251] == "FRA" and m49_iso3()[382] == "ITA" and m49_iso3()[840] == "USA"
     g = growth([["X", "f", "n", "C19", 2000, 100.0], ["X", "f", "n", "C19", 2001, 110.0],
                 ["X", "f", "n", "C19", 2002, 1000.0], ["X", "f", "n", "C19", 2004, 5.0]])
     assert [r[4] for r in g] == [2001, 2002] and abs(g[0][5] - np.log(1.1)) < 1e-12 and g[1][5] == CLIP, g
