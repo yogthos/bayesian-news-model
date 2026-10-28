@@ -59,7 +59,16 @@
   - families: a family covers a variable only if its pattern matches it,
     and two families meet only if some variable matches both
     (glob-overlap?); of several declarations covering a variable the
-    exact one wins, then the most specific family, whatever their order."
+    exact one wins, then the most specific family, whatever their order.
+
+  Phase B (bead bnm-4hv.6, bnm.coupled) steps a run one step at a time
+  (runner, advance, result; run is their loop) so an ensemble's members
+  go in lockstep and an analysis can replace their states (update-states)
+  and parameters (update-params) between steps, never within one. A
+  module :given to advance is not stepped (a module shared by the
+  members, stepped once); a module with a :span [from to] steps only
+  within it; a module whose :dt is whole sees whole-number years in a
+  finer run. The rules above hold unchanged in every member."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]))
 
