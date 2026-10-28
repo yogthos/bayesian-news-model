@@ -2439,3 +2439,33 @@ What follows:
 - These are best cases: the synthetic states are known at every row and
   independent of the base, where real states have gaps and are partly
   held by the base already (the mediation of LIT-NEXT-STEPS 3b).
+
+**Correction, 28 October 2026 (trial 0, bead bnm-0cf).** The audit drew
+its synthetic outcomes from the base's rows, its warm-up rows among
+them: before the year node has read a published outcome of a kind it
+sits at its prior, p near 0.5 for every country (currency crises
+1961-1964, inflation crises 1960-1963, market crashes 1961-1963, protest
+and violence surges 1979-1981 in the design years; food price shocks
+2003-2006 in the test years), so those rows drew coin flips and padded
+the year-shock spreads and the onsets. bnm.warm-up now leaves them out.
+The current code without the fix does not reproduce the table above
+exactly (the erratum of 23 October ended the design rows at 2000), so
+both were rerun, 200 and 60 draws as above
+(data/runs/sequencing/power-audit-0cf-{base,fix}.tsv), unfixed / fixed:
+- year shocks: currency 1.09 / 0.95, protest 0.73 / 0.85, violence 0.78
+  / 0.80, inflation 0.94 / 0.92, market crashes 1.69 / 1.67, the rest
+  unchanged;
+- the diagnostic, own state with shocks, OR 1.2: k = 348 .12 / .11,
+  k = 10 .50 / .46, k = 1 .79 / .75; OR 1.35: .48 / .43, .84 / .79, .95
+  / .93; world series unchanged;
+- minimum detectable effects, pooled, realistic model: own or level
+  state OR 1.30-1.31 / 1.32-1.33, Brier +0.00063-0.00068 / +0.00068-
+  0.00075, log +0.0016-0.0019 / +0.0020-0.0021; world series OR 1.78 /
+  1.86, Brier +0.0100 / +0.0119, log +0.031 / +0.039.
+The audit's power is a few points lower than reported and the pooled
+Brier bound it implies is about +0.0007, not +0.0006. The bounds the
+later trials registered (+0.0006 Brier, +0.002 log) stay as registered;
+they are slightly tighter than 80% power now supports, so an
+"equivalent to nothing" read against them is, if anything, conservative.
+No later verdict turns on the difference: T4's upper ends (+0.00018
+Brier, +0.0008 log) and T8b's (+0.0003 Brier) are well inside either.
