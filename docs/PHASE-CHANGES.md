@@ -1518,6 +1518,67 @@ chosen by the earlier, unclustered test and cannot be rerun as chosen.
 Both trials were level against their benches; their world runs were not
 rerun (hours each), so whether their scores move is open.
 
+**Correction after the outcome, 28 October 2026 (trial 45, beads bnm-xxe
+and bnm-5r4).** Fixes made after the result was seen; the registered
+result above stands as run. Trial 45's world runs were rerun as
+registered (the same graph, warning and states files, the same
+commands) on the fixed code, in a clean worktree: first at 421a080 (the
+warm-up fix, bnm-0cf), then at c5a5480 (also the coupling fix, bnm-5r4:
+bnm.lattice/couple-levels no longer couples nested relation groups
+across levels). The bench rebuilt on the current code
+(data/runs/t45fix-norel) matches t44-world-norel byte for byte, so the
+registered bench stands.
+- (a) **As registered** (graph-t45, five edges; data/runs/t45fix-world,
+  t45cpl-world and their placebos): every forecast, weight, relation and
+  joint file is byte-identical to t45-world and t45-world-placebo, under
+  either fix. The warm-up fix changes the diagnostics that chose the
+  links, not the world run; and the coupling bug never fired here. At
+  the year and half-decade nodes, where the links nest, a nested model
+  reads the :down inputs, whose width (coarser scales plus ancestors)
+  differs at every level, and couple-levels couples only models of equal
+  width; the quarters, where widths match, drop relations. The tests
+  reproduce exactly: (1) Brier +0.00012 [-0.00021 +0.00050], log +0.00107
+  [-0.00069 +0.00325]; (2) Brier -0.00002 [-0.00008 +0.00002], log
+  -0.00399 [-0.00834 -0.00117]; (3) Brier +0.00014 [-0.00009 +0.00035],
+  log +0.00088 [-0.00012 +0.00190]; (4) Brier +0.00010 [-0.00010
+  +0.00034]. Watch-list rule (bnm-82j.1), hard onsets, top 10, the seven
+  kinds: +0.005 [-0.020 +0.032] against the bench, +0.009 [-0.006 +0.026]
+  against the placebo.
+- (b) **Sensitivity, reported only: the two edges the fixed diagnostic
+  keeps** (graph-t45-0cf-fix: conflict onsets to war onsets, inflation
+  crises to banking crises; the warning and states as registered;
+  data/runs/t45cpl2-world and its placebo, the same under the warm-up fix
+  alone, t45fix2-*). Five kinds linked; protest and violence surges, now
+  unlinked, match the bench exactly. (1) Brier +0.00007 [-0.00042
+  +0.00061], log +0.00150 [-0.00114 +0.00474]: level (over the
+  registered seven kinds +0.00005 [-0.00030 +0.00042]). Per kind only war
+  onsets move (one parent fewer): Brier +0.00029 [-0.00014 +0.00083]; the
+  banking loss stays, -0.00059 [-0.00132 -0.00003], its edge kept. (2)
+  Joint forecasts, two edges: Brier -0.00002 [-0.00009 +0.00005], log
+  -0.00199 [-0.00543 +0.00048], level: the registered log-score loss came
+  with the dropped edges. (3) Against its placebo: Brier +0.00007
+  [-0.00022 +0.00038], log +0.00111 [-0.00034 +0.00276]: level. (4)
+  Against t44-world: Brier +0.00003 [-0.00020 +0.00027]. Watch-list rule,
+  hard onsets, top 10, its five kinds: +0.020 [-0.012 +0.052] against the
+  bench, +0.023 [-0.001 +0.051] against the placebo; neither a gain nor
+  equivalent to nothing (upper end above +0.03).
+
+The verdict does not change: trial 45 is level, as registered and with
+only the supported links. What the fix removes is test 2's log-score
+loss, which belonged to the unsupported edges.
+
+Trial 44 cannot be rerun as chosen. Its seven edges came from the
+earlier, unclustered test on rows that held the base's warm-up years;
+that test is gone, and the fixed, clustered diagnostic keeps only two
+edges, of which trial 44 has one (conflict onsets to war onsets). Its
+registered result (level; joint log score a loss) stands as run, read
+with links that the current diagnostic does not support. Trial 45's
+sensitivity bounds what fewer links could have done: cutting five edges
+to two leaves the verdict level. The coupling fix does not touch trial 44
+or 43: their world runs nested the links at the same year and
+half-decade nodes with the same widths rule (b8fdcfd, e796238), so the
+nested models were never coupled there either.
+
 ## Pre-registered, 23 October 2026: early warnings reframed (trial T6)
 
 Registered before any outcome after 2002 is read for this test. The
