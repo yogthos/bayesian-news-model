@@ -219,7 +219,7 @@
         plc (get-in cmp [[:hard 10] :pairs [:s :plc]])
         harm? (< (:lo (:s-bp log)) harm-log)]
     (cond (and (pos? (:lo prim)) (pos? (:lo plc)) (not harm?)) "pass"
-          (< (:hi prim) equivalence) (if harm? "fail (equivalent to nothing on the watch list, harm on log)" "fail (equivalent to nothing)")
+          (< (:hi prim) equivalence) (if harm? "fail (equivalent to nothing on the watch list; no harm on log not shown)" "fail (equivalent to nothing)")
           :else "level")))
 
 ;; --- report -------------------------------------------------------------------------------

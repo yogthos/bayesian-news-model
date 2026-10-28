@@ -65,4 +65,4 @@ the count is the number of lines below.
 | CVP | cells against provinces, with features | 2026-10 | the pilot's event runs plus a feature stage (assets, grids, lights, emissions); cells vs provinces and vs within-country shuffles |
 | H4 | asset-growth divergence | 2026-10 | equity, valuation, house and wealth gaps against their own past, composite timing for banking crises and market crashes, coverage-matched placebos |
 | LS | located shocks, cell vs country exposure | 2026-10 | quakes, cyclones, floods, conflict onsets on cells; plant output loss; cell-cut vs uniform country spread |
-| SS | supply shocks as event triggers | 2026-10 | food, fertiliser and energy supply lost to suppliers' shortfalls and disrupted straits, through each country's exposure; food price shocks, protest and violence surges; exposure and time placebos |
+| SS | supply shocks as event triggers | 2026-10 | food, fertiliser and energy supply lost to suppliers' shortfalls and disrupted straits, through each country's exposure; food price shocks, protest and violence surges; exposure and time placebos; result: fail, equivalent to nothing (top-10 hard recall -0.024 [-0.065, +0.012]) |

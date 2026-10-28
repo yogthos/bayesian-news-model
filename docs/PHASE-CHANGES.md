@@ -1789,6 +1789,42 @@ shocks, protest surges, violence surges, the kinds equally weighed,
    base; AUC per kind, all and hard rows; the base against persistence
    and climatology.
 
+**Results, 28 October 2026 (trial SS).** Origins 2003-2022, run once
+(data/runs/sequencing/shock-trial-test.txt), 90% intervals:
+1. **S against the base** (primary), top-10 recall on hard onsets:
+   0.230 against 0.254, -0.024 [-0.065, +0.012]. The upper end is below
+   +0.047 (and below the rule's +0.03): **fail, equivalent to nothing**
+   for the watch list.
+2. S against the exposure placebo P +0.012 [-0.021, +0.039]; log per row
+   S less B' -0.0024 [-0.020, +0.016]: no gain, and the no-harm bound
+   (lower end at or above -0.002) is not met either; Brier -0.005
+   [-0.021, +0.007].
+3. Per kind, S less the base (Holm over three, none rejects): food price
+   shocks -0.011 [-0.037, +0.003] (p 0.89), protest surges -0.020
+   [-0.115, +0.059] (p 0.72), violence surges -0.040 [-0.102, +0.023]
+   (p 0.89).
+4. For the record: S over the time placebo T -0.021 [-0.050, +0.000]; at
+   k = 5 S gains +0.022 [+0.000, +0.042] and beats P by +0.027, at k = 20
+   it loses -0.025 [-0.049, -0.006], all rows k = 10 -0.025 [-0.041,
+   -0.010]: of the eight list readings only hard k = 5 lies above zero
+   and two lie below, no consistent sign. The base keeps its edge over persistence (+0.080) and
+   climatology (+0.071). AUC, hard rows, base / S: food price shocks
+   0.532 / 0.519, protest 0.743 / 0.752, violence 0.717 / 0.713. B' (the
+   base refitted with year effects, scored at the fitted rate) is far
+   worse than the raw base on log, -0.33 [-0.87, -0.04]: a constant level
+   cannot follow the 2008 and 2022 waves of food price shocks; S and the
+   placebos share it, so the paired S less B' is the clean contrast.
+
+Supply shocks mapped through each country's import dependence, supplier
+shares and strait shares do not tell which countries to watch for food
+price shocks, protest or violence beyond the base. What they could carry
+is limited by when it is known: fertiliser shortfalls arrive two years
+late and energy one, strait disruptions exist only from 2020, and the
+food shortfalls that are timely are mostly ordinary export swings. The
+loss shares stay as inputs (data/derived/stocks/supply-shocks.csv), not
+adopted into the event model; the timely route for the same shocks is
+prices and traffic (bead bnm-82j.2).
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
