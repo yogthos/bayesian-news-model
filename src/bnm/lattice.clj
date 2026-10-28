@@ -416,13 +416,17 @@
 
 (defn- couple-levels
   "Couples the gauge-group models of each pair of adjacent levels at one
-  scale."
-  [models scale levels strength]
+  scale. Neither the flows' models nor the `nested` relation groups' are
+  coupled: a nested group's model reads all the node reads, flows among
+  them, so coupling it would set the node with a link and the levels'
+  coupling against the all-inputs model without either."
+  [models scale levels strength nested]
   (reduce (fn [models [la lb]]
             (let [ka [scale la] kb [scale lb]
                   a (models ka) b (models kb)]
               (if (and a b)
                 (let [shared (filter #(and (not (flow-groups %))
+                                           (not (contains? nested %))
                                            (get-in b [:models %])
                                            (= (:k (get-in a [:models %])) (:k (get-in b [:models %]))))
                                      (keys (:models a)))
@@ -615,7 +619,9 @@
                (for [s due level-ix (range (count levels))] [s level-ix]))
               ;; the levels share what they learned this period
               st (if-let [s (:coupling spec)]
-                   (reduce (fn [st sc] (update st :models couple-levels (:name sc) (map first levels) s)) st due)
+                   (reduce (fn [st sc] (update st :models couple-levels (:name sc) (map first levels) s
+                                               (:nested (layout spec (:name sc) 0))))
+                           st due)
                    st)]
           {:t (inc t) :st st :forecasts forecasts :weights weights :trace trace})))
 

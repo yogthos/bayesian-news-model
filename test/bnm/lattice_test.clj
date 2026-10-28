@@ -560,3 +560,32 @@
   (let [r (lt/run (assoc (spec (world 1)) :end 60))]
     (is (map? (:flow-std r)))
     (is (vector? (get-in r [:flow-std [:month :country] :ns])))))
+
+(deftest a-nested-group-is-not-coupled-across-levels
+  ;; a nested relation group's model reads the node's own inputs (its
+  ;; flows among them) and the link; the coupling shares gauge groups'
+  ;; coefficients between levels, never the all-inputs model's, so it must
+  ;; not share the nested model's either, or the averaging would set the
+  ;; node with a link and the levels' coupling against the node without
+  ;; both. A link that is never known (nil, z = 0) leaves the nested model
+  ;; the all-inputs model exactly.
+  (let [g (m/rng 21)
+        x (into {} (for [p (concat countries ["A" "B"]) t (range months)] [[p t] (m/normal! g)]))
+        y (into {} (for [[k v] x] [k (< (m/next-double! g) (m/expit (- (* 1.5 v) 1.0)))]))
+        sp {:scales [{:name :month :per 1 :horizon 1 :discount 0.99}]
+            :levels [[:country countries] [:region ["A" "B"]]]
+            :parent parent :start 0 :end 200 :forget 0.99 :coupling 0.2
+            :without-at {:month #{:up :down :contradiction :turn :exposure :feedback}}
+            :target (fn [_ place origin] {:y (y [place (inc origin)]) :known-at (inc origin)})
+            :gauges (fn [_ place origin] [(x [place (inc origin)]) (m/normal! g)])
+            :gauge-width {:month 2}
+            :gauge-groups {:month {:credit [0] :noise [1]}}
+            :relations (fn [_ _ _] {:x [nil nil] :reads []})
+            :relation-width {:month 2} :relation-groups {:month {:rel/never [0 1]}} :relation-nest true}
+        r (lt/run sp)]
+    (doseq [level [:country :region]
+            :let [all (augur.dynamic/means (lt/model r :month level :all))
+                  nested (augur.dynamic/means (lt/model r :month level :rel/never))
+                  ws (lt/weights r :month level)]]
+      (is (= all (subvec nested 0 (count all))) (str level ": the nested model is the all-inputs model"))
+      (is (< (Math/abs (- (ws :all) (ws :rel/never))) 1e-9) (str level " weights " ws)))))
