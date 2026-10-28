@@ -219,3 +219,17 @@
   (let [p-now (assoc truth-p :n 0.05)
         r (ensemble {:analyses [(sa/analysis {:ids ids :obs truth-obs :relearn (fn [_] p-now)})] :to 2006})]
     (is (= #{p-now} (set (for [ps (:params r) id (vals ids)] (get-in ps [id :sfc])))))))
+
+(deftest fiscal-levels-are-the-latest-known-shares
+  ;; government consumption, investment and benefits are levels the
+  ;; accounts carry from the start, grown at trend: unanalysed, they drift
+  ;; from the data as output leaves its trend, for decades (bnm-2zk: FRA's
+  ;; free run moved with its pre-1995 sheets through them). Each analysis
+  ;; sets them to the latest known data year's shares of the member's output.
+  (let [panel @sim-panel
+        r (sa/free-run panel @sim-keen "SIM" {:origin 2014 :years 0 :members 6 :seed 4})
+        x (sfc/observed (get-in panel ["SIM" 2012]))]
+    (doseq [st (:states (:result r)) :let [a (get st (:sfc-accounts ids))]]
+      (is (< (Math/abs (- (/ (:cg a) (:Y a)) (/ (get-in x [:cons :gov]) (:Y x)))) 1e-12))
+      (is (< (Math/abs (- (/ (:ig a) (:Y a)) (/ (get-in x [:inv :gov]) (:Y x)))) 1e-12))
+      (is (< (Math/abs (- (/ (:ben a) (:Y a)) (/ (:ben x) (:Y x)))) 1e-12)))))

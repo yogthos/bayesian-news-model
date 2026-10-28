@@ -156,7 +156,7 @@
                p (sfc/learn panel kn iso from {}) st (sfc/init panel kn iso from p)
                ids (sa/ids-of iso)
                an (sa/analysis {:ids ids :obs (sa/observations panel kn iso {})
-                                :relearn (sa/relearn-at panel kn iso)})
+                                :relearn (sa/relearn-at panel kn iso) :fiscal (sa/fiscal-at panel iso)})
                mof (sa/members-of iso st p {:members members :seed 1})
                r (cp/free-run mof {:members members :from (inc from) :origin (+ origin sfc/vintage) :years 3 :keep true :analyses [an] :seed 2})
                log (mapcat #(:log (first %)) (take 1 (:memories r)))
