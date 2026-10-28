@@ -278,3 +278,11 @@
     (is (= [["USA" 2010 "sfc-finance" "sfc/x" "0.5" "" "" 2010 "model"]]
            (eng/table-rows m 2010.0 {"sfc/x" 0.5}))
         "an integral time is written as a whole year")))
+
+(deftest parameters-can-be-relearned-between-steps
+  (let [a {:module :a :group :W :place :world :dt 1 :init 0.0 :reads [] :params {:k 1.0}
+           :emits [{:var "a/x" :unit "u"}]
+           :step (fn [s _ ps _ _] {:state s :emits {"a/x" (:k ps)}})}
+        rn (eng/advance (eng/runner [a] {:from 2000 :to 2001}))
+        r (eng/result (eng/advance (eng/update-params rn #(assoc-in % [:a :k] 5.0))))]
+    (is (= [1.0 5.0] (get-in r [:emits :a "a/x"])))))

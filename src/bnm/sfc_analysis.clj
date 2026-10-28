@@ -74,7 +74,8 @@
 
 (defn constraints
   "{:a rows :b-of (fn [buffers]) -> b}: the identities over the window
-  of years `ys` (layout's), revaluation at `rho`."
+  of years `ys` (layout's), revaluation at `rho` (a number, or {year
+  rate})."
   [ys rho]
   (let [{:keys [open year dim]} (layout ys)
         pi (into {} (map-indexed (fn [i p] [p i]) positions))
@@ -82,7 +83,7 @@
                     :let [{:keys [tx end]} (year y)
                           prev (if (zero? j) open (:end (year (nth ys (dec j)))))]
                     [i [_ k _]] (map-indexed vector positions)]
-                (row dim [[(+ end i) 1.0] [(+ prev i) (- (if (= k :equity) (+ 1.0 rho) 1.0))] [(+ tx i) -1.0]]))
+                (row dim [[(+ end i) 1.0] [(+ prev i) (- (if (= k :equity) (+ 1.0 (double (if (map? rho) (rho y) rho))) 1.0))] [(+ tx i) -1.0]]))
         sector (for [y ys :let [{:keys [tx nl]} (year y)] [si s] (map-indexed vector sfc/sectors)]
                  (row dim (cons [(+ nl si) -1.0]
                                 (for [k sfc/instruments side [:a :l]] [(+ tx (pi [s k side])) (if (= side :a) 1.0 -1.0)]))))
@@ -144,10 +145,10 @@
 (defn observations
   "(fn [t]) -> [{:year y :what w :y value :sd sd} ...]: what becomes known
   at t of `iso` in the SFC `panel` (bnm.sfc/read-panel) and keen.csv `kn`
-  (bnm.sfc/read-keen), w one of [:end position] (the closing balance sheet,
-  closed as bnm.sfc/init closes it), [:nl sector] (net lending over
-  output), [:w] (the wage share), [:lambda] (employment). opts
-  :obs-sd {:bsm relative (0.05) :floor of output (0.002) :nl (0.005) :w
+  (bnm.sfc/read-keen), w one of [:end position] (a position of the
+  closing balance sheet, closed as bnm.sfc/init closes it, over output),
+  [:nl sector] (net lending over output), [:w] (the wage share), [:lambda] (employment). opts
+  :obs-sd {:bsm relative (0.05) :floor (0.002) :nl (0.005) :w
   (0.01) :lambda (0.005)}; :imputed (false) whether imputed stocks are
   observed."
   [panel kn iso {:keys [obs-sd imputed]}]
@@ -163,7 +164,7 @@
                   :let [b (:bsm (sfc/close-init (:b ob))) yy (double (:y ob))]
                   [i p] (map-indexed vector positions)
                   :let [v (get-in b p)] :when (and v (not (zero? (double v))))]
-              {:year y :what [:end i] :y (double v) :sd (max (* bsm (Math/abs (double v))) (* floor yy))})
+              (let [x (/ (double v) yy)] {:year y :what [:end i] :y x :sd (max (* bsm (Math/abs x)) floor)}))
             (for [[y ob] rows
                   :when (and (:flows-ok ob) (:y ob) (= t (known ob :known-flows)))
                   :let [x (sfc/observed ob)]
@@ -178,6 +179,35 @@
 
 ;; -- the analysis ------------------------------------------------------------------------
 
+(defn- column-moments [rows]
+  (let [n (double (count rows)) cols (apply map vector rows)]
+    [(mapv #(/ (reduce + 0.0 %) n) cols)
+     (mapv (fn [c] (let [mu (/ (reduce + 0.0 c) n)] (/ (reduce + 0.0 (map #(let [d (- % mu)] (* d d)) c)) (max 1.0 (dec n))))) cols)]))
+
+(defn inflation
+  "The factor the members' spread is inflated by before an update, from
+  the innovations (Wang & Bishop 2003; Anderson 2009): the spread in
+  observation space that, with the noise, matches the squared
+  innovations, sqrt((sum d^2/r - k) / sum var(h)/r), at least 1 and at
+  most `cap`; h is called (h member index). A model drifting from the data has a spread far smaller
+  than its misfit, and an update weighted by that spread barely moves
+  it."
+  [ens h y r cap]
+  (let [hs (vec (map-indexed (fn [i x] (h x i)) ens))
+        [mu var] (column-moments hs)
+        k (count y)
+        num (- (reduce + 0.0 (map (fn [yy m rr] (/ (let [d (- yy m)] (* d d)) rr)) y mu r)) k)
+        den (reduce + 0.0 (map / var r))]
+    (if (and (pos? den) (pos? num)) (min (double cap) (max 1.0 (Math/sqrt (/ num den)))) 1.0)))
+
+(defn- inflate
+  "The members' deviations from their mean scaled by `lam`."
+  [ens lam]
+  (if (== lam 1.0)
+    ens
+    (let [[mu _] (column-moments ens)]
+      (mapv (fn [x] (mapv (fn [xi mi] (+ mi (* lam (- xi mi)))) x mu)) ens))))
+
 (defn analysis
   "The SFC core's analysis for run-ensemble (bnm.coupled): `ids` the
   three modules' ({:sfc-finance id :sfc-accounts id}), `obs` (fn [t])
@@ -186,9 +216,15 @@
   employment, output) and, with observations known at t whose data years
   it has recorded, updates the members (see the namespace). A member's
   memory: :years {year record} over the last `keep-years` (6), :log the
-  analyses (years, observations, mean |innovation| in sd units before
-  and after)."
-  [{:keys [ids obs keep-years] :or {keep-years 6}}]
+  analyses (years, observations, the inflation, mean |innovation| in sd
+  units before and after). The members' spread over the window is
+  inflated first (inflation, at most :max-inflation 3), then updated and
+  projected. :relearn (fn [t]) -> parameters (bnm.sfc/learn on what is
+  known at t) or nil: with it the members step on from each analysis with
+  the parameters relearned, the recalibration of 6c (the state alone
+  cannot move what the parameters hold, the learned positions' targets
+  among them). `ids` are all three modules' ids."
+  [{:keys [ids obs keep-years max-inflation relearn] :or {keep-years 6 max-inflation 3.0}}]
   (let [fin (:sfc-finance ids) acc (:sfc-accounts ids)]
     {:record (fn [mem rn t]
                (if-not ((:stepped rn) fin)
@@ -206,39 +242,56 @@
                       ys (when y0 (vec (range y0 (inc (long t)))))]
                   (if-not (and ys (every? #(contains? mem0 %) ys) (every? (fn [mem] (every? #(contains? (:years mem) %) ys)) memories))
                     {:runners runners :memories memories}
-                    (let [rhos (distinct (for [mem memories y ys] (double (get-in mem [:years y :fof :rho] 0.0))))
-                          _ (when (> (count rhos) 1) (throw (ex-info "bnm.sfc-analysis: members revalue equity at different rates" {:rho rhos})))
-                          {:keys [a b-of]} (constraints ys (first rhos))
-                          idx (fn [{:keys [year what]}]
-                                (let [L (layout ys) yl ((:year L) year)]
+                    (let [rhos (into {} (for [y ys :let [rs (distinct (for [mem memories] (double (get-in mem [:years y :fof :rho] 0.0))))]]
+                                          (if (= 1 (count rs))
+                                            [y (first rs)]
+                                            (throw (ex-info "bnm.sfc-analysis: members revalue equity at different rates" {:year y :rho rs})))))
+                          {:keys [a b-of]} (constraints ys rhos)
+                          L (layout ys)
+                          ;; an observation as a linear function of the window, against the
+                          ;; member's own output where it is a ratio: [index coefficient-of-Y]
+                          lin (fn [{:keys [year what] :as o}]
+                                (let [yl ((:year L) year)]
                                   (case (first what)
-                                    :end (+ (:end yl) (second what))
-                                    :nl [(+ (:nl yl) (.indexOf ^java.util.List sfc/sectors (second what))) (:Y yl)]
-                                    :w (:w yl)
-                                    :lambda (:lambda yl))))
-                          ix (mapv idx os)
-                          h (fn [x] (mapv (fn [i] (if (vector? i) (/ (nth x (first i)) (nth x (second i))) (nth x i))) ix))
-                          ens (mapv #(to-vector (:years %) ys) memories)
-                          y (mapv :y os)
-                          r (mapv #(let [s (double (:sd %))] (* s s)) os)
-                          prior-h (mapv h ens)
+                                    :end {:i (+ (:end yl) (second what)) :ratio (:y o) :Y (:Y yl)}
+                                    :nl {:i (+ (:nl yl) (.indexOf ^java.util.List sfc/sectors (second what))) :ratio (:y o) :Y (:Y yl)}
+                                    :w {:i (:w yl)}
+                                    :lambda {:i (:lambda yl)})))
+                          ls (mapv lin os)
+                          ens0 (mapv #(to-vector (:years %) ys) memories)
+                          ;; each member's output, fixed through the update
+                          ymem (mapv (fn [x] (mapv #(when (:Y %) (nth x (:Y %))) ls)) ens0)
+                          h (fn [x i] (mapv (fn [{:keys [i ratio Y]} yv] (if Y (- (nth x i) (* ratio yv)) (nth x i))) ls (ymem i)))
+                          ;; ratio observations are of 0 (level less ratio times output), in levels
+                          y (mapv (fn [o l] (if (:Y l) 0.0 (:y o))) os ls)
+                          ybar (mapv (fn [j] (/ (reduce + 0.0 (map #(or (nth % j) 0.0) ymem)) (count ymem))) (range (count ls)))
+                          r (mapv (fn [o l yb] (let [s (* (double (:sd o)) (if (:Y l) yb 1.0))] (* s s))) os ls ybar)
+                          lam (inflation ens0 h y r max-inflation)
+                          ens (inflate ens0 lam)
+                          prior-h (vec (map-indexed (fn [i x] (h x i)) ens))
                           post (enkf/update-constrained ens h y r g
-                                                        {:a a :b-of (fn [i] (b-of (into {} (for [yy ys] [yy (get-in (nth memories i) [:years yy :fof :buffer] 0.0)]))))})
+                                                        {:indexed true :a a
+                                                         :b-of (fn [i] (b-of (into {} (for [yy ys] [yy (get-in (nth memories i) [:years yy :fof :buffer] 0.0)]))))})
+                          ;; output is read for ratios, not updated: each member keeps its own
+                          yi (mapv (comp :Y (:year L)) ys)
+                          post (mapv (fn [x x0] (reduce (fn [x i] (assoc x i (nth x0 i))) x yi)) post ens)
                           mems (mapv #(update %1 :years from-vector ys %2) memories post)
                           [wlo whi] sfc/w-bounds [llo lhi] sfc/lambda-bounds
+                          p-now (when relearn (relearn t))
                           rs (mapv (fn [rn mem]
                                      (let [now (get-in mem [:years (long t)])
                                            w (max wlo (min whi (:w now))) l (max llo (min lhi (:lambda now)))]
-                                       (eng/update-states rn (fn [st] (-> st
-                                                                          (update fin assoc :bsm (:open now) :open (:end now) :fof (:fof now))
-                                                                          (update acc assoc :w w :lambda l))))))
+                                       (cond-> (eng/update-states rn (fn [st] (-> st
+                                                                                  (update fin assoc :bsm (:open now) :open (:end now) :fof (:fof now))
+                                                                                  (update acc assoc :w w :lambda l))))
+                                         p-now (eng/update-params (fn [ps] (reduce #(assoc-in %1 [%2 :sfc] p-now) ps (vals ids)))))))
                                    runners mems)
                           mean-h (fn [hs] (mapv #(/ (reduce + 0.0 %) (count hs)) (apply map vector hs)))
                           innov (map - y (mean-h prior-h))]
                       {:runners rs
-                       :memories (mapv #(assoc % :log (conj (vec (:log %)) {:t t :years ys :n (count os)
-                                                                             :innovation (/ (reduce + 0.0 (map (fn [d o] (Math/abs (/ d (double (:sd o))))) innov os)) (count os))
-                                                                             :after (/ (reduce + 0.0 (map (fn [yv hv o] (Math/abs (/ (- yv hv) (double (:sd o))))) y (mean-h (mapv h post)) os)) (count os))}))
+                       :memories (mapv #(assoc % :log (conj (vec (:log %)) {:t t :years ys :n (count os) :inflation lam
+                                                                             :innovation (/ (reduce + 0.0 (map (fn [d rr] (Math/abs (/ d (Math/sqrt rr)))) innov r)) (count os))
+                                                                             :after (/ (reduce + 0.0 (map (fn [yv hv rr] (Math/abs (/ (- yv hv) (Math/sqrt rr)))) y (mean-h (vec (map-indexed (fn [i x] (h x i)) post))) r)) (count os))}))
                                        mems)}))))}))
 
 ;; -- the members ---------------------------------------------------------------------------

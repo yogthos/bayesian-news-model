@@ -84,6 +84,7 @@
                      (if (zero? i) ms (mapv #(if (shared (:module %)) (assoc % :init nil) %) ms)))))
         by (into {} (map (juxt :module identity)) (first mss))
         g (m/rng (or seed 1))
+        rate-order (:rate (eng/order (first mss)))
         opts {:from from :to to :dt dt :params params :keep keep}]
     (loop [rs (mapv #(eng/runner % opts) mss)
            mems (vec (repeat members (vec (repeat (count analyses) nil))))
@@ -97,7 +98,8 @@
               rs (into [r0] (map #(eng/advance % {:given given}) (rest rs)))
               t (:t r0)
               _ (when on-step
-                  (doseq [id (keys by) :when ((:stepped r0) id)]
+                  (doseq [id rate-order :when ((:stepped r0) id)
+                          :let [m (by id) t (if (and (not (integer? t)) (== (:dt m) (Math/floor (double (:dt m)))) (== t (Math/floor (double t)))) (long t) t)]]
                     (on-step id t (if (or (= 1 members) (shared id))
                                     (get (:cur r0) id)
                                     (aggregate (if (= :world (:place (by id))) "WLD" (name (:place (by id))))

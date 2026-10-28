@@ -398,6 +398,11 @@
 
 (defn update-states "The runner with its states (f states)." [rn f] (update rn :states f))
 
+(defn update-params
+  "The runner with its modules' parameters (f {module {name value}}), as
+  the steps after see them (a recalibration between steps)."
+  [rn f] (update rn :ps f))
+
 (defn result
   "What run returns: {:t [...] :emits {module {var [value per t]}}
   :states {module state}}."

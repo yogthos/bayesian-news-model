@@ -20,11 +20,10 @@
         _ (cp/run-ensemble (fn [_] ms) {:from 2001 :to 2008 :on-step (fn [id t e] (swap! rows into (eng/table-rows (first (filter #(= id (:module %)) ms)) t e)))})]
     (is (= (:emits direct) (:emits (first (:members r)))))
     (is (= (:t direct) (:t r)))
-    (is (= (set (for [m ms [i t] (map-indexed vector (:t direct))
-                      :let [e (into {} (for [[v xs] (get-in direct [:emits (:module m)]) :let [x (nth xs i)] :when (some? x)] [v x]))]
-                      r (eng/table-rows m t e)] r))
-           (set @rows))
-        "the coupled table's rows are the engine's")))
+    (let [engine-rows (atom [])
+          rows-of (fn [acc] (fn [id t e] (swap! acc into (eng/table-rows (first (filter #(= id (:module %)) ms)) t e))))]
+      (eng/run ms {:from 2001 :to 2008 :on-step (rows-of engine-rows)})
+      (is (= @engine-rows @rows) "the coupled table's rows are the engine's, in its order"))))
 
 (defn- counter [id]
   {:module id :group :W :place :world :dt 1 :init 0.0 :reads [] :emits [{:var (str (name id) "/level") :unit "u"}]
@@ -56,14 +55,15 @@
 
 (def truth-obs
   "What becomes known at t of the truth: data year t - 2's closing balance
-  sheet, net lending over output and wage share."
+  sheet and net lending over output, and wage share."
   (fn [t]
     (let [y (- t 2)]
       (when (<= 2001 y 2014)
         (let [end (sfc/apply-fof (truth-at (:sfc-finance ids) "sfc/bsm" y) (truth-at (:sfc-accounts ids) "sfc/fof" y))]
           (vec (concat
-                (for [[i p] (map-indexed vector sa/positions) :let [v (get-in end p)] :when (and v (not (zero? v)))]
-                  {:year y :what [:end i] :y v :sd (max (* 0.02 (Math/abs v)) 0.2)})
+                (for [[i p] (map-indexed vector sa/positions) :let [v (get-in end p)] :when (and v (not (zero? v)))
+                      :let [x (/ v (truth-at (:sfc-accounts ids) "sfc/output" y))]]
+                  {:year y :what [:end i] :y x :sd (max (* 0.02 (Math/abs x)) 0.002)})
                 (for [s [:hh :nfc :gov :row]]
                   {:year y :what [:nl s] :y (truth-at (:sfc-accounts ids) (str "sfc/net-lending-" (name s)) y) :sd 0.003})
                 [{:year y :what [:w] :y (truth-at (:sfc-accounts ids) "sfc/wage-share" y) :sd 0.005}])))))))
@@ -94,7 +94,10 @@
     (testing "the analysis moves the members towards the data"
       (let [log (:log (first (first (:memories r))))]
         (is (seq log))
-        (is (every? #(< (:after %) (:innovation %)) log) "closer after each update than before")))
+        ;; the stochastic update (perturbed observations) need not reduce a
+        ;; misfit already within the noise, but does on the whole
+        (is (< (reduce + (map :after log)) (* 0.8 (reduce + (map :innovation log)))) "closer after the updates than before")
+        (is (>= (count (filter #(< (:after %) (:innovation %)) log)) (* 0.7 (count log))))))
     (testing "and the forecasts with it"
       ;; the wage share is observed, so the members track it; output is not
       ;; (nor trend growth, a parameter the state does not carry)
@@ -141,3 +144,19 @@
     (is (< (Math/abs (- (parse-double (second (out "sheaf/nfc-investment-data" 2003))) (/ 1.0 (sfc-at "sfc/output" 2003)))) 1e-9))
     (is (= [2005] (keep-indexed (fn [i x] (when (seq x) (+ 2001 i))) (get-in r [:emits :consistency "sheaf/nfc-investment"])))
         "written when KLEMS's year becomes known")))
+
+(deftest the-spread-is-inflated-to-the-misfit
+  (let [ens (vec (for [i (range 20)] [(+ 10.0 (* 0.1 (- i 9.5)))]))
+        h (fn [x _] [(first x)])]
+    (is (== 1.0 (sa/inflation ens h [10.0] [0.01] 3.0)) "a misfit within the spread and noise: none")
+    (is (< 2.0 (sa/inflation ens h [13.0] [0.01] 3.0) 3.000001) "a misfit of ten spreads: up to the cap")))
+
+(deftest relearned-parameters-carry-what-the-state-cannot
+  ;; trend growth is a parameter: assimilating the state leaves output off
+  ;; the truth, relearning (here, the truth's own) brings it back
+  (let [out (fn [r] (/ (reduce + (map #(get-in % [:emits (:sfc-accounts ids) "sfc/output" 11]) (:members r))) 24.0))
+        truth-y (truth-at (:sfc-accounts ids) "sfc/output" 2012)
+        plain (ensemble {})
+        relearned (ensemble {:analyses [(sa/analysis {:ids ids :obs truth-obs :relearn (fn [_] truth-p)})]})]
+    (is (< (Math/abs (- (out relearned) truth-y)) (* 0.5 (Math/abs (- (out plain) truth-y)))))
+    (is (every? #(< % 1e-10) (every-member relearned (:sfc-finance ids) "sfc/fof-gap")))))
