@@ -155,7 +155,7 @@
       (doseq [[v rs] inv [t [_ _ dy src]] rs
               :let [k (get-in (eng/emit-for (second (ms)) v) [:known :data-year])]]
         (is (>= (- t dy) k) (str v " " src " " dy " at " t))
-        (when-not (or (re-find #"completion-rate" v) (= v "investment/credit-share-C") (re-find #"credit-share" v))
+        (when-not (re-find #"completion-rate|credit-share" v)
           (is (>= (- t dy) (al/lags src)) (str v " " src " " dy " at " t)))))
     (testing "rates"
       (is (= [[2003 ["KOR" (str 0.1) 2001 "mv"]] [2004 ["KOR" (str 0.1) 2002 "mv"]]] (al "allocation/mv/new-share-C")))

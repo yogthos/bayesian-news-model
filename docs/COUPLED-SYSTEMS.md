@@ -1353,10 +1353,10 @@ investment observed, not by control.
   |---|---|---|---|
   | default | 1: .3, 2: .5, 3: .2 | 1.9 | Koeva (2000, IMF WP/00/138): new plants about two years in most industries, unaffected by the cycle; Kydland & Prescott (1982): four quarters |
   | B mining | 2: .2, 3: .35, 4: .25, 5: .2 | 3.45 | IEA (2021) lead times 2010-2019: 16.5 years from discovery, of which about 1.8 construction planning and 2.6 construction (the split as reproduced by Statista); S&P Global (2024): 17.9 years for mines started 2020-23 |
-  | C19 refining | 2: .15, 3: .35, 4: .3, 5: .1, 6: .1 | 3.65 | greenfield: BP's planned refinery, construction 2011 to start-up 2015; Irving's Eider Rock, 4 years planned, 8 estimated; expansions nearer two |
+  | C19 refining | 2: .15, 3: .35, 4: .3, 5: .1, 6: .1 | 3.65 | greenfield: Irving and BP's Eider Rock (New Brunswick), construction 2011 to start-up 2015 planned, re-planned at 8 years in 2008, then shelved (one project, never built); expansions nearer two |
   | C20 chemicals | 1: .2, 2: .5, 3: .3 | 2.1 | Koeva (2000) |
   | C24-C25 metals | 1: .2, 2: .45, 3: .25, 4: .1 | 2.25 | Koeva (2000); electric arc furnaces 14-36 months (ArcelorMittal Calvert 24, US Steel Fairfield about 24, Hebei Yongyang 14-15, Tata Port Talbot 36 and more); Alcoa Fjardaal smelter 2004-2007 |
-  | D-E power | 2: .1, 3: .25, 4: .3, 5: .15, 6: .1, 7: .1 | 4.2 | EIA AEO2022 EMM Table 3: 2 (PV, turbines), 3 (combined cycle, onshore wind), 4 (coal, hydro, offshore wind), 6 (nuclear); observed (GEM, Little's law, scripts/time-to-build.py): all 4.4, coal 4.2, gas 4.4, wind 3.6, solar 3.1, nuclear 12.9, hydro 13.7 |
+  | D-E power | 2: .1, 3: .25, 4: .3, 5: .15, 6: .1, 7: .1 | 4.2 | EIA AEO2022 EMM Table 3: 2 (PV, turbines), 3 (combined cycle, onshore wind), 4 (coal, hydro, offshore wind), 6 (nuclear); observed (GEM, Little's law, scripts/time-to-build.py): all 4.4, coal 4.2, gas 4.4, wind 3.6, solar 3.1, nuclear 12.9, hydro 13.7, which read long because the pipelines grew; adjusted for growth, all 2.6, coal 2.5, gas 3.1, wind 3.1, solar 1.2 |
 
   Spending is spread evenly over the build, so the share of a year's
   spending that completes L years later is w_L = sum_T p(T) [L < T] / T.
@@ -2325,6 +2325,43 @@ from investment to capacity; nothing reads them as a forecast. Learning
 the time to build from the data (principle 2) and reading capacity at a
 coarser step (half-decade) are the next designs, each to be registered
 before it is scored.
+
+*Review, 28 October 2026 (after the result; nothing registered is
+changed, and the primary and S1 stand as reported).*
+- Known years. The completion rate for year y is built from KLEMS data
+  year y - 1 at its +2 and emitted at y + 1; every engine row is emitted at
+  its known year and the declarations validate. No leak. UNSD, though, is
+  not +2 for these countries: in the October 2026 download no KLEMS
+  country has 2024 power capacity and 2 of 22 have 2024 refining, so it is
+  +3. The registered +2 gives persistence g[n, y-1] and the newest
+  training year a year early for power and refining. Power and refining
+  are 0.7% of the test's error (below), so the pooled skills cannot move
+  by more than about 0.007.
+- What the test measures. Against the mean, the stage rows carry 99.3% of
+  the pooled squared error (mines 71%, metal refineries 17%, smelters
+  11%), power 0.4% and refining 0.3%. The 81 rows clipped at +-1 (2.6%, all
+  stages) carry 44% of it, the 201 with |g| >= 0.5 carry 72%. The pooled
+  skill is the skill on stage output, not on capacity: had power's
+  completion rates moved its capacity one for one (b = 1), power's own
+  skill against the mean would be about +0.32, and the pooled skill would
+  gain about 0.001. The family slopes are the test of capacity proper, and
+  they reject one for one: power b +0.016 (SE 0.104), refining +0.064
+  (0.054), both nine or more standard errors below 1. Half of refining's
+  growth rows are 0 (capacity reported unchanged).
+- The financed rate. Splitting B8G by operating surplus is the model, not
+  a bug: it is where retained profits are earned, and an industry that
+  earns more than it invests (German refining, surplus about its whole
+  capital stock a year) lends the rest, which the credit-share split of
+  -B9 does not see. Splitting by capital or last year's investment would
+  make S1 the KLEMS rate again. The measure is funds available, and by
+  industry it agrees with investment only loosely (correlation 0.45; F
+  and G at 1.7 times, since surplus includes mixed income).
+- The priors. The C19 prior's two greenfield examples were one project,
+  Eider Rock, planned and never built (now cited as such). The GEM
+  Little's-law times read long because the pipelines grew (the script's
+  note had the direction backwards); adjusted for growth they are about
+  2.6 years for all power, against the D-E prior's mean of 4.2. Learning
+  the time to build from the data, the next design, should start there.
 
 ## 10. Ranked plan
 
