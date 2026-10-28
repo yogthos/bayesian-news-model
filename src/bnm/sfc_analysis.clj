@@ -248,8 +248,10 @@
   inflated first (inflation, at most :max-inflation 3), then updated and
   projected. :relearn (fn [t]) -> parameters (bnm.sfc/learn on what is
   known at t) or nil: with it the members step on from each analysis with
-  the parameters relearned (each member's trend growth keeping its
-  deviation from the members' mean, so their spread is not lost), the recalibration of 6c (the state alone
+  the parameters relearned, the same in every member (their spread is
+  the state's from then on: a member's own trend growth, which no
+  observation corrects, kept its draw for decades and drove the
+  innovations up threefold), the recalibration of 6c (the state alone
   cannot move what the parameters hold, the learned positions' targets
   among them). `ids` are all three modules' ids."
   [{:keys [ids obs keep-years max-inflation relearn] :or {keep-years 6 max-inflation 3.0}}]
@@ -306,19 +308,14 @@
                           mems (mapv #(update %1 :years from-vector ys %2) memories post)
                           [wlo whi] sfc/w-bounds [llo lhi] sfc/lambda-bounds
                           p-now (when relearn (relearn t))
-                          ;; the relearned parameters are the members' centre: each keeps
-                          ;; its trend growth's deviation from the members' mean (perturb)
-                          ns (mapv #(double (get-in (eng/params %) [fin :sfc :n])) runners)
-                          n-bar (/ (reduce + 0.0 ns) (count ns))
-                          rs (mapv (fn [rn mem n]
+                          rs (mapv (fn [rn mem]
                                      (let [now (get-in mem [:years (long t)])
                                            w (max wlo (min whi (:w now))) l (max llo (min lhi (:lambda now)))]
                                        (cond-> (eng/update-states rn (fn [st] (-> st
                                                                                   (update fin assoc :bsm (:open now) :open (:end now) :fof (:fof now))
                                                                                   (update acc assoc :w w :lambda l))))
-                                         p-now (eng/update-params (let [p (update p-now :n #(+ (double %) (- n n-bar)))]
-                                                                    (fn [ps] (reduce #(assoc-in %1 [%2 :sfc] p) ps (vals ids))))))))
-                                   runners mems ns)
+                                         p-now (eng/update-params (fn [ps] (reduce #(assoc-in %1 [%2 :sfc] p-now) ps (vals ids)))))))
+                                   runners mems)
                           mean-h (fn [hs] (mapv #(/ (reduce + 0.0 %) (count hs)) (apply map vector hs)))
                           innov (map - y (mean-h prior-h))]
                       {:runners rs

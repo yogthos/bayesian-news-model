@@ -212,16 +212,10 @@
         (is (not= (get-in late ["SIM" 2011 :y]) (get-in p3 ["SIM" 2011 :y])))
         (is (= (:vars (free late kn)) (:vars (free p3 k3))))))))
 
-(deftest relearning-keeps-the-members-parameter-spread
-  ;; the relearned parameters are the members' centre; each member keeps
-  ;; its own trend growth's draw about it, or the ensemble's parameter
-  ;; spread is gone after the first analysis
+(deftest relearned-parameters-are-every-members
+  ;; relearning sets the same parameters in every member and each of its
+  ;; modules: the perturbed trend growth is not kept (no observation
+  ;; corrects a member's own growth, so its draw would compound)
   (let [p-now (assoc truth-p :n 0.05)
-        r (ensemble {:analyses [(sa/analysis {:ids ids :obs truth-obs :relearn (fn [_] p-now)})] :to 2006})
-        ns (map #(get-in % [(:sfc-accounts ids) :sfc :n]) (:params r))
-        n0 (map #(:n (second (sa/perturb fx/st0 fx/p0 % {:seed 3}))) (range 24))
-        mean (fn [xs] (/ (reduce + xs) (count xs)))]
-    (is (= 24 (count (distinct ns))) "every member its own")
-    (is (< (Math/abs (- 0.05 (mean ns))) 1e-12) "about the relearned value")
-    (is (every? #(< (Math/abs %) 1e-12) (map - (map #(- % (mean ns)) ns) (map #(- % (mean n0)) n0))) "each member's draw kept")
-    (is (apply = (map #(get-in (first (:params r)) [% :sfc :n]) (vals ids))) "a member's three modules alike")))
+        r (ensemble {:analyses [(sa/analysis {:ids ids :obs truth-obs :relearn (fn [_] p-now)})] :to 2006})]
+    (is (= #{p-now} (set (for [ps (:params r) id (vals ids)] (get-in ps [id :sfc])))))))
