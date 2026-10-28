@@ -1969,6 +1969,32 @@ in at most 1% of draws. The family can only reach the year node's
 ranking through the quarters' states, so its effect there is diluted;
 the quarter nodes' own scores (5) say whether it times onsets at all.
 
+## Pre-registered, 28 October 2026: fast signals at the quarter node, exchange rates and sovereign spreads (trial FSb, bead bnm-82j.2)
+
+Registered before any run with the family, after trial FSa's registration
+and before any of its runs. Everything as FSa (the model, runs, bench,
+design and test years, tests 1-5, Holm across FSa, FSb and FSc, the harm
+bound, power) but the inputs, six per country, by FSa's three operators
+(change over three months, surprise against the 24 months' line,
+volatility over twelve), from months known one month after they end:
+- the exchange rate: BIS US dollar rates (WS_XRU), monthly, end of
+  period, log local currency per dollar (data/raw/fast-fx): 188 areas,
+  182 of them covering 2001-2022, euro members in euros throughout; the
+  US has none;
+- the sovereign spread: the 10-year government yield (OECD Main Economic
+  Indicators via FRED, IRLTLT01<ISO2>M156N, monthly averages) less the
+  US's, points (data/raw/fast-spreads): 33 countries, 28 covering
+  2001-2022, the OECD members with a series plus South Africa (Russia to
+  2018). Emerging-market spreads proper (J.P. Morgan EMBI) are paid and
+  behind an account, so the spread is unknown (the lattice's mean) for
+  most of the countries where a sovereign default is likeliest; the
+  family's spread half speaks mainly for the advanced economies.
+Market rates and yields are not revised; one current download each
+(ALFRED vintages exist for the yields but would be the same values).
+Runs **fs-b** and **fs-b-placebo** (each country reads the six at the
+next country in sorted order). A country reads its own series, so no
+exposure enters.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
