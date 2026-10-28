@@ -2174,6 +2174,43 @@ Runs **fs-b** and **fs-b-placebo** (each country reads the six at the
 next country in sorted order). A country reads its own series, so no
 exposure enters.
 
+## Pre-registered, 28 October 2026: fast signals at the quarter node, port traffic (trial FSc, bead bnm-82j.2)
+
+Registered before any run with the family, after FSa's and FSb's
+registrations and before any of their runs. Everything as FSa but the
+inputs and the test years. IMF PortWatch (open, no account; the public
+ArcGIS service, data/raw/fast-portwatch), daily port calls by country and
+daily transits through 28 chokepoints from January 2019, summed by month
+(a month known one month after it ends; the current, partial month
+dropped; one current download, re-estimated by PortWatch when its method
+changes, no vintages). Port calls are seasonal, so FSa's change becomes a
+change against a year before, and with seven years of data the trend
+window is shorter. Four inputs per country:
+- port calls: the mean of the latest three months' log calls less the
+  same three months a year before; the latest month's log calls less the
+  line through the 12 months before it (at least 6 known); the standard
+  deviation of the monthly changes over twelve months;
+- chokepoints: total transits, the latest three months against the same
+  three a year before (logs), times the country's trade over output (WDI,
+  read two years back, as FSa's exposures).
+Coverage: port calls for 180 areas (countries with no port, the
+landlocked ones, unknown: the lattice's mean). The inputs exist from the
+origin of June 2020 (fifteen months of data needed); before that the
+group is unknown throughout and the nested model is the node's own.
+Runs **fs-c** and **fs-c-placebo** (each country reads the four at the
+next country in sorted order).
+
+**Test years**: origins 2020-2022 (the year-end origins with the inputs
+known and outcomes published; 2023 on stays locked). No design years. The
+tests are FSa's 1-5 on these origins, the primary in Holm's family with
+FSa and FSb. **Power** on 2020-2022 (data/runs/fast-power): the recall
+test finds +0.056 80% of the time (+0.019 found 48%, +0.105 found 91%);
+its null passes in at most 2% of draws. With three origins in two blocks
+the bootstrap is coarse; the family is equivalent to nothing when the
+primary's upper end is below +0.056 (its detectable gain, not the rule's
++0.03, which these years cannot reach), and its result is mainly a record
+for when more years have closed.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
