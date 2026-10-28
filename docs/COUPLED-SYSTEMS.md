@@ -1677,6 +1677,80 @@ Three kinds of check, each a smoke test or a diagnostic written every year:
     dynamics orders its equations, so modules coupled within the instant
     need no iteration: World3-03 as six modules (bnm.modules.world3)
     matches bnm.world3's run exactly.
+- **Phase B** (bnm-4hv.6, October 2026): bnm.coupled, bnm.sfc-analysis,
+  bnm.modules.consistency and bnm.coupled-run. Every subsystem runs in
+  one causal run: the 19 stock-table modules, allocation and investment,
+  the SFC core per country (35 countries, ids sfc-finance-<iso>), World3-03
+  and a consistency module, 134 modules from 1800 to 2100 at World3's half
+  year. validate is empty and the order is W -> C -> F -> R -> D -> P.
+  Control does not feed allocation (9d found nothing there).
+  - *The runner.* bnm.engine now steps a run one step at a time, so an
+    ensemble's members go in lockstep. Between steps an analysis may
+    replace their states and parameters, never within a step. Modules
+    shared by every member (the tables) are stepped once and given to
+    the others. A :span limits the years a module steps. The table is
+    the members' median, with their spread in sd.
+  - *Assimilation.* Each year, the data that became known update the SFC
+    members: the balance sheet by position, sector net lending, the wage
+    share (all two years on, Tables 720 and 14) and Keen's employment
+    (one year on). They are past years, so the state updated is a window
+    from the oldest year observed to now. It holds that window's
+    opening, each year's flow of funds, closing balance sheet, wage share
+    and employment. The update is the ensemble smoother (augur.enkf),
+    and the members' spread is inflated to match the innovations
+    (at most 3). The identities in the window are linear:
+    - the closing balance sheet equals the opening, revalued, plus the
+      transactions;
+    - each sector's transactions sum to its net lending;
+    - each instrument's transactions sum to zero;
+    - the opening is closed.
+
+    The update is projected onto these identities (augur v0.10-0.12:
+    project, update-constrained). After every update, in every member,
+    the balance sheet, flow of funds and TFM close to below 1e-13 of
+    output (tested at 1e-10). Levels are observed against each member's
+    own output, so the update stays linear. As 6c asks, the parameters
+    are relearned at each analysis on what is known; the state alone
+    cannot move the positions' learned targets.
+  - *Results.* On 32 countries with measured stocks (32 members), the
+    update cuts the misfit to the data. The mean |innovation| falls from
+    6-190 sd units to 3-18, and the identities hold to at most 5e-14.
+    Free runs of five data years after the last assimilated year beat
+    persistence on net lending in 10 of 32 countries. This is the
+    one-year result again: the rules amount to holding ratios.
+    data/derived/coupled/assimilation.txt has the figures.
+  - *Golden checks* (bnm.coupled-run): with one member and no
+    assimilation, the run reproduces phase A exactly. The stock modules'
+    rows match bnm.engine-run's table line for line (7,963,260 rows), and
+    bnm.states reads all 19 tables the same both ways (50,807 variables).
+    Allocation matches bnm.allocation-run's table line for line
+    (586,843). The SFC rows match bnm.sfc-run's free runs as sorted rows
+    (9,450). World3 matches the engine's World3 alone (37,989 rows).
+    The state inputs of the default paths and of states-t45, read by
+    bnm.world-run/states-of from the files and from the coupled table,
+    are byte-identical (1,770,823 bytes). The t44 and t46 world-norel
+    runs read no stock tables, so their byte identity is unaffected by
+    construction.
+  - *Sheaf gaps* (data/derived/coupled/sheaf.txt), written as
+    diagnostics and not reconciled:
+    - Private debt: the SFC core's household and NFC debt against Keen's
+      d. The median gap is 0.26 of GDP. Measured countries agree (USA
+      1.47 against 1.49, DEU 1.37 against 1.41). Imputed stocks do not:
+      ZAF is out by 5.5 of GDP and CRI by 4.4. Imputing stocks from
+      interest at a pooled rate overstates them where lending rates are
+      high (bead bnm-a0s).
+    - Wage share against Keen's omega: the SFC share is on average 0.10
+      lower (D1/GDP against PWT's labour share, which counts mixed
+      income), most of all in GRC, PRT and SVN.
+    - Employment: median 0.015, with BGR 0.33 off.
+    - NFC investment against KLEMS's NFC industries: median 0.013 of
+      GDP. On the data alone (Table 14 S11 P5 against KLEMS) the median
+      is 0.014; IRL is 0.16 (multinationals).
+  - *Free runs* for bnm-cvs: bnm.coupled/free-run takes any modules, and
+    bnm.sfc-analysis/free-run takes a country. Each starts from a data
+    year, assimilates and relearns through an origin, and then runs N
+    years with nothing known after the origin. Both return the members'
+    median and spread per variable.
 
 ## 7. Mapping today's code onto modules
 
