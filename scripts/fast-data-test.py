@@ -76,6 +76,28 @@ class PortwatchTest(unittest.TestCase):
                 fd.portwatch()
 
 
+class FetchMonthTest(unittest.TestCase):
+    def test_a_finished_month_is_cached_and_not_queried_again(self):
+        calls = []
+
+        def mq(layer, y, m, group):
+            calls.append(layer)
+            return ([{"ISO3": "EGY", "s_portcalls": 5, "s_import": 1, "s_export": 2, "n": 31}] if group == "ISO3"
+                    else [{"portid": "c1", "s_n_total": 7, "n": 31}])
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(fd, "PW", d), mock.patch.object(fd, "month_query", mq):
+            a = fd.fetch_month(2021, 1, True)
+            b = fd.fetch_month(2021, 1, True)
+        self.assertEqual(a, b)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(a["ports"], [[2021, 1, "EGY", 5, 1, 2, 31]])
+
+    def test_the_current_month_may_be_empty_and_is_not_cached(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(fd, "PW", d), \
+                mock.patch.object(fd, "month_query", lambda *a: []):
+            self.assertEqual(fd.fetch_month(2026, 10, False), {"ports": [], "chokes": []})
+            self.assertFalse(os.path.exists(os.path.join(d, "months")))
+
+
 class MonthQueryTest(unittest.TestCase):
     def test_a_failing_month_is_summed_by_day(self):
         def arcgis(layer, params):

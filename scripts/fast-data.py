@@ -233,26 +233,46 @@ def month_query(layer, y, m, group):
     return list(acc.values())
 
 
-def portwatch():
+def fetch_month(y, m, final):
+    """One month's ports and chokepoints, cached in data/raw/fast-portwatch/
+    months/ once the month is over (`final`); a finished month must have
+    both, only the current (partial) month may still be empty."""
+    path = os.path.join(PW, "months", f"{y:04d}-{m:02d}.json")
+    if final and os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    ports = [[y, m, a["ISO3"], a["s_portcalls"], a["s_import"], a["s_export"], a["n"]]
+             for a in month_query("Daily_Ports_Data", y, m, "ISO3")]
+    chokes = [[y, m, a["portid"], a["s_n_total"], a["n"]] for a in month_query("Daily_Chokepoints_Data", y, m, "portid")]
+    if final and not (ports and chokes):
+        raise RuntimeError(f"PortWatch returned no ports or no chokepoints for {y}-{m:02d}")
+    got = {"ports": ports, "chokes": chokes}
+    if final:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(got, f)
+        os.replace(path + ".tmp", path)
+    print(y, m, len(ports), len(chokes), flush=True)
+    return got
+
+
+def portwatch(workers=6):
     """Monthly sums by country (port calls, import and export volume, days
-    reported) and by chokepoint (transits), month by month from 2019, one
-    grouped query each (the service groups by one field at a time)."""
+    reported) and by chokepoint (transits), from January 2019, months
+    fetched in parallel (the service is slow and refuses some queries),
+    each finished month cached so a rerun resumes."""
+    from concurrent.futures import ThreadPoolExecutor
     os.makedirs(PW, exist_ok=True)
-    y, m = 2019, 1
     now = time.gmtime()
-    ports, chokes = [], []
-    while (y, m) <= (now.tm_year, now.tm_mon):
-        for a in month_query("Daily_Ports_Data", y, m, "ISO3"):
-            ports.append([y, m, a["ISO3"], a["s_portcalls"], a["s_import"], a["s_export"], a["n"]])
-        for a in month_query("Daily_Chokepoints_Data", y, m, "portid"):
-            chokes.append([y, m, a["portid"], a["s_n_total"], a["n"]])
-        # a month before the current one must have both; only the current
-        # (partial) month may still be empty
-        if (y, m) < (now.tm_year, now.tm_mon) and not (any(p[:2] == [y, m] for p in ports)
-                                                        and any(c[:2] == [y, m] for c in chokes)):
-            raise RuntimeError(f"PortWatch returned no ports or no chokepoints for {y}-{m:02d}")
-        print(y, m, len(ports), len(chokes))
-        y, m = next_month(y, m)
+    months, ym = [], (2019, 1)
+    while ym <= (now.tm_year, now.tm_mon):
+        months.append(ym)
+        ym = next_month(*ym)
+    cur = (now.tm_year, now.tm_mon)
+    with ThreadPoolExecutor(workers) as ex:
+        res = list(ex.map(lambda k: fetch_month(k[0], k[1], k < cur), months))
+    ports = [r for g in res for r in g["ports"]]
+    chokes = [r for g in res for r in g["chokes"]]
     with open(os.path.join(PW, "ports-monthly.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["year", "month", "iso3", "portcalls", "import", "export", "port_days"])
