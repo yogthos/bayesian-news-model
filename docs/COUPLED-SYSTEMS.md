@@ -2309,9 +2309,10 @@ For the record (not tests):
   [-0.012, +0.000]; 2015-2022 -0.002 [-0.006, +0.002].
 - M against a zero-growth forecast: -0.012.
 - S1's refining rows lose badly to the mean (-0.20) when the pooled
-  slope meets Germany's financed rate for refining (0.25-0.35 of capital
-  a year against a KLEMS investment rate near 0.05): splitting retained
-  profits by operating surplus over-finances high-margin industries.
+  slope meets Germany's financed completion rate for refining (0.25-0.35
+  of capital; its financed rate was 0.22-0.57 a year in 2014-2020 against
+  a KLEMS investment rate of 0.13-0.21): splitting retained profits by
+  operating surplus over-finances high-margin industries.
 
 *What this says.* At the yearly step and at these priors, an industry's
 investment rate (or its financed rate) carries no information about the
