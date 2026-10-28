@@ -259,7 +259,17 @@
         r (eng/run [a b] {:from 2000 :to 2005})]
     (is (= [nil nil 0.0 2.0 nil nil] (get-in r [:emits :b "b/level"])))
     (is (= [0.0 1.0 2.0 3.0 4.0 5.0] (get-in r [:emits :a "a/level"])))
-    (is (= 5.0 (get-in r [:states :b])) "its state stays where its span ended")))
+    (is (= 5.0 (get-in r [:states :b])) "its state stays where its span ended")
+    (testing "outside its span its readers see nothing, not its last emits"
+      (let [seen (atom [])
+            c {:module :c :group :P :place :world :dt 1 :init nil :reads [{:var "b/level" :unit "u"}] :emits []
+               :step (fn [s in _ t _] (swap! seen conj [t (get in "b/level")]) {:state s :emits {}})}
+            lagged (assoc c :module :d :reads [{:var "b/level" :unit "u" :lag 1}])]
+        (eng/run [a b c] {:from 2000 :to 2005})
+        (is (= [[2000 nil] [2001 nil] [2002 0.0] [2003 2.0] [2004 nil] [2005 nil]] @seen))
+        (reset! seen [])
+        (eng/run [a b lagged] {:from 2000 :to 2005})
+        (is (= [[2000 nil] [2001 nil] [2002 nil] [2003 0.0] [2004 2.0] [2005 nil]] @seen))))))
 
 (deftest a-yearly-module-sees-whole-years-in-a-half-year-run
   (let [seen (atom [])

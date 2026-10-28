@@ -67,7 +67,7 @@
   and parameters (update-params) between steps, never within one. A
   module :given to advance is not stepped (a module shared by the
   members, stepped once); a module with a :span [from to] steps only
-  within it; a module whose :dt is whole sees whole-number years in a
+  within it, and is read only within it; a module whose :dt is whole sees whole-number years in a
   finer run. The rules above hold unchanged in every member."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -407,6 +407,8 @@
 
 (defn update-states "The runner with its states (f states)." [rn f] (update rn :states f))
 
+(defn params "The modules' parameters, {module {name value}}." [rn] (:ps rn))
+
 (defn update-params
   "The runner with its modules' parameters (f {module {name value}}), as
   the steps after see them (a recalibration between steps)."
@@ -441,6 +443,8 @@
                                      (throw (ex-info (str "bnm.engine: " id "'s observe gives " v ", not a declared level") {:module id :var v})))
                                    (check-known! id d v tm x))
                                  (assoc cur id e))
+                               ;; outside its span a module has nothing to read
+                               (not (in-span? m t)) cur
                                :else (assoc cur id (get-in hist [(dec i) id])))))
                      {} lo)
          level-cur cur
@@ -479,7 +483,8 @@
   "Steps the modules from `from` to `to` (both included) by `dt` (the
   finest module's by default), each module every its own :dt, in causal
   order: per step the level pass, then the rate pass. A module with a
-  :span [from to] steps only within it (its state kept outside). A module
+  :span [from to] steps only within it (its state kept outside, its
+  emits not read outside). A module
   whose :dt is whole sees an integral time as a whole number. opts:
   :params {module {name value}} over the declared values, :on-step (fn
   [module t emits]) called for every module's emits each step it steps,
