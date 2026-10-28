@@ -6,6 +6,7 @@ response must stop the build loudly, never return nothing.
 import importlib.util
 import io
 import json
+import math
 import os
 import sys
 import tempfile
@@ -176,6 +177,45 @@ class BuildTest(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"openpyxl": fake}):
             with self.assertRaises(SystemExit):
                 fd.pinksheet("unused.xlsx")
+
+
+def bis_zip(path, rows):
+    """A WS_XRU flat file with `rows` [(iso2, "YYYY-MM", value)], monthly,
+    end of period."""
+    import zipfile
+    buf = io.StringIO()
+    buf.write("FREQ:Frequency,REF_AREA:Reference area,COLLECTION:Collection,TIME_PERIOD:Time period,OBS_VALUE:Value\n")
+    for a2, ym, v in rows:
+        buf.write(f"M:Monthly,{a2}:Area,E:End of period,{ym},{v}\n")
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("WS_XRU_csv_flat.csv", buf.getvalue())
+
+
+class FxTest(unittest.TestCase):
+    def series(self, rows):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "x.zip")
+            bis_zip(path, rows)
+            out = fd.fx({"VE": "VEN", "AR": "ARG", "US": "USA"}, path)
+        return {(r[0], r[3][:7]): float(r[5]) for r in out}
+
+    def test_a_redenomination_is_not_an_appreciation(self):
+        # the bolivar lost six zeros in October 2021: the series continues
+        # in the new units, the months before shifted by the break
+        s = self.series([("VE", "2021-08", 4000000.0), ("VE", "2021-09", 4100000.0),
+                         ("VE", "2021-10", 4.3), ("VE", "2021-11", 4.6)])
+        self.assertAlmostEqual(s[("VEN", "2021-10")] - s[("VEN", "2021-09")], 0.0)
+        self.assertAlmostEqual(s[("VEN", "2021-09")] - s[("VEN", "2021-08")], math.log(4.1 / 4.0))
+        self.assertAlmostEqual(s[("VEN", "2021-11")], math.log(4.6), msg="the latest units kept")
+
+    def test_a_devaluation_and_an_appreciation_are_kept(self):
+        s = self.series([("AR", "2001-12", 1.0), ("AR", "2002-01", 1.0), ("AR", "2002-02", 2.1),
+                         ("AR", "2002-03", 3.0), ("AR", "2002-04", 1.2)])
+        self.assertAlmostEqual(s[("ARG", "2002-02")] - s[("ARG", "2002-01")], math.log(2.1))
+        self.assertAlmostEqual(s[("ARG", "2002-04")] - s[("ARG", "2002-03")], math.log(1.2 / 3.0))
+
+    def test_the_us_has_none(self):
+        self.assertFalse(any(k[0] == "USA" for k in self.series([("US", "2001-01", 1.0)])))
 
 
 if __name__ == "__main__":

@@ -127,8 +127,26 @@ def pinksheet(path=os.path.join(RAW, "fast-pinksheet", "CMO-Historical-Data-Mont
 
 # --- exchange rates ----------------------------------------------------------------
 
+# a currency never gains twentyfold against the dollar in a month: such a
+# fall in the rate is a redenomination (the bolivar's six zeros in 2021,
+# the Zimbabwe dollar's ten in 2008, the lira into euros in San Marino)
+REDENOMINATION = -math.log(20.0)
+
+
+def splice(points):
+    """[(y, m, log rate)] sorted by month, continued in the latest units:
+    at a redenomination the months before shift by the break, so the
+    month's change reads 0 rather than the currency's new zeros."""
+    out = list(points)
+    for i in range(len(out) - 1, 0, -1):
+        d = out[i][2] - out[i - 1][2]
+        if d < REDENOMINATION:
+            out[:i] = [(y, m, v + d) for y, m, v in out[:i]]
+    return out
+
+
 def fx(iso3, path=os.path.join(RAW, "fast-fx", "WS_XRU_csv_flat.zip")):
-    out = []
+    by = {}
     z = zipfile.ZipFile(path)
     name = z.namelist()[0]
     with z.open(name) as f:
@@ -146,8 +164,8 @@ def fx(iso3, path=os.path.join(RAW, "fast-fx", "WS_XRU_csv_flat.zip")):
                 continue
             x = float(v)
             if x > 0:
-                out.append(row(a3, "fast/fx", int(mt.group(1)), int(mt.group(2)), math.log(x)))
-    return out
+                by.setdefault(a3, []).append((int(mt.group(1)), int(mt.group(2)), math.log(x)))
+    return [row(a3, "fast/fx", y, m, v) for a3 in sorted(by) for y, m, v in splice(sorted(by[a3]))]
 
 
 # --- sovereign spreads -------------------------------------------------------------
