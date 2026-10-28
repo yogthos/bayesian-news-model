@@ -2148,6 +2148,38 @@ in at most 1% of draws. The family can only reach the year node's
 ranking through the quarters' states, so its effect there is diluted;
 the quarter nodes' own scores (5) say whether it times onsets at all.
 
+**Result, 28 October 2026 (trial FSa).** Runs fs-a, fs-a-placebo and
+fs-norel on b4ab000 (data/runs/fs-a/fast-score.txt). fs-norel's
+forecasts are byte-identical to t44-world-norel's for all thirteen kinds.
+1. **Primary**, top-10 recall on hard onsets, origins 2003-2022: 0.268
+   against the bench's 0.274, **-0.006 [-0.015, +0.001]**, one-sided p
+   0.92: no gain, and **equivalent to nothing** (upper end below +0.03).
+   Holm across the three families (p 0.92, 0.73, 1.00): none rejects.
+   Design years 1980-2002, for the record: -0.004 [-0.010, -0.000].
+2. Against its placebo: +0.006 [+0.001, +0.012]. The real exposures rank
+   better than another country's, but neither beats the base: the
+   scrambled inputs cost more than the real ones, as in trials 44 and 45.
+3. **Harm**: the year nodes' pooled Brier -0.00077 [-0.00229, +0.00040]
+   has its lower end below -0.0003, so harm is not ruled out; the quarter
+   nodes lose outright, Brier -0.00043 [-0.00086, -0.00006], log -0.00220
+   [-0.00415, -0.00061], most of it food price shocks (-0.00259) and
+   fiscal consolidations (-0.00179) at the quarter, the same two at the
+   year (-0.01065, -0.00282). Currency crises' year node gains +0.00018
+   [+0.00005, +0.00034], not past Holm over thirteen kinds.
+4. **Not adopted**: equivalent to nothing on the watch list, and the harm
+   bound is crossed.
+5. Record: hard rows k = 5 +0.000, k = 20 +0.002, 10% -0.004, all level;
+   all rows k = 5 +0.004 [+0.001, +0.008] (a gain on the shortest list),
+   k = 10 -0.004; lead 3.4 against 3.5 origins. The run against
+   persistence +0.065 [+0.041, +0.085] and climatology +0.031 [+0.012,
+   +0.054], the bench's standing (+0.071 and +0.037) slightly reduced.
+
+World commodity prices through exposure do not tell which countries to
+watch beyond the base, and at the quarter they cost: the nested group,
+learning online over sixty years of mostly quiet price moves, adds noise
+to the quarters' timing of the two kinds whose quarters already read
+world food and oil prices (bnm.named).
+
 ## Pre-registered, 28 October 2026: fast signals at the quarter node, exchange rates and sovereign spreads (trial FSb, bead bnm-82j.2)
 
 Registered before any run with the family, after trial FSa's registration
@@ -2173,6 +2205,33 @@ Market rates and yields are not revised; one current download each
 Runs **fs-b** and **fs-b-placebo** (each country reads the six at the
 next country in sorted order). A country reads its own series, so no
 exposure enters.
+
+**Result, 28 October 2026 (trial FSb).** Runs fs-b and fs-b-placebo
+(data/runs/fs-b/fast-score.txt), bench fs-norel.
+1. **Primary**, top-10 recall on hard onsets, origins 2003-2022: 0.269
+   against 0.274, **-0.005 [-0.018, +0.007]**, one-sided p 0.73: no gain,
+   **equivalent to nothing**; Holm: none of the three rejects. Design
+   years: -0.008 [-0.016, +0.000].
+2. Against its placebo: -0.005 [-0.018, +0.005]; on hard rows the placebo
+   is ahead at k = 5 (-0.011), 20 (-0.012) and 10% (-0.017), all with
+   upper ends below 0.
+3. **Harm**: year nodes' pooled Brier +0.00015 [-0.00058, +0.00084]: no
+   loss, but the lower end is below -0.0003, so by the bound harm is not
+   ruled out; quarter nodes -0.00015 [-0.00048, +0.00015], level, with
+   currency crises (-0.00016 [-0.00033, -0.00002]) and food price shocks
+   (-0.00106) losing at the quarter. Protest surges' year node gains
+   +0.00047 [+0.00004, +0.00105], not past Holm.
+4. **Not adopted**: equivalent to nothing, and the harm bound is crossed.
+5. Record: hard rows k = 5 -0.009 [-0.018, -0.001] (a loss), k = 20
+   -0.007, 10% -0.012; all rows level; lead 3.3 against 3.5. Sovereign
+   defaults' hard recall rises 0.065 to 0.104 (77 onsets) and currency
+   crises' falls 0.282 to 0.268.
+
+Exchange-rate moves and the spreads that exist openly add nothing to
+the watch list. Where the family should matter most, sovereign defaults
+and currency crises, the spread is unknown for nearly every emerging
+market (EMBI is paid), and the currency's own fall is mostly already in
+the financial quarters' credit and asset inputs.
 
 ## Pre-registered, 28 October 2026: fast signals at the quarter node, port traffic (trial FSc, bead bnm-82j.2)
 
@@ -2210,6 +2269,31 @@ the bootstrap is coarse; the family is equivalent to nothing when the
 primary's upper end is below +0.056 (its detectable gain, not the rule's
 +0.03, which these years cannot reach), and its result is mainly a record
 for when more years have closed.
+
+**Result, 28 October 2026 (trial FSc).** Runs fs-c and fs-c-placebo
+(data/runs/fs-c/fast-score.txt), bench fs-norel, origins 2020-2022.
+1. **Primary**, top-10 recall on hard onsets: 0.246 against 0.246,
+   **+0.000 [+0.000, +0.000]** (no hard top-10 list changed at the three
+   origins), one-sided p 1.00: **equivalent to nothing** (upper end below
+   +0.056); Holm: none rejects. Design years 1980-2002 (no port data, so
+   only the learning path differs): +0.002 [-0.002, +0.004].
+2. Against its placebo: -0.013 [-0.017, -0.013], the placebo ahead.
+3. **Harm**: year nodes' pooled Brier -0.00059 [-0.00111, -0.00010], a
+   loss past the bound (market crashes -0.00667 on 9 onsets); quarter
+   nodes Brier -0.00022 [-0.00125, +0.00086], log +0.01647 [+0.00276,
+   +0.03036]: food price shocks' quarters gain (+0.01221 [+0.00179,
+   +0.02306], 553 onsets) while violence surges (-0.00375), growth
+   collapses (-0.00787), conflict onsets and protest surges lose.
+4. **Not adopted**: equivalent to nothing, and harm.
+5. Record: hard rows k = 5 +0.001, k = 20 +0.009 [+0.009, +0.015], 10%
+   -0.011; all rows k = 10 +0.019 [+0.012, +0.045], k = 5 -0.010. Three
+   origins in two blocks make these intervals near-degenerate; they are a
+   record, not evidence.
+
+Port traffic has three scored years. The one clear signal, food price
+shocks' quarters in 2020-2022 (the pandemic's shipping disruption and
+2022), is what a single episode can give and would need the years after
+2022, locked now, to be tested.
 
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
