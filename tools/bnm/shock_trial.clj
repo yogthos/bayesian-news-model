@@ -98,27 +98,38 @@
   {:t (:t r) :y (:y r) :o 0.0
    :x (double-array (cons (logit (:p r)) (when src (get-in r [:x src]))))})
 
+(defn warm-up?
+  "Whether the base's forecast at origin `t` came before it had read any
+  published outcome of a kind whose first origin is `first-origin`: its
+  year node is still at its prior (p near 0.5 for every country), not a
+  forecast to recalibrate."
+  [t lag first-origin]
+  (< (fit-cut t lag) first-origin))
+
 (defn forecasts
   "Rows of one kind with :p {:base :bp :s :plc :tim} at origins from..to,
-  each origin's models fitted on the rows from `fit-from` to its fit-cut."
-  [rows {:keys [lag from to fit-from]}]
-  (vec (apply concat
-              (pmap (fn [t]
-                      (let [cut (fit-cut t lag)
-                            fit (filterv #(<= fit-from (:t %) cut) rows)
-                            score (filterv #(= t (:t %)) rows)
-                            base (fn [r] (assoc r :p (zipmap [:base :bp :s :plc :tim] (repeat (:p r)))))]
-                        (if (< (count (filter :y fit)) min-onsets)
-                          (map base score)
-                          (let [preds (into {} (for [[id src] models
-                                                     :let [fr (mapv #(drow % src) fit)
-                                                           k (alength ^doubles (:x (first fr)))
-                                                           f (at/fit-fe fr k (vec (cons 1e-4 (repeat (dec k) lambda))))
-                                                           a (at/level f fr)]]
-                                                 [id (mapv #(m/expit (+ a (at/linear f (drow % src)))) score)]))]
-                            (map-indexed (fn [i r] (assoc r :p (assoc (update-vals preds #(nth % i)) :base (:p r))))
-                                         score)))))
-                    (range from (inc to))))))
+  each origin's models fitted on the rows from `fit-from` to its fit-cut,
+  the base's warm-up rows left out (`first-origin`, the kind's first
+  origin, defaults to the rows' first)."
+  [rows {:keys [lag from to fit-from first-origin]}]
+  (let [first-origin (or first-origin (reduce min (map :t rows)))]
+    (vec (apply concat
+                (pmap (fn [t]
+                        (let [cut (fit-cut t lag)
+                              fit (filterv #(and (<= fit-from (:t %) cut) (not (warm-up? (:t %) lag first-origin))) rows)
+                              score (filterv #(= t (:t %)) rows)
+                              base (fn [r] (assoc r :p (zipmap [:base :bp :s :plc :tim] (repeat (:p r)))))]
+                          (if (< (count (filter :y fit)) min-onsets)
+                            (map base score)
+                            (let [preds (into {} (for [[id src] models
+                                                       :let [fr (mapv #(drow % src) fit)
+                                                             k (alength ^doubles (:x (first fr)))
+                                                             f (at/fit-fe fr k (vec (cons 1e-4 (repeat (dec k) lambda))))
+                                                             a (at/level f fr)]]
+                                                   [id (mapv #(m/expit (+ a (at/linear f (drow % src)))) score)]))]
+                              (map-indexed (fn [i r] (assoc r :p (assoc (update-vals preds #(nth % i)) :base (:p r))))
+                                           score)))))
+                      (range from (inc to)))))))
 
 ;; --- rows ---------------------------------------------------------------------------------
 
@@ -209,7 +220,11 @@
                                                        :hard (count (filter :hard rs)) :hard-onsets (count (filter #(and (:hard %) (:y %)) rs))
                                                        :refit (count (remove #(= (get-in % [:p :s]) (get-in % [:p :base])) rs))}]))}))
 
-(def equivalence "The registered watch-list bound." 0.03)
+(def equivalence
+  "The registered bound: the gain the power check finds 80% of the time on
+  these three kinds' hard rows (data/runs/sequencing/shock-trial-power.txt)."
+  0.047)
+(def rule-bound "The watch-list rule's bound (seven to thirteen kinds), reported too." 0.03)
 (def harm-log "Harm when the lower end of :s less :bp, log per row, is below this." -0.002)
 
 (defn verdict
@@ -249,6 +264,10 @@
     (say (format "  Brier s-bp %s" (fmtd (:s-bp brier))))
     (say "AUC per kind: base / bp / s / plc / tim")
     (doseq [[[kd sample] v] auc] (say (format "  %-18s %-4s %s" kd (name sample) (str/join " / " (map #(f3 (v %)) [:base :bp :s :plc :tim])))))
+    (say (format "Primary upper end %+.4f: below the registered bound +%.3f %s, below the rule's +%.2f %s"
+                 (:hi (get-in cmp [[:hard 10] :pairs [:s :base]])) equivalence
+                 (< (:hi (get-in cmp [[:hard 10] :pairs [:s :base]])) equivalence)
+                 rule-bound (< (:hi (get-in cmp [[:hard 10] :pairs [:s :base]])) rule-bound)))
     (say "Verdict:" (verdict res))))
 
 (defn- coverage [say panels from to]
@@ -285,12 +304,14 @@
             perm (ss/derangement isos seed)
             scored (into {} (for [kd kds]
                               [kd (forecasts (with-features (rows kd) panels perm (cats kd))
-                                             {:lag (:known-lag (cats kd) 0) :from from :to to :fit-from 1980})]))
+                                             {:lag (:known-lag (cats kd) 0) :from from :to to :fit-from 1980
+                                              :first-origin (reduce min (map :t (at/year-rows run kd)))})]))
             o (assoc opts :from from :to to)]
         (say (format "Supply shocks as event triggers (bnm.shock-trial), %s, run %s, kinds %s"
                      (if design "design years" "registered test") run (str/join "," kds)))
         (say (format "Fits refitted at each origin on origins 1980 to fit-cut; ridge %.0f; losses log(1 + L/%.2f); placebos: derangement seed %d, time %d years late"
                      lambda scale seed time-lag))
+        (say "The base's warm-up rows (origins before it had read a published outcome, p near 0.5) left out of the fits")
         (coverage say panels from to)
         (report say (evaluate scored cats o) o)
         (io/make-parents path)

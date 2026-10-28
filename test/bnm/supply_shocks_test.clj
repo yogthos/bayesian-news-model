@@ -84,14 +84,13 @@
       (is (nil? (ss/family-loss db "energy" "C" 2010))))))
 
 (deftest nothing-known-later-enters
-  (let [late (conj rows {:source "psd" :iso "X" :product "wheat" :year 2010 :known 2011 :variable "exports" :value 0.0})
-        db0 (ss/index rows flows)
-        db1 (ss/index (remove #(and (= "X" (:iso %)) (= 2010 (:year %))) rows) flows)
-        db2 (ss/index (map #(if (and (= "X" (:iso %)) (= 2010 (:year %))) (assoc % :known 2011) %) rows) flows)]
-    (is (some? db0))
+  (let [x2010? #(and (= "X" (:iso %)) (= 2010 (:year %)))
+        db1 (ss/index (remove x2010? rows) flows)
+        db2 (ss/index (map #(if (x2010? %) (assoc % :known 2011) %) rows) flows)]
     (is (= (ss/family-loss db1 "food" "C" 2010) (ss/family-loss db2 "food" "C" 2010))
         "a value known only in 2011 is as if absent in 2010")
-    (is (some? late))))
+    (is (< (ss/family-loss db2 "food" "C" 2010) (ss/family-loss (ss/index rows flows) "food" "C" 2010))
+        "and known in 2010 it counts")))
 
 (deftest placebos
   (let [panel {"A" {2000 1.0} "B" {2000 2.0} "C" {2000 3.0} "D" {2001 4.0}}]

@@ -59,3 +59,34 @@
       (let [quiet (mapv #(assoc % :y (and (= 2009 (:t %)) (= "C1" (:c %)))) rows)
             o (st/forecasts quiet {:lag 3 :from 2003 :to 2004 :fit-from 1990})]
         (is (every? #(= (get-in % [:p :base]) (get-in % [:p :s]) (get-in % [:p :bp])) o))))))
+
+(deftest verdict-by-the-registered-rule
+  (let [res (fn [lo hi plc-lo log-lo]
+              {:cmp {[:hard 10] {:pairs {[:s :base] {:diff (/ (+ lo hi) 2) :lo lo :hi hi}
+                                         [:s :plc] {:diff 0.0 :lo plc-lo :hi 0.1}}}}
+               :log {:s-bp {:diff 0.0 :lo log-lo :hi 0.01}}})]
+    (is (= "fail (equivalent to nothing)" (st/verdict (res -0.05 0.04 0.0 0.0)))
+        "the registered bound is +0.047 (the power check's), not the rule's +0.03")
+    (is (= "level" (st/verdict (res -0.05 0.05 0.0 0.0))))
+    (is (= "pass" (st/verdict (res 0.01 0.08 0.01 0.0))))
+    (is (= "level" (st/verdict (res 0.01 0.08 -0.01 0.0))) "no gain over the placebo")
+    (is (= "fail (equivalent to nothing on the watch list; no harm on log not shown)" (st/verdict (res -0.05 0.01 0.0 -0.01))))))
+
+(deftest the-bases-warm-up-rows-stay-out-of-the-fits
+  ;; before the base has read any published outcome (fit-cut of the origin before the kind's first
+  ;; origin) its year node sits at its prior, p near 0.5 for every country: not a forecast to recalibrate
+  (let [g (m/rng 5)
+        rows (mapv (fn [r] (if (< (st/fit-cut (:t r) 3) 1990)
+                             (assoc r :p (+ 0.5 (* 0.001 (m/next-double! g))))
+                             r))
+                   (synthetic 3))
+        flip (mapv #(if (< (st/fit-cut (:t %) 3) 1990) (update % :y not) %) rows)
+        out (st/forecasts rows {:lag 3 :from 2000 :to 2004 :fit-from 1990})
+        out2 (st/forecasts flip {:lag 3 :from 2000 :to 2004 :fit-from 1990})]
+    (is (= (map #(get-in % [:p :bp]) out) (map #(get-in % [:p :bp]) out2))
+        "the warm-up rows' outcomes change nothing")
+    (is (= (map #(get-in % [:p :s]) out) (map #(get-in % [:p :s]) out2)))
+    (testing "the first origin can be given (rows before the trial's window)"
+      (let [late (st/forecasts (filterv #(>= (:t %) 1991) rows) {:lag 3 :from 2000 :to 2004 :fit-from 1990 :first-origin 1990})]
+        (is (= (map #(get-in % [:p :bp]) out) (map #(get-in % [:p :bp]) late))
+            "1991-92 are warm-up rows of a kind that starts in 1990, wherever the rows passed start")))))
