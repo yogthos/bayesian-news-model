@@ -2295,6 +2295,99 @@ shocks' quarters in 2020-2022 (the pandemic's shipping disruption and
 2022), is what a single episode can give and would need the years after
 2022, locked now, to be tested.
 
+**Review and corrections after the outcome, 28 October 2026 (trials
+FSa-FSc, bead bnm-82j.2).** Fixes made after the results were seen; the
+registered results above stand as run, and nothing in the registrations
+changes.
+- Known-year honesty: a test now perturbs every fast series after an
+  origin, and every exposure after the origin less two years, and checks
+  that each family's inputs and the lattice's forecasts to that origin
+  do not move (bnm.fast-test). They do not. The spot checks light up
+  where they should: food's three-month change at the March 2008 origin
+  (+0.19), energy times net fuel exports at December 2008 and through
+  the 2014-15 collapse (Saudi Arabia +0.57, +0.20, +0.25), fertiliser
+  at December 2021 and June 2022, the dollar rate at ARG March 2002 and
+  June-September 2018, TUR September 2018, RUS December 2014, EGY
+  December 2016 (never the quarter before).
+- The coupling (a bug, bnm.lattice): the levels' coupling shared the
+  nested group's coefficients between adjacent levels. A nested group's
+  model reads all the node reads, flows included, and the all-inputs
+  model it is weighed against is never coupled, so the averaging set
+  the node with the group and the coupling against the node without
+  either. FSc showed it: with no port data before 2019 its group was
+  all unknown, yet it held 0.96 of the protest quarters' weight in
+  2002. The coupling now skips nested groups. Trials 43-45 nested their
+  links the same way and are affected too (bead bnm-5r4).
+- Exchange-rate redenominations (a bug, scripts/fast-data.py): BIS
+  rates carry new zeros as a fall in the rate (the bolivar in 2021, -13.8
+  in a month; Zimbabwe 2008 and 2019; San Marino's lira; Laos;
+  Macedonia), which doubled the panel's spread of the three-month change
+  (0.106 to 0.194 by 2022). A twentyfold monthly appreciation is now
+  read as a redenomination and spliced. data/fast/series-fs-trials.tsv
+  keeps what the trials read.
+- Power: data/runs/fast-power was computed before the base's warm-up
+  rows were left out of the simulation (bead bnm-0cf); rerun, the
+  detectable gain on 2003-2022 is +0.034 (registered +0.033); 2020-2022
+  unchanged at +0.056. The primary with the warm-up rows (food price
+  shocks 2003-2006) left out: FSa -0.005 [-0.015, +0.002], FSb -0.003
+  [-0.018, +0.009].
+Rerun with the fixes (placebos not rerun), each against fs-norel, the
+registered result first:
+- FSa (coupling): primary -0.006 [-0.015, +0.001] / **-0.009 [-0.024,
+  +0.001]**; year nodes' Brier -0.00077 [-0.00229, +0.00040] / -0.00106
+  [-0.00239, +0.00004]; quarters -0.00043 / -0.00076 [-0.00125,
+  -0.00029] (fs-a-fix);
+- FSb (coupling, then also the redenominations): -0.005 [-0.018,
+  +0.007] / -0.005 [-0.020, +0.007] / **-0.004 [-0.018, +0.006]**; year
+  Brier +0.00015 [-0.00058, +0.00084] / +0.00066 [-0.00037, +0.00182] /
+  +0.00067 [-0.00037, +0.00181] (fs-b-fix, fs-b-fix2);
+- FSc (coupling), 2020-2022: +0.000 [+0.000, +0.000] / **-0.012
+  [-0.014, +0.000]**; year Brier -0.00059 [-0.00111, -0.00010] /
+  -0.00013 [-0.00065, +0.00045] (fs-c-fix); design years +0.002 /
+  -0.004.
+No verdict changes: each is equivalent to nothing, each lower Brier end
+is below -0.0003, none is adopted.
+
+**The cost of a group (reported only).** A group of nine standard
+normal draws per country and origin at the quarter nodes, FSa's width,
+nothing in it (bnm.fast-run --family noise; fs-noise on the trials'
+code, fs-noise-fix with the coupling fixed):
+- primary +0.012 [+0.001, +0.023], p 0.026 / **+0.014 [+0.005, +0.021],
+  p 0.001**: noise "gains" on the watch list;
+- year nodes' Brier -0.00220 [-0.00425, -0.00048] / -0.00215 [-0.00406,
+  -0.00050], log -0.0050 / -0.0054: a loss twice FSa's, past the harm
+  bound; quarters level (-0.00013).
+Two things follow. The harm bound, as registered, is crossed by any
+group: the year nodes lose more to noise than to the commodity prices,
+so crossing it says the group costs what a group costs, not that the
+signal harms. And the primary's interval draws origins, not models: any
+change at the quarters reshuffles the year node's top ten, and a
+reshuffle can clear the bound by chance (here with p 0.001), so a
+primary gain means little without the placebo test (2), which is what
+guards it. FSa beating its placebo (+0.006) while losing to the base
+fits the same reading: the scrambled exposure costs a little more than
+the real one, both cost what nine added coefficients cost.
+
+**Against T1(b).** T1(b) passed after the warm-up fix, food import
+exposure +0.102 per SD. It is a different object from FSa's food input:
+T1's state is the food import share times the world grain price gap
+(wheat, maize and rice against their cycle equilibria: a level, slow),
+demeaned by year, so it is the cross-section of exposure in the years
+grain is dear; it is fitted offline with the base as offset, at the
+year node, on two kinds (protest surges and food price shocks, the code
+pools both though the registration names protest surges). FSa's input is
+the share times the Pink Sheet food index's three-month change, surprise
+and volatility, not demeaned, read online at the quarter among nine
+coefficients and reaching the year only through the quarters' states,
+scored over thirteen kinds; when world food prices are quiet it is near
+zero for every country, so the level of exposure, T1's signal, is not in
+it. The political kinds' quarters already read world food prices' twelve
+-month change times the import share (bnm.named). FSa's food price
+shocks loss is one origin, 2011 (year node mean p 0.62 against the
+base's 0.41, outcome rate 0.05), where the 2010-11 price spike did not
+bring 2007-08's onsets back. No bug was found on either side beyond
+those above.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
