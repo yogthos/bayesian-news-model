@@ -160,3 +160,14 @@
         relearned (ensemble {:analyses [(sa/analysis {:ids ids :obs truth-obs :relearn (fn [_] truth-p)})]})]
     (is (< (Math/abs (- (out relearned) truth-y)) (* 0.5 (Math/abs (- (out plain) truth-y)))))
     (is (every? #(< % 1e-10) (every-member relearned (:sfc-finance ids) "sfc/fof-gap")))))
+
+(deftest a-free-run-from-the-panel
+  (when (.exists (io/file "data/derived/sfc/panel.csv"))
+    (let [panel (sfc/read-panel "data/derived/sfc/panel.csv")
+          kn (sfc/read-keen "data/derived/stocks/keen.csv")
+          r (sa/free-run panel kn "DEU" {:start 1995 :origin 2012 :years 4 :members 6})]
+      (is (= (range 1996 2017) (:t r)))
+      (is (= (range 1998 2013) (:analysed r)) "data years 1996 on, known two years later, through the origin")
+      (is (every? number? (get-in r [:vars "sfc/output" :median])))
+      (is (every? pos? (drop-last 0 (get-in r [:vars "sfc/output" :sd]))) "a spread every year")
+      (is (every? #(< % 1e-10) (for [m (:members (:result r)) x (get-in m [:emits :sfc-finance-DEU "sfc/fof-gap"]) :when x] x))))))

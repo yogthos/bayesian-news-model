@@ -41,6 +41,7 @@
   registered comparison would test against a smaller state."
   (:require [augur.enkf :as enkf]
             [augur.math :as m]
+            [bnm.coupled :as cp]
             [bnm.engine :as eng]
             [bnm.modules.sfc :as msfc]
             [bnm.sfc :as sfc]))
@@ -324,3 +325,37 @@
 
 (defn ids-of "The three modules' ids for `iso` with country ids." [iso]
   (into {} (for [k [:sfc-finance :sfc-firms :sfc-accounts]] [k (keyword (str (name k) "-" iso))])))
+
+;; -- free runs for scoring -----------------------------------------------------------------
+
+(defn free-run
+  "A free run of `iso`'s SFC core for scoring at horizons (bnm-cvs): its
+  members start from data year :start (its first year with measured
+  stocks and flows by default; bnm.sfc/init, parameters learned there),
+  are assimilated each year through engine year :origin with the
+  parameters relearned on what is known (data years to origin - 2, the
+  panel's vintage), then run :years more with nothing known after the
+  origin. :members (32) and :seed; with one member nothing is
+  assimilated (the phase A free run from :start). Returns {:t [...]
+  :analysed [...] :vars {variable {:median [...] :sd [...]}}} for the
+  accounts module's numeric emits (sfc/output, sfc/net-lending-*, ...),
+  and :result, run-ensemble's."
+  [panel kn iso {:keys [start origin years members seed] :or {members 32 seed 1}}]
+  (let [start (or start (first (sort (for [[y ob] (get panel iso) :when (and (:flows-ok ob) (:b ob))] y))))
+        p (sfc/learn panel kn iso start {})
+        st (sfc/init panel kn iso start p)
+        ids (ids-of iso)
+        an (analysis {:ids ids :obs (observations panel kn iso {})
+                      :relearn (fn [t] (sfc/learn panel kn iso (- t sfc/vintage) {}))})
+        r (cp/run-ensemble (members-of iso st p {:members members :seed seed})
+                        {:members members :from (inc start) :to (+ origin years) :assimilate-through origin
+                         :analyses (if (> members 1) [an] []) :keep true :seed (inc seed)})
+        acc (:sfc-accounts ids)
+        vs (sort (distinct (mapcat #(keys (get-in % [:emits acc])) (:members r))))
+        col (fn [v i] (keep #(let [x (get-in % [:emits acc v i])] (when (number? x) (double x))) (:members r)))
+        med (fn [xs] (let [v (vec (sort xs)) n (count v)] (when (pos? n) (if (odd? n) (v (quot n 2)) (/ (+ (v (dec (quot n 2))) (v (quot n 2))) 2.0)))))
+        sd (fn [xs] (let [n (count xs)] (when (> n 1) (let [mu (/ (reduce + xs) n)] (Math/sqrt (/ (reduce + (map #(* (- % mu) (- % mu)) xs)) (dec n)))))))]
+    {:t (:t r) :analysed (:analysed r) :result r
+     :vars (into {} (for [v vs :when (some number? (get-in (first (:members r)) [:emits acc v]))]
+                      [v {:median (mapv #(med (col v %)) (range (count (:t r))))
+                          :sd (mapv #(sd (col v %)) (range (count (:t r))))}]))}))
