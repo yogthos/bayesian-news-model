@@ -1667,6 +1667,27 @@ rule out (the interval is wide; the placebo's cost is similar). They
 stay out of the base; held ready as a fallback when inputs fail, which
 is a use the event model can switch on when a source goes dark.
 
+**Correction after the outcome, 28 October 2026 (trial T9, bead
+bnm-0cf).** A fix made after the result was seen; the registered result
+above stands as run. The fits on 1960-2000 held the base's warm-up rows:
+before the year node has read a published outcome of a kind it sits at
+its prior, p near 0.5 for every country (here currency crises 1961-1964,
+inflation crises 1960-1963, market crashes 1961-1963). bnm.warm-up now
+keeps them out of every fit. Rerun on the fixed code with the registered
+penalties and kinds (data/runs/sequencing/robustness-t9-registered-0cf-fix.tsv;
+the unfixed code reproduces the registered file exactly):
+1. dropout, slow gauges: ratio(D) 0.717 against 0.915, D - P' -0.198
+   [-0.556, -0.096]: passes;
+2. dropout, a fifth of countries dark: 0.723 against 0.897, -0.175
+   [-0.361, -0.098]: passes;
+3. dropout, lags doubled: -0.349 [-1.12, +1.12]: fails;
+4. calibration drift: +0.004 [-0.073, +0.058]: fails;
+5. worst era: -0.00005 [-0.0025, +0.0006]: fails.
+Harm check: the states' worst era against the base -0.00051 [-0.0047,
+-0.0002], the lower end still below -0.002 log. **The verdict stands:
+the dimensions are not kept**; the two dropout passes and the harm
+crossing are both unchanged by the fix.
+
 ## Pre-registered, 23 October 2026: cells against provinces, with what is in the cells (bead bnm-3ka.11)
 
 Registered before any row from 2015 on is scored by the new stage. The
