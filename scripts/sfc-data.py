@@ -33,10 +33,20 @@ with no liability, so the other row does not close by that much.
 Countries without Table 720 (China, and Table 14's others) get their
 domestic sectors' gross positions imputed from property income at that
 year's pooled implicit rates (debt liabilities = interest paid / the
-pooled rate on liabilities, and so on), marked stocks_source=imputed; the
-rest of the world from EWN where it has the country. An imputed balance
-sheet is a guess at the scale of the stocks that reproduces the year's
-property income, not a measurement.
+pooled rate on liabilities, and so on), scaled by a country rate factor,
+marked stocks_source=imputed; the rest of the world from EWN where it has
+the country. The factor comes from BIS total credit, whose household, NFC
+and government debt also replace the imputed ones, else from the WDI
+lending rate; a row with neither is not imputed (impute_stocks, bead
+bnm-a0s). An imputed balance sheet is a guess at the scale of the stocks
+that reproduces the year's property income, not a measurement.
+
+  BIS total credit (data/raw/slow/bis/WS_TC.zip; fetch-slow.sh): year-end
+    (Q4) credit from all lenders, national currency, adjusted for breaks.
+    Known at y + 1.
+  WDI lending rate (FR.INR.LEND, data/raw/econ/wdi-finance-structure).
+    Known at y + 1. WDI domestic credit to the private sector
+    (FS.AST.PRVT.GD.ZS) is read by the self-test only, as a check.
 
 Writes, under data/derived/sfc/:
   flows.csv     long: iso, year, known, sector, item, value (millions,
@@ -53,9 +63,9 @@ Writes, under data/derived/sfc/:
   python -I scripts/sfc-data.py test     # self-test on the built files
 """
 
-import gzip
 import io
 import os
+import re
 import sys
 import zipfile
 
@@ -70,8 +80,11 @@ T14 = os.path.join(RAW, "oecd-sna-sector-accounts", "DF_TABLE14_all.csv.gz")
 T720 = os.path.join(RAW, "oecd-financial-balance-sheets", "DF_T720R_A_all.csv.gz")
 Z1 = os.path.join(RAW, "fed-z1", "z1_csv_files.zip")
 EWN = os.path.join(RAW, "lmf-external-wealth", "EWN-dataset-year-end-2024_4.9.26.xlsx")
+BIS_TC = os.path.join(ROOT, "data", "raw", "slow", "bis", "WS_TC.zip")
+WDI = os.path.join(RAW, "wdi-finance-structure")
+GDD = os.path.join(ROOT, "data", "raw", "slow", "imf-gdd", "gdd_long.csv")
 
-KNOWN = {"oecd": 2, "z1": 1, "ewn": 2}
+KNOWN = {"oecd": 2, "z1": 1, "ewn": 2, "bis": 1, "gdd": 1, "wdi": 1}
 SECTORS = ["hh", "nfc", "fin", "gov", "row"]
 DOMESTIC = ["hh", "nfc", "fin", "gov"]
 SECTOR_CODES = {"S1M": "hh", "S11": "nfc", "S12": "fin", "S13": "gov", "S2": "row", "S1": "tot", "S1N": "ns"}
@@ -356,15 +369,143 @@ def flows_complete(p):
     return ok
 
 
+# -- country measures for the imputation -------------------------------------------
+
+def iso2_map():
+    edn = open(os.path.join(ROOT, "resources", "bnm", "countries.edn"), encoding="utf-8").read()
+    return dict(re.findall(r':iso2 "([A-Z]{2})",\s*:iso3 "([A-Z]{3})"', edn))
+
+
+def read_bis_credit(path=BIS_TC):
+    """iso, year and BIS total credit from all lenders at year end (Q4),
+    adjusted for breaks, millions of national currency: households (H),
+    NFCs (N), the private non-financial sector (P; H + N where P is
+    missing) and government (G, market value, else nominal). Known at
+    y + 1."""
+    df = pd.read_csv(path, dtype=str)
+    df.columns = [c.split(":")[0] for c in df.columns]
+    for c in ["FREQ", "BORROWERS_CTY", "TC_BORROWERS", "TC_LENDERS", "VALUATION", "UNIT_TYPE", "TC_ADJUST", "UNIT_MULT"]:
+        df[c] = df[c].map(code)
+    df = df[(df.TC_LENDERS == "A") & (df.UNIT_TYPE == "XDC") & (df.TC_ADJUST == "A") & df.OBS_VALUE.notna()
+            & df.TIME_PERIOD.notna() & df.TIME_PERIOD.str.endswith("-Q4") & df.UNIT_MULT.notna()]
+    df = df.assign(iso=df.BORROWERS_CTY.map(iso2_map()), year=df.TIME_PERIOD.str[:4].astype(int),
+                   v=df.OBS_VALUE.astype(float) * 10.0 ** (df.UNIT_MULT.astype(float) - 6))
+    df = df[df.iso.notna()]
+    w = df.pivot_table(index=["iso", "year"], columns=["TC_BORROWERS", "VALUATION"], values="v", aggfunc="first")
+    col = lambda b, v: w[(b, v)] if (b, v) in w.columns else pd.Series(np.nan, index=w.index)
+    out = pd.DataFrame(index=w.index)
+    out["bis_hh_debt"] = col("H", "M")
+    out["bis_nfc_debt"] = col("N", "M")
+    out["bis_priv_debt"] = col("P", "M").fillna(out.bis_hh_debt + out.bis_nfc_debt)
+    out["bis_gov_debt"] = col("G", "M").fillna(col("G", "N"))
+    out = out.dropna(how="all").reset_index()
+    out["bis_known"] = out.year + KNOWN["bis"]
+    return out
+
+
+def read_gdd(path=GDD):
+    """iso, year and the IMF Global Debt Database's debt as ratios to GDP:
+    households' and NFCs' loans and debt securities (HH_LS, NFC_LS), the
+    private sector's (PVD_LS; their sum where it is missing) and general
+    government's (GG_DEBT_GDP, else central government's). Known at y + 1
+    (the September 2025 vintage ends in 2024)."""
+    d = pd.read_csv(path)
+    w = d.pivot_table(index=["iso3", "year"], columns="indicator", values="value_pct_gdp", aggfunc="first") / 100.0
+    col = lambda c: w[c] if c in w.columns else pd.Series(np.nan, index=w.index)
+    out = pd.DataFrame(index=w.index)
+    out["gdd_hh_debt"] = col("HH_LS")
+    out["gdd_nfc_debt"] = col("NFC_LS")
+    out["gdd_priv_debt"] = col("PVD_LS").fillna(out.gdd_hh_debt + out.gdd_nfc_debt)
+    out["gdd_gov_debt"] = col("GG_DEBT_GDP").fillna(col("CG_DEBT_GDP"))
+    out = out.dropna(how="all").reset_index().rename(columns={"iso3": "iso"})
+    out["year"] = out.year.astype(int)
+    out["gdd_known"] = out.year + KNOWN["gdd"]
+    return out
+
+
+def merge_gdd(p, gdd):
+    """GDD's ratios merged as levels: times the panel's GDP."""
+    p = p.merge(gdd, on=["iso", "year"], how="left")
+    for c in ["gdd_hh_debt", "gdd_nfc_debt", "gdd_priv_debt", "gdd_gov_debt"]:
+        p[c] = p[c] * p.y
+    return p
+
+
+def read_wdi(series):
+    """iso, year, v: a WDI indicator from its API bulk zip (aggregates are
+    rows too; they match no panel iso)."""
+    z = zipfile.ZipFile(os.path.join(WDI, series + ".zip"))
+    name = [n for n in z.namelist() if n.startswith("API_")][0]
+    d = pd.read_csv(z.open(name), skiprows=4)
+    d = d.melt(id_vars=["Country Name", "Country Code", "Indicator Name", "Indicator Code"], var_name="year", value_name="v")
+    d = d[d.year.astype(str).str.fullmatch(r"\d{4}") & d.v.notna()]
+    return pd.DataFrame({"iso": d["Country Code"], "year": d.year.astype(int), "v": d.v.astype(float)})
+
+
+def read_lending_rate():
+    """iso, year, lend_rate (a fraction), lend_known: WDI's lending rate
+    (FR.INR.LEND, the IMF's IFS, national definitions), known at y + 1."""
+    d = read_wdi("FR.INR.LEND").rename(columns={"v": "lend_rate"})
+    d["lend_rate"] = d.lend_rate / 100.0
+    d["lend_known"] = d.year + KNOWN["wdi"]
+    return d
+
+
+MEASURES = [("bis", "bis"), ("gdd", "imf-gdd")]  # measured debt, in this order
+MEASURE_COLS = ([f"{pre}_{c}" for pre, _ in MEASURES for c in ["hh_debt", "nfc_debt", "priv_debt", "gov_debt", "known"]]
+                + ["lend_rate", "lend_known"])
+LEND_STALE = 2  # a lending rate up to this many years older than the row stands for it
+LEND_YEARS = 3  # the stock's rate is the mean of this many years' lending rates (to the row's year)
+
+
+def lending_mean(p, years=None):
+    """Per row, the mean of the country's lending rates over the `years`
+    (LEND_YEARS) years to the row's year, those known by its known year: a
+    stock's rate follows the rates its loans were made at, not this year's
+    alone."""
+    years = years or LEND_YEARS
+    ok = p.lend_rate.notna() & (p.lend_rate > 0) & (p.lend_known <= p.year + KNOWN["oecd"])
+    by = {(i, y): r for i, y, r in zip(p.iso[ok], p.year[ok], p.lend_rate[ok])}
+    out = []
+    for i, y in zip(p.iso, p.year):
+        xs = [by[(i, yy)] for yy in range(y - years + 1, y + 1) if (i, yy) in by]
+        out.append(np.mean(xs) if xs else np.nan)
+    return pd.Series(out, index=p.index)
+
+
 def impute_stocks(p):
-    """Gross positions from property income at the year's pooled implicit
-    rates, for country-years with complete flows and no balance sheet:
-    each year's own pooled rate, else the latest earlier year's, never a
-    later year's: a year before every measured interest rate is left
-    unimputed, and a position whose rate has no year at or before it (gov
-    equity, measured from 1992 and 2007) is missing, read as 0. The
-    rest of the world from EWN when present (ewn_assets/ewn_liab in
-    national currency), else from the same imputation."""
+    """Gross positions for country-years with complete flows and no balance
+    sheet (bead bnm-a0s). Interest and dividends over the year's pooled
+    implicit rates give each position at the pool's rates: each year's own
+    pooled rate, else the latest earlier year's, never a later year's (a
+    year before every measured interest rate is left unimputed; a position
+    whose rate has no year at or before it, gov equity, measured from 1992
+    and 2007, is missing, read as 0). The pool's rates understate a
+    high-rate country's (Brazil, Colombia, Costa Rica, South Africa), which
+    overstated its stocks up to fivefold, so each row takes a country rate
+    factor k, its own rate over the pool's, and the interest-bearing
+    positions are those at the pool's rates over k:
+      bis           BIS total credit measures the private non-financial
+                    sector's debt (Q4, known y + 1): households' and NFCs'
+                    debt liabilities are BIS's (private credit alone split
+                    by the shares at the pool's rates), government's too
+                    where BIS has it, and k is the private sector's imputed
+                    debt at the pool's rates over BIS's;
+      lending-rate  else the country's WDI lending rate (known y + 1, this
+                    year's or up to LEND_STALE years older) times the pool's
+                    median ratio of the private sector's implicit rate to
+                    the lending rate (that year's or the latest earlier), and
+                    k that over the private sector's pooled rate;
+      neither       the row is not imputed.
+    A measure is used only when known by the row's known year (y + 2).
+    Equity (dividends over the pool's yields) is not scaled. The rest of
+    the world from EWN when present (ewn_assets/ewn_liab in national
+    currency), else from the same imputation. imputed_basis and
+    rate_factor say which and how much."""
+    p = p.copy()
+    for c in MEASURE_COLS:
+        if c not in p:
+            p[c] = np.nan
     have = p.stocks_ok & p.flows_ok
     rates = {}
     for s in SECTORS:
@@ -374,31 +515,77 @@ def impute_stocks(p):
             r = (p[f"{s}_{num}"] / d).where(have & (d > 0))
             r = r[(r > 0) & (r < 0.5)]
             rates[(s, nm)] = p.loc[r.index].assign(r=r).groupby("year").r.median()
+    # the private sector's implicit rate over the lending rate, measured rows, by year
+    priv_int = p.hh_int_paid + p.nfc_int_paid
+    priv_l = sum(p[f"{s}_{k}_l"].fillna(0) for s in ["hh", "nfc"] for k in ["money", "debt"])
+    p["lend_mean"] = lending_mean(p)
+    ratio = (priv_int / priv_l / p.lend_mean).where(have & (priv_l > 0))
+    ratio = ratio[(ratio > 0) & np.isfinite(ratio)]
+    lend_ratio = p.loc[ratio.index].assign(r=ratio).groupby("year").r.median()
+
+    def latest(ser, y):
+        past = ser[ser.index <= y]
+        return past.iloc[-1] if len(past) else np.nan
+
+    lend = p[p.lend_mean.notna()].set_index(["iso", "year"])
     out = p.copy()
+    out["imputed_basis"] = None
+    out["rate_factor"] = np.nan
     need = ~p.stocks_ok & p.flows_ok
     for i in out.index[need]:
-        y = out.at[i, "year"]
+        y, iso = out.at[i, "year"], out.at[i, "iso"]
+        known_by = y + KNOWN["oecd"]
         if not all((rates[(s, nm)].index <= y).any() for s in SECTORS for nm in ["il", "ia"]):
             continue
+        flow = lambda s, c: np.nan_to_num(out.at[i, f"{s}_{c}"]) if f"{s}_{c}" in out else 0.0
+        pooled = {s: {"debt_l": flow(s, "int_paid") / latest(rates[(s, "il")], y),
+                      "debt_a": flow(s, "int_recv") / latest(rates[(s, "ia")], y),
+                      "equity_l": flow(s, "div_paid") / latest(rates[(s, "ql")], y),
+                      "equity_a": flow(s, "div_recv") / latest(rates[(s, "qa")], y)} for s in SECTORS}
+        priv_pooled = pooled["hh"]["debt_l"] + pooled["nfc"]["debt_l"]
+        k, basis, src = np.nan, None, None
+        for pre, name in MEASURES:
+            known = out.at[i, f"{pre}_known"]
+            priv = out.at[i, f"{pre}_priv_debt"]
+            if pd.notna(known) and known <= known_by and pd.notna(priv) and priv > 0:
+                k, basis, src = priv_pooled / priv, name, pre
+                break
+        if basis is None:
+            # the country's lending rate, this year's or up to LEND_STALE years older, known by the row's known year
+            lr = np.nan
+            for yy in range(y, y - LEND_STALE - 1, -1):
+                if (iso, yy) in lend.index:
+                    lr = lend.at[(iso, yy), "lend_mean"]
+                    break
+            c_y = latest(lend_ratio, y)
+            if pd.notna(lr) and pd.notna(c_y) and priv_pooled > 0:
+                # the private sector's debt at the country's rate, against the pool's
+                priv_country = (flow("hh", "int_paid") + flow("nfc", "int_paid")) / (lr * c_y)
+                k, basis = priv_pooled / priv_country, "lending-rate"
+        if not (np.isfinite(k) and k > 0):
+            continue
         for s in SECTORS:
-            def rate(nm):
-                ser = rates[(s, nm)]
-                past = ser[ser.index <= y]
-                return past.iloc[-1] if len(past) else np.nan
-            ip, ir, dp, dr = (out.at[i, f"{s}_{c}"] if f"{s}_{c}" in out else np.nan
-                              for c in ["int_paid", "int_recv", "div_paid", "div_recv"])
             vals = {"money_a": 0.0, "money_l": 0.0, "other_a": 0.0, "other_l": 0.0,
-                    "debt_l": np.nan_to_num(ip) / rate("il"), "debt_a": np.nan_to_num(ir) / rate("ia"),
-                    "equity_l": np.nan_to_num(dp) / rate("ql"), "equity_a": np.nan_to_num(dr) / rate("qa")}
+                    "debt_l": pooled[s]["debt_l"] / k, "debt_a": pooled[s]["debt_a"] / k,
+                    "equity_l": pooled[s]["equity_l"], "equity_a": pooled[s]["equity_a"]}
+            if src:
+                if s in ("hh", "nfc"):
+                    mh, mn = out.at[i, f"{src}_hh_debt"], out.at[i, f"{src}_nfc_debt"]
+                    if pd.notna(mh) and pd.notna(mn):
+                        vals["debt_l"] = mh if s == "hh" else mn
+                if s == "gov" and pd.notna(out.at[i, f"{src}_gov_debt"]):
+                    vals["debt_l"] = out.at[i, f"{src}_gov_debt"]
             if s == "row" and pd.notna(out.at[i, "ewn_debt_a"]):
                 # the country's external positions, the rest of the world's mirror (EWN)
-                for k in ["debt", "equity", "other"]:
+                for kk in ["debt", "equity", "other"]:
                     for side in ["a", "l"]:
-                        vals[f"{k}_{side}"] = out.at[i, f"ewn_{k}_{side}"]
-            for k, v in vals.items():
-                out.at[i, f"{s}_{k}"] = v
-            out.at[i, f"{s}_nfw"] = sum(vals[f"{k}_a"] - vals[f"{k}_l"] for k in INSTRUMENTS)
+                        vals[f"{kk}_{side}"] = out.at[i, f"ewn_{kk}_{side}"]
+            for kk, v in vals.items():
+                out.at[i, f"{s}_{kk}"] = v
+            out.at[i, f"{s}_nfw"] = sum(vals[f"{kk}_a"] - vals[f"{kk}_l"] for kk in INSTRUMENTS)
         out.at[i, "stocks_source"] = "imputed"
+        out.at[i, "imputed_basis"] = basis
+        out.at[i, "rate_factor"] = k
     return out
 
 
@@ -432,7 +619,9 @@ def residuals(p):
     for s in SECTORS:
         prev = p2.groupby("iso")[f"{s}_nfw"].shift(1)
         consecutive = p2.groupby("iso").year.diff().eq(1)
-        f = ((p2[f"{s}_nfw"] - prev - p2[f"{s}_nl"]) / p2.y).where(consecutive & p2.stocks_source.eq("oecd-t720"))
+        # both balance sheets measured: an imputed opening is no measure of the change
+        both = p2.stocks_source.eq("oecd-t720") & p2.groupby("iso").stocks_source.shift(1).eq("oecd-t720")
+        f = ((p2[f"{s}_nfw"] - prev - p2[f"{s}_nl"]) / p2.y).where(consecutive & both)
         r.loc[p2.index, f"fof_{s}"] = f
     return r
 
@@ -513,6 +702,12 @@ def coverage_text(p):
     w(f"both (the core runs on measured stocks): {both.sum()} country-years, {p[both].iso.nunique()} countries")
     imp = p.stocks_source.eq("imputed")
     w(f"imputed stocks (flows complete, no Table 720): {imp.sum()} country-years: {', '.join(sorted(p[imp].iso.unique()))}")
+    for b, g in p[imp].groupby("imputed_basis"):
+        w(f"  rate factor from {b}: {len(g)} country-years ({', '.join(sorted(g.iso.unique()))}),"
+          f" factor median {g.rate_factor.median():.2f}, range {g.rate_factor.min():.2f}-{g.rate_factor.max():.2f}")
+    drop = ~p.stocks_ok & p.flows_ok & ~imp
+    w(f"  not imputed (no pooled rate yet, or no measured debt (BIS, GDD) and no lending rate): {drop.sum()} country-years"
+      + (f": {', '.join(sorted(p[drop].iso.unique()))}" if drop.any() else ""))
     w("")
     w("iso   flows        stocks       years usable  stocks source")
     for iso, g in p.groupby("iso"):
@@ -538,7 +733,7 @@ def main():
     print("rest of the world's B9 recorded from the nation's side, flipped:", flipped)
     p["flows_ok"] = flows_complete(p)
     p["stocks_ok"] = stocks_complete(p)
-    p["stocks_source"] = np.where(p.stocks_ok, "oecd-t720", None)
+    p["stocks_source"] = pd.Series("oecd-t720", index=p.index, dtype=object).where(p.stocks_ok, None)
     p["known_stocks"] = np.where(p.stocks_ok, p.year + KNOWN["oecd"], np.nan)
 
     # EWN for the rest of the world where Table 720 is missing, and the S2 check
@@ -560,6 +755,10 @@ def main():
         for c in ecols:
             p[c] = np.nan
 
+    # the country measures the imputation reads (BIS total credit, WDI lending rate)
+    p = p.merge(read_bis_credit(), on=["iso", "year"], how="left")
+    p = merge_gdd(p, read_gdd())
+    p = p.merge(read_lending_rate(), on=["iso", "year"], how="left")
     p = impute_stocks(p)
     p["known_stocks"] = np.where(p.stocks_source.eq("imputed"), p.year + KNOWN["oecd"], p.known_stocks)
 
@@ -607,13 +806,138 @@ def _toy_panel(rows):
 def test_impute_causal():
     """An imputed year uses pooled rates from that year or before, never a
     later one; a year before any measured one is not imputed."""
-    p = _toy_panel([("A", 2000, True, 5.0, 100.0), ("A", 2001, True, 10.0, 100.0),
-                    ("B", 1999, False, 4.0, 0.0), ("B", 2000, False, 4.0, 0.0), ("B", 2002, False, 4.0, 0.0)])
+    n = np.nan
+    #               iso  year  meas   ip    debt   lend  bis hh nfc priv gov
+    p = _toy_rates([("A", 2000, True, 5.0, 100.0, 0.05, n, n, n, n), ("A", 2001, True, 10.0, 100.0, 0.05, n, n, n, n),
+                    ("B", 1999, False, 4.0, 0.0, 0.1, n, n, n, n), ("B", 2000, False, 4.0, 0.0, 0.1, n, n, n, n),
+                    ("B", 2002, False, 4.0, 0.0, 0.1, n, n, n, n)])
     out = impute_stocks(p).set_index(["iso", "year"])
     assert pd.isna(out.loc[("B", 1999), "stocks_source"]), "no rate at or before 1999"
-    # hh's rate on liabilities is interest over money + debt liabilities (110 at A)
-    assert abs(out.loc[("B", 2000), "hh_debt_l"] - 4.0 / (5.0 / 110.0)) < 1e-9, "2000's own rate"
-    assert abs(out.loc[("B", 2002), "hh_debt_l"] - 4.0 / (10.0 / 110.0)) < 1e-9, "2001's, the latest before 2002"
+    # A's private sector pays hh's interest + nfc's 1 on hh's 110 + nfc's 20 of money and debt;
+    # the pool's implicit rate over the lending rate, 2000's own and then 2001's. B's private
+    # debt is its interest (4 + 1) at its lending rate times that, split by the pool's rates
+    # (hh 4 at 5/110 or 10/110, nfc 1 at 1/20)
+    c0, c1 = (6.0 / 130.0) / 0.05, (11.0 / 130.0) / 0.05
+    hh0, hh1 = 4.0 / (5.0 / 110.0), 4.0 / (10.0 / 110.0)
+    assert abs(out.loc[("B", 2000), "hh_debt_l"] - 5.0 / (0.1 * c0) * hh0 / (hh0 + 20.0)) < 1e-9, "2000's own rate"
+    assert abs(out.loc[("B", 2002), "hh_debt_l"] - 5.0 / (0.1 * c1) * hh1 / (hh1 + 20.0)) < 1e-9, "2001's, the latest before 2002"
+
+
+def _toy_rates(rows):
+    """_toy_panel plus the country measures impute_stocks reads: rows of
+    (iso, year, measured?, hh interest paid, hh debt, lending rate, BIS hh,
+    nfc, private, gov debt, and optionally IMF GDD's hh, nfc, private, gov
+    debt as levels)."""
+    p = _toy_panel([r[:5] for r in rows])
+    for c, j in [("lend_rate", 5), ("bis_hh_debt", 6), ("bis_nfc_debt", 7), ("bis_priv_debt", 8), ("bis_gov_debt", 9),
+                 ("gdd_hh_debt", 10), ("gdd_nfc_debt", 11), ("gdd_priv_debt", 12), ("gdd_gov_debt", 13)]:
+        p[c] = [float(r[j]) if len(r) > j else np.nan for r in rows]
+    p["lend_known"] = np.where(p.lend_rate.notna(), p.year + 1, np.nan)
+    p["bis_known"] = np.where(p.bis_priv_debt.notna(), p.year + 1, np.nan)
+    p["gdd_known"] = np.where(p.gdd_priv_debt.notna(), p.year + 1, np.nan)
+    p["y"] = 100.0
+    return p
+
+
+def test_impute_country_rate():
+    """An imputed private debt uses the country's own rate where one is
+    known by the row's known year: its lending rate times the pool's ratio
+    of implicit to lending rates (that year or before), not the pooled
+    implicit rate. A row with neither a measured stock nor a country rate
+    is dropped, not imputed."""
+    n = np.nan
+    p = _toy_rates([("A", 2000, True, 11.0, 100.0, 0.05, n, n, n, n),
+                    ("B", 2000, False, 4.0, 0.0, 0.20, n, n, n, n),
+                    ("C", 2000, False, 4.0, 0.0, n, n, n, n, n)])
+    out = impute_stocks(p).set_index(["iso", "year"])
+    # A: hh and nfc pay 11 + 1 on 110 + 20 of money and debt. B's private debt is its
+    # interest, 4 + 1, at 0.20 times that ratio, split as at the pool's rates: hh 4 at 0.1, nfc 1 at 0.05
+    ratio = (12.0 / 130.0) / 0.05
+    b = out.loc[("B", 2000)]
+    assert abs(b.hh_debt_l + b.nfc_debt_l - 5.0 / (0.20 * ratio)) < 1e-9, (b.hh_debt_l, b.nfc_debt_l)
+    assert abs(b.hh_debt_l / b.nfc_debt_l - 2.0) < 1e-9
+    assert out.loc[("B", 2000), "imputed_basis"] == "lending-rate"
+    assert pd.isna(out.loc[("C", 2000), "stocks_source"]), "no country rate or stock: dropped"
+    # a lending rate known after the row's known year is not used
+    p2 = p.copy()
+    p2.loc[p2.iso == "B", "lend_known"] = 2000 + KNOWN["oecd"] + 1
+    assert pd.isna(impute_stocks(p2).set_index(["iso", "year"]).loc[("B", 2000), "stocks_source"])
+
+
+def test_impute_measured_debt():
+    """Where BIS (else the IMF's GDD) measures the debt, it replaces the
+    imputation: households', NFCs' and government's liabilities from it,
+    private credit alone split by the imputed shares; the rate factor that
+    makes them so scales the other interest-bearing positions. Figures
+    known after the row's known year are not used."""
+    n = np.nan
+    p = _toy_rates([("A", 2000, True, 11.0, 100.0, n, n, n, n, n),
+                    ("B", 2000, False, 4.0, 0.0, n, 30.0, 20.0, 50.0, 40.0, 1.0, 1.0, 2.0, 1.0),
+                    ("C", 2000, False, 4.0, 0.0, n, n, n, 30.0, n),
+                    ("D", 2000, False, 4.0, 0.0, 0.3, n, n, n, n, 25.0, 15.0, 40.0, 35.0)])
+    out = impute_stocks(p).set_index(["iso", "year"])
+    b, c, d = out.loc[("B", 2000)], out.loc[("C", 2000)], out.loc[("D", 2000)]
+    assert (b.hh_debt_l, b.nfc_debt_l, b.gov_debt_l) == (30.0, 20.0, 40.0), "BIS before GDD"
+    assert b.imputed_basis == "bis"
+    assert (d.hh_debt_l, d.nfc_debt_l, d.gov_debt_l) == (25.0, 15.0, 35.0), "GDD before the lending rate"
+    assert d.imputed_basis == "imf-gdd"
+    # hh pays 4 at the pooled 11/110, nfc 1 at 1/20: 40 and 20 imputed, so the
+    # country's rate is twice the pool's and BIS's 30 splits 20 / 10
+    assert abs(c.hh_debt_l - 20.0) < 1e-9 and abs(c.nfc_debt_l - 10.0) < 1e-9, (c.hh_debt_l, c.nfc_debt_l)
+    # gov pays 1 at the pooled 1/20: 20 at the pool's rate, 10 at the country's
+    assert abs(c.gov_debt_l - 10.0) < 1e-9, c.gov_debt_l
+    assert abs(c.fin_debt_a - 1.0 / (1.0 / 20.0) / 2.0) < 1e-9, c.fin_debt_a
+    p2 = p.copy()
+    p2.loc[p2.iso == "C", "bis_known"] = 2000 + KNOWN["oecd"] + 1
+    assert pd.isna(impute_stocks(p2).set_index(["iso", "year"]).loc[("C", 2000), "stocks_source"])
+
+
+def wdi_private_credit():
+    """iso, year, WDI domestic credit to the private sector (FS.AST.PRVT.GD.ZS)
+    as a ratio to GDP: a check on imputed debt, not an input."""
+    return read_wdi("FS.AST.PRVT.GD.ZS").assign(v=lambda d: d.v / 100.0)
+
+
+def test_imputed_against_measures(p):
+    """An imputed private debt (households' and NFCs' liabilities over GDP)
+    agrees with an independent measure where one exists: BIS total credit
+    to the private non-financial sector within 0.05 of GDP, else WDI
+    domestic credit to the private sector within 0.5 (it leaves out
+    non-bank and external credit: Table 720's private debt is up to 2.6 of
+    GDP above it, median 0.4, where both exist)."""
+    imp = p[p.stocks_source.eq("imputed")].copy()
+    debt = (imp.hh_debt_l + imp.nfc_debt_l) / imp.y
+    bis = imp.bis_priv_debt / imp.y
+    gap = (debt - bis)[bis.notna()].abs()
+    assert len(gap) > 100 and (gap <= 0.05).all(), imp.loc[gap[gap > 0.05].index, ["iso", "year"]].values.tolist()
+    rest = imp[bis.isna()].merge(wdi_private_credit(), on=["iso", "year"], how="left")
+    g2 = ((rest.hh_debt_l + rest.nfc_debt_l) / rest.y - rest.v).abs()
+    bad = rest[g2.isna() | (g2 > 0.5)]
+    assert bad.empty, bad[["iso", "year"]].values.tolist()
+
+
+def test_rate_path_out_of_sample(p):
+    """The lending-rate path, run on each measured country with the country
+    left out of the pool and its BIS and GDD figures withheld, recovers Table 720's
+    households' and NFCs' debt and money liabilities: median |gap| under
+    0.35 of GDP, 90th pct under 1.5 (the pooled implicit rate alone, in
+    sample: 0.58 and 3.1)."""
+    meas = p[p.stocks_source.eq("oecd-t720") & p.flows_ok & p.lend_rate.notna()]
+    gaps = []
+    for iso in sorted(meas.iso.unique()):
+        held = meas[meas.iso == iso].copy()
+        truth = sum(held[f"{s}_{k}_l"] for s in ["hh", "nfc"] for k in ["money", "debt"]) / held.y
+        held["iso"] = iso + "_held"
+        held["stocks_ok"] = False
+        for c in MEASURE_COLS[:-2]:
+            held[c] = np.nan
+        out = impute_stocks(pd.concat([p[p.iso != iso], held], ignore_index=True))
+        o = out[out.iso == iso + "_held"]
+        est = (o.hh_debt_l + o.nfc_debt_l) / o.y
+        gaps.append((est.values - truth.values)[o.stocks_source.eq("imputed").values])
+    g = np.abs(np.concatenate(gaps))
+    assert len(g) > 300, len(g)
+    assert np.median(g) < 0.35 and np.quantile(g, 0.9) < 1.5, (np.median(g), np.quantile(g, 0.9))
 
 
 def test_gdp():
@@ -628,8 +952,12 @@ def test_gdp():
 
 def test():
     test_impute_causal()
+    test_impute_country_rate()
+    test_impute_measured_debt()
     test_gdp()
     p = pd.read_csv(os.path.join(OUT, "panel.csv"))
+    test_imputed_against_measures(p)
+    test_rate_path_out_of_sample(p)
     r = pd.read_csv(os.path.join(OUT, "residuals.csv"))
     assert (p.known_flows == p.year + 2).all(), "flows known at y + 2"
     ok = p.flows_ok
@@ -641,6 +969,12 @@ def test():
         assert r[f"inst_{k}"][oecd].abs().median() < 0.05, k
     for s in SECTORS:
         assert r[f"nfw_{s}"].abs().median() < 1e-3, s
+    # the flow of funds only between two measured balance sheets, never from an imputed one
+    q2 = p.sort_values(["iso", "year"])
+    prev_meas = q2.groupby("iso").stocks_source.shift(1).eq("oecd-t720")
+    rr = r.set_index(["iso", "year"]).loc[list(zip(q2.iso, q2.year))]
+    for s in SECTORS:
+        assert rr[f"fof_{s}"][~prev_meas.values].isna().all(), s
     assert "CHN" in set(p[p.stocks_source.eq("imputed")].iso), "China imputed"
     us = p[(p.iso == "USA") & (p.year == 2009)].iloc[0]
     assert us.gov_nl / us.y < -0.08 and us.hh_nl / us.y > 0.02
