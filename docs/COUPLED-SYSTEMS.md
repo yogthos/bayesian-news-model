@@ -1323,6 +1323,65 @@ check it), and what would show it is wrong.
   growth within countries beyond what the sector's own past growth and
   world demand give.
 
+**5.2a Capacity from investment, as built (bnm-4hv.11, October 2026).**
+The allocation test (9d) found control/state equivalent to nothing for
+where credit goes, so the control -> allocation link is dropped. The
+engine and the accounting stay, and capacity is driven by the credit and
+investment observed, not by control.
+- *Investment by industry* (bnm.capacity/financed-investment, in the
+  investment module of bnm.modules.allocation). An industry's financed
+  investment is its retained profits plus its external finance:
+  - retained: the SFC core's NFC gross saving (S11 B8G, from its panel,
+    data/derived/sfc/panel.csv), split by each industry's share of gross
+    operating surplus (EU KLEMS VA_CP - COMP);
+  - external: NFC net borrowing (-B9), split by Müller-Verner's credit
+    shares (a section's share of NFC credit, split within the section by
+    surplus; sections without a measured share take the rest by surplus;
+    real estate's share leaves, since L's surplus is mostly imputed rent).
+    Without credit shares (after 2014, Müller-Verner's end) it follows
+    surplus too.
+  - The NFC industries are EU KLEMS's less C (the aggregate), K, L and
+    O-Q. Observed GFCF by industry (KLEMS I_GFCF) is the other measure;
+    over 1995-2021 the two rates have the same median (0.10 a year for
+    basic metals), and B8G - B9 is 0.89-1.07 of NFC capital formation by
+    country.
+- *Time to build* (bnm.capacity/build-time). A prior over the whole years
+  from the first spending to first output, per industry, with its range
+  and sources:
+
+  | industry | p(T years) | mean | sources |
+  |---|---|---|---|
+  | default | 1: .3, 2: .5, 3: .2 | 1.9 | Koeva (2000, IMF WP/00/138): new plants about two years in most industries, unaffected by the cycle; Kydland & Prescott (1982): four quarters |
+  | B mining | 2: .2, 3: .35, 4: .25, 5: .2 | 3.45 | IEA (2021) lead times 2010-2019: 16.5 years from discovery, of which about 1.8 construction planning and 2.6 construction (the split as reproduced by Statista); S&P Global (2024): 17.9 years for mines started 2020-23 |
+  | C19 refining | 2: .15, 3: .35, 4: .3, 5: .1, 6: .1 | 3.65 | greenfield: BP's planned refinery, construction 2011 to start-up 2015; Irving's Eider Rock, 4 years planned, 8 estimated; expansions nearer two |
+  | C20 chemicals | 1: .2, 2: .5, 3: .3 | 2.1 | Koeva (2000) |
+  | C24-C25 metals | 1: .2, 2: .45, 3: .25, 4: .1 | 2.25 | Koeva (2000); electric arc furnaces 14-36 months (ArcelorMittal Calvert 24, US Steel Fairfield about 24, Hebei Yongyang 14-15, Tata Port Talbot 36 and more); Alcoa Fjardaal smelter 2004-2007 |
+  | D-E power | 2: .1, 3: .25, 4: .3, 5: .15, 6: .1, 7: .1 | 4.2 | EIA AEO2022 EMM Table 3: 2 (PV, turbines), 3 (combined cycle, onshore wind), 4 (coal, hydro, offshore wind), 6 (nuclear); observed (GEM, Little's law, scripts/time-to-build.py): all 4.4, coal 4.2, gas 4.4, wind 3.6, solar 3.1, nuclear 12.9, hydro 13.7 |
+
+  Spending is spread evenly over the build, so the share of a year's
+  spending that completes L years later is w_L = sum_T p(T) [L < T] / T.
+  The priors are priors: learning them from the capacity data (principle
+  2) waits on the check below.
+- *Completions.* The completion rate of an industry in year y is the
+  investment already made that completes in y, over the capital stock:
+  sum over L >= 1 of w_L I(y-L) / K(y-L-1). Its own year's spending is not
+  in it, so it is known at y + 1 (once y - 1's investment is, at +2).
+- *Emits* (all rates from :step; no level, so no :observe; every row
+  checked against its known year):
+  - investment/klems/investment-rate-<industry> (+2),
+    investment/klems/completion-rate-<industry> (+1);
+  - investment/financed-<industry> (LCU m), investment/financed-rate-
+    <industry> (+2), investment/financed-completion-rate-<industry> (+1);
+  - capacity/completion-rate/<node> and capacity/financed-completion-
+    rate/<node> (+1): the industry's completion rates carried to the
+    product graph's products and the stage table's stages, as
+    capacity/growth/* already is. The investment module is the only
+    emitter of capacity/* (a test checks the modules' sources).
+- *Reads* (sources at their lags): EU KLEMS capital accounts (I_GFCF,
+  K_GFCF) and national accounts (VA_CP, COMP), +2; the SFC panel's S11
+  B8G, B9 and P5, +2; Müller-Verner's credit shares, +2; the concordance
+  and the stage table for the links.
+
 **5.3 Production -> distribution (R3 -> D).**
 - *Mechanism.* Output and employment set the wage bill and profits.
   - Keen's Phillips curve sets the wage share from employment.
@@ -2129,6 +2188,86 @@ For the record (not tests):
   Household share (994 test rows): M vs B +0.0073 [-0.0025, +0.0163],
   M vs P +0.0082 [-0.0016, +0.0172], beta -0.56 (SE 0.18), the prior's
   sign. Neither interval clears 0.
+
+### 9e. The capacity test (bnm-4hv.11)
+
+**Registered 28 October 2026**, before any capacity outcome was
+computed: no observed capacity series has been read against any
+completion rate. The completion rates exist (data/derived/coupled/
+allocation.csv); the targets below have not been built.
+
+**Question.** Does investment already made, completing through the time
+to build (5.2a), predict next year's capacity growth by industry better
+than persistence, better than the growth's mean, and better than the same
+completion rate from another country?
+
+**Targets** (observed capacity, a node n is a country and a series; the
+30 EU KLEMS countries):
+- *power* (industry D-E): UNSD Energy Statistics, commodity EC,
+  transaction 133, net installed capacity, MW (data/raw/material/
+  unsd-energy);
+- *refining* (C19): UNSD commodity 4100, transaction 131, refinery
+  capacity;
+- *stages*: the stage table (data/derived/supply/stages.csv, BGS rows
+  only), its smelter and refinery stages (C24-C25) and its mines (B). These
+  are output, not capacity: utilisation moves them too. Of a data year's
+  several editions, the last.
+
+All are known at +2 (the stage table's known column; UNSD by rule).
+g[n,y] = ln(Q[y] / Q[y-1]) with both positive, clipped to [-1, 1].
+
+**Predictor.** x[c,i,y] = investment/klems/completion-rate-<i> for the
+node's country and industry and data year y, as the engine emits it (known
+at y + 1).
+
+**Design.** One-step-ahead at yearly origins, expanding window, as 9d. At
+origin `to` the target is g for data year y = to - 1; the inputs are x
+for y (from investment up to to - 2) and g for y - 1 (data years up to
+to - 2). The models are fitted on the rows whose target year is at most
+to - 2. Models, per target family (power, refining, stages):
+- **B (persistence)**: g-hat = g[n, y-1].
+- **A (mean)**: the family's training mean of g.
+- **M (completions)**: OLS g = a_f + b_f x.
+- **P (placebo)**: M with x taken from country pi(c), the same industry
+  and year. pi = derange(sorted countries with any completion-rate row,
+  numpy default_rng(20261028)), derange as in scripts/allocation-power.py.
+
+A row enters (training and scoring) only where x, the placebo's x and
+g[n, y-1] all exist, so the comparisons are paired. A family with fewer
+than 20 training rows at an origin takes the pooled fit over all families
+(one intercept and slope; A the pooled mean); with fewer than 20 pooled,
+the row is not scored.
+
+**Split.** Design years are targets up to 2002, fitted, never scored.
+Test years are targets 2003 on, as far as the data reach.
+
+**Metric.** Skill against X = 1 - SSE_M / SSE_X over the test rows, X in
+{B, A, P}. Its interval: 2,000 resamples of the test rows' countries with
+replacement, a fresh default_rng(20261028), the 5% and 95% quantiles.
+
+**Pass.** All three lower ends above 0 (an intersection-union test, no
+multiplicity correction). Beating B alone does not pass: on yearly growth
+the mean beats persistence, so a model with no information beats B. If
+M beats A and not P, the gain is the period's or the panel's, not the
+country's investment.
+
+**Equivalence bound.** No power analysis was run. The result is called
+equivalent to nothing when the upper end against A is below +0.02.
+
+**Sign prior.** b > 0: more investment completing, faster capacity growth.
+
+**Secondary (reported, not primary).** S1: x = investment/financed-
+completion-rate-<i> (credit plus retained profits), the same design on its
+own paired rows (the placebo map unchanged), with its IU p-value (the
+largest of its three bootstrap shares of skill at most 0).
+
+**For the record (not tests).** Skill by family; b by family on all
+paired rows with country-clustered standard errors; skill by era
+(2003-2007, 2008-2014, 2015 on); M against a zero-growth forecast.
+
+**Not changed after the outcome is read:** the targets, the clip, the
+predictor and its priors, the models, the fallback, the split, the seed,
+the metric, the interval, the pass rule and the bound.
 
 ## 10. Ranked plan
 
