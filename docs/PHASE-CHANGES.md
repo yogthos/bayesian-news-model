@@ -1709,6 +1709,86 @@ this rule (a record, not a test): none gains on the primary; trials 44
 and 45 gain against their placebos on short lists, which says the
 scrambled inputs harm the ranking, not that the real ones help.
 
+## Pre-registered, 28 October 2026: supply shocks as event triggers (trial SS, bead bnm-82j.3)
+
+Registered before any outcome after 2002 is read for this test. Do
+country-level supply shocks tell which countries to watch for food price
+shocks, protest surges and violence surges beyond the base? The inputs
+(bnm.supply-shocks, scripts/supply-shocks-data.py, nothing downloaded:
+every source was already under data/raw) are, per country and year end
+t, the share of its supply lost in three families, food (wheat, rice,
+maize), fertiliser (N + P2O5 + K2O) and energy (oil, gas):
+sum over products of the product's share of the family's use x the
+country's import dependence x (sum over suppliers of the supplier's share
+of its imports x the supplier's shortfall + sum over straits of the
+strait's share of its imports x the strait's disruption). A shortfall is
+1 less the supplier's latest value over its mean in the three years
+before, counted only from 10%; a disruption is a strait's transits
+against its own years before, relative to all straits'. Every value is
+read only once known at t:
+
+| input | source | known |
+|---|---|---|
+| food shortfalls | USDA PSD exports by market year | in the year (WASDE; current vintage, revisions not undone) |
+| energy shortfalls | EI production (OWID) | a year after |
+| fertiliser shortfalls | FAOSTAT nutrient exports | two years after |
+| strait disruptions | PortWatch dry-bulk and tanker deadweight | in the year, from 2020 (2019 the first base) |
+| supplier shares | FAOSTAT cereal matrix, BACI HS 31, 270900, 271111, 271121 | two years after, latest three data years |
+| import dependence, use shares | FAOSTAT balances and fertilisers; EI | two years after; EI one |
+| strait shares | bnm.chokepoints (BACI routed) | two years after (port structure from 2019, a look-ahead it records) |
+
+Coverage of the base's countries, 2003-2022: food 170 (a loss above 1%
+in 56% of country-years; non-zero from 1988, when the supplier shares
+begin), fertiliser 174 (74%; from 1998), energy 78, the Review's
+countries (29%; from 1998); export bans enter only
+through the exporters' export shortfalls (no open ban record before 2022);
+the OECD inventory's few fertiliser restrictions are not used. In the
+scored years strait disruptions are non-zero only for 2020-2022 (the
+Bosporus in 2022 -27% against all straits).
+
+tools/bnm/shock-trial: the year node of t44-world-norel, refitted at each
+origin on the rows whose outcome was published by then (origins to t - 2
+- the catalogue's known-lag in years rounded up), from 1980, with a fixed
+effect per fitted year and the scored year at the fitted rate's level:
+B' (a + b logit p, which ranks as the base), S (B' plus the three
+losses, log(1 + L / 0.01), standardized, ridge 10 per coefficient, fixed
+in advance, not tuned), and two placebos: P (exposure reassigned: each
+country reads another's losses, a random derangement, seed 1, keeping its
+own coverage) and T (dates shifted: the losses of t - 6 at t). A kind
+whose fitted rows hold fewer than five onsets is the base unchanged (food
+price shocks start in 2004 with an 18-month lag, so they are refitted
+from origin 2007).
+
+On the design years (protest and violence surges, origins 1993-2000,
+data/runs/sequencing/shock-trial-design.txt): S over the base, top-10
+recall on hard onsets, +0.008 [+0.000, +0.019]; S over P +0.030 [-0.014,
++0.070]; log per row S less B' -0.0096 [-0.020, -0.003] (harm), Brier
+-0.0010. A first design pass without year effects lost -0.10 to the base,
+and so did its placebo: the losses' coverage grows with the years and the
+fit read the onset rate's drift from it, so year effects went in before
+anything else was looked at.
+
+**Tests**, origins 2003-2022 (the watch-list rule's), kinds food price
+shocks, protest surges, violence surges, the kinds equally weighed,
+1,000 draws of two-year blocks of origins (seed 1), 90% intervals:
+1. (primary) S against the base, top-10 recall on hard onsets: a gain
+   when the lower end is above 0;
+2. the gain is the shocks' only if S also beats P (lower end above 0),
+   and the shocks do no harm: log per row S less B' with its lower end
+   at or above -0.002;
+3. pass when 1 and 2 hold; fail (equivalent to nothing) when the upper
+   end of 1 is below +0.047, the gain the power check finds 80% of the
+   time on these three kinds' hard rows (+0.041 at beta 0.5 with power
+   0.76, +0.072 at 0.75 with 0.97; the null never passes; the rule's
+   +0.03 is the bound for seven to thirteen kinds and is reported too);
+   level otherwise;
+4. per kind, the one-sided bootstrap p of S over the base, Holm over the
+   three at 5%;
+5. for the record: k = 5, 20, 10%; all rows; precision and lead; S
+   against T; P and T against the base; Brier; log of S against the raw
+   base; AUC per kind, all and hard rows; the base against persistence
+   and climatology.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
