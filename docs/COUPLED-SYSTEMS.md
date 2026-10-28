@@ -313,7 +313,8 @@ is longest, and nothing says the interest paid on it is someone's income.
 scripts/sfc-data.py builds the panel. Flows come from OECD Table 14 and
 stocks from Table 720 by instrument. EWN supplies the rest of the world
 where Table 720 has none. Ten countries get stocks imputed from property
-income. bnm.sfc books the transaction-flow matrix and the flow of funds,
+income, with their debt measured where BIS or the IMF has it (below).
+bnm.sfc books the transaction-flow matrix and the flow of funds,
 and bnm.modules.sfc runs them as F, R and D engine modules.
 bnm.sfc-run (validation.txt) scores the core and bnm.sfc-audit (audit.txt,
 audit-revised.txt) audits its assumptions. Both write to
@@ -354,6 +355,30 @@ The core is consistent. It does not forecast better than persistence.
     for France and Sweden in 1950-69. It now takes that year's rate or an
     earlier one, and years before any measured rate are dropped. That
     cuts 217 imputed country-years to 177.
+  - Imputed debt (bead bnm-a0s, a fix made after the result). Interest
+    over the pooled implicit rate overstated debt wherever lending rates
+    sit above the pool's. Private debt came out at 2.5 of GDP for South
+    Africa, 4.4 for Costa Rica and 2.6 for Brazil (BIS: 0.69, 0.56 and
+    0.49). Government debt was overstated too: Brazil 2.3 against 0.67.
+    Households', NFCs' and government's debt now come from BIS total
+    credit (year-end, national currency, known y + 1), else from the IMF
+    Global Debt Database (Costa Rica). Where both sources cover a Table 720
+    year, BIS's private debt matches Table 720's within 1% in 24 of 30
+    countries. The private sector's debt at the pooled rates, divided by
+    the measured debt, gives a country rate factor (median 1.2, Brazil 5.4,
+    South Africa 3.3). The other interest-bearing positions are divided by
+    that factor; equity is not. With neither source, the factor comes from
+    the WDI lending rate (a three-year mean, times the pool's ratio of
+    implicit to lending rates). Run on the measured countries, each left out
+    of the pool, that path misses Table 720's private debt by a median of
+    0.35 of GDP (90th percentile 1.2; 316 country-years, 15 countries). The
+    pooled rate misses by 0.58 (3.1), and that is in sample. The
+    three-year mean was chosen after this year's rate alone missed by
+    0.353. No imputed row needs this path today. A row with no source at
+    all is dropped. All 177 rows keep their stocks: 167 from BIS and 10
+    from the GDD. The flow-of-funds residual had also been taken
+    across an imputed opening balance sheet (FRA, SWE and FIN in 1995,
+    IRL, NZL, BRA and COL). It now needs both years measured.
   - The US 2009 direction is now also scored against the model's own 2008.
 - *Leakage.* Data are the latest OECD and EWN vintages, revised. Model
   and persistence both see them, so persistence is not favoured. Keen's
@@ -436,6 +461,13 @@ still bind. As a ceiling, damped mean reversion of net lending itself
 | bug fixes, Keen rules, n 931 | -0.438 | -0.552 | -0.408 |
 | bug fixes, intercept-corrected | -0.185 | -0.260 | -0.166 |
 | revised rules (post hoc), n 931 | -0.056 | -0.045 | -0.059 |
+| imputed-debt fix (bnm-a0s, after the result), Keen rules | -0.441 | -0.557 | -0.411 |
+| imputed-debt fix, intercept-corrected | -0.188 | -0.269 | -0.168 |
+| imputed-debt fix, revised rules | -0.056 | -0.046 | -0.059 |
+
+The imputed-debt fix moves the one-year skill by at most 0.01. Imputed
+stocks are 142 of 931 origins, and the rules mostly hold ratios. On
+imputed origins alone, skill goes from -0.629 to -0.612 under Keen's rules.
 
 Under the revised rules on the test origins, households are at +0.003,
 NFCs -0.001, government -0.04 and the financial sector -0.35, which is
@@ -1717,7 +1749,15 @@ Three kinds of check, each a smoke test or a diagnostic written every year:
     6-190 sd units to 3-18, and the identities hold to at most 5e-14.
     Free runs of five data years after the last assimilated year beat
     persistence on net lending in 10 of 32 countries. This is the
-    one-year result again: the rules amount to holding ratios.
+    one-year result again: the rules amount to holding ratios. After the
+    imputed-debt fix (bnm-a0s), a fix made after this result, the count
+    is 9 of 32, with innovations 6-177 -> 3-17. Measured countries are
+    assimilated from their first measured year, but they are learned on
+    the imputed years before it. France's free-run error went from 0.023
+    to 0.142 (persistence 0.025). With France's imputed years removed
+    altogether, it is 0.144. So the 0.023 rested on the old, overstated
+    sheets, and the free run is sensitive to years that a half-life of
+    one should make negligible.
     data/derived/coupled/assimilation.txt has the figures.
   - *Golden checks* (bnm.coupled-run): with one member and no
     assimilation, the run reproduces phase A exactly. The stock modules'
@@ -1734,11 +1774,20 @@ Three kinds of check, each a smoke test or a diagnostic written every year:
   - *Sheaf gaps* (data/derived/coupled/sheaf.txt), written as
     diagnostics and not reconciled:
     - Private debt: the SFC core's household and NFC debt against Keen's
-      d. The median gap is 0.26 of GDP. Measured countries agree (USA
-      1.47 against 1.49, DEU 1.37 against 1.41). Imputed stocks do not:
-      ZAF is out by 5.5 of GDP and CRI by 4.4. Imputing stocks from
-      interest at a pooled rate overstates them where lending rates are
-      high (bead bnm-a0s).
+      d. Measured countries agree (USA 1.47 against 1.49, DEU 1.37
+      against 1.41). Imputed stocks did not: ZAF was out by 5.5 of GDP and
+      CRI by 4.4, because interest at a pooled rate overstated them where
+      lending rates are high. Since bead bnm-a0s (2a), imputed debt comes
+      from BIS or the IMF GDD. The median gap is now 0.17 (was 0.26) and
+      the largest 1.6 (was 5.5). Median |gap| by imputed country, before
+      and after: ZAF 5.45 -> 0.05, CRI 4.35 -> 0.11, COL 1.18 -> 0.02,
+      BRA 0.67 -> 0.11, CHN 0.46 -> 0.19, NZL 0.45 -> 0.52, FRA 0.22,
+      FIN 0.09 and SWE 0.07 unchanged, IRL 0.80 unchanged. Keen's d is
+      BIS's private credit where BIS has the country, so for ZAF, COL,
+      BRA and CHN the agreement is partly by construction. CRI's d is
+      WDI's private credit, so CRI's agreement is not. The largest gaps
+      left are BGR 0.95, IRL 0.89, HRV 0.80, LUX 0.73 and LVA 0.60, all
+      measured stocks.
     - Wage share against Keen's omega: the SFC share is on average 0.10
       lower (D1/GDP against PWT's labour share, which counts mixed
       income), most of all in GRC, PRT and SVN.
