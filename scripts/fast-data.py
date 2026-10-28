@@ -95,16 +95,23 @@ def pinksheet(path=os.path.join(RAW, "fast-pinksheet", "CMO-Historical-Data-Mont
     import openpyxl
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     rows = list(wb["Monthly Indices"].iter_rows(values_only=True))
-    # the header row names the indices; the data rows start with YYYYMmm
-    hi = next((i for i, r in enumerate(rows) if r and any(str(c or "").strip() == "Energy" for c in r)), None)
-    if hi is None:
-        sys.exit("fast-data: no header row with Energy in the Monthly Indices sheet")
-    header = [str(c or "").strip() for c in rows[hi]]
+    # the column names are spread over the rows above the first month,
+    # some marked "**"; a column takes the name found in it
+    first = next((i for i, r in enumerate(rows) if r and re.fullmatch(r"\d{4}M\d{2}", str(r[0] or "").strip())), None)
+    if first is None:
+        sys.exit("fast-data: no monthly rows in the Monthly Indices sheet")
+    names = {}
+    for r in rows[:first]:
+        for j, c in enumerate(r or ()):
+            n = str(c or "").replace("*", "").strip()
+            if n and j > 0:
+                names.setdefault(n, j)
     col = {}
     for var, name in PINK.items():
-        if name not in header:
+        if name not in names:
             sys.exit(f"fast-data: no column {name!r} in the Monthly Indices sheet")
-        col[var] = header.index(name)
+        col[var] = names[name]
+    hi = first - 1
     out = []
     for r in rows[hi + 1:]:
         mt = re.fullmatch(r"(\d{4})M(\d{2})", str(r[0] or "").strip())

@@ -114,6 +114,34 @@ class BuildTest(unittest.TestCase):
                 fd.build()
             self.assertFalse(os.path.exists(os.path.join(d, "series.tsv")))
 
+    def fake_book(self, rows):
+        class WB:
+            def __getitem__(self, k):
+                class S:
+                    def iter_rows(self, values_only=True):
+                        return iter(rows)
+                return S()
+        fake = type(sys)("openpyxl")
+        fake.load_workbook = lambda *a, **k: WB()
+        return fake
+
+    def test_pinksheet_header_over_several_rows(self):
+        # the sheet's layout: names on three rows, marked with "**"
+        rows = [("Updated on October 02, 2026", None, None, None, None),
+                (None, "Energy", "Non-energy **", None, None),
+                (None, None, None, "Fertilizers **", None),
+                (None, None, None, None, "Food **"),
+                (None, None, " ", " ", " "),
+                ("2000M01", 40.0, 50.0, 70.0, 60.0),
+                ("2000M02", 41.0, 51.0, 71.0, None)]
+        with mock.patch.dict(sys.modules, {"openpyxl": self.fake_book(rows)}):
+            got = {(r[1], r[3]): r[5] for r in fd.pinksheet("unused.xlsx")}
+        import math
+        self.assertEqual(got[("fast/energy", "2000-01-31")], repr(math.log(40.0)))
+        self.assertEqual(got[("fast/fertiliser", "2000-02-29")], repr(math.log(71.0)))
+        self.assertEqual(got[("fast/food", "2000-01-31")], repr(math.log(60.0)))
+        self.assertNotIn(("fast/food", "2000-02-29"), got)
+
     def test_missing_pinksheet_column_raises(self):
         class WB:
             def __getitem__(self, k):
