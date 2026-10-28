@@ -1825,6 +1825,59 @@ loss shares stay as inputs (data/derived/stocks/supply-shocks.csv), not
 adopted into the event model; the timely route for the same shocks is
 prices and traffic (bead bnm-82j.2).
 
+**Review, 28 October 2026 (trial SS): two fixes made after the outcome
+was seen.** The registered specification is unchanged; the run above
+stands as the registered result.
+1. The base's warm-up rows entered the refits. Before the year node has
+   read any published outcome it sits at its prior, p near 0.5 for every
+   country (food price shocks at origins 2003-2006, sd of logit p 0.005;
+   protest and violence 1979-1981). For food price shocks these rows were
+   all or most of the fitted rows at origins 2007-2012: the slope on
+   logit p came out at -65 at 2007 (B' near 1 for every country, 17.8
+   nats a row worse than the base) and negative at 2011-2012, and the
+   pooled level they dragged down left B' at about half the base's rate
+   for protest surges in every year. That, not the year effects, is most
+   of B''s -0.33 on log. The fits now leave out rows whose origin's
+   fit-cut is before the kind's first origin
+   (data/runs/sequencing/shock-trial-test-fix.txt): primary -0.021
+   [-0.064, +0.016] (was -0.024 [-0.065, +0.012]); S over P +0.009
+   [-0.027, +0.039]; log S less B' -0.0077 [-0.018, +0.001] (the no-harm
+   bound still not met); B' less the base on log -0.011 [-0.026, +0.002]
+   (was -0.33); per kind food price shocks -0.003 [-0.012, +0.000],
+   protest and violence unchanged; Holm rejects none. Same verdict: fail,
+   equivalent to nothing. With real forecasts in the fit, food's slope is
+   still negative at 2011-2012 (fitted on origins 2007-2008, when the
+   base ranked food price shocks against their outcomes within the year),
+   so B' does not rank as the base in those two years.
+2. The verdict's bound was the rule's +0.03, not the registered +0.047.
+   It now uses +0.047 and reports both; the verdict here is the same
+   either way.
+
+Known-year notes. USDA PSD's "Exports" is the local marketing year
+(India's rice October to September, corn October to September or March
+to February), so the value read at the end of t is mostly trade in t+1,
+and in the current vintage it is the realized figure, not December's
+WASDE forecast: a leak into the outcome window that favours S. Read a
+year late instead (an unregistered sensitivity, post-fix code,
+data/runs/sequencing/shock-trial-sens-psd-lag.txt), the primary is
+-0.021 [-0.058, +0.015] and the one positive reading, hard k = 5, falls
+from +0.021 [+0.002, +0.041] to +0.007 [-0.016, +0.029]: that gain was
+the leak's. The verdict, a fail with a leak favouring S, stands. The
+chokepoint structure's 2019 look-ahead changes nothing scored: strait
+terms are non-zero only from 2020, after it. The Bosporus's 2022
+disruption is 34% for dry bulk (20% for tankers) against all straits,
+not the 27% the registration quotes (27% is its fall from 2021 alone).
+Of the spot checks, the 2010 Russian wheat ban (Russia 76%, Ukraine 45%,
+Kazakhstan 35% shortfalls) and India's rice ban (58% at 2008, nothing at
+2007: its October 2007 ban falls in marketing year 2007/08, whose
+exports fell only 7%) light up in their year; Vietnam's 2008 ban does
+not (its exports rose). The 2022 shock reaches Egypt, Lebanon and
+Turkey through the Bosporus, not through export shortfalls (Ukraine's
+2022/23 wheat and maize exports are within 10% of the years before);
+the 2022 fertiliser and gas cuts arrive only at 2024 and 2023, outside
+the scored years, and the European gas cut never shows as a production
+shortfall (Russia's 2022 gas output fell under 10%).
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
