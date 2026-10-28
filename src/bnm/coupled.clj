@@ -76,7 +76,8 @@
   [module t emits]) the coupled table's emits each step (see the
   namespace), :keep (false) whether to return each member's emits.
   {:t [...] :members [engine results when :keep] :memories [...]
-  :states [each member's final states] :analysed [t ...]}."
+  :states [each member's final states] :params [each member's final
+  parameters] :analysed [t ...]}."
   [ms-of {:keys [members from to dt shared analyses assimilate-through seed params on-step keep]
           :or {members 1 shared #{} keep false}}]
   (let [mss (vec (for [i (range members)]
@@ -91,7 +92,7 @@
            ts []
            analysed []]
       (if (eng/done? (first rs))
-        {:t ts :members (when keep (mapv eng/result rs)) :states (mapv eng/states rs) :memories mems :analysed analysed}
+        {:t ts :members (when keep (mapv eng/result rs)) :states (mapv eng/states rs) :params (mapv eng/params rs) :memories mems :analysed analysed}
         (let [r0 (eng/advance (first rs))
               given (into {} (for [id shared :when ((:stepped r0) id)]
                                [id {:level (get (:level-cur r0) id) :rate (get (:cur r0) id)}]))

@@ -171,3 +171,57 @@
       (is (every? number? (get-in r [:vars "sfc/output" :median])))
       (is (every? pos? (drop-last 0 (get-in r [:vars "sfc/output" :sd]))) "a spread every year")
       (is (every? #(< % 1e-10) (for [m (:members (:result r)) x (get-in m [:emits :sfc-finance-DEU "sfc/fof-gap"]) :when x] x))))))
+
+;; -- a free run takes nothing known after its origin ----------------------------------------
+
+(def ^:private sim-panel
+  (delay {"SIM" (update-vals (@#'fx/sim-panel 24) #(assoc % :stocks-source :oecd-t720))}))
+
+(def ^:private sim-keen (delay (@#'fx/sim-keen 24)))
+
+(defn- scaled [ob k]
+  (cond-> (update ob :y #(some-> % (* k)))
+    (:f ob) (update :f update-vals #(update-vals % (fn [v] (* k v))))
+    (:b ob) (update :b update-vals #(update-vals % (fn [m] (update-vals m (fn [v] (some-> v (* k)))))))))
+
+(defn- after
+  "The panel and keen.csv with everything first known after `origin`
+  changed: rows whose flows or stocks are published later scaled, keen
+  rows known later moved."
+  [panel kn origin]
+  (let [known (fn [ob k] (or (get ob k) (+ (:year ob) sfc/vintage)))]
+    [(update-vals panel (fn [rows] (update-vals rows #(if (or (> (known % :known-flows) origin) (> (known % :known-stocks) origin)) (scaled % 1.25) %))))
+     (update-vals kn (fn [rows] (into {} (for [[y r] rows] [y (if (> y origin) (update-vals r #(* 0.97 %)) r)]))))]))
+
+(defn- free [panel kn] (sa/free-run panel kn "SIM" {:origin 2014 :years 4 :members 6 :seed 4}))
+
+(deftest a-free-run-does-not-move-with-data-after-its-origin
+  (let [panel @sim-panel kn @sim-keen
+        base (free panel kn)
+        [p2 k2] (after panel kn 2014)]
+    (is (seq (:analysed base)))
+    (is (= 2014 (last (:analysed base))))
+    (is (not= panel p2) "the perturbation changes the data")
+    (is (= (:vars base) (:vars (free p2 k2))) "every variable's median and spread, every year")
+    (testing "a data year published late is unknown until it is published"
+      ;; data year 2011's flows and stocks published in 2016, after the origin:
+      ;; neither the analysis nor the relearned parameters may read them
+      (let [late (assoc-in panel ["SIM" 2011 :known-flows] 2016)
+            late (assoc-in late ["SIM" 2011 :known-stocks] 2016)
+            [p3 k3] (after late kn 2014)]
+        (is (not= (get-in late ["SIM" 2011 :y]) (get-in p3 ["SIM" 2011 :y])))
+        (is (= (:vars (free late kn)) (:vars (free p3 k3))))))))
+
+(deftest relearning-keeps-the-members-parameter-spread
+  ;; the relearned parameters are the members' centre; each member keeps
+  ;; its own trend growth's draw about it, or the ensemble's parameter
+  ;; spread is gone after the first analysis
+  (let [p-now (assoc truth-p :n 0.05)
+        r (ensemble {:analyses [(sa/analysis {:ids ids :obs truth-obs :relearn (fn [_] p-now)})] :to 2006})
+        ns (map #(get-in % [(:sfc-accounts ids) :sfc :n]) (:params r))
+        n0 (map #(:n (second (sa/perturb fx/st0 fx/p0 % {:seed 3}))) (range 24))
+        mean (fn [xs] (/ (reduce + xs) (count xs)))]
+    (is (= 24 (count (distinct ns))) "every member its own")
+    (is (< (Math/abs (- 0.05 (mean ns))) 1e-12) "about the relearned value")
+    (is (every? #(< (Math/abs %) 1e-12) (map - (map #(- % (mean ns)) ns) (map #(- % (mean n0)) n0))) "each member's draw kept")
+    (is (apply = (map #(get-in (first (:params r)) [% :sfc :n]) (vals ids))) "a member's three modules alike")))

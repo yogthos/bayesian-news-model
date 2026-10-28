@@ -143,6 +143,32 @@
 
 ;; -- observations ----------------------------------------------------------------------
 
+(defn- known-year [ob k] (or (get ob k) (+ (:year ob) sfc/vintage)))
+
+(defn known-panel
+  "The SFC `panel` as known at year `t`: a data year's flows (and its
+  output) only once :known-flows, its balance sheet only once
+  :known-stocks (each the data year plus the vintage where the panel
+  gives none), a year with neither left out."
+  [panel t]
+  (update-vals panel
+               (fn [rows]
+                 (into {} (keep (fn [[y ob]]
+                                  (let [f? (<= (known-year ob :known-flows) t) s? (<= (known-year ob :known-stocks) t)]
+                                    (when (or f? s?)
+                                      [y (cond-> ob
+                                           (not f?) (assoc :flows-ok false :f {})
+                                           (not s?) (dissoc :b :stocks-source))]))))
+                       rows))))
+
+(defn relearn-at
+  "(fn [t]) -> `iso`'s parameters relearned at t (bnm.sfc/learn, opts
+  `opts`) on the panel as known at t (known-panel), data years to t less
+  the vintage; keen.csv's rows known by t (bnm.sfc/keen-of)."
+  ([panel kn iso] (relearn-at panel kn iso {}))
+  ([panel kn iso opts]
+   (fn [t] (sfc/learn (known-panel panel t) kn iso (- t sfc/vintage) opts))))
+
 (defn observations
   "(fn [t]) -> [{:year y :what w :y value :sd sd} ...]: what becomes known
   at t of `iso` in the SFC `panel` (bnm.sfc/read-panel) and keen.csv `kn`
@@ -155,7 +181,7 @@
   [panel kn iso {:keys [obs-sd imputed]}]
   (let [{:keys [bsm floor nl w lambda] :or {bsm 0.05 floor 0.002 nl 0.005 w 0.01 lambda 0.005}} obs-sd
         rows (get panel iso)
-        known (fn [ob k] (or (get ob k) (+ (:year ob) sfc/vintage)))
+        known known-year
         keen (get kn iso)]
     (fn [t]
       (vec (concat
@@ -222,7 +248,8 @@
   inflated first (inflation, at most :max-inflation 3), then updated and
   projected. :relearn (fn [t]) -> parameters (bnm.sfc/learn on what is
   known at t) or nil: with it the members step on from each analysis with
-  the parameters relearned, the recalibration of 6c (the state alone
+  the parameters relearned (each member's trend growth keeping its
+  deviation from the members' mean, so their spread is not lost), the recalibration of 6c (the state alone
   cannot move what the parameters hold, the learned positions' targets
   among them). `ids` are all three modules' ids."
   [{:keys [ids obs keep-years max-inflation relearn] :or {keep-years 6 max-inflation 3.0}}]
@@ -279,14 +306,19 @@
                           mems (mapv #(update %1 :years from-vector ys %2) memories post)
                           [wlo whi] sfc/w-bounds [llo lhi] sfc/lambda-bounds
                           p-now (when relearn (relearn t))
-                          rs (mapv (fn [rn mem]
+                          ;; the relearned parameters are the members' centre: each keeps
+                          ;; its trend growth's deviation from the members' mean (perturb)
+                          ns (mapv #(double (get-in (eng/params %) [fin :sfc :n])) runners)
+                          n-bar (/ (reduce + 0.0 ns) (count ns))
+                          rs (mapv (fn [rn mem n]
                                      (let [now (get-in mem [:years (long t)])
                                            w (max wlo (min whi (:w now))) l (max llo (min lhi (:lambda now)))]
                                        (cond-> (eng/update-states rn (fn [st] (-> st
                                                                                   (update fin assoc :bsm (:open now) :open (:end now) :fof (:fof now))
                                                                                   (update acc assoc :w w :lambda l))))
-                                         p-now (eng/update-params (fn [ps] (reduce #(assoc-in %1 [%2 :sfc] p-now) ps (vals ids)))))))
-                                   runners mems)
+                                         p-now (eng/update-params (let [p (update p-now :n #(+ (double %) (- n n-bar)))]
+                                                                    (fn [ps] (reduce #(assoc-in %1 [%2 :sfc] p) ps (vals ids))))))))
+                                   runners mems ns)
                           mean-h (fn [hs] (mapv #(/ (reduce + 0.0 %) (count hs)) (apply map vector hs)))
                           innov (map - y (mean-h prior-h))]
                       {:runners rs
@@ -333,10 +365,10 @@
   members start from data year :start (its first year with measured
   stocks and flows by default; bnm.sfc/init, parameters learned there),
   are assimilated each year through engine year :origin with the
-  parameters relearned on what is known (data years to origin - 2, the
-  panel's vintage), then run :years more with nothing known after the
-  origin. :members (32) and :seed; with one member nothing is
-  assimilated (the phase A free run from :start). Returns {:t [...]
+  parameters relearned on what is known then (relearn-at), then run
+  :years more with nothing known after the origin. :members (32) and
+  :seed; with one member nothing is assimilated (the phase A free run
+  from :start). Returns {:t [...]
   :analysed [...] :vars {variable {:median [...] :sd [...]}}} for the
   accounts module's numeric emits (sfc/output, sfc/net-lending-*, ...),
   and :result, run-ensemble's."
@@ -346,7 +378,7 @@
         st (sfc/init panel kn iso start p)
         ids (ids-of iso)
         an (analysis {:ids ids :obs (observations panel kn iso {})
-                      :relearn (fn [t] (sfc/learn panel kn iso (- t sfc/vintage) {}))})
+                      :relearn (relearn-at panel kn iso)})
         r (cp/run-ensemble (members-of iso st p {:members members :seed seed})
                         {:members members :from (inc start) :to (+ origin years) :assimilate-through origin
                          :analyses (if (> members 1) [an] []) :keep true :seed (inc seed)})
