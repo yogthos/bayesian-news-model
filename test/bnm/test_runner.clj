@@ -92,6 +92,7 @@
             [bnm.control-test]
             [bnm.sfc-test]
             [bnm.allocation-test]
+            [bnm.coupled-test]
             [bnm.capacity-test]
             [bnm.supply-shocks-test]
             [bnm.shock-trial-test]
@@ -192,6 +193,7 @@
     bnm.control-test
     bnm.sfc-test
     bnm.allocation-test
+    bnm.coupled-test
     bnm.capacity-test
     bnm.supply-shocks-test
     bnm.shock-trial-test

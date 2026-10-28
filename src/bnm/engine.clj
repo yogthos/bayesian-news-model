@@ -408,8 +408,8 @@
   "The runner stepped once (see run). opts :given {module {:level emits
   :rate emits}}: those modules are not stepped, their emits this step
   are the given ones (a module shared by an ensemble's members, stepped
-  once). The step's emits are left as :cur {module emits} and :stepped
-  #{module}, and its time as :t."
+  once). The step's emits are left as :cur {module emits} (:level-cur
+  after the level pass) and :stepped #{module}, and its time as :t."
   ([rn] (advance rn {}))
   ([{:keys [by order t-at every plan ps max-lag declared! on-step keep i states hist out] :as rn} {:keys [given]}]
    (let [t (t-at i)
@@ -429,6 +429,7 @@
                                  (assoc cur id e))
                                :else (assoc cur id (get-in hist [(dec i) id])))))
                      {} lo)
+         level-cur cur
          ;; rates
          [cur states] (reduce (fn [[cur states] id]
                                 (let [m (by id) tm (whole-t m t) g (get given id)]
@@ -458,7 +459,7 @@
                                                              ks (into (set (keys prev)) (keys e))]
                                                          (into {} (for [k ks] [k (conj (get prev k (vec (repeat i nil))) (get e k))])))])))))
                out)]
-     (assoc rn :i (inc i) :t t :cur cur :stepped stepped :states states :hist hist :out out))))
+     (assoc rn :i (inc i) :t t :cur cur :level-cur level-cur :stepped stepped :states states :hist hist :out out))))
 
 (defn run
   "Steps the modules from `from` to `to` (both included) by `dt` (the

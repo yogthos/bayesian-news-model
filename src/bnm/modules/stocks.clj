@@ -268,7 +268,7 @@
       (doseq [y (sort (keys by-year)) l (by-year y)] (.write w (str l "\n"))))
     path))
 
-(defn- stream-module
+(defn stream-module
   "Module `m` (a table-module) stepped from a copy of its table sorted by
   year in `spill-dir`, read as the years pass: what run! steps, so the
   tables are not all held at once. `opened` collects the readers."
