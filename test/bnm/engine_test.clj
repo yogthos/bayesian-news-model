@@ -221,3 +221,60 @@
 (deftest table-rows-carry-a-spread
   (is (= [["USA" 2010 "e" "e/x" "0.5" "0.1" "2009" 2010 "model"]]
          (eng/table-rows {:module :e :place :country :emits [{:var "e/x"}]} 2010 {"e/x" [["USA" "0.5" "2009" nil "0.1"]]}))))
+
+;; -- phase B: stepping in lockstep, shared modules, spans, mixed steps ----------------------
+
+(deftest a-runner-steps-as-run-does
+  (let [a (counter :a :W nil)
+        b (counter :b :R "a/level")
+        opts {:from 2000 :to 2004}
+        r (eng/run [b a] opts)
+        stepped (eng/result (nth (iterate eng/advance (eng/runner [b a] opts)) 5))]
+    (is (= (:t r) (:t stepped)))
+    (is (= (:emits r) (:emits stepped)))
+    (is (= (:states r) (:states stepped)))
+    (is (eng/done? (nth (iterate eng/advance (eng/runner [b a] opts)) 5)))
+    (is (not (eng/done? (nth (iterate eng/advance (eng/runner [b a] opts)) 4))))
+    (testing "between steps the states can be read and replaced (an analysis)"
+      (let [rn (eng/advance (eng/runner [b a] opts))
+            rn (eng/update-states rn #(assoc % :a 10.0))
+            r2 (eng/result (nth (iterate eng/advance rn) 4))]
+        (is (= [0.0 10.0 11.0 12.0 13.0] (get-in r2 [:emits :a "a/level"])))
+        (is (= 1.0 (:a (eng/states (eng/advance (eng/runner [b a] opts))))))))))
+
+(deftest a-shared-modules-emits-are-given-not-stepped
+  (let [calls (atom 0)
+        a (assoc (counter :a :W nil) :step (fn [s _ _ _ dt] (swap! calls inc) {:state (+ s dt) :emits {"a/level" s}}))
+        b (counter :b :R "a/level")
+        rn (eng/runner [b a] {:from 2000 :to 2002})
+        given (fn [i] {:a {:rate {"a/level" (* 100.0 (inc i))}}})
+        out (eng/result (reduce (fn [rn i] (eng/advance rn {:given (given i)})) rn (range 3)))]
+    (is (zero? @calls) "the given module is not stepped")
+    (is (= [100.0 200.0 300.0] (get-in out [:emits :a "a/level"])))
+    (is (= [0.0 100.0 300.0] (get-in out [:emits :b "b/level"])) "its readers see the given values")))
+
+(deftest a-module-steps-only-within-its-span
+  (let [a (counter :a :W nil)
+        b (assoc (counter :b :R "a/level") :span [2002 2003])
+        r (eng/run [a b] {:from 2000 :to 2005})]
+    (is (= [nil nil 0.0 2.0 nil nil] (get-in r [:emits :b "b/level"])))
+    (is (= [0.0 1.0 2.0 3.0 4.0 5.0] (get-in r [:emits :a "a/level"])))
+    (is (= 5.0 (get-in r [:states :b])) "its state stays where its span ended")))
+
+(deftest a-yearly-module-sees-whole-years-in-a-half-year-run
+  (let [seen (atom [])
+        y {:module :y :group :R :place :world :dt 1 :reads [] :emits [{:var "y/x" :unit "u"}]
+           :step (fn [s _ _ t _] (swap! seen conj t) {:state s :emits {"y/x" 1.0}})}
+        h (assoc (counter :h :W nil) :dt 0.5)]
+    (eng/run [y h] {:from 1990.0 :to 1992.0})
+    (is (= [1990 1991 1992] @seen))
+    (is (every? #(instance? Long %) @seen) "an integral time as a whole number, as a table's years are")))
+
+(deftest table-rows-skip-matrices-and-take-a-label
+  (let [m {:module :sfc-finance-USA :label "sfc-finance" :place :USA :emits [{:var "sfc/bsm" :unit "matrix"} {:var "sfc/x" :unit "u"}]}]
+    (is (= [["USA" 2010 "sfc-finance" "sfc/x" "0.5" "" "" 2010 "model"]]
+           (eng/table-rows m 2010 {"sfc/bsm" {:hh {:money {:a 1.0}}} "sfc/x" 0.5}))
+        "a matrix (a map) is not a row; the module column is the label")
+    (is (= [["USA" 2010 "sfc-finance" "sfc/x" "0.5" "" "" 2010 "model"]]
+           (eng/table-rows m 2010.0 {"sfc/x" 0.5}))
+        "an integral time is written as a whole year")))

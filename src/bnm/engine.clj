@@ -258,7 +258,7 @@
                               (when (not= (count seen) (count (distinct seen))) [(str "a group stepped in two runs: " (vec seen))])
                               (map :msg (filter #(= :group-order (:error %)) (validate ms)))))}))
 
-(def ^:private data-keys [:module :group :place :doc :reads :emits :stocks :params :dt :table :tool])
+(def ^:private data-keys [:module :label :group :place :doc :reads :emits :stocks :params :dt :span :table :tool])
 
 (defn graph-data
   "The declarations (data only), the edges and the orders, for
@@ -343,15 +343,20 @@
                     :else acc)))
           {} plan))
 
-(defn run
-  "Steps the modules from `from` to `to` (both included) by `dt` (the
-  finest module's by default), each module every its own :dt, in causal
-  order: per step the level pass, then the rate pass. opts: :params
-  {module {name value}} over the declared values, :on-step (fn [module t
-  emits]) called for every module's emits each step it steps, :keep (true)
-  whether to return the emits. Returns {:t [...] :emits {module {var
-  [value per t]}} :states {module final state}}; a value a module did not
-  emit at a t is nil there. The declarations are checked first."
+(defn- whole-t
+  "t as a whole number when it is one and module `m` steps in whole years:
+  a yearly module sees the years its tables are keyed by, whatever the
+  run's step."
+  [m t]
+  (if (and (not (integer? t)) (integral? (:dt m)) (integral? t)) (long t) t))
+
+(defn- in-span? [m t] (let [[lo hi] (:span m)] (and (or (nil? lo) (>= (double t) (double lo))) (or (nil? hi) (<= (double t) (double hi))))))
+
+(defn runner
+  "A run of the modules (as run's arguments) that has not stepped yet:
+  advance steps it once, result gives what run returns. Between steps
+  its module states can be read (states) and replaced (update-states),
+  which is where an analysis (bnm.coupled) updates a member."
   [ms {:keys [from to dt params on-step keep] :or {keep true}}]
   (check! ms)
   (let [dt (or dt (apply min (map :dt ms)))
@@ -360,13 +365,10 @@
         n (long (Math/round span))
         _ (when (> (Math/abs (- span n)) 1e-9)
             (throw (ex-info (str "bnm.engine: from " from " to " to " is not a whole number of steps of " dt) {})))
-        t-at (fn [i] (if whole (+ from (* i dt)) (+ (double from) (* i (double dt)))))
         every (into {} (for [m ms :let [k (/ (double (:dt m)) (double dt))]]
                          (do (when (> (Math/abs (- k (Math/round k))) 1e-9)
                                (throw (ex-info (str "bnm.engine: " (:module m) "'s dt " (:dt m) " is not a multiple of " dt) {})))
                              [(:module m) (Math/round k)])))
-        by (into {} (map (juxt :module identity)) ms)
-        {lo :level ro :rate} (order ms)
         plan (into {} (for [m ms]
                         [(:module m)
                          (vec (for [r (:reads m) :when (not (:source r))
@@ -378,58 +380,101 @@
                                                 (throw (ex-info (str "bnm.engine: " (:module m) " reads " (:var r) " at lag " (lag-of r)
                                                                      ", not a whole number of steps of " dt) {:module (:module m) :var (:var r)})))
                                               (Math/round k))}))]))
-        max-lag (reduce max 0 (map :lag-steps (mapcat val plan)))
-        ps (into {} (for [m ms] [(:module m) (merge (param-values (:params m)) (get params (:module m)))]))
-        declared! (declared-check ms)]
-    (loop [i 0
-           states (into {} (for [m ms :let [init (:init m)]] [(:module m) (if (fn? init) (init (ps (:module m))) init)]))
-           hist {}
-           out {}]
-      (let [t (t-at i)
-            steps? (fn [id] (zero? (mod i (every id))))
-            ;; levels
-            cur (reduce (fn [cur id]
-                          (let [m (by id)]
-                            (if-let [obs (and (steps? id) (:observe m))]
-                              (let [in (gather (filter :level (plan id)) cur hist i)
-                                    e (obs (states id) in (ps id) t)]
-                                (doseq [[v x] e :let [d (declared! id v)]]
-                                  (when (not= :level (phase-of d))
-                                    (throw (ex-info (str "bnm.engine: " id "'s observe gives " v ", not a declared level") {:module id :var v})))
-                                  (check-known! id d v t x))
-                                (assoc cur id e))
-                              (assoc cur id (get-in hist [(dec i) id])))))
-                        {} lo)
-            ;; rates
-            [cur states] (reduce (fn [[cur states] id]
-                                   (if (steps? id)
-                                     (let [m (by id)
-                                           in (gather (plan id) cur hist i)
-                                           {s :state e :emits} ((:step m) (states id) in (ps id) t (:dt m))
-                                           lv (when (:observe m) (cur id))
-                                           _ (doseq [[v x] e :let [d (declared! id v)]]
-                                               (when (and lv (= :level (phase-of d)) (not (and (contains? lv v) (same-value? x (lv v)))))
-                                                 (throw (ex-info (str "bnm.engine: " id "'s step changes the level " v " at " t
-                                                                      " (observed " (pr-str (get lv v)) ", stepped " (pr-str x) "): a level is its stocks' alone")
-                                                                 {:module id :var v :t t})))
-                                               (check-known! id d v t x))
-                                           e (merge lv e)]
-                                       (when on-step (on-step id t e))
-                                       [(assoc cur id e) (assoc states id s)])
-                                     [cur states]))
-                                 [cur states] ro)
-            hist (cond-> (assoc hist i cur) true (dissoc (- i (max 1 max-lag))))
-            out (if keep
-                  (-> (update out :t (fnil conj []) t)
-                      (update :emits (fn [em] (into (or em {})
-                                                    (for [id (keys by)]
-                                                      [id (let [prev (get em id {}) e (when (steps? id) (cur id))
-                                                                ks (into (set (keys prev)) (keys e))]
-                                                            (into {} (for [k ks] [k (conj (get prev k (vec (repeat i nil))) (get e k))])))])))))
-                  out)]
-        (if (>= i n)
-          (assoc out :states states)
-          (recur (inc i) states hist out))))))
+        ps (into {} (for [m ms] [(:module m) (merge (param-values (:params m)) (get params (:module m)))]))]
+    {:by (into {} (map (juxt :module identity)) ms)
+     :order (order ms)
+     :t-at (fn [i] (if whole (+ from (* i dt)) (+ (double from) (* i (double dt)))))
+     :n n :every every :plan plan :ps ps
+     :max-lag (reduce max 0 (map :lag-steps (mapcat val plan)))
+     :declared! (declared-check ms)
+     :on-step on-step :keep keep
+     :i 0
+     :states (into {} (for [m ms :let [init (:init m)]] [(:module m) (if (fn? init) (init (ps (:module m))) init)]))
+     :hist {} :out {}}))
+
+(defn done? "Whether the runner has stepped to its last time." [rn] (> (:i rn) (:n rn)))
+
+(defn states "The modules' states, {module state}." [rn] (:states rn))
+
+(defn update-states "The runner with its states (f states)." [rn f] (update rn :states f))
+
+(defn result
+  "What run returns: {:t [...] :emits {module {var [value per t]}}
+  :states {module state}}."
+  [rn]
+  (assoc (:out rn) :states (:states rn)))
+
+(defn advance
+  "The runner stepped once (see run). opts :given {module {:level emits
+  :rate emits}}: those modules are not stepped, their emits this step
+  are the given ones (a module shared by an ensemble's members, stepped
+  once). The step's emits are left as :cur {module emits} and :stepped
+  #{module}, and its time as :t."
+  ([rn] (advance rn {}))
+  ([{:keys [by order t-at every plan ps max-lag declared! on-step keep i states hist out] :as rn} {:keys [given]}]
+   (let [t (t-at i)
+         {lo :level ro :rate} order
+         steps? (fn [id] (and (zero? (mod i (every id))) (in-span? (by id) t)))
+         ;; levels
+         cur (reduce (fn [cur id]
+                       (let [m (by id) tm (whole-t m t) g (get given id)]
+                         (cond (and g (steps? id)) (assoc cur id (if (contains? g :level) (:level g) (get-in hist [(dec i) id])))
+                               (and (steps? id) (:observe m))
+                               (let [in (gather (filter :level (plan id)) cur hist i)
+                                     e ((:observe m) (states id) in (ps id) tm)]
+                                 (doseq [[v x] e :let [d (declared! id v)]]
+                                   (when (not= :level (phase-of d))
+                                     (throw (ex-info (str "bnm.engine: " id "'s observe gives " v ", not a declared level") {:module id :var v})))
+                                   (check-known! id d v tm x))
+                                 (assoc cur id e))
+                               :else (assoc cur id (get-in hist [(dec i) id])))))
+                     {} lo)
+         ;; rates
+         [cur states] (reduce (fn [[cur states] id]
+                                (let [m (by id) tm (whole-t m t) g (get given id)]
+                                  (cond (not (steps? id)) [cur states]
+                                        g [(assoc cur id (:rate g)) states]
+                                        :else
+                                        (let [in (gather (plan id) cur hist i)
+                                              {s :state e :emits} ((:step m) (states id) in (ps id) tm (:dt m))
+                                              lv (when (:observe m) (cur id))
+                                              _ (doseq [[v x] e :let [d (declared! id v)]]
+                                                  (when (and lv (= :level (phase-of d)) (not (and (contains? lv v) (same-value? x (lv v)))))
+                                                    (throw (ex-info (str "bnm.engine: " id "'s step changes the level " v " at " tm
+                                                                         " (observed " (pr-str (get lv v)) ", stepped " (pr-str x) "): a level is its stocks' alone")
+                                                                    {:module id :var v :t tm})))
+                                                  (check-known! id d v tm x))
+                                              e (merge lv e)]
+                                          (when on-step (on-step id tm e))
+                                          [(assoc cur id e) (assoc states id s)]))))
+                              [cur states] ro)
+         stepped (set (filter steps? (keys by)))
+         hist (cond-> (assoc hist i cur) true (dissoc (- i (max 1 max-lag))))
+         out (if keep
+               (-> (update out :t (fnil conj []) t)
+                   (update :emits (fn [em] (into (or em {})
+                                                 (for [id (keys by)]
+                                                   [id (let [prev (get em id {}) e (when (stepped id) (cur id))
+                                                             ks (into (set (keys prev)) (keys e))]
+                                                         (into {} (for [k ks] [k (conj (get prev k (vec (repeat i nil))) (get e k))])))])))))
+               out)]
+     (assoc rn :i (inc i) :t t :cur cur :stepped stepped :states states :hist hist :out out))))
+
+(defn run
+  "Steps the modules from `from` to `to` (both included) by `dt` (the
+  finest module's by default), each module every its own :dt, in causal
+  order: per step the level pass, then the rate pass. A module with a
+  :span [from to] steps only within it (its state kept outside). A module
+  whose :dt is whole sees an integral time as a whole number. opts:
+  :params {module {name value}} over the declared values, :on-step (fn
+  [module t emits]) called for every module's emits each step it steps,
+  :keep (true) whether to return the emits. Returns {:t [...] :emits
+  {module {var [value per t]}} :states {module final state}}; a value a
+  module did not emit at a t is nil there. The declarations are checked
+  first. runner and advance step the same run one step at a time."
+  [ms opts]
+  (loop [rn (runner ms opts)]
+    (if (done? rn) (result rn) (recur (advance rn)))))
 
 ;; -- the coupled table ----------------------------------------------------------
 
@@ -441,14 +486,17 @@
   "The coupled table's rows of `module`'s emits at t: a number is one row
   at the module's place (WLD for :world); a vector of [iso value data-year
   source sd] rows (value and sd strings, as written; sd optional, empty
-  where the model gives no spread) is those rows. Throws when a row's
+  where the model gives no spread) is those rows; a map (a matrix passed
+  between modules) is none. The module column is its :label, else its
+  name; an integral t is written as a whole year. Throws when a row's
   data year is published sooner than the emit's known-year rule allows
   (check-known!)."
   [m t emits]
-  (let [id (name (:module m))
+  (let [id (or (:label m) (name (:module m)))
+        t (if (and (not (integer? t)) (integral? t)) (long t) t)
         decl (memoize (fn [v] (emit-for m v)))]
     (doseq [[v x] emits] (check-known! (:module m) (decl v) v t x))
-    (vec (for [[v x] emits :when (some? x)
+    (vec (for [[v x] emits :when (and (some? x) (not (map? x)))
                [iso value dy src sd] (if (number? x) [[(place-iso (:place m)) (str x) nil nil nil]] x)]
            [iso t id v value (or sd "") (or dy "") t (if (seq src) (str "model:" src) "model")]))))
 
