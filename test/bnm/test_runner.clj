@@ -94,7 +94,9 @@
             [bnm.allocation-test]
             [bnm.capacity-test]
             [bnm.supply-shocks-test]
-            [bnm.shock-trial-test]))
+            [bnm.shock-trial-test]
+            [bnm.fast-test]
+            [bnm.fast-score-test]))
 
 (def namespaces
   '[bnm.time-test
@@ -191,7 +193,9 @@
     bnm.allocation-test
     bnm.capacity-test
     bnm.supply-shocks-test
-    bnm.shock-trial-test])
+    bnm.shock-trial-test
+    bnm.fast-test
+    bnm.fast-score-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
