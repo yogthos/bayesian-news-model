@@ -51,14 +51,30 @@
 
 (defn- ratio-of [x y] (when (and x y (pos? (double y))) (/ (double x) (double y))))
 
+(defn- ids
+  "The module ids for `iso`: :sfc-finance ... alone, :sfc-finance-<iso>
+  ... with :country-ids (several countries in one run)."
+  [iso {:keys [country-ids]}]
+  (into {} (for [k [:sfc-finance :sfc-firms :sfc-accounts]]
+             [k (if country-ids (keyword (str (name k) "-" iso)) k)])))
+
+(defn- placed
+  "The module with its id, label and span (opts :span)."
+  [m iso opts]
+  (cond-> (assoc m :module ((ids iso opts) (:module m)) :label (name (:module m)))
+    (:span opts) (assoc :span (:span opts))))
+
 (defn finance-module
-  [iso st p]
+  [iso st p & [opts]]
   (letfn [(opening [state in]
-            (if-let [fof (get in "sfc/fof")] (sfc/apply-fof (:bsm state) fof) (:bsm state)))]
+            (cond (:open state) (:open state)
+                  (get in "sfc/fof") (sfc/apply-fof (:bsm state) (get in "sfc/fof"))
+                  :else (:bsm state)))]
+    (placed
     {:module :sfc-finance :group :F :place (keyword iso) :dt 1
      :doc "The five sectors' balance sheets (bnm.sfc): interest, dividends and new credit from them"
-     :reads [{:var "sfc/fof" :unit mat :lag 1 :phase :level :from :sfc-accounts}
-             {:var "sfc/output" :unit level-unit :lag 1 :from :sfc-accounts}]
+     :reads [{:var "sfc/fof" :unit mat :lag 1 :phase :level :from (:sfc-accounts (ids iso opts))}
+             {:var "sfc/output" :unit level-unit :lag 1 :from (:sfc-accounts (ids iso opts))}]
      :emits [(e "sfc/bsm" mat nil :level) (e "sfc/bsm-gap" ratio nil :level) (e "sfc/fof-gap" ratio nil :level)
              (e "sfc/property-income" mat) (e "sfc/credit" mat)
              (e "sfc/credit-hh" ratio-yr :F1) (e "sfc/credit-nfc" ratio-yr :F1)
@@ -70,7 +86,7 @@
      :init {:bsm (:bsm st) :Y (:Y st) :bsm-prev (:bsm-prev st)}
      :observe (fn [state in _ _]
                 (let [open (opening state in)
-                      fof (get in "sfc/fof")
+                      fof (or (:fof state) (get in "sfc/fof"))
                       y (or (:Y fof) (:Y state))]
                   {"sfc/bsm" open
                    "sfc/bsm-gap" (/ (sfc/bsm-gap open) y)
@@ -90,15 +106,17 @@
                         "sfc/rate-hh" (get-in p [:i-l :hh]) "sfc/rate-nfc" (get-in p [:i-l :nfc])
                         "sfc/interest-hh" (/ (get-in pinc [:int-paid :hh]) ye)
                         "sfc/interest-nfc" (/ (get-in pinc [:int-paid :nfc]) ye)
-                        "sfc/interest-gov" (/ (get-in pinc [:int-paid :gov]) ye)}}))}))
+                        "sfc/interest-gov" (/ (get-in pinc [:int-paid :gov]) ye)}}))}
+    iso opts)))
 
 (defn firms-module
-  [iso st p]
+  [iso st p & [opts]]
+  (placed
   {:module :sfc-firms :group :R :place (keyword iso) :dt 1
    :doc "Investment by sector: firms' by Keen's kappa(pi) (bnm.keen/investment)"
-   :reads [{:var "sfc/output" :unit level-unit :lag 1 :from :sfc-accounts}
-           {:var "sfc/nfc-profit-share" :unit ratio :lag 1 :from :sfc-accounts}
-           {:var "sfc/nfc-investment-share" :unit ratio :lag 1 :from :sfc-accounts}]
+   :reads [{:var "sfc/output" :unit level-unit :lag 1 :from (:sfc-accounts (ids iso opts))}
+           {:var "sfc/nfc-profit-share" :unit ratio :lag 1 :from (:sfc-accounts (ids iso opts))}
+           {:var "sfc/nfc-investment-share" :unit ratio :lag 1 :from (:sfc-accounts (ids iso opts))}]
    :emits [(e "sfc/investment" mat) (e "sfc/nfc-investment" ratio)]
    :stocks {}
    :params {:sfc {:value p}}
@@ -114,16 +132,19 @@
                  ye (* y0 (+ 1.0 (double (:n p))))
                  inv (sfc/investment p ye pi {:kappa kappa :pi-prev pi-prev})]
              {:state (assoc state :pi pi :pi-prev pi-prev :kappa kappa)
-              :emits {"sfc/investment" inv "sfc/nfc-investment" (/ (:nfc inv) ye)}}))})
+              :emits {"sfc/investment" inv "sfc/nfc-investment" (/ (:nfc inv) ye)}}))}
+  iso opts))
 
 (defn accounts-module
-  [iso st p]
+  [iso st p & [opts]]
+  (placed
   {:module :sfc-accounts :group :D :place (keyword iso) :dt 1
    :doc "The year's transaction-flow matrix and flow of funds (bnm.sfc), Keen's wage share and employment inside it"
-   :reads [{:var "sfc/bsm" :unit mat :from :sfc-finance}
-           {:var "sfc/property-income" :unit mat :from :sfc-finance}
-           {:var "sfc/credit" :unit mat :from :sfc-finance}
-           {:var "sfc/investment" :unit mat :from :sfc-firms}]
+   :reads (let [{f :sfc-finance r :sfc-firms} (ids iso opts)]
+            [{:var "sfc/bsm" :unit mat :from f}
+             {:var "sfc/property-income" :unit mat :from f}
+             {:var "sfc/credit" :unit mat :from f}
+             {:var "sfc/investment" :unit mat :from r}])
    :emits [(e "sfc/fof" mat) (e "sfc/output" level-unit)
            (e "sfc/net-lending-hh" ratio) (e "sfc/net-lending-nfc" ratio) (e "sfc/net-lending-fin" ratio)
            (e "sfc/net-lending-gov" ratio :D4) (e "sfc/net-lending-row" ratio)
@@ -154,10 +175,15 @@
                       "sfc/hh-saving-rate" (:hh-saving-rate o)
                       "sfc/private-debt" (/ (+ (sfc/pos end :hh :debt :l) (sfc/pos end :nfc :debt :l)) y)
                       "sfc/hh-debt" (/ (sfc/pos end :hh :debt :l) y)
-                      "sfc/nfc-debt" (/ (sfc/pos end :nfc :debt :l) y)}}))})
+                      "sfc/nfc-debt" (/ (sfc/pos end :nfc :debt :l) y)}}))}
+  iso opts))
 
 (defn modules
   "The core for `iso` as three engine modules, started from bnm.sfc state
-  `st` with parameters `p` (bnm.sfc/learn)."
-  [iso st p]
-  [(finance-module iso st p) (firms-module iso st p) (accounts-module iso st p)])
+  `st` with parameters `p` (bnm.sfc/learn). opts: :country-ids, ids
+  :sfc-finance-<iso> ... so several countries run together (the table's
+  module column keeps sfc-finance ..., their :label); :span [from to],
+  the years they step."
+  ([iso st p] (modules iso st p {}))
+  ([iso st p opts]
+   [(finance-module iso st p opts) (firms-module iso st p opts) (accounts-module iso st p opts)]))

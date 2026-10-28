@@ -399,3 +399,38 @@
     (is (empty? (eng/validate ms)))
     (doseq [[i [_ o]] (map-indexed vector direct)]
       (is (< (Math/abs (- (:Y o) (get-in em [:sfc-accounts "sfc/output" i]))) (* 1e-12 (:Y o))) (str "year " i)))))
+
+;; -- phase B: several countries in one run, an analysed opening ------------------------------
+
+(deftest countries-side-by-side-run-as-alone
+  (let [st1 (assoc st0 :Y 50.0)
+        alone-a (eng/run (msfc/modules "AAA" st0 p0) {:from 2001 :to 2006})
+        alone-b (eng/run (msfc/modules "BBB" st1 p0) {:from 2003 :to 2006})
+        ms (concat (msfc/modules "AAA" st0 p0 {:country-ids true})
+                   (msfc/modules "BBB" st1 p0 {:country-ids true :span [2003 2006]}))
+        r (eng/run ms {:from 2001 :to 2006})]
+    (is (empty? (eng/validate ms)))
+    (is (= #{:sfc-finance-AAA :sfc-firms-AAA :sfc-accounts-AAA :sfc-finance-BBB :sfc-firms-BBB :sfc-accounts-BBB} (set (map :module ms))))
+    (is (every? #{"sfc-finance" "sfc-firms" "sfc-accounts"} (map :label ms)) "the table keeps the module's name")
+    (is (= (get-in alone-a [:emits :sfc-accounts]) (get-in r [:emits :sfc-accounts-AAA])))
+    (is (= (get-in alone-b [:emits :sfc-accounts "sfc/output"]) (drop 2 (get-in r [:emits :sfc-accounts-BBB "sfc/output"]))))
+    (is (= [nil nil] (take 2 (get-in r [:emits :sfc-accounts-BBB "sfc/output"]))) "nothing before its span")))
+
+(deftest an-analysed-opening-replaces-the-integrated-one
+  (let [f (msfc/finance-module "SIM" st0 p0)
+        {s :state} ((:step f) (:init f) {} {:sfc p0} 2001 1)
+        {s2 :state} (sfc/step st0 p0)
+        fof (:fof (:out (sfc/step st0 p0)))
+        in {"sfc/fof" fof}
+        plain ((:observe f) s in {:sfc p0} 2002)
+        moved (sfc/apply-fof (:bsm s) fof)]
+    (is (= (:bsm s2) (get plain "sfc/bsm")))
+    (is (< (get plain "sfc/fof-gap") 1e-12))
+    (let [lv ((:observe f) (assoc s :open moved :fof fof) in {:sfc p0} 2002)]
+      (is (= moved (get lv "sfc/bsm")) "the analysed opening as given")
+      (is (< (get lv "sfc/fof-gap") 1e-12) "with its own flow of funds the identity holds"))
+    (testing "the step starts the year from it and forgets it"
+      (let [{s3 :state e :emits} ((:step f) (assoc s :open (:bsm s2) :fof fof) in {:sfc p0} 2002 1)]
+        (is (= (:bsm s2) (:bsm s3)))
+        (is (not (contains? s3 :open)))
+        (is (number? (get e "sfc/credit-hh")))))))
