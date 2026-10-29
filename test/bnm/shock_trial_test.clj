@@ -100,3 +100,18 @@
     (is (= 2 (count j)))
     (is (= {:s 0.2 :base 0.1 :plc 0.3 :n0 0.3 :n1 0.6} (:p (first (filter #(= "AAA" (:c %)) j)))))
     (is (= 0.7 (get-in (first (filter #(= "BBB" (:c %)) j)) [:p :n1])))))
+
+(deftest the-base-run-and-output-are-options
+  ;; a rerun on a corrected base must not overwrite the registered output
+  (testing "defaults: the registered base and files"
+    (let [o (st/parse-opts ["--test" "true"])]
+      (is (= "t44-world-norel" (:run o)))
+      (is (= "data/runs/sequencing/shock-trial-test.txt" (st/out-path o)))
+      (is (= "data/runs/sequencing/shock-trial-test-v2.txt" (st/out-path (assoc o :nulls "8"))))
+      (is (= "data/runs/sequencing/shock-trial-design.txt" (st/out-path {:design "true"})))
+      (is (= "data/runs/sequencing/shock-trial-design-v2.txt" (st/out-path {:design "true" :nulls "8"})))
+      (is (= "data/runs/sequencing/shock-trial-power.txt" (st/out-path {:power "true"})))))
+  (testing "--run and --out"
+    (let [o (st/parse-opts ["--test" "true" "--run" "t48-world-norel" "--out" "x/y.txt"])]
+      (is (= "t48-world-norel" (:run o)))
+      (is (= "x/y.txt" (st/out-path o))))))

@@ -38,7 +38,8 @@
     jolt -A:tools -M -m bnm.shock-trial --power true      power on the test rows (base only)
     jolt -A:tools -M -m bnm.shock-trial --test true       the registered test (origins 2003-2022)
     jolt -A:tools -M -m bnm.shock-trial --test true --nulls 8   the watch-list rule v2, descriptive (bnm-82j.6)
-    [--rebuild true] rebuilds data/derived/stocks/supply-shocks.csv from data/derived/shocks"
+    [--rebuild true] rebuilds data/derived/stocks/supply-shocks.csv from data/derived/shocks
+    [--run t44-world-norel] the base; [--out path] in place of the mode's registered file"
   (:require [augur.math :as m]
             [augur.score :as sc]
             [bnm.attribution :as at]
@@ -50,7 +51,7 @@
             [clojure.string :as str]))
 
 (def trial-kinds ["food_price_shock" "protest_surge" "violence_surge"])
-(def run "t44-world-norel")
+(def run "The registered base; --run reruns on another." "t44-world-norel")
 (def lambda "Ridge precision per standardized shock coefficient." 10.0)
 (def scale "Losses enter as log(1 + L / scale)." 0.01)
 (def time-lag "Years the time placebo dates the losses late." 6)
@@ -320,20 +321,29 @@
 
 (defn parse-opts [args]
   (let [o (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))]
-    (assoc o :reps (or (some-> (:reps o) parse-long) 1000) :seed seed :alpha 0.1 :block 2)))
+    (assoc o :run (or (:run o) run)
+           :reps (or (some-> (:reps o) parse-long) 1000) :seed seed :alpha 0.1 :block 2)))
+
+(defn out-path
+  "Where a mode writes: --out, else the registered file of the mode (the
+  test's v2 reading beside it)."
+  [{:keys [design power nulls out]}]
+  (or out
+      (cond power "data/runs/sequencing/shock-trial-power.txt"
+            :else (str "data/runs/sequencing/shock-trial-" (if design "design" "test") (when nulls "-v2") ".txt"))))
 
 (defn -main [& args]
-  (let [{:keys [design power test rebuild nulls] :as opts} (parse-opts args)
+  (let [{:keys [design power test rebuild nulls run] :as opts} (parse-opts args)
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out (str s "\n"))))
         cats (kinds/catalogues)]
     (if power
       (do (wl/report-power say run cats [0.0 0.25 0.375 0.5 0.75 1.0] 100
                            (assoc opts :from 2003 :to 2022 :reps 200 :kinds trial-kinds))
-          (spit "data/runs/sequencing/shock-trial-power.txt" (str out)))
-      (let [[kds from to last-row path] (if design
-                                         [["protest_surge" "violence_surge"] 1993 2000 2000 "data/runs/sequencing/shock-trial-design.txt"]
-                                         [trial-kinds 2003 2022 2022 "data/runs/sequencing/shock-trial-test.txt"])
+          (spit (out-path opts) (str out)))
+      (let [[kds from to last-row] (if design
+                                    [["protest_surge" "violence_surge"] 1993 2000 2000]
+                                    [trial-kinds 2003 2022 2022])
             _ (when-not (or design test) (throw (ex-info "--design true, --power true or --test true" {})))
             rows (into {} (for [kd kds] [kd (filterv #(<= 1980 (:t %) last-row) (at/year-rows run kd))]))
             ;; every trial kind's countries, so the panels and the placebo's derangement are the same in every mode
@@ -346,7 +356,7 @@
                                                      {:lag (:known-lag (cats kd) 0) :from from :to to :fit-from 1980})])))
             scored (score seed)
             o (assoc opts :from from :to to)
-            path (if nulls (str/replace path #"\.txt$" "-v2.txt") path)]
+            path (out-path opts)]
         (say (format "Supply shocks as event triggers (bnm.shock-trial), %s, run %s, kinds %s"
                      (if design "design years" "registered test") run (str/join "," kds)))
         (say (format "Fits refitted at each origin on origins 1980 to fit-cut; ridge %.0f; losses log(1 + L/%.2f); placebos: derangement seed %d, time %d years late"
