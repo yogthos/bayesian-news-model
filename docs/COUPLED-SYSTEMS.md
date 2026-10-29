@@ -3537,6 +3537,145 @@ and the review above; made with every outcome known).
   with an explicit bank margin) gives the core a rate channel. No code
   default changes with this decision.
 
+### 9h. The rate channel at one, three and five years (bnm-4hv.15)
+
+Registered on 29 October 2026, at commit bbf2c5c, before any of this
+test's outcomes was computed. The model is bnm.sfc/rates (2a, "Interest
+on the stocks, with a rate channel"), chosen on the design origins with
+targets to 2002 only. The claim is narrow: interest on the stocks with a
+rate channel forecasts no worse than estimated, so the core that has the
+channel can be used for scenarios without giving up forecast skill. It
+is not a claim to beat damped reversion, which stays the net-lending
+forecast (9g, Decision).
+
+**What has been seen.**
+- The 2003+ test origins have been seen three times: by 9f (three and
+  five years), the one-year validation (2a) and 9g (with the review's
+  reruns). The rate forms were scored on targets to 2002 only, but the
+  search knew 9g's results (government the largest gain of the fiscal
+  rule, the financial sector's drift under rate x stock). A result there
+  is secondary.
+- Japan and Iceland were 9g's holdout and are seen once. They are in no
+  split of this test.
+- Korea has never been in an SFC panel. Table 14 lacks one core item for
+  it, the rest of the world's B9, which is minus the total economy's B9
+  by the accounts' identity. scripts/sfc-data.py holdout2 fills it so
+  (fill_row_from_total) and writes data/derived/sfc/panel-holdout2.csv;
+  panel.csv and panel-holdout.csv are unchanged. Nothing else is filled
+  in Korea's years used here (2008-2024): every domestic sector's items,
+  net lending included, are as published. Only the coverage was looked
+  at: flows 2000-2024, Table 720 stocks 2008-2025, measured years
+  2008-2024, no year of doubled nominal output. 9g said Korea lacked more
+  than one sector's items; it lacked only that one. Turkey would need
+  government consumption as the total less households' and would then
+  fall to the hyperinflation rule (nominal output 2.06 times 2021's in
+  2022), so it is not built. Australia, Canada, Israel and Russia still
+  lack several items, and no open source on disk fills them.
+- So the primary is Korea: one country, untouched.
+
+**Rows** (bnm.sfc-rules-run mask on panel.csv with panel-holdout2.csv;
+rates-shape):
+- 9g's mask: countries with eight or more measured years, origins at
+  least five after the first, horizons 1, 3 and 5, the four domestic
+  sectors' net lending over output and private debt (measured), the
+  forecast made at o + 2;
+- holdout: Korea, every origin: 56, 46 and 36 rows at h 1, 3 and 5 (net
+  lending 44, 36 and 28; debt 12, 10 and 8), origins 2013-2024;
+- test: the other countries' origins from 2003: 2,926, 2,626 and 2,326
+  rows, 30 countries; design (to 2002): 485 at each horizon, reported;
+- Bulgaria and Romania out (the hyperinflation rule), as in 9g.
+
+**Models**, each scored only where all give a value: *rates* (the
+restart, bnm.sfc-analysis/restart through the engine, under
+bnm.sfc/rates, learned at o on the panel as known at o + 2); *estimated*
+(the same under bnm.sfc/estimated); *persistence*; *damped reversion*
+(9f's); *Keen's restart* (learn's defaults).
+
+**Metric.** Skill of rates against X = 1 - SSE / SSE_X, pooled over an
+outcome's rows (net lending's four sectors together), at h1 and at h3
+with h5 pooled. Intervals are 90%:
+- test and design: 2,000 draws of countries (seed 20261029);
+- holdout: [p - q95, p - q05], q05 and q95 the spread of the skill when
+  its true value is 0 on the holdout's rows, simulated under an error
+  model fitted to the test split's errors of rates and estimated in the
+  same run (scripts/sfc-rates-null.py, the review's refit made a rule):
+  per outcome, the comparator's correlation across origins at each
+  horizon, between an origin's three- and five-year errors, across the
+  four sectors and their relative scales, the spread of country scales,
+  and the correlation of rates' errors with estimated's (kappa); 2,000
+  simulations from numpy SeedSequence [20261029, cell, 0]. It reads the
+  test split's error structure, not its skill. The fitted parameters are
+  reported with the result.
+
+**Verdict: non-inferiority against estimated**, margin delta 0.05 of
+estimated's squared error (bnm.sfc-rules-run/non-inferior). Four cells:
+net lending and private debt, at h1 and at h3-5.
+- non-inferior: every cell's lower end above -0.05;
+- inferior: any cell's upper end below -0.05;
+- else inconclusive.
+- *Primary*: the holdout's verdict. *Secondary*: the test origins',
+  read as seen three times.
+- Reported, no verdict: against persistence, damped reversion and Keen's
+  restart (test and design with intervals, the holdout's points), and
+  per sector.
+
+**Power** (rates-power.txt; the null fitted to the design rows' errors,
+since the test split's are not computed before the run): kappa 0.997 for
+net lending and 0.9999 for debt, so the null is narrow (net lending
+q05/q95 -0.055/+0.056 at h1, -0.085/+0.078 at h3-5; debt within
++-0.02). P(lower end > -0.05) / P(upper end < -0.05) by true skill:
+
+| holdout cell | rows | -0.10 | -0.05 | 0 | +0.05 | +0.10 |
+|---|---|---|---|---|---|---|
+| h1 net lending | 44 | 0.00 / 0.46 | 0.04 / 0.05 | 0.45 / 0.00 | 0.92 / 0.00 | 1.00 / 0.00 |
+| h3-5 net lending | 64 | 0.01 / 0.25 | 0.05 / 0.06 | 0.26 / 0.01 | 0.69 / 0.00 | 0.94 / 0.00 |
+| h1 debt | 12 | 0.00 / 1.00 | 0.07 / 0.05 | 1.00 / 0.00 | 1.00 / 0.00 | 1.00 / 0.00 |
+| h3-5 debt | 18 | 0.00 / 0.99 | 0.05 / 0.05 | 0.99 / 0.00 | 1.00 / 0.00 | 1.00 / 0.00 |
+
+- The debt cells decide almost surely: rates and estimated differ in
+  debt only through output.
+- The net-lending cells pass at a true skill of 0 less than half the
+  time (0.45 and 0.26), all four together about one time in five. On
+  the design origins the skill was -0.007 and about -0.02. Expect
+  inconclusive unless rates does as well as estimated in Korea or
+  better. That would say one country can't tell, not that the channel
+  failed. At a true -0.10 the holdout calls inferior about half the
+  time at one year.
+- Its false non-inferior rate at the margin (true -0.05) is 4-7% per
+  cell.
+
+**Later confirmation** (registered now, scored later). bnm.sfc-rules-run
+rates-freeze, run once with this test on the data as known today,
+writes data/derived/sfc/rates-frozen.edn: each country's forecasts
+(every model) from its latest measured origin (panel.csv and both
+holdout panels) at horizons 1 to 5 whose target year is after its last
+data year with flows. Its SHA-256 goes in the result. Scored once, on or
+after 1 November 2027, against the vintage then published (data year
+2025 for most countries, known 2027), from the frozen file only:
+nothing is re-run, so the origins are the data as known now. The same
+non-inferiority rule; intervals from 2,000 draws of countries (seed
+20271101); a cell with fewer than five countries is reported, not
+judged. Bead: deferred to 2027-11-01.
+
+**What would change the plan** (proposed; the bead's decision):
+- Primary non-inferior: bnm.sfc/rates is the core for scenario runs in
+  place of Keen's rules. Net-lending forecasts stay damped reversion.
+- Primary inconclusive, secondary non-inferior: rates can be used for
+  scenario runs, stated as resting on the design origins and on origins
+  seen three times; the later confirmation decides.
+- Inferior on either: the anchored form overfit the design years;
+  scenario runs keep Keen's rules and the channel goes back to design.
+
+**Run** (once):
+
+    jolt -A:tools -M -m bnm.sfc-rules-run rates-test --out data/derived/sfc/rates-test.edn
+    python -I scripts/sfc-rates-null.py data/derived/sfc/rates-test.edn data/derived/sfc/rates-holdout-shape.edn \
+        --split test --m rates --x estimated --observed data/derived/sfc/rates-test.edn \
+        --edn-out data/derived/sfc/rates-null.edn
+    jolt -A:tools -M -m bnm.sfc-rules-run rates-score --in data/derived/sfc/rates-test.edn \
+        --null data/derived/sfc/rates-null.edn --out data/derived/sfc/rates-test.txt
+    jolt -A:tools -M -m bnm.sfc-rules-run rates-freeze --out data/derived/sfc/rates-frozen.edn
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.

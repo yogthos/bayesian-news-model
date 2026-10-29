@@ -21,8 +21,8 @@ whose --split rows the model is fitted to. shape.edn: the holdout's rows
 (only :iso :o :h :outcome are read). Prints, per horizon group and outcome,
 the fitted parameters, the null's q05 and q95 (the interval is [p - q95,
 p - q05]), and the power: P(lo > -0.05) (non-inferior) and P(hi < -0.05)
-(inferior) at true skills -0.2 ... +0.1. With --observed (the holdout's
-scored rows), each cell's point skill and interval. --edn-out writes
+(inferior) at true skills -0.2 ... +0.1. With --observed (scored rows; its
+holdout split is read), each cell's point skill and interval. --edn-out writes
 {[hg outcome] [q05 q95]} for bnm.sfc-rules-run rates-score.
 """
 import collections
@@ -140,7 +140,7 @@ def main(argv):
     sims, seed = int(opt.get('--sims', 2000)), int(opt.get('--seed', 20261029))
     R = [r for r in rows(fitp) if r['split'] == split]
     shape = [(r['iso'], r['o'], r['h'], r['outcome']) for r in rows(shapep)]
-    obs = rows(opt['--observed']) if '--observed' in opt else None
+    obs = [r for r in rows(opt['--observed']) if r['split'] == 'holdout'] if '--observed' in opt else None
     qs = {}
     print(f"fitted on {len(R)} {split} rows ({m} against {x}); holdout shape {len(shape)} rows, {len(set(s[0] for s in shape))} countries")
     for kind in ['nl', 'debt']:
