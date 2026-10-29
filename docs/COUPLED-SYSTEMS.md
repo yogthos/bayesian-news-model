@@ -1841,7 +1841,9 @@ Three kinds of check, each a smoke test or a diagnostic written every year:
       and each member's money levels (balance sheets, flows of funds,
       output, fiscal levels; bnm.engine/update-emits for the output its
       readers see) are scaled by one factor, at most 5 and at least 0.2 a
-      year, which keeps every ratio and identity.
+      year, which keeps every ratio and identity. The accounts' emits are
+      read only at lag 1, so no reader has consumed them when the analysis
+      rescales them; update-emits now throws if one had (review below 9f).
     - Collapsed members. A member with output at or below zero, or a
       balance sheet not finite, has left the model's domain; at the
       analysis it is replaced by the next healthy member, its own
@@ -2808,6 +2810,52 @@ the core's rules drift further from the data than holding the ratios
 does, as they did one year ahead, and the accounting does not pull them
 back. The SFC core stays the coupled model's bookkeeping, not a
 forecaster of the sector balances.
+
+*Review* (October 2026; the registered specification is unchanged).
+- Causality holds. Observations of a data year enter only at its
+  publication year (fiscal shares and output at y + 2), :fiscal-sd is
+  relearned from the panel as known, and the rescaled emits are read
+  only at lag 1. A new test changes the ratios, not only the scale, of
+  everything published after the origin, a late-published year among
+  them. It covers free-run, the branched free runs and the restart, and
+  nothing moves. It fails when the known-panel filter or the
+  observations' publication rule is broken on purpose.
+- Corrections to the text above: 5,922 is every row (test 4,952,
+  design 970), not the test rows, and the test has 526 origins, not 525.
+  Not every horizon has the pooled sign: ensemble vs persistence on debt
+  is +0.04 at h 3 and -0.05 at h 5. Before the registration, 6e's review
+  had scored the ensemble, the restart and persistence on net lending at
+  one origin per country (its last data year less five). Those origins
+  hold 290 of the 4,952 test rows. The hyperinflation rule was written
+  after that review saw BGR's ensemble run away. Its threshold sits in a
+  wide gap (ROU 2.24, then IRL 1.36), and the sensitivity leaves both
+  verdicts unchanged.
+- Debt, as registered: there is no verdict per outcome. The core's
+  verdict is worse, from net lending alone. Debt against persistence,
+  +0.04 [-0.03, +0.09], is not a pass. Its upper end is under its bound,
+  but the bootstrap's 12% false-pass rate means the interval is too
+  narrow. Debt against damped reversion, +0.29 [+0.24, +0.33], clears 0
+  by far more than that miscalibration. It is a secondary reading, not
+  a registered claim, and it is against a baseline that reverts ratios
+  that trend. No claim that the core forecasts debt is allowed.
+- A seeding bug, fixed after the result was seen: free-run and
+  free-runs seeded the analysis generator at (seed-of seed 2), which is
+  member 2's own seed, so the two drew the same numbers. Rerun with the
+  fix (data/derived/coupled/horizon-test-fix.txt, -fix-all.txt):
+  ensemble vs restart is -3.61 [-9.25, -0.18] on net lending and -0.76
+  [-1.62, -0.02] on debt. *Adoption: worse* (it was equivalent). The
+  restart, persistence and damped reversion draw no random numbers, so
+  their rows are identical and *the core is still worse*. Both runs
+  give the same decision: the restart stays the SFC forecast.
+- What moved the ensemble is its tails, not the bug. Under some seeds
+  the assimilated pass diverges in every member: on USA under seed 3
+  from 1981, the output rescale hits its caps (0.2, then 5), the wage
+  share sits at its floor, the innovations reach 1e2-1e4 sd units, and
+  the median government net lending reaches 60 times output. LUX, LVA
+  and HUN diverge under other seeds, and LUX under seed 2 before the
+  fix. A few such runs set the pooled skill, so the original -0.47 was
+  partly a draw. 6e's median range over seeds of 0.004 is at one origin
+  per country and misses these tails. Bead bnm-tvk.
 
 ## 10. Ranked plan
 
