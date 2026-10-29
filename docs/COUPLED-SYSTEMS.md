@@ -4037,6 +4037,81 @@ Ireland's run year by year:
   is unchanged; what the fix would have changed in it is in bead
   bnm-4hv.16's notes.
 
+### 9i. Running scenarios (bnm-4hv.19)
+
+Scenarios that move rates or debt run under bnm.sfc/rates, the only rule
+set with a rate channel. learn with no options still gives Keen's rules;
+the entry point passes rates itself.
+
+    jolt -A:tools -M -m bnm.sfc-rules-run run-scenario \
+      [--countries DEU,FRA] [--years 10] \
+      [--rate '{1 0.01}'] [--fiscal '{1 0.01 2 0.01}'] [--investment '{1 0.005}'] \
+      [--spec '{:rate {1 0.01} :fiscal {1 0.01}}'] [--out FILE] [--edn FILE]
+
+The function is bnm.sfc-rules-run/scenario. Each path is keyed by the
+year after the origin (1 is o + 1). The rate path is the policy rate's
+move from the origin's rate, and the last move is held. The fiscal path
+is government consumption as a share of expected output, borrowed. The
+investment path is NFC investment as a share of expected output,
+financed through the flow of funds. Both are added on top of the rules
+in the given years only, and neither enters the base the rules move
+from next year. Every country in panel.csv and the two holdout panels
+runs from its latest measured year, base and shocked, with the same
+learned parameters (the pooled slopes are then fitted with the holdout
+countries in, unlike the scenario mode's rates-scenario.txt). The output
+opens with the caveats. The returned map carries them under :caveats,
+with per-country flags under :flags.
+
+The caveats, as printed:
+
+- Response sizes come from fitted parameters, not from forecast
+  validation. The registered test (9h) held the policy rate in every
+  forecast, so it never exercised the immediate pass-through a.
+- The bank margin reverts with a half-life of about 4 years from its
+  current gap. Every base run therefore moves that gap between
+  depositors and banks. The run prints each country's phi, half-life
+  and gap.
+- Debt-to-interest feedback is the least supported part. Government
+  loses to estimated at 3-5 years (9h).
+- The fiscal rule ratchets: spending cuts made during a shock persist
+  in the base.
+- Interest compounds over long horizons. Years beyond 10 are
+  illustrative, and a longer run says so.
+- Household or NFC deposits go negative in some years in some countries
+  (bnm-4hv.18, open). The run lists every country and year where this
+  happens.
+- The divergence guard applies only to the parked ensemble (bnm-tvk),
+  not to these restart runs.
+
+The flags are computed from the paths, not from a list of countries. A
+year is flagged when household or NFC money assets are below 0, when
+output is not positive and finite, or when government, household or NFC
+debt is more than 5 times output. A country without a policy rate at
+its origin is named, because the rate path does nothing there (Bulgaria).
+Ireland and Luxembourg are not excluded, because bnm-4hv.17 fixed their
+collapse. Two runs on the data (35 countries, base and shocked) confirm
+it. One is 30 years with +100bp: no flag for either country, no output
+at or below 0 and no debt above 5 times output anywhere. Households'
+deposits go negative in Bulgaria (2041-52), Greece (2052-54) and Romania
+(2040-55), and the margin's half-life is 4.0 years (median; gap -0.23%
+of output). The other is 10 years with +100bp and three years of
+borrowed spending at 1% of output: no flags. Identities hold within
+4.4e-14 of output. The +100bp medians match rates-scenario.txt's
+closely: government interest +0.15 / +0.27 / +0.38 / +0.59 points at
+years 1 / 3 / 5 / 10, and its debt +1.2 points at 10. Under the same
+shock Luxembourg's output is 2.9% below its base at year 10 and 13% at
+30, the largest fall (France's is 12%). No flag catches falls like
+these, so read long paths with care.
+
+What rates is not validated for: the size of any response to a policy
+rate move (a was never tested); paths for debt and government interest
+as forecasts; horizons beyond the 5 years scored; the margin's response
+to the policy rate (beta, fitted only); investment shocks (the
+investment rule's error correction was scored, an added path was not);
+countries the mask leaves out (Bulgaria and Romania, by the
+hyperinflation rule) and countries without a policy rate. Net lending
+forecasts are damped reversion's, not the scenario runs'.
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.

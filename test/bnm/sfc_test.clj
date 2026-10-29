@@ -734,6 +734,43 @@
     (doseq [[s o] (rest (run-steps st-est p 10))]
       (is (< (max (sfc/tfm-gap (:booked o)) (:fof-gap o) (sfc/bsm-gap (:bsm s))) (* 1e-10 (:Y o)))))))
 
+(deftest an-investment-shock-is-booked-and-leaves-the-base
+  ;; bnm-4hv.19: a scenario's NFC investment (:invest-shock {year share of
+  ;; expected output}), on top of the rule, financed through the flow of
+  ;; funds, and not in the share the rule moves from next year
+  (let [p (assoc p-rates :invest-shock {2001 0.01})
+        [[s1 o1] [s0 o0]] [(second (run-steps st-est p 1)) (second (run-steps st-est p-rates 1))]
+        ye (* 100.0 1.04)]
+    (is (close? (+ (get-in o0 [:inv :nfc]) (* 0.01 ye)) (get-in o1 [:inv :nfc])))
+    (is (close? (get-in o0 [:x :inv :nfc]) (- (get-in o1 [:x :inv :nfc]) (* 0.01 ye))) "booked")
+    (is (close? (* (:kappa s0) (:Y o0)) (* (:kappa s1) (:Y o1))) "the rule's next share grows from the base, not the shock")
+    (is (< (get-in o1 [:booked :nl :nfc]) (get-in o0 [:booked :nl :nfc])))
+    (doseq [[s o] (rest (run-steps st-est p 10))]
+      (is (< (max (sfc/tfm-gap (:booked o)) (:fof-gap o) (sfc/bsm-gap (:bsm s))) (* 1e-10 (:Y o)))))))
+
+(deftest a-policy-path-sets-each-years-rate-and-holds-the-last
+  (let [p (sfc/policy-path p-rates {2001 0.01 2003 0.005 2005 0.0})
+        pol (fn [y] (:policy (sfc/rates-at (:rates p) y)))]
+    (is (close? 0.04 (pol 2001)))
+    (is (close? 0.04 (pol 2002)) "held between entries")
+    (is (close? 0.035 (pol 2004)))
+    (is (close? 0.03 (pol 2040)) "the last held")
+    (is (= (sfc/policy-shock p-rates 2001 0.01) (sfc/policy-path p-rates {2001 0.01})) "policy-shock is a one-step path")
+    (is (= p0 (sfc/policy-path p0 {2001 0.01})) "no policy rate, no change")))
+
+(deftest learns-default-is-still-keens-rules
+  ;; bnm-4hv.19: the scenario entry point passes bnm.sfc/rates; learn with
+  ;; no options keeps Keen's Phillips curve and investment function and none
+  ;; of the estimated rules or the rate channel
+  (let [panel {"SIM" (update-vals (sim-panel 24) #(assoc % :policy 0.03))}
+        kn {"SIM" {2017 {"keen/state-year" 2015.0 "keen/phi-slope" 1.0 "keen/l-star" 0.94 "keen/alpha" 0.02 "keen/lambda" 0.94}}}
+        p (sfc/learn panel kn "SIM" 2015 {})]
+    (is (map? (:phillips p)))
+    (is (map? (:invest p)))
+    (doseq [k [:rates :fiscal-rule :investment-rule :int-share :div-recv-share :wage-rule :consumption-rule :other-rule :theta]]
+      (is (nil? (get p k)) (str k)))
+    (is (map? (:rates (sfc/learn panel {} "SIM" 2015 sfc/rates))))))
+
 (deftest modules-reproduce-the-step-under-the-rates
   (let [p (sfc/policy-shock p-rates 2002 0.01)
         ms (msfc/modules "SIM" st-est p)

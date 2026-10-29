@@ -10,11 +10,21 @@
     jolt -A:tools -M -m bnm.sfc-rules-run held --in FILE [--edn FILE] [--out FILE]
     jolt -A:tools -M -m bnm.sfc-rules-run interest-drift [--out FILE]
     jolt -A:tools -M -m bnm.sfc-rules-run scenario [--out FILE]
+    jolt -A:tools -M -m bnm.sfc-rules-run run-scenario [--countries DEU,FRA] [--years 10]
+         [--rate EDN] [--fiscal EDN] [--investment EDN] [--spec EDN] [--out FILE] [--edn FILE]
     jolt -A:tools -M -m bnm.sfc-rules-run rates-shape|rates-test|rates-freeze --out FILE
     jolt -A:tools -M -m bnm.sfc-rules-run rates-score --in FILE --null FILE [--out FILE]
 
   design takes --target-to YEAR to add the skills on targets to that
   data year only.
+  run-scenario is the scenario entry point (scenario, bnm-4hv.19): base
+  and shocked paths under bnm.sfc/rates from each country's latest
+  measured year (every country in the three panels by default), the
+  spec's paths keyed by the year after the origin, e.g. --rate '{1 0.01}'
+  (policy rate +100bp from o + 1, held), --fiscal '{1 0.01 2 0.01}'
+  (government consumption +1% of expected output in o + 1 and o + 2,
+  borrowed), --investment '{1 0.005}' (NFC investment); the output
+  opens with the caveats (scenario-caveats).
   held and interest-drift are reported-only diagnostics from the review
   (held-report, interest-drift).
 
@@ -473,16 +483,31 @@
 
 ;; -- the rate channel's scenarios (bnm-4hv.15; reported only) --------------------------------
 
-(defn scenario-paths
-  "{:base :rate :fiscal} -> {data-year out}: the restart from data year `o`
-  (learned as restart-path learns it, under learn options `opts`), `years`
-  on, as is (:base), with the policy rate 100bp higher from o + 1 on
-  (:rate, bnm.sfc/policy-shock), and with government consumption raised
-  by 1% of expected output in o + 1 to o + 5, financed by debt (:fiscal,
-  :spend-shock). Each out: :Y, :int-paid, :int-recv {sector} and :margin
-  over output, :gov-debt, :private-debt, :identity (the largest of the
-  matrix, flow-of-funds and balance-sheet gaps over output)."
-  [panel kn iso o years opts]
+(defn scenario-params
+  "Parameters `p` under scenario `spec` from origin `o`: {:rate {k move of
+  the policy rate from the origin's} :fiscal {k government consumption,
+  share of expected output, debt-financed} :investment {k NFC investment,
+  share of expected output}}, k the year after the origin (1 is o + 1).
+  The rate path holds its last move (bnm.sfc/policy-path); the spending
+  and investment are on top of the rules in the years given only
+  (:spend-shock, :invest-shock)."
+  [p o spec]
+  (let [rel (fn [m] (into (sorted-map) (for [[k v] m] [(+ (long o) (long k)) (double v)])))]
+    (cond-> p
+      (seq (:rate spec)) (sfc/policy-path (rel (:rate spec)))
+      (seq (:fiscal spec)) (assoc :spend-shock (rel (:fiscal spec)))
+      (seq (:investment spec)) (assoc :invest-shock (rel (:investment spec))))))
+
+(defn scenario-runs*
+  "{:p learned parameters :paths {name {data-year out}}}: the restart from
+  data year `o` (learned as restart-path learns it, under learn options
+  `opts`), `years` on, under each of `specs` {name scenario-params spec}
+  ({} the base). Each out over output: :Y (not over output), :int-paid,
+  :int-recv {sector}, :margin, :gov-debt, :private-debt, :debt {:gov :hh
+  :nfc}, :deposits {:hh :nfc} (money assets, the flow of funds' buffer),
+  :inv-nfc, :nl {sector}, and :identity (the largest of the matrix,
+  flow-of-funds and balance-sheet gaps)."
+  [panel kn iso o years opts specs]
   (let [kp (sa/known-panel panel (+ o sfc/vintage))
         p (sfc/learn kp kn iso o opts)
         st (sfc/init kp kn iso o p)
@@ -490,17 +515,172 @@
                       (if (= i years)
                         acc
                         (let [{s :state out :out} (sfc/step st p)
-                              y (:Y out) x (:x out)
+                              y (:Y out) x (:x out) end (:end out)
                               rel (fn [m] (into {} (for [[k v] m] [k (/ (double v) y)])))]
                           (recur s (inc i)
                                  (assoc acc (:year out)
                                         {:Y y :int-paid (rel (:int-paid x)) :int-recv (rel (:int-recv x))
                                          :margin (/ (sfc/margin-of x) y)
                                          :gov-debt (:gov-debt out) :private-debt (:private-debt out)
+                                         :debt (into {} (for [k [:gov :hh :nfc]] [k (/ (sfc/pos end k :debt :l) y)]))
+                                         :deposits (into {} (for [k [:hh :nfc]] [k (/ (sfc/pos end k :money :a) y)]))
+                                         :inv-nfc (/ (double (get-in out [:inv :nfc])) y)
+                                         :nl (:net-lending out)
                                          :identity (/ (max (:tfm-gap out) (:fof-gap out) (:bsm-gap out)) y)}))))))]
-    {:base (run p)
-     :rate (run (sfc/policy-shock p (inc o) 0.01))
-     :fiscal (run (assoc p :spend-shock (into {} (for [y (range (inc o) (+ o 6))] [y 0.01]))))}))
+    {:p p :paths (into {} (for [[k spec] specs] [k (run (scenario-params p o spec))]))}))
+
+(defn scenario-runs
+  "{name {data-year out}}: scenario-runs*'s paths."
+  [panel kn iso o years opts specs]
+  (:paths (scenario-runs* panel kn iso o years opts specs)))
+
+(defn scenario-paths
+  "{:base :rate :fiscal} -> {data-year out}: scenario-runs from data year
+  `o`, `years` on, as is (:base), with the policy rate 100bp higher from
+  o + 1 on (:rate, bnm.sfc/policy-shock), and with government consumption
+  raised by 1% of expected output in o + 1 to o + 5, financed by debt
+  (:fiscal, :spend-shock)."
+  [panel kn iso o years opts]
+  (scenario-runs panel kn iso o years opts
+                 {:base {} :rate {:rate {1 0.01}} :fiscal {:fiscal (into {} (for [k (range 1 6)] [k 0.01]))}}))
+
+;; -- the scenario entry point (bnm-4hv.19) ----------------------------------------------------
+
+(def debt-flag
+  "Debt over output (government's, households' or NFCs') above which a
+  scenario year is flagged."
+  5.0)
+
+(defn path-flags
+  "The years of `path` {data-year out} a scenario's reader should not
+  trust: [{:year :kind :sector :value}], :kind :negative-deposits
+  (households' or NFCs' money assets below 0, bnm-4hv.18), :output
+  (output not positive and finite) or :debt (a sector's debt over output
+  above debt-flag)."
+  [path]
+  (vec (for [[y o] path
+             f (concat (for [s [:hh :nfc] :let [v (get-in o [:deposits s])] :when (and (number? v) (neg? (double v)))]
+                         {:kind :negative-deposits :sector s :value v})
+                       (let [v (:Y o)] (when-not (and (number? v) (< 0.0 (double v) Double/POSITIVE_INFINITY)) [{:kind :output :sector nil :value v}]))
+                       (for [s [:gov :hh :nfc] :let [v (get-in o [:debt s])] :when (and (number? v) (> (double v) debt-flag))]
+                         {:kind :debt :sector s :value v}))]
+         (assoc f :year y))))
+
+(defn run-flags
+  "{iso [flag with :path]} over scenario runs {iso {:base path :shocked
+  path}}: path-flags of each path, countries without any left out."
+  [runs]
+  (into (sorted-map)
+        (for [[iso r] runs
+              :let [fs (vec (for [k [:base :shocked] f (path-flags (get r k))] (assoc f :path k)))]
+              :when (seq fs)]
+          [iso fs])))
+
+(defn- med [xs] (let [v (vec (sort xs))] (when (seq v) (nth v (quot (count v) 2)))))
+
+(defn- flag-list
+  "\"ISO (base 2031-2033, shocked 2031), ...\" for the flags of `kind`."
+  [flags kind]
+  (let [rs (for [[iso fs] flags :let [fs (filter #(= kind (:kind %)) fs)] :when (seq fs)]
+             (str iso " (" (str/join ", " (for [[k g] (sort-by key (group-by :path fs))
+                                               :let [ys (sort (distinct (map :year g)))]]
+                                           (str (name k) " " (first ys) (when (> (count ys) 1) (str "-" (last ys)))
+                                                (when (> (count ys) 1) (str ", " (count ys) " years")))))
+                  (when (#{:negative-deposits :debt} kind)
+                    (str "; " (str/join "/" (sort (distinct (map (comp name :sector) fs))))))
+                  ")"))]
+    (if (seq rs) (str/join "; " rs) "none")))
+
+(defn scenario-caveats
+  "The caveats of scenario result `res` (scenario's map, :runs :flags
+  :years :margin), as sentences: the rate channel's limits from its
+  review (docs/COUPLED-SYSTEMS.md 9h, 9i) and what this run's paths show."
+  [res]
+  (let [{:keys [years flags margin runs]} res
+        hl (med (keep :half-life (vals margin))) gap (med (keep :gap (vals margin)))
+        nopol (sort (for [[iso m] margin :when (not (:policy? m))] iso))]
+    (vec (concat
+          ["Response sizes come from fitted parameters (pass-through and margin slopes pooled over the countries' data years, spreads and norms each country's own), not from forecast validation. The registered test (9h) scored forecasts that held the policy rate, so it never exercised the immediate pass-through a: non-inferior there says the channel costs the forecasts nothing, not that its responses are right."
+           (str "The bank margin reverts to its norm with a half-life of about 4 years from its current gap, so every base run moves that gap between depositors and banks"
+                (if (and hl gap) (format " (this run, median over countries: half-life %.1f years, margin %+.2f%% of output from its norm)." (double hl) (* 100.0 (double gap))) "."))
+           "Debt-to-interest feedback is the least supported part: government's net lending, where interest on the stocks costs, loses to estimated at 3-5 years (-0.027 on the test origins, 9h). Read the debt and interest paths as mechanism, not forecast."
+           "The fiscal rule ratchets: spending it cuts against a wider deficit during a shock stays in the base that spending grows from, so the cuts persist after the shock ends (borrowed spending's debt is back below the base by year 10)."
+           (str "Interest compounds over long horizons (under +100bp government debt is still rising at 20 and 30 years): treat years beyond 10 years as illustrative."
+                (when (> (long years) 10) (format " This run's horizon is %d years, beyond 10 years." (long years))))
+           (str "Household or NFC deposits, the flow of funds' buffer, go negative in some years in some countries (bnm-4hv.18, open). In this run: "
+                (flag-list flags :negative-deposits) ".")
+           (str "Output not positive and finite in this run: " (flag-list flags :output) ".")
+           (str "Government, household or NFC debt/output above " (long debt-flag) " in this run: " (flag-list flags :debt) ".")
+           "The divergence guard (bnm.sfc-analysis/divergence) applies only to the parked ensemble (bnm-tvk), not to these restart runs: nothing stops a run that diverges; the flags above are the only check."]
+          (when (seq nopol)
+            [(str "No policy rate at the origin, so the rate path does nothing and lending rates are held: " (str/join ", " nopol) ".")])
+          (when-let [sk (seq (:skipped res))]
+            [(str "Not run (no measured year): " (str/join ", " sk) ".")])))))
+
+(defn scenario
+  "The scenario entry point (bnm-4hv.19): for each of `countries` (default
+  every country in `panel` with a measured year; bnm.sfc-horizon-run/
+  measured-years), the restart from its latest measured year under
+  bnm.sfc/rates (not learn's default, Keen's rules), `years` on, as is
+  (:base) and under `spec` (:shocked; scenario-params: :rate, :fiscal,
+  :investment paths by year after the origin). {:rules :rates :opts
+  :years :spec :runs {iso {:origin :base :shocked}} :margin {iso {:phi
+  :half-life :gap :policy?}} :flags (run-flags) :identity (the largest
+  gap over output in any path) :skipped [iso] :caveats
+  (scenario-caveats)}."
+  [panel kn {:keys [countries years spec] :or {years 10}}]
+  (let [isos (or (seq countries) (filter #(seq (h/measured-years panel %)) (sort (keys panel))))
+        done (into (sorted-map)
+                   (for [iso isos :let [o (last (h/measured-years panel iso))] :when o]
+                     [iso (assoc (scenario-runs* panel kn iso o years sfc/rates {:base {} :shocked spec}) :origin o)]))
+        runs (into (sorted-map) (for [[iso {:keys [paths origin]}] done] [iso (assoc paths :origin origin)]))
+        margin (into (sorted-map)
+                     (for [[iso {:keys [p]}] done :let [rr (:rates p) phi (double (or (:nim-phi rr) 0.0))]]
+                       [iso {:phi phi
+                             :half-life (when (< 0.0 phi 1.0) (/ (Math/log 0.5) (Math/log (- 1.0 phi))))
+                             :gap (when (and (number? (:nim0 rr)) (number? (:nim-norm rr))) (- (double (:nim0 rr)) (double (:nim-norm rr))))
+                             :policy? (number? (:r0 rr))}]))
+        res {:rules :rates :opts sfc/rates :years years :spec spec :runs runs :margin margin
+             :flags (run-flags runs)
+             :identity (double (reduce max 0.0 (for [[_ r] runs k [:base :shocked] [_ o] (get r k)] (:identity o))))
+             :skipped (vec (remove (set (keys runs)) isos))}]
+    (assoc res :caveats (scenario-caveats res))))
+
+(defn scenario-lines
+  "The scenario's file: a title, the caveats (each a \"# \" line), then
+  per quantity the median across countries and each country's shocked
+  path less its base at years 1, 3, 5, 10 and the horizon (output in %
+  of the base's, the rest in points of output), the margins and the
+  flags."
+  [res]
+  (let [{:keys [years spec runs margin flags]} res
+        ats (vec (distinct (filter #(<= % years) [1 3 5 10 years])))
+        f (fn [x] (if (and x (== x x)) (format "%+.5f" (double x)) "-"))
+        q [["output %" (fn [s b] (* 100.0 (- (/ (:Y s) (:Y b)) 1.0)))]
+           ["gov interest" (fn [s b] (- (get-in s [:int-paid :gov]) (get-in b [:int-paid :gov])))]
+           ["gov debt" (fn [s b] (- (:gov-debt s) (:gov-debt b)))]
+           ["private debt" (fn [s b] (- (:private-debt s) (:private-debt b)))]
+           ["gov net lending" (fn [s b] (- (get-in s [:nl :gov]) (get-in b [:nl :gov])))]
+           ["margin" (fn [s b] (- (:margin s) (:margin b)))]]
+        diff (fn [r g i] (let [ys (vec (keys (:base r)))]
+                           (when (>= (count ys) i)
+                             (let [y (ys (dec i))] (g (get-in r [:shocked y]) (get-in r [:base y]))))))
+        row (fn [label vals] (str (format "%-22s" label) (str/join "  " (map (fn [i v] (str "y" i " " (f v))) ats vals))))]
+    (concat
+     [(format "# SFC scenario under bnm.sfc/rates (bnm-4hv.19): %d countries, %d years, spec %s" (count runs) (long years) (pr-str spec))]
+     (map #(str "# " %) (:caveats res))
+     [(format "origins: each country's latest measured year; largest identity gap over output, every path and year: %.2e" (double (:identity res)))
+      "shocked less base: output in % of the base's, the rest in points of output"]
+     (for [[label g] q] (row (str "median " label) (for [i ats] (med (keep #(diff % g i) (vals runs))))))
+     (for [[iso r] runs [label g] q] (row (str iso " " label) (for [i ats] (diff r g i))))
+     (for [[iso m] margin]
+       (format "%s margin: phi %.3f, half-life %s, from norm %s%s" iso (double (:phi m))
+               (if (:half-life m) (format "%.1f years" (double (:half-life m))) "none")
+               (if (:gap m) (format "%+.3f%% of output" (* 100.0 (double (:gap m)))) "-")
+               (if (:policy? m) "" ", no policy rate")))
+     (for [[iso fs] flags fl fs]
+       (format "flag %s %s %d %s%s %s" iso (name (:path fl)) (long (:year fl)) (name (:kind fl))
+               (if (:sector fl) (str " " (name (:sector fl))) "") (if (number? (:value fl)) (format "%.4f" (double (:value fl))) "-"))))))
 
 (defn scenario-report
   "Lines: for each rule set in `models` {name opts}, over countries' runs
@@ -672,6 +852,18 @@
             ls (scenario-report runs ms)]
         (doseq [l ls] (println l))
         (when-let [out (get opts "--out")] (spit out (str (str/join "\n" ls) "\n"))))
+      "run-scenario"
+      (let [pol (sfc/read-policy policy-path)
+            hp (merge panel (sfc/with-policy (sfc/read-panel holdout-path) pol) (sfc/with-policy (sfc/read-panel holdout2-path) pol))
+            edn (fn [k] (some-> (get opts k) read-string))
+            spec (merge (edn "--spec") (into {} (for [[k a] [[:rate "--rate"] [:fiscal "--fiscal"] [:investment "--investment"]] :let [v (edn a)] :when v] [k v])))
+            res (scenario hp kn {:countries (some-> (get opts "--countries") (str/split #","))
+                                 :years (or (some-> (get opts "--years") parse-long) 10)
+                                 :spec spec})
+            ls (scenario-lines res)]
+        (doseq [l ls] (println l))
+        (when-let [out (get opts "--out")] (spit out (str (str/join "\n" ls) "\n")))
+        (when-let [e (get opts "--edn")] (spit e (with-out-str (clojure.pprint/pprint (dissoc res :runs))))))
       "estimates"
       (let [ls (concat
                 ["# Pooled error-correction fits, data years to 2002 (bnm.sfc/rule-specs; regressors: own gap to norm, other gaps)"

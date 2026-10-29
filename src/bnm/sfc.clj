@@ -350,14 +350,25 @@
   (- (sum (for [s [:hh :nfc :gov :row]] (get-in x [:int-paid s])))
      (sum (for [s [:hh :nfc :gov :row]] (get-in x [:int-recv s])))))
 
+(defn policy-path
+  "Parameters `p` with the policy rate set by `deltas` {year move from the
+  origin's rate}: each year from the first given on takes the move of the
+  latest given year at or before it, the last held for 200 years (a
+  scenario for the :rates rule); unchanged without a policy rate."
+  [p deltas]
+  (if-let [r0 (when (seq deltas) (get-in p [:rates :r0]))]
+    (let [ds (into (sorted-map) deltas)
+          [y0 y1] [(long (first (keys ds))) (long (last (keys ds)))]]
+      (assoc-in p [:rates :policy]
+                (into (sorted-map) (for [y (range y0 (+ y1 200))]
+                                     [y (+ (double r0) (double (val (first (rsubseq ds <= y)))))]))))
+    p))
+
 (defn policy-shock
   "Parameters `p` with the policy rate moved by `delta` from year `from`
-  on, and held there (a scenario for the :rates rule); unchanged without
-  a policy rate."
+  on, and held there (policy-path's one-step path)."
   [p from delta]
-  (if-let [r0 (get-in p [:rates :r0])]
-    (assoc-in p [:rates :policy] (into (sorted-map) (for [y (range from (+ from 200))] [y (+ (double r0) (double delta))])))
-    p))
+  (policy-path p {from delta}))
 
 (defn property-income
   "Interest and dividends, from the balance sheet at the year's start.
@@ -574,7 +585,11 @@
         ;; a scenario's debt-financed spending (:spend-shock {year share of
         ;; expected output}), on top of the rule and not in next year's base
         cgx (+ cg (* (num (get (:spend-shock p) t)) ye))
-        inv (assoc inv :gov ig)
+        ;; a scenario's NFC investment (:invest-shock {year share of expected
+        ;; output}), on top of the rule and not in the share it moves from
+        ;; next year (bnm-4hv.19)
+        inv-rule (num (:nfc inv))
+        inv (-> inv (assoc :gov ig) (assoc :nfc (+ inv-rule (* (num (get (:invest-shock p) t)) ye))))
         itot (sum (vals inv))
         mu (num (:mu p)) X (* (num (:x p)) ye)
         v (:v p) om (:omega p) tp (:tp p) tax (:tax p)
@@ -617,7 +632,7 @@
         lam (clamp (* (double (:lambda st)) (+ 1.0 (/ (- (/ (num (:nfc inv)) ye) (num (:kappa-bar p))) (double (get-in p [:invest :nu] 3.0)))))
                    lambda-bounds)]
     {:state (cond-> {:year t :Y Y :w w :lambda lam :pi pi :cg cg :ig ig :ben ben
-                     :pi-prev (:pi st) :kappa (/ (num (:nfc inv)) Y)
+                     :pi-prev (:pi st) :kappa (/ inv-rule Y)
                      :nl-gov (/ (nl :gov) Y) :ds (/ (num (get-in pinc [:int-paid :nfc])) Y)}
               cr (assoc :c a1)
               orl (assoc :other oth))

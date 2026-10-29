@@ -105,6 +105,73 @@
       (is (< (Math/abs (- (get-in est [:rate 2015 :int-paid :gov]) (get-in est [:base 2015 :int-paid :gov]))) 1e-12)
           "estimated has no rate channel"))))
 
+;; -- the scenario entry point (bnm-4hv.19) ---------------------------------------------------
+
+(def ^:private policy-panel
+  (delay (let [rs (into {} (map-indexed (fn [i y] [y (+ 0.03 (* 0.005 (Math/sin i)))]) (range 2000 2030)))]
+           ;; data to 2012, the origin scenarios-run-a-rate-shock-... uses
+           (update @sim-panel "SIM" (fn [rows] (into {} (for [[y ob] rows :when (<= y 2012)] [y (assoc ob :policy (rs y))])))))))
+
+(def ^:private spec {:rate {1 0.01} :fiscal {1 0.01 2 0.01} :investment {2 0.005}})
+
+(deftest the-scenario-entry-point-runs-under-rates
+  (let [res (r/scenario @policy-panel {} {:countries ["SIM"] :years 12 :spec spec})
+        {:keys [origin base shocked]} (get-in res [:runs "SIM"])
+        gi (fn [path y] (get-in path [y :int-paid :gov]))]
+    (is (= :rates (:rules res)))
+    (is (= sfc/rates (:opts res)) "bnm.sfc/rates, not learn's default")
+    (is (= 2012 origin) "from the country's latest measured year")
+    (is (= (range 2013 2025) (keys base) (keys shocked)))
+    (is (= base (:base (r/scenario-runs @policy-panel {} "SIM" origin 12 sfc/rates {:base {}}))) "the base is the shared machinery's")
+    (is (= (get-in (r/scenario-paths @policy-panel {} "SIM" origin 12 sfc/rates) [:rate 2015 :int-paid])
+           (get-in (r/scenario @policy-panel {} {:countries ["SIM"] :years 12 :spec {:rate {1 0.01}}}) [:runs "SIM" :shocked 2015 :int-paid]))
+        "a +100bp spec is scenario-paths' rate shock")
+    (let [{b :base s :shocked} (get-in (r/scenario @policy-panel {} {:countries ["SIM"] :years 12 :spec {:rate {1 0.01}}}) [:runs "SIM"])]
+      (is (every? #(> (gi s %) (gi b %)) (range 2013 2025)) "the rate path raises government's interest bill"))
+    (is (> (get-in shocked [2014 :inv-nfc]) (get-in base [2014 :inv-nfc])) "the investment path")
+    (testing "the identities hold in both paths"
+      (doseq [path [base shocked] [y o] path]
+        (is (< (:identity o) 1e-10) (str y)))
+      (is (< (:identity res) 1e-10)))))
+
+(deftest the-scenario-states-its-caveats
+  (let [res (r/scenario @policy-panel {} {:countries ["SIM"] :years 12 :spec spec})
+        cs (:caveats res)
+        has (fn [& ws] (some (fn [c] (every? #(str/includes? (str/lower-case c) %) ws)) cs))]
+    (is (has "fitted parameters" "not" "forecast validation"))
+    (is (has "pass-through a" "never"))
+    (is (has "half-life" "4 years"))
+    (is (has "debt" "interest" "least supported" "3-5"))
+    (is (has "ratchet" "persist"))
+    (is (has "compound" "10 years"))
+    (is (has "deposits" "negative" "bnm-4hv.18"))
+    (is (has "divergence guard" "parked ensemble" "restart"))
+    (is (has "beyond 10 years" "12") "a 12-year horizon is warned about")
+    (is (not-any? #(str/includes? % "is 12 years") (:caveats (r/scenario @policy-panel {} {:countries ["SIM"] :years 10 :spec spec}))))
+    (let [ls (r/scenario-lines res)]
+      (is (every? (set ls) (map #(str "# " %) cs)) "every caveat in the file's header")
+      (is (= (count cs) (count (take-while #(str/starts-with? % "#") (drop 1 ls))))))))
+
+(deftest the-scenario-flags-bad-years-from-the-paths
+  (let [ok {:Y 100.0 :deposits {:hh 0.4 :nfc 0.2} :debt {:gov 0.6 :hh 0.5 :nfc 0.8}}
+        path (sorted-map 2025 ok
+                         2026 (assoc-in ok [:deposits :nfc] -0.01)
+                         2027 (assoc ok :Y -3.0)
+                         2028 (assoc-in ok [:debt :gov] 5.2)
+                         2029 (assoc ok :Y Double/NaN))
+        fs (r/path-flags path)]
+    (is (= [[2026 :negative-deposits :nfc] [2027 :output nil] [2028 :debt :gov] [2029 :output nil]]
+           (mapv (juxt :year :kind :sector) fs)))
+    (is (empty? (r/path-flags (sorted-map 2025 ok 2026 ok))))
+    (let [res (r/scenario @policy-panel {} {:countries ["SIM"] :years 5 :spec spec})
+          clean (sorted-map 2013 ok 2014 ok)
+          bad (-> res (assoc-in [:runs "BAD"] {:origin 2012 :base path :shocked path})
+                  (assoc-in [:runs "OK"] {:origin 2012 :base clean :shocked clean}))
+          cs (r/scenario-caveats (assoc bad :flags (r/run-flags (:runs bad))))]
+      (is (some #(and (str/includes? % "negative") (str/includes? % "BAD")) cs) "the run lists the country")
+      (is (some #(and (str/includes? % "debt/output") (str/includes? % "BAD")) cs))
+      (is (not-any? #(str/includes? % "OK") (filter #(re-find #"negative|debt/output|positive" %) cs)) "a clean country isn't listed"))))
+
 (deftest the-rate-test-verdict-is-non-inferiority-against-estimated
   ;; bnm-4hv.15 (9h): every cell's lower end above -0.05 passes; any upper
   ;; end below -0.05 is inferior
