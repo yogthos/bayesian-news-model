@@ -198,3 +198,59 @@
           sd (Math/sqrt (/ (reduce + (map #(* (- % mu) (- % mu)) xs)) (count xs)))]
       (is (< (Math/abs mu) 0.1))
       (is (< 0.9 sd 1.1)))))
+
+(deftest shuffled-nulls-for-the-watch-list
+  ;; the watch-list rule's shuffled null draws (bnm.watchlist, v2): a
+  ;; seeded random derangement of the countries, and a shift back in time
+  (let [cs ["AAA" "BBB" "CCC" "DDD" "EEE" "FFF" "GGG"]]
+    (doseq [seed (range 1 30)
+            :let [src (f/derange-source cs seed)]]
+      (is (= (set cs) (set (map src cs))) "a permutation")
+      (is (every? #(not= % (src %)) cs) "no country reads itself")
+      (is (= "Reg" (src "Reg")) "other places read themselves"))
+    (is (= (map (f/derange-source cs 3) cs) (map (f/derange-source cs 3) cs)) "the same draw for a seed")
+    (is (not= (map (f/derange-source cs 3) cs) (map (f/derange-source cs 4) cs)) "another draw for another seed")
+    (is (= (map (f/derange-source (reverse cs) 3) cs) (map (f/derange-source cs 3) cs)) "whatever order the countries come in"))
+  (let [inputs (fn [c t] [(double t) (count c)])
+        shifted (f/shift-inputs inputs 36)]
+    (is (= [84.0 3] (shifted "AAA" 120)) "read 36 months earlier")
+    (is (nil? ((f/shift-inputs (fn [_ t] (when (>= t 0) [1.0])) 36) "AAA" 10)) "unknown before the series")))
+
+(deftest the-time-shift-draws-whole-years-back
+  (is (= [24 36 48 60 72 84 96 108 120 24] (map fr/shift-months (range 1 11)))))
+
+(defn- corr [xs ys]
+  (let [n (count xs) mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
+        sxy (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
+        sxx (reduce + (map #(* (- % mx) (- % mx)) xs))
+        syy (reduce + (map #(* (- % my) (- % my)) ys))]
+    (/ sxy (Math/sqrt (* sxx syy)))))
+
+(deftest noise-is-independent-across-time-countries-and-seeds
+  ;; augur.math/rng fills its state linearly from the seed, so seeds a
+  ;; fixed step apart (t every quarter, neighbouring codes, seed + 1) gave
+  ;; lattice-correlated streams (bnm-0z5): the seeds are mixed first
+  (let [ts (range 0 1200 3)
+        col (fn [noise c j] (mapv #(nth (noise c %) j) ts))
+        n1 (f/noise-inputs 9 1)
+        bound (/ 4.0 (Math/sqrt (count ts)))]
+    (doseq [j (range 9) c ["FRA" "DEU" "USA"]]
+      (let [x (col n1 c j)]
+        (is (< (Math/abs (corr (butlast x) (rest x))) bound) (str c " column " j ": no autocorrelation from one quarter to the next"))
+        (is (< (Math/abs (corr (drop-last 4 x) (drop 4 x))) bound) (str c " column " j ": nor a year on"))))
+    (doseq [j (range 9) [a b] [["FRA" "DEU"] ["AAA" "AAB"] ["USA" "CAN"]]]
+      (is (< (Math/abs (corr (col n1 a j) (col n1 b j))) bound) (str a "-" b " column " j ": countries independent")))
+    (doseq [j (range 9)]
+      (is (< (Math/abs (corr (col n1 "FRA" j) (col (f/noise-inputs 9 2) "FRA" j))) bound) (str "column " j ": seeds 1 and 2 independent")))
+    (doseq [j (range 8)]
+      (is (< (Math/abs (corr (col n1 "FRA" j) (col n1 "FRA" (inc j)))) bound) (str "columns " j " and " (inc j) " independent")))))
+
+(deftest derangements-from-adjacent-seeds-are-independent
+  ;; two independent uniform derangements of n agree at about one place
+  (let [cs (mapv #(format "C%03d" %) (range 150))
+        agree (for [s (range 1 201)
+                    :let [a ((juxt identity) (mapv (f/derange-source cs s) cs))
+                          b (mapv (f/derange-source cs (inc s)) cs)]]
+                (count (filter true? (map = (first a) b))))
+        mean (/ (reduce + agree) (double (count agree)))]
+    (is (< 0.75 mean 1.25) (str "mean agreement " mean " (independent: about 1)"))))

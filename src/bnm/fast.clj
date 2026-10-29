@@ -143,14 +143,44 @@
 
 (defn noise-inputs
   "(fn [country t]) -> `width` standard normal draws, known everywhere and
-  the same at every read (seeded by `seed`, the country and t): a group
-  with nothing in it, for the reported-only diagnostic of what adding a
-  group of that width costs the quarter nodes by itself."
+  the same at every read, from augur.math/rng-mixed of `seed`, the
+  country and t (augur's rng fills its state linearly from its seed, so
+  seeds a fixed step apart, every quarter's t or neighbouring country
+  codes, gave lattice-correlated streams: bnm-0z5): a group with nothing
+  in it, for the reported-only diagnostic of what adding a group of that
+  width costs the quarter nodes by itself, and the watch-list rule's
+  noise draws (bnm.watchlist, v2)."
   [width seed]
   (fn [c t]
     (let [code (reduce (fn [acc ch] (+ (* 131 acc) (long (int ch)))) 7 (seq c))
-          g (m/rng (+ (* 1000003 (long seed)) (* 7919 (long t)) (mod code 1000000007)))]
+          g (m/rng-mixed seed (mod code 1000000007) t)]
       (vec (repeatedly width #(m/normal! g))))))
+
+(defn derange-source
+  "A shuffled null draw of the watch-list rule (bnm.watchlist, v2): a map
+  from each country to another, a uniformly random derangement of the
+  sorted `countries` from (augur.math/rng-mixed 7777 seed), so adjacent
+  seeds give independent draws (Fisher-Yates, redrawn until no country
+  reads itself); other places to themselves."
+  [countries seed]
+  (let [cs (vec (sort (distinct countries)))
+        n (count cs)
+        g (m/rng-mixed 7777 seed)
+        draw (fn [] (let [a (vec (range n))]
+                      (reduce (fn [a i]
+                                (let [j (min i (long (* (inc i) (m/next-double! g))))]
+                                  (assoc a i (a j) j (a i))))
+                              a (range (dec n) 0 -1))))
+        perm (loop [p (draw)] (if (some (fn [i] (= i (p i))) (range n)) (recur (draw)) p))
+        m (zipmap cs (map cs perm))]
+    (fn [place] (get m place place))))
+
+(defn shift-inputs
+  "A shuffled null draw in time: `inputs` read `months` before the origin,
+  so the series keeps its form and its exposures but not its timing (only
+  backward: a forward shift would read the future)."
+  [inputs months]
+  (fn [c t] (inputs c (- t (long months)))))
 
 ;; --- the quarter node's nested group ------------------------------------------
 

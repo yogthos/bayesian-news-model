@@ -4,12 +4,18 @@
   nodes (bnm.fast, bead bnm-82j.2).
 
     jolt -A:tools -M -m bnm.fast-run --out fs-a --family commodities [--placebo true]
-                                     [--end m] [--kinds a,b] [--smoke true]
+                                     [--seed s] [--null derange|shift] [--end m] [--kinds a,b] [--smoke true]
 
   --family none runs the base itself (a regression check against
   t44-world-norel). --family noise (reported only, not a trial) puts a
   group of nine standard normal draws per country and origin at the
-  quarter nodes, FSa's width: what a group of that width costs by itself.
+  quarter nodes, FSa's width: what a group of that width costs by itself;
+  --seed s draws another such group (default 1: fs-noise-mixed; fs-noise
+  and fs-noise-fix read the lattice-seeded noise before bnm-0z5), one draw of
+  the watch-list rule's null (bnm.watchlist, v2). The rule's shuffled
+  draws: --null derange (each country reads the family at another, a
+  random derangement seeded by --seed, bnm.fast/derange-source) or --null
+  shift (the family read `shift-months` of --seed before the origin).
   With --placebo, each country reads the family's inputs at the next
   country in sorted order (bnm.world-run/placebo-source).
 
@@ -48,22 +54,34 @@
 
 (def noise-width "The noise group's width: FSa's nine." 9)
 
+(defn shift-months
+  "The time-shift null draw `seed`'s lag: 24, 36, ..., 120 months, whole
+  years so a seasonal series keeps its season."
+  [seed]
+  (* 12 (+ 2 (mod (dec (long seed)) 9))))
+
 (defn -main [& args]
-  (let [{:keys [out family placebo end kinds smoke]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [out family placebo end kinds smoke seed null]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         family (keyword (or family "none"))
         _ (when-not (or (#{:none :noise} family) (fast/families family))
             (throw (ex-info (str "bnm.fast-run: no family " family) {})))
+        _ (when-not (contains? #{nil "derange" "shift"} null)
+            (throw (ex-info (str "bnm.fast-run: no null " null " (derange or shift)") {})))
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
         cats (kinds/catalogues)
         ks (if kinds (str/split kinds #",") (sort (keys kinds/tiers)))
         countries (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats)))
-        source (if (= "true" placebo) (wr/placebo-source countries) identity)
+        seed (or (some-> seed parse-long) 1)
+        source (cond (= "true" placebo) (wr/placebo-source countries)
+                     (= "derange" null) (fast/derange-source countries seed)
+                     :else identity)
         inputs (case family
                  :none nil
-                 :noise (fast/noise-inputs noise-width 1)
+                 :noise (fast/noise-inputs noise-width seed)
                  (fast/family-inputs family (fast/read-series series-path)
                                      (exposure-fn (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")))))
+        inputs (if (and inputs (= "shift" null)) (fast/shift-inputs inputs (shift-months seed)) inputs)
         width (if (= family :noise) noise-width (count (fast/families family)))
         _ (println "building" (count ks) "kinds, family" (name family) (if (= "true" placebo) "(placebo)" ""))
         specs (into {} (for [[k sp] (wr/build-specs ks end cats)]
