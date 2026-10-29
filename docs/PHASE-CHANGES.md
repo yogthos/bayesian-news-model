@@ -1324,6 +1324,27 @@ recalibrated base, log +0.0001 [-0.0007, +0.0008], Brier -0.00005
 +0.0035 and social +0.0022 pass, technology +0.0003 and financial -0.0001
 do not; the base's own skill +0.0103. No verdict changes.
 
+**Rerun after a base correction, 29 October 2026 (trial T4, bead
+bnm-82j.7).** The base moved: t48-world-norel (bnm-wns) in place of
+t44-world-norel; of T4's ten kinds, market crashes moved most. The
+registered result and the warm-up correction above stand as run. The
+same command with --run t48-world-norel on 2e9a074
+(data/runs/sequencing/attribution-t4-registered-t48.tsv; the same code on
+t44-world-norel reproduces the 0cf-fix file exactly). M0, M_S and M_P'
+do not read the base, and the rows are the same, so tests 1 and 2 and
+4's per-group S - P' are byte-identical: (1) S - P', log, +0.0011
+[-0.0006, +0.0027]: level; (2) where over when +0.0026 [+0.0013,
++0.0037]: passes; (4) material and social pass, technology and financial
+do not. Only what reads the base moves (the shares of its skill and the
+Shapley split with it): (3) over the recalibrated base, log +0.0004 [-0.0002,
++0.0009] (was +0.0001 [-0.0007, +0.0008]), Brier -0.00001 [-0.0002,
++0.0002] (was -0.00005): both upper ends still inside +0.002 and
++0.0006, equivalent to nothing; market crashes' increment -0.0005
+[-0.0043, +0.0030] (was -0.0027); the base's own skill +0.0098 (was
++0.0103). **No verdict changes.** The watch-list rule v2 does not fit
+the trial's shape (offline ridged fits, no top-k list), so no v2 reading
+is given.
+
 **Results, 22 October 2026 (trials T2 and T8).** Origins 2003-2020,
 everything fitted on 1960-2002, 200 permutations:
 1. **T2 primary, the regime's slope shift d > 0**: financial +0.146 (p
@@ -1713,6 +1734,37 @@ positive in the test years (all rows +0.294, z 1.91; post-crisis out
 strong (z 1.71), it is not specific to the country. Early warnings, as
 reframed, do not carry onsets in either period.
 
+**Rerun after a base correction, 29 October 2026 (trial T6, bead
+bnm-82j.7).** The offset base moved: t48-world-norel (bnm-wns) in place
+of t44-world-norel; of the financial group's kinds, market crashes moved
+most. The registered result stands as run. The current code on
+t44-world-norel does not reproduce data/runs/sequencing/ews-t6-test.tsv:
+calm duration reads private credit straight from data/slow/series.tsv,
+and bnm-as1 dropped its WDI zeros (ROU 1993-95, GNB 2002), which reach
+every country's own part through the common factors. Only the
+calm-duration lines differ, with the same rows; on the old file
+(data/slow/series.tsv.pre-as1) the current code reproduces the
+registered output exactly. The t47 entry below lists T6 as reading the
+zeros only through its offset; it also read them through this input.
+The same command (--run t48-world-norel --from 2003 --to 2022) on
+2e9a074, the corrected series, first the corrected series alone on
+t44-world-norel (data/runs/sequencing/ews-t6-test-as1.tsv), then t48
+(data/runs/sequencing/ews-t6-test-t48.tsv):
+1. (primary) calm duration, financial group, post-crisis rows out:
+   +0.114 (z 0.94, placebo z 1.04), p 0.935 / **+0.098 (z 0.83, placebo
+   z 0.94), p 0.950: fails** (registered +0.106, p 0.94); nothing passes
+   Holm in either group, with or without the exclusion;
+2. financial log variance on all rows +0.300 (z 1.95, placebo z 1.76),
+   post-crisis out +0.288 (z 1.75), p 0.33 (registered +0.294 and
+   +0.282): positive, the composition reading has no wrong sign to
+   explain, and the placebo is as strong;
+3. calm duration alone, post-crisis rows out: banking crises -0.068 (z
+   -0.68, p 0.31; registered -0.019, p 0.19), market crashes -0.286 (z
+   -0.93, p 0.20; registered -0.299, p 0.23).
+**No verdict changes.** The watch-list rule v2 does not fit the trial's
+shape (score tests with permutation nulls, no top-k list), so no v2
+reading is given.
+
 ## Pre-registered, 23 October 2026: robustness of the extra dimensions (trial T9)
 
 Registered before any outcome after 2002 is read for this test. Trials
@@ -1899,6 +1951,23 @@ that is market crashes at 1961-1963. Rerun on the fixed code
 code reproduces the registered file exactly): (1) the composite's timing
 over its placebo, log -0.0053 [-0.0144, +0.0086]: fails; (2) its "where"
 -0.00002 [-0.0011, +0.0010]: level. No verdict changes.
+
+**Rerun after a base correction, 29 October 2026 (H4, bead bnm-82j.7).**
+The base moved: t48-world-norel (bnm-wns) in place of t44-world-norel,
+and market crashes, one of H4's two kinds, moved most. The registered
+result and the warm-up correction above stand as run. The same command
+with --run t48-world-norel on 2e9a074
+(data/runs/sequencing/divergence-h4-registered-t48.tsv; the same code on
+t44-world-norel reproduces the 0cf-fix file exactly). Both tests compare
+M_S with M_P', which do not read the base, on the same rows, so they are
+byte-identical: (1) the composite's timing over its placebo, log -0.0053
+[-0.0144, +0.0086]: fails; (2) its "where" -0.00002 [-0.0011, +0.0010]:
+level. Only the record with the base moves: in raw mode the recalibrated
+base's own skill on market crashes is -0.022 [-0.141, +0.064] (was
++0.014), and the composite over it, coverage-matched, -0.0022 [-0.0057,
++0.0005] pooled (was -0.0012). **No verdict changes.** The watch-list
+rule v2 does not fit the trial's shape (offline ridged fits, no top-k
+list), so no v2 reading is given.
 
 **Results, 23 October 2026 (cells against provinces, bnm-3ka.11).**
 Violence escalation from quiet, 2015-26, 46 periods:
@@ -2974,13 +3043,17 @@ now drop out when stale everywhere). Not rerun: left for a decision.
 Decided 29 October 2026 (bead bnm-82j.7): rerun the trials that turn on
 food price shocks or market crashes, or sit near a decision line: T1(b),
 SS, FSa, T8b and T9, each with a correction under its result (no verdict
-changes; T1(b)'s pass after bnm-0cf holds at +0.124, p 0.025). Not
-rerun, recorded as unaffected: trials 42-45, T2, T8, T4, T3, T6, H4,
-FSb and FSc. For the kinds other than those two the base moved less
-than 0.0006 Brier, against registered intervals of 1e-4 to 1e-2; of
-these trials, 42, T4, T6, H4 (banking crises and market crashes), FSb
-and FSc also read market crashes or food price shocks, and are left on the judgement that none sits near
-its decision line, not on the size of the move.
+changes; T1(b)'s pass after bnm-0cf holds at +0.124, p 0.025). Then the
+three cheap offline trials that read those kinds, T4, T6 and H4, each
+with a correction under its result: no verdict changes (T4's and H4's
+primaries do not read the base and are byte-identical; T6's calm
+duration also moved with bnm-as1's private credit, recorded there). Not
+rerun, recorded as unaffected: trials 42-45, T2, T8, T3, FSb and FSc.
+For the kinds other than those two the base moved less than 0.0006
+Brier, against registered intervals of 1e-4 to 1e-2; of these trials,
+42, FSb and FSc also read market crashes or food price shocks, and are
+left on the judgement that none sits near its decision line, not on the
+size of the move.
 
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
