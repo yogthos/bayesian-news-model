@@ -2456,6 +2456,32 @@ guards it. FSa beating its placebo (+0.006) while losing to the base
 fits the same reading: the scrambled exposure costs a little more than
 the real one, both cost what nine added coefficients cost.
 
+**Correction, 29 October 2026 (the noise group, beads bnm-0z5 and
+bnm-82j.6).** The noise was not independent. bnm.fast/noise-inputs
+seeded augur's generator with 1000003 seed + 7919 t + the country's
+code, and augur.math/rng fills its state linearly from the seed, so
+every quarter's draws and neighbouring countries' draws were correlated
+(each column autocorrelated in t at 0.71, -0.51, 0.90, ...; FRA and DEU
+at -0.66). fs-noise and fs-noise-fix read that lattice, not noise. The
+noise is now drawn from augur.math/rng-mixed (seed, country, t), tested
+for near-zero correlation across quarters, countries, columns and seeds.
+Rerun on the current code and base (bench t48-world-norel, which
+bnm.fast-run --family none reproduces byte for byte), seed 1 as
+**fs-noise-mixed** and three more seeds (wl2h-noise-2 to -4), each
+against t48-world-norel, 2003-2022:
+- primary +0.006 [-0.007, +0.019] (p 0.24), +0.008 [-0.002, +0.019],
+  -0.003 [-0.013, +0.007], -0.003 [-0.014, +0.006]: mean +0.002, sd
+  0.006; none passes the bnm-82j.1 rule. The +0.014 (p 0.001) was the
+  lattice's draw, not a property of noise;
+- year nodes' Brier -0.00234 [-0.00506, +0.00025], -0.00168, -0.00161,
+  -0.00211; log -0.0073 [-0.0133, -0.0014] for fs-noise-mixed. The cost
+  stands: noise costs the year nodes about 0.002 Brier, more than the
+  shuffled commodity groups of the v2 registration (-0.0003), so the bnm-82j.1 harm bound
+  still measures what adding a group costs.
+The second point above holds without the lattice: draws of one shape
+differ by more than the origin bootstrap allows for (the watch-list
+rule's second form, bnm-82j.6).
+
 **Against T1(b).** T1(b) passed after the warm-up fix, food import
 exposure +0.102 per SD. It is a different object from FSa's food input:
 T1's state is the food import share times the world grain price gap
