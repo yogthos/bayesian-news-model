@@ -15,6 +15,16 @@ pooled scores and exactly on the watch list (hard top-10 recall 0.274),
 so no verdict below is rerun. Trials from now on bench against
 t47-world-norel.
 
+Corrected base, 29 October 2026 (bnm-wns, not a trial and not counted):
+the lattice fed back errors not yet known as 0 and kept weight on groups
+with no input anywhere (Romer & Romer's distress after 2013, food price
+feedback before 2008). The base rebuilt with both fixed, t48-world-norel,
+moves against t47-world-norel by Brier +0.002 [+0.000 +0.004], log
++0.004 [-0.001 +0.009] pooled (food price shocks and market crashes most)
+and hard top-10 recall 0.271 against 0.274. That is the size of the
+registered intervals, so the trials from 42 to FSc are listed in
+docs/PHASE-CHANGES.md and await a decision on rerunning.
+
 | # | configuration | first scored | note |
 |---|---|---|---|
 | 1 | mix | 2026-10 | event-code mix |

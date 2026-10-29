@@ -2523,6 +2523,63 @@ t44-world (with relations) is not rebuilt: no trial benches against it
 (trial 45 reads it for the record only). **The base for future trials is
 t47-world-norel.**
 
+## Corrected base, 29 October 2026: unknown errors and groups without inputs (run t48-world-norel, bead bnm-wns)
+
+Not a trial. Two smoke failures, both in the lattice (src/bnm/lattice.clj):
+- food price shocks' year feedback group dead in 1999-2008. The
+  catalogue starts in 2004, a year window is 24 months and the lag 18,
+  so the subregion's first error is known in mid 2007 and its country
+  reads it at the 2008 year end. That much is structure. The bug: an
+  error not yet known was fed back as 0.0, so every kind whose
+  catalogue starts after 1870 gave the feedback standardizer decades of
+  exact zeros, a spread near 0, and its first real errors landed at the
+  cap of 5. An unknown error is now nil (the mean, left out of the
+  spread);
+- banking's distress group dead in 2016-2025: Romer & Romer's measure in
+  data/derived/lattice-annual.csv ends in 2012, read through the 2013
+  origin. Its inputs were 0 at every place from then on, and the group,
+  an intercept-only model under another name, kept weight. No open
+  successor is on disk. The rule now, for every node: a group with no
+  input at any place at an origin (a source that ended, a fast signal
+  gone stale past its 6 months, errors not yet known, a link never
+  known) gets weight 0 at that origin, the others renormalized; the
+  averaging keeps its record, so it comes back when its source resumes.
+  The smoke check reports such a group as dropped out and fails one that
+  keeps weight where it has no input.
+Also found: a node's ancestors came from the parent map, not the spec's
+levels, so a parent map running past them shifted every input after
+:down by one. No production spec does this (the golden snapshot is
+unchanged by the fix), but the lattice tests' fixture did, and one test
+asserted a feedback gain that came from the shift; the input width is
+now checked against the layout.
+
+Smoke after the fix: food price shocks to 2008 and banking to 2025 pass,
+their dead groups reported as dropped out with no weight.
+
+**t48-world-norel**, the base rebuilt with t47's command (bnm.world-run
+--without-relations true), against t47-world-norel, origins 2003-2022:
+- year nodes, pooled over thirteen kinds: Brier +0.00198 [+0.00000
+  +0.00412] (nominally a gain), log +0.00414 [-0.00051 +0.00874]. Most
+  of it is two kinds with late catalogues: food price shocks Brier
+  +0.01024 [-0.00033 +0.02239], log +0.02497 [-0.00962 +0.05735]; market
+  crashes Brier +0.01564 [-0.00667 +0.04308], log +0.02838 [-0.02219
+  +0.08802]. Every other kind within 0.0006 Brier and 0.006 log, none
+  outside its interval;
+- watch-list rule, hard onsets, top 10: recall 0.271 against 0.274,
+  -0.003 [-0.021 +0.013] (k = 5 +0.000, k = 20 -0.003, all rows k = 10
+  -0.003); against persistence +0.068 [+0.043 +0.090], climatology
+  +0.034 [+0.009 +0.063] (t47: +0.071, +0.037). Per kind the largest
+  moves are market crashes 0.684 against 0.737 (19 positives), currency
+  crises 0.254 against 0.282 and sovereign defaults 0.091 against 0.065.
+
+**Trials that used the old base.** Unlike t47, this moves the base by
+1e-3 to 1e-2 on the pooled scores, the size of registered intervals.
+Every lattice run since trial 37 read the zeroed errors, and every one
+since trial 42 had dead groups weighted: trials 42-45 and their norel
+benches, T1, T2, T8, T4, T8b, T3, T6, T9, H4, SS, the watch-list rule's
+record, and FSa-FSc through fs-norel (whose fast groups at the quarters
+now drop out when stale everywhere). Not rerun: left for a decision.
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:
