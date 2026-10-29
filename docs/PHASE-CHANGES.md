@@ -1919,6 +1919,18 @@ dated as they are (most plants only known from their snapshot years),
 where a shock lands within a country does not yet tell its output loss
 better than how much of the country it covers.
 
+**Correction after the outcome, 29 October 2026 (bnm-1pq.27, bead
+bnm-0z5).** The space placebos were not 19 independent placements: the
+first draw of bnm.located-shocks/rng (Park-Miller) is linear in its seed,
+and place-seed was linear in the run's seed and the year, so the
+placebos for seeds 1-19 sat on an arithmetic progression of land cells
+(France 2005, 400 cells: steps of 149) and a country's placebo moved 7
+cells a year. Placement now draws from augur.math/rng-mixed on a mixed
+place-seed; the bootstrap keeps its generator. Rerun as registered
+(data/runs/located-test-0z5): every arm but the space placebos is
+identical; space placebos 19 of 19 at or below the real footprints' +0.00026,
+mean +0.00008 (was 18 of 19, mean +0.00007). The verdict stands.
+
 ## Registered, 23 October 2026: the watch-list rule (bead bnm-82j.1)
 
 From the next trial on, every event-model trial reports, beside the
