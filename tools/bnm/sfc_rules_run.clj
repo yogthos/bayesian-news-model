@@ -431,8 +431,9 @@
 
 (defn rates-report
   "9h's lines and verdicts from scored rows (:f with every rate-models
-  value): the rates core's skill against estimated per split, outcome and
-  horizon group, its interval (the test and design origins: countries
+  value and :data; rows without the data, as the frozen rows where the
+  vintage lacks the target, are left out): the rates core's skill against
+  estimated per split, outcome and horizon group, its interval (the test and design origins: countries
   resampled, 2,000 draws, seed 20261029; the holdout: [p - q95, p - q05]
   from `null` {[hg outcome] [q05 q95]}, the error model fitted to the test
   split, scripts/sfc-rates-null.py), and the verdicts (non-inferior,
@@ -440,7 +441,7 @@
   (secondary); against persistence, damped reversion and Keen's restart,
   reported. {:lines [...] :verdicts {split verdict}}."
   [scored null delta]
-  (let [rows (filter (fn [r] (every? #(number? (get-in r [:f %])) rate-models)) scored)
+  (let [rows (filter (fn [r] (and (number? (:data r)) (every? #(number? (get-in r [:f %])) rate-models))) scored)
         sel (fn [split o hs] (filter #(and (= split (:split %)) (if (= o :nl) (= :nl (first (:outcome %))) (= [:debt] (:outcome %))) (hs (:h %))) rows))
         ci (fn [split rs x hg o]
              (when (seq rs)

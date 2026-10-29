@@ -156,3 +156,16 @@
     (is (some #(str/includes? % "rates vs persistence") lines))
     (let [bad (map #(if (= :holdout (:split %)) (assoc-in % [:f :rates] 1.5) %) rows)]
       (is (= :inferior (:holdout (:verdicts (r/rates-report bad null 0.05))))))))
+
+(deftest the-rate-test-report-scores-only-rows-with-data
+  ;; the frozen rows (bnm-4hv.16) keep :data nil where the vintage lacks
+  ;; the target: they are left out, not a crash
+  (let [rows (vec (for [split [:holdout :test] iso (if (= split :holdout) ["K"] ["A" "B" "C" "D"]) o (range 2010 2016) h [1 3 5]
+                        out [[:nl :hh] [:nl :gov] [:debt]]]
+                    {:iso iso :o o :h h :outcome out :split split :data 0.0
+                     :f {:rates (if (even? o) 1.0 1.01) :estimated 1.0 :persistence 2.0 :damped 1.5 :restart 3.0}}))
+        null {[:h1 :nl] [-0.01 0.01] [:h1 :debt] [-0.01 0.01] [:h35 :nl] [-0.01 0.01] [:h35 :debt] [-0.01 0.01]}
+        missing (map #(assoc % :data nil :f (assoc (:f %) :rates 9.0)) (take 30 rows))
+        {:keys [lines verdicts]} (r/rates-report (concat rows missing) null 0.05)]
+    (is (= (:verdicts (r/rates-report rows null 0.05)) verdicts) "the same verdicts as without them")
+    (is (= (format "rows scored (every model present): %d of %d" (count rows) (+ (count rows) 30)) (first lines)))))

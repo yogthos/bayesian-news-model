@@ -3744,6 +3744,89 @@ What it means.
   mask's hyperinflation rule, as every split here does. Bead
   bnm-4hv.16, deferred to 2027-11-01.
 
+**Review** (29 October 2026, after the result; changes no registered
+rule, the frozen file or any number above).
+
+- *The test could hardly fail.* rates and estimated forecast almost the
+  same numbers. In Korea the root mean square of their difference is
+  1.4% of estimated's error RMS for net lending at one year, 2.2% at
+  three to five and 0.5% for debt (test origins 3.4%, 6.0%, about 1%).
+  With a difference d and comparator errors e the skill is at least
+  -(2 rms(d)/rms(e) + (rms(d)/rms(e))^2), so Korea's points could not
+  go below -0.03 (h1 net lending), -0.045 (h3-5) or -0.01 (debt),
+  whatever the data; only the null's width could carry a lower end past
+  -0.05. The margin is also as large as estimated's whole gain over
+  persistence at one year (+0.04 on the test origins, +0.02 in Korea).
+  Non-inferior says the channel costs the forecasts nothing; it is no
+  evidence for the channel. Every forecast holds the policy rate, so
+  the immediate pass-through a never acts: what is scored is interest
+  on the model's stocks and the closing of the origin's gap.
+- *Power.* The registered null treats the h1 and h3-5 cells as
+  independent, so all four cells at a true skill of 0 pass with 0.45 x
+  0.26 x 1.00 x 0.99 = 0.12, about one in eight, not one in five (0.43
+  under the null fitted to the test split).
+- *Design.* "Level with estimated" holds for targets to 2002. On every
+  design target (origins to 2002, targets to 2007, printed in the same
+  rates-design.txt) net lending loses: -0.030 [-0.049, -0.014] at three
+  years and -0.019 [-0.030, -0.006] at five, as 9h's design split shows
+  (-0.034 at three to five). The form without pass-through fails the
+  criterion at one year as well as five (upper end -0.000) and has the
+  better points (-0.000 and -0.011 against -0.007 and -0.020): an
+  interval that must reach 0 favours the noisier form. Keeping
+  pass-through was the bead's aim, not the data's choice. Government's
+  three-to-five-year loss is there without pass-through too (-0.058,
+  -0.061): it comes from interest on the stocks, not the policy rate.
+- *The scenarios' parameters are not the design's.* At each country's
+  latest origin (30 countries) the margin's phi is 0.17 and beta 0.057
+  (medians), not 0.031 and 0.038 as on years to 2002: the margin reverts
+  with a half-life of about four years and is not a random walk, and the
+  +100bp margin response decays (+0.06% to +0.01% of output by year
+  10). The margin starts 0.32% of output below its norm (median), so
+  every base run moves that much from depositors to the banks. a and
+  lambda are close to the design's (households 0.64/0.13, NFCs
+  0.40/0.12, government 0.22/0.14).
+- *The anchor.* Its shift persists (the target moves with it) but is
+  small: the effective rate less the implicit one at the origin is, by
+  median, 0.08, 0.08 and -0.05 points (households, NFCs, government),
+  at most 0.90 (Brazil's government). It does not set an arbitrary
+  level. With lambda above 0 the first year's rate is the anchor plus
+  one step of the gap closing, not exactly the held share.
+- *Stock-flow checks over 30 years* (base, +100bp and borrowed spending,
+  30 countries): identities within 5.4e-14 of output; the receipts'
+  floor at zero is never reached while output is positive. Ireland's
+  output falls 20% by 2031 and turns negative in 2036 (estimated 2037,
+  Keen's rules 2034), with NFCs' money assets negative from 2033-34 and
+  government debt 17 times output in 2035. It is a fault of the core,
+  not of the rate channel, but it lies inside the 10-year window and in
+  the scenario medians. Luxembourg's output turns negative under
+  estimated (2043) and Keen's rules (2033), not under rates. France's
+  government debt passes twice output by 2046 in the base.
+- *Scenario sizes.* +100bp raises government's gross interest by 0.13
+  points of output in the first year and 0.60 by year 10 (median; mean
+  0.15 and 0.69), the arithmetic of a debt ratio near 60-100% repricing
+  over a decade. It is gross: government gets 0.07 to 0.17 points back
+  through its share of the domestic receipts. Its debt is 1.05 points
+  higher at year 10 and still rising (2.7 at 20, 4.7 at 30): the fiscal
+  rule does not stop interest compounding.
+- *Borrowed spending.* The debt is back below the base by year 10
+  because the fiscal rule cuts the rule's spending against the wider
+  deficit during the shock and the cut stays in the base spending grows
+  from: net lending is 0.7 points above the base in year 6 and output
+  below it from year 10. Estimated does the same. It is the fiscal
+  rule's ratchet, not the rate channel.
+- *The frozen file* reproduces at 16e7ae9 in a clean worktree (same
+  SHA-256) on the untracked data/ as of today. Two of its debt rows
+  have targets already published (Korea 2025, New Zealand 2024): the
+  registered rule dates targets by the flows, and debt comes from the
+  stocks. The scoring rule leaves other choices for 2027 (bead
+  bnm-4hv.16's notes).
+- *Fix.* rates-report failed on rows without data, which the frozen
+  rows will have where the vintage lacks a target; it now leaves them
+  out. No number above changes (rates-score reprints rates-test.txt
+  byte for byte). The null script's float fix was cosmetic: the old
+  writer wrapped the same digits in np.float64(...), and the quantiles
+  rerun identical.
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
