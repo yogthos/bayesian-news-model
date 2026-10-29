@@ -433,18 +433,14 @@
 
 ;; -- the members ---------------------------------------------------------------------------
 
-(defn seed-of
-  "A generator seed from `seed` and the keys `ks` (whole numbers), mixed
-  by SplitMix64's finaliser. augur.math/rng fills its state linearly
-  from the seed, so seeds a fixed step apart give correlated streams
-  (seed + 7919 i, as members were drawn: neighbouring members' draws
-  correlated by up to 0.9, a lattice, not an ensemble)."
-  [seed & ks]
-  (let [mix (fn [x] (let [z (unchecked-add (long x) (unchecked-long -7046029254386353131))
-                          z (unchecked-multiply (bit-xor z (unsigned-bit-shift-right z 30)) (unchecked-long -4658895280553007687))
-                          z (unchecked-multiply (bit-xor z (unsigned-bit-shift-right z 27)) (unchecked-long -7723592293110705685))]
-                      (bit-xor z (unsigned-bit-shift-right z 31))))]
-    (reduce (fn [h k] (mix (bit-xor h (long k)))) (mix (long seed)) ks)))
+(def seed-of
+  "A generator seed from `seed` and the keys `ks` (whole numbers):
+  augur.math/seed-of, SplitMix64's finaliser, the same numbers this
+  namespace computed before augur had it. augur.math/rng fills its state
+  linearly from the seed, so seeds a fixed step apart give correlated
+  streams (seed + 7919 i, as members were drawn: neighbouring members'
+  draws correlated by up to 0.9, a lattice, not an ensemble)."
+  m/seed-of)
 
 (defn analysis-seed
   "The seed of an ensemble's analysis generator (augur.enkf's perturbed
