@@ -537,3 +537,89 @@
         o (:out (sfc/step-given st-est p-est (set sfc/blocks) x1 g))]
     (is (< (apply max (for [s sfc/sectors] (Math/abs (- (get-in o [:net-lending s]) (get-in o1 [:net-lending s]))))) 1e-9)
         "every block given, the rules' own terms switched off")))
+
+;; -- the estimated rules' gaps, norms and slopes (review of bnm-4hv.14) ---------------------
+
+(defn- hl-mean
+  "The weighted mean (half-life `hl`, anchored at `at`) of [[year value]]."
+  [pairs at hl]
+  (let [ws (map #(Math/pow 0.5 (/ (- (double at) (double (first %))) (double hl))) pairs)]
+    (/ (reduce + (map * ws (map second pairs))) (reduce + ws))))
+
+(defn- sim-panel-of
+  "sim-panel for parameters `p` from state `st`."
+  [st p n]
+  (let [steps (rest (run-steps st p n))]
+    (into {(:year st) (sfc/obs-of st nil)} (for [[s o] steps] [(:year s) (sfc/obs-of s o)]))))
+
+(deftest error-correction-rows-recover-the-rule-the-step-runs
+  ;; a series made by dx_y = b1 (norm_x - x_{y-1}) + b2 (z_{y-1} - norm_z),
+  ;; each norm the 10-year weighted mean of the years to y - 1: the
+  ;; convention bnm.sfc/investment and the fiscal rule step with
+  (let [base (sim-panel 30)
+        years (vec (sort (filter #(:flows-ok (base %)) (keys base))))
+        b1 0.3 b2 0.5
+        zs (into {} (map-indexed (fn [i y] [y (* 0.02 (Math/sin (* 1.3 i)))]) years))
+        xs (reduce (fn [acc y]
+                     (let [prior (vec (sort (filter #(< % y) (keys acc))))]
+                       (if (< (count prior) 3)
+                         (assoc acc y (+ 0.30 (* 0.01 (count prior))))
+                         (let [x0 (acc (dec y))
+                               nx (hl-mean (for [q prior] [q (acc q)]) (dec y) 10.0)
+                               nz (hl-mean (for [q prior] [q (zs q)]) (dec y) 10.0)]
+                           (assoc acc y (+ x0 (* b1 (- nx x0)) (* b2 (- (zs (dec y)) nz))))))))
+                   {} years)
+        panel {"SIM" (into {} (for [[y ob] base] [y (assoc ob :sx (xs y) :sz (zs y))]))}
+        spec {:x (fn [_ ob] (:sx ob)) :zs [(fn [_ ob] (:sz ob))]}
+        rows (get (sfc/ec-rows panel 2025 spec) "SIM")
+        y0 (nth years 3)
+        prior (subvec years 0 3)]
+    (is (= [(- (hl-mean (for [q prior] [q (xs q)]) (dec y0) 10.0) (xs (dec y0)))
+            (- (zs (dec y0)) (hl-mean (for [q prior] [q (zs q)]) (dec y0) 10.0))
+            (- (xs y0) (xs (dec y0)))]
+           (first rows))
+        "the first row: the own gap (norm less x), the other gap (z less norm), the change")
+    (let [{[c1 c2] :pooled} (sfc/partial-pool {"SIM" rows})]
+      (is (< (Math/abs (- c1 b1)) 1e-9) (str "own gap " c1))
+      (is (< (Math/abs (- c2 b2)) 1e-9) (str "other gap " c2)))))
+
+(deftest learn-takes-the-pooled-slopes-in-order-and-the-countrys-own-norms
+  (let [two (assoc p0 :a1 0.8 :other {:hh 0.02 :nfc 0.0 :fin 0.0 :row -0.004} :n 0.03)
+        panel {"SIM" (sim-panel 30) "TWO" (sim-panel-of (assoc st0 :cg 20.0 :ben 10.0) two 30)}
+        o 2025
+        p (sfc/learn panel {} "SIM" o sfc/estimated)
+        fis (sfc/estimate-rule panel o :fiscal)
+        inv (sfc/estimate-rule panel o :investment)
+        xs (for [[y ob] (get panel "SIM") :when (and (:flows-ok ob) (<= y o))] [y (sfc/observed ob)])
+        norm (fn [f] (hl-mean (for [[y x] xs] [y (f x)]) o 10.0))
+        close? (fn [a b] (< (Math/abs (- (double a) (double b))) 1e-12))]
+    (testing "fiscal: the own gap's slope is :spend-phi, the balance's :phi"
+      (is (close? (first (:pooled fis)) (get-in p [:fiscal-rule :spend-phi])))
+      (is (close? (second (:pooled fis)) (get-in p [:fiscal-rule :phi])))
+      (is (not (close? (first (:pooled fis)) (second (:pooled fis))))))
+    (testing "investment: own gap, profit share, debt service"
+      (is (= (mapv double (:pooled inv)) (mapv #(double (get-in p [:investment-rule %])) [:phi :b-pi :b-ds]))))
+    (testing "the norms are the country's own, from the booked accounts, half-life 10"
+      (is (close? (norm #(/ (get-in (sfc/book %) [:nl :gov]) (:Y %))) (get-in p [:fiscal-rule :norm])))
+      (is (close? (norm #(/ (+ (get-in % [:cons :gov]) (get-in % [:inv :gov]) (:ben %)) (:Y %))) (get-in p [:fiscal-rule :spend-norm])))
+      (is (close? (norm #(/ (get-in % [:inv :nfc]) (:Y %))) (get-in p [:investment-rule :norm])))
+      (is (close? (norm sfc/profit-share) (get-in p [:investment-rule :pi-norm])))
+      (is (close? (norm #(/ (get-in % [:int-paid :nfc]) (:Y %))) (get-in p [:investment-rule :ds-norm])))
+      (is (not (close? (get-in p [:fiscal-rule :spend-norm])
+                       (get-in (sfc/learn panel {} "TWO" o sfc/estimated) [:fiscal-rule :spend-norm])))))
+    (testing "without :pool :complete, the country's shrunk slopes"
+      (let [q (sfc/learn panel {} "SIM" o (assoc sfc/estimated :fiscal {:estimate true}))]
+        (is (= (vec (get-in fis [:by "SIM"])) [(get-in q [:fiscal-rule :spend-phi]) (get-in q [:fiscal-rule :phi])]))))
+    (testing "the pooled refit reads no other country's years after the origin"
+      (let [cut (update panel "TWO" #(into {} (filter (fn [[y _]] (<= y 2015))) %))]
+        (is (= (sfc/learn panel {} "SIM" 2015 sfc/estimated) (sfc/learn cut {} "SIM" 2015 sfc/estimated)))))))
+
+(deftest the-fiscal-gap-starts-from-the-booked-balance
+  ;; the rule's norm and slopes are on the booked balance (government's
+  ;; net lending closing the matrix), and the model steps it; the start
+  ;; must be the same measure, not the data's B9 with its discrepancy
+  (let [panel {"SIM" (update-in (sim-panel 30) [2015 :f :gov :nl] + 2.0)}
+        p (sfc/learn panel {} "SIM" 2015 sfc/estimated)
+        st (sfc/init panel {} "SIM" 2015 p)
+        x (sfc/observed (get-in panel ["SIM" 2015]))]
+    (is (< (Math/abs (- (:nl-gov st) (/ (get-in (sfc/book x) [:nl :gov]) (:Y x)))) 1e-12))))

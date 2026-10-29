@@ -1120,9 +1120,11 @@
   the rest of the world (:init-buffer the discrepancy moved), output, the
   wage share, keen-run's employment rate for the origin year (keen-of: as
   known at origin + 2, when the origin's flows are; 0.95 when none), the
-  profit share, government spending and benefits; firms' investment share
-  (:kappa), and where the year before has them its profit share
-  (:pi-prev) and closed balance sheet (:bsm-prev)."
+  profit share, government spending and benefits; government's booked net
+  lending (:nl-gov, the matrix's, as the fiscal rule's norm and slopes
+  are, not the data's B9 with its discrepancy) and NFC debt service
+  (:ds); firms' investment share (:kappa), and where the year before has
+  them its profit share (:pi-prev) and closed balance sheet (:bsm-prev)."
   [panel kn iso origin p]
   (let [ob (get-in panel [iso origin])
         x (observed ob)
@@ -1130,7 +1132,7 @@
         lam (get (keen-of kn iso origin) "keen/lambda")
         pv (get-in panel [iso (dec origin)])]
     (cond-> {:year origin :Y (:Y x) :w (/ (:W x) (:Y x)) :lambda (or lam 0.95) :pi (profit-share x)
-             :nl-gov (/ (num (get-in ob [:f :gov :nl])) (:Y x)) :ds (/ (num (get-in x [:int-paid :nfc])) (:Y x))
+             :nl-gov (/ (num (get-in (book x) [:nl :gov])) (:Y x)) :ds (/ (num (get-in x [:int-paid :nfc])) (:Y x))
              :other (into {} (for [s [:hh :nfc :fin :row]] [s (/ (num (get-in x [:other s])) (:Y x))]))
              :cg (get-in x [:cons :gov]) :ig (get-in x [:inv :gov]) :ben (:ben x)
              :kappa (/ (num (get-in x [:inv :nfc])) (:Y x))
