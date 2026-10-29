@@ -61,6 +61,11 @@ Writes, under data/derived/sfc/:
 
   python -I scripts/sfc-data.py          # build
   python -I scripts/sfc-data.py test     # self-test on the built files
+
+SFC_T14, SFC_T720 and SFC_OUT replace Table 14's and Table 720's files
+and the output directory: the later confirmation's vintage (bead
+bnm-4hv.16; docs/COUPLED-SYSTEMS.md 9h, its amendment) is built so, with
+the build, then holdout, then holdout2.
 """
 
 import io
@@ -74,10 +79,10 @@ import pandas as pd
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW = os.path.join(ROOT, "data", "raw", "econ")
-OUT = os.path.join(ROOT, "data", "derived", "sfc")
+OUT = os.environ.get("SFC_OUT", os.path.join(ROOT, "data", "derived", "sfc"))
 
-T14 = os.path.join(RAW, "oecd-sna-sector-accounts", "DF_TABLE14_all.csv.gz")
-T720 = os.path.join(RAW, "oecd-financial-balance-sheets", "DF_T720R_A_all.csv.gz")
+T14 = os.environ.get("SFC_T14", os.path.join(RAW, "oecd-sna-sector-accounts", "DF_TABLE14_all.csv.gz"))
+T720 = os.environ.get("SFC_T720", os.path.join(RAW, "oecd-financial-balance-sheets", "DF_T720R_A_all.csv.gz"))
 Z1 = os.path.join(RAW, "fed-z1", "z1_csv_files.zip")
 EWN = os.path.join(RAW, "lmf-external-wealth", "EWN-dataset-year-end-2024_4.9.26.xlsx")
 BIS_TC = os.path.join(ROOT, "data", "raw", "slow", "bis", "WS_TC.zip")
@@ -943,6 +948,15 @@ def test_fill_row_from_total():
     assert n == 1, n
 
 
+def test_paths_from_env():
+    import subprocess
+    code = ("import importlib.util as u; s = u.spec_from_file_location('d', %r); m = u.module_from_spec(s); "
+            "s.loader.exec_module(m); print(m.T14, m.T720, m.OUT, m.holdout.__defaults__[0])") % os.path.abspath(__file__)
+    env = dict(os.environ, SFC_T14="/v/t14.csv.gz", SFC_T720="/v/t720.csv.gz", SFC_OUT="/v/out")
+    out = subprocess.run([sys.executable, "-I", "-c", code], env=env, capture_output=True, text=True, check=True).stdout.split()
+    assert out == ["/v/t14.csv.gz", "/v/t720.csv.gz", "/v/out", "/v/out/panel-holdout.csv"], out
+
+
 def test_annual_policy():
     def months(area, year, vs):
         return [{"area": area, "year": year, "v": vs[i % len(vs)]} for i in range(12)]
@@ -1166,6 +1180,7 @@ if __name__ == "__main__":
         test_fill_from_total()
         test_fill_row_from_total()
         test_annual_policy()
+        test_paths_from_env()
         print("sfc-data unit tests: ok")
     elif len(sys.argv) > 1 and sys.argv[1] == "holdout":
         holdout()
