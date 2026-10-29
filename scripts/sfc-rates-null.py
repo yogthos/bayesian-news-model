@@ -169,7 +169,7 @@ def main(argv):
             print("      power P(lo > -0.05)/P(hi < -0.05) by true skill  " + "  ".join(pw))
     if '--edn-out' in opt:
         with open(opt['--edn-out'], 'w') as f:
-            f.write("{" + " ".join(f"[:{hg} :{k}] [{a!r} {b!r}]" for (hg, k), (a, b) in sorted(qs.items())) + "}\n")
+            f.write("{" + " ".join(f"[:{hg} :{k}] [{float(a)!r} {float(b)!r}]" for (hg, k), (a, b) in sorted(qs.items())) + "}\n")
 
 
 if __name__ == "__main__":

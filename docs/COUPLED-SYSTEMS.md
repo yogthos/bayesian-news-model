@@ -618,7 +618,9 @@ best structural forecaster (it beats persistence and the everything-held
 core on the test origins) but is not adopted and is not for scenarios;
 the registered fallback to holding every ratio is not followed; scenario
 runs keep Keen's rules (learn's defaults) until bnm-4hv.15 gives
-interest a rate channel.
+interest a rate channel. It did (below): bnm.sfc/rates was non-inferior
+to estimated in its registered test (9h), so scenario runs that move
+rates or debt use it; learn's defaults are unchanged.
 
 **Interest on the stocks, with a rate channel (bead bnm-4hv.15, October
 2026).** estimated holds interest as a share of output, so scenarios have
@@ -3675,6 +3677,72 @@ judged. Bead: deferred to 2027-11-01.
     jolt -A:tools -M -m bnm.sfc-rules-run rates-score --in data/derived/sfc/rates-test.edn \
         --null data/derived/sfc/rates-null.edn --out data/derived/sfc/rates-test.txt
     jolt -A:tools -M -m bnm.sfc-rules-run rates-freeze --out data/derived/sfc/rates-frozen.edn
+
+**Result** (run once, 29 October 2026, on 6566f6d in a clean worktree;
+data/derived/sfc/rates-test.edn, rates-null.txt, rates-test.txt).
+Every model gave a value at all 9,471 rows. The registration commit also
+made the null script read only the holdout split of --observed, before
+any outcome (the text above names bbf2c5c, the code it registers). One
+change after the outcome: the script wrote its EDN with numpy's float
+repr, which the scorer can't read; it now writes plain floats, and the
+rerun printed identical quantiles (same seeds). It is in the result
+commit.
+
+The null fitted to the test split (rates against estimated): kappa
+0.9985 for net lending and 1.0000 for debt; rho 0.03, 0.57 and 0.68 at
+h 1, 3 and 5 (debt 0.0, 0.65, 0.84); c35 0.57 (0.87); country-scale sd
+0.36 (0.52); sector scales 0.83, 1.33, 0.61, 1.08. It is a little
+narrower than the design-fitted one the power table used (h1 net lending
+q05/q95 -0.036/+0.037 against -0.055/+0.056).
+
+Skill of rates [90%], net lending (four sectors) / private debt:
+
+| split | against | 1 year | 3-5 years |
+|---|---|---|---|
+| holdout (KOR) | estimated | +0.004 [-0.033, +0.040] / +0.001 [-0.008, +0.010] | +0.001 [-0.042, +0.049] / +0.007 [-0.008, +0.023] |
+| test (2003 on) | estimated | +0.001 [-0.001, +0.003] / -0.001 [-0.004, +0.000] | -0.008 [-0.014, -0.002] / +0.004 [+0.001, +0.007] |
+| | persistence | +0.044 [+0.023, +0.072] / -0.041 [-0.197, +0.180] | +0.101 [+0.045, +0.133] / +0.146 [+0.094, +0.200] |
+| | damped reversion | -0.023 [-0.034, -0.008] / +0.174 [-0.037, +0.419] | -0.079 [-0.134, -0.041] / +0.371 [+0.320, +0.419] |
+| | Keen's restart | +0.414 [+0.310, +0.527] / -0.039 [-0.164, +0.148] | +0.679 [+0.510, +0.800] / +0.111 [+0.025, +0.198] |
+| design (to 2002) | estimated | -0.001 [-0.023, +0.018] / +0.001 [-0.003, +0.007] | -0.034 [-0.061, -0.011] / +0.003 [+0.001, +0.007] |
+
+Holdout points against the others (no intervals registered): net lending
+against persistence +0.027 and +0.099, against damped reversion -0.003
+and -0.073, against Keen's restart +0.44 and +0.15; debt +0.08 / -0.08,
++0.33 / +0.11, +0.38 / -0.14.
+
+- *Primary, Korea: non-inferior.* All four lower ends are above -0.05
+  (the lowest -0.042). The points are at zero: rates forecasts Korea as
+  well as estimated does, on a country no test had read.
+- *Secondary, the test origins: non-inferior* (seen three times). Net
+  lending is level at one year and 0.008 below at three to five years,
+  the interval under 0 but far inside the margin. Debt is level.
+- Per sector (rates-test-sectors.txt, reported): on the test origins
+  government loses at three to five years (-0.027 [-0.040, -0.016]) and
+  the others are within +-0.005; in Korea every sector's point is within
+  -0.007 to +0.009, the financial sector's +0.03 and +0.09. Government
+  is where interest on the stocks costs, as on the design origins.
+- Against the baselines nothing changes from 9g: rates, like estimated,
+  beats persistence at three to five years and loses to damped
+  reversion of net lending (-0.08).
+
+What it means.
+- The registered consequence of a primary non-inferior: bnm.sfc/rates is
+  the core for scenario runs in place of Keen's rules, and damped
+  reversion stays the net-lending forecast. learn's defaults are not
+  changed here (Keen's rules are still what learn gives with no
+  options); a scenario run passes bnm.sfc/rates. Whether to make it the
+  default is the bead's decision.
+- The result rests on one country, on a non-inferiority margin of 5% of
+  estimated's squared error, and on a design chosen from eleven forms.
+  The power table expected one pass in five at a true skill of 0; this
+  one passed with the points at 0.
+- The later confirmation is frozen: rates-frozen.edn, 875 rows (35
+  countries, targets 2022-2030 where each country's data stop), SHA-256
+  0339880a359941334046d651966facd9d2473811fd205c77143111997eb7ccaf.
+  It holds Bulgaria and Romania too; scoring leaves them out by the
+  mask's hyperinflation rule, as every split here does. Bead
+  bnm-4hv.16, deferred to 2027-11-01.
 
 ## 10. Ranked plan
 
