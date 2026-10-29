@@ -3827,6 +3827,112 @@ rule, the frozen file or any number above).
   writer wrapped the same digits in np.float64(...), and the quantiles
   rerun identical.
 
+**Amendment to the later confirmation** (29 October 2026, approved by
+the user the same day; committed on its own, before any target of data
+year 2025 or later was looked at). It settles the choices the review
+left open (bead bnm-4hv.16's notes) and replaces "Later confirmation"
+above where the two differ. The frozen file is unchanged (SHA-256 as
+above, checked before and after).
+
+- *Vintage.* OECD Table 14 (DF_TABLE14) and Table 720 (DF_T720R_A), the
+  full dataflows from sdmx.oecd.org with the queries in their
+  SOURCE.txt, downloaded once, on the first day on or after 1 November
+  2027 on which both downloads complete. That download is the vintage:
+  the date, the dataflows' last-update time where the API reports one,
+  and both files' SHA-256 go in data/raw/econ/vintage-2027/SOURCE.txt
+  and in the result. Nothing is downloaded again; later releases and
+  revisions are ignored. The scorer refuses a vintage date before
+  2027-11-01. The other inputs of scripts/sfc-data.py (BIS, EWN, WDI,
+  GDD, Z.1) stay as on disk; none of them enters a target.
+- *:data.* Rebuilt from the vintage only: scripts/sfc-data.py, then its
+  holdout and holdout2, with SFC_T14 and SFC_T720 set to the vintage's
+  two files and SFC_OUT to data/derived/sfc/vintage-2027 (panel.csv,
+  panel-holdout.csv, panel-holdout2.csv there), the three merged as
+  rates-freeze merges them. A row's target is
+  bnm.sfc-horizon-run/nl-data (net lending) or debt-data (private debt)
+  at o + h on that panel.
+- *A missing country or target.* A row whose target the vintage lacks is
+  not scored. Nothing is filled from another source or an older vintage.
+  A country with no scored row is listed as absent. Cells count
+  countries after this.
+- *Excluded rows.* Bulgaria and Romania, by the hyperinflation rule on
+  the panels as frozen (as registered). And every row whose target was
+  already published when the forecasts were frozen. All 875 rows were
+  checked, for presence only, against panel.csv, panel-holdout.csv and
+  panel-holdout2.csv as of 29 October 2026 (SHA-256
+  e2b5b6e6f0a063d6773d4f671b49b1ff577f0732b25f053f146bebcf72dbb02e,
+  8aa3de00ffaeb972c5f74ba95e18bd6bf1c6d2c26ab1a33a54f64b93bc87177b,
+  4ce2eaa559d180e45bfb4fcbe93475ac800b298ce0ec74a9958add8e39fcd7e4).
+  Two rows, the two the review named: Korea, origin 2024, h1, private
+  debt (target 2025); New Zealand, origin 2023, h1, private debt (target
+  2024). No net-lending row. The dating rule: a target is published when
+  the freeze-time panels give the outcome's value in its year, net
+  lending by the flows (complete flows and output that year), private
+  debt by the stocks (a measured Table 720 balance sheet and output that
+  year). rates-freeze dated every target by the flows, and Korea's and
+  New Zealand's stocks run a year past their flows.
+- *Cells.* As 9h: h1, and h3-5 (horizons 3 and 5 pooled), each for net
+  lending (four sectors pooled) and private debt. Rows at h2 and h4 are
+  dropped, neither scored nor reported: 9h's horizons are 1, 3 and 5.
+- *Metric and baselines* (9h's). Skill of rates against estimated, 1 -
+  SSE_rates / SSE_estimated, pooled over a cell's scored rows, on rows
+  where every frozen model (rates, estimated, persistence, damped
+  reversion, Keen's restart) has a value. Margin delta 0.05. Reported,
+  no verdict: the same skill against persistence, damped reversion and
+  Keen's restart, with the countries bootstrap (2,000 draws, seed
+  20271101) in cells of five or more countries, the point only below.
+- *Interval.* 90%, [p - q95, p - q05], q05 and q95 the quantiles of the
+  skill when its true value is 0, simulated on the cell's scored rows
+  (countries, horizons, outcomes; no values) by scripts/sfc-rates-null.py
+  under the error model fitted to the test split of
+  data/derived/sfc/rates-test.edn (SHA-256
+  226f71e10ff406aa3f7e87af1231c383b2f3227ac0acdbd4c58d835aa402d52b;
+  rates against estimated, the fit 9h's result reports), 2,000
+  simulations, numpy SeedSequence [20271101, cell, 0]. This is 9h's
+  holdout interval, in place of the countries bootstrap 9h named here.
+  With one origin per country the bootstrap would draw from 5 to about
+  30 countries, and under 9f's error model, at a true skill of -0.05,
+  its lower end clears the margin 12% of the time at five countries, 9%
+  at ten and 8% at twenty-five, against 5% nominal (1,000 simulations,
+  500 draws; the upper end falls below it as often). The null-shift
+  interval is calibrated under the fitted model by construction. The
+  script prints P(lower end > -0.05) and P(upper end < -0.05) at true
+  skills -0.2 to +0.1 on the cell's rows, reported with the result as
+  the check (about 0.05 each at -0.05). The fitted model is the
+  assumption, as it was for Korea. The countries bootstrap against
+  estimated is printed too, reported only.
+- *Minimum count.* A cell with fewer than five countries with a scored
+  row is inconclusive for that cell (too few countries), whatever its
+  interval. From the frozen file's target years, the h1 cells should
+  hold about 22 to 33 countries and the h3-5 cells about two (Brazil,
+  New Zealand).
+- *Verdicts.* A cell with five or more countries: non-inferior when its
+  lower end is above -0.05, inferior when its upper end is below -0.05,
+  else inconclusive. Overall: inferior when any cell is inferior; else
+  non-inferior when both h1 cells are non-inferior and every other cell
+  is non-inferior or too few; else inconclusive. The result names the
+  cells the verdict rests on: with the h3-5 cells too few, a
+  non-inferior covers one year only.
+- *Scorer.* bnm.sfc-rates-confirm. It checks rates-frozen.edn's SHA-256
+  against the one above and refuses on a mismatch, leaves out the rows
+  above, and computes the cells and verdicts as written here. Tested on
+  synthetic vintages only; it is not run on 2025+ data before the
+  vintage date.
+
+**Run** (once, on the vintage date; V the vintage's directory):
+
+    shasum -a 256 data/derived/sfc/rates-frozen.edn data/derived/sfc/rates-test.edn   # as above
+    SFC_T14=$V/DF_TABLE14_all.csv.gz SFC_T720=$V/DF_T720R_A_all.csv.gz SFC_OUT=data/derived/sfc/vintage-2027 \
+        python -I scripts/sfc-data.py              # then the same with holdout, and with holdout2
+    jolt -A:tools -M -m bnm.sfc-rates-confirm shape --vintage data/derived/sfc/vintage-2027 \
+        --vintage-date YYYY-MM-DD --out data/derived/sfc/rates-confirm-shape.edn
+    python -I scripts/sfc-rates-null.py data/derived/sfc/rates-test.edn data/derived/sfc/rates-confirm-shape.edn \
+        --split test --m rates --x estimated --sims 2000 --seed 20271101 \
+        --edn-out data/derived/sfc/rates-confirm-null.edn
+    jolt -A:tools -M -m bnm.sfc-rates-confirm score --vintage data/derived/sfc/vintage-2027 \
+        --vintage-date YYYY-MM-DD --shape data/derived/sfc/rates-confirm-shape.edn \
+        --null data/derived/sfc/rates-confirm-null.edn --out data/derived/sfc/rates-confirm.txt
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
