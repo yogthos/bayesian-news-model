@@ -796,9 +796,12 @@ CBPOL = os.path.join(ROOT, "data", "raw", "slow", "bis", "WS_CBPOL.zip")
 def annual_policy(monthly, iso2):
     """iso, year, rate (a fraction), known: the central bank policy rate's
     mean over a year's months, the ECB's (XM) for a euro member from its
-    year of entry, the country's own before; known at y + 1. `monthly` has
-    area (BIS two-letter code), year, v (per cent)."""
-    a = monthly.groupby(["area", "year"]).v.mean().reset_index()
+    year of entry, the country's own before; known at y + 1. Only years
+    with all twelve months (not the current year, nor a series' first
+    part-year). `monthly` has area (BIS two-letter code), year, v (per
+    cent), one row per month."""
+    a = monthly.groupby(["area", "year"]).v.agg(["mean", "count"]).reset_index()
+    a = a[a["count"] == 12].rename(columns={"mean": "v"})
     by = {(r.area, r.year): r.v for r in a.itertuples()}
     to2 = {v: k for k, v in iso2.items()}
     rows = []
@@ -890,13 +893,17 @@ def test_fill_from_total():
 
 
 def test_annual_policy():
-    m = pd.DataFrame({"area": ["DE", "DE", "XM", "XM", "US"], "year": [1998, 1998, 1999, 1999, 1999], "v": [3.0, 4.0, 2.5, 3.5, 5.0]})
+    def months(area, year, vs):
+        return [{"area": area, "year": year, "v": vs[i % len(vs)]} for i in range(12)]
+    m = pd.DataFrame(months("DE", 1998, [3.0, 4.0]) + months("XM", 1999, [2.5, 3.5]) + months("US", 1999, [5.0])
+                     + months("US", 2000, [6.0])[:10])
     a = annual_policy(m, {"DE": "DEU", "US": "USA"}).set_index(["iso", "year"])
     assert abs(a.rate[("DEU", 1998)] - 0.035) < 1e-12
     assert abs(a.rate[("DEU", 1999)] - 0.030) < 1e-12, "the ECB's from entry"
     assert abs(a.rate[("FRA", 1999)] - 0.030) < 1e-12, "a euro member without its own series"
     assert ("FRA", 1998) not in a.index
     assert (a.known == a.index.get_level_values("year") + 1).all()
+    assert ("USA", 2000) not in a.index, "a year with fewer than twelve months (the current one, a series' first) is no annual mean"
 
 
 def _toy_panel(rows):
