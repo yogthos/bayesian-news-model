@@ -367,8 +367,9 @@
   :div-share is learned, are paid as shares of expected output `ye` (they
   follow profits, not the market value of equity) and received in
   proportion to each sector's equity holdings weighted by its yield
-  (:q-a; a negative holding receives none), the financial sector's share
-  closing the row; otherwise at the
+  (:q-a; over the weights' absolute total, so a negative holding pays
+  without the total nearing zero), the financial sector's share closing
+  the row; otherwise at the
   implicit yields on equity (:q-l).
 
   With :theta below 1 and last year's opening balance sheet `prev`,
@@ -395,15 +396,16 @@
                 (into {} (for [s sectors] [s (* (num (get ds s)) (double ye))]))
                 (into {} (for [s sectors] [s (* (r :q-l s) (eq-l s))])))
         wts (into {} (for [s sectors] [s (* (r :q-a s) (eq-a s))]))
-        ;; the split's weights: a negative holding (households' and firms'
-        ;; equity once their assets are, under Keen's rules) receives none,
-        ;; else a total near zero blows the shares up (bnm-4hv.17)
-        pw (into {} (for [[s v] wts] [s (max 0.0 (double v))]))
-        tw (sum (vals pw))
+        ;; the split's total: of the weights' absolute values, so a negative
+        ;; holding (households' and firms' equity once their assets are,
+        ;; under Keen's rules) still pays its share but a signed total near
+        ;; zero can't blow the shares up (bnm-4hv.17); the same as the
+        ;; signed total while no holding is negative
+        tw (sum (map #(Math/abs (double %)) (vals wts)))
         recv (cond
                (:div-recv-share p) (into {} (for [s nf] [s (* (num (get-in p [:div-recv-share s])) (double ye))]))
                ds
-               (into {} (for [s nf] [s (if (pos? tw) (* (sum (vals paid*)) (/ (pw s) tw)) 0.0)]))
+               (into {} (for [s nf] [s (if (pos? tw) (* (sum (vals paid*)) (/ (wts s) tw)) 0.0)]))
                :else
                (into {} (for [s nf] [s (wts s)])))]
     (if-let [rr (when t (:rates p))]

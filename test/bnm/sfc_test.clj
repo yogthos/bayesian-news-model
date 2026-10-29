@@ -896,16 +896,26 @@
     (is (close? (* 0.01 104.0) (get-in pinc [:int-recv :row])))
     (is (close? (* (:nim (sfc/rates-at rr 2001)) 104.0) (sfc/margin-of pinc)))))
 
-(deftest dividends-received-ignore-negative-equity-holdings
+(deftest dividends-received-stay-bounded-when-holdings-turn-negative
   ;; bnm-4hv.17: under Keen's rules households' and firms' equity assets,
   ;; shares of total assets, turn negative once their net worth does
-  ;; (Lithuania from 2024, about 2045). Split by yield-weighted holdings of
-  ;; mixed sign, the total neared zero and households received -4.9 of
-  ;; output in dividends. A negative holding receives none.
-  (let [bsm (-> bsm0 (assoc-in [:hh :equity :a] -39.0) (assoc-in [:nfc :equity :a] -29.0))
-        p {:div-share {:nfc 0.05 :fin 0.01} :q-a {:hh 0.03 :nfc 0.03 :fin 0.03 :gov 0.03 :row 0.03}}
+  ;; (Lithuania from 2024, about 2045). Split by yield-weighted holdings
+  ;; over their signed total, the total neared zero and households received
+  ;; -4.9 of output in dividends. Over the total of their absolute values a
+  ;; negative holding still pays (a short position does), and no share
+  ;; exceeds what is paid; with no negative holding nothing changes.
+  (let [p {:div-share {:nfc 0.05 :fin 0.01} :q-a {:hh 0.30 :nfc 0.03 :fin 0.03 :gov 0.03 :row 0.03}}
+        bsm (-> bsm0 (assoc-in [:hh :equity :a] -10.0) (assoc-in [:nfc :equity :a] -29.0))
+        w {:hh -3.0 :nfc -0.87 :fin (* 0.03 (get-in bsm [:fin :equity :a])) :gov 0.3 :row 0.6}
         {:keys [div-paid div-recv]} (sfc/property-income bsm p 100.0)
         paid (reduce + (vals div-paid))]
     (is (< (Math/abs (- paid 6.0)) 1e-12))
-    (doseq [s [:hh :nfc]] (is (zero? (get div-recv s)) (str s " holds none")))
-    (doseq [s [:gov :row]] (is (<= 0.0 (get div-recv s) paid) (str s " within what is paid")))))
+    (is (neg? (:hh div-recv)) "a negative holding pays")
+    (doseq [s [:hh :nfc :gov :row]]
+      (is (<= (Math/abs (get div-recv s)) paid) (str s " within what is paid")))
+    (is (< (Math/abs (- (:hh div-recv) (* paid (/ (:hh w) (reduce + (map #(Math/abs (double %)) (vals w))))))) 1e-9)))
+  (testing "all holdings positive: shares of the yield-weighted total, as before"
+    (let [p {:div-share {:nfc 0.05 :fin 0.01} :q-a {:hh 0.03 :nfc 0.03 :fin 0.03 :gov 0.03 :row 0.03}}
+          {:keys [div-recv]} (sfc/property-income bsm0 p 100.0)
+          tot (reduce + (for [s [:hh :nfc :fin :gov :row]] (get-in bsm0 [s :equity :a])))]
+      (is (< (Math/abs (- (:hh div-recv) (* 6.0 (/ 40.0 tot)))) 1e-9)))))

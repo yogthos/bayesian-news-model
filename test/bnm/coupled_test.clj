@@ -477,6 +477,7 @@
   ;; bnm-tvk's repro: from 1981 the output rescale hits 0.2 then 5, the
   ;; innovations reach 1e2-1e4 sd units. The analysed wage share is already
   ;; negative in most members in 1979 and 1980, so the guard trips at 1980
+  ;; (it still does after bnm-4hv.17, which removed part of the later runaway)
   (when panel-on-disk?
     (let [panel (sfc/read-panel "data/derived/sfc/panel.csv")
           kn (sfc/read-keen "data/derived/stocks/keen.csv")
@@ -486,9 +487,14 @@
       (is (nil? (get-in fr [1977 :diverged])) "forked before the divergence")
       (is (<= (get-in fr [1983 :diverged :t]) 1981))
       (is (= #{:wage-share-bound} (get-in fr [1983 :diverged :reasons])))
-      (testing "each criterion trips on its own by 1983"
-        (is (:scale-cap (:reasons (sa/divergence [(at 1981)]))) "1981: the rescale at its caps")
-        (is (:innovation (:reasons (sa/divergence [(at 1983)]))) "1983: innovations over 100 sd units")))))
+      (testing "the later runaway was partly the dividend split (bnm-4hv.17)"
+        ;; before the fix, members whose equity holdings had turned negative
+        ;; got dividends over a yield-weighted total near zero: nine
+        ;; members at the rescale's caps in 1981 and innovations of 109 sd
+        ;; units in 1983, each tripping the guard on its own. Now 1 and 37;
+        ;; the criteria themselves are tested on built logs above
+        (is (nil? (sa/divergence [(at 1981)])) "1981: no longer at the rescale's caps")
+        (is (< (:innovation (at 1983)) 100.0) "1983: innovations under 100 sd units")))))
 
 (deftest a-healthy-country-does-not-trip-the-guard
   (when panel-on-disk?
