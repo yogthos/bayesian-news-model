@@ -3,9 +3,11 @@
             [bnm.modules.sfc :as msfc]
             [bnm.sfc :as sfc]
             [bnm.sfc-analysis :as sa]
+            [bnm.sfc-horizon-run :as h]
             [bnm.sfc-rules-run :as r]
             [bnm.sfc-test :as fx]
             [augur.math]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]))
 
@@ -169,3 +171,56 @@
         {:keys [lines verdicts]} (r/rates-report (concat rows missing) null 0.05)]
     (is (= (:verdicts (r/rates-report rows null 0.05)) verdicts) "the same verdicts as without them")
     (is (= (format "rows scored (every model present): %d of %d" (count rows) (+ (count rows) 30)) (first lines)))))
+
+;; -- base runs from each country's latest year (bnm-4hv.17; data on disk) -------------------
+
+(def ^:private rule-sets {:rates sfc/rates :estimated sfc/estimated :keen {}})
+
+(def ^:private debt-bound
+  "Government or private debt over output beyond which a base run has run
+  away (Ireland's reached 17 before its output turned negative): 5, or
+  twice the first year's where that is higher (Luxembourg's private debt
+  starts near 5)."
+  5.0)
+
+(def ^:private data-panel
+  (delay
+    (when (every? #(.exists (io/file %)) [r/panel-path r/policy-path r/keen-path r/holdout-path r/holdout2-path])
+      (let [pol (sfc/read-policy r/policy-path)]
+        [(merge (sfc/with-policy (sfc/read-panel r/panel-path) pol)
+                (sfc/with-policy (sfc/read-panel r/holdout-path) pol)
+                (sfc/with-policy (sfc/read-panel r/holdout2-path) pol))
+         (sfc/read-keen r/keen-path)]))))
+
+(defn- runaway
+  "The first year of `iso`'s base run from its latest measured year,
+  `years` on under learn options `opts`, whose output is not positive and
+  finite or whose government or private debt over output is beyond
+  debt-bound: [year output gov-debt private-debt], or nil."
+  [panel kn iso opts years]
+  (let [o (last (h/measured-years panel iso))
+        kp (sa/known-panel panel (+ o sfc/vintage))
+        p (sfc/learn kp kn iso o opts)]
+    (loop [st (sfc/init kp kn iso o p) i 0 bounds nil]
+      (when (< i years)
+        (let [{s :state out :out} (sfc/step st p)
+              y (double (:Y out)) gd (double (:gov-debt out)) pd (double (:private-debt out))
+              [bg bp] (or bounds [(max debt-bound (* 2.0 (Math/abs gd))) (max debt-bound (* 2.0 (Math/abs pd)))])]
+          (if (or (not (< 0.0 y Double/POSITIVE_INFINITY))
+                  (not (< (Math/abs gd) bg)) (not (< (Math/abs pd) bp)))
+            [(:year out) y gd pd]
+            (recur s (inc i) [bg bp])))))))
+
+(deftest irelands-base-run-stays-positive-and-bounded
+  ;; bnm-4hv.17: from 2024 Ireland's output turned negative in 2034-37
+  ;; under every rule set, its government debt 17 times output first
+  (when-let [[panel kn] @data-panel]
+    (doseq [[k opts] rule-sets]
+      (is (nil? (runaway panel kn "IRL" opts 30)) (str "IRL " k)))))
+
+(deftest no-countrys-base-run-runs-away-in-thirty-years
+  (when-let [[panel kn] @data-panel]
+    (doseq [iso (sort (keys panel))
+            :when (and (not= "IRL" iso) (seq (h/measured-years panel iso)))
+            [k opts] rule-sets]
+      (is (nil? (runaway panel kn iso opts 30)) (str iso " " k)))))

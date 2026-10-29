@@ -30,7 +30,9 @@
                   and benefits growing at trend nominal growth (the fiscal
                   rule: taxes move with income, spending does not),
                   consumption out of disposable income and wealth (Godley-
-                  Lavoie's alpha1, alpha2), imports a share of absorption;
+                  Lavoie's alpha1, alpha2), imports a share mu of
+                  absorption plus exports (exports net of their import
+                  content X, so net exports X - mu A);
                   output solves the multiplier; every flow is booked; then
                   the flow of funds: households and firms hold their assets
                   in learned shares with deposits as the buffer, government
@@ -365,7 +367,8 @@
   :div-share is learned, are paid as shares of expected output `ye` (they
   follow profits, not the market value of equity) and received in
   proportion to each sector's equity holdings weighted by its yield
-  (:q-a), the financial sector's share closing the row; otherwise at the
+  (:q-a; a negative holding receives none), the financial sector's share
+  closing the row; otherwise at the
   implicit yields on equity (:q-l).
 
   With :theta below 1 and last year's opening balance sheet `prev`,
@@ -392,11 +395,15 @@
                 (into {} (for [s sectors] [s (* (num (get ds s)) (double ye))]))
                 (into {} (for [s sectors] [s (* (r :q-l s) (eq-l s))])))
         wts (into {} (for [s sectors] [s (* (r :q-a s) (eq-a s))]))
-        tw (sum (vals wts))
+        ;; the split's weights: a negative holding (households' and firms'
+        ;; equity once their assets are, under Keen's rules) receives none,
+        ;; else a total near zero blows the shares up (bnm-4hv.17)
+        pw (into {} (for [[s v] wts] [s (max 0.0 (double v))]))
+        tw (sum (vals pw))
         recv (cond
                (:div-recv-share p) (into {} (for [s nf] [s (* (num (get-in p [:div-recv-share s])) (double ye))]))
                ds
-               (into {} (for [s nf] [s (if (pos? tw) (* (sum (vals paid*)) (/ (wts s) tw)) 0.0)]))
+               (into {} (for [s nf] [s (if (pos? tw) (* (sum (vals paid*)) (/ (pw s) tw)) 0.0)]))
                :else
                (into {} (for [s nf] [s (wts s)])))]
     (if-let [rr (when t (:rates p))]
@@ -696,7 +703,7 @@
    :investment-nfc "firms' investment: Keen's kappa(pi) of last year's profit share"
    :investment-other "households' and financial investment: shares of expected output"
    :government "government consumption, investment and benefits: grow at trend nominal growth"
-   :exports "exports: a share of expected output (imports a share mu of absorption)"
+   :exports "exports net of their import content: a share of expected output (imports mu of absorption plus exports)"
    :growth "expected nominal growth n, which scales investment, government and exports"
    :interest "interest: sector implicit rates on the opening stocks"
    :dividends "dividends: shares of expected output, received by yield-weighted equity"
@@ -1122,8 +1129,10 @@
   to 2002 of 1, 2, 3 and 5), :rate-half-life (1: interest and dividend
   rates are persistent, and fell for most of the sample), :phillips (true;
   false holds the wage share, a diagnostic), :mu (0.3, imports over
-  absorption where the data have no imports: no country-year with flows
-  lacks them), :rho (equity repricing; trend nominal growth).
+  absorption plus exports where the data have no imports: no country-year
+  with flows lacks them; learned :x is then exports net of their import
+  content, so imports in the step are mu of absorption plus the exports'
+  share, bnm-4hv.17), :rho (equity repricing; trend nominal growth).
 
   The audit's replacements (bnm.sfc-audit), each off when absent:
     :consumption {:phi :norm-half-life}  the propensity to consume out of
@@ -1182,13 +1191,18 @@
         stocked (filter :b obs)
         pr (fn [s k side] (ew (for [o stocked] [(:year o) (ratio (pos (:b o) s k side) (:y o))]) hl origin nil))
         nx-share (e (fn [x _] (/ (:nx x) (:Y x))) 0.0)
+        ;; imports a share of absorption plus exports (bnm-4hv.17): over
+        ;; absorption alone, a country that imports to export again
+        ;; (Ireland 1.7, Luxembourg 2.4) has mu above 1, and 1 - mu turns
+        ;; the multiplier's sign, so more spending lowers output
         trade (for [[y x] xs :let [f (:f (by y)) ex (get-in f [:row :exports]) im (get-in f [:row :imports])] :when (and ex im)]
-                [y (/ ex (:Y x)) (/ im (+ (sum (vals (:cons x))) (sum (vals (:inv x)))))])
+                [y (/ ex (:Y x)) (/ im (+ (sum (vals (:cons x))) (sum (vals (:inv x))) ex))])
         mu* (if (seq trade) (ew (map (fn [[y _ m]] [y m]) trade) hl origin mu) mu)
-        ;; exports as the frame's net exports plus imports, so X - mu A gives
-        ;; Y - C - I at the origin: the trade data's own balance differs by
-        ;; the statistical discrepancy (and, where B1G is at basic prices,
-        ;; product taxes), which would otherwise jump the first step
+        ;; exports net of their import content, (1 - mu) X, as the frame's
+        ;; net exports plus mu A, so X - mu A gives Y - C - I at the origin:
+        ;; the trade data's own balance differs by the statistical
+        ;; discrepancy (and, where B1G is at basic prices, product taxes),
+        ;; which would otherwise jump the first step
         x* (e (fn [x _] (let [a (+ (sum (vals (:cons x))) (sum (vals (:inv x))))] (/ (+ (:nx x) (* mu* a)) (:Y x)))) (+ nx-share (* mu* (- 1.0 nx-share))))
         cons-rows (for [[y x] xs :let [b (prev y) Y (:Y x)] :when b]
                     [(weight fit-half-life origin y) (/ (+ (get-in x [:cons :hh]) (get-in x [:inv :hh]) (get-in (book x) [:nl :hh])) Y)

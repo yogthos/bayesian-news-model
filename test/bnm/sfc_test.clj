@@ -244,14 +244,23 @@
 (defn- with-trade
   "The simulated panel with the rest of the world's exports and imports
   written in, their balance off the frame's net exports by `gap` of output
-  (a statistical discrepancy, or product taxes outside B1G)."
-  [panel gap]
-  (into {} (for [[y ob] panel :let [x (when (:f ob) (sfc/observed ob))]]
-             [y (if x
-                  (let [a (+ (reduce + (vals (:cons x))) (reduce + (vals (:inv x))))]
-                    (-> ob (assoc-in [:f :row :imports] (* 0.3 a))
-                        (assoc-in [:f :row :exports] (+ (:nx x) (* 0.3 a) (* gap (:Y x))))))
-                  ob)])))
+  (a statistical discrepancy, or product taxes outside B1G), imports `m`
+  (0.3) of absorption."
+  [panel gap & [m]]
+  (let [m (or m 0.3)]
+    (into {} (for [[y ob] panel :let [x (when (:f ob) (sfc/observed ob))]]
+               [y (if x
+                    (let [a (+ (reduce + (vals (:cons x))) (reduce + (vals (:inv x))))]
+                      (-> ob (assoc-in [:f :row :imports] (* m a))
+                          (assoc-in [:f :row :exports] (+ (:nx x) (* m a) (* gap (:Y x))))))
+                    ob)]))))
+
+(defn- import-shares
+  "Each data year's imports over absorption plus exports in `panel`."
+  [panel]
+  (for [[_ ob] panel :when (:f ob)
+        :let [x (sfc/observed ob) a (+ (reduce + (vals (:cons x))) (reduce + (vals (:inv x))))]]
+    (/ (get-in ob [:f :row :imports]) (+ a (get-in ob [:f :row :exports])))))
 
 (deftest exports-are-learned-in-the-frames-net-exports
   ;; X - mu A must give the frame's net exports at the origin, whatever the
@@ -260,9 +269,28 @@
         p (sfc/learn panel {} "SIM" 2025 {})
         x (sfc/observed (get-in panel ["SIM" 2025]))
         a (/ (+ (reduce + (vals (:cons x))) (reduce + (vals (:inv x)))) (:Y x))]
-    (is (< (Math/abs (- 0.3 (:mu p))) 1e-9))
+    (is (<= (- (apply min (import-shares (panel "SIM"))) 1e-12) (:mu p) (+ (apply max (import-shares (panel "SIM"))) 1e-12))
+        "imports over absorption plus exports (bnm-4hv.17)")
     (is (< (Math/abs (- (- (:x p) (* (:mu p) a)) (/ (:nx x) (:Y x)))) 2e-3)
         (str "x " (:x p) " gives net exports " (- (:x p) (* (:mu p) a)) ", the frame's " (/ (:nx x) (:Y x))))))
+
+(deftest imports-above-absorption-keep-the-multiplier-positive
+  ;; bnm-4hv.17: Ireland's and Luxembourg's imports exceed their absorption
+  ;; (goods imported to be exported again). Taken over absorption alone the
+  ;; import share was 1.7 and 2.4, so 1 - mu turned the multiplier's sign:
+  ;; spending lowered output, and output fell through zero within twelve
+  ;; years. Over absorption plus exports it stays below 1.
+  (let [panel {"SIM" (with-trade (sim-panel 30) 0.0 1.6)}
+        p (sfc/learn panel {} "SIM" 2025 {})
+        x (sfc/observed (get-in panel ["SIM" 2025]))
+        a (/ (+ (reduce + (vals (:cons x))) (reduce + (vals (:inv x)))) (:Y x))
+        st (sfc/init panel {} "SIM" 2025 p)
+        y (fn [p] (:Y (:out (sfc/step st p))))]
+    (is (< (:mu p) 1.0) (str "mu " (:mu p)))
+    (is (<= (- (apply min (import-shares (panel "SIM"))) 1e-12) (:mu p) (+ (apply max (import-shares (panel "SIM"))) 1e-12)))
+    (is (< (Math/abs (- (- (:x p) (* (:mu p) a)) (/ (:nx x) (:Y x)))) 2e-3) "the origin's net exports")
+    (is (> (y (assoc p :spend-shock {2026 0.01})) (y p)) "more spending raises output")
+    (is (every? #(pos? (:Y %)) (map second (rest (run-steps st p 30)))) "output stays positive")))
 
 (deftest keen-is-read-at-the-panels-vintage
   ;; the origin's flows are known at origin + 2: employment is the origin
@@ -867,3 +895,17 @@
     (is (close? (* 0.008 104.0) (get-in pinc [:int-paid :row])))
     (is (close? (* 0.01 104.0) (get-in pinc [:int-recv :row])))
     (is (close? (* (:nim (sfc/rates-at rr 2001)) 104.0) (sfc/margin-of pinc)))))
+
+(deftest dividends-received-ignore-negative-equity-holdings
+  ;; bnm-4hv.17: under Keen's rules households' and firms' equity assets,
+  ;; shares of total assets, turn negative once their net worth does
+  ;; (Lithuania from 2024, about 2045). Split by yield-weighted holdings of
+  ;; mixed sign, the total neared zero and households received -4.9 of
+  ;; output in dividends. A negative holding receives none.
+  (let [bsm (-> bsm0 (assoc-in [:hh :equity :a] -39.0) (assoc-in [:nfc :equity :a] -29.0))
+        p {:div-share {:nfc 0.05 :fin 0.01} :q-a {:hh 0.03 :nfc 0.03 :fin 0.03 :gov 0.03 :row 0.03}}
+        {:keys [div-paid div-recv]} (sfc/property-income bsm p 100.0)
+        paid (reduce + (vals div-paid))]
+    (is (< (Math/abs (- paid 6.0)) 1e-12))
+    (doseq [s [:hh :nfc]] (is (zero? (get div-recv s)) (str s " holds none")))
+    (doseq [s [:gov :row]] (is (<= 0.0 (get div-recv s) paid) (str s " within what is paid")))))
