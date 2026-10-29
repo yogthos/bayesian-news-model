@@ -441,3 +441,64 @@
     (is (= 1 (:replaced (first (filter #(= 2006 (:t %)) log)))))
     (is (every? #(pos? (get-in % [(:sfc-accounts ids) :Y])) (:states r)))
     (is (every? #(< % 1e-10) (every-member r (:sfc-finance ids) "sfc/fof-gap")))))
+
+;; -- the divergence guard (bnm-tvk, parked) -------------------------------------------------
+
+(deftest the-divergence-guard-reads-the-analysis-log
+  (let [ok {:innovation 5.0 :capped 0 :w-bound 0 :members 32}
+        log (fn [& es] (vec (map-indexed (fn [i e] (assoc (merge ok e) :t (+ 2000 i))) es)))]
+    (is (nil? (sa/divergence (log {} {} {} {}))) "a healthy pass")
+    (testing "the output rescale at its caps in over a fifth of the members"
+      (is (= {:t 2001 :reasons #{:scale-cap}} (select-keys (sa/divergence (log {} {:capped 7} {} {})) [:t :reasons])))
+      (is (nil? (sa/divergence (log {} {:capped 1} {:capped 6} {}))) "a member or a few clamped is the clamp's job"))
+    (testing "innovations over K sd units"
+      (is (= #{:innovation} (:reasons (sa/divergence (log {} {} {:innovation 150.0}) {:innovation-k 100.0}))))
+      (is (nil? (sa/divergence (log {} {} {:innovation 60.0}) {:innovation-k 100.0}))))
+    (testing "the wage share at a bound in most members for consecutive analyses"
+      (is (nil? (sa/divergence (log {} {:w-bound 20} {} {:w-bound 20}))) "one analysis at a time is not a run")
+      (is (= {:t 2002 :reasons #{:wage-share-bound}} (select-keys (sa/divergence (log {} {:w-bound 20} {:w-bound 20})) [:t :reasons])))
+      (is (nil? (sa/divergence (log {} {:w-bound 3} {:w-bound 3}))) "a few members at a bound"))
+    (testing "the first trip is reported; later analyses do not undo it"
+      (is (= 2001 (:t (sa/divergence (log {} {:capped 20} {} {:innovation 500.0}))))))
+    (testing "an origin sees only the analyses up to it"
+      (is (nil? (sa/divergence-at (log {} {} {:capped 20}) 2001)))
+      (is (= 2002 (:t (sa/divergence-at (log {} {} {:capped 20}) 2002)))))))
+
+(deftest the-analysis-logs-what-the-guard-reads
+  (let [r (ensemble {:analyses [(sa/analysis {:ids ids :obs truth-obs-output})]})
+        log (:log (first (first (:memories r))))]
+    (is (seq log))
+    (is (every? #(and (number? (:capped %)) (number? (:w-bound %)) (number? (:innovation %)) (= 24 (:members %))) log))
+    (is (nil? (sa/divergence log)) "the simulated economy does not diverge")))
+
+(def ^:private panel-on-disk? (.exists (io/file "data/derived/sfc/panel.csv")))
+
+(deftest usa-seed-3-from-1981-trips-the-guard
+  ;; bnm-tvk's repro: from 1981 the output rescale hits 0.2 then 5, the
+  ;; innovations reach 1e2-1e4 sd units. The analysed wage share is already
+  ;; negative in most members in 1979 and 1980, so the guard trips at 1980
+  (when panel-on-disk?
+    (let [panel (sfc/read-panel "data/derived/sfc/panel.csv")
+          kn (sfc/read-keen "data/derived/stocks/keen.csv")
+          fr (sa/free-runs panel kn "USA" {:start 1970 :origins [1977 1983] :years 3 :members 32 :seed 3})
+          log (:log fr)
+          at (fn [t] (first (filter #(= t (:t %)) log)))]
+      (is (nil? (get-in fr [1977 :diverged])) "forked before the divergence")
+      (is (<= (get-in fr [1983 :diverged :t]) 1981))
+      (is (= #{:wage-share-bound} (get-in fr [1983 :diverged :reasons])))
+      (testing "each criterion trips on its own by 1983"
+        (is (:scale-cap (:reasons (sa/divergence [(at 1981)]))) "1981: the rescale at its caps")
+        (is (:innovation (:reasons (sa/divergence [(at 1983)]))) "1983: innovations over 100 sd units")))))
+
+(deftest a-healthy-country-does-not-trip-the-guard
+  (when panel-on-disk?
+    (let [panel (sfc/read-panel "data/derived/sfc/panel.csv")
+          kn (sfc/read-keen "data/derived/stocks/keen.csv")
+          r (sa/free-run panel kn "DEU" {:start 1995 :origin 2012 :years 3 :members 32 :seed 3})]
+      (is (seq (:analysed r)))
+      (is (nil? (:diverged r))))))
+
+(deftest a-restart-has-no-analysis-to-diverge
+  (let [panel @sim-panel kn @sim-keen
+        r (sa/restart panel kn "SIM" 2012 4)]
+    (is (not (contains? r :diverged)))))

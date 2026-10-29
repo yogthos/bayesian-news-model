@@ -29,3 +29,28 @@
   (let [mk (fn [ys] {"X" (into {} (for [[y v] ys] [y {:flows-ok true :b {} :stocks-source :oecd-t720 :y v}]))})]
     (is (h/hyperinflation? (mk {1996 1.0 1997 2.1}) "X"))
     (is (not (h/hyperinflation? (mk {1996 1.0 1997 1.9}) "X")))))
+
+(deftest a-diverged-run-gives-no-forecast
+  (let [run {:t [2001 2002] :vars {"v" {:median [1.0 2.0]}}}]
+    (is (= 2.0 (h/path-at run "v" 2002)))
+    (is (nil? (h/path-at (assoc run :diverged {:t 2000 :reasons #{:scale-cap}}) "v" 2002)))))
+
+(deftest a-diverged-ensemble-is-excluded-and-the-restart-is-unaffected
+  (let [panel {"X" (into {} (for [y (range 1990 2010)]
+                              [y {:flows-ok true :y 100.0 :b {} :stocks-source :oecd-t720
+                                  :f {:hh {:nl 1.0} :nfc {:nl -1.0} :fin {:nl 0.5} :gov {:nl -0.5}}}]))}
+        rows [{:iso "X" :o 2000 :h 3 :outcome [:nl :hh] :split :design :data 0.01}]
+        run (fn [o] {:t (vec (range (inc o) (+ o 6))) :vars {"sfc/net-lending-hh" {:median (vec (repeat 5 0.02))}}})
+        fake-free (fn [_ _ _ {:keys [origins seed given]}]
+                    (into {:log []} (for [t origins]
+                                      [t (cond-> (assoc (run (- t 2)) :conditional (run (- t 2)))
+                                           (= seed 3) (assoc :diverged {:t 1995 :reasons #{:innovation}}))])))
+        fake-restart (fn [& _] (run 2000))]
+    (with-redefs [bnm.sfc-analysis/free-runs fake-free
+                  bnm.sfc-analysis/restart fake-restart]
+      (let [f (get (h/forecasts panel {} "X" rows {:seeds [1 3] :members 4}) [2000 3 [:nl :hh]])]
+        (is (= 0.02 (:restart f)) "the restart's forecast is kept")
+        (is (= 0.02 (get f [:model 1])))
+        (is (nil? (get f [:model 3])) "the diverged seed gives none")
+        (is (= [3] (:diverged f)))
+        (is (re-find #"diverged.*: 1 row, X seeds 3 from o 2000" (h/diverged-line [(assoc (first rows) :f f)])))))))

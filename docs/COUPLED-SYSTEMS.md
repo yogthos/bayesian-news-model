@@ -2856,6 +2856,40 @@ forecaster of the sector balances.
   fix. A few such runs set the pooled skill, so the original -0.47 was
   partly a draw. 6e's median range over seeds of 0.004 is at one origin
   per country and misses these tails. Bead bnm-tvk.
+- *Divergence guard* (bnm-tvk stays parked: the restart is the SFC
+  forecast, the analysis is not redesigned). bnm.sfc-analysis/divergence
+  reads the analysis log and marks a pass diverged at the first analysis
+  where any of these holds:
+  - over a fifth of the members have their output rescale at a cap (0.2
+    or 5) or undefined;
+  - the mean |innovation| before the update is over 100 sd units
+    (healthy passes stay under about 50);
+  - over half the members have the analysed wage share at or beyond its
+    bounds (0.05, 0.95) in two consecutive analyses.
+
+  It marks and does not stop. A horizon test runs hundreds of origins
+  per country in one pass, so an error would lose the other countries'
+  runs, and a fork made before the divergence is still good. free-run
+  and each origin of free-runs carry :diverged (its year, its reasons,
+  its log entry) when an analysis up to that origin tripped. Their
+  medians are kept for diagnosis, but sfc-horizon-run/path-at gives no
+  value for a diverged run. The ensemble seed then has no forecast at
+  that row, and because scoring is paired the row is dropped for every
+  model. The report counts these rows and names the country, seeds and
+  first origin. The restart and the baselines run no analysis and are
+  unchanged. On USA under seed 3 the analysed wage share is negative in
+  most members from 1979, so the guard trips at 1980. The rescale hits its
+  caps in 1981, and the innovations pass 100 sd units in 1983.
+  A survey of full passes (every country of the test, seeds 1 to 3, 32
+  members, from the first measured year to the last) finds 21 of 96
+  passes trip:
+  - seed 1: BGR, BRA, CZE, LVA, NZL, ROU;
+  - seed 2: BGR, EST, HRV, LTU, NZL, ROU, SVK;
+  - seed 3: BGR, DNK, HRV, HUN, LUX, NZL, ROU, USA.
+
+  Some trip only after the last test origin (DNK 2027, CZE 2023, LTU
+  2023). A fixed ensemble needs no trips on design origins (bnm-tvk's
+  test plan). The registered results above are not rescored.
 
 ## 10. Ranked plan
 

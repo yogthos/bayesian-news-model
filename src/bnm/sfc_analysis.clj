@@ -273,6 +273,11 @@
     (cond-> (-> r (update :open scale-bsm c) (update :end scale-bsm c) (update :fof scale-fof c) (update :Y * c))
       true (merge (into {} (for [k fiscal :when (get r k)] [k (* (double (get r k)) c)]))))))
 
+(def scale-bounds
+  "The bounds of a member's yearly output rescale at an analysis: a
+  factor outside them is clamped, and the guard (divergence) counts it."
+  [0.2 5.0])
+
 (defn- healthy?
   "Whether a member's memory is in the model's domain: every recorded
   year's output positive and its balance sheet finite."
@@ -396,13 +401,21 @@
                           yi (mapv (comp :Y (:year L)) ys)
                           ypost (when (seq oi) (enkf/update ens (hs oi) (sub y oi) (sub r oi) g {:indexed true}))
                           ynow (:Y ((:year L) (long t)))
-                          cs (mapv (fn [i x0] (let [y0 (nth x0 ynow) y1 (if ypost (nth (nth ypost i) ynow) y0)]
-                                                (if (and (pos? y0) (pos? y1)) (max 0.2 (min 5.0 (/ y1 y0))) 1.0)))
-                                   (range (count ens0)) ens0)
+                          [clo chi] scale-bounds
+                          raw (mapv (fn [i x0] (let [y0 (nth x0 ynow) y1 (if ypost (nth (nth ypost i) ynow) y0)]
+                                                 (if (and (pos? y0) (pos? y1)) (/ y1 y0) ##NaN)))
+                                    (range (count ens0)) ens0)
+                          cs (mapv (fn [c] (if (== c c) (max clo (min chi c)) 1.0)) raw)
+                          ;; the guard's reading (divergence): members whose rescale is at a
+                          ;; cap or undefined (output at or below zero before or after)
+                          capped (count (remove (fn [c] (and (== c c) (< clo c chi))) raw))
                           post (mapv (fn [x x0] (reduce (fn [x i] (assoc x i (nth x0 i))) x yi)) post ens)
                           mems (mapv (fn [m x c] (update (update m :years from-vector ys x) :years update-vals #(scale-record % c)))
                                      memories post cs)
                           [wlo whi] sfc/w-bounds [llo lhi] sfc/lambda-bounds
+                          w-bound (count (filter (fn [mem] (let [w (double (get-in mem [:years (long t) :w]))]
+                                                             (or (not (== w w)) (<= w wlo) (>= w whi))))
+                                                 mems))
                           p-now (when relearn (relearn t))
                           firms (:sfc-firms ids)
                           rs (mapv (fn [rn mem c]
@@ -428,8 +441,57 @@
                                                                              :innovation (units innov all) :after (units resid all)
                                                                              :fiscal-innovation (units innov fi) :fiscal-after (units resid fi)
                                                                              :output-innovation (units innov oi) :scale (nth cs 0)
-                                                                             :replaced replaced}))
+                                                                             :replaced replaced :capped capped :w-bound w-bound
+                                                                             :members (count mems)}))
                                        mems)}))))}))
+
+;; -- the divergence guard (bead bnm-tvk, parked) --------------------------------------------
+
+(def guard
+  "The divergence guard's thresholds. The assimilated pass has diverged
+  (bnm-tvk: USA under seed 3 from 1981) at the first analysis where
+    - more than :scale-share of the members have their output rescale
+      at a cap of scale-bounds, or undefined (:scale-cap; one member
+      clamped now and then is the clamp doing its job, a fifth of them
+      is the ensemble's scale running away);
+    - the mean |innovation| before the update is over :innovation-k sd
+      units (:innovation; healthy passes stay under 50, the divergent
+      ones reach 1e2-1e4);
+    - more than :w-share of the members have the wage share at or
+      beyond a bound of bnm.sfc/w-bounds after the update (before the
+      members' clamp), in :w-run consecutive analyses (:wage-share-bound).
+  Once diverged, every later analysis and every free run branched after
+  it is diverged too. On USA under seed 3 the analysed wage share is
+  negative in most members from 1979, so the guard trips at 1980, a year
+  before the rescale reaches its caps (1981, 7 of 32 members)."
+  {:innovation-k 100.0 :scale-share 0.2 :w-share 0.5 :w-run 2})
+
+(defn divergence
+  "The first divergence in an analysis log (analysis's :log, one entry
+  per analysis with :t :capped :w-bound :members :innovation), or nil:
+  {:t the analysis :reasons #{...} :entry that analysis's log entry}.
+  Thresholds are guard's, merged with `opts`."
+  ([log] (divergence log {}))
+  ([log opts]
+   (let [{:keys [innovation-k scale-share w-share w-run]} (merge guard opts)
+         over (fn [k share e] (> (double (or (k e) 0)) (* (double share) (double (or (:members e) 1)))))
+         w-hit (partial over :w-bound w-share)]
+     (first
+      (keep-indexed
+       (fn [i e]
+         (let [run (take-while w-hit (reverse (take (inc i) log)))
+               reasons (cond-> #{}
+                         (over :capped scale-share e) (conj :scale-cap)
+                         (let [x (:innovation e)] (and (number? x) (or (not (== x x)) (> (double x) (double innovation-k))))) (conj :innovation)
+                         (>= (count run) (long w-run)) (conj :wage-share-bound))]
+           (when (seq reasons) {:t (:t e) :reasons reasons :entry e})))
+       log)))))
+
+(defn divergence-at
+  "divergence over the analyses up to engine year `t` (a free run branched
+  after t's analysis sees those alone)."
+  ([log t] (divergence-at log t {}))
+  ([log t opts] (divergence (filterv #(<= (:t %) t) log) opts)))
 
 ;; -- the members ---------------------------------------------------------------------------
 
@@ -525,15 +587,18 @@
   from :start). Returns {:t [...]
   :analysed [...] :vars {variable {:median [...] :sd [...]}}} for the
   accounts module's numeric emits (sfc/output, sfc/net-lending-*, ...),
-  and :result, run-ensemble's."
+  and :result, run-ensemble's. With more than one member, :diverged
+  (divergence's map) when the assimilated pass tripped the guard: its
+  medians are then not a forecast (bnm-tvk, parked)."
   [panel kn iso {:keys [start origin years members seed] :or {members 32 seed 1} :as opts}]
   (let [start (or start (first-measured panel iso))
         {:keys [ids ms-of an]} (ensemble-of panel kn iso start (assoc opts :members members :seed seed))
         r (cp/run-ensemble ms-of
                            {:members members :from (inc start) :to (+ origin years) :assimilate-through origin
                             :analyses (if (> members 1) [an] []) :keep true :seed (analysis-seed seed)})]
-    {:t (:t r) :analysed (:analysed r) :result r
-     :vars (summarise (:members r) (count (:t r)) (:sfc-accounts ids))}))
+    (cond-> {:t (:t r) :analysed (:analysed r) :result r
+             :vars (summarise (:members r) (count (:t r)) (:sfc-accounts ids))}
+      (> members 1) (merge (when-let [d (divergence (:log (first (first (:memories r)))))] {:diverged d})))))
 
 (defn given-path
   "{year {:cg :ig :ben :kappa}}: government consumption, investment and
@@ -554,7 +619,9 @@
   pass, a free run of :years branched off it after each origin's analysis
   (bnm.coupled's :forks), the same as free-run from that origin with the
   same opts. {origin {:t [...] :vars ... :members [engine results]}} and
-  :log, the first member's analyses. :given (fn [origin]) -> a path
+  :log, the first member's analyses. An origin's run (and its conditional
+  one) carries :diverged when an analysis up to the origin tripped the
+  guard (divergence-at). :given (fn [origin]) -> a path
   (given-path): each origin also gets a conditional free run, its
   parameters given that path, under :conditional."
   [panel kn iso {:keys [start origins years members seed given] :or {members 32 seed 1} :as opts}]
@@ -568,10 +635,12 @@
                                      given (assoc :variants {:free (fn [_ rs] rs)
                                                              :conditional (fn [t rs] (mapv (with-given ids (given t)) rs))}))})
         acc (:sfc-accounts ids)
-        out (fn [ms] {:t (:t (first ms)) :members ms :vars (summarise ms (count (:t (first ms))) acc)})]
-    (assoc (into {} (for [o os :let [f (get-in r [:forks o])]]
-                      [o (if given (assoc (out (:free f)) :conditional (out (:conditional f))) (out f))]))
-           :log (:log (first (first (:memories r)))))))
+        log (:log (first (first (:memories r))))
+        out (fn [ms d] (cond-> {:t (:t (first ms)) :members ms :vars (summarise ms (count (:t (first ms))) acc)}
+                         d (assoc :diverged d)))]
+    (assoc (into {} (for [o os :let [f (get-in r [:forks o]) d (when (> members 1) (divergence-at log o))]]
+                      [o (if given (assoc (out (:free f) d) :conditional (out (:conditional f) d)) (out f d))]))
+           :log log)))
 
 (defn restart
   "The restart (phase A's free run from the latest data): one member,

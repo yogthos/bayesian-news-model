@@ -47,10 +47,12 @@
     (when (and ob (:flows-ok ob) (:y ob)) (/ (double (get-in ob [:f s :nl] 0.0)) (double (:y ob))))))
 
 (defn path-at
-  "The run's median of `v` at data year y, or nil."
-  [{:keys [t vars]} v y]
+  "The run's median of `v` at data year y, or nil; nil for a run whose
+  assimilated pass diverged (bnm.sfc-analysis/divergence), so it is never
+  scored."
+  [{:keys [t vars diverged]} v y]
   (let [i (.indexOf ^java.util.List (vec t) y)]
-    (when (>= i 0) (get-in vars [v :median i]))))
+    (when (and (>= i 0) (not diverged)) (get-in vars [v :median i]))))
 
 (defn- mean [xs] (when (seq xs) (/ (reduce + 0.0 xs) (count xs))))
 
@@ -64,7 +66,7 @@
                            (for [y (range (inc o) (+ o 6)) s [:hh :nfc :gov]] [y s])))
         nl (fn [r] (fn [y s] (path-at r (str "sfc/net-lending-" (name s)) y)))
         log (:log fr)]
-    {:iso iso :origin o :seed seed :members members
+    {:iso iso :origin o :seed seed :members members :diverged (:diverged run)
      :model (mean (errs (nl run))) :restart (mean (errs (nl rs)))
      :persistence (mean (errs (fn [_ s] (nl-data panel iso o s))))
      :innovation (mean (map :innovation log)) :after (mean (map :after log))
@@ -134,7 +136,9 @@
   "The forecasts of `iso`'s rows: {[o h outcome] {model value}}, models
   :persistence :damped :restart :restart-cond and per seed [:model s]
   [:model-cond s] (the assimilated ensemble's median, free and given the
-  observed government path and NFC investment share)."
+  observed government path and NFC investment share). A seed whose
+  assimilated pass diverged by the forecast's engine year (bnm.sfc-
+  analysis/divergence) gives no value, and is listed under :diverged."
   [panel kn iso rows {:keys [seeds members]}]
   (let [os (sort (distinct (map :o rows)))
         start (first (measured-years panel iso))
@@ -150,6 +154,8 @@
                         :damped (damped panel iso outcome o h)
                         :restart (path-at (get-in rs [o :free]) v y)
                         :restart-cond (path-at (get-in rs [o :cond]) v y)}
+                       (when-let [ds (seq (for [s seeds :when (get-in fr [s (+ o sfc/vintage) :diverged])] s))]
+                         {:diverged (vec ds)})
                        (into {} (for [s seeds :let [f (get-in fr [s (+ o sfc/vintage)])]]
                                   [[:model s] (path-at f v y)]))
                        (into {} (for [s seeds :let [f (get-in fr [s (+ o sfc/vintage) :conditional])]]
@@ -225,6 +231,19 @@
         (every? (fn [[k [_ _ hi]]] (< hi (bounds k))) cis) :equivalent
         :else :inconclusive))
 
+(defn diverged-line
+  "The report's line on the rows left out because an ensemble seed's
+  assimilated pass diverged (the bnm-tvk guard): every model's value at
+  such a row is dropped with it, as scoring is paired."
+  [scored]
+  (let [dv (filter #(seq (get-in % [:f :diverged])) scored)]
+    (format "rows excluded because an ensemble seed diverged (bnm-tvk guard): %d row%s%s" (count dv) (if (= 1 (count dv)) "" "s")
+            (if (seq dv)
+              (str ", " (clojure.string/join " " (for [[iso g] (sort-by key (group-by :iso dv))]
+                                                   (str iso " seeds " (clojure.string/join "," (sort (distinct (mapcat #(get-in % [:f :diverged]) g))))
+                                                        " from o " (apply min (map :o g))))))
+              ""))))
+
 (defn report
   "The registered test's tables and verdicts from the scored rows."
   [scored seeds bounds]
@@ -240,6 +259,7 @@
         lines (atom [])
         say (fn [& xs] (let [l (apply str xs)] (println l) (swap! lines conj l)))]
     (say (format "rows scored (all models present): %d of %d" (count rows) (count scored)))
+    (say (diverged-line scored))
     (doseq [split [:test :design] out [:nl :debt]]
       (say (format "%s %s: rows h3 %d, h5 %d, countries %d" (name split) (name out) (count (sel split out 3)) (count (sel split out 5))
                    (count (distinct (map :iso (sel split out nil))))))
@@ -270,8 +290,11 @@
       "review"
       (let [rows (vec (for [iso (or isos (countries panel))]
                         (let [r (review-row panel kn iso {:members members :seed seed})]
-                          (println (format "%s %d seed %d  model %.4f  restart %.4f  persistence %.4f  innov %.2f -> %.2f  infl %.2f"
-                                           iso (:origin r) seed (:model r) (:restart r) (:persistence r)
+                          (println (format "%s %d seed %d  model %s  restart %.4f  persistence %.4f  innov %.2f -> %.2f  infl %.2f"
+                                           iso (:origin r) seed
+                                           (if (:diverged r) (str "diverged " (:t (:diverged r)) " " (sort (map name (:reasons (:diverged r)))))
+                                               (format "%.4f" (double (:model r))))
+                                           (:restart r) (:persistence r)
                                            (double (or (:innovation r) Double/NaN)) (double (or (:after r) Double/NaN))
                                            (double (or (:inflation r) Double/NaN))))
                           (flush)
