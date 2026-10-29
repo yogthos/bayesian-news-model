@@ -1961,6 +1961,123 @@ this rule (a record, not a test): none gains on the primary; trials 44
 and 45 gain against their placebos on short lists, which says the
 scrambled inputs harm the ranking, not that the real ones help.
 
+## Registered, 29 October 2026: the watch-list rule, second form (bead bnm-82j.6)
+
+Supersedes the rule above (bnm-82j.1) for every trial registered from
+now on; trials already run keep their registered verdicts. Why: the
+fast-signal review (trials FSa-FSc) found that any change at a node
+reshuffles the year node's top ten, and that the rule's interval, which
+resamples origins with both models fixed, cannot see it: a group of
+nine noise inputs "gained" +0.014 [+0.005, +0.021] (p 0.001). With the
+noise drawn independently (the correction under the fast-signal review)
+the reshuffle is still there: groups of one shape, holding nothing,
+spread by more than the origin bootstrap allows for. A gain has to beat
+groups of the candidate's own shape, not the bare base; and the harm
+bound, crossed by every group, measures the cost of adding one.
+
+**The rule** (bnm.watchlist --v2; offline refits, bnm.shock-trial
+--nulls). The use and its primary are as before: top-10 recall on hard
+onsets of the year node's forecasts, origins 2003-2022 (or the trial's),
+the trial's kinds weighed equally, on the rows every run forecasts.
+1. **Null draws.** R = 8 runs of the candidate's shape (the same inputs
+   at the same nodes) holding nothing, on the candidate's code and
+   bench: its own inputs with the link to place or time broken, four
+   with the countries deranged (bnm.fast/derange-source, seeds 1-4, a
+   uniform derangement from augur.math/rng-mixed) and four read whole
+   years earlier (bnm.fast-run/shift-months: 24, 36, 48 and 60 months).
+   An input with no country dimension takes eight time shifts; an
+   offline refit takes eight derangements (the registered placebo's seed
+   and seeds from augur.math/seed-of).
+2. **Gain.** G, the candidate's recall less the draws' mean, with the
+   interval G +/- t(0.95, R - 1) x sqrt(sd0^2 (1 + 1/R) + vb): sd0 the
+   draws' spread (a fresh draw differs from the mean of R by that much),
+   vb the variance of G over 1,000 draws of two-year blocks of origins
+   (seed 1). A gain when the lower end is above 0 (one-sided 5%).
+3. **Equivalence.** Equivalent to nothing when the upper end is below the
+   gain the test finds 80% of the time at the trial's own spread
+   (sqrt(sd0^2 + vb) of its draws, bnm.watchlist/null-mde): +0.015 for
+   thirteen kinds on t48-world-norel (spread 0.0050).
+4. **Harm.** The year nodes' pooled paired Brier against the bench
+   (bnm.paired/world-pair), the candidate less the draws' mean, in the
+   same interval (vb from the candidate's own interval). Harm when the
+   upper end is below 0: the candidate costs more than groups of its
+   shape that hold nothing. No harm shown when the lower end is at or
+   above -0.0003. Adopted when 2 holds and 4 finds no harm.
+5. **For the record**: the bnm-82j.1 reading against the bench; k = 5,
+   20, 10%, all rows, precision and lead; noise draws of the same shape
+   (bnm.fast-run --family noise --seed s). The FS trials' placebo test is
+   subsumed: the derangement draws are eight placebos.
+
+**Why shuffled, not noise.** On t48-world-norel the four noise draws (9
+standard normals at the quarters) average +0.002 recall (sd 0.006) and
+-0.0019 Brier; the eight shuffled commodity draws -0.007 (sd 0.003) and
+-0.0003. Noise that keeps none of the inputs' distribution, coverage or
+persistence is biased one way on recall and the other on Brier. Noise
+draws are reported, not the null.
+
+**Why R = 8.** Each draw is a world run: 15-17 minutes on this machine
+two at a time (thirteen runs in 102 minutes), so eight cost about an hour
+a trial. More buy little: the detectable gain at spread 0.0050 is +0.019
+with R = 4, +0.015 with 8, +0.014 with 12, +0.0135 with 16 (the floor,
+spread x (z0.95 + z0.80), is +0.012). A cheap approximation was tried and
+is not used: the bench's year-node log odds perturbed by independent
+noise the size a draw moves them (sd 0.07-0.22) does not track full runs
+(on six pre-t48 draws a mean of -0.008 to -0.023 where the runs gave
+-0.018 to +0.014): what a group does is learned over sixty years at
+every quarter node and reaches the year only through the states passed
+up, so no partial rerun is the same object either.
+
+**Power** (bnm.watchlist/null-power: R normal draws and a candidate of
+true gain g over their mean, each of spread s, the rule applied as
+written; 10,000 simulations): at s = 0.0050 and R = 8, power 0.52 at
++0.01, 0.96 at +0.02, 80% at +0.015; at s = 0.0079 (noise and shuffled
+pooled, the widest seen) 0.29, 0.69 and 0.94 at +0.01, +0.02, +0.03,
+80% at +0.023. bnm-82j.1's +0.024 was a gain over the bench with
+outcomes redrawn; this is a gain over groups of the same shape.
+
+**Calibration** (data/runs/sequencing/watchlist-v2-calibration-
+{shuffled,noise,all}.txt). Base **t48-world-norel**, which bnm.fast-run
+--family none reproduces byte for byte; code 3009fba with this rule's
+changes (draws identical under augur v0.13.0's rng-mixed, checked);
+data/slow/series.tsv after bnm-as1; thirteen kinds, origins 2003-2022.
+- The shuffled draws less the bench: derangements -0.0096, -0.0071,
+  -0.0052, -0.0039; time shifts -0.0088, -0.0024, -0.0112, -0.0090. Mean
+  -0.0071, between-draw sd 0.0031, origins' sd 0.0039. Every one loses
+  recall: what bnm-82j.1 would call a loss is the cost of the shape.
+- Size, each draw in turn the candidate against R of the others: 1 of
+  280 at R = 4, 0 of 56 at R = 6 (the eight shuffled); 21 of 1,980 at
+  R = 8 with the four noise draws added (0.011), though noise and
+  shuffled draws are not exchangeable; on trial SS's refits, 40
+  derangements from mixed seeds, 34 of 12,000 at R = 8 (0.003). The
+  origins' term is what holds the size: without it 0.054-0.071 within
+  the shuffled draws and 0.10-0.13 with noise mixed in. False passes are
+  at most 1.1% wherever measured: the rule is conservative.
+
+**Descriptive readings, not verdicts** (data/runs/sequencing/
+watchlist-v2-readings.txt). Past candidates against their own benches,
+their bnm-82j.1 interval as vb, against the eight shuffled draws on
+t48-world-norel: a different base, and FSb (six inputs), FSc (four,
+2020-2022) and trial 45 (other nodes) are other shapes, so the null is
+approximate. Gain over the null mean, 90%:
+- FSa +0.002 [-0.009, +0.013], rerun -0.002 [-0.018, +0.014]; FSb
+  +0.002 [-0.014, +0.018], rerun +0.003; FSc 2020-2022 +0.004 [-0.007,
+  +0.014], rerun -0.008; trial 45 (seven kinds) +0.009 [-0.022, +0.040]:
+  none gains, as registered. Harm (Brier over the null mean): none costs
+  more than the draws; trial 45 shows no harm.
+- Placebos: FSa -0.005, FSb +0.007 [-0.002, +0.016], trial 45 -0.000;
+  FSc's placebo "gains" +0.016 [+0.005, +0.027] on three origins in two
+  blocks, the coarse record FSc's registration warned of.
+- Noise: fs-noise and fs-noise-fix (the lattice) "gain" +0.019 and
+  +0.021 over the shuffled draws, fs-noise-mixed +0.013 [-0.003,
+  +0.029] does not: noise costs less recall than shuffled inputs, the
+  reason it is not the null.
+- Trial SS, refitted offline on its own base, against forty of its own
+  derangements (data/runs/sequencing/shock-trial-test-v2.txt): S less the
+  base -0.021, the draws -0.014 (sd 0.015: most refits with scrambled
+  losses loses too), gain over their mean -0.007 [-0.041, +0.028], p
+  0.63; log per row over B' -0.0045 [-0.0147, +0.0057] over the draws'
+  mean: no harm beyond their cost. As registered, nothing.
+
 ## Pre-registered, 28 October 2026: supply shocks as event triggers (trial SS, bead bnm-82j.3)
 
 Registered before any outcome after 2002 is read for this test. Do
