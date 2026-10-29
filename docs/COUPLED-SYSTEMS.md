@@ -1806,6 +1806,117 @@ Three kinds of check, each a smoke test or a diagnostic written every year:
       the count to 3 of 32 and the innovations to 2,093 sd units: a jump
       of points of GDP in spending each year is a shock. The shares need
       to be in the analysed state; that is left open.
+  - *Fixes for bnm-2zk and bnm-h0i* (October 2026; all made after the
+    results above). Scored by bnm.sfc-horizon-run's review: per country
+    with eight or more measured years, origin o its last data year less
+    five, the start its first measured year (FRA 1995). The ensemble (32
+    members) is analysed through engine year o + 2 and run free to o + 5;
+    the restart and persistence as above; mean |error| of net lending
+    (households, NFCs, government) over data years o + 1 to o + 5, on
+    seeds 1, 3 and 5.
+    - Seeding. augur.math/rng fills its state linearly from the seed, and
+      members were drawn from seed + 7919 i: neighbouring members' draws
+      were correlated by 0.71, -0.50, 0.90, -0.84 on the first four (a
+      lattice, not an ensemble), and runs under seeds 1, 3, 5 were not
+      independent either. Seeds are now mixed (sfc-analysis/seed-of),
+      |r| < 0.03. The other call sites of augur.math/rng are bead bnm-0z5.
+    - The ratio observations. A level observed as a ratio to output was
+      h = level - ratio x Y, so the members' spread in output, which the
+      update cannot move, counted as spread in what is observed and the
+      gain went to the wrong places. It is now h = level / Y, each member's
+      own output its coefficient, still linear in the state.
+    - The fiscal levels in the state (the decision on bnm-2zk). Government
+      consumption, investment and benefits are in the window, observed
+      over output from Table 14 (known y + 2, sd 0.003). Each member
+      draws their model error (lognormal, sd learned as the root mean
+      square yearly change of each log share, bnm.sfc/learn's :fiscal-sd;
+      bnm.modules.sfc/fiscal-error) from its own generator, and starts
+      with its levels drawn at that sd. They are updated by the fiscal
+      observations alone, and those update nothing else: with 32 members
+      and some 300 other observations, a joint update moved them through
+      spurious covariances (cumulative seed-1 runs below).
+    - Output observed. Output was never observed, so a member's nominal
+      scale could run away: POL's and LUX's members went to negative
+      output. GDP (known y + 2, sd 2%) now updates the output entries,
+      and each member's money levels (balance sheets, flows of funds,
+      output, fiscal levels; bnm.engine/update-emits for the output its
+      readers see) are scaled by one factor, at most 5 and at least 0.2 a
+      year, which keeps every ratio and identity.
+    - Collapsed members. A member with output at or below zero, or a
+      balance sheet not finite, has left the model's domain; at the
+      analysis it is replaced by the next healthy member, its own
+      model-error stream kept (LUX on seed 5 had broken the update).
+
+    The identities still hold to 1e-10 after every update (tests), and a
+    free run still moves with nothing known after its origin, a late
+    publication included.
+
+    | cumulative, seed 1 | median error | mean | beats restart | beats persistence | median innovation |
+    |---|---|---|---|---|---|
+    | before | 0.093 | 0.094 | 8 | 9 | 24 |
+    | seeding | 0.095 | 0.099 | 6 | 5 | 24 |
+    | + ratio observations | 0.037 | 0.069 | 14 | 11 | 6 |
+    | + fiscal levels, joint update | 0.063 | 0.079 | 5 | 4 | 9 |
+    | + fiscal update localised | 0.037 | 0.056 | 9 | 8 | 9 |
+    | + output observed, resampling | 0.031 | 0.284 (BGR 7.8) | 15 | 12 | 8 |
+
+    Free-run error by country, mean over seeds 1, 3, 5 (their range), the
+    restart and persistence (one each), and the mean |innovation| before
+    the update in sd units:
+
+    | country | before | after | restart | persistence | innovation, before -> after |
+    |---|---|---|---|---|---|
+    | AUT | 0.136 (0.022-0.197) | 0.021 (0.019-0.022) | 0.030 | 0.033 | 702 -> 4 |
+    | BEL | 0.083 (0.047-0.152) | 0.027 (0.026-0.027) | 0.028 | 0.021 | 41 -> 4 |
+    | BGR | 0.095 (0.088-0.103) | 2.879 (0.039-7.771) | 0.052 | 0.028 | 52 -> 1627 |
+    | BRA | 0.140 (0.114-0.176) | 0.046 (0.027-0.077) | 0.022 | 0.019 | 15 -> 31 |
+    | CHL | 0.029 (0.028-0.029) | 0.025 (0.024-0.026) | 0.027 | 0.031 | 7 -> 5 |
+    | COL | 0.039 (0.028-0.046) | 0.029 (0.027-0.030) | 0.027 | 0.026 | 24 -> 12 |
+    | CZE | 0.202 (0.134-0.266) | 0.056 (0.052-0.061) | 0.118 | 0.020 | 36 -> 6 |
+    | DEU | 0.102 (0.065-0.129) | 0.027 (0.026-0.028) | 0.025 | 0.016 | 7 -> 4 |
+    | DNK | 0.040 (0.021-0.059) | 0.029 (0.028-0.030) | 0.029 | 0.034 | 9 -> 4 |
+    | ESP | 0.032 (0.021-0.049) | 0.026 (0.025-0.028) | 0.025 | 0.020 | 23 -> 5 |
+    | EST | 0.195 (0.193-0.197) | 0.062 (0.051-0.073) | 0.123 | 0.026 | 25 -> 8 |
+    | FIN | 0.022 (0.018-0.029) | 0.021 (0.019-0.023) | 0.020 | 0.023 | 16 -> 10 |
+    | FRA | 0.145 (0.142-0.150) | 0.020 (0.019-0.021) | 0.021 | 0.025 | 13 -> 4 |
+    | GBR | 0.059 (0.024-0.117) | 0.021 (0.020-0.021) | 0.018 | 0.048 | 22 -> 4 |
+    | GRC | 0.050 (0.030-0.077) | 0.047 (0.029-0.080) | 0.034 | 0.032 | 125 -> 39 |
+    | HRV | 0.023 (0.022-0.024) | 0.020 (0.019-0.020) | 0.023 | 0.021 | 28 -> 10 |
+    | HUN | 0.117 (0.110-0.121) | 0.088 (0.063-0.119) | 0.105 | 0.029 | 38 -> 8 |
+    | IRL | 0.088 (0.081-0.101) | 0.109 (0.078-0.146) | 0.080 | 0.135 | 36 -> 12 |
+    | ITA | 0.081 (0.017-0.203) | 0.022 (0.021-0.022) | 0.013 | 0.030 | 66 -> 4 |
+    | LTU | 0.147 (0.066-0.281) | 0.055 (0.031-0.099) | 0.047 | 0.040 | 65 -> 11 |
+    | LUX | 0.159 (0.145-0.177) | 0.031 (0.028-0.038) | 0.017 | 0.025 | 75 -> 9 |
+    | LVA | 0.066 (0.023-0.091) | 0.061 (0.036-0.100) | 0.044 | 0.029 | 48 -> 21 |
+    | MEX | 0.112 (0.091-0.126) | 0.068 (0.068-0.069) | 0.066 | 0.016 | 33 -> 7 |
+    | NLD | 0.119 (0.037-0.263) | 0.021 (0.020-0.023) | 0.015 | 0.026 | 65 -> 4 |
+    | NZL | 0.127 (0.120-0.131) | 0.100 (0.066-0.120) | 0.036 | 0.025 | 121 -> 46 |
+    | POL | 0.192 (0.172-0.218) | 0.124 (0.080-0.211) | 0.160 | 0.029 | 34 -> 20 |
+    | PRT | 0.128 (0.015-0.212) | 0.033 (0.031-0.035) | 0.026 | 0.031 | 56 -> 5 |
+    | ROU | 0.161 (0.089-0.217) | 0.126 (0.073-0.204) | 0.065 | 0.027 | 108 -> 49 |
+    | SVK | 0.136 (0.074-0.172) | 0.109 (0.083-0.159) | 0.142 | 0.030 | 54 -> 9 |
+    | SVN | 0.149 (0.093-0.179) | 0.032 (0.031-0.036) | 0.054 | 0.027 | 14 -> 6 |
+    | SWE | 0.060 (0.019-0.141) | 0.022 (0.021-0.023) | 0.016 | 0.018 | 22 -> 6 |
+    | USA | 0.070 (0.041-0.103) | 0.031 (0.030-0.033) | 0.085 | 0.025 | 11 -> 5 |
+
+    - France. 0.145 -> 0.020, the restart's 0.021, on every seed. Most of
+      the old error was the seeding: with seeding fixed alone it is 0.026.
+      Its free run no longer moves with its 1970-94 sheets: dropping them,
+      or raising their debt by half, changes its free-run net lending by
+      under 0.01 of GDP (test).
+    - Across seeds, the median range of a country's error is 0.004 (was
+      0.054). The median |innovation| is 7 sd units (35), and the
+      inflation no longer sits at its cap.
+    - Without BGR, the ensemble's median error is 0.031 (mean 0.049),
+      the restart's 0.029 (0.050), persistence's 0.026 (0.030). It beats
+      the restart in 12 of 31 and persistence in 10 of 31: the free runs
+      are now as good as the restart, not better, and neither beats
+      persistence at these horizons.
+    - BGR is left (bead bnm-rr7): its 1997 hyperinflation (nominal output
+      x8.7) makes relearned trend growth 4.1 in 1999, and expected output
+      compounds faster than the observed output can rescale it (7.8,
+      0.83, 0.04 on seeds 1, 3, 5). NZL, ROU, POL and LVA keep
+      innovations of 20-50 sd units.
   - *Golden checks* (bnm.coupled-run): with one member and no
     assimilation, the run reproduces phase A exactly. The stock modules'
     rows match bnm.engine-run's table line for line (7,963,260 rows), and
