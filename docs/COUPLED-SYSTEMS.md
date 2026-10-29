@@ -3900,7 +3900,9 @@ above, checked before and after).
   skills -0.2 to +0.1 on the cell's rows, reported with the result as
   the check (about 0.05 each at -0.05). The fitted model is the
   assumption, as it was for Korea. The countries bootstrap against
-  estimated is printed too, reported only.
+  estimated is printed too, reported only. The user accepted this
+  change from the registered bootstrap on 29 October 2026, before any
+  2025+ target was read.
 - *Minimum count.* A cell with fewer than five countries with a scored
   row is inconclusive for that cell (too few countries), whatever its
   interval. From the frozen file's target years, the h1 cells should
