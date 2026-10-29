@@ -3022,6 +3022,150 @@ forecaster of the sector balances.
   2023). A fixed ensemble needs no trips on design origins (bnm-tvk's
   test plan). The registered results above are not rescored.
 
+### 9g. The estimated rules at one, three and five years (bnm-4hv.14)
+
+Registered on 29 October 2026, at commit 376b7b5, before any of this
+test's outcomes was computed. The model is bnm.sfc/estimated (2a, "Rules
+estimated from data"), chosen on the design origins only.
+
+**What has been seen.** The 2003+ test origins are not fresh. 9f scored
+them at three and five years under Keen's rules: the restart, persistence
+and damped reversion, by sector. The one-year validation (2a) scored
+them under Keen's and the revised rules. So persistence's, damped
+reversion's and the current restart's errors on those rows are known.
+9f's diagnostics (the restart worst in the financial sector) were read
+before this work began. The rules were then chosen on the design origins
+alone, but that knowledge pointed the search. A result on the test
+origins is therefore secondary: seen twice, with the search informed by
+it. The primary is a holdout no earlier test touched.
+
+**The holdout.** Japan and Iceland. Table 14 lacks one domestic sector's
+item for them: Japan's NFC value added and compensation, Iceland's
+government compensation and interest paid. The 2a panel therefore had
+no complete year for either, and every earlier SFC test, one-year
+included, left them out. scripts/sfc-data.py holdout fills an item
+missing in exactly one domestic sector as the total economy's (S1) less
+the other three, from the same table. It writes
+data/derived/sfc/panel-holdout.csv, so panel.csv is unchanged. Stocks are
+Table 720's, measured: Japan 2005-2024, Iceland 2003-2024, 20 and 22
+years. Nothing of theirs was looked at but this coverage and the accounting
+check (net lending sums to zero: median 0.0003 of GDP in Japan, 0 in
+Iceland). Australia, Canada, Korea, Israel, Turkey and Russia still lack
+more than one sector's items, or Table 720, and stay out. No other open
+source on disk fills them.
+
+**Rows** (bnm.sfc-rules-run mask, the merged panel):
+- as 9f: every country with eight or more measured years, origins its
+  measured years at least five after its first, the target and the
+  origin's own value in the data (latest vintage). Outcomes are the four
+  domestic sectors' net lending over GDP and private debt over GDP
+  (measured);
+- horizons h = 1, 3 and 5: the target is data year o + h, the forecast
+  made at o + 2 (one year back, and one and three years ahead);
+- splits: holdout (JPN, ISL, every origin; the primary), test (the
+  other countries' origins from 2003; secondary), design (to 2002;
+  in-sample, reported). Rows:
+  - holdout: 150, 130 and 110 at h 1, 3 and 5, from 30 origins;
+  - test: 2,926, 2,626 and 2,326, in 30 countries, 586 origins;
+  - design: 485 at each horizon, in 24 countries;
+- Bulgaria and Romania: 9f's hyperinflation rule (a measured year with
+  nominal output over twice the year before's) leaves them out of every
+  split; the result with them (--all true) is a sensitivity, not scored.
+  The holdout has no such year.
+
+**Models**, each scored only where all four give a value (paired):
+- *estimated*: the restart under bnm.sfc/estimated
+  (bnm.sfc-analysis/restart through the engine). It is learned at o on
+  the panel as known at o + 2, the pooled slopes refitted on every
+  country's data years to o (holdout countries' own years included), and
+  started from o's data;
+- *persistence*: o's value;
+- *damped reversion*: 9f's, m + 0.8^h (x_o - m), m the mean of o - 4 to o;
+- *the current restart*: 9f's, learn's defaults (Keen's rules).
+
+**Metric.** Skill of estimated against baseline X = 1 - SSE / SSE_X,
+pooled over the rows of an outcome (net lending's four sectors
+together), in two horizon groups: h1, and h3 with h5 pooled. Intervals
+are 90%:
+- *test and design*: 2,000 draws of countries with replacement (seed
+  20261029, 9f's bootstrap);
+- *holdout*: a bootstrap over two countries, or over blocks of their
+  origins, isn't calibrated. In simulation the block bootstrap passed a
+  true skill of 0 a quarter of the time. The holdout's interval is
+  therefore [p - q95, p - q05], where q05 and q95 come from the
+  distribution of the skill on rows of the holdout's shape when the true
+  skill is 0. That distribution is simulated under 9f's error model (an
+  AR(1) over origins with rho 0.8, a lognormal country scale with sd 0.5,
+  the model's errors correlated 0.7 with the baseline's; 1,000
+  simulations, augur.math/rng-mixed). That model is an assumption, not
+  fitted to any outcome. Its false-pass rate at zero skill is 4-5%.
+
+**Verdicts.** One cell per baseline (three) and horizon group (two),
+each over both outcomes, by 9f's rule:
+- pass: lo > 0 for net lending and for debt;
+- worse: hi < 0 for either;
+- equivalent: hi < b for both;
+- else inconclusive.
+
+A split's verdict is pass if every one of its six cells passes, worse
+if any cell is worse, equivalent if all six are, else inconclusive.
+- *Primary*: the holdout's verdict. A pass says the estimated rules
+  forecast both outcomes better than persistence, damped reversion and
+  the current restart at one year and at three to five, in countries
+  never used.
+- *Secondary*: the test origins' verdict, read as seen twice (above).
+- Per sector and per horizon: reported, no verdict.
+
+**Bounds and power** (bnm.sfc-rules-run power; data/derived/sfc/
+rules-power.txt). The probability that lo > 0 at each true skill:
+
+| split, group, outcome | rows | 0 | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | b |
+|---|---|---|---|---|---|---|---|---|
+| holdout h1 net lending | 120 | 0.04 | 0.09 | 0.22 | 0.33 | 0.53 | 0.77 | 0.50 |
+| holdout h1 debt | 30 | 0.04 | 0.09 | 0.10 | 0.15 | 0.24 | 0.31 | 0.50 |
+| holdout h3-5 net lending | 192 | 0.05 | 0.13 | 0.27 | 0.49 | 0.75 | 0.93 | 0.43 |
+| holdout h3-5 debt | 48 | 0.05 | 0.09 | 0.13 | 0.21 | 0.29 | 0.45 | 0.50 |
+| test h1 net lending | 2,340 | 0.07 | 0.47 | 0.84 | 1.00 | 0.99 | 1.00 | 0.19 |
+| test h1 debt | 586 | 0.09 | 0.20 | 0.48 | 0.84 | 0.92 | 0.99 | 0.29 |
+| test h3-5 net lending | 3,960 | 0.09 | 0.57 | 0.96 | 1.00 | 1.00 | 1.00 | 0.14 |
+| test h3-5 debt | 992 | 0.08 | 0.25 | 0.63 | 0.91 | 0.98 | 1.00 | 0.26 |
+
+b is the skill found four times in five, interpolated, and 0.5 (the
+largest simulated) where none is.
+- *The holdout is weak.* Two countries and 30 overlapping origins pass a
+  net-lending skill of 0.2 one time in five, and debt hardly ever. Its
+  six cells all need a pass, so it passes only on skills far above the
+  design origins' (0.04 at one year, 0.2 at three to five). It can't show
+  equivalence either: bounds of 0.43-0.5 are no claim of "nothing".
+  Expect inconclusive unless the effect is large. That outcome says the
+  holdout couldn't tell, not that the rules failed.
+- *The test origins* have 9f's power (bounds 0.14 and 0.26 at three to
+  five years, as 9f's 0.15 and 0.27). Their country bootstrap passes a
+  zero skill 7-9% of the time, against the nominal 5%, as in 9f.
+
+    holdout {:h1 {:nl 0.5 :debt 0.5} :h35 {:nl 0.43 :debt 0.5}}
+    test    {:h1 {:nl 0.19 :debt 0.29} :h35 {:nl 0.14 :debt 0.26}}
+
+**What would change the plan.**
+- A primary pass makes bnm.sfc/estimated the SFC forecast (the restart
+  run under it). It also reopens the parked ensemble (bnm-tvk), whose
+  ceiling is the restart.
+- A secondary pass with an inconclusive primary leaves the rules as the
+  forecasting baseline, recorded as resting on origins seen twice. It
+  needs fresh years (data year 2025 on, known from 2027) to confirm.
+- A worse on either says the error corrections overfit the design years,
+  and holding every ratio, with interest as a share, is the baseline.
+
+**Run** (once):
+
+    jolt -A:tools -M -m bnm.sfc-rules-run test --out data/derived/sfc/rules-test.edn
+    jolt -A:tools -M -m bnm.sfc-rules-run score --in data/derived/sfc/rules-test.edn \
+         --bounds '{:holdout {:h1 {:nl 0.5 :debt 0.5} :h35 {:nl 0.43 :debt 0.5}} :test {:h1 {:nl 0.19 :debt 0.29} :h35 {:nl 0.14 :debt 0.26}}}' \
+         --out data/derived/sfc/rules-test.txt
+
+and with --all true (rules-test-all.edn, .txt) for the sensitivity with
+Bulgaria and Romania.
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
