@@ -94,6 +94,7 @@
             [bnm.sfc-test]
             [bnm.allocation-test]
             [bnm.coupled-test]
+            [bnm.sfc-horizon-run-test]
             [bnm.capacity-test]
             [bnm.supply-shocks-test]
             [bnm.shock-trial-test]
@@ -196,6 +197,7 @@
     bnm.sfc-test
     bnm.allocation-test
     bnm.coupled-test
+    bnm.sfc-horizon-run-test
     bnm.capacity-test
     bnm.supply-shocks-test
     bnm.shock-trial-test

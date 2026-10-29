@@ -446,6 +446,13 @@
                       (bit-xor z (unsigned-bit-shift-right z 31))))]
     (reduce (fn [h k] (mix (bit-xor h (long k)))) (mix (long seed)) ks)))
 
+(defn analysis-seed
+  "The seed of an ensemble's analysis generator (augur.enkf's perturbed
+  observations) under `seed`: apart from every member's (seed-of seed i)
+  and (seed-of seed i 1). It was (seed-of seed 2), member 2's own."
+  [seed]
+  (seed-of seed -1 -1))
+
 (defn perturb
   "Member i's start and parameters: with one member (i nil) `st` and `p`
   as given; else the balance sheet's positions each scaled by 1 + init-sd
@@ -528,7 +535,7 @@
         {:keys [ids ms-of an]} (ensemble-of panel kn iso start (assoc opts :members members :seed seed))
         r (cp/run-ensemble ms-of
                            {:members members :from (inc start) :to (+ origin years) :assimilate-through origin
-                            :analyses (if (> members 1) [an] []) :keep true :seed (seed-of seed 2)})]
+                            :analyses (if (> members 1) [an] []) :keep true :seed (analysis-seed seed)})]
     {:t (:t r) :analysed (:analysed r) :result r
      :vars (summarise (:members r) (count (:t r)) (:sfc-accounts ids))}))
 
@@ -560,7 +567,7 @@
         {:keys [ids ms-of an]} (ensemble-of panel kn iso start (assoc opts :members members :seed seed))
         r (cp/run-ensemble ms-of
                            {:members members :from (inc start) :to (+ (last os) years) :assimilate-through (last os)
-                            :analyses (if (> members 1) [an] []) :keep true :seed (seed-of seed 2)
+                            :analyses (if (> members 1) [an] []) :keep true :seed (analysis-seed seed)
                             :forks (cond-> {:at (set os) :years years}
                                      given (assoc :variants {:free (fn [_ rs] rs)
                                                              :conditional (fn [t rs] (mapv (with-given ids (given t)) rs))}))})

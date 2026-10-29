@@ -218,6 +218,41 @@
         (is (not= (get-in late ["SIM" 2011 :y]) (get-in p3 ["SIM" 2011 :y])))
         (is (= (:vars (free late kn)) (:vars (free p3 k3))))))))
 
+(defn- reshaped
+  "`ob` with its ratios changed, not only its scale: flows by sector and
+  balance-sheet sides each moved by their own factor, output by another,
+  so every ratio observation and the output level differ."
+  [ob]
+  (let [fk {:hh 1.3 :nfc 0.8 :fin 1.1 :gov 1.2 :row 0.9}]
+    (cond-> (update ob :y #(some-> % (* 1.1)))
+      (:f ob) (update :f (fn [f] (into {} (for [[s m] f] [s (update-vals m #(if (number? %) (* (fk s 1.0) %) %))]))))
+      (:b ob) (update :b (fn [b] (into {} (for [[s m] b] [s (into {} (for [[k sides] m] [k (into {} (for [[side v] sides] [side (some-> v (* (if (= side :a) 0.85 1.15)))]))]))])))))))
+
+(deftest nothing-known-after-the-origin-moves-a-forecast
+  ;; the test above scales whole rows, which leaves every ratio the analysis
+  ;; observes as it was; here the ratios change too, and the restart and the
+  ;; branched free runs are checked as well as free-run
+  (let [panel (-> @sim-panel (assoc-in ["SIM" 2011 :known-flows] 2016) (assoc-in ["SIM" 2011 :known-stocks] 2016)) ; published late
+        kn @sim-keen
+        origin 2014
+        known (fn [ob k] (or (get ob k) (+ (:year ob) sfc/vintage)))
+        p2 (update-vals panel (fn [rows] (update-vals rows #(if (or (> (known % :known-flows) origin) (> (known % :known-stocks) origin)) (reshaped %) %))))
+        k2 (update-vals kn (fn [rows] (into {} (for [[y r] rows] [y (if (> y origin) (update-vals r #(* 0.97 %)) r)]))))]
+    (is (not= (get-in panel ["SIM" 2013 :f :hh :nl]) (get-in p2 ["SIM" 2013 :f :hh :nl])))
+    (is (not= (get-in panel ["SIM" 2011 :f :hh :nl]) (get-in p2 ["SIM" 2011 :f :hh :nl])) "the late year too")
+    (is (= (:vars (free panel kn)) (:vars (free p2 k2))) "free-run")
+    (let [fs (fn [p k] (sa/free-runs p k "SIM" {:origins [2011 origin] :years 3 :members 6 :seed 4}))
+          a (fs panel kn) b (fs p2 k2)]
+      (doseq [o [2011 origin]] (is (= (get-in a [o :vars]) (get-in b [o :vars])) (str "free-runs from " o))))
+    (is (= (:vars (sa/restart panel kn "SIM" (- origin sfc/vintage) 4)) (:vars (sa/restart p2 k2 "SIM" (- origin sfc/vintage) 4))) "the restart")))
+
+(deftest the-analysis-draws-apart-from-the-members
+  ;; the analysis's generator was seeded at (seed-of seed 2), member 2's own
+  ;; perturbation seed, so the two drew the same numbers
+  (let [s 7 an (sa/analysis-seed s)]
+    (is (not-any? #{an} (for [i (range 256)] (sa/seed-of s i))))
+    (is (not-any? #{an} (for [i (range 256)] (sa/seed-of s i 1))))))
+
 (deftest relearned-parameters-are-every-members
   ;; relearning sets the same parameters in every member and each of its
   ;; modules: the perturbed trend growth is not kept (no observation
