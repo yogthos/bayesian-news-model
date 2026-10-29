@@ -405,8 +405,10 @@
 (defn false-pass
   "The rule's size on null draws alone: each of `draws` (gains over the
   bench) in turn the candidate, against `r` of the others (every subset,
-  or :subsets random ones when there are more), `vb-of` (fn [i]) its
-  origins' variance. {:rate :tests :passes}."
+  or :subsets random ones when there are more), `vb-of` (fn [i others])
+  its origins' variance against those others (against all of them it
+  understates a subset's: the mean of fewer draws moves more over
+  origins). {:rate :tests :passes}."
   [draws vb-of r alpha {:keys [subsets seed]}]
   (let [n (count draws)
         g (m/rng seed)
@@ -418,7 +420,7 @@
                                  all
                                  (repeatedly subsets #(take r (sort-by (fn [_] (m/next-double! g)) others))))]
                     s sets]
-                (:pass (null-test (draws i) (mapv draws s) (vb-of i) alpha)))
+                (:pass (null-test (draws i) (mapv draws s) (vb-of i (vec s)) alpha)))
         tests (vec tests)]
     {:tests (count tests) :passes (count (filter true? tests))
      :rate (/ (count (filter true? tests)) (double (max 1 (count tests))))}))
@@ -557,6 +559,20 @@
         (>= lo harm-bound) :no-harm
         :else :not-shown))
 
+(defn v2-verdict
+  "The registered v2 decision from the gain's `null-test` (`g`), the
+  harm's (`h`, Brier gains over the null mean) and the trial's detectable
+  gain `mde`: a gain when the lower end is above 0 (2), equivalent to
+  nothing when the upper end is below `mde` (3), the harm verdict (4),
+  adopted on a gain that is not harm."
+  [g h mde]
+  (let [harm (harm-verdict h)
+        gain (boolean (:pass g))]
+    {:gain gain
+     :equivalent (boolean (and g mde (< (:hi g) mde)))
+     :harm harm
+     :adopt (and gain (not= :harm harm))}))
+
 (defn report-v2
   "The v2 rule (bead bnm-82j.6) for `run` against `bench` and the null
   draws `nulls` (runs of the same shape): the gain on the primary (top-10
@@ -573,7 +589,16 @@
         bc (brier run)
         bn (mapv #(:diff (brier %)) nulls)
         z (t-quantile 0.95 1e6)
-        h (null-test (:diff bc) bn (Math/pow (/ (- (:hi bc) (:lo bc)) (* 2 z)) 2) alpha)]
+        h (null-test (:diff bc) bn (Math/pow (/ (- (:hi bc) (:lo bc)) (* 2 z)) 2) alpha)
+        ;; the trial's own spread: the draws' sd and their origins'
+        ;; variance, each draw against the others (3)
+        cs (mapv #(sc (first %)) ns)
+        vb0 (/ (reduce + (for [i (range (count cs))]
+                           (:vb (null-gain {:c (cs i) :b (sc :b) :nulls (vec (concat (subvec cs 0 i) (subvec cs (inc i))))} years opts))))
+               (double (count cs)))
+        spread (Math/sqrt (+ (* (:sd0 t) (:sd0 t)) vb0))
+        mde (null-mde spread (count nulls) alpha {:sims 10000 :seed 1})
+        v (v2-verdict t h mde)]
     (say (format "Watch-list rule v2: %s against %s and %d null draws (%s), %d kinds, origins %d-%d." run bench (count nulls) (str/join "," nulls) (count kds) from to))
     (say (format "   top-10 recall, hard onsets, less the bench: candidate %+.4f; null draws %s (mean %+.4f, sd %.4f)"
                  (:cand ng) (str/join " " (map #(format "%+.4f" %) (:nulls ng))) (:mean0 t) (:sd0 t)))
@@ -584,7 +609,10 @@
     (say (format "   harm, Brier over the null mean %+.5f [%+.5f %+.5f]: %s"
                  (:g h) (:lo h) (:hi h) ({:harm "HARM (costs more than the null groups)" :no-harm "no harm (lower end within the bound)"
                                           :not-shown "no harm beyond the null groups' cost; no-harm not shown"} (harm-verdict h))))
-    {:gain t :harm h :ng ng}))
+    (say (format "   verdict: %s; detectable gain at 80%% %+.4f (spread %.4f)%s; year nodes' Brier against the bare bench %+.5f [%+.5f %+.5f]"
+                 (if (:adopt v) "ADOPT (a gain, no harm beyond the null groups)" "not adopted")
+                 mde spread (if (:equivalent v) ", equivalent to nothing" "") (:diff bc) (:lo bc) (:hi bc)))
+    {:gain t :harm h :ng ng :verdict v :mde mde}))
 
 (defn report-calibration
   "The v2 rule's size and power from null draws alone (`nulls`, one shape,
@@ -608,7 +636,7 @@
     (say (format "   between-draw sd %.4f, origins' sd %.4f, together %.4f; the 82j.1 rule passes %d of %d"
                  s0 (Math/sqrt vbm) s (count (filter #(pos? (:lo (paired-boot (into {} (for [[kd byt] (cs %)] [kd (into {} (for [[t {:keys [hits pos]}] byt] [t [(- hits (get-in sc [:b kd t :hits])) pos]]))])) years opts))) (range (count cs)))) (count cs)))
     (doseq [r (filter #(< % (count nulls)) [3 4 6 8 10 12])]
-      (let [fp (false-pass draws #(vb %) r alpha {:subsets 300 :seed 1})
+      (let [fp (false-pass draws (fn [i s] (:vb (null-gain {:c (cs i) :b (sc :b) :nulls (mapv cs s)} years opts))) r alpha {:subsets 300 :seed 1})
             f0 (false-pass draws (constantly 0.0) r alpha {:subsets 300 :seed 1})]
         (say (format "   R=%2d: false passes %d of %d (%.3f; without the origins' variance %.3f); detectable gain at 80%% (spread %.4f) %+.4f"
                      r (:passes fp) (:tests fp) (:rate fp) (:rate f0) s (null-mde s r alpha {:sims 10000 :seed 1})))))

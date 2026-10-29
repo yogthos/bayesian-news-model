@@ -60,6 +60,20 @@
   [seed]
   (* 12 (+ 2 (mod (dec (long seed)) 9))))
 
+(def short-history
+  "Families whose series start too late for a time-shift null draw (the v2
+  rule's amendment A1: derangements only). Port calls and chokepoint
+  transits begin in January 2019, so read 24-60 months back at the scored
+  origins they are unknown, the group drops out and the draw is the
+  bench; 11 of the 33 countries' sovereign spreads start after 1995, so
+  a shifted :fx draw loses them in the early test years."
+  #{:fx :ports})
+
+(defn null-allowed?
+  "Whether `null` (nil, \"derange\" or \"shift\") is a null draw of `family`."
+  [family null]
+  (not (and (= "shift" null) (short-history family))))
+
 (defn -main [& args]
   (let [{:keys [out family placebo end kinds smoke seed null]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         family (keyword (or family "none"))
@@ -67,6 +81,8 @@
             (throw (ex-info (str "bnm.fast-run: no family " family) {})))
         _ (when-not (contains? #{nil "derange" "shift"} null)
             (throw (ex-info (str "bnm.fast-run: no null " null " (derange or shift)") {})))
+        _ (when-not (null-allowed? family null)
+            (throw (ex-info (str "bnm.fast-run: no time-shift null for " (name family) ": its series start too late (derange)") {})))
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
         cats (kinds/catalogues)

@@ -254,3 +254,13 @@
                 (count (filter true? (map = (first a) b))))
         mean (/ (reduce + agree) (double (count agree)))]
     (is (< 0.75 mean 1.25) (str "mean agreement " mean " (independent: about 1)"))))
+
+(deftest no-time-shift-without-history
+  ;; amendment to the watch-list rule v2: a shifted draw of a series that
+  ;; starts in 2019 reads nothing at 2020-2022 origins, so the group drops
+  ;; out and the "null" is the bench; such families take derangements only
+  (is (fr/null-allowed? :commodities "shift"))
+  (is (not (fr/null-allowed? :fx "shift")) "a third of the spreads start after 1995")
+  (is (not (fr/null-allowed? :ports "shift")))
+  (is (fr/null-allowed? :ports "derange"))
+  (is (fr/null-allowed? :ports nil)))

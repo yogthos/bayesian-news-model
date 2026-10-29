@@ -185,14 +185,22 @@
   ;; exchangeable draws the share passing is the rule's size
   (let [g (m/rng 3)
         draws (vec (repeatedly 12 #(* 0.01 (m/normal! g))))
-        r (wl/false-pass draws (fn [_] 0.0) 8 0.1 {:subsets 200 :seed 1})]
+        r (wl/false-pass draws (fn [_ _] 0.0) 8 0.1 {:subsets 200 :seed 1})]
     (is (<= 0.0 (:rate r) 0.2))
     (is (pos? (:tests r))))
   (testing "a draw far from the rest passes"
     (let [draws (conj (vec (repeat 9 0.0)) 0.5)
           draws (mapv + draws (map #(* 1e-3 %) (range 10)))
-          r (wl/false-pass draws (fn [_] 0.0) 8 0.1 {:subsets 50 :seed 1})]
-      (is (pos? (:rate r))))))
+          r (wl/false-pass draws (fn [_ _] 0.0) 8 0.1 {:subsets 50 :seed 1})]
+      (is (pos? (:rate r)))))
+  (testing "the origins' variance is the candidate's against the subset it is tested on"
+    ;; a candidate's gain over the mean of fewer draws varies more over
+    ;; origins: computing it against all the others understates it
+    (let [seen (atom [])
+          draws [0.0 0.001 0.002 0.003 0.004 0.005]]
+      (wl/false-pass draws (fn [i s] (swap! seen conj [i (vec s)]) 0.0) 3 0.1 {:subsets 300 :seed 1})
+      (is (= (* 6 10) (count @seen)) "every subset of 3 of the 5 others")
+      (is (every? (fn [[i s]] (and (= 3 (count s)) (not-any? #{i} s))) @seen)))))
 
 (deftest power-of-the-null-test
   (let [p0 (wl/null-power 0.0 0.01 8 0.1 {:sims 4000 :seed 1})
@@ -209,3 +217,14 @@
   (is (= :no-harm (wl/harm-verdict {:lo -0.0002 :hi 0.001})) "lower end within the bound")
   (is (= :not-shown (wl/harm-verdict {:lo -0.002 :hi 0.001})))
   (is (= :not-shown (wl/harm-verdict nil)) "no null draws, no verdict"))
+
+(deftest the-v2-verdict-follows-the-registration
+  ;; 2: a gain when the lower end is above 0; 3: equivalent to nothing
+  ;; when the upper end is below the trial's detectable gain; 4: harm when
+  ;; the Brier interval over the null mean is below 0; adopted on a gain
+  ;; without harm
+  (let [v (fn [g h] (wl/v2-verdict {:lo (first g) :hi (second g) :pass (pos? (first g))} h 0.015))]
+    (is (= {:gain true :equivalent false :harm :not-shown :adopt true} (v [0.002 0.03] {:lo -0.001 :hi 0.001})))
+    (is (= {:gain true :equivalent false :harm :harm :adopt false} (v [0.002 0.03] {:lo -0.004 :hi -0.0001})))
+    (is (= {:gain false :equivalent true :harm :no-harm :adopt false} (v [-0.01 0.012] {:lo -0.0001 :hi 0.001})))
+    (is (= {:gain false :equivalent false :harm :not-shown :adopt false} (v [-0.01 0.02] {:lo -0.001 :hi 0.001})))))

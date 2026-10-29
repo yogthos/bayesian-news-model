@@ -272,7 +272,7 @@
             draws (mapv :cand per)
             old (count (filter (fn [c] (pos? (:lo (wl/paired-boot (into {} (for [[kd byt] c] [kd (into {} (for [[y {:keys [hits pos]}] byt] [y [(- hits (get-in (cells :base) [kd y :hits] 0.0)) pos]]))])) years opts)))) cs))]
         (doseq [rr [4 8 12 16] :when (< rr r)]
-          (let [fp (wl/false-pass draws #(:vb (per %)) rr alpha {:subsets 300 :seed 1})]
+          (let [fp (wl/false-pass draws (fn [i s] (:vb (wl/null-gain {:c (cs i) :b (cells :base) :nulls (mapv cs s)} years (assoc opts :reps 200)))) rr alpha {:subsets 300 :seed 1})]
             (say (format "   calibration, R=%d: a draw against %d others passes %d of %d (%.3f)" rr rr (:passes fp) (:tests fp) (:rate fp)))))
         (say (format "   (the 82j.1 rule: a draw gains on the base %d of %d times)" old r))))
     {:gain t :harm h}))
