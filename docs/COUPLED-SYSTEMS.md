@@ -433,7 +433,7 @@ given, the model's MAE is 0.0005, so the harness reproduces the data.
 | tax and contribution rates | fitted | 0.09 / 0.04 | |
 | production structure (v, omega, tp) | fitted shares | 0.05 / 0.02 | |
 | household and financial investment shares | fitted shares | 0.04 / 0.00 | |
-| exports share, import share mu | fitted (0.3 default) | -0.01 / -0.01 | the 0.3 default applies to no country-year. mu runs from 0.12 (US) to 1.95 (LUX) |
+| exports share, import share mu | fitted (0.3 default) | -0.01 / -0.01 | the 0.3 default applies to no country-year. mu runs from 0.12 (US) to 1.95 (LUX); above 1 it turned the multiplier's sign, and mu is now over absorption plus exports (9h, bnm-4hv.17) |
 | expected growth n | fitted | -0.03 / -0.02 | |
 | dividends as shares of output | prior (the dividend fix) | -0.05 / 0.00 | helps on design and test alike |
 | employment dl/l = (kappa - kappa-bar)/nu | Keen | not in one-step net lending | slope 1.32, R2 0.16: supported. One year ahead, MAE 0.0098 against persistence 0.0094 |
@@ -3932,6 +3932,98 @@ above, checked before and after).
     jolt -A:tools -M -m bnm.sfc-rates-confirm score --vintage data/derived/sfc/vintage-2027 \
         --vintage-date YYYY-MM-DD --shape data/derived/sfc/rates-confirm-shape.edn \
         --null data/derived/sfc/rates-confirm-null.edn --out data/derived/sfc/rates-confirm.txt
+
+**Fix after the outcome: the import share (bnm-4hv.17, 29 October
+2026).** The review's 30-year base runs found Ireland's output negative
+by 2034-37 and Luxembourg's by 2033-44. The cause, found by tracing
+Ireland's run year by year:
+- *Imports were a share mu of absorption, and Ireland's imports exceed
+  its absorption.* Much of what it imports is exported again (contract
+  manufacturing, multinationals' intellectual property), so learned mu
+  was 1.72 (Luxembourg 2.44 to 2.53; next highest Slovakia, 0.87). In
+  Y = ((1 - mu)(a1 k0 + a2 V + G + I) + X) / (1 - (1 - mu) a1 k1), 1 - mu
+  below 0 turns the multiplier on domestic demand negative: every unit
+  of spending lowers output. Ireland's investment rule raised NFC
+  investment towards its norm (0.13 to 0.20 of output), government
+  spending grew at trend (6.6%), and output fell 2% in 2028, 7% in
+  2030 and 39% in 2034, so every share of output rose and spending
+  rose with it. With mu set to imports over absorption plus exports
+  and nothing else changed, Ireland's and Luxembourg's runs stay
+  positive under every rule set. The other suspects were not the cause:
+  the norms from the distorted years (investment norm 0.20, profit share
+  0.55) only move output the wrong way through the negative multiplier;
+  the deposits going negative (2033) and the debt (17 times output in
+  2035) followed the fall in output; the fiscal rule's cuts were
+  bounded (at most half a year's spending).
+- *Fix.* mu is imports over absorption plus exports (the import content
+  of total final demand), below 1 while output is positive. The step is
+  unchanged in form: learned x is exports net of their import content,
+  (1 - mu) X, still set so X - mu A gives the origin's net exports. mu
+  falls for every country (US 0.14 to 0.12, Belgium 0.81 to 0.45,
+  Ireland 1.72 to 0.51), so the domestic multiplier rises everywhere.
+  No country is excluded and GNI* is not needed: the fault was the
+  specification, not the scale of Ireland's output.
+- *A second fault the fix exposed.* With mu fixed, Lithuania under
+  Keen's rules went negative in 2051: dividends received were split by
+  yield-weighted equity holdings, households' and firms' holdings had
+  turned negative (they are shares of total assets, negative once net
+  worth is), the total of weights neared zero and households received
+  -4.9 of output. A negative holding now receives none. It touches only
+  rule sets that split dividends by holdings (Keen's and revised, not
+  estimated or rates).
+- *Sweep* (35 countries with a measured year: panel.csv and both holdout
+  panels; Bulgaria and Romania included; latest measured origin; rates,
+  estimated and Keen's rules; 30 years). Before: five runs with output
+  at or below zero (Ireland 2036 / 2037 / 2034 under rates / estimated /
+  Keen; Luxembourg 2044 / 2033 under estimated / Keen). After: none, and
+  no government or private debt ratio past 5 or twice its first year's.
+  Ireland's government debt at 10 / 30 years is 0.00 / -0.30 under rates
+  (was 3.24 / -1.46, through negative output). Still there, not
+  collapses: under Keen's rules, which have no fiscal rule, government
+  becomes a net creditor of up to 4.5 times output by year 30 (Germany,
+  Czechia, Estonia, Poland, Slovakia, Slovenia, Lithuania, Ireland), and
+  households' or firms' deposits, the buffer, go negative in some years
+  in 19 runs, seven of them under rates or estimated (Bulgaria, Greece,
+  Mexico, Romania). Tests: sfc-test's imports-above-absorption and
+  dividends-received tests (synthetic) and sfc-rules-run-test's Ireland
+  and all-country 30-year runs (on the data, skipped without it).
+- *Reruns* (on the fix commit in a clean worktree; new files, nothing
+  registered overwritten):
+  - rates-scenario.txt, rerun in place (reported only). The rate shock
+    is about the same: government's interest +0.13% / +0.25% / +0.38% /
+    +0.58% of output at years 1 / 3 / 5 / 10 (was +0.60% at 10), its debt
+    +1.27% at year 10 (was +1.05%). Borrowed spending raises debt about
+    half as much (rates: +0.40% / +0.72% / +0.77% / -0.36%, was +0.76% /
+    +1.38% / +1.40% / -0.40%): with less leaking abroad the multiplier
+    is larger and more of the spending returns as taxes. Identities
+    within 5.3e-14.
+  - Design (rules-design-fix17.txt, rates-design-fix17.txt). The choices
+    stand: estimated is still the best rule set against persistence
+    (+0.05 / +0.20 / +0.22 at 1 / 3 / 5 years, was +0.04 / +0.20 /
+    +0.22) and damped reversion, and every rejected candidate still
+    below it; in the rate search (targets to 2002) rates is level with
+    estimated (-0.007 / -0.019 / -0.013, was -0.007 / -0.020 / -0.014),
+    no interval below 0, and the ranking of forms is unchanged.
+  - 9g (rules-test-fix17.txt, against rules-test-fix.txt): verdicts
+    unchanged, holdout inconclusive and test origins worse. Test
+    origins, net lending against persistence +0.043 / +0.099 (was +0.041
+    / +0.099), against damped reversion -0.024 / -0.081 (was -0.026 /
+    -0.081). One reported cell moves: test h3-5 against Keen's restart,
+    pass to inconclusive (debt +0.066 [-0.021, +0.151], was +0.108
+    [+0.018, +0.199]); the restart is Keen's rules, which the fix moves
+    most.
+  - 9h (rates-test-fix17.txt, rates-null-fix17.txt, against
+    rates-test.txt): verdicts unchanged, Korea non-inferior and test
+    origins non-inferior. Korea against estimated: net lending +0.004
+    [-0.033, +0.040] / +0.002 [-0.041, +0.049], debt +0.002 [-0.007,
+    +0.010] / +0.008 [-0.006, +0.022] (was +0.004, +0.001, +0.001,
+    +0.007). Test origins: net lending +0.001 / -0.009 (was +0.001 /
+    -0.008), debt -0.003 / +0.001 (was -0.001 / +0.004).
+  These are fixes made after the outcomes; the registered numbers above
+  stand as run.
+- *The frozen file* (rates-frozen.edn) is not regenerated and its SHA-256
+  is unchanged; what the fix would have changed in it is in bead
+  bnm-4hv.16's notes.
 
 ## 10. Ranked plan
 
