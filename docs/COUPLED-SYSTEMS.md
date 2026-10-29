@@ -480,8 +480,11 @@ built on, and bnm.sfc/revised is the forecasting baseline.
 is rules that forecast sector net lending and private debt better than
 persistence and damped reversion, at one year and at three to five,
 with the identities still binding. Everything below was chosen on the
-design origins (data years to 2002) before the registered test of 9g.
-The test origins (2003 on) were not scored for any of it.
+design origins (origins to 2002) before the registered test of 9g.
+The test origins (2003 on) were not scored for any of it. The fits
+(the slopes) use data years to the origin only, but the design origins
+were scored at targets up to o + 5, so the choices among rule sets read
+outcomes in data years 2003 to 2007 too (review note in 9g).
 
 - *The harness.* bnm.sfc-rules-run design scores the restart (9f's: one
   member, learned at o on the panel as known at o + 2, started from o)
@@ -503,7 +506,7 @@ The test origins (2003 on) were not scored for any of it.
   against 0.014).
 - *Estimation.* Each candidate rule is an error correction of a ratio,
   dx_t = sum_j b_j z_j(t-1). The z are gaps to norms, each norm the
-  country's own weighted mean (half-life 10 years) of its years before
+  country's own weighted mean (half-life 10 years) of its years to
   t - 1, so the norms are causal and country-specific (random
   intercepts). The slopes b are pooled over every country's data years
   to the origin (bnm.sfc/estimate-rule, refitted at each origin on the
@@ -3235,6 +3238,121 @@ What it means.
   the test origins. Which forecasting baseline to keep (estimated or
   everything held) needs a decision; nothing here tested "everything
   held" out of sample.
+
+**Review** (29 October 2026, after the result; everything below was
+done with the outcomes known and changes no registered rule).
+
+- *Design and test overlap in data years.* The split is by origin. The
+  fits use data years to the origin, but the design harness scored
+  origins to 2002 at o + 1, o + 3 and o + 5, so the rule sets were chosen
+  partly on outcomes in data years 2003 to 2007: 2 of 828 net-lending
+  rows at one year, 267 at three and 423 at five (in the registered
+  mask's design split, 120, 360 and 370 of 485). 2a said "data years to
+  2002", and "What has been seen" above doesn't list this. Scoring only
+  the targets to 2002 (rules-design-review.txt, design --target-to
+  2002) gives the same choices on net lending: interest as a share over
+  the revised rates, the fiscal rule and the investment rule each over
+  holding, estimated against persistence +0.04 / +0.22 / +0.30 at 1 / 3
+  / 5 years. Two rejections become ties: country slopes (+0.23 / +0.30)
+  and the reverting propensity (+0.21 / +0.31 at 3 / 5). The selection
+  doesn't rest on the 2003-2007 targets, but its margin over damped
+  reversion does shift with the period: estimated against damped is
+  +0.20 / +0.16 at 3 / 5 years on the early targets, +0.14 / +0.09 on all
+  of the harness's, -0.01 on the registered design split (mostly
+  targets after 2002) and -0.08 on the test origins.
+- *A bug, fixed after the result was seen.* bnm.sfc/init started the
+  fiscal rule from the data's government B9, while the rule's norm, its
+  slopes and every later step use the booked balance that closes the
+  matrix. They differ by the data's discrepancy (median 0, 90th
+  percentile 0.2% of GDP, largest 3.4%). Fixed (aa0ba7f) and rerun
+  (rules-test-fix.txt, -fix-all.txt): test origins, net lending against
+  persistence +0.041 [+0.021, +0.068] at one year (was +0.040), against
+  damped -0.026 [-0.037, -0.011] and -0.081 [-0.138, -0.042] (were
+  -0.028, -0.082); the holdout moves in the third decimal. *The
+  verdicts are unchanged: holdout inconclusive, test origins worse.*
+- *The holdout's fills* are not circular. The filled items are Japan's
+  NFC value added and compensation and Iceland's government
+  compensation and interest paid, all inputs. Net lending, the outcome,
+  is the reported B9 in every sector (the sectors' sum differs from S1's
+  by up to 0.3% of GDP, which it would not if filled). The total is in
+  the same table, published at the same time, so nothing is read early.
+- *The holdout's interval.* The block bootstrap's false-pass rate at
+  zero skill under 9f's error model is 21-29% (200 simulations, blocks of
+  3 and 5 origins), as registered. The null-spread interval reproduces
+  (q95 0.39 against the registered 0.38 for one-year net lending), but
+  9f's error model doesn't match the test origins' errors: the model's
+  errors correlate 0.85-0.96 with the baselines' (assumed 0.7), one-year
+  errors barely persist across origins (lag-one correlation -0.1 to
+  0.45; assumed 0.8), three- and five-year errors from one origin
+  correlate 0.5-0.9 (assumed independent), and the sectors' errors correlate up to
+  -0.6 (household with government). Refitted to those (reported only;
+  scripts/sfc-rules-null.py, not a registered rule), the registered interval
+  is conservative in seven of eight cells (false-pass 0-1.4%) and
+  anti-conservative for debt against damped reversion at three to five
+  years (11%). Under the refitted model the holdout's one-year debt
+  against persistence, -0.63, would sit below its null's 5% point
+  (interval [-0.84, -0.36]): the holdout leans against the rules on debt
+  more than the registered interval shows. The upper end [p - q05] is
+  only a test of zero skill; it runs above 1, which no skill can.
+- *Interest as a share of output.* The identities still bind: the flows
+  are booked and the stocks follow them. What goes is the link from
+  stocks to interest: the implied rate (interest over the opening
+  liabilities) becomes a residual. Over five years on the test origins
+  (interest-drift.txt) it stays near the rate the revised rule would
+  charge, median 0.97-0.98 of it, 10-90% 0.80-1.16 for households and
+  NFCs and 0.65-1.31 for government, because the model's own stocks
+  hardly move (households' and NFCs' liabilities over output change by
+  -0.04 to +0.07 at the 10th and 90th percentiles, against -0.17 to
+  +0.32 in the data). The data's implicit rates fell over the same
+  years (median 0.68-0.78 of the origin's), which neither form follows.
+  For forecasting the cost is small. For scenarios it is the point:
+  debt-financed spending raises no interest bill, a rate shock has no
+  channel (the policy-rate pass-through was not kept), the banks'
+  margin is a fixed share of output, and the investment rule's
+  debt-service term is a constant, because debt service is the held
+  share. Scenario runs that move debt or rates need interest on the
+  stocks (Keen's or revised), not estimated.
+- *The verdict and the fallback.* Worse is derived correctly from the
+  registered cells (damped at one year: net lending's upper end -0.011).
+  The registration's consequence of a worse is unconditional: "holding
+  every ratio, with interest as a share, is the baseline". Reading it as
+  not fitting what failed (above) is a judgement after the outcome. As
+  written, the held core is the baseline. A reported-only run of it on
+  the same rows (rules-held.txt) is no better a choice:
+  - on the design rows it loses to damped reversion at three to five
+    years, -0.13 [-0.22, -0.06] (the harness's -0.03 and -0.12 confirmed);
+  - on the test origins, net lending: against persistence +0.004
+    [-0.022, +0.037] and +0.013 [-0.005, +0.037]; against damped
+    reversion -0.066 [-0.081, -0.045] and -0.184 [-0.230, -0.125], twice
+    the estimated core's loss; estimated against held +0.036 [+0.025,
+    +0.043] and +0.087 [+0.015, +0.128]. Debt: estimated against held
+    +0.003 and -0.009, intervals across 0;
+  - holdout: estimated against held +0.05 / +0.09 on net lending and
+    -0.11 / -0.21 on debt, intervals wide.
+
+  So the fallback as written swaps a core that loses to damped
+  reversion for one that loses to it by more and gains nothing on debt.
+  That is for the bead's decision, recorded here, not a rescoring.
+- *Smaller points.* The pooled fits include Bulgaria and Romania, which
+  the hyperinflation rule keeps out of every score (ratios to output,
+  so it matters little). The norms are frozen at the origin over the
+  horizon, while the fits update them each year (half-life 10). The
+  audit's "the rule" column describes learn's defaults, not the
+  estimated rules' (now said in its header). Policy rates averaged
+  part-years (the current year, a series' first); only full years are
+  kept now (dcabc9e) and policy.csv is regenerated (2,406 rows, was
+  2,501). Only the policy pass-through candidate read it, and it was not
+  kept; its design row is not rerun. data/raw/slow/bis had no
+  SOURCE.txt; one now records the files, their hashes and the
+  publication lag.
+- *Tests written after the rules.* Added: the error-correction rows'
+  gap definitions and signs against a series built with known slopes
+  (the step's convention), the order learn takes the pooled slopes in,
+  the country norms (booked balance, spending, investment, profit share,
+  debt service, half-life 10), the shrunk slopes without :pool
+  :complete, that the pooled refit reads no other country's years after
+  the origin, and the booked start of the fiscal gap (failed before
+  aa0ba7f).
 
 ## 10. Ranked plan
 
