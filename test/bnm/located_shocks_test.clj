@@ -130,3 +130,23 @@
     (is (<= (count moved) (count hit)))
     (is (= moved (ls/move-footprint hit (vec (sort country)) 7)) "the seed fixes it")
     (is (not= moved (ls/move-footprint hit (vec (sort country)) 8)))))
+
+(deftest space-placebos-are-not-a-lattice
+  ;; the first Park-Miller draw is linear in the seed, and place-seed was
+  ;; linear in the run's seed and the year: placebos for seeds 1..19 sat on
+  ;; an arithmetic progression of land cells, and a country's moved by a
+  ;; fixed step a year
+  (let [n 400
+        pick (fn [s iso y] (ls/land-pick (ls/place-seed s iso y) n))
+        steps (fn [xs] (map #(mod (- %2 %1) n) xs (rest xs)))
+        corr (fn [xs ys] (let [k (double (count xs)) mx (/ (reduce + xs) k) my (/ (reduce + ys) k)]
+                           (/ (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
+                              (Math/sqrt (* (reduce + (map #(* (- % mx) (- % mx)) xs))
+                                            (reduce + (map #(* (- % my) (- % my)) ys)))))))]
+    (is (< 10 (count (distinct (steps (map #(pick % "FRA" 2005) (range 1 20)))))) "across seeds")
+    (is (< 6 (count (distinct (steps (map #(pick 1 "FRA" %) (range 2000 2013)))))) "across years")
+    (let [xs (mapv #(pick % "FRA" 2005) (range 1 3001))]
+      (is (< (Math/abs (corr (pop xs) (rest xs))) 0.05) "neighbouring seeds"))
+    (let [xs (mapv #(pick 1 "FRA" %) (range 1000 4001))]
+      (is (< (Math/abs (corr (pop xs) (rest xs))) 0.05) "neighbouring years"))
+    (is (every? #(< -1 % n) (map #(pick % "DEU" 2010) (range 1 500))))))

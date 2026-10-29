@@ -43,6 +43,7 @@
             [bnm.cells :as cells]
             [bnm.csv :as csv]
             [bnm.stages :as stages]
+            [augur.math :as m]
             [clojure.string :as str]))
 
 (def shocks-path "data/derived/hazards/shocks.csv")
@@ -346,6 +347,14 @@
 
 ;; ----------------------------------------------------------------- placebos
 
+(defn land-pick
+  "The land cell, of `n`, a footprint placed with seed `seed` moves to: the
+  first draw of a mixed generator (augur.math/rng-mixed). Park-Miller's
+  first draw is linear in its seed, so placements for neighbouring seeds
+  or years sat on an arithmetic progression of cells."
+  [seed n]
+  (min (dec n) (long (* n (m/next-double! (m/rng-mixed seed))))))
+
 (defn move-footprint
   "The cells `hit` moved as one to a random land position of the country
   (`land-cells`, its land cells, sorted; seed `seed`): the hit cell nearest
@@ -355,13 +364,12 @@
   [hit land-cells seed]
   (if (or (empty? hit) (empty? land-cells))
     #{}
-    (let [r (rng seed)
-          cs (vec (sort hit))
+    (let [cs (vec (sort hit))
           cents (mapv cells/centre cs)
           mx (/ (reduce + (map first cents)) (count cents))
           my (/ (reduce + (map second cents)) (count cents))
           [ax ay] (apply min-key (fn [[x y]] (+ (* (- x mx) (- x mx)) (* (- y my) (- y my)))) cents)
-          [bx by] (cells/centre (land-cells (r (count land-cells))))
+          [bx by] (cells/centre (land-cells (land-pick seed (count land-cells))))
           land (set land-cells)
           wrap (fn [x] (cond (> x 180.0) (- x 360.0) (< x -180.0) (+ x 360.0) :else x))]
       (into #{} (comp (map (fn [[x y]] (cells/cell (wrap (+ x (- bx ax))) (max -89.9 (min 89.9 (+ y (- by ay)))))))
@@ -369,9 +377,11 @@
             cents))))
 
 (defn place-seed
-  "A seed for a country-year from the run's seed."
+  "A seed for a country-year from the run's seed: the run's seed, the
+  country's code and the year mixed by augur.math/seed-of. (A polynomial
+  hash of the three, as it was, is linear in the seed and the year.)"
   [seed iso y]
-  (reduce (fn [h c] (mod (+ (* h 31) (int c)) 2147483647)) (long seed) (str iso y)))
+  (m/seed-of seed (reduce (fn [h c] (+ (* h 131) (int c))) 0 (str iso)) y))
 
 (defn move-hits
   "Every country-year's hit cells moved (`move-footprint`), seed `seed`."
