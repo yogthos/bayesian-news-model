@@ -92,14 +92,14 @@
                   {"sfc/bsm" open
                    "sfc/bsm-gap" (/ (sfc/bsm-gap open) y)
                    "sfc/fof-gap" (if fof (/ (sfc/fof-gap (:bsm state) open fof) y) 0.0)}))
-     :step (fn [state in ps _ _]
+     :step (fn [state in ps t _]
              (let [p (:sfc ps)
                    open (opening state in)
                    y0 (or (get in "sfc/output") (:Y state))
                    ye (* y0 (+ 1.0 (double (:n p))))
                    ;; last year's opening balance sheet, for interest's theta
                    prev (if (get in "sfc/fof") (:bsm state) (:bsm-prev state))
-                   pinc (sfc/property-income open p ye prev)
+                   pinc (sfc/property-income open p ye prev t)
                    cred (sfc/credit open ye p)]
                {:state {:bsm open :Y y0}
                 :emits {"sfc/property-income" pinc "sfc/credit" cred
@@ -117,11 +117,12 @@
    :doc "Investment by sector: firms' by Keen's kappa(pi) (bnm.keen/investment)"
    :reads [{:var "sfc/output" :unit level-unit :lag 1 :from (:sfc-accounts (ids iso opts))}
            {:var "sfc/nfc-profit-share" :unit ratio :lag 1 :from (:sfc-accounts (ids iso opts))}
-           {:var "sfc/nfc-investment-share" :unit ratio :lag 1 :from (:sfc-accounts (ids iso opts))}]
+           {:var "sfc/nfc-investment-share" :unit ratio :lag 1 :from (:sfc-accounts (ids iso opts))}
+           {:var "sfc/nfc-debt-service" :unit ratio :lag 1 :from (:sfc-accounts (ids iso opts))}]
    :emits [(e "sfc/investment" mat) (e "sfc/nfc-investment" ratio)]
    :stocks {}
    :params {:sfc {:value p}}
-   :init (select-keys st [:Y :pi :pi-prev :kappa])
+   :init (select-keys st [:Y :pi :pi-prev :kappa :ds])
    :step (fn [state in ps t _]
            (let [p (:sfc ps)
                  y0 (or (get in "sfc/output") (:Y state))
@@ -130,10 +131,11 @@
                  ;; the profit share the year before pi: last step's, or the start's
                  pi-prev (if read-pi (:pi state) (:pi-prev state))
                  kappa (or (get in "sfc/nfc-investment-share") (:kappa state))
+                 ds (or (get in "sfc/nfc-debt-service") (:ds state))
                  ye (* y0 (+ 1.0 (double (:n p))))
-                 inv (cond-> (sfc/investment p ye pi {:kappa kappa :pi-prev pi-prev})
+                 inv (cond-> (sfc/investment p ye pi {:kappa kappa :pi-prev pi-prev :ds ds})
                        (get-in p [:given t :kappa]) (assoc :nfc (* (double (get-in p [:given t :kappa])) ye)))]
-             {:state (assoc state :pi pi :pi-prev pi-prev :kappa kappa)
+             {:state (assoc state :pi pi :pi-prev pi-prev :kappa kappa :ds ds)
               :emits {"sfc/investment" inv "sfc/nfc-investment" (/ (:nfc inv) ye)}}))}
   iso opts))
 
@@ -176,7 +178,7 @@
            (e "sfc/net-lending-gov" ratio :D4) (e "sfc/net-lending-row" ratio)
            (e "sfc/tfm-gap" ratio) (e "sfc/buffer" ratio)
            (e "sfc/wage-share" "share of GDP" :D1) (e "sfc/employment" "rate" :D1)
-           (e "sfc/nfc-profit-share" ratio :R1) (e "sfc/nfc-investment-share" ratio)
+           (e "sfc/nfc-profit-share" ratio :R1) (e "sfc/nfc-investment-share" ratio) (e "sfc/nfc-debt-service" ratio)
            (e "sfc/gov-debt" ratio :D4) (e "sfc/hh-saving-rate" "share of disposable income" :D5)
            (e "sfc/private-debt" ratio) (e "sfc/hh-debt" ratio) (e "sfc/nfc-debt" ratio)]
    :stocks {:w {:unit "share of GDP"} :lambda {:unit "rate"}}
@@ -199,7 +201,7 @@
                       "sfc/net-lending-gov" (:gov nl) "sfc/net-lending-row" (:row nl)
                       "sfc/tfm-gap" (/ (:tfm-gap o) y) "sfc/buffer" (/ (:buffer o) y)
                       "sfc/wage-share" (:wage-share o) "sfc/employment" (:lambda o)
-                      "sfc/nfc-profit-share" (:pi o) "sfc/nfc-investment-share" (:kappa d)
+                      "sfc/nfc-profit-share" (:pi o) "sfc/nfc-investment-share" (:kappa d) "sfc/nfc-debt-service" (:ds d)
                       "sfc/gov-debt" (ratio-of (sfc/pos end :gov :debt :l) y)
                       "sfc/hh-saving-rate" (:hh-saving-rate o)
                       "sfc/private-debt" (/ (+ (sfc/pos end :hh :debt :l) (sfc/pos end :nfc :debt :l)) y)

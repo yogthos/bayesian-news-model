@@ -646,12 +646,14 @@
   "The restart (phase A's free run from the latest data): one member,
   parameters learned at data year `origin` on the panel as known at
   origin + vintage, started from origin's data (bnm.sfc/init), run to
-  origin + years; `given` a path (given-path) for a conditional run.
+  origin + years; `given` a path (given-path) for a conditional run;
+  `opts` learn's options (bnm.sfc/estimated for the estimated rules).
   {:t [...] :vars {variable {:median [...]}}}."
-  ([panel kn iso origin years] (restart panel kn iso origin years nil))
-  ([panel kn iso origin years given]
+  ([panel kn iso origin years] (restart panel kn iso origin years nil {}))
+  ([panel kn iso origin years given] (restart panel kn iso origin years given {}))
+  ([panel kn iso origin years given opts]
   (let [kp (known-panel panel (+ origin sfc/vintage))
-        p (cond-> (sfc/learn kp kn iso origin {}) given (assoc :given given))
+        p (cond-> (sfc/learn kp kn iso origin opts) given (assoc :given given))
         st (sfc/init kp kn iso origin p)
         ids (ids-of iso)
         r (eng/run (msfc/modules iso st p {:country-ids true}) {:from (inc origin) :to (+ origin years)})]

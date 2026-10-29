@@ -476,6 +476,137 @@ Keen's included, carry no one-year forecast information beyond holding
 ratios. Keen's rules stay the default as the theory the coupled model is
 built on, and bnm.sfc/revised is the forecasting baseline.
 
+**Rules estimated from data (bead bnm-4hv.14, October 2026).** The goal
+is rules that forecast sector net lending and private debt better than
+persistence and damped reversion, at one year and at three to five,
+with the identities still binding. Everything below was chosen on the
+design origins (data years to 2002) before the registered test of 9g.
+The test origins (2003 on) were not scored for any of it.
+
+- *The harness.* bnm.sfc-rules-run design scores the restart (9f's: one
+  member, learned at o on the panel as known at o + 2, started from o)
+  at horizons 1, 3 and 5. It uses 215 design origins in 28 countries,
+  measured or imputed stocks, with five years of flows; the
+  hyperinflation rule of 9f leaves out BGR and ROU. The skill is
+  1 - SSE / SSE of the baseline, pooled over the four domestic sectors'
+  net lending, with private debt (measured) apart. Intervals are 90%
+  country bootstraps.
+- *What drifts.* Under the revised rules the restart lost to persistence
+  by 0.14 / 0.21 / 0.35 on net lending at 1 / 3 / 5 years, almost all of
+  it in the financial sector (-1.4 to -3.0). Splitting the five-year
+  error by flow put the cause in interest. It was computed as the
+  sectors' implicit rates times the model's own stocks, and the
+  financial sector takes what the others pay less what they receive, so
+  every drift in a modelled stock moved its margin. Interest was worse
+  than holding its share in every sector (five-year RMSE: financial
+  0.027 against 0.021, government 0.016 against 0.011, NFCs 0.019
+  against 0.014).
+- *Estimation.* Each candidate rule is an error correction of a ratio,
+  dx_t = sum_j b_j z_j(t-1). The z are gaps to norms, each norm the
+  country's own weighted mean (half-life 10 years) of its years before
+  t - 1, so the norms are causal and country-specific (random
+  intercepts). The slopes b are pooled over every country's data years
+  to the origin (bnm.sfc/estimate-rule, refitted at each origin on the
+  panel as known). Shrinking each country's slopes toward the pool
+  (empirical Bayes, method of moments: DerSimonian & Laird 1986,
+  Controlled Clinical Trials 7(3): 177-188) gave country slopes 8 to 30
+  years can't pin down. Fiscal reaction ran from -0.38 to 1.16, and the
+  five-year interval on net lending went down to -0.07. Common slopes
+  with country norms beat it on the design origins: +0.22 [+0.12, +0.28]
+  against persistence at five years, against +0.16 [-0.08, +0.28]. That
+  is the partial pooling used (augur.hier has only logistic intercepts
+  and Poisson states, no linear slopes). A rule is adopted only if it
+  beats holding its ratio on the design origins; otherwise the ratio is
+  held.
+
+Pooled fits on data years to 2002 (bnm.sfc-rules-run estimates; loco is
+the one-year skill against holding the ratio with each country left out
+of the fit):
+
+| rule | form | slopes (se) | loco | design-origin restart | kept |
+|---|---|---|---|---|---|
+| interest and dividends received | held as shares of output | - | - | net lending 1/3/5 years -0.14/-0.21/-0.35 -> 0.00/+0.04/+0.04; financial sector -1.4/-2.8/-2.9 -> +0.10/+0.04/+0.07 | yes |
+| government spending (consumption, investment, benefits) | fiscal reaction: d(spend/Y) = b1 (norm - spend/Y) + b2 (NL_gov/Y - its norm) | b1 -0.112 (0.025), b2 0.238 (0.040) | +0.111 | with the rest held: 3/5 years +0.04/+0.04 -> +0.13/+0.15 | yes |
+| NFC investment | d(I/Y) = b1 gap + b2 (profit share - norm) + b3 (interest paid / Y - norm) | 0.214 (0.052), 0.118 (0.046), -0.216 (0.058) | +0.082 | +0.04/+0.04 -> +0.13/+0.14 | yes |
+| consumption | Godley-Lavoie wealth target: d(C/YD) = b1 gap + b2 (V/YD - norm) | 0.403 (0.068), 0.004 (0.005) | +0.028 | with the two rules above: 1/3/5 years +0.037/+0.204/+0.220 -> +0.009/+0.178/+0.188 | no: held at the origin's propensity |
+| wage share | reversion to its norm | 0.000 (0.035) | -0.013 | - | no: held (an employment term needs a reversion to sit in; the Phillips curve has R2 0.003) |
+| interest rates | partial adjustment of each sector's implicit rate, less the policy rate (BIS, the ECB's for euro members, known y + 1), to its norm, the policy rate held at the origin's | lambda 0.149 (0.030), n 768 | - | +0.204/+0.220 -> +0.161/+0.160; financial sector +0.05 -> -0.95/-1.39 at 3/5 years | no |
+| financial value added | reversion | 0.115 (0.046) | -0.013 | - | no |
+| other flows (capital transfers) | reversion of the financial sector's other flows | -0.051 (0.047) | -0.069 | phi 0.3 on all sectors: 3/5 years +0.204/+0.220 -> +0.164/+0.181 | no |
+| household / NFC borrowing | reversion of debt to income | -0.123 (0.033) / -0.056 (0.040) | +0.012 / -0.004 | - | no: debt moves away from its norm, and the learned trend target stays |
+
+- *Interest and dividends.* The financial sector's margin now moves only
+  with output. The remaining 1-year miss in that sector (+0.11 against
+  persistence at 1 year) is still the US 2009 channel: a widening
+  value-added margin and crisis capital transfers. Both were tried as
+  reversions and neither forecasts. A capital transfer is a one-off, and
+  holding last year's (half-life 0.5) is as good as a reversion to a
+  norm. The 2009 miss stays a missing channel, now on record as not
+  forecastable from these accounts.
+- *Interest rates and the policy rate.* The implicit rates do adjust to
+  the policy rate, by 15% a year (de Bondt 2005, "Interest rate
+  pass-through: empirical results for the euro area", German Economic
+  Review 6(1): 37-78, finds slow pass-through for the stock of loans).
+  Adjusting each sector's paid and received interest on its own,
+  however, moves the financial sector's residual margin, which the data
+  hold steady, and that loses. It stays held. A version that kept the
+  banks' margin, as Godley-Lavoie's banks set deposit rates to it
+  (ch. 10), would be the next thing to try.
+- *Government.* Spending responds to the balance: a deficit 1 point of
+  GDP wider than its norm cuts spending by 0.24 points the next year
+  (Bohn 1998, "The behavior of U.S. public debt and deficits",
+  Quarterly Journal of Economics 113(3): 949-963, for the primary
+  balance's response to debt). The negative own-gap term is momentum
+  against a 10-year norm: spending shares trended over the sample.
+  Revenue's response (-0.07 of the gap) is left to the tax rates on
+  their bases. The observed path is no forecast (9f's conditional runs),
+  so the choice is a rule against holding the share, and the rule wins.
+- *Investment.* Kalecki-Steindl, with debt service as the financial
+  constraint (Fazzari, Hubbard & Petersen 1988; Lavoie 2014,
+  *Post-Keynesian Economics: New Foundations*, Edward Elgar, ch. 6).
+  Investment closes a fifth of its gap a year and rises with profits
+  above their norm. A point of output more in interest paid cuts it by
+  0.2. Keen's kappa(pi) in levels missed by 0.024 against 0.010 for
+  holding the share (the audit), and this error-correction form beats
+  holding.
+- *Consumption.* The wealth term of the Godley-Lavoie norm is nil (0.004
+  per unit of wealth to income). The propensity reverts by 0.4 a year
+  one year ahead, but iterating it costs at three to five years. So the
+  propensity is held at the origin's (half-life 0.1), which alone moved
+  households' one-year skill from -0.10 to -0.02. The Levy Institute's
+  stock-flow norm (Godley 1999, "Seven unsustainable processes", Levy
+  Institute Special Report) describes where the sector balances must go
+  eventually. In these data it doesn't date the move.
+- *An add factor* (Clements & Hendry 1996, "Intercept corrections and
+  structural change", Journal of Applied Econometrics 11(5): 475-494)
+  set the other flows so that the model stepped from o - 1 reproduces o.
+  It was worse at 1 year (-0.86): o's own shock is carried forward.
+- *The ablation* (bnm.sfc-audit design estimated, audit-estimated.txt):
+  one year ahead, the model's MAE is 0.0118 against persistence's 0.0120.
+  Holding each block's ratio instead of its rule raises the MAE for NFC
+  investment (+0.00007), government (+0.00004), other flows (+0.00029) and
+  dividends (+0.00015), and changes it by under 0.00004 elsewhere. The
+  rules matter at three to five years more than at one, as below.
+
+The selected set, bnm.sfc/estimated (bnm.sfc-rules-run design, the
+restart on the design origins):
+
+| design origins, skill [90%] | 1 year | 3 years | 5 years |
+|---|---|---|---|
+| net lending vs persistence: Keen (9f's restart) | -1.82 [-3.63, -0.90] | -0.56 [-1.43, -0.18] | -0.86 [-2.29, -0.25] |
+| revised | -0.14 [-0.32, -0.04] | -0.21 [-0.30, -0.12] | -0.35 [-0.43, -0.21] |
+| everything held, interest as a share | +0.02 [-0.01, +0.05] | +0.04 [+0.03, +0.07] | +0.04 [+0.02, +0.06] |
+| estimated | +0.04 [-0.02, +0.08] | +0.20 [+0.12, +0.26] | +0.22 [+0.12, +0.28] |
+| net lending vs damped reversion: estimated | +0.05 [-0.02, +0.10] | +0.14 [+0.03, +0.20] | +0.09 [+0.02, +0.13] |
+| private debt vs persistence: estimated | +0.16 [-0.05, +0.40] | +0.36 [+0.23, +0.45] | +0.20 [+0.15, +0.26] |
+| private debt vs damped: estimated | +0.43 [+0.23, +0.63] | +0.61 [+0.51, +0.68] | +0.43 [+0.35, +0.51] |
+
+The two rules cost a little on debt (everything held: +0.21 / +0.39 /
++0.22 against persistence). Most of the debt skill is the learned debt
+trend, the old rule. These are in-sample choices: hyperparameters (the
+half-lives, which rules) were picked on these origins, so the numbers
+are optimistic. The one-year skill is within its interval of zero.
+
 ### 2b. Who controls credit, and what it is allocated to
 
 State against private banking:

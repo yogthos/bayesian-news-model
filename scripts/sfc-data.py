@@ -785,6 +785,120 @@ def main():
     print(cov)
 
 
+# -- the confirmatory holdout (bead bnm-4hv.14) -------------------------------------
+
+EURO = {"AUT": 1999, "BEL": 1999, "DEU": 1999, "ESP": 1999, "FIN": 1999, "FRA": 1999, "IRL": 1999, "ITA": 1999,
+        "LUX": 1999, "NLD": 1999, "PRT": 1999, "GRC": 2001, "SVN": 2007, "SVK": 2009, "EST": 2011, "LVA": 2014,
+        "LTU": 2015, "HRV": 2023}
+CBPOL = os.path.join(ROOT, "data", "raw", "slow", "bis", "WS_CBPOL.zip")
+
+
+def annual_policy(monthly, iso2):
+    """iso, year, rate (a fraction), known: the central bank policy rate's
+    mean over a year's months, the ECB's (XM) for a euro member from its
+    year of entry, the country's own before; known at y + 1. `monthly` has
+    area (BIS two-letter code), year, v (per cent)."""
+    a = monthly.groupby(["area", "year"]).v.mean().reset_index()
+    by = {(r.area, r.year): r.v for r in a.itertuples()}
+    to2 = {v: k for k, v in iso2.items()}
+    rows = []
+    for iso in sorted(set(iso2.values()) | set(EURO)):
+        c = to2.get(iso)
+        for year in range(1946, int(a.year.max()) + 1):
+            v = by.get(("XM", year)) if iso in EURO and year >= EURO[iso] else by.get((c, year)) if c else None
+            if v is not None and v == v:
+                rows.append({"iso": iso, "year": year, "rate": v / 100.0, "known": year + 1})
+    return pd.DataFrame(rows, columns=["iso", "year", "rate", "known"])
+
+
+def read_policy(path=CBPOL):
+    z = zipfile.ZipFile(path)
+    name = [n for n in z.namelist() if n.endswith(".csv")][0]
+    parts = []
+    for ch in pd.read_csv(z.open(name), dtype=str, chunksize=500_000):
+        ch.columns = [c.split(":")[0] for c in ch.columns]
+        ch = ch[ch.FREQ.map(code).eq("M") & ch.OBS_VALUE.notna()]
+        parts.append(pd.DataFrame({"area": ch.REF_AREA.map(code), "year": ch.TIME_PERIOD.str[:4].astype(int),
+                                   "v": ch.OBS_VALUE.astype(float)}))
+    return annual_policy(pd.concat(parts), iso2_map())
+
+
+def fill_from_total(w):
+    """A domestic sector's flow item that Table 14 lacks, when the other
+    three domestic sectors and the total economy (S1) have it, as the total
+    less the three (JPN's NFC value added and compensation, ISL's
+    government compensation and interest paid). Returns (panel, {column:
+    rows filled})."""
+    w = w.copy()
+    filled = {}
+    for k, _, _ in FLOW_ITEMS:
+        cols = [f"{s}_{k}" for s in DOMESTIC]
+        tot = f"tot_{k}"
+        if tot not in w or not all(c in w for c in cols):
+            continue
+        miss = w[cols].isna()
+        one = (miss.sum(axis=1) == 1) & w[tot].notna()
+        for c in cols:
+            rows = one & miss[c]
+            if rows.any():
+                w.loc[rows, c] = w.loc[rows, tot] - w.loc[rows, [x for x in cols if x != c]].sum(axis=1)
+                filled[c] = int(rows.sum())
+    return w, filled
+
+
+def holdout(out=os.path.join(OUT, "panel-holdout.csv")):
+    """The panel for countries panel.csv has no complete flows for (Table
+    14 lacks a sector's item: JPN, ISL ...), their missing items filled
+    from the total (fill_from_total) and only they written, so panel.csv
+    and every test that read it are unchanged. Measured stocks only (Table
+    720): no imputation, and no country measures needed."""
+    base = pd.read_csv(os.path.join(OUT, "panel.csv"))
+    have = set(base[base.flows_ok.astype(bool)].iso)
+    fl = flows_long(read_t14())
+    st = stocks_long(read_t720())
+    agg = aggregate_instruments(st)
+    p = build_panel(fl, agg)
+    p = p[~p.iso.isin(have)]
+    p, filled = fill_from_total(p)
+    p, flipped = fix_row_sign(p)
+    p["flows_ok"] = flows_complete(p)
+    p["stocks_ok"] = stocks_complete(p)
+    p["stocks_source"] = pd.Series("oecd-t720", index=p.index, dtype=object).where(p.stocks_ok, None)
+    p["known_stocks"] = np.where(p.stocks_ok, p.year + KNOWN["oecd"], np.nan)
+    keep = p.groupby("iso").flows_ok.transform("any")
+    p = p[keep]
+    p.sort_values(["iso", "year"]).to_csv(out, index=False)
+    print("filled from the total:", filled)
+    print("rest of the world's B9 flipped:", flipped)
+    both = p[p.flows_ok & p.stocks_ok]
+    print("holdout countries, years with flows and measured stocks:", both.groupby("iso").year.agg(["min", "max", "count"]).to_dict("index"))
+    return p
+
+
+def test_fill_from_total():
+    w = pd.DataFrame({"hh_va": [1.0, 1.0, np.nan], "nfc_va": [np.nan, 2.0, np.nan], "fin_va": [0.5, 0.5, 0.5],
+                      "gov_va": [1.5, 1.5, 1.5], "tot_va": [5.0, 5.0, 5.0]})
+    for k, _, _ in FLOW_ITEMS:
+        if k != "va":
+            for s in DOMESTIC + ["tot"]:
+                w[f"{s}_{k}"] = np.nan
+    f, filled = fill_from_total(w)
+    assert abs(f.nfc_va[0] - 2.0) < 1e-12, f.nfc_va[0]
+    assert f.nfc_va[1] == 2.0, "present values kept"
+    assert np.isnan(f.hh_va[2]) and np.isnan(f.nfc_va[2]), "two missing: not filled"
+    assert filled == {"nfc_va": 1}, filled
+
+
+def test_annual_policy():
+    m = pd.DataFrame({"area": ["DE", "DE", "XM", "XM", "US"], "year": [1998, 1998, 1999, 1999, 1999], "v": [3.0, 4.0, 2.5, 3.5, 5.0]})
+    a = annual_policy(m, {"DE": "DEU", "US": "USA"}).set_index(["iso", "year"])
+    assert abs(a.rate[("DEU", 1998)] - 0.035) < 1e-12
+    assert abs(a.rate[("DEU", 1999)] - 0.030) < 1e-12, "the ECB's from entry"
+    assert abs(a.rate[("FRA", 1999)] - 0.030) < 1e-12, "a euro member without its own series"
+    assert ("FRA", 1998) not in a.index
+    assert (a.known == a.index.get_level_values("year") + 1).all()
+
+
 def _toy_panel(rows):
     """A panel with the columns impute_stocks reads: rows of (iso, year,
     measured?, interest paid by hh, hh debt liabilities)."""
@@ -951,6 +1065,8 @@ def test_gdp():
 
 
 def test():
+    test_fill_from_total()
+    test_annual_policy()
     test_impute_causal()
     test_impute_country_rate()
     test_impute_measured_debt()
@@ -988,5 +1104,13 @@ def test():
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test":
         test()
+    elif len(sys.argv) > 1 and sys.argv[1] == "unit":
+        test_fill_from_total()
+        test_annual_policy()
+        print("sfc-data unit tests: ok")
+    elif len(sys.argv) > 1 and sys.argv[1] == "holdout":
+        holdout()
+    elif len(sys.argv) > 1 and sys.argv[1] == "policy":
+        read_policy().to_csv(os.path.join(OUT, "policy.csv"), index=False)
     else:
         main()

@@ -14,7 +14,7 @@
   an annual step, employment from investment, the import share,
   government as a rule or a path). Writes data/derived/sfc/audit.txt.
 
-    jolt -A:tools -M -m bnm.sfc-audit [design|test|all]"
+    jolt -A:tools -M -m bnm.sfc-audit [design|test|all] [revised|estimated]"
   (:require [bnm.keen :as keen]
             [bnm.sfc :as sfc]
             [clojure.java.io :as io]
@@ -185,10 +185,12 @@
       ""
       "Each block replaced alone; removed = share of the model's excess over persistence it takes away"
       "(oracle: the next year's observed ratio; persistence: the origin's own ratio):"
-      "  block              oracle MAE  removed   persistence MAE  removed   the rule"]
+      "(when the model beats persistence the excess is negative and removed changes sign; held - model is the"
+      " change in MAE from holding that block's ratio instead of the rule: positive, the rule helps)"
+      "  block              oracle MAE  removed   persistence MAE  removed  held - model   the rule"]
      (for [{:keys [block oracle persistence removed-oracle removed-persistence]} rows]
-       (format "  %-17s  %10s  %7s   %15s  %7s   %s" (name block) (f4 oracle) (f3 removed-oracle)
-               (f4 persistence) (f3 removed-persistence) (sfc/block-docs block)))
+       (format "  %-17s  %10s  %7s   %15s  %7s  %+.5f   %s" (name block) (f4 oracle) (f3 removed-oracle)
+               (f4 persistence) (f3 removed-persistence) (- persistence base) (sfc/block-docs block)))
      [""]
      (data-checks panel kn prep))))
 
@@ -199,8 +201,11 @@
                        "test" [#(> % 2002) "test (2003 on)"]
                        "all" [(constantly true) "all"]
                        [#(<= % 2002) "design (to 2002)"])
-        revised? (= rules "revised")
-        lines (report panel kn pick (str label (when revised? ", the revised rules (bnm.sfc/revised)")) (if revised? sfc/revised {}))]
-    (when (and (or (nil? which) (= which "design")) (not revised?)) (spit out-path (str (str/join "\n" lines) "\n")))
-    (when (and (= which "design") revised?) (spit (str/replace out-path ".txt" "-revised.txt") (str (str/join "\n" lines) "\n")))
+        [opts tag] (case rules
+                     "revised" [sfc/revised ", the revised rules (bnm.sfc/revised)"]
+                     "estimated" [sfc/estimated ", the rules estimated from data (bnm.sfc/estimated)"]
+                     [{} nil])
+        lines (report panel kn pick (str label tag) opts)]
+    (when (and (or (nil? which) (= which "design")) (nil? rules)) (spit out-path (str (str/join "\n" lines) "\n")))
+    (when (and (= which "design") rules) (spit (str/replace out-path ".txt" (str "-" rules ".txt")) (str (str/join "\n" lines) "\n")))
     (println (str/join "\n" lines))))

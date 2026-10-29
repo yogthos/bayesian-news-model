@@ -61,7 +61,10 @@
   behavioural rules beats holding its ratio one year ahead; `revised`
   holds them (learn's :consumption, :wages, :investment, :theta), the
   frame and its identities unchanged. Keen's rules stay the default, as
-  the theory the coupled model is built on.
+  the theory the coupled model is built on. `estimated` (bead bnm-4hv.14)
+  holds interest and dividends received as shares of output and adds a
+  fiscal reaction and error-correcting investment, their slopes pooled
+  across countries (estimate-rule).
 
   The data are scripts/sfc-data.py's panel (data/derived/sfc/panel.csv)."
   (:require [bnm.csv :as csv]
@@ -201,6 +204,25 @@
                        b (assoc :b b)))))
        {} rows))))
 
+(defn read-policy
+  "data/derived/sfc/policy.csv (scripts/sfc-data.py policy: BIS central
+  bank policy rates, a year's mean, the ECB's for euro members): {iso
+  {year rate}}, rates as fractions."
+  [path]
+  (with-open [r (io/reader path)]
+    (reduce (fn [acc line]
+              (let [[iso yr v] (str/split line #",")]
+                (if-let [x (pd v)] (assoc-in acc [iso (parse-long yr)] x) acc)))
+            {} (rest (line-seq r)))))
+
+(defn with-policy
+  "The panel with each year's policy rate (:policy) where `pol` (read-policy)
+  has it. It is known a year on, before the year's flows (two years on),
+  so it travels with them."
+  [panel pol]
+  (into {} (for [[iso rows] panel]
+             [iso (into {} (for [[y ob] rows] [y (if-let [r (get-in pol [iso y])] (assoc ob :policy r) ob)]))])))
+
 (def keen-vars
   #{"keen/lambda" "keen/state-year" "keen/phi-slope" "keen/l-star" "keen/alpha" "keen/beta" "keen/delta"
     "keen/nu" "keen/kappa-slope" "keen/pi-star" "keen/omega" "keen/d" "keen/r"})
@@ -307,8 +329,15 @@
   last year's grown at :n (theta 0 holds interest's share of output, 1
   is the opening stock alone): a revaluation or reclassification of the
   stocks passes into interest a part at a time."
-  [bsm p ye & [prev]]
+  [bsm p ye & [prev t]]
   (let [th (if (and prev (:theta p)) (double (:theta p)) 1.0)
+        ;; interest's shares adjusting toward the policy rate (:int-adjust)
+        adj (fn [side s]
+              (if-let [ia (:int-adjust p)]
+                (let [k (if t (max 0.0 (+ 1.0 (- (double t) (double (:from ia))))) 1.0)
+                      ratio (get-in ia [side s])]
+                  (if ratio (+ 1.0 (* (- 1.0 (Math/pow (- 1.0 (double (:lambda ia))) k)) (- (double ratio) 1.0))) 1.0))
+                1.0))
         g1 (+ 1.0 (num (:n p)))
         mix (fn [f s] (if (< th 1.0) (+ (* th (f bsm s)) (* (- 1.0 th) g1 (f prev s))) (f bsm s)))
         eq-l (fn [s] (pos bsm s :equity :l)) eq-a (fn [s] (pos bsm s :equity :a))
@@ -320,11 +349,16 @@
                (into {} (for [s sectors] [s (* (r :q-l s) (eq-l s))])))
         wts (into {} (for [s sectors] [s (* (r :q-a s) (eq-a s))]))
         tw (sum (vals wts))
-        recv (if ds
+        recv (cond
+               (:div-recv-share p) (into {} (for [s nf] [s (* (num (get-in p [:div-recv-share s])) (double ye))]))
+               ds
                (into {} (for [s nf] [s (if (pos? tw) (* (sum (vals paid)) (/ (wts s) tw)) 0.0)]))
+               :else
                (into {} (for [s nf] [s (wts s)])))]
-    {:int-paid (into {} (for [s sectors] [s (* (r :i-l s) (mix ib-l s))]))
-     :int-recv (into {} (for [s nf] [s (* (r :i-a s) (mix ib-a s))]))
+    {:int-paid (if-let [is (:int-share p)] (into {} (for [s sectors] [s (* (num (get-in is [:paid s])) (double ye) (adj :paid s))]))
+                 (into {} (for [s sectors] [s (* (r :i-l s) (mix ib-l s))])))
+     :int-recv (if-let [is (:int-share p)] (into {} (for [s nf] [s (* (num (get-in is [:recv s])) (double ye) (adj :recv s))]))
+                 (into {} (for [s nf] [s (* (r :i-a s) (mix ib-a s))])))
      :div-paid paid
      :div-recv recv}))
 
@@ -352,7 +386,9 @@
   {:nfc (* ye (let [ir (:investment-rule p) k (:kappa st) pp (:pi-prev st)]
                 (if (and ir (number? k) (number? pp))
                   (+ k (* (double (:slope ir 1.0)) (kappa-slope (:invest p) (double pi)) (- (double pi) (double pp)))
-                     (* (num (:phi ir)) (- (num (:norm ir)) k)))
+                     (* (num (:phi ir)) (- (num (:norm ir)) k))
+                     (* (num (:b-pi ir)) (- (double pi) (num (:pi-norm ir))))
+                     (if (number? (:ds st)) (* (num (:b-ds ir)) (- (double (:ds st)) (num (:ds-norm ir)))) 0.0))
                   (keen/investment (:invest p) pi))))
    :hh (* ye (num (get-in p [:inv-share :hh])))
    :fin (* ye (num (get-in p [:inv-share :fin])))})
@@ -452,18 +488,35 @@
         w (cond wr (clamp (+ (double (:w st)) (* (num (:phi wr)) (- (num (:norm wr)) (double (:w st))))) w-bounds)
                 ph (clamp (* (double (:w st)) (Math/exp (- (keen/phillips ph (:lambda st)) (:alpha ph)))) w-bounds)
                 :else (double (:w st)))
-        cg (* (num (:cg st)) g1) ig (* (num (:ig st)) g1) ben (* (num (:ben st)) g1)
+        fr (:fiscal-rule p)
+        fscale (if (and fr (number? (:nl-gov st)) (pos? (double (:Y st))))
+                 (let [sp (/ (+ (num (:cg st)) (num (:ig st)) (num (:ben st))) (double (:Y st)))]
+                   (if (pos? sp)
+                     (max 0.5 (+ 1.0 (/ (+ (* (num (:phi fr)) (- (double (:nl-gov st)) (num (:norm fr))))
+                                           (* (num (:spend-phi fr)) (- (num (:spend-norm fr)) sp)))
+                                        sp)))
+                     1.0))
+                 1.0)
+        cg (* (num (:cg st)) g1 fscale) ig (* (num (:ig st)) g1 fscale) ben (* (num (:ben st)) g1 fscale)
         inv (assoc inv :gov ig)
         itot (sum (vals inv))
         mu (num (:mu p)) X (* (num (:x p)) ye)
-        v (:v p) om (:omega p) tp (:tp p) tax (:tax p) oth (:other p)
+        v (:v p) om (:omega p) tp (:tp p) tax (:tax p)
+        orl (:other-rule p)
+        oth (if (and orl (:other st))
+              (into {} (for [[k o] (:other st)] [k (+ (double o) (* (num (:phi orl)) (- (num (get-in orl [:norm k])) (double o))))]))
+              (:other p))
         ss (fn [m s] (num (get m s)))
         rh (+ (ss (:int-recv pinc) :hh) (ss (:div-recv pinc) :hh))
         ph-h (+ (ss (:int-paid pinc) :hh) (ss (:div-paid pinc) :hh))
         th (ss tax :hh) socc-r (num (:socc p))
         k1 (+ (* (- 1.0 th) (+ (* w (- 1.0 (ss om :hh))) (* (ss v :hh) (- 1.0 (ss tp :hh))))) (- (* socc-r w)) (ss oth :hh))
         k0 (+ (* (- 1.0 th) rh) (- ph-h) ben)
-        a1 (num (:a1 p)) a2 (num (:a2 p))
+        cr (:consumption-rule p)
+        a1 (if cr
+             (let [c (double (or (:c st) (:a1 p)))] (+ c (* (num (:phi cr)) (- (num (:norm cr)) c))))
+             (num (:a1 p)))
+        a2 (num (:a2 p))
         V (nfw open :hh)
         Y (/ (+ (* (- 1.0 mu) (+ (* a1 k0) (* a2 V) cg itot)) X) (- 1.0 (* (- 1.0 mu) a1 k1)))
         W (* w Y)
@@ -487,8 +540,11 @@
         pi (profit-share x)
         lam (clamp (* (double (:lambda st)) (+ 1.0 (/ (- (/ (num (:nfc inv)) ye) (num (:kappa-bar p))) (double (get-in p [:invest :nu] 3.0)))))
                    lambda-bounds)]
-    {:state {:year t :Y Y :w w :lambda lam :pi pi :cg cg :ig ig :ben ben
-             :pi-prev (:pi st) :kappa (/ (num (:nfc inv)) Y)}
+    {:state (cond-> {:year t :Y Y :w w :lambda lam :pi pi :cg cg :ig ig :ben ben
+                     :pi-prev (:pi st) :kappa (/ (num (:nfc inv)) Y)
+                     :nl-gov (/ (nl :gov) Y) :ds (/ (num (get-in pinc [:int-paid :nfc])) Y)}
+              cr (assoc :c a1)
+              orl (assoc :other oth))
      :fof fof
      :out {:year t :Y Y :ye ye :x x :booked booked :inv inv :yd yd
            :wage-share (/ W Y) :lambda lam :pi pi
@@ -503,7 +559,7 @@
   [st p]
   (let [open (:bsm st)
         ye (* (double (:Y st)) (+ 1.0 (num (:n p))))
-        pinc (property-income open p ye (:bsm-prev st))
+        pinc (property-income open p ye (:bsm-prev st) (inc (long (:year st))))
         cred (credit open ye p)
         inv (investment p ye (:pi st) st)
         {d :state fof :fof o :out} (accounts (dissoc st :bsm :bsm-prev) open pinc cred inv p)
@@ -527,6 +583,26 @@
   Chosen after the first result had been seen."
   {:consumption {:phi 0.0} :wages {:phi 0.0} :investment {:phi 0.0 :slope 0.0} :theta 0.0
    :half-life 0.5 :rate-half-life 0.5})
+
+(def estimated
+  "learn's options for the rules estimated from data on the design origins
+  (bead bnm-4hv.14; docs/COUPLED-SYSTEMS.md 2a, bnm.sfc-rules-run):
+    - the shares and rates weighted at a half-life of half a year, the
+      propensity to consume at the origin's (0.1), the wage share held,
+      interest's theta 0 (as revised);
+    - interest paid and received, and dividends received, held as shares
+      of output (:interest-hold, :dividend-hold): the financial sector's
+      margin no longer moves with the model's own stocks;
+    - government spending by a fiscal reaction to the balance's gap to its
+      norm (:fiscal), and NFC investment by error correction with the
+      profit share and debt service (:investment), their slopes pooled
+      over the countries' data years to the origin and their norms each
+      country's own (estimate-rule, :pool :complete).
+  Every other behavioural ratio is held. Chosen on the design origins
+  only, before the registered test bnm-4hv.14 (9g)."
+  {:consumption {:phi 0.0 :half-life 0.1} :wages {:phi 0.0} :theta 0.0 :half-life 0.5 :rate-half-life 0.5
+   :interest-hold true :dividend-hold true
+   :fiscal {:estimate true :pool :complete} :investment {:estimate true :pool :complete}})
 
 (def block-docs
   "The behavioural blocks of a year, each a rule the audit can replace by
@@ -562,6 +638,9 @@
         yd (+ (get-in x [:cons :hh]) (get-in x [:inv :hh]) (get-in (book x) [:nl :hh]))
         bases (tax-bases x)
         p (cond-> p
+            (gv :government) (assoc :fiscal-rule nil)
+            (gv :consumption) (assoc :consumption-rule nil)
+            (gv :other) (assoc :other-rule nil)
             (gv :growth) (assoc :n g)
             (gv :wages) (assoc :phillips nil)
             (gv :consumption) (assoc :a1 (/ (get-in x [:cons :hh]) yd) :a2 0.0)
@@ -580,7 +659,7 @@
              (gv :wages) (assoc :w (/ (num (:W x)) Yx))
              (gv :government) (assoc :cg (/ (* (r (get-in x [:cons :gov])) ye) g1) :ig (/ (* (r (get-in x [:inv :gov])) ye) g1)
                                      :ben (/ (* (r (:ben x)) ye) g1)))
-        model-pinc (property-income open p ye (:bsm-prev st))
+        model-pinc (property-income open p ye (:bsm-prev st) (inc (long (:year st))))
         scaled (fn [k] (into {} (for [[s v] (get x k)] [s (* (r v) ye)])))
         pinc (cond-> model-pinc
                (gv :interest) (assoc :int-paid (scaled :int-paid) :int-recv (scaled :int-recv))
@@ -667,6 +746,193 @@
         S (max 1e-6 (- (* (double (:nu base)) (+ (:alpha base) (:beta base) (:delta base))) k0))]
     (assoc base :kappa-slope (* c1 S) :pistar (/ (- (Math/log S) c0) c1))))
 
+;; -- rules estimated across countries (bead bnm-4hv.14) --------------------------------------
+
+(defn- solve
+  "x with A x = b for a small dense system (Gaussian elimination with
+  partial pivoting), or nil when singular."
+  [A b]
+  (let [n (count b)
+        m (mapv (fn [r v] (conj (vec r) v)) A b)]
+    (loop [m m c 0]
+      (if (= c n)
+        (let [x (double-array n)]
+          (doseq [i (reverse (range n))]
+            (aset x i (/ (- (double (get-in m [i n])) (reduce + 0.0 (for [j (range (inc i) n)] (* (double (get-in m [i j])) (aget x j)))))
+                         (double (get-in m [i i])))))
+          (vec x))
+        (let [piv (apply max-key #(Math/abs (double (get-in m [% c]))) (range c n))]
+          (if (< (Math/abs (double (get-in m [piv c]))) 1e-14)
+            nil
+            (let [m (if (= piv c) m (assoc m c (m piv) piv (m c)))
+                  r (m c)]
+              (recur (vec (for [i (range n)]
+                            (if (<= i c) (m i)
+                                (let [f (/ (double (get-in m [i c])) (double (r c)))]
+                                  (mapv #(- (double %1) (* f (double %2))) (m i) r)))))
+                     (inc c)))))))))
+
+(defn ols
+  "Least squares through the origin of y on the regressors, rows [x1 ... xk
+  y]: {:b [...] :v [...] (each coefficient's sampling variance) :n}, or nil
+  with fewer than k + 2 rows or a singular design."
+  [rows]
+  (let [rows (vec rows) n (count rows) k (dec (count (first rows)))]
+    (when (and (pos? k) (>= n (+ k 2)))
+      (let [xtx (vec (for [i (range k)] (vec (for [j (range k)] (reduce + 0.0 (map #(* (double (nth % i)) (double (nth % j))) rows))))))
+            xty (vec (for [i (range k)] (reduce + 0.0 (map #(* (double (nth % i)) (double (nth % k))) rows))))]
+        (when-let [b (solve xtx xty)]
+          (let [res (map (fn [r] (- (double (nth r k)) (reduce + 0.0 (map #(* (double (nth r %)) (double (b %))) (range k))))) rows)
+                s2 (/ (reduce + 0.0 (map #(* % %) res)) (max 1 (- n k)))
+                inv (vec (for [i (range k)] (solve xtx (assoc (vec (repeat k 0.0)) i 1.0))))]
+            (when (every? some? inv)
+              {:b b :v (vec (for [i (range k)] (* s2 (double (get-in inv [i i]))))) :n n})))))))
+
+(defn partial-pool
+  "Pooled least squares over every country's rows {iso [[x1 ... xk y]
+  ...]} and each country's coefficients shrunk toward the pooled ones
+  (empirical Bayes, coefficient by coefficient: a country's own estimate
+  b_i with sampling variance v_i, the countries' spread tau2 by the method
+  of moments, the posterior mean (b_i / v_i + b / tau2) / (1 / v_i + 1 /
+  tau2); tau2 0 or too few rows of its own gives the pooled value).
+  {:pooled [...] :tau2 [...] :n rows :countries c :by {iso [...]}}, or nil."
+  [by-iso]
+  (when-let [pool (ols (apply concat (vals by-iso)))]
+    (let [b (:b pool) k (count b)
+          own (into {} (for [[iso rs] by-iso :let [f (ols rs)] :when (and f (every? #(and (finite? %) (pos? %)) (:v f)))] [iso f]))
+          tau2 (vec (for [j (range k)]
+                      (if (< (count own) 3)
+                        0.0
+                        (let [bs (map #(get-in % [:b j]) (vals own)) vs (map #(get-in % [:v j]) (vals own))
+                              m (/ (reduce + bs) (count bs))]
+                          (max 0.0 (- (/ (reduce + (map #(let [d (- % m)] (* d d)) bs)) (max 1 (dec (count bs))))
+                                      (/ (reduce + vs) (count vs))))))))]
+      {:pooled b :tau2 tau2 :n (:n pool) :countries (count by-iso)
+       :by (into {} (for [[iso f] own]
+                      [iso (vec (for [j (range k) :let [t (tau2 j) bi (get-in f [:b j]) vi (get-in f [:v j])]]
+                                  (if (pos? t) (/ (+ (/ bi vi) (/ (b j) t)) (+ (/ 1.0 vi) (/ 1.0 t))) (b j))))]))})))
+
+(defn- causal-norm
+  "The weighted mean (half-life `hl`) of [[year value]] over the years
+  before `y`, or nil with fewer than three."
+  [pairs y hl]
+  (let [ps (filter #(< (first %) y) pairs)]
+    (when (>= (count ps) 3)
+      (let [ws (map #(weight hl (dec y) (first %)) ps)]
+        (/ (sum (map * ws (map second ps))) (sum ws))))))
+
+(defn ec-rows
+  "Error-correction rows of every country in `panel` from its data years to
+  `origin`: for consecutive years y - 1, y, [z1 ... zk dx] with dx the
+  change in ratio `fx` (fn [x ob]) from y - 1 to y and each z (fn of the
+  country's series at y - 1: [x-gap z-gaps ...]) as `zs-of` builds them;
+  :norm-half-life `hl`. {iso rows}."
+  [panel origin {:keys [x zs hl] :or {hl 10.0}}]
+  (into {}
+        (for [[iso rows] panel
+              :let [obs (sort-by :year (filter #(and (:flows-ok %) (:y %) (<= (:year %) origin)) (vals rows)))
+                    xs (into {} (for [o obs] [(:year o) (observed o)]))
+                    ser (fn [f] (vec (for [o obs :let [v (f (xs (:year o)) o)] :when (finite? v)] [(:year o) (double v)])))
+                    sx (ser x) szs (mapv ser zs)
+                    at (fn [s y] (some (fn [[yy v]] (when (= yy y) v)) s))
+                    rs (vec (for [[y x1] sx
+                                  :let [x0 (at sx (dec y)) nx (causal-norm sx y hl)
+                                        zg (for [s szs] (let [z (at s (dec y)) nz (causal-norm s y hl)] (when (and z nz) (- z nz))))]
+                                  :when (and x0 nx (every? some? zg))]
+                              (vec (concat [(- nx x0)] zg [(- x1 x0)]))))]
+              :when (seq rs)]
+          [iso rs])))
+
+(def rule-specs
+  "The estimated rules' regressions (docs/COUPLED-SYSTEMS.md 2a):
+    :fiscal      the change in government spending (consumption,
+                 investment, benefits) over output on its gap to its norm
+                 and the government's net lending's gap to its norm (a
+                 fiscal reaction, Bohn 1998);
+    :investment  the change in NFC investment over output on its gap to its
+                 norm, the profit share's and the NFCs' interest paid over
+                 output (debt service) less their norms (Kalecki-Steindl
+                 investment with a financial constraint, Fazzari, Hubbard &
+                 Petersen 1988; an error-correction form);
+    :consumption the change in the propensity to consume out of disposable
+                 income on its gap and households' net financial worth over
+                 disposable income less its norm (Godley & Lavoie 2007's
+                 wealth target)."
+  (let [yd (fn [x] (+ (get-in x [:cons :hh]) (get-in x [:inv :hh]) (get-in (book x) [:nl :hh])))
+        r (fn [a b] (when (and (finite? a) (finite? b) (> (Math/abs (double b)) 1e-9)) (/ (double a) (double b))))]
+    {:fiscal {:x (fn [x _] (r (+ (num (get-in x [:cons :gov])) (num (get-in x [:inv :gov])) (num (:ben x))) (:Y x)))
+              :zs [(fn [x _] (r (get-in (book x) [:nl :gov]) (:Y x)))]}
+     :investment {:x (fn [x _] (r (get-in x [:inv :nfc]) (:Y x)))
+                  :zs [(fn [x _] (profit-share x)) (fn [x _] (r (get-in x [:int-paid :nfc]) (:Y x)))]}
+     :consumption {:x (fn [x _] (r (get-in x [:cons :hh]) (yd x)))
+                   :zs [(fn [x ob] (when (:b ob) (r (nfw (:bsm (close-init (:b ob))) :hh) (yd x))))]}
+     ;; evidence only (docs 2a): candidates that stay held
+     :wages {:x (fn [x _] (r (:W x) (:Y x))) :zs []}
+     :fin-va {:x (fn [x _] (r (get-in x [:va :fin]) (:Y x))) :zs []}
+     :hh-debt {:x (fn [x ob] (when (:b ob) (r (pos (:b ob) :hh :debt :l) (:Y x)))) :zs []}
+     :nfc-debt {:x (fn [x ob] (when (:b ob) (r (pos (:b ob) :nfc :debt :l) (:Y x)))) :zs []}
+     :other-fin {:x (fn [x _] (r (get-in x [:other :fin]) (:Y x))) :zs []}}))
+
+(defn interest-rows
+  "Partial adjustment of implicit interest rates toward the policy rate,
+  rows {[iso side sector] [[gap dx] ...]}: each year y with y - 1 and y -
+  2 to `origin`, d = the sector's implicit rate (interest paid over its
+  money and debt liabilities at the start of the year, or received over
+  those assets) less the policy rate; gap its norm (half-life `hl`, years
+  before y - 1) less d at y - 1, dx the change in d from y - 1 to y. Rates
+  outside (0, 0.3) are left out."
+  [panel origin hl]
+  (into {}
+        (for [[iso rows] panel
+              :let [obs (into {} (for [[y ob] rows :when (and (<= y origin) (:flows-ok ob) (:y ob))] [y ob]))
+                    rate (fn [y side s]
+                           (let [ob (obs y) pv (get rows (dec y))]
+                             (when (and ob pv (:b pv) (number? (:policy ob)))
+                               (let [b (:bsm (close-init (:b pv)))
+                                     stock (if (= side :paid) (ib-l b s) (ib-a b s))
+                                     flow (num (get-in ob [:f s (if (= side :paid) :int_paid :int_recv)]))]
+                                 (when (> stock 1e-9)
+                                   (let [i (/ flow stock)] (when (< 0.0 i 0.3) (- i (double (:policy ob))))))))))]
+              [side ss] {:paid [:hh :nfc :gov] :recv [:hh :nfc]}
+              s ss
+              :let [ds (vec (keep (fn [y] (when-let [d (rate y side s)] [y d])) (sort (keys obs))))
+                    at (into {} ds)
+                    rs (vec (for [[y d1] ds :let [d0 (at (dec y)) nd (causal-norm ds y hl)] :when (and d0 nd)]
+                              [(- nd d0) (- d1 d0)]))]
+              :when (seq rs)]
+          [[iso side s] rs])))
+
+(defn interest-targets
+  "For `iso` at data year `origin`: {:paid {sector ratio} :recv {...}}, the
+  ratio of the target rate (the origin's policy rate plus the sector's
+  spread over it, its weighted mean at half-life `hl`) to the origin's
+  implicit rate, within [0.25, 4]; sectors without a policy rate or a
+  stock left out."
+  [panel iso origin hl]
+  (let [rows (get panel iso)
+        pol (get-in rows [origin :policy])
+        rate (fn [y side s]
+               (let [ob (get rows y) pv (get rows (dec y))]
+                 (when (and ob pv (:flows-ok ob) (:b pv) (<= y origin))
+                   (let [b (:bsm (close-init (:b pv)))
+                         stock (if (= side :paid) (ib-l b s) (ib-a b s))
+                         flow (num (get-in ob [:f s (if (= side :paid) :int_paid :int_recv)]))]
+                     (when (> stock 1e-9) (let [i (/ flow stock)] (when (< 0.0 i 0.3) i)))))))]
+    (when (number? pol)
+      (into {} (for [[side ss] {:paid [:hh :nfc :gov] :recv [:hh :nfc]}]
+                 [side (into {} (for [s ss
+                                      :let [i0 (rate origin side s)
+                                            sp (ew (for [y (keys rows) :let [i (rate y side s) pp (get-in rows [y :policy])] :when (and i (number? pp))] [y (- i pp)])
+                                                   hl origin nil)]
+                                      :when (and i0 sp)]
+                                  [s (max 0.25 (min 4.0 (/ (max 1e-4 (+ (double pol) sp)) i0)))]))])))))
+
+(defn estimate-rule
+  "partial-pool of rule `k` (rule-specs) over `panel`'s data years to
+  `origin`."
+  [panel origin k]
+  (partial-pool (ec-rows panel origin (rule-specs k))))
+
 (defn- keen-params
   "keen-run's calibration as known with data year `origin` (keen-of): the
   Phillips curve's parameters and the structure (alpha beta delta nu) for
@@ -701,9 +967,25 @@
         with Keen's slope (times :slope, 1) and phi of reversion to its
         norm (:investment-rule);
     :theta  the share of a change in the stocks that passes into interest
-        in the year (property-income)."
+        in the year (property-income).
+
+  The estimated rules (bnm-4hv.14, `estimated`), each off when absent:
+    :interest-hold, :dividend-hold  interest paid and received, and
+        dividends received, as shares of output (:int-share,
+        :div-recv-share), weighted at :half-life;
+    :fiscal {:estimate :pool :phi :norm-half-life}  government spending
+        reacting to its own gap and the balance's gap to their norms
+        (:fiscal-rule), the slopes estimated (estimate-rule; :pool
+        :complete, the pooled slopes) or :phi given;
+    :investment {... :estimate :pool :b-pi :b-ds}  the investment rule
+        with the profit share's and debt service's gaps;
+    :consumption {:half-life}  the propensity's own half-life;
+    :consumption-ec, :other-ec, :interest-adjust  tried and not kept
+        (docs 2a): the propensity reverting, other flows reverting,
+        interest's shares adjusting toward the policy rate (needs
+        with-policy).
   [panel kn iso origin {:keys [half-life rate-half-life fit-half-life mu rho phillips consumption wages investment theta]
-                            :or {half-life 1.0 rate-half-life 1.0 fit-half-life 10.0 mu 0.3 phillips true}}]
+                            :or {half-life 1.0 rate-half-life 1.0 fit-half-life 10.0 mu 0.3 phillips true} :as opts*}]
   (let [hl half-life
         ;; the balance sheets closed as init closes the start (close-init), so
         ;; rates and positions are learned on the stocks the model runs on
@@ -789,16 +1071,49 @@
      (if consumption
        (let [prop (fn [hl'] (ew (for [[y x] xs :let [yd (+ (get-in x [:cons :hh]) (get-in x [:inv :hh]) (get-in (book x) [:nl :hh]))]]
                                   [y (ratio (get-in x [:cons :hh]) yd)]) hl' origin 0.9))
-             c (prop hl)]
+             c (prop (double (:half-life consumption hl)))]
          {:a1 (+ c (* (num (:phi consumption)) (- (prop (double (:norm-half-life consumption 10.0))) c))) :a2 0.0})
        (fit-consumption cons-rows))
      (when wages
        {:wage-rule {:phi (num (:phi wages))
                     :norm (e' (fn [x _] (ratio (:W x) (:Y x))) (double (:norm-half-life wages 10.0)) 0.6)}})
      (when investment
-       {:investment-rule {:phi (num (:phi investment)) :slope (double (:slope investment 1.0))
-                          :norm (e' (fn [x _] (/ (get-in x [:inv :nfc]) (:Y x))) (double (:norm-half-life investment 10.0)) 0.1)}})
-     (when theta {:theta (double theta)}))))
+       (let [nh (double (:norm-half-life investment 10.0))
+             est (when (:estimate investment) (estimate-rule panel origin :investment))
+             investment (if est
+                          (let [[ph bp bd] (if (= :complete (:pool investment)) (:pooled est) (get-in est [:by iso] (:pooled est)))] (assoc investment :phi ph :b-pi bp :b-ds bd :slope 0.0))
+                          investment)]
+         {:investment-rule {:phi (num (:phi investment)) :slope (double (:slope investment 1.0))
+                            :norm (e' (fn [x _] (/ (get-in x [:inv :nfc]) (:Y x))) nh 0.1)
+                            :b-pi (num (:b-pi investment)) :b-ds (num (:b-ds investment))
+                            :pi-norm (e' (fn [x _] (profit-share x)) nh 0.0)
+                            :ds-norm (e' (fn [x _] (/ (num (get-in x [:int-paid :nfc])) (:Y x))) nh 0.0)}}))
+     (when-let [f (:fiscal opts*)]
+       (let [nh (double (:norm-half-life f 10.0))
+             est (when (:estimate f) (estimate-rule panel origin :fiscal))
+             [g b] (if est (if (= :complete (:pool f)) (:pooled est) (get-in est [:by iso] (:pooled est))) [0.0 (num (:phi f))])]
+         {:fiscal-rule {:phi b :spend-phi g
+                        :norm (e' (fn [x _] (/ (num (get-in (book x) [:nl :gov])) (:Y x))) nh 0.0)
+                        :spend-norm (e' (fn [x _] (/ (+ (num (get-in x [:cons :gov])) (num (get-in x [:inv :gov])) (num (:ben x))) (:Y x))) nh 0.0)}}))
+     (when-let [c (:consumption-ec opts*)]
+       {:consumption-rule {:phi (if (:estimate c) (double (first (:pooled (estimate-rule panel origin :consumption)))) (num (:phi c)))
+                           :norm (ew (for [[y x] xs :let [yd (+ (get-in x [:cons :hh]) (get-in x [:inv :hh]) (get-in (book x) [:nl :hh]))]]
+                                       [y (ratio (get-in x [:cons :hh]) yd)]) (double (:norm-half-life c 10.0)) origin 0.9)}})
+     (when-let [o (:other-ec opts*)]
+       {:other-rule {:phi (num (:phi o))
+                     :norm (into {} (for [s [:hh :nfc :fin :row]] [s (e' (fn [x _] (/ (get-in x [:other s]) (:Y x))) (double (:norm-half-life o 10.0)) 0.0)]))}})
+     (when theta {:theta (double theta)})
+     (when (:dividend-hold opts*)
+       {:div-recv-share (into {} (for [s [:hh :nfc :gov :row]] [s (e (fn [x _] (/ (num (get-in x [:div-recv s])) (:Y x))) 0.0)]))})
+     (when-let [ia (:interest-adjust opts*)]
+       (let [hl' (double (:norm-half-life ia 10.0))
+             est (ols (apply concat (vals (interest-rows panel origin hl'))))
+             tg (interest-targets panel iso origin hl')]
+         (when (and est tg)
+           {:int-adjust (assoc tg :lambda (max 0.0 (min 1.0 (double (first (:b est))))) :from (inc origin))})))
+     (when (:interest-hold opts*)
+       {:int-share {:paid (into {} (for [s sectors] [s (e (fn [x _] (/ (num (get-in x [:int-paid s])) (:Y x))) 0.0)]))
+                    :recv (into {} (for [s [:hh :nfc :gov :row]] [s (e (fn [x _] (/ (num (get-in x [:int-recv s])) (:Y x))) 0.0)]))}}))))
 
 (defn init
   "The state at the end of data year `origin`: its balance sheet closed on
@@ -815,6 +1130,8 @@
         lam (get (keen-of kn iso origin) "keen/lambda")
         pv (get-in panel [iso (dec origin)])]
     (cond-> {:year origin :Y (:Y x) :w (/ (:W x) (:Y x)) :lambda (or lam 0.95) :pi (profit-share x)
+             :nl-gov (/ (num (get-in ob [:f :gov :nl])) (:Y x)) :ds (/ (num (get-in x [:int-paid :nfc])) (:Y x))
+             :other (into {} (for [s [:hh :nfc :fin :row]] [s (/ (num (get-in x [:other s])) (:Y x))]))
              :cg (get-in x [:cons :gov]) :ig (get-in x [:inv :gov]) :ben (:ben x)
              :kappa (/ (num (get-in x [:inv :nfc])) (:Y x))
              :bsm bsm :init-buffer buffer}

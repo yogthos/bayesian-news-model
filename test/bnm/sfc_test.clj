@@ -451,3 +451,89 @@
         "consumption set to the share of expected output in 2003, grown at trend after")
     (is (not= (out plain "sfc/output" 2) (out r "sfc/output" 2)))
     (is (every? #(< % 1e-10) (keep identity (get-in r [:emits :sfc-accounts "sfc/tfm-gap"]))))))
+
+;; -- rules estimated from data (bnm-4hv.14) --------------------------------------------------
+
+(deftest least-squares-and-partial-pooling
+  (let [rows (for [i (range 40) :let [x1 (Math/sin i) x2 (Math/cos (* 1.7 i))]] [x1 x2 (+ (* 0.3 x1) (* -0.2 x2))])
+        f (sfc/ols rows)]
+    (is (< (Math/abs (- 0.3 (get-in f [:b 0]))) 1e-9))
+    (is (< (Math/abs (- -0.2 (get-in f [:b 1]))) 1e-9))
+    (is (nil? (sfc/ols (take 2 rows))) "too few rows"))
+  (testing "a country's own slope is pulled toward the pool, more when it has fewer rows"
+    (let [mk (fn [b n off] (vec (for [i (range n) :let [x (Math/sin (+ off i))]] [x (+ (* b x) (* 0.01 (Math/cos (* 3.1 (+ off i)))))])))
+          pp (sfc/partial-pool {"A" (mk 0.2 30 0) "B" (mk 0.4 30 1) "C" (mk 0.3 30 2) "D" (mk 0.6 4 3)})]
+      (is (< 0.2 (first (:pooled pp)) 0.6))
+      (is (< (Math/abs (- 0.2 (first (get-in pp [:by "A"])))) 0.05) "much data of its own: near its own")
+      (is (pos? (first (:tau2 pp)))))))
+
+(deftest error-correction-rows-read-nothing-after-the-origin
+  (let [panel {"SIM" (sim-panel 30)}
+        cut {"SIM" (into {} (filter #(<= (key %) 2015)) (get panel "SIM"))}]
+    (doseq [k [:fiscal :investment :consumption]]
+      (is (= (sfc/ec-rows panel 2015 (sfc/rule-specs k)) (sfc/ec-rows cut 2015 (sfc/rule-specs k))) (str k)))
+    (let [rows (get (sfc/ec-rows panel 2015 (sfc/rule-specs :fiscal)) "SIM")]
+      (is (seq rows))
+      (is (every? #(= 3 (count %)) rows) "the spending gap, the balance gap, the change"))))
+
+(deftest learning-the-estimated-rules
+  (let [panel {"SIM" (sim-panel 30)}
+        p (sfc/learn panel {} "SIM" 2025 sfc/estimated)
+        x (sfc/observed (get-in panel ["SIM" 2025]))
+        yd (+ (get-in x [:cons :hh]) (get-in x [:inv :hh]) (get-in (sfc/book x) [:nl :hh]))]
+    (is (< (Math/abs (- (:a1 p) (/ (get-in x [:cons :hh]) yd))) 1e-3) "the propensity as last observed")
+    (is (= #{:phi :spend-phi :norm :spend-norm} (set (keys (:fiscal-rule p)))))
+    (is (every? number? (vals (:fiscal-rule p))))
+    (is (every? number? (map (:investment-rule p) [:phi :b-pi :b-ds :norm :pi-norm :ds-norm])))
+    (is (= 0.0 (get-in p [:investment-rule :slope])))
+    (is (< (Math/abs (- (get-in p [:int-share :paid :hh]) (/ (get-in x [:int-paid :hh]) (:Y x)))) 0.01) "interest's share of output")
+    (is (number? (get-in p [:div-recv-share :hh])))
+    (is (= 0.0 (get-in p [:wage-rule :phi])) "the wage share held")
+    (testing "nothing after the origin is read"
+      (let [cut {"SIM" (into {} (filter #(<= (key %) 2015)) (get panel "SIM"))}]
+        (is (= (sfc/learn panel {} "SIM" 2015 sfc/estimated) (sfc/learn cut {} "SIM" 2015 sfc/estimated)))))))
+
+(def p-est
+  (assoc p0 :int-share {:paid {:hh 0.03 :nfc 0.035 :fin 0.01 :gov 0.02 :row 0.008} :recv {:hh 0.012 :nfc 0.004 :gov 0.002 :row 0.01}}
+         :div-recv-share {:hh 0.02 :nfc 0.01 :gov 0.002 :row 0.01}
+         :fiscal-rule {:phi 0.25 :spend-phi 0.1 :norm -0.02 :spend-norm 0.33}
+         :investment-rule {:phi 0.2 :slope 0.0 :norm 0.12 :b-pi 0.1 :b-ds -0.2 :pi-norm 0.17 :ds-norm 0.03}))
+
+(def st-est (assoc st1 :nl-gov -0.05 :ds 0.035))
+
+(deftest interest-and-dividends-hold-their-shares
+  (let [ye 104.0 pinc (sfc/property-income bsm0 p-est ye bsm0 2001)]
+    (is (< (Math/abs (- (get-in pinc [:int-paid :nfc]) (* 0.035 ye))) 1e-12))
+    (is (< (Math/abs (- (get-in pinc [:int-recv :hh]) (* 0.012 ye))) 1e-12))
+    (is (< (Math/abs (- (get-in pinc [:div-recv :row]) (* 0.01 ye))) 1e-12))))
+
+(deftest the-fiscal-rule-closes-part-of-the-balance-gap
+  (let [sp (/ (+ 18.0 3.0 12.0) 100.0)
+        {s :state} (sfc/step st-est p-est)
+        want (+ 1.0 (/ (+ (* 0.25 (- -0.05 -0.02)) (* 0.1 (- 0.33 sp))) sp))]
+    (is (< (Math/abs (- (:cg s) (* 18.0 1.04 want))) 1e-9) "a deficit beyond its norm cuts spending")
+    (is (number? (:nl-gov s)))))
+
+(deftest investment-corrects-toward-its-norm-with-profits-and-debt-service
+  (let [inv (sfc/investment p-est 104.0 0.18 st-est)]
+    (is (< (Math/abs (- (:nfc inv) (* 104.0 (+ 0.11 (* 0.2 (- 0.12 0.11)) (* 0.1 (- 0.18 0.17)) (* -0.2 (- 0.035 0.03))))))
+           1e-9))))
+
+(deftest modules-reproduce-the-step-under-the-estimated-rules
+  (let [ms (msfc/modules "SIM" st-est p-est)
+        n 8
+        direct (rest (run-steps st-est p-est n))
+        r (eng/run ms {:from 2001 :to (+ 2000 n)})
+        em (:emits r)]
+    (is (empty? (eng/validate ms)))
+    (doseq [[i [_ o]] (map-indexed vector direct)]
+      (is (< (Math/abs (- (:Y o) (get-in em [:sfc-accounts "sfc/output" i]))) (* 1e-12 (:Y o))) (str "year " i))
+      (is (< (Math/abs (- (get-in o [:net-lending :gov]) (get-in em [:sfc-accounts "sfc/net-lending-gov" i]))) 1e-12)))))
+
+(deftest given-blocks-reproduce-the-observed-year-under-the-estimated-rules
+  (let [{s1 :state o1 :out} (sfc/step st0 p0)
+        x1 (sfc/observed (sfc/obs-of s1 o1))
+        g (- (/ (:Y o1) (:Y st0)) 1.0)
+        o (:out (sfc/step-given st-est p-est (set sfc/blocks) x1 g))]
+    (is (< (apply max (for [s sfc/sectors] (Math/abs (- (get-in o [:net-lending s]) (get-in o1 [:net-lending s]))))) 1e-9)
+        "every block given, the rules' own terms switched off")))
