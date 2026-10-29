@@ -146,24 +146,28 @@
   (is (< (Math/abs (- 1.6449 (wl/t-quantile 0.95 1e6))) 1e-3) "the normal's in the limit")
   (is (< (Math/abs (+ 1.8946 (wl/t-quantile 0.05 7))) 1e-3) "symmetric"))
 
-(deftest the-null-test-adds-the-nulls-spread
+(deftest the-null-test-is-a-prediction-interval-on-the-draws
+  ;; A3 (bnm-82j.6): G +/- t(0.95, R - 1) sd0 sqrt(1 + 1/R), no origins'
+  ;; term: sd0 is measured on the same origins and already holds it
   (let [nulls [0.010 0.014 0.018 0.012 0.016 0.011 0.015 0.013]
         mu (/ (reduce + nulls) 8.0)
         sd0 (wl/sd nulls)]
     (testing "a candidate at the null's mean gains nothing"
-      (let [r (wl/null-test mu nulls 0.0 0.1)]
+      (let [r (wl/null-test mu nulls 0.1)]
         (is (close? 0.0 (:g r)))
         (is (not (:pass r)))))
-    (testing "the interval holds the null's spread, (1 + 1/R) of it, and the origins'"
-      (let [r (wl/null-test (+ mu 0.01) nulls 1e-6 0.1)]
-        (is (close? (:se r) (Math/sqrt (+ (* sd0 sd0 (+ 1 (/ 1.0 8))) 1e-6))))
+    (testing "the interval holds the null's spread, (1 + 1/R) of it, and nothing else"
+      (let [r (wl/null-test (+ mu 0.01) nulls 0.1)]
+        (is (close? (:se r) (* sd0 (Math/sqrt (+ 1 (/ 1.0 8))))))
         (is (= 7 (:df r)))
         (is (close? (:lo r) (- 0.01 (* (wl/t-quantile 0.95 7) (:se r)))))
         (is (:pass r) "well clear of eight draws this tight")))
+    (testing "the origins' variance is no longer an argument (the registered interval is not used)"
+      (is (thrown? Throwable (wl/null-test mu nulls 1e-6 0.1))))
     (testing "the noise gain the 82j.1 rule passed fails when the null holds noise like it"
-      (is (not (:pass (wl/null-test 0.0136 [0.0117 -0.0121 0.0 -0.0015 0.0136] 0.0 0.1))))))
+      (is (not (:pass (wl/null-test 0.0136 [0.0117 -0.0121 0.0 -0.0015 0.0136] 0.1))))))
   (testing "fewer than two null draws: no spread, no test"
-    (is (nil? (wl/null-test 0.05 [0.01] 0.0 0.1)))))
+    (is (nil? (wl/null-test 0.05 [0.01] 0.1)))))
 
 (deftest gain-over-the-null-mean-from-cells
   ;; per kind and year [hits pos] of the candidate, the bench and two nulls
@@ -185,22 +189,44 @@
   ;; exchangeable draws the share passing is the rule's size
   (let [g (m/rng 3)
         draws (vec (repeatedly 12 #(* 0.01 (m/normal! g))))
-        r (wl/false-pass draws (fn [_ _] 0.0) 8 0.1 {:subsets 200 :seed 1})]
+        r (wl/false-pass draws 8 0.1 {:subsets 200 :seed 1})]
     (is (<= 0.0 (:rate r) 0.2))
     (is (pos? (:tests r))))
   (testing "a draw far from the rest passes"
     (let [draws (conj (vec (repeat 9 0.0)) 0.5)
           draws (mapv + draws (map #(* 1e-3 %) (range 10)))
-          r (wl/false-pass draws (fn [_ _] 0.0) 8 0.1 {:subsets 50 :seed 1})]
+          r (wl/false-pass draws 8 0.1 {:subsets 50 :seed 1})]
       (is (pos? (:rate r)))))
-  (testing "the origins' variance is the candidate's against the subset it is tested on"
-    ;; a candidate's gain over the mean of fewer draws varies more over
-    ;; origins: computing it against all the others understates it
-    (let [seen (atom [])
-          draws [0.0 0.001 0.002 0.003 0.004 0.005]]
-      (wl/false-pass draws (fn [i s] (swap! seen conj [i (vec s)]) 0.0) 3 0.1 {:subsets 300 :seed 1})
-      (is (= (* 6 10) (count @seen)) "every subset of 3 of the 5 others")
-      (is (every? (fn [[i s]] (and (= 3 (count s)) (not-any? #{i} s))) @seen)))))
+  (testing "every subset of R of the others when there are few"
+    (is (= (* 6 10) (:tests (wl/false-pass [0.0 0.001 0.002 0.003 0.004 0.005] 3 0.1 {:subsets 300 :seed 1}))))))
+
+(def t48-shuffled
+  "Top-10 hard recall less t48-world-norel of the eight shuffled draws
+  (wl2h-derange-1..4, wl2h-shift-1..4), 13 kinds, origins 2003-2022."
+  [-0.00962 -0.00712 -0.00519 -0.00387 -0.00880 -0.00236 -0.01119 -0.00902])
+
+(deftest the-rules-size-on-the-t48-shuffled-draws
+  ;; A3: each draw against R of the other seven, the interval without the
+  ;; origins' term, is at about its nominal 5% (the registered interval,
+  ;; with the term, gave 0-0.4%)
+  (doseq [r [4 6]]
+    (let [{:keys [rate tests]} (wl/false-pass t48-shuffled r 0.1 {:subsets 300 :seed 1})]
+      (is (= ({4 280 6 56} r) tests))
+      (is (< 0.03 rate 0.08) (str "R=" r " size " rate))))
+  (testing "as recorded in data/runs/sequencing/watchlist-v2-calibration-a3-shuffled.txt"
+    (is (= 16 (:passes (wl/false-pass t48-shuffled 4 0.1 {:subsets 300 :seed 1}))))
+    (is (= 3 (:passes (wl/false-pass t48-shuffled 6 0.1 {:subsets 300 :seed 1}))))))
+
+(deftest planting-whole-onsets
+  ;; power by planting: a gain g of recall in a kind is g x its onsets more
+  ;; hits, added as whole onsets caught in random years with room
+  (let [cells {"a" {1 {:hits 1.0 :pos 4} 2 {:hits 0.0 :pos 4} 3 {:hits 2.0 :pos 2}}}
+        p (wl/plant-onsets cells 0.2 (m/rng 1))
+        added (map #(- (get-in p ["a" % :hits]) (get-in cells ["a" % :hits])) [1 2 3])]
+    (is (close? 2.0 (reduce + added)) "0.2 of ten onsets")
+    (is (every? #(or (close? % 0.0) (close? % 1.0) (close? % 2.0)) added) "whole onsets")
+    (is (close? 0.0 (nth added 2)) "no room in a year whose onsets are all caught")
+    (is (every? (fn [y] (<= (get-in p ["a" y :hits]) (get-in p ["a" y :pos]))) [1 2 3]))))
 
 (deftest power-of-the-null-test
   (let [p0 (wl/null-power 0.0 0.01 8 0.1 {:sims 4000 :seed 1})
@@ -228,3 +254,7 @@
     (is (= {:gain true :equivalent false :harm :harm :adopt false} (v [0.002 0.03] {:lo -0.004 :hi -0.0001})))
     (is (= {:gain false :equivalent true :harm :no-harm :adopt false} (v [-0.01 0.012] {:lo -0.0001 :hi 0.001})))
     (is (= {:gain false :equivalent false :harm :not-shown :adopt false} (v [-0.01 0.02] {:lo -0.001 :hi 0.001})))))
+
+(deftest the-v2-reading-goes-where-asked
+  (is (= "data/runs/fs-a/watchlist-v2.txt" (wl/v2-out (wl/parse-opts ["--run" "fs-a"]))))
+  (is (= "data/runs/sequencing/x.txt" (wl/v2-out (wl/parse-opts ["--run" "fs-a" "--out" "sequencing/x.txt"])))))

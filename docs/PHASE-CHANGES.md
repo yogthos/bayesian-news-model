@@ -2331,10 +2331,11 @@ readings above are descriptive. A3 replaces step 2's interval, and step
   no new world runs), each draw in turn the candidate against R of the
   others: on the eight shuffled draws 16 of 280 at R = 4 (0.057), 3 of
   56 at R = 6 (0.054), 1 of 8 at R = 7 (0.125); R = 8 needs nine. With
-  the four noise draws added (twelve): 0.113, 0.102, 0.114 and 0.106 at
-  R = 4, 6, 7 and 8, but noise draws gain +0.006 and +0.008 where every
-  shuffled draw loses, so the twelve are not exchangeable and this is
-  not the rule's size.
+  the four noise draws added (twelve; 300 random subsets a draw where
+  there are more): 0.114, 0.103, 0.113 and 0.106 at R = 4, 6, 7 and 8,
+  but noise draws gain +0.006 and +0.008 where every shuffled draw
+  loses, so the twelve are not exchangeable and this is not the rule's
+  size.
 - **The critical value: t with R - 1 df, kept.** The size within the
   shuffled draws is above 5%: 5.7% at R = 4 and 5.4% at R = 6. The
   280 tests come from eight draws, so they are far from independent: on
@@ -2363,6 +2364,41 @@ readings above are descriptive. A3 replaces step 2's interval, and step
   false-pass, the calibration (--calibrate) and bnm.shock-trial --nulls
   use the same interval for gain and harm, and the calibrations print the
   harm's size and the planted power.
+- **Recalibrated with the code** (bnm.watchlist --calibrate, committed
+  with these lines; the files named above; no world runs): the numbers
+  above, and with the twelve draws (sd 0.0060) planted power 0.30-0.35 at
+  +0.010, 0.50-0.62 at +0.015, 0.60-0.92 at +0.020 (R = 4 to 8) and a
+  simulated detectable gain of +0.018 at R = 8: what a null of mixed
+  shapes would cost. Harm's size with the twelve 0.094, 0.093, 0.079
+  and 0.048 at R = 4, 6, 7, 8. On trial SS's forty refitted
+  derangements (bnm.shock-trial --nulls 40, data/runs/sequencing/
+  shock-trial-test-v2-a3-t48.txt), each against R of the others, 300
+  subsets a draw: gain 0.066, 0.064, 0.060, 0.057 at R = 4, 8, 12, 16;
+  log harm 0.048, 0.048, 0.046, 0.043. Above 5% on the gain, as on the
+  shuffled draws; forty exchangeable normal draws give 0.026-0.085
+  (5-95%) at R = 4 and 8 and 0.064 or more 22% of the time, and the
+  forty are skewed (one draw at -0.054, 2.7 sd below the mean, pulls the
+  mean down for the others). t with R - 1 df stands.
+
+**Descriptive readings under A3, not verdicts** (no trial was scored
+on v2; these are the rerun readings above recomputed). FSa on
+t48-world-norel (bnm.watchlist --v2, data/runs/fs-a-t48/
+watchlist-v2-a3.txt), against wl2h-derange-1..4 and wl2h-shift-1..4:
+gain over the null mean +0.0012 [-0.0050, +0.0074] (was [-0.0115,
++0.0139]), p 0.36, no gain; the upper end is below the detectable gain
+at its own spread, +0.0091 (spread 0.0031), so equivalent to nothing;
+Brier over the null mean +0.00018 [-0.00083, +0.00119] (was [-0.00195,
++0.00232]), not harm, no harm not shown; year nodes' Brier against the
+bare bench -0.00012 [-0.00182, +0.00144]; not adopted. Its placebo
+(fs-a-placebo-t48): -0.0003 [-0.0064, +0.0059], equivalent to nothing;
+Brier -0.00079 [-0.00180, +0.00022], not harm. Trial SS on
+t48-world-norel against its forty derangements (bnm.shock-trial
+--nulls 40, data/runs/sequencing/shock-trial-test-v2-a3-t48.txt): S
+less the base +0.006, the draws -0.009 (sd 0.016), gain over their mean
++0.0151 [-0.0128, +0.0431] (was [-0.020, +0.050]), p 0.18, no gain; log
+per row over B' against the draws' mean +0.0199 [-0.0229, +0.0628] (was
+[-0.096, +0.136]), not harm. The readings move as the intervals narrow
+and no conclusion changes: no gain, no harm, as before.
 
 ## Pre-registered, 28 October 2026: supply shocks as event triggers (trial SS, bead bnm-82j.3)
 

@@ -251,11 +251,12 @@
         ranked (into {} (for [[kd rs] by-kind] [kd (wl/rank-rows (wl/sample-of rs :hard) (into [:s :base] ns) [10])]))
         cells (fn [src] (into {} (for [[kd rs] ranked] [kd (#'wl/cells rs src 10 from to)])))
         ng (wl/null-gain {:c (cells :s) :b (cells :base) :nulls (mapv cells ns)} years opts)
-        t (wl/null-test (:cand ng) (:nulls ng) (:vb ng) alpha)
+        t (wl/null-test (:cand ng) (:nulls ng) alpha)
         lg (fn [src] (wl/paired-boot (into {} (for [[kd rs] by-kind] [kd (loss-cells rs src :bp log-loss from to)])) years opts))
         lc (lg :s)
         ln (mapv #(:diff (lg %)) ns)
-        h (wl/null-test (:diff lc) ln (Math/pow (/ (- (:hi lc) (:lo lc)) (* 2 (wl/t-quantile 0.95 1e6))) 2) alpha)]
+        ;; the draws' spread alone, for the gain and the harm (A3)
+        h (wl/null-test (:diff lc) ln alpha)]
     (say (format "Watch-list rule v2 (descriptive): S against %d exposure-placebo draws (the registered derangement, seed 1, and %d from mixed seeds), origins %d-%d" r (dec r) from to))
     (say (format "   top-10 recall, hard onsets, less the base: S %+.4f; draws %s (mean %+.4f, sd %.4f)"
                  (:cand ng) (str/join " " (map #(format "%+.4f" %) (:nulls ng))) (:mean0 t) (:sd0 t)))
@@ -266,15 +267,15 @@
                        :else "no harm beyond the null draws' cost; no-harm not shown")))
     (when (>= r 10)
       ;; the rule's size on the draws alone: each in turn the candidate
-      ;; against 8 of the others
+      ;; against R of the others (amendment A3: the draws' spread alone)
       (let [cs (mapv cells ns)
-            per (vec (for [i (range r)]
-                       (wl/null-gain {:c (cs i) :b (cells :base) :nulls (vec (concat (subvec cs 0 i) (subvec cs (inc i))))} years opts)))
-            draws (mapv :cand per)
+            draws (mapv #(:cand (wl/null-gain {:c % :b (cells :base) :nulls [%]} years (assoc opts :reps 2))) cs)
             old (count (filter (fn [c] (pos? (:lo (wl/paired-boot (into {} (for [[kd byt] c] [kd (into {} (for [[y {:keys [hits pos]}] byt] [y [(- hits (get-in (cells :base) [kd y :hits] 0.0)) pos]]))])) years opts)))) cs))]
         (doseq [rr [4 8 12 16] :when (< rr r)]
-          (let [fp (wl/false-pass draws (fn [i s] (:vb (wl/null-gain {:c (cs i) :b (cells :base) :nulls (mapv cs s)} years (assoc opts :reps 200)))) rr alpha {:subsets 300 :seed 1})]
-            (say (format "   calibration, R=%d: a draw against %d others passes %d of %d (%.3f)" rr rr (:passes fp) (:tests fp) (:rate fp)))))
+          (let [fp (wl/false-pass draws rr alpha {:subsets 300 :seed 1})]
+            (say (format "   calibration, R=%d: a draw against %d others passes %d of %d (%.3f)" rr rr (:passes fp) (:tests fp) (:rate fp)))
+            (let [hs (mapv (fn [[i s]] (neg? (:hi (wl/null-test (ln i) (mapv ln s) alpha)))) (wl/loo-sets r rr {:subsets 300 :seed 1}))]
+              (say (format "   harm's size, R=%d: log harm %d of %d (%.3f)" rr (count (filter true? hs)) (count hs) (/ (count (filter true? hs)) (double (count hs))))))))
         (say (format "   (the 82j.1 rule: a draw gains on the base %d of %d times)" old r))))
     {:gain t :harm h}))
 
