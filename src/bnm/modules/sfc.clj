@@ -27,7 +27,8 @@
   matrices passed between the three (sfc/bsm, sfc/property-income,
   sfc/credit, sfc/investment, sfc/fof), maps with unit \"matrix\", which a
   table writer skips."
-  (:require [bnm.sfc :as sfc]))
+  (:require [augur.math :as m]
+            [bnm.sfc :as sfc]))
 
 (def ^:private model {:data-year 0})
 
@@ -121,7 +122,7 @@
    :stocks {}
    :params {:sfc {:value p}}
    :init (select-keys st [:Y :pi :pi-prev :kappa])
-   :step (fn [state in ps _ _]
+   :step (fn [state in ps t _]
            (let [p (:sfc ps)
                  y0 (or (get in "sfc/output") (:Y state))
                  read-pi (get in "sfc/nfc-profit-share")
@@ -130,10 +131,35 @@
                  pi-prev (if read-pi (:pi state) (:pi-prev state))
                  kappa (or (get in "sfc/nfc-investment-share") (:kappa state))
                  ye (* y0 (+ 1.0 (double (:n p))))
-                 inv (sfc/investment p ye pi {:kappa kappa :pi-prev pi-prev})]
+                 inv (cond-> (sfc/investment p ye pi {:kappa kappa :pi-prev pi-prev})
+                       (get-in p [:given t :kappa]) (assoc :nfc (* (double (get-in p [:given t :kappa])) ye)))]
              {:state (assoc state :pi pi :pi-prev pi-prev :kappa kappa)
               :emits {"sfc/investment" inv "sfc/nfc-investment" (/ (:nfc inv) ye)}}))}
   iso opts))
+
+(defn fiscal-error
+  "[state noise]: the state's government consumption, investment and
+  benefits each scaled by exp(sd z - sd^2/2), z a standard normal from
+  the member's own generator (:noise, an augur.math/rng-state; advanced
+  in noise) and sd the parameters' :fiscal-sd: the fiscal rule's model
+  error, drawn by an ensemble's members (bnm.sfc-analysis/perturb). A
+  state without :noise (one member, phase A) is unchanged."
+  [state p]
+  (if-let [g (:noise state)]
+    (let [[zs g'] (m/with-rng g (fn [r] (vec (repeatedly 3 #(m/normal! r)))))
+          shock (fn [x k z] (let [sd (double (get-in p [:fiscal-sd k] 0.0))] (* (double x) (Math/exp (- (* sd z) (* 0.5 sd sd))))))]
+      [(-> state (update :cg shock :cg (zs 0)) (update :ig shock :ig (zs 1)) (update :ben shock :ben (zs 2))) g'])
+    [state nil]))
+
+(defn given-fiscal
+  "The state with government consumption, investment and benefits set
+  from the parameters' :given {year {:cg :ig :ben share}} for year `t`
+  (a conditional forecast's observed path, bnm-cvs): each that share of
+  the year's expected output, as bnm.sfc/step-given's :government."
+  [state p t]
+  (if-let [g (get-in p [:given t])]
+    (reduce (fn [st k] (if-let [sh (get g k)] (assoc st k (* (double sh) (double (:Y st)))) st)) state [:cg :ig :ben])
+    state))
 
 (defn accounts-module
   [iso st p & [opts]]
@@ -157,10 +183,13 @@
    :params {:sfc {:value p}}
    :observes (filterv #(not= "sfc/bsm" (:var %)) observes)
    :init (dissoc st :bsm :bsm-prev :init-buffer)
-   :step (fn [state in ps _ _]
+   :step (fn [state in ps t _]
            (let [p (:sfc ps)
                  open (get in "sfc/bsm")
+                 [state noise] (fiscal-error state p)
+                 state (given-fiscal state p t)
                  {d :state fof :fof o :out} (sfc/accounts state open (get in "sfc/property-income") (get in "sfc/credit") (get in "sfc/investment") p)
+                 d (cond-> d noise (assoc :noise noise))
                  end (sfc/apply-fof open fof)
                  y (:Y o)
                  nl (:net-lending o)]

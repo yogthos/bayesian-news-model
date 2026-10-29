@@ -77,8 +77,15 @@
   namespace), :keep (false) whether to return each member's emits.
   {:t [...] :members [engine results when :keep] :memories [...]
   :states [each member's final states] :params [each member's final
-  parameters] :analysed [t ...]}."
-  [ms-of {:keys [members from to dt shared analyses assimilate-through seed params on-step keep]
+  parameters] :analysed [t ...]}. :forks {:at #{t ...} :years n}: after
+  step t (and its analyses) each member is also run n steps on with no
+  analysis, a free run from t branched off the assimilated pass (needs
+  :keep): :forks {t [each member's engine result]}, as free-run from t
+  gives, one assimilated pass for many origins. With :variants {k (fn
+  [t runners]) -> runners} each branch starts from its function's
+  runners (a conditional free run: parameters given a path), :forks {t
+  {k [...]}}."
+  [ms-of {:keys [members from to dt shared analyses assimilate-through seed params on-step keep forks]
           :or {members 1 shared #{} keep false}}]
   (let [mss (vec (for [i (range members)]
                    (let [ms (vec (ms-of i))]
@@ -86,17 +93,27 @@
         by (into {} (map (juxt :module identity)) (first mss))
         g (m/rng (or seed 1))
         rate-order (:rate (eng/order (first mss)))
-        opts {:from from :to to :dt dt :params params :keep keep}]
+        opts {:from from :to to :dt dt :params params :keep keep}
+        step-all (fn [rs]
+                   (let [r0 (eng/advance (first rs))
+                         given (into {} (for [id shared :when ((:stepped r0) id)]
+                                          [id {:level (get (:level-cur r0) id) :rate (get (:cur r0) id)}]))]
+                     (into [r0] (map #(eng/advance % {:given given}) (rest rs)))))
+        fork (fn [rs]
+               (loop [rs rs k (:years forks)]
+                 (cond (zero? k) (mapv eng/result rs)
+                       (eng/done? (first rs)) (throw (ex-info "bnm.coupled: a fork runs past :to" {:years (:years forks)}))
+                       :else (recur (step-all rs) (dec k)))))]
     (loop [rs (mapv #(eng/runner % opts) mss)
            mems (vec (repeat members (vec (repeat (count analyses) nil))))
            ts []
-           analysed []]
+           analysed []
+           forked {}]
       (if (eng/done? (first rs))
-        {:t ts :members (when keep (mapv eng/result rs)) :states (mapv eng/states rs) :params (mapv eng/params rs) :memories mems :analysed analysed}
-        (let [r0 (eng/advance (first rs))
-              given (into {} (for [id shared :when ((:stepped r0) id)]
-                               [id {:level (get (:level-cur r0) id) :rate (get (:cur r0) id)}]))
-              rs (into [r0] (map #(eng/advance % {:given given}) (rest rs)))
+        (cond-> {:t ts :members (when keep (mapv eng/result rs)) :states (mapv eng/states rs) :params (mapv eng/params rs) :memories mems :analysed analysed}
+          forks (assoc :forks forked))
+        (let [rs (step-all rs)
+              r0 (first rs)
               t (:t r0)
               _ (when on-step
                   (doseq [id rate-order :when ((:stepped r0) id)
@@ -115,7 +132,12 @@
                                           [rs' (mapv #(assoc %1 j %2) mems ms') (or hit (not (identical? rs rs')))]))
                                       [rs mems false] (map-indexed vector analyses))
                               [rs mems false])]
-          (recur rs mems (conj ts t) (cond-> analysed hit (conj t))))))))
+          (recur rs mems (conj ts t) (cond-> analysed hit (conj t))
+                 (cond-> forked
+                   (contains? (:at forks) t)
+                   (assoc t (if-let [vs (:variants forks)]
+                              (into {} (for [[k f] vs] [k (fork (f t rs))]))
+                              (fork rs))))))))))
 
 (defn free-run
   "run-ensemble from :from, the analyses updating the members through

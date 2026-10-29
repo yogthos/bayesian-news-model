@@ -776,7 +776,16 @@
       :rho (or rho n)
       :phillips (when (and phillips (:phi-slope kp)) (select-keys kp [:alpha :ustar :phi-slope :phi-max]))
       :invest (fit-investment inv-rows base prior)
-      :kappa-bar (e (fn [x _] (/ (get-in x [:inv :nfc]) (:Y x))) 0.1)}
+      :kappa-bar (e (fn [x _] (/ (get-in x [:inv :nfc]) (:Y x))) 0.1)
+      ;; the fiscal rule's error: the root mean square yearly change in the
+      ;; log of each fiscal share (weighted at :fit-half-life), what an
+      ;; ensemble's members draw as model error (bnm.modules.sfc)
+      :fiscal-sd (into {} (for [[k f] {:cg #(get-in % [:cons :gov]) :ig #(get-in % [:inv :gov]) :ben :ben}]
+                            [k (min 0.25 (Math/sqrt (ew (for [[y x] xs :let [q (xs (dec y))] :when q
+                                                              :let [a (ratio (f x) (:Y x)) b (ratio (f q) (:Y q))]
+                                                              :when (and a b (pos? a) (pos? b))]
+                                                          [y (let [d (Math/log (/ a b))] (* d d))])
+                                                        fit-half-life origin 0.0004)))]))}
      (if consumption
        (let [prop (fn [hl'] (ew (for [[y x] xs :let [yd (+ (get-in x [:cons :hh]) (get-in x [:inv :hh]) (get-in (book x) [:nl :hh]))]]
                                   [y (ratio (get-in x [:cons :hh]) yd)]) hl' origin 0.9))

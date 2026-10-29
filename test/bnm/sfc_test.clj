@@ -434,3 +434,20 @@
         (is (= (:bsm s2) (:bsm s3)))
         (is (not (contains? s3 :open)))
         (is (number? (get e "sfc/credit-hh")))))))
+
+(deftest a-given-path-sets-the-fiscal-and-investment-shares
+  ;; conditional forecasts (bnm-cvs): an observed government path and NFC
+  ;; investment share given for some years, as step-given's :government and
+  ;; :investment-nfc set them (shares of expected output)
+  (let [given {2003 {:cg 0.25 :ig 0.05 :ben 0.2 :kappa 0.07}}
+        ms (msfc/modules "SIM" st0 (assoc p0 :given given))
+        r (eng/run ms {:from 2001 :to 2005})
+        plain (eng/run (msfc/modules "SIM" st0 p0) {:from 2001 :to 2005})
+        out (fn [r v i] (get-in r [:emits :sfc-accounts v i]))
+        ye (* (out r "sfc/output" 1) (+ 1.0 (:n p0)))]
+    (is (= (out plain "sfc/output" 1) (out r "sfc/output" 1)) "nothing before the given year")
+    (is (< (Math/abs (- (get-in r [:emits :sfc-firms "sfc/nfc-investment" 2]) 0.07)) 1e-12))
+    (is (< (Math/abs (- (get-in r [:states :sfc-accounts :cg]) (* 0.25 ye (Math/pow (+ 1.0 (:n p0)) 2)))) 1e-9)
+        "consumption set to the share of expected output in 2003, grown at trend after")
+    (is (not= (out plain "sfc/output" 2) (out r "sfc/output" 2)))
+    (is (every? #(< % 1e-10) (keep identity (get-in r [:emits :sfc-accounts "sfc/tfm-gap"]))))))
