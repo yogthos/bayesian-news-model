@@ -2449,6 +2449,80 @@ base's 0.41, outcome rate 0.05), where the 2010-11 price spike did not
 bring 2007-08's onsets back. No bug was found on either side beyond
 those above.
 
+## Corrected base, 28 October 2026: WDI zeros that were missing values (run t47-world-norel, bead bnm-as1)
+
+Not a trial. The World Bank API publishes some missing values as 0, not
+null, and scripts/slow-normalize.py took every non-null value, so
+data/slow/series.tsv held, among others, Venezuela's trade openness and
+agriculture, manufacturing and services shares at 0 for 1991-2011 and
+Brazil's sector shares at 0 for 1960-1980 (the raw files on disk,
+data/raw/slow/worldbank, have the 0s; nothing was downloaded). An audit
+of every WDI indicator for exact zeros (332 values dropped in all):
+- impossible zeros, now gaps: trade, % GDP (VEN 1991-2011); agriculture,
+  % GDP (BRA 1960-80, VEN 1991-2011); manufacturing (BRA 1960-78, VEN
+  1991-2011, COD 1991); services (BRA 1960-77, VEN 1991-2011); private
+  credit (ROU 1993-95, GNB 2002); broad money (CHL 1960); external debt,
+  % GNI (GNB 1970-74); FDI inflows (115 values: the planned economies
+  in the 1980s, ALB, BGR, HUN, ROU, MNG, ETH, and small states' years
+  before they report);
+- leading zeros of a count, now gaps: scientific articles before a
+  country reports (SRB, MNE, XKX to 2006-07, counted under Serbia and
+  Montenegro; SSD before 2011; TLS before 2003);
+- zeros kept as measurements: oil, mineral and total rents, fuel, metal,
+  food and high-tech export shares, military spending (Costa Rica,
+  Iceland, Panama since 2000), renewables' share in the Gulf, internet
+  and mobile use before they existed, tertiary enrolment in a few
+  1970s years, and single-year zeros of growth, inflation and
+  population growth (Greece's 1990 growth sits between source values
+  rounded to a tenth). Logged variables' non-positive values were
+  already dropped.
+WDI stays known nine months after its year (the existing lag); a dropped
+value goes stale as any gap does. scripts/slow-normalize-test.py tests
+the rule; the old file is kept as data/slow/series.tsv.pre-as1.
+
+**t47-world-norel**, the base rebuilt on the corrected series with
+t44-world-norel's command (bnm.world-run --without-relations true, as
+t46 and t45fix-norel), against t44-world-norel, origins 2003-2022:
+- smoke (to 2008, in three batches of kinds: all thirteen at once runs
+  out of a 16 GB heap): twelve kinds pass; food price shocks fail one
+  check, the country year node's feedback group dead in 1999-2008, which
+  fails the same way on the old series and on t46's commit 02f980a, so
+  it is not this change (bnm-wns). A smoke to 2025 fails banking's
+  distress group the same way: Romer & Romer's measure ends in 2017;
+- year nodes, pooled over thirteen kinds: Brier +0.00000 [-0.00000
+  +0.00001], log +0.00001 [-0.00001 +0.00002]; the largest per kind,
+  banking crises, Brier +0.00003 [-0.00000 +0.00009], log +0.00011
+  [-0.00003 +0.00030]; market crashes byte-identical;
+- watch-list rule, hard onsets, top 10: base recall 0.274, unchanged
+  (persistence +0.071 [+0.049 +0.092], climatology +0.037 [+0.021
+  +0.058]); every kind's recall identical; t47 against t44 +0.000
+  [+0.000 +0.000] (k = 20: -0.001);
+- what moves: no country's year node in 2003-2022 moves by more than
+  0.006 (Malaysia, banking, 2010). Venezuela's own nodes move most, in
+  1992-2013 and mostly at the quarters: currency crises' second-window
+  quarter by up to -0.081 (1997-2001), sovereign defaults' lead quarter
+  by up to -0.037 (2003-2012), coups, inflation and currency crises'
+  year node by up to -0.039 in 1992; region and subregion nodes in the
+  Americas, and through the shared learning a few others, by up to
+  0.04 at the quarters. Brazil's 1960-80 zeros change nothing (no
+  forecast differs before 1992).
+
+**Trials that used the old base.** Every trial since series.tsv was built
+(19 October) read the zeros: trials 42-45 and their norel benches,
+t44-world-norel as bench or offset for 44, 45, T1, T2, T8, T4, T8b, T3,
+T6, T9, H4, SS, the watch-list rule's record, and fs-norel (the base
+through bnm.fast-run) for FSa-FSc, whose exposures also read the
+zeros (FSa's fertiliser exposure is agriculture's share; FSc's
+chokepoints go through openness, but its origins, 2020-2022, read none
+of the dropped years). The base moved by about 1e-5 on the
+pooled scores and not at all on the watch list, against registered
+intervals of 1e-4 to 1e-2; the countries affected are one of about 170
+in the test era, and for Venezuela the change is a few hundredths at the
+quarters. No registered verdict can plausibly move, so none is rerun.
+t44-world (with relations) is not rebuilt: no trial benches against it
+(trial 45 reads it for the record only). **The base for future trials is
+t47-world-norel.**
+
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
 Registered before the pilot is run. docs/STOCK-FLOW.md, bead bnm-62z.6:

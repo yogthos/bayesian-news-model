@@ -6,6 +6,15 @@ choosing the onset record, for the Bonferroni count of `bnm.anticipation
 is locked (docs/PHASE-CHANGES.md). Add a line before scoring anything new;
 the count is the number of lines below.
 
+Corrected base, 28 October 2026 (bnm-as1, not a trial and not counted):
+the trials from 42 to FSc read WDI missing values published as 0
+(Venezuela's trade and sector shares 1991-2011, Brazil's sector shares
+1960-80, and others; docs/PHASE-CHANGES.md). The base rebuilt without
+them, t47-world-norel, matches t44-world-norel to about 1e-5 on the
+pooled scores and exactly on the watch list (hard top-10 recall 0.274),
+so no verdict below is rerun. Trials from now on bench against
+t47-world-norel.
+
 | # | configuration | first scored | note |
 |---|---|---|---|
 | 1 | mix | 2026-10 | event-code mix |
