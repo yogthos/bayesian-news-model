@@ -1188,6 +1188,28 @@ import exposure keeps its design-year sign out of sample, at a fifth of
 its design-year size. The design-year numbers quoted in the registration
 were not rerun.
 
+**Rerun after a base correction, 29 October 2026 (trial T1, bead
+bnm-82j.7).** The offset base moved: t48-world-norel (bnm-wns, unknown
+errors nil, groups without inputs out) in place of t44-world-norel, and
+food price shocks, food import exposure's second kind, moved most. The
+registered result and the warm-up correction above stand as run. The
+same command with --run t48-world-norel on 7d5740b
+(data/runs/sequencing/horizon-t1-registered-t48.tsv; the same code on
+t44-world-norel reproduces the 0cf-fix file exactly):
+1. (a) slow states: +0.100 (null +0.006, sd 0.094), p 0.154: level,
+   unchanged.
+2. **(b) fast states: +0.124 (null -0.007, sd 0.070), p 0.025: still
+   passes** (registered +0.078, p 0.109, level; after bnm-0cf +0.143, p
+   0.015). Food import exposure's s c12 +0.088 (+0.102 after bnm-0cf),
+   reserves' +0.160 (+0.183); with no offset +0.069, p 0.154, unchanged
+   (it does not read the base).
+The pass survives the corrected base, a little smaller. It is still a
+pass reached through a fix made after the outcome, a candidate that
+needs data the test has not seen (the years after 2022, locked) to be
+confirmed, not a registered pass. The watch-list rule v2 does not fit
+the trial's shape (an offline fit of five states with permutation
+nulls, no top-k list), so no v2 reading is given.
+
 ## Pre-registered, 22 October 2026: the base's calibration by stock regime (trial T2) and its plain recalibration (trial T8)
 
 Registered before any outcome after 2002 is read for these tests. On the
@@ -1421,6 +1443,26 @@ small losses; no reversion +0.0011, unpooled +0.0005: level. For the
 record, food price shocks (outside the primary) turn from +0.006 to
 -0.018 log [-0.050, +0.009], and their Brier from -0.004 to +0.009
 [+0.0002, +0.024], a small harm. No verdict changes.
+
+**Rerun after a base correction, 29 October 2026 (trial T8b, bead
+bnm-82j.7).** The base moved: t48-world-norel (bnm-wns) in place of
+t44-world-norel. The registered result and the warm-up correction above
+stand as run. The same command with --run t48-world-norel on 7d5740b
+(data/runs/sequencing/recalibrate-online-2003-2022-t48.tsv, run
+t48-world-norel-online-registered; the same code on t44-world-norel
+reproduces the 0cf-fix file exactly): (1) online against the raw base,
+financial and social pooled, log -0.0003 [-0.0020, +0.0012]: level
+(registered +0.0001, after bnm-0cf +0.0002); (2) Brier -0.0001 [-0.0006,
++0.0004]: no harm; (3) per kind, inflation crises -0.0010 and wars
+-0.0013 exclude zero, sovereign defaults -0.0026 [-0.0061, +0.0004] no
+longer does; no reversion +0.0005, unpooled +0.0003: level. Food price
+shocks and market crashes, the two kinds the correction moved, are
+outside the primary: food price shocks +0.0095 log [-0.0010, +0.0270],
+Brier -0.0003 (the small harm after bnm-0cf is gone); market crashes
+-0.035 [-0.239, +0.105]. **No verdict changes: level, no harm.**
+Watch-list reading (bnm-82j.1, descriptive; v2 does not fit a
+recalibration, which adds no group to draw nulls of): hard top 10
++0.000 [-0.001, +0.001] against t48-world-norel.
 
 ## Pre-registered, 23 October 2026: named stock x trigger interactions and the principal contradiction (trial T3)
 
@@ -1763,6 +1805,25 @@ line but the dark scenario's is byte-identical to the 0cf-fix file.
 The worst era and the harm check do not use the dark sets and are
 unchanged (-0.00051 [-0.0047, -0.0002]). **The verdict stands: the
 dimensions are not kept.**
+
+**Rerun after a base correction, 29 October 2026 (trial T9, bead
+bnm-82j.7).** The base moved: t48-world-norel (bnm-wns) in place of
+t44-world-norel; of T9's ten kinds, market crashes moved most. The
+registered result and the corrections above stand as run. The same
+command with --run t48-world-norel on 7d5740b, dark draws from mixed
+seeds (data/runs/sequencing/robustness-t9-registered-t48.tsv):
+1-3. the dropout tests read the gauges route, which does not read the
+   base's forecast, and are byte-identical to the 0z5-mixed file: slow
+   gauges -0.198 [-0.556, -0.096] passes, dark -0.186 [-0.416, -0.100]
+   passes, lags doubled -0.349 [-1.12, +1.12] fails;
+4. calibration drift: +0.006 [-0.065, +0.055] (was +0.004): fails;
+5. worst era: -0.00007 [-0.0013, +0.0010] (was -0.00005): fails.
+Harm check: the states' worst era against the base -0.00054 [-0.0035,
++0.00007] (was -0.00051 [-0.0047, -0.0002]); the lower end is still
+below -0.002 log, so the bound is still crossed. **The verdict stands:
+the dimensions are not kept.** The watch-list rule v2 does not fit the
+trial's shape (offline ridged fits on the lattice and gauge routes, no
+group at a node), so no v2 reading is given.
 
 ## Pre-registered, 23 October 2026: cells against provinces, with what is in the cells (bead bnm-3ka.11)
 
@@ -2346,6 +2407,48 @@ rule's +0.03 either way. The shock trial's own warm-up fix (review item
 1) now lives in bnm.warm-up, shared with every other fit; its output is
 unchanged.
 
+**Rerun after a base correction, 29 October 2026 (trial SS, bead
+bnm-82j.7).** The base moved: t48-world-norel (bnm-wns) in place of
+t44-world-norel, and food price shocks, one of the trial's three kinds,
+moved most. The registered result and the review's rerun above stand as
+run. bnm.shock-trial took its base as a constant and wrote over the
+registered file; it now takes --run and --out (the defaults are the
+registered ones, and they reproduce shock-trial-test-fix.txt exactly).
+Rerun with --run t48-world-norel
+(data/runs/sequencing/shock-trial-test-t48.txt), the registered result
+first, then the review's:
+1. primary, S against the base, top-10 recall on hard onsets: -0.024
+   [-0.065, +0.012] / -0.021 [-0.064, +0.016] / **+0.006 [-0.015,
+   +0.032]**. The upper end is below the registered +0.047 (not below
+   the rule's +0.03): **fail, equivalent to nothing, verdict unchanged**;
+2. S against P +0.012 / +0.009 / +0.027 [-0.011, +0.069]; log per row S
+   less B' -0.0024 / -0.0077 / +0.057 [-0.020, +0.190], the no-harm
+   bound still not met; Brier S less B' +0.005 [-0.001, +0.015];
+3. per kind (Holm over three, none rejects): food price shocks +0.000
+   [-0.018, +0.013], protest surges +0.039 [+0.000, +0.095] (p 0.11),
+   violence surges -0.020 [-0.075, +0.049];
+4. for the record: k = 5 +0.011, k = 20 -0.007, 10% +0.021, all rows
+   k = 10 -0.011; the base against persistence +0.069 and climatology
+   +0.060; AUC on hard rows, base / S, food price shocks 0.601 / 0.524
+   (t44 0.532 / 0.512), protest 0.770 / 0.781, violence 0.699 / 0.693.
+B' against the base on log is -0.148 [-0.429, -0.001] (after the review
+-0.011). It is food price shocks at origins 2011 and 2012, fitted on
+origins 2007 and 2007-2008 only: the slope on logit p comes out
+negative, as the review found, and t48's lower base forecasts in those
+years (mean p 0.061 and 0.030, t44's 0.412 and 0.141) carry it to a mean
+B' of 0.98 and 0.93 (log 4.9 and 3.8 a row against the base's 0.20 and
+0.07). S shares the fit, which is why S less B' looks like a gain on log.
+That is the registered specification (a refit once five onsets are
+fitted), not a code fault, and it leaves the ranking of the other years
+alone; the primary moved from -0.021 to +0.006 mostly through the
+base's own food ranking (AUC 0.53 to 0.60) and protest surges.
+Watch-list rule v2, descriptive (bnm.shock-trial --nulls 40 on 70eb95f,
+the subset variance fixed in review; data/runs/sequencing/
+shock-trial-test-v2-t48.txt): S +0.006, the forty derangements -0.009
+(sd 0.016), gain over their mean +0.015 [-0.020, +0.050], p 0.23: no
+gain; log over B' against the draws' mean +0.020 [-0.096, +0.136]: not
+harm. Size at R = 8 on these draws 146 of 12,000 (0.012).
+
 ## Pre-registered, 28 October 2026: fast signals at the quarter node, commodity prices (trial FSa, bead bnm-82j.2)
 
 Registered before any run with the family. The slow drivers did not time
@@ -2468,6 +2571,40 @@ watch beyond the base, and at the quarter they cost: the nested group,
 learning online over sixty years of mostly quiet price moves, adds noise
 to the quarters' timing of the two kinds whose quarters already read
 world food and oil prices (bnm.named).
+
+**Rerun after a base correction, 29 October 2026 (trial FSa, bead
+bnm-82j.7).** The base moved: t48-world-norel (bnm-wns) in place of
+t44-world-norel, and FSa's loss was mostly food price shocks, the kind
+the correction moved most. The registered result and the rerun after
+the review (fs-a-fix, below under FSc) stand as run. fs-a-t48 and
+fs-a-placebo-t48, bnm.fast-run --family commodities (with and without
+--placebo true) on 7d5740b, whose lattice is t48's (bnm.fast-run
+--family none reproduces t48-world-norel byte for byte, the watch-list
+v2 calibration), scored by bnm.fast-score against t48-world-norel
+(data/runs/fs-a-t48/fast-score.txt), the registered result first:
+1. primary, top-10 recall on hard onsets: -0.006 [-0.015, +0.001]
+   (fs-a-fix -0.009 [-0.024, +0.001]) / **-0.006 [-0.016, +0.002]**, p
+   0.89: no gain, equivalent to nothing;
+2. against its placebo: +0.006 [+0.001, +0.012] / +0.001 [-0.010,
+   +0.011]: the real exposures no longer rank better than another
+   country's;
+3. harm: year nodes' pooled Brier -0.00077 [-0.00229, +0.00040] /
+   -0.00012 [-0.00182, +0.00144], the lower end still below -0.0003, so
+   the bound is crossed; food price shocks' year node -0.01065 /
+   -0.00328 [-0.00675, +0.00009]; quarters -0.00043 / -0.00045
+   [-0.00092, +0.00002];
+4. **not adopted, verdict unchanged**: equivalent to nothing, harm bound
+   crossed. Most of the year nodes' loss to food price shocks went with
+   the base's correction.
+Watch-list rule v2, descriptive (bnm.watchlist --v2 on 70eb95f, after
+amendments A1-A2; the null is FSa's own shape, wl2h-derange-1..4 and
+wl2h-shift-1..4 on t48-world-norel; the commodities qualify for time
+shifts under A1): gain over the null mean +0.0012 [-0.0115, +0.0139], p
+0.43, no gain; harm, Brier over the null mean +0.00018 [-0.00195,
++0.00232], not harm; equivalent to nothing (detectable gain +0.0147);
+year nodes' Brier against the bare bench -0.00012 [-0.00182, +0.00144];
+not adopted. The placebo the same way: -0.0003 [-0.0078, +0.0073], not
+harm (-0.00079 [-0.00250, +0.00091]).
 
 ## Pre-registered, 28 October 2026: fast signals at the quarter node, exchange rates and sovereign spreads (trial FSb, bead bnm-82j.2)
 
@@ -2833,6 +2970,17 @@ since trial 42 had dead groups weighted: trials 42-45 and their norel
 benches, T1, T2, T8, T4, T8b, T3, T6, T9, H4, SS, the watch-list rule's
 record, and FSa-FSc through fs-norel (whose fast groups at the quarters
 now drop out when stale everywhere). Not rerun: left for a decision.
+
+Decided 29 October 2026 (bead bnm-82j.7): rerun the trials that turn on
+food price shocks or market crashes, or sit near a decision line: T1(b),
+SS, FSa, T8b and T9, each with a correction under its result (no verdict
+changes; T1(b)'s pass after bnm-0cf holds at +0.124, p 0.025). Not
+rerun, recorded as unaffected: trials 42-45, T2, T8, T4, T3, T6, H4,
+FSb and FSc. For the kinds other than those two the base moved less
+than 0.0006 Brier, against registered intervals of 1e-4 to 1e-2; of
+these trials, 42, T4, T6, H4 (banking crises and market crashes), FSb
+and FSc also read market crashes or food price shocks, and are left on the judgement that none sits near
+its decision line, not on the size of the move.
 
 ## Pre-registered, 22 October 2026: the energy pilot (trial P1)
 
