@@ -2292,6 +2292,78 @@ reruns read on v2 from now on take A1 and A2.
   recall, which helps a candidate, and 0.0016 higher on Brier, which
   does not) and no reading of a candidate turns on it.
 
+**Amendment A3, 29 October 2026, before any trial is scored on this
+rule: the origins' term is dropped.** No trial has a v2 verdict: the
+FSa and SS readings under the rerun on t48-world-norel (2e9a074) and the
+readings above are descriptive. A3 replaces step 2's interval, and step
+4's with it; everything else stands, A1 and A2 included.
+- **The gain.** G +/- t(0.95, R - 1) x sd0 x sqrt(1 + 1/R): sd0 the
+  draws' spread, R - 1 degrees of freedom, a gain when the lower end is
+  above 0 (one-sided 5%). vb, the origins' bootstrap variance of G, is
+  no longer in the interval; bnm.watchlist --v2 prints it for the
+  record.
+- **Why.** The review of the amendment above (0d00b26, 70eb95f) found the
+  interval counts a draw's noise twice. sd0 is the spread between null
+  draws scored on the same origins, so the part of a draw's noise that
+  varies origin by origin is already in it; vb adds that part again. A
+  candidate is one more draw of its shape plus whatever it holds, and
+  under the null it is exchangeable with the R draws, so sd0 sqrt(1 +
+  1/R) is the whole spread of G. With both terms the size was 0-0.4%
+  where 5% was registered, and the detectable gain +0.015 where the
+  draws allow about +0.010.
+- **The harm, by the same argument.** The Brier draws are scored on the
+  same origins as the candidate, so their spread holds the origins'
+  noise too, and the candidate's own bootstrap variance (step 4's vb)
+  counts it twice the same way. The harm interval is the Brier over the
+  null mean +/- t(0.95, R - 1) x sd0 x sqrt(1 + 1/R), sd0 the Brier
+  draws' spread; harm when the upper end is below 0. Its size on the
+  eight shuffled draws (each against R of the others) is 35 of 280 at R
+  = 4, 7 of 56 at R = 6, 1 of 8 at R = 7: all of it one draw,
+  wl2h-derange-4, whose Brier against the bench (-0.0014) is three times
+  any other's, which reads as harm against every subset of the rest.
+  That is 12.5%, above 5%, from one draw in eight (eight exchangeable
+  normal draws give rates up to 0.13-0.14 one time in twenty); a false
+  harm keeps a candidate out, the safe side. "No harm shown" (lower end
+  at or above -0.0003) stays reported, not required (A2); at this
+  spread (+/-0.001) it is now within reach.
+- **The measured size** (data/runs/sequencing/watchlist-v2-calibration-
+  a3-{shuffled,all}.txt, bnm.watchlist --calibrate on the existing runs,
+  no new world runs), each draw in turn the candidate against R of the
+  others: on the eight shuffled draws 16 of 280 at R = 4 (0.057), 3 of
+  56 at R = 6 (0.054), 1 of 8 at R = 7 (0.125); R = 8 needs nine. With
+  the four noise draws added (twelve): 0.113, 0.102, 0.114 and 0.106 at
+  R = 4, 6, 7 and 8, but noise draws gain +0.006 and +0.008 where every
+  shuffled draw loses, so the twelve are not exchangeable and this is
+  not the rule's size.
+- **The critical value: t with R - 1 df, kept.** The size within the
+  shuffled draws is above 5%: 5.7% at R = 4 and 5.4% at R = 6. The
+  280 tests come from eight draws, so they are far from independent: on
+  eight exchangeable normal draws, where t is exact, the same count gives
+  a mean of 0.05 with 5-95% range 0-0.13 at R = 4 (0-0.14 at R = 6), and
+  0.054 or more about 40% of the time. 0.057 is what t gives at its
+  nominal size; a wider value (t at 0.955, 14 of 280; at 0.96, 12 of
+  280) would be fitted to these eight draws. Decided on the null draws
+  alone; no candidate's reading was computed under A3 before this.
+- **Power** (planting gains in the shuffled draws, each against R of the
+  others; bnm.watchlist/plant-onsets): spread evenly over origins, 0.61
+  at +0.010, 0.84 at +0.012, 1.00 at +0.015 and +0.020 with R = 4;
+  0.875 at +0.010 and 1.00 from +0.012 with R = 7 (8 tests). Added as
+  whole onsets caught in random years the power is the same, test for
+  test: pooled recall is linear in hits, so G moves by the gain wherever
+  the onsets land, and with vb gone nothing in the test sees where.
+  Simulated (bnm.watchlist/null-power, normal draws at the shuffled
+  spread 0.0031): 0.71 / 0.94 / 1.00 at +0.010 / +0.015 / +0.020 with R
+  = 4, 0.87 / 0.99 / 1.00 with R = 8.
+- **The detectable gain** (80%): +0.009 at R = 8 (+0.0091 simulated;
+  +0.0094 at R = 7, +0.0115 at R = 4), against the registered +0.015.
+  Step 3's equivalence line is this at the trial's own spread, now sd0
+  of its draws (0.0031 on t48-world-norel, thirteen kinds), not sqrt(sd0^2
+  + vb) (0.0050). R = 8 stays: R = 12 buys +0.0086, R = 16 +0.0083.
+- **Code.** bnm.watchlist/null-test takes no origins' variance;
+  false-pass, the calibration (--calibrate) and bnm.shock-trial --nulls
+  use the same interval for gain and harm, and the calibrations print the
+  harm's size and the planted power.
+
 ## Pre-registered, 28 October 2026: supply shocks as event triggers (trial SS, bead bnm-82j.3)
 
 Registered before any outcome after 2002 is read for this test. Do
