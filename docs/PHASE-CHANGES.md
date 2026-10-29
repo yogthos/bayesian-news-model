@@ -2078,6 +2078,90 @@ approximate. Gain over the null mean, 90%:
   0.63; log per row over B' -0.0045 [-0.0147, +0.0057] over the draws'
   mean: no harm beyond their cost. As registered, nothing.
 
+**Amendment, 29 October 2026, before any trial is scored on this rule
+(review of bnm-82j.6).** Two changes to the rule, two to the code that
+reads it, and corrections to the numbers above. The descriptive
+readings above stand: none used a time shift of a short series. Trial
+reruns read on v2 from now on take A1 and A2.
+- **A1, time shifts need history.** A shifted draw reads the input
+  `m` months before the origin. Where that is before the series'
+  first value the group has no input at any place and gets weight 0
+  (bnm-wns), so at those origins the "null draw" is the bench, not a
+  group of the candidate's shape. Port calls and chokepoint transits
+  start in January 2019: for FSc's origins (2020-2022) a 24-60 month
+  shift reads almost nothing. A time-shift draw is used only when the
+  input is known at every shifted read over the scored origins (its
+  operators' window included); otherwise the eight draws are
+  derangements (seeds 1-8). An input with neither a country dimension
+  nor that much history has no shuffled null and is reported as such.
+  For 2003-2022 the commodities qualify (the Pink Sheet from 1960);
+  the fx family does not (11 of the 33 countries' spreads start after
+  1995) and takes derangements, as ports do (bnm.fast-run refuses
+  --null shift for both).
+- **A2, the adoption line.** "4 finds no harm" means the harm verdict
+  is not harm (the upper end of the Brier over the null mean at or
+  above 0); "no harm shown" (the lower end at or above -0.0003) is
+  reported, not required. The year nodes' Brier against the bare bench
+  is printed on the verdict line beside it, for the record: the
+  relative test asks whether the inputs cost more than any group of
+  their shape, not what adopting them costs, and a candidate as costly
+  as noise (about -0.002) passes it.
+- **Code.** bnm.watchlist --v2 now prints step 3 (equivalence, at the
+  trial's own spread from its draws) and the verdict, which it did not.
+  The calibrations (--calibrate, shock-trial --nulls) computed each
+  draw's origins' variance against all the other draws and used it for
+  every subset of R; it is now computed against the subset tested.
+- **Size, recomputed** from the eight shuffled draws with the
+  variance against the subset: 1 of 280 at R = 4, 0 of 56 at R = 6, 0
+  of 8 at R = 7 (each draw against the other seven); all twelve
+  (noise added) at R = 8, 1 of 720 (0.001), not 21 of 1,980 (0.011),
+  which came from the variance against all eleven (trial SS's 34 of
+  12,000 was computed the same way and is not rerun here). The rule's size is
+  about 0-0.4%, not 5%. The prediction interval alone (sd0, t with R -
+  1 df) is at its nominal size within the shuffled draws (0.057 at R =
+  4, 0.054 at R = 6); the origins' term adds the part of a draw's noise
+  that varies origin by origin a second time, since sd0 is measured on
+  the same origins and already holds it. "The origins' term is what
+  holds the size" is true only of noise and shuffled draws pooled,
+  which are not exchangeable. The rule is valid and conservative; it
+  is left as registered (a choice: without the origins' term the size
+  is 5% and the detectable gain about +0.010).
+- **Power, by planting gains** in the existing draws (each draw
+  against the other seven, a gain g added): spread evenly over origins,
+  0.25 at +0.010 and 1.00 at +0.015; added as whole onsets caught in
+  random years (the origins' variance grows to 0.0046-0.0058), 0.29 at
+  +0.010, 0.75 at +0.015, 0.96 at +0.020. 80% falls near +0.016, close
+  to the registered +0.015.
+- **Harm.** Each shuffled draw against the other seven: none is
+  harm (0 of 8). The intervals of the Brier over the null mean are
+  +/-0.0012 to +/-0.0026, so the test flags only a cost of about 0.002
+  or more beyond the null, and no draw's lower end reaches -0.0003, so
+  "no harm shown" is out of reach at this precision. Judged against the
+  null, a candidate that costs as much as every draw passes. The
+  shuffled draws cost little against the bench (-0.0014 to +0.0002,
+  mean -0.0003), so this matters little with this null; it would with
+  a costly one (noise costs about -0.002). Hence A2's bench line.
+- **The correction under the fast-signal review** says draws of one
+  shape "differ by more than the origin bootstrap allows for". Without
+  the lattice they do not: the shuffled draws' sd is 0.0031 against
+  their origins' sd of 0.0039, the noise draws' 0.0058 against 0.0053.
+  What the null corrects is the shape's cost, -0.007 on the primary
+  for every shuffled draw against the bench, not an excess of spread.
+- **The null, otherwise.** Shifts by whole years keep the series'
+  autocorrelation and season and read only the past. Commodity cycles
+  run several years, so a 24-month shift may keep some of the signal;
+  that biases the null mean up and the test against a gain. A
+  derangement moves a country's inputs and their coverage together, so
+  the set of countries with inputs is kept, not which country has
+  them; for the commodities only the exposures move and the world
+  prices keep their timing, so derangements test the place and shifts
+  the timing. Shuffled over noise was argued from the null draws (the
+  calibration files precede the readings, 00:42 and 00:55, registered
+  together); the FS trials' results against the bench were known. The
+  choice cuts both ways (the shuffled null's mean is 0.009 lower on
+  recall, which helps a candidate, and 0.0016 higher on Brier, which
+  does not) and no reading of a candidate turns on it.
+
 ## Pre-registered, 28 October 2026: supply shocks as event triggers (trial SS, bead bnm-82j.3)
 
 Registered before any outcome after 2002 is read for this test. Do
