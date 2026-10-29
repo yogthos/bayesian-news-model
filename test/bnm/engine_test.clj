@@ -308,3 +308,12 @@
         rn (eng/update-emits rn :a #(assoc % "a/level" 100.0))
         r (eng/result (eng/advance rn))]
     (is (= [nil 100.0] (get-in r [:emits :c "c/read"])))))
+
+(deftest an-analysis-may-not-correct-emits-already-read-within-their-step
+  ;; the whole-step rule: a reader at lag 0 consumed the step's emits within
+  ;; the step, so changing them afterwards would give one emit two values
+  (let [a (counter :a :W nil)
+        b (counter :b :R "a/level")
+        rn (eng/advance (eng/runner [a b] {:from 2000 :to 2002}))]
+    (is (thrown? clojure.lang.ExceptionInfo (eng/update-emits rn :a #(assoc % "a/level" 100.0))))
+    (is (some? (eng/update-emits rn :a identity)) "an unchanged emit is no correction")))

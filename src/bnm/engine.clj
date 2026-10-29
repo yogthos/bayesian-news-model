@@ -419,9 +419,22 @@
   "The runner with module `id`'s emits of the last step it took replaced by
   (f emits), as the next steps read them at a lag: an analysis that
   corrects a level must correct what its readers see of it (bnm.sfc-
-  analysis rescales a member's nominal scale, the output among it)."
+  analysis rescales a member's nominal scale, the output among it). Throws
+  when a variable it changes was read at lag 0 within that step: those
+  readers have consumed it, and the step may not see two values of one
+  emit (the whole-step rule)."
   [rn id f]
-  (let [i (dec (:i rn))]
+  (let [i (dec (:i rn))
+        old (or (get-in rn [:hist i id]) (get-in rn [:cur id]))
+        new (when old (f old))
+        changed (when old (filter #(not (same-value? (get old %) (get new %))) (distinct (concat (keys old) (keys new)))))
+        within (distinct (for [[reader es] (:plan rn) {:keys [var emitter lag-steps]} es
+                               :when (and (= emitter id) (zero? lag-steps))
+                               v changed :when (var-match? v var)]
+                           [reader v]))]
+    (when (seq within)
+      (throw (ex-info (str "bnm.engine: " id "'s emits " (pr-str (vec within)) " were read within their step; an analysis may not change them")
+                      {:module id :read-by (vec within)})))
     (cond-> rn
       (get-in rn [:hist i id]) (update-in [:hist i id] f)
       (get-in rn [:cur id]) (update-in [:cur id] f))))
