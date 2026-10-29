@@ -1749,6 +1749,21 @@ Harm check: the states' worst era against the base -0.00051 [-0.0047,
 the dimensions are not kept**; the two dropout passes and the harm
 crossing are both unchanged by the fix.
 
+**Correction after the outcome, 29 October 2026 (trial T9, bead
+bnm-0z5).** The dark draws were seeded at 1000003 (seed + d) + t, and
+augur.math/rng fills its state linearly from the seed, so each country's
+key across years was a Weyl walk: its dark years were not independent
+(dark-year counts per country spread 1.65 to 2.60 over draws, against
+2.19 for independent years). robustness/dark-countries now seeds from
+augur.math/rng-mixed (augur v0.13.0). Rerun on the fixed code as above
+(data/runs/sequencing/robustness-t9-registered-0z5-mixed.tsv): every
+line but the dark scenario's is byte-identical to the 0cf-fix file.
+2. dropout, a fifth of countries dark: ratio(D) 0.702 against 0.888,
+   D - P' -0.186 [-0.416, -0.100]: passes (was -0.175 [-0.361, -0.098]).
+The worst era and the harm check do not use the dark sets and are
+unchanged (-0.00051 [-0.0047, -0.0002]). **The verdict stands: the
+dimensions are not kept.**
+
 ## Pre-registered, 23 October 2026: cells against provinces, with what is in the cells (bead bnm-3ka.11)
 
 Registered before any row from 2015 on is scored by the new stage. The
