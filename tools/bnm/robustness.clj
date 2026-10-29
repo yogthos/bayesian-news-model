@@ -162,10 +162,12 @@
 
 (defn dark-countries
   "The countries (a `frac` share of `cs`, rounded) whose data go dark in
-  year t in draw `seed`."
+  year t in draw `seed`, from a generator mixed from both (augur.math/
+  rng-mixed): seeded at 1000003 seed + t, a country's draws across years
+  and draws were a lattice, not independent."
   [seed t cs frac]
   (let [cs (vec (sort cs))
-        g (m/rng (+ (* 1000003 (long seed)) (long t)))
+        g (m/rng-mixed seed t)
         keyed (sort-by first (map (fn [c] [(m/next-double! g) c]) cs))]
     (set (map second (take (Math/round (* (double frac) (count cs))) keyed)))))
 

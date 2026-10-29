@@ -3,6 +3,7 @@
             [bnm.attribution :as at]
             [bnm.robustness :as rb]
             [bnm.stocks :as sk]
+            [clojure.set]
             [clojure.test :refer [deftest is testing]]))
 
 (defn- close? [a b eps] (< (Math/abs (- (double a) (double b))) eps))
@@ -78,6 +79,26 @@
     (is (= d (rb/dark-countries 1 1990 (reverse cs) 0.2)) "the draw does not depend on the order given")
     (is (not= d (rb/dark-countries 1 1991 cs 0.2)) "another year, other countries")
     (is (not= d (rb/dark-countries 2 1990 cs 0.2)) "another draw, other countries")))
+
+(deftest dark-years-are-independent-across-years-and-draws
+  ;; seeded at 1000003 (seed + d) + t, each country's key across years was a
+  ;; Weyl walk: the spread of dark-year counts per country swung with the
+  ;; draw, 1.65 to 2.60 over seeds 1-10, against 2.19 for independent years
+  (let [cs (mapv #(format "C%03d" %) (range 200))
+        ys (range 1990 2020)
+        counts (fn [seed] (let [ds (map #(rb/dark-countries seed % cs 0.2) ys)]
+                            (map (fn [c] (count (filter #(contains? % c) ds))) cs)))
+        sd (fn [xs] (let [n (double (count xs)) mu (/ (reduce + xs) n)]
+                      (Math/sqrt (/ (reduce + (map #(* (- % mu) (- % mu)) xs)) n))))
+        iid (Math/sqrt (* 30 0.2 0.8))]
+    (doseq [seed (range 1 11) :let [v (sd (counts seed))]]
+      (is (< (- iid 0.35) v (+ iid 0.35)) [seed v iid]))
+    (let [overlap (fn [d] (/ (double (reduce + (map #(count (clojure.set/intersection (rb/dark-countries d % cs 0.2)
+                                                                                       (rb/dark-countries (inc d) % cs 0.2)))
+                                                    ys)))
+                             (* 40 30)))]
+      (doseq [d [1 2 5]]
+        (is (< (Math/abs (- (overlap d) 0.2)) 0.04) [d (overlap d)])))))
 
 (deftest a-knocked-out-input-is-unknown
   (is (= [nil 2.0 nil 4.0] (rb/knock [1.0 2.0 3.0 4.0] [0 2])))
