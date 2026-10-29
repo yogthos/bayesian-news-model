@@ -98,6 +98,51 @@ class WorldBankZerosTest(unittest.TestCase):
         self.assertEqual(got_rows, [("VEN", "trade/openness", "a", "2012-12-31", "2013-09-30", 50.8)])
 
 
+def write_xlsx(path, sheet_xml):
+    """A one-sheet workbook with no shared strings."""
+    import zipfile
+    m = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+    r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("xl/workbook.xml", '<workbook xmlns="%s" xmlns:r="%s"><sheets>'
+                   '<sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>' % (m, r))
+        z.writestr("xl/_rels/workbook.xml.rels",
+                   '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                   '<Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>')
+        z.writestr("xl/worksheets/sheet1.xml", '<worksheet xmlns="%s"><sheetData>%s</sheetData></worksheet>' % (m, sheet_xml))
+
+
+class XlsxTest(unittest.TestCase):
+    def read(self, sheet_xml):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "w.xlsx")
+            write_xlsx(p, sheet_xml)
+            return sn.xlsx(p)["S"]
+
+    def test_cell_refs(self):
+        self.assertEqual(self.read('<row><c r="A1"><v>1</v></c><c r="C1"><v>3</v></c></row>'), [["1", None, "3"]])
+
+    def test_cells_without_refs_follow_in_order(self):
+        # the r attribute of a cell is optional: without it a cell is the
+        # one after the previous
+        self.assertEqual(self.read('<row><c><v>1</v></c><c><v>2</v></c><c r="E1"><v>5</v></c><c><v>6</v></c></row>'),
+                         [["1", "2", None, None, "5", "6"]])
+
+    def test_empty_value_is_no_value(self):
+        self.assertEqual(self.read('<row><c r="A1"><v/></c><c r="B1" t="s"><v/></c><c r="C1"><v>3</v></c></row>'),
+                         [[None, None, "3"]])
+
+
+class PeriodEndTest(unittest.TestCase):
+    def test_quarters(self):
+        self.assertEqual(sn.period_end("q", "2001-Q2"), "2001-06-30")
+        self.assertEqual(sn.period_end("q", "2001Q4"), "2001-12-31")
+
+    def test_bad_quarter_names_the_label(self):
+        with self.assertRaisesRegex(ValueError, "2001-06"):
+            sn.period_end("q", "2001-06")
+
+
 SERIES = os.path.join(os.path.dirname(HERE), "data", "slow", "series.tsv")
 
 

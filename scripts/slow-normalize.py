@@ -83,7 +83,10 @@ def period_end(freq, label):
     if freq == "a":
         return month_end(int(label[:4]), 12)
     if freq == "q":
-        y, q = re.match(r"(\d{4})-?Q(\d)", label).groups()
+        mq = re.match(r"(\d{4})-?Q(\d)", label)
+        if mq is None:
+            raise ValueError("not a quarter: %r" % label)
+        y, q = mq.groups()
         return month_end(int(y), int(q) * 3)
     return month_end(int(label[:4]), int(label[5:7]))
 
@@ -651,21 +654,25 @@ def xlsx(path):
     wb = ET.fromstring(z.read("xl/workbook.xml"))
     rels = {r.get("Id"): r.get("Target") for r in ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))}
     out = {}
-    for s in wb.find("m:sheets", NSX):
-        t = rels[s.get("{%s}id" % NSX["r"])].lstrip("/")
+    for s in wb.find("m:sheets", NSX) or []:
+        t = (rels.get(s.get("{%s}id" % NSX["r"])) or "").lstrip("/")
         t = t if t.startswith("xl/") else "xl/" + t
         rows = []
         for row in ET.fromstring(z.read(t)).iter("{%s}row" % NSX["m"]):
             cells = {}
+            i = 0  # the column, from 1; a cell without its r attribute follows the one before
             for c in row.findall("m:c", NSX):
                 v = c.find("m:v", NSX)
-                ref = re.match(r"[A-Z]+", c.get("r")).group(0)
-                i = 0
-                for ch in ref:
-                    i = i * 26 + ord(ch) - 64
+                ref = re.match(r"[A-Z]+", c.get("r") or "")
+                if ref:
+                    i = 0
+                    for ch in ref.group(0):
+                        i = i * 26 + ord(ch) - 64
+                else:
+                    i += 1
                 if c.get("t") == "inlineStr":
                     val = "".join(x.text or "" for x in c.iter("{%s}t" % NSX["m"]))
-                elif v is None:
+                elif v is None or v.text is None:
                     continue
                 elif c.get("t") == "s":
                     val = ss[int(v.text)]
@@ -727,7 +734,7 @@ def climate():
     if os.path.exists(path):
         lines = open(path).read().splitlines()[1:]
         rd = csv.reader(lines)
-        header = next(rd)
+        next(rd)  # the column names (the line before them is the title)
         for r in rd:
             for m in range(1, 13):
                 v = num(r[m]) if len(r) > m else None
