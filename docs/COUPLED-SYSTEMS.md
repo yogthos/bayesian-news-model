@@ -3969,10 +3969,19 @@ Ireland's run year by year:
   Keen's rules went negative in 2051: dividends received were split by
   yield-weighted equity holdings, households' and firms' holdings had
   turned negative (they are shares of total assets, negative once net
-  worth is), the total of weights neared zero and households received
-  -4.9 of output. A negative holding now receives none. It touches only
-  rule sets that split dividends by holdings (Keen's and revised, not
-  estimated or rates).
+  worth is), the signed total of weights neared zero and households
+  received -4.9 of output. The split is now over the total of the
+  weights' absolute values: a negative holding still pays its share (as
+  a short position does), no share exceeds what is paid, and nothing
+  changes while every holding is positive (every data origin). Giving a
+  negative holding nothing, tried first, broke the simulated panel's
+  one-year test, whose own data pay on negative holdings. It touches
+  only rule sets that split dividends by holdings (Keen's and revised,
+  not estimated or rates). The same split was part of bnm-tvk's USA
+  1981 runaway: that ensemble still trips the guard in 1980 (the wage
+  share at its bound), but members at the rescale's caps in 1981 fall
+  from 9 to 1 and the 1983 innovations from 109 to 37 sd units, so its
+  repro test no longer expects those two criteria to trip.
 - *Sweep* (35 countries with a measured year: panel.csv and both holdout
   panels; Bulgaria and Romania included; latest measured origin; rates,
   estimated and Keen's rules; 30 years). Before: five runs with output
@@ -3983,14 +3992,15 @@ Ireland's run year by year:
   (was 3.24 / -1.46, through negative output). Still there, not
   collapses: under Keen's rules, which have no fiscal rule, government
   becomes a net creditor of up to 4.5 times output by year 30 (Germany,
-  Czechia, Estonia, Poland, Slovakia, Slovenia, Lithuania, Ireland), and
+  Czechia, Estonia, Poland, Slovakia, Slovenia, Lithuania, Ireland) or,
+  in New Zealand, a debtor of 3.7 times, and
   households' or firms' deposits, the buffer, go negative in some years
   in 19 runs, seven of them under rates or estimated (Bulgaria, Greece,
   Mexico, Romania). Tests: sfc-test's imports-above-absorption and
-  dividends-received tests (synthetic) and sfc-rules-run-test's Ireland
+  dividends-received-stay-bounded tests (synthetic) and sfc-rules-run-test's Ireland
   and all-country 30-year runs (on the data, skipped without it).
-- *Reruns* (on the fix commit in a clean worktree; new files, nothing
-  registered overwritten):
+- *Reruns* (on a85c6cc, both fixes, in a clean worktree; new files,
+  nothing registered overwritten):
   - rates-scenario.txt, rerun in place (reported only). The rate shock
     is about the same: government's interest +0.13% / +0.25% / +0.38% /
     +0.58% of output at years 1 / 3 / 5 / 10 (was +0.60% at 10), its debt
@@ -4011,7 +4021,7 @@ Ireland's run year by year:
     origins, net lending against persistence +0.043 / +0.099 (was +0.041
     / +0.099), against damped reversion -0.024 / -0.081 (was -0.026 /
     -0.081). One reported cell moves: test h3-5 against Keen's restart,
-    pass to inconclusive (debt +0.066 [-0.021, +0.151], was +0.108
+    pass to inconclusive (debt +0.067 [-0.018, +0.153], was +0.108
     [+0.018, +0.199]); the restart is Keen's rules, which the fix moves
     most.
   - 9h (rates-test-fix17.txt, rates-null-fix17.txt, against
