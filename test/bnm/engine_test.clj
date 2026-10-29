@@ -296,3 +296,15 @@
         rn (eng/advance (eng/runner [a] {:from 2000 :to 2001}))
         r (eng/result (eng/advance (eng/update-params rn #(assoc-in % [:a :k] 5.0))))]
     (is (= [1.0 5.0] (get-in r [:emits :a "a/x"])))))
+
+(deftest an-analysis-can-correct-the-last-emits
+  ;; a rescaled level (bnm.sfc-analysis's nominal scale) must reach what the
+  ;; next step reads of the last step, as the states do
+  (let [a (counter :a :W nil)
+        c {:module :c :group :R :place :world :dt 1 :init 0.0
+           :reads [{:var "a/level" :unit "u" :lag 1}] :emits [{:var "c/read" :unit "u"}]
+           :step (fn [s in _ _ _] {:state s :emits {"c/read" (get in "a/level")}})}
+        rn (eng/advance (eng/runner [a c] {:from 2000 :to 2002}))
+        rn (eng/update-emits rn :a #(assoc % "a/level" 100.0))
+        r (eng/result (eng/advance rn))]
+    (is (= [nil 100.0] (get-in r [:emits :c "c/read"])))))

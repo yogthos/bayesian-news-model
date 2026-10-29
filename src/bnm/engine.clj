@@ -63,8 +63,9 @@
 
   Phase B (bead bnm-4hv.6, bnm.coupled) steps a run one step at a time
   (runner, advance, result; run is their loop) so an ensemble's members
-  go in lockstep and an analysis can replace their states (update-states)
-  and parameters (update-params) between steps, never within one. A
+  go in lockstep and an analysis can replace their states (update-states),
+  parameters (update-params) and the last step's emits as later steps
+  read them (update-emits) between steps, never within one. A
   module :given to advance is not stepped (a module shared by the
   members, stepped once); a module with a :span [from to] steps only
   within it, and is read only within it; a module whose :dt is whole sees whole-number years in a
@@ -413,6 +414,17 @@
   "The runner with its modules' parameters (f {module {name value}}), as
   the steps after see them (a recalibration between steps)."
   [rn f] (update rn :ps f))
+
+(defn update-emits
+  "The runner with module `id`'s emits of the last step it took replaced by
+  (f emits), as the next steps read them at a lag: an analysis that
+  corrects a level must correct what its readers see of it (bnm.sfc-
+  analysis rescales a member's nominal scale, the output among it)."
+  [rn id f]
+  (let [i (dec (:i rn))]
+    (cond-> rn
+      (get-in rn [:hist i id]) (update-in [:hist i id] f)
+      (get-in rn [:cur id]) (update-in [:cur id] f))))
 
 (defn result
   "What run returns: {:t [...] :emits {module {var [value per t]}}
