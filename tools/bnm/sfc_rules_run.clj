@@ -7,6 +7,13 @@
     jolt -A:tools -M -m bnm.sfc-rules-run mask|power [--split holdout]
     jolt -A:tools -M -m bnm.sfc-rules-run test --out FILE [--all true]
     jolt -A:tools -M -m bnm.sfc-rules-run score --in FILE --bounds EDN [--out FILE]
+    jolt -A:tools -M -m bnm.sfc-rules-run held --in FILE [--edn FILE] [--out FILE]
+    jolt -A:tools -M -m bnm.sfc-rules-run interest-drift [--out FILE]
+
+  design takes --target-to YEAR to add the skills on targets to that
+  data year only.
+  held and interest-drift are reported-only diagnostics from the review
+  (held-report, interest-drift).
 
   design: the restart (one member, learned at the origin on the panel as
   known at origin + 2, started from the origin's data, stepped by
@@ -150,6 +157,9 @@
          {:iso iso :o o :h hz :outcome out :data d
           :split (cond (contains? holdout iso) :holdout (< o test-from) :design :else :test)})))
 
+(defn- emit-of [out] (if (= :nl (first out)) (str "sfc/net-lending-" (name (second out))) "sfc/private-debt"))
+(defn- fin [v] (when (and (number? v) (== v v) (< (Math/abs (double v)) 1e300)) (double v)))
+
 (defn forecasts
   "{[o h outcome] {model value}} for `iso`'s rows: :estimated (the restart
   under bnm.sfc/estimated, bnm.sfc-analysis/restart through the engine),
@@ -160,8 +170,7 @@
         hmax (apply max horizons)
         run (fn [o opts] (try (sa/restart panel kn iso o hmax nil opts) (catch Exception _ nil)))
         rs (into {} (for [o os] [o {:estimated (run o sfc/estimated) :restart (run o {})}]))
-        emit (fn [out] (if (= :nl (first out)) (str "sfc/net-lending-" (name (second out))) "sfc/private-debt"))
-        fin (fn [v] (when (and (number? v) (== v v) (< (Math/abs (double v)) 1e300)) (double v)))]
+        emit emit-of]
     (into {} (for [{:keys [o h outcome]} rows :let [y (+ o h)]]
                [[o h outcome]
                 {:estimated (fin (some-> (get-in rs [o :estimated]) (h/path-at (emit outcome) y)))
@@ -289,6 +298,84 @@
                                      (> lo 0.0)))))
                   (double sims))])))))
 
+(def held
+  "9g's fallback on a worse: every behavioural ratio held, interest and
+  dividends received as shares of output (the design harness's hold)."
+  (assoc (dissoc sfc/estimated :fiscal) :investment {:phi 0.0 :slope 0.0}))
+
+(defn add-model
+  "`scored` rows with model `k`'s forecast added to :f: the restart under
+  learn options `opts`, through the engine as forecasts runs it."
+  [panel kn scored k opts]
+  (let [hmax (apply max horizons)]
+    (vec (mapcat (fn [[iso rs]]
+                   (let [runs (into {} (for [o (distinct (map :o rs))]
+                                         [o (try (sa/restart panel kn iso o hmax nil opts) (catch Exception _ nil))]))]
+                     (println iso (count rs) "rows") (flush)
+                     (for [r rs]
+                       (assoc-in r [:f k] (fin (some-> (runs (:o r)) (h/path-at (emit-of (:outcome r)) (+ (:o r) (:h r)))))))))
+                 (sort-by key (group-by :iso scored))))))
+
+(defn held-report
+  "Reported-only lines (no verdict; the review of bnm-4hv.14): the held
+  core's skill against each baseline and the estimated core's against
+  the held, per split, outcome and horizon group, with the registered
+  intervals (interval), on rows where every model has a value."
+  [scored]
+  (let [ms [:estimated :hold :persistence :damped :restart]
+        rows (filter (fn [r] (every? #(number? (get-in r [:f %])) ms)) scored)
+        f (fn [[p lo hi]] (if p (format "%+.3f [%+.3f, %+.3f]" p lo hi) "-"))
+        outs [[:nl #(= :nl (first %))] [:debt #(= [:debt] %)]]]
+    (cons (format "rows with every model: %d of %d" (count rows) (count scored))
+          (for [split [:holdout :test :design] [o pred] outs [m x] [[:hold :persistence] [:hold :damped] [:hold :restart] [:estimated :hold]]
+                :let [sel (fn [hs] (filter #(and (= split (:split %)) (pred (:outcome %)) (hs (:h %))) rows))
+                      ci (fn [rs] (when (seq rs) (interval split rs m x 2000 20261029)))]]
+            (format "%-7s %-4s %-9s vs %-11s h1 %s   h3-5 %s" (name split) (name o) (name m) (name x)
+                    (f (ci (sel #{1}))) (f (ci (sel #{3 5}))))))))
+
+(defn- ib-liab [b s] (+ (sfc/pos b s :money :l) (sfc/pos b s :debt :l)))
+
+(defn interest-drift
+  "Reported-only (review of bnm-4hv.14): with interest held as a share of
+  output, the rate it implies on the model's own stocks drifts. For each
+  origin [iso o] the restart under `opts` (bnm.sfc/step) to o + 5: per
+  sector paying interest on money and debt (hh, nfc, gov), the implied
+  rate at year o + 5 (interest paid over the opening liabilities) over
+  the rate learn's revised rule would charge (:i-l), and the same ratio in
+  the data (the implicit rate at o + 5 over o's), and the change in the
+  liabilities over output. {sector {:model [r ...] :data [r ...] :stock
+  [[model data] ...]}}."
+  [panel kn os opts]
+  (let [rate-data (fn [iso y s] (let [ob (get-in panel [iso y]) pv (get-in panel [iso (dec y)])]
+                                  (when (and ob pv (:flows-ok ob) (:b pv))
+                                    (let [st (ib-liab (:bsm (sfc/close-init (:b pv))) s)]
+                                      (when (> st 1e-9) (/ (double (get-in ob [:f s :int_paid] 0.0)) st))))))]
+    (reduce (fn [acc [iso o]]
+              (let [kp (sa/known-panel panel (+ o sfc/vintage))
+                    p (try (sfc/learn kp kn iso o opts) (catch Exception _ nil))
+                    st0 (when p (try (sfc/init kp kn iso o p) (catch Exception _ nil)))
+                    run (when st0 (try (loop [st st0 i 0] (if (= i 4) st (recur (:state (sfc/step st p)) (inc i))))
+                                       (catch Exception _ nil)))
+                    end5 (when run (try (sfc/step run p) (catch Exception _ nil)))
+                    rates (when end5 (:i-l (sfc/learn kp kn iso o (dissoc opts :interest-hold :dividend-hold))))]
+                (if-not end5
+                  acc
+                  (reduce (fn [acc s]
+                            (let [open (:bsm run) stock (ib-liab open s)
+                                  r5 (when (> stock 1e-9) (/ (double (get-in end5 [:out :x :int-paid s])) stock))
+                                  r0 (get rates s)
+                                  d0 (rate-data iso o s) d5 (rate-data iso (+ o 5) s)
+                                  y0 (double (:Y st0)) y5 (double (get-in end5 [:out :Y]))
+                                  s0 (/ (ib-liab (:bsm st0) s) y0) s5 (/ (ib-liab (get-in end5 [:out :end]) s) y5)
+                                  ob5 (get-in panel [iso (+ o 5)])
+                                  sd5 (when (and ob5 (:b ob5) (:y ob5)) (/ (ib-liab (:bsm (sfc/close-init (:b ob5))) s) (double (:y ob5))))]
+                              (cond-> acc
+                                (and r5 r0 (pos? r0)) (update-in [s :model] (fnil conj []) (/ r5 r0))
+                                (and d0 d5 (pos? d0)) (update-in [s :data] (fnil conj []) (/ d5 d0))
+                                sd5 (update-in [s :stock] (fnil conj []) [(- s5 s0) (- sd5 s0)]))))
+                          acc [:hh :nfc :gov]))))
+            {} os)))
+
 (def baselines [:persistence :damped :restart])
 (def hgroups {:h1 #{1} :h35 #{3 5}})
 
@@ -334,7 +421,7 @@
   (let [opts (into {} (for [[k v] (partition-all 2 args)] [k v]))
         panel (sfc/with-policy (sfc/read-panel panel-path) (sfc/read-policy policy-path))
         kn (sfc/read-keen keen-path)
-        hold (assoc (dissoc sfc/estimated :fiscal) :investment {:phi 0.0 :slope 0.0})
+        hold held
         named {"keen" {} "revised" sfc/revised
                "revised+interest" (assoc sfc/revised :interest-hold true :dividend-hold true)
                "hold" hold
@@ -393,11 +480,41 @@
       "lambda"
       (doseq [o [1995 2002] :let [e (sfc/ols (apply concat (vals (sfc/interest-rows panel o 10.0))))]]
         (println o "interest partial adjustment" e))
+      "held"
+      (let [scored (read-string (slurp (get opts "--in")))
+            hp (merge panel (sfc/with-policy (sfc/read-panel holdout-path) (sfc/read-policy policy-path)))
+            out (add-model hp kn scored :hold held)
+            ls (held-report out)]
+        (when-let [o (get opts "--edn")] (spit o (with-out-str (clojure.pprint/pprint out))))
+        (doseq [l ls] (println l))
+        (when-let [o (get opts "--out")] (spit o (str (str/join "\n" ls) "\n"))))
+      "held-report"
+      (let [ls (held-report (read-string (slurp (get opts "--in"))))]
+        (doseq [l ls] (println l))
+        (when-let [o (get opts "--out")] (spit o (str (str/join "\n" ls) "\n"))))
+      "interest-drift"
+      (let [os (distinct (map (juxt :iso :o) (filter #(= :test (:split %)) (mask panel #{} false))))
+            q (fn [xs p] (let [v (vec (sort xs))] (when (seq v) (nth v (min (dec (count v)) (long (* p (count v))))))))
+            ls (cons (format "test origins %d; ratio at o + 5: [10%%, 50%%, 90%%]" (count os))
+                     (for [[s m] (sort-by key (interest-drift panel kn os sfc/estimated))]
+                       (format "%-4s implied rate / revised rate, model %s (n %d); implicit rate o+5 / o, data %s (n %d); liabilities/Y change, model %s data %s"
+                               (name s) (mapv #(some->> (q (:model m) %) (format "%.2f")) [0.1 0.5 0.9]) (count (:model m))
+                               (mapv #(some->> (q (:data m) %) (format "%.2f")) [0.1 0.5 0.9]) (count (:data m))
+                               (mapv #(some->> (q (map first (:stock m)) %) (format "%+.3f")) [0.1 0.5 0.9])
+                               (mapv #(some->> (q (map second (:stock m)) %) (format "%+.3f")) [0.1 0.5 0.9]))))]
+        (doseq [l ls] (println l))
+        (when-let [o (get opts "--out")] (spit o (str (str/join "\n" ls) "\n"))))
       "design"
       (let [os (design-origins panel design-to)
             rows (rows-of panel kn os models)
-            ls (cons (format "design origins %d (%d countries), rows %d" (count os) (count (distinct (map first os))) (count rows))
-                     (skills rows (map first models)))]
+            tt (some-> (get opts "--target-to") parse-long)
+            early (when tt (filterv #(<= (+ (:o %) (:h %)) tt) rows))
+            ls (concat (cons (format "design origins %d (%d countries), rows %d" (count os) (count (distinct (map first os))) (count rows))
+                             (skills rows (map first models)))
+                       (when tt
+                         (cons (format "# targets to data year %d only: rows %d (h1 %d, h3 %d, h5 %d)" tt (count early)
+                                       (count (filter #(= 1 (:h %)) early)) (count (filter #(= 3 (:h %)) early)) (count (filter #(= 5 (:h %)) early)))
+                               (skills early (map first models)))))]
         (doseq [l ls] (println l))
         (when-let [out (get opts "--out")] (spit out (str (str/join "\n" ls) "\n")))))
     (shutdown-agents)))

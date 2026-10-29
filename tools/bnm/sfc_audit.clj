@@ -186,8 +186,11 @@
       "Each block replaced alone; removed = share of the model's excess over persistence it takes away"
       "(oracle: the next year's observed ratio; persistence: the origin's own ratio):"
       "(when the model beats persistence the excess is negative and removed changes sign; held - model is the"
-      " change in MAE from holding that block's ratio instead of the rule: positive, the rule helps)"
-      "  block              oracle MAE  removed   persistence MAE  removed  held - model   the rule"]
+      " change in MAE from holding that block's ratio instead of the rule: positive, the rule helps)"]
+     (when (seq opts)
+       ["(the rule column describes learn's defaults; under these options some blocks run other rules, for"
+        " which see the options' docstring, e.g. bnm.sfc/estimated)"])
+     ["  block              oracle MAE  removed   persistence MAE  removed  held - model   the rule"]
      (for [{:keys [block oracle persistence removed-oracle removed-persistence]} rows]
        (format "  %-17s  %10s  %7s   %15s  %7s  %+.5f   %s" (name block) (f4 oracle) (f3 removed-oracle)
                (f4 persistence) (f3 removed-persistence) (- persistence base) (sfc/block-docs block)))

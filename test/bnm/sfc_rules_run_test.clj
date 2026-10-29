@@ -6,6 +6,7 @@
             [bnm.sfc-rules-run :as r]
             [bnm.sfc-test :as fx]
             [augur.math]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]))
 
 (def ^:private sim-panel
@@ -66,3 +67,19 @@
         [p lo hi] (r/interval :holdout rows :m :x 0 5)]
     (is (= 0.75 p))
     (is (< lo p hi))))
+
+(deftest the-held-fallback-holds-every-rule
+  ;; 9g's fallback (the review's reported-only diagnostic): no fiscal rule,
+  ;; investment held, interest and dividends as shares
+  (let [p (sfc/learn @sim-panel {} "SIM" 2020 r/held)]
+    (is (nil? (:fiscal-rule p)))
+    (is (= [0.0 0.0 0.0 0.0] (mapv #(double (get-in p [:investment-rule %])) [:phi :slope :b-pi :b-ds])))
+    (is (map? (:int-share p)))
+    (is (map? (:div-recv-share p))))
+  (let [rows (for [split [:test :design] iso ["A" "B" "C"] o (range 2000 2006) h [1 3] out [[:nl :hh] [:debt]]]
+               {:iso iso :o o :h h :outcome out :split split :data 0.0
+                :f {:estimated 1.0 :hold 2.0 :persistence 4.0 :damped 2.0 :restart 8.0}})
+        ls (r/held-report rows)]
+    (is (= "rows with every model: 144 of 144" (first ls)))
+    (is (some #(and (str/includes? % "test") (str/includes? % "estimated vs hold") (str/includes? % "h1 +0.750")) ls)
+        "estimated's squared error a quarter of the held's")))
