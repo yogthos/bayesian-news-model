@@ -37,6 +37,7 @@
     jolt -A:tools -M -m bnm.shock-trial --design true     design years (origins 1993-2000)
     jolt -A:tools -M -m bnm.shock-trial --power true      power on the test rows (base only)
     jolt -A:tools -M -m bnm.shock-trial --test true       the registered test (origins 2003-2022)
+    jolt -A:tools -M -m bnm.shock-trial --test true --nulls 8   the watch-list rule v2, descriptive (bnm-82j.6)
     [--rebuild true] rebuilds data/derived/stocks/supply-shocks.csv from data/derived/shocks"
   (:require [augur.math :as m]
             [augur.score :as sc]
@@ -227,6 +228,55 @@
           (< (:hi prim) equivalence) (if harm? "fail (equivalent to nothing on the watch list; no harm on log not shown)" "fail (equivalent to nothing)")
           :else "level")))
 
+;; --- the watch-list rule v2 (bead bnm-82j.6) ------------------------------------------------
+
+(defn with-null-draws
+  "The rows of the first of `draws` (scored rows, one vector per
+  derangement seed) with each draw's exposure placebo as :n0, :n1, ...
+  in :p, joined on country and origin: the null draws of the watch-list
+  rule v2 (bnm.watchlist), each the losses read at another country."
+  [draws]
+  (let [idx (mapv #(into {} (for [r %] [[(:c r) (:t r)] (get-in r [:p :plc])])) draws)]
+    (mapv (fn [r] (update r :p merge (into {} (map-indexed (fn [i ix] [(keyword (str "n" i)) (ix [(:c r) (:t r)])]) idx))))
+          (first draws))))
+
+(defn report-v2
+  "The v2 rule on the scored rows with `r` null draws: top-10 recall on
+  hard onsets, :s over the draws' mean (bnm.watchlist/null-test), and log
+  per row of :s over the draws' mean (harm, against the registered -0.002)."
+  [say by-kind r {:keys [from to alpha] :as opts}]
+  (let [years (range from (inc to))
+        ns (mapv #(keyword (str "n" %)) (range r))
+        ranked (into {} (for [[kd rs] by-kind] [kd (wl/rank-rows (wl/sample-of rs :hard) (into [:s :base] ns) [10])]))
+        cells (fn [src] (into {} (for [[kd rs] ranked] [kd (#'wl/cells rs src 10 from to)])))
+        ng (wl/null-gain {:c (cells :s) :b (cells :base) :nulls (mapv cells ns)} years opts)
+        t (wl/null-test (:cand ng) (:nulls ng) (:vb ng) alpha)
+        lg (fn [src] (wl/paired-boot (into {} (for [[kd rs] by-kind] [kd (loss-cells rs src :bp log-loss from to)])) years opts))
+        lc (lg :s)
+        ln (mapv #(:diff (lg %)) ns)
+        h (wl/null-test (:diff lc) ln (Math/pow (/ (- (:hi lc) (:lo lc)) (* 2 (wl/t-quantile 0.95 1e6))) 2) alpha)]
+    (say (format "Watch-list rule v2 (descriptive): S against %d exposure-placebo draws (the registered derangement, seed 1, and %d from mixed seeds), origins %d-%d" r (dec r) from to))
+    (say (format "   top-10 recall, hard onsets, less the base: S %+.4f; draws %s (mean %+.4f, sd %.4f)"
+                 (:cand ng) (str/join " " (map #(format "%+.4f" %) (:nulls ng))) (:mean0 t) (:sd0 t)))
+    (say (format "   gain over the null mean %+.4f [%+.4f %+.4f], one-sided p %.3f: %s" (:g t) (:lo t) (:hi t) (:p t) (if (:pass t) "GAIN" "no gain")))
+    (say (format "   log per row over B': S %+.5f [%+.5f %+.5f]; draws %s; over the null mean %+.5f [%+.5f %+.5f]: %s"
+                 (:diff lc) (:lo lc) (:hi lc) (str/join " " (map #(format "%+.5f" %) ln)) (:g h) (:lo h) (:hi h)
+                 (cond (neg? (:hi h)) "HARM (costs more than the null draws)" (>= (:lo h) harm-log) "no harm"
+                       :else "no harm beyond the null draws' cost; no-harm not shown")))
+    (when (>= r 10)
+      ;; the rule's size on the draws alone: each in turn the candidate
+      ;; against 8 of the others
+      (let [cs (mapv cells ns)
+            per (vec (for [i (range r)]
+                       (wl/null-gain {:c (cs i) :b (cells :base) :nulls (vec (concat (subvec cs 0 i) (subvec cs (inc i))))} years opts)))
+            draws (mapv :cand per)
+            old (count (filter (fn [c] (pos? (:lo (wl/paired-boot (into {} (for [[kd byt] c] [kd (into {} (for [[y {:keys [hits pos]}] byt] [y [(- hits (get-in (cells :base) [kd y :hits] 0.0)) pos]]))])) years opts)))) cs))]
+        (doseq [rr [4 8 12 16] :when (< rr r)]
+          (let [fp (wl/false-pass draws #(:vb (per %)) rr alpha {:subsets 300 :seed 1})]
+            (say (format "   calibration, R=%d: a draw against %d others passes %d of %d (%.3f)" rr rr (:passes fp) (:tests fp) (:rate fp)))))
+        (say (format "   (the 82j.1 rule: a draw gains on the base %d of %d times)" old r))))
+    {:gain t :harm h}))
+
 ;; --- report -------------------------------------------------------------------------------
 
 (defn- fmtd [{:keys [diff lo hi]}] (format "%+.4f [%+.4f %+.4f]" diff lo hi))
@@ -273,7 +323,7 @@
     (assoc o :reps (or (some-> (:reps o) parse-long) 1000) :seed seed :alpha 0.1 :block 2)))
 
 (defn -main [& args]
-  (let [{:keys [design power test rebuild] :as opts} (parse-opts args)
+  (let [{:keys [design power test rebuild nulls] :as opts} (parse-opts args)
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out (str s "\n"))))
         cats (kinds/catalogues)]
@@ -291,18 +341,26 @@
             panels (if (or rebuild (not (.exists (io/file panel-path))))
                      (let [p (build-panels isos (range 1980 2023))] (write-panels p panel-path) p)
                      (read-panels panel-path))
-            perm (ss/derangement isos seed)
-            scored (into {} (for [kd kds]
-                              [kd (forecasts (with-features (rows kd) panels perm (cats kd))
-                                             {:lag (:known-lag (cats kd) 0) :from from :to to :fit-from 1980})]))
-            o (assoc opts :from from :to to)]
+            score (fn [sd] (into {} (for [kd kds]
+                                      [kd (forecasts (with-features (rows kd) panels (ss/derangement isos sd) (cats kd))
+                                                     {:lag (:known-lag (cats kd) 0) :from from :to to :fit-from 1980})])))
+            scored (score seed)
+            o (assoc opts :from from :to to)
+            path (if nulls (str/replace path #"\.txt$" "-v2.txt") path)]
         (say (format "Supply shocks as event triggers (bnm.shock-trial), %s, run %s, kinds %s"
                      (if design "design years" "registered test") run (str/join "," kds)))
         (say (format "Fits refitted at each origin on origins 1980 to fit-cut; ridge %.0f; losses log(1 + L/%.2f); placebos: derangement seed %d, time %d years late"
                      lambda scale seed time-lag))
         (say "The base's warm-up rows (origins before it had read a published outcome, p near 0.5) left out of the fits")
         (coverage say panels from to)
-        (report say (evaluate scored cats o) o)
+        (if nulls
+          (let [r (parse-long nulls)
+                ;; the registered placebo's seed, then seeds mixed by
+                ;; augur.math/seed-of: consecutive seeds give augur's rng
+                ;; correlated streams (bnm-0z5)
+                draws (cons scored (map #(score (m/seed-of seed %)) (range 1 r)))]
+            (report-v2 say (into {} (for [kd kds] [kd (with-null-draws (map #(% kd) draws))])) r o))
+          (report say (evaluate scored cats o) o))
         (io/make-parents path)
         (spit path (str out))
         (println "wrote" path)))))

@@ -137,3 +137,75 @@
              {:beta 1.0 :signal true :recall-power 1.0 :gain 0.12}]]
     (is (close? 0.08 (wl/mde res 0.8)) "halfway from 0.6 to 1.0, halfway from 0.04 to 0.12")
     (is (nil? (wl/mde (take 2 res) 0.8)))))
+
+;; --- v2: against a null of same-shape groups (bead bnm-82j.6) --------------------
+
+(deftest t-quantiles
+  (is (< (Math/abs (- 1.8946 (wl/t-quantile 0.95 7))) 1e-3))
+  (is (< (Math/abs (- 2.3534 (wl/t-quantile 0.95 3))) 1e-3))
+  (is (< (Math/abs (- 1.6449 (wl/t-quantile 0.95 1e6))) 1e-3) "the normal's in the limit")
+  (is (< (Math/abs (+ 1.8946 (wl/t-quantile 0.05 7))) 1e-3) "symmetric"))
+
+(deftest the-null-test-adds-the-nulls-spread
+  (let [nulls [0.010 0.014 0.018 0.012 0.016 0.011 0.015 0.013]
+        mu (/ (reduce + nulls) 8.0)
+        sd0 (wl/sd nulls)]
+    (testing "a candidate at the null's mean gains nothing"
+      (let [r (wl/null-test mu nulls 0.0 0.1)]
+        (is (close? 0.0 (:g r)))
+        (is (not (:pass r)))))
+    (testing "the interval holds the null's spread, (1 + 1/R) of it, and the origins'"
+      (let [r (wl/null-test (+ mu 0.01) nulls 1e-6 0.1)]
+        (is (close? (:se r) (Math/sqrt (+ (* sd0 sd0 (+ 1 (/ 1.0 8))) 1e-6))))
+        (is (= 7 (:df r)))
+        (is (close? (:lo r) (- 0.01 (* (wl/t-quantile 0.95 7) (:se r)))))
+        (is (:pass r) "well clear of eight draws this tight")))
+    (testing "the noise gain the 82j.1 rule passed fails when the null holds noise like it"
+      (is (not (:pass (wl/null-test 0.0136 [0.0117 -0.0121 0.0 -0.0015 0.0136] 0.0 0.1))))))
+  (testing "fewer than two null draws: no spread, no test"
+    (is (nil? (wl/null-test 0.05 [0.01] 0.0 0.1)))))
+
+(deftest gain-over-the-null-mean-from-cells
+  ;; per kind and year [hits pos] of the candidate, the bench and two nulls
+  (let [hits {:c {"a" {1 2.0 2 1.0} "b" {1 1.0 2 0.0}}
+              :b {"a" {1 1.0 2 1.0} "b" {1 0.0 2 0.0}}
+              :n0 {"a" {1 1.0 2 2.0} "b" {1 1.0 2 0.0}}
+              :n1 {"a" {1 1.0 2 0.0} "b" {1 0.0 2 1.0}}}
+        pos {"a" {1 2 2 2} "b" {1 2 2 2}}
+        cells (fn [s] (into {} (for [[k byy] (hits s)] [k (into {} (for [[y h] byy] [y {:hits h :pos (get-in pos [k y]) :slots 10}]))])))
+        r (wl/null-gain {:c (cells :c) :b (cells :b) :nulls [(cells :n0) (cells :n1)]} [1 2] {:reps 200 :seed 1 :block 1})]
+    ;; recall: c a 3/4 b 1/4 -> 0.5; n0 a 3/4 b 1/4 -> 0.5; n1 a 1/4 b 1/4 -> 0.25; bench a 2/4 b 0 -> 0.25
+    (is (close? 0.125 (:g r)) "the candidate less the nulls' mean recall")
+    (is (close? 0.25 (:cand r)) "the candidate less the bench")
+    (is (every? true? (map close? [0.25 0.0] (:nulls r))) "each null less the bench")
+    (is (<= 0.0 (:vb r)) "the origins' variance of the gain")))
+
+(deftest calibration-from-null-draws-alone
+  ;; each draw in turn the candidate, the null R of the others: with
+  ;; exchangeable draws the share passing is the rule's size
+  (let [g (m/rng 3)
+        draws (vec (repeatedly 12 #(* 0.01 (m/normal! g))))
+        r (wl/false-pass draws (fn [_] 0.0) 8 0.1 {:subsets 200 :seed 1})]
+    (is (<= 0.0 (:rate r) 0.2))
+    (is (pos? (:tests r))))
+  (testing "a draw far from the rest passes"
+    (let [draws (conj (vec (repeat 9 0.0)) 0.5)
+          draws (mapv + draws (map #(* 1e-3 %) (range 10)))
+          r (wl/false-pass draws (fn [_] 0.0) 8 0.1 {:subsets 50 :seed 1})]
+      (is (pos? (:rate r))))))
+
+(deftest power-of-the-null-test
+  (let [p0 (wl/null-power 0.0 0.01 8 0.1 {:sims 4000 :seed 1})
+        p1 (wl/null-power 0.05 0.01 8 0.1 {:sims 4000 :seed 1})]
+    (is (< (Math/abs (- 0.05 p0)) 0.015) "its size at no gain")
+    (is (> p1 0.95) "five standard errors")
+    (is (< (wl/null-mde 0.01 4 0.1 {:sims 2000 :seed 1}) 0.06))
+    (is (> (wl/null-mde 0.01 4 0.1 {:sims 2000 :seed 1}) (wl/null-mde 0.01 16 0.1 {:sims 2000 :seed 1})) "more draws, smaller detectable gain")))
+
+(deftest harm-is-judged-against-the-nulls-cost
+  ;; Brier gains over the bench: harm only when the candidate costs more
+  ;; than groups of its shape holding nothing (the upper end below 0)
+  (is (= :harm (wl/harm-verdict {:lo -0.004 :hi -0.0001})))
+  (is (= :no-harm (wl/harm-verdict {:lo -0.0002 :hi 0.001})) "lower end within the bound")
+  (is (= :not-shown (wl/harm-verdict {:lo -0.002 :hi 0.001})))
+  (is (= :not-shown (wl/harm-verdict nil)) "no null draws, no verdict"))

@@ -90,3 +90,13 @@
       (let [marked (wu/mark (filterv #(>= (:t %) 1991) rows) 3 1990)
             late (st/forecasts marked {:lag 3 :from 2000 :to 2004 :fit-from 1990})]
         (is (= (map #(get-in % [:p :bp]) out) (map #(get-in % [:p :bp]) late)))))))
+
+(deftest null-draws-join-on-the-rows
+  ;; each derangement draw's exposure placebo becomes one null draw of the
+  ;; watch-list rule v2, joined on country and origin
+  (let [a [{:c "AAA" :t 2003 :p {:s 0.2 :base 0.1 :plc 0.3}} {:c "BBB" :t 2003 :p {:s 0.4 :base 0.1 :plc 0.5}}]
+        b [{:c "BBB" :t 2003 :p {:s 0.4 :base 0.1 :plc 0.7}} {:c "AAA" :t 2003 :p {:s 0.2 :base 0.1 :plc 0.6}}]
+        j (st/with-null-draws [a b])]
+    (is (= 2 (count j)))
+    (is (= {:s 0.2 :base 0.1 :plc 0.3 :n0 0.3 :n1 0.6} (:p (first (filter #(= "AAA" (:c %)) j)))))
+    (is (= 0.7 (get-in (first (filter #(= "BBB" (:c %)) j)) [:p :n1])))))

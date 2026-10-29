@@ -38,11 +38,14 @@
     jolt -A:tools -M -m bnm.watchlist --base t44-world-norel
     jolt -A:tools -M -m bnm.watchlist --power t44-world-norel [--betas 0,0.25,0.5,0.75,1] [--sims 100] [--kinds a,b]
     jolt -A:tools -M -m bnm.watchlist --record true
+    jolt -A:tools -M -m bnm.watchlist --v2 true --run fs-a-fix --bench fs-norel --nulls a,b,c [--kinds a,b]
+    jolt -A:tools -M -m bnm.watchlist --calibrate sequencing/out.txt --bench fs-norel --nulls a,b,c
 
   --record runs the base table, every world trial on disk against its bench
   and placebo, and the power check, into
   data/runs/sequencing/watchlist-record.txt."
   (:require [augur.math :as m]
+            [augur.special :as sp]
             [bnm.kinds :as kinds]
             [bnm.paired :as pd]
             [bnm.relation-diag :as rd]
@@ -324,6 +327,125 @@
            {:beta beta :signal informative? :recall-power (share 0) :brier-power (share 1)
             :gain (/ (reduce + (map #(nth % 2) res)) (double sims))}))))
 
+;; --- v2: against a null of same-shape groups (bead bnm-82j.6) ---------------------
+;;
+;; The 82j.1 rule's interval resamples origins with the two models fixed, so
+;; it cannot see that any change at a node reshuffles the year node's top
+;; ten: a group of nine noise inputs "gained" +0.014 [+0.005, +0.021]. v2
+;; puts the candidate against R groups of its shape (the same inputs at the
+;; same nodes) holding nothing: noise, or its own inputs shuffled across
+;; countries or in time. The gain is the candidate's recall less the null
+;; draws' mean, its interval a t prediction interval holding the draws'
+;; spread (a fresh draw differs from the mean of R by sd0^2 (1 + 1/R)) and
+;; the origins' bootstrap variance of the gain, R - 1 degrees of freedom.
+
+(defn t-quantile
+  "The `p` quantile of Student's t with `df` degrees of freedom (bisection
+  on augur.special/t-cdf)."
+  [p df]
+  (loop [lo -60.0 hi 60.0 i 0]
+    (let [mid (* 0.5 (+ lo hi))]
+      (if (or (> i 100) (< (- hi lo) 1e-10))
+        mid
+        (if (< (sp/t-cdf mid (double df)) p) (recur mid hi (inc i)) (recur lo mid (inc i)))))))
+
+(defn sd
+  "The sample standard deviation of `xs` (n - 1)."
+  [xs]
+  (let [n (count xs) mu (/ (reduce + xs) (double n))]
+    (Math/sqrt (/ (reduce + (map #(let [d (- % mu)] (* d d)) xs)) (dec n)))))
+
+(defn null-test
+  "The v2 decision for a candidate whose gain over the bench is `c`,
+  against `nulls` (each null draw's gain over the same bench, the same
+  rows), `vb` the origins' bootstrap variance of the candidate less the
+  nulls' mean, the 1 - `alpha` two-sided interval (a pass when its lower
+  end is above 0: one-sided alpha/2). nil with fewer than two draws."
+  [c nulls vb alpha]
+  (let [r (count nulls)]
+    (when (>= r 2)
+      (let [mu (/ (reduce + nulls) (double r))
+            s0 (sd nulls)
+            g (- c mu)
+            se (Math/sqrt (+ (* s0 s0 (+ 1.0 (/ 1.0 r))) (double vb)))
+            q (t-quantile (- 1.0 (/ alpha 2.0)) (dec r))
+            lo (- g (* q se))]
+        {:c c :mean0 mu :sd0 s0 :r r :g g :se se :df (dec r) :lo lo :hi (+ g (* q se))
+         :p (if (pos? se) (- 1.0 (sp/t-cdf (/ g se) (double (dec r)))) (if (pos? g) 0.0 1.0))
+         :pass (pos? lo)}))))
+
+(defn- hits-cells
+  "{kind {year [hits pos]}} of cells {kind {year {:hits :pos}}}, the hits
+  `f` of the year's cells across sources."
+  [cells-by-src f years]
+  (let [{:keys [c]} cells-by-src]
+    (into {} (for [[k byy] c]
+               [k (into {} (for [y years :let [cell (byy y)] :when cell]
+                             [y [(f k y) (:pos cell)]]))]))))
+
+(defn null-gain
+  "From cells {kind {origin {:hits :pos}}} of the candidate :c, the bench
+  :b and the null draws :nulls (one list's cells each, the same rows):
+  :g the candidate's recall less the nulls' mean, :cand and :nulls each
+  less the bench, :vb the variance of g over :reps draws of blocks of
+  origins."
+  [{:keys [c b nulls] :as cs} years {:keys [reps seed block]}]
+  (let [h (fn [cells k y] (get-in cells [k y :hits] 0.0))
+        r (count nulls)
+        gcells (hits-cells cs (fn [k y] (- (h c k y) (/ (reduce + (map #(h % k y) nulls)) (double r)))) years)
+        less-b (fn [x] (weighted-stat (hits-cells cs (fn [k y] (- (h x k y) (h b k y))) years) (zipmap years (repeat 1))))
+        g0 (m/rng seed)
+        draws (vec (repeatedly reps #(weighted-stat gcells (year-weights years block g0))))
+        mu (/ (reduce + draws) (double reps))]
+    {:g (weighted-stat gcells (zipmap years (repeat 1)))
+     :cand (less-b c)
+     :nulls (mapv less-b nulls)
+     :vb (/ (reduce + (map #(let [d (- % mu)] (* d d)) draws)) (double (max 1 (dec reps))))}))
+
+(defn false-pass
+  "The rule's size on null draws alone: each of `draws` (gains over the
+  bench) in turn the candidate, against `r` of the others (every subset,
+  or :subsets random ones when there are more), `vb-of` (fn [i]) its
+  origins' variance. {:rate :tests :passes}."
+  [draws vb-of r alpha {:keys [subsets seed]}]
+  (let [n (count draws)
+        g (m/rng seed)
+        choose (fn choose [xs k] (cond (zero? k) [[]] (empty? xs) [] :else (concat (map #(cons (first xs) %) (choose (rest xs) (dec k))) (choose (rest xs) k))))
+        tests (for [i (range n)
+                    :let [others (vec (remove #{i} (range n)))
+                          all (when (<= (count others) 16) (choose others r))
+                          sets (if (and all (<= (count all) subsets))
+                                 all
+                                 (repeatedly subsets #(take r (sort-by (fn [_] (m/next-double! g)) others))))]
+                    s sets]
+                (:pass (null-test (draws i) (mapv draws s) (vb-of i) alpha)))
+        tests (vec tests)]
+    {:tests (count tests) :passes (count (filter true? tests))
+     :rate (/ (count (filter true? tests)) (double (max 1 (count tests))))}))
+
+(defn null-power
+  "The null test's power at a true gain `gain` over the null mean, the null
+  draws' spread `s` (sd0 with the origins' share folded in: a fresh draw's
+  sd), `r` draws: simulated, the null mean and spread estimated from r
+  normal draws each time."
+  [gain s r alpha {:keys [sims seed]}]
+  (let [g (m/rng seed)
+        q (t-quantile (- 1.0 (/ alpha 2.0)) (dec r))
+        hits (count (filter identity
+                            (repeatedly sims
+                                        (fn [] (let [ns (repeatedly r #(* s (m/normal! g)))
+                                                     c (+ gain (* s (m/normal! g)))
+                                                     mu (/ (reduce + ns) (double r))
+                                                     se (* (sd ns) (Math/sqrt (+ 1.0 (/ 1.0 r))))]
+                                                 (> (- c mu) (* q se)))))))]
+    (/ hits (double sims))))
+
+(defn null-mde
+  "The smallest gain over the null mean the null test finds 80% of the
+  time, in steps of s/20 (spread `s`, `r` draws)."
+  [s r alpha opts]
+  (some (fn [i] (let [gain (* i (/ s 20.0))] (when (>= (null-power gain s r alpha opts) 0.8) gain))) (range 0 400)))
+
 ;; --- report ------------------------------------------------------------------------
 
 (defn- fmtd [{:keys [diff lo hi]}] (format "%+.3f [%+.3f %+.3f]%s" diff lo hi (cond (pos? lo) " GAIN" (neg? hi) " LOSS" :else "")))
@@ -414,6 +536,86 @@
     (say (format "   minimum detectable recall gain at 80%% power: %s" (if-let [d (mde res 0.8)] (format "%+.3f" d) "not reached")))
     res))
 
+(defn- source-cells
+  "{source {kind {origin {:hits :pos :slots}}}} of the top-`k` lists on the
+  hard rows every run in `runs` ({source run}) forecasts, origins
+  `from`-`to`."
+  [runs kds cats k from to]
+  (let [ranked (into {} (for [kd kds] [kd (rank-rows (filterv :hard (kind-rows runs kd (cats kd) from to)) (keys runs) [k])]))]
+    (into {} (for [s (keys runs)] [s (into {} (for [[kd rs] ranked] [kd (cells rs s k from to)]))]))))
+
+(def harm-bound "No harm shown while the year nodes' Brier, the candidate less the null mean, has its lower end at or above this." -0.0003)
+
+(defn harm-verdict
+  "Harm from a null test on Brier gains over the bench (`null-test`'s
+  {:lo :hi}): :harm when the candidate costs more than the null groups
+  (the upper end below 0), :no-harm when the lower end is at or above
+  `harm-bound`, else :not-shown."
+  [{:keys [lo hi] :as t}]
+  (cond (nil? t) :not-shown
+        (neg? hi) :harm
+        (>= lo harm-bound) :no-harm
+        :else :not-shown))
+
+(defn report-v2
+  "The v2 rule (bead bnm-82j.6) for `run` against `bench` and the null
+  draws `nulls` (runs of the same shape): the gain on the primary (top-10
+  recall, hard onsets) over the nulls' mean, and the year nodes' Brier
+  over the nulls' mean (harm)."
+  [say run bench nulls cats {:keys [from to kinds alpha] :as opts}]
+  (let [kds (or kinds (all-kinds run))
+        years (range from (inc to))
+        ns (vec (map-indexed (fn [i n] [(keyword (str "n" i)) n]) nulls))
+        sc (source-cells (into {:c run :b bench} ns) kds cats 10 from to)
+        ng (null-gain {:c (sc :c) :b (sc :b) :nulls (mapv #(sc (first %)) ns)} years opts)
+        t (null-test (:cand ng) (:nulls ng) (:vb ng) alpha)
+        brier (fn [r] (:pooled (pd/world-pair r bench kds "year" from to 400 alpha)))
+        bc (brier run)
+        bn (mapv #(:diff (brier %)) nulls)
+        z (t-quantile 0.95 1e6)
+        h (null-test (:diff bc) bn (Math/pow (/ (- (:hi bc) (:lo bc)) (* 2 z)) 2) alpha)]
+    (say (format "Watch-list rule v2: %s against %s and %d null draws (%s), %d kinds, origins %d-%d." run bench (count nulls) (str/join "," nulls) (count kds) from to))
+    (say (format "   top-10 recall, hard onsets, less the bench: candidate %+.4f; null draws %s (mean %+.4f, sd %.4f)"
+                 (:cand ng) (str/join " " (map #(format "%+.4f" %) (:nulls ng))) (:mean0 t) (:sd0 t)))
+    (say (format "   gain over the null mean %+.4f [%+.4f %+.4f] (se %.4f: null sd x sqrt(1+1/R) and origins' sd %.4f; t, %d df), one-sided p %.3f: %s"
+                 (:g t) (:lo t) (:hi t) (:se t) (Math/sqrt (:vb ng)) (:df t) (:p t) (if (:pass t) "GAIN" "no gain")))
+    (say (format "   year nodes' Brier less the bench: candidate %+.5f [%+.5f %+.5f]; null draws %s"
+                 (:diff bc) (:lo bc) (:hi bc) (str/join " " (map #(format "%+.5f" %) bn))))
+    (say (format "   harm, Brier over the null mean %+.5f [%+.5f %+.5f]: %s"
+                 (:g h) (:lo h) (:hi h) ({:harm "HARM (costs more than the null groups)" :no-harm "no harm (lower end within the bound)"
+                                          :not-shown "no harm beyond the null groups' cost; no-harm not shown"} (harm-verdict h))))
+    {:gain t :harm h :ng ng}))
+
+(defn report-calibration
+  "The v2 rule's size and power from null draws alone (`nulls`, one shape,
+  one bench): each draw in turn the candidate against R of the others."
+  [say bench nulls cats {:keys [from to kinds alpha] :as opts}]
+  (let [kds (or kinds (all-kinds bench))
+        years (range from (inc to))
+        ns (vec (map-indexed (fn [i n] [(keyword (str "n" i)) n]) nulls))
+        sc (source-cells (into {:b bench} ns) kds cats 10 from to)
+        cs (mapv #(sc (first %)) ns)
+        per (vec (for [i (range (count cs))]
+                   (null-gain {:c (cs i) :b (sc :b) :nulls (vec (concat (subvec cs 0 i) (subvec cs (inc i))))} years opts)))
+        draws (mapv :cand per)
+        vb (mapv :vb per)
+        s0 (sd draws)
+        vbm (/ (reduce + vb) (count vb))
+        s (Math/sqrt (+ (* s0 s0) vbm))]
+    (say (format "Watch-list rule v2, calibration on %d null draws against %s, %d kinds, origins %d-%d." (count nulls) bench (count kds) from to))
+    (doseq [[n d v] (map vector nulls draws vb)]
+      (say (format "   %-22s recall less the bench %+.4f  (origins' sd of its gain over the others %.4f)" n d (Math/sqrt v))))
+    (say (format "   between-draw sd %.4f, origins' sd %.4f, together %.4f; the 82j.1 rule passes %d of %d"
+                 s0 (Math/sqrt vbm) s (count (filter #(pos? (:lo (paired-boot (into {} (for [[kd byt] (cs %)] [kd (into {} (for [[t {:keys [hits pos]}] byt] [t [(- hits (get-in sc [:b kd t :hits])) pos]]))])) years opts))) (range (count cs)))) (count cs)))
+    (doseq [r (filter #(< % (count nulls)) [3 4 6 8 10 12])]
+      (let [fp (false-pass draws #(vb %) r alpha {:subsets 300 :seed 1})
+            f0 (false-pass draws (constantly 0.0) r alpha {:subsets 300 :seed 1})]
+        (say (format "   R=%2d: false passes %d of %d (%.3f; without the origins' variance %.3f); detectable gain at 80%% (spread %.4f) %+.4f"
+                     r (:passes fp) (:tests fp) (:rate fp) (:rate f0) s (null-mde s r alpha {:sims 10000 :seed 1})))))
+    (doseq [r [16 24 32]]
+      (say (format "   R=%2d (simulated only): detectable gain at 80%% %+.4f" r (null-mde s r alpha {:sims 10000 :seed 1}))))
+    {:draws draws :vb vb :s s}))
+
 (defn parse-opts [args]
   (let [o (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))]
     (assoc o
@@ -426,13 +628,18 @@
            :kinds (some-> (:kinds o) (str/split #",") seq vec))))
 
 (defn -main [& args]
-  (let [{:keys [run bench placebo base record betas sims] pw :power :as opts} (parse-opts args)
+  (let [{:keys [run bench placebo base record betas sims v2 calibrate nulls] pw :power :as opts} (parse-opts args)
+        nulls (some-> nulls (str/split #","))
         cats (kinds/catalogues)
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out (str s "\n"))))
         hdr #(say "Watch-list rescoring (bnm.watchlist): a record, not a test. Top-k lists by the year node's probability of"
                   "an onset in (t, t+2], hard = no onset of the kind in the ten years to the origin, ranked among themselves.")]
     (cond
+      v2 (do (report-v2 say run bench nulls cats opts)
+             (spit (str "data/runs/" run "/watchlist-v2.txt") (str out)))
+      calibrate (do (report-calibration say bench nulls cats opts)
+                    (spit (str "data/runs/" calibrate) (str out)))
       record
       (do (hdr)
           (report-base say "t44-world-norel" cats opts)
