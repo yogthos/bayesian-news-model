@@ -983,7 +983,7 @@
     :consumption-ec, :other-ec, :interest-adjust  tried and not kept
         (docs 2a): the propensity reverting, other flows reverting,
         interest's shares adjusting toward the policy rate (needs
-        with-policy).
+        with-policy)."
   [panel kn iso origin {:keys [half-life rate-half-life fit-half-life mu rho phillips consumption wages investment theta]
                             :or {half-life 1.0 rate-half-life 1.0 fit-half-life 10.0 mu 0.3 phillips true} :as opts*}]
   (let [hl half-life

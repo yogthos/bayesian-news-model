@@ -3026,7 +3026,10 @@ forecaster of the sector balances.
 
 Registered on 29 October 2026, at commit 376b7b5, before any of this
 test's outcomes was computed. The model is bnm.sfc/estimated (2a, "Rules
-estimated from data"), chosen on the design origins only.
+estimated from data"), chosen on the design origins only. 376b7b5 left
+learn's docstring unterminated, so the namespace didn't load. The fix
+commit after this registration closes the string and changes no code,
+and the test runs on it. This note was added then, before any outcome.
 
 **What has been seen.** The 2003+ test origins are not fresh. 9f scored
 them at three and five years under Keen's rules: the restart, persistence
