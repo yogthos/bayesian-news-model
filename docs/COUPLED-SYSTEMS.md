@@ -474,7 +474,9 @@ NFCs -0.001, government -0.04 and the financial sector -0.35, which is
 the residual margin. The core is consistent. Its behavioural rules,
 Keen's included, carry no one-year forecast information beyond holding
 ratios. Keen's rules stay the default as the theory the coupled model is
-built on, and bnm.sfc/revised is the forecasting baseline.
+built on, and bnm.sfc/revised is the forecasting baseline (superseded:
+see the status line after the estimated rules below, and 9g's
+Decision).
 
 **Rules estimated from data (bead bnm-4hv.14, October 2026).** The goal
 is rules that forecast sector net lending and private debt better than
@@ -609,6 +611,14 @@ The two rules cost a little on debt (everything held: +0.21 / +0.39 /
 trend, the old rule. These are in-sample choices: hyperparameters (the
 half-lives, which rules) were picked on these origins, so the numbers
 are optimistic. The one-year skill is within its interval of zero.
+
+Status after the registered test (9g, decided 29 October 2026 after the
+outcome): damped reversion is the net-lending forecast; estimated is the
+best structural forecaster (it beats persistence and the everything-held
+core on the test origins) but is not adopted and is not for scenarios;
+the registered fallback to holding every ratio is not followed; scenario
+runs keep Keen's rules (learn's defaults) until bnm-4hv.15 gives
+interest a rate channel.
 
 ### 2b. Who controls credit, and what it is allocated to
 
@@ -3353,6 +3363,38 @@ done with the outcomes known and changes no registered rule).
   :complete, that the pooled refit reads no other country's years after
   the origin, and the booked start of the fiscal gap (failed before
   aa0ba7f).
+
+**Decision** (29 October 2026, by the user, after the result (829ff1b)
+and the review above; made with every outcome known).
+- *Net-lending forecasts: damped reversion.* The registered baseline,
+  each sector's balance moving 0.2 a year towards its mean over o - 4 to
+  o, is the net-lending forecast. It beats every structural version of
+  the core on the test origins: estimated by 0.026 at one year and 0.081
+  at three to five (rules-test-fix.txt), everything held by 0.066 and
+  0.184 (rules-held.txt).
+- *bnm.sfc/estimated: the best structural forecaster, not adopted.* On
+  the test origins it beats persistence (net lending +0.041 at one year,
+  +0.099 at three to five; debt +0.14 at three to five) and the
+  everything-held core (+0.087 at three to five). It is recorded as the
+  best of the structural cores and is not the forecast. It is not for
+  scenarios: holding interest as a share of output removes the interest
+  cost of debt, the rate-shock channel and the investment rule's
+  debt-service term (review, "Interest as a share of output").
+- *A departure from the registration.* The registered consequence of a
+  worse was "holding every ratio, with interest as a share, is the
+  baseline". That is not followed. The everything-held core is strictly
+  worse than estimated on net lending (against damped reversion -0.184
+  against -0.081 at three to five years), ties it on debt, and neither
+  is used for scenarios, so making it the baseline buys nothing. This is
+  a decision made after the outcome, not a registered reading.
+- *Scenario runs keep Keen's rules.* learn's defaults are still Keen's
+  rules (bnm.sfc/learn with no options: the Phillips curve, kappa(pi),
+  Godley-Lavoie consumption, interest at implicit rates on the stocks),
+  and the engine run (bnm.sfc-analysis) uses them when given no options.
+  They stay the rules for scenario runs, because they at least carry
+  interest on the stocks, until bnm-4hv.15 (policy-rate pass-through
+  with an explicit bank margin) gives the core a rate channel. No code
+  default changes with this decision.
 
 ## 10. Ranked plan
 
