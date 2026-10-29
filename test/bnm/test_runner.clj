@@ -45,6 +45,7 @@
             [bnm.keen-test]
             [bnm.cycles-test]
             [bnm.lattice-banking-test]
+            [bnm.lattice-smoke-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
             [bnm.economic-events-test]
@@ -146,6 +147,7 @@
     bnm.keen-test
     bnm.cycles-test
     bnm.lattice-banking-test
+    bnm.lattice-smoke-test
     bnm.political-gauges-test
     bnm.reconcile-test
     bnm.economic-events-test

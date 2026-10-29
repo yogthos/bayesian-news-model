@@ -86,7 +86,11 @@ lattice's outputs and reads exactly, in full and with groups dropped.
 - **Discovering what matters**: dynamic model averaging (Raftery, Kárný &
   Ettler 2010) over groups of gauges at every node. The posterior weight
   of each group through time is the model's own account of what matters
-  at that place and scale, and of when that changed.
+  at that place and scale, and of when that changed. A group with no
+  input at any of the node's places at an origin (a source that has
+  ended, a signal gone stale, errors not yet known) is an intercept-only
+  model under another name: it drops out of that origin's forecasts,
+  weight 0, and comes back when its source resumes (bnm-wns).
 - **Pooling**: sibling nodes (the countries of a subregion at one scale)
   share a prior on their slopes, centred on their parent's; slopes, not
   levels, since trials 31-33 found that levels learned from a country's

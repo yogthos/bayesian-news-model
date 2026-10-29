@@ -28,6 +28,23 @@
         sy (Math/sqrt (reduce + (map #(* (- % my) (- % my)) ys)))]
     (if (and (pos? sx) (pos? sy)) (/ sxy (* sx sy)) 0.0))))
 
+(defn group-live
+  "A group's inputs `ix` over a node's trace `rows` (every place at each
+  origin): the share of values not zero, their spread, whether it had no
+  input anywhere throughout (:dropped?), and the origins at which it had
+  none anywhere yet kept weight in `weight-at` ({origin weight}): a group
+  without inputs is an intercept-only model under another name, and must
+  drop out of the averaging rather than stay dead and weighted."
+  [rows ix weight-at]
+  (let [vals (for [row rows i ix] (double (nth (:x row) i)))
+        live (/ (count (filter #(not= 0.0 %) vals)) (double (count vals)))
+        spread (let [m (/ (reduce + vals) (count vals))] (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) vals)) (count vals))))
+        none-at (for [[o rs] (sort-by key (group-by :origin rows))
+                      :when (every? (fn [row] (every? #(= 0.0 (double (nth (:x row) %))) ix)) rs)]
+                  o)]
+    {:live live :spread spread :dropped? (zero? live)
+     :weighted (vec (filter #(pos? (get weight-at % 0.0)) none-at))}))
+
 (defn checks
   "The smoke checks on a run `r` of spec `sp` for `kind` to month `end`;
   prints each and returns the failures."
@@ -44,18 +61,25 @@
             ;; a nested link's own input, not the node's inputs its model also reads
             [g ix] (sort-by key (merge (:groups lay) (:parts lay)))
             :when (and (seq ix) (not= g :all) (seq late))]
-      (let [vals (for [row late i ix] (double (nth (:x row) i)))
-            live (/ (count (filter #(not= 0.0 %) vals)) (double (count vals)))
-            spread (let [m (/ (reduce + vals) (count vals))] (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) vals)) (count vals))))
+      (let [weight-at (into {} (for [[t ws] (get-in r [:weights [scale level]])] [t (get ws g 0.0)]))
+            {:keys [live spread dropped? weighted]} (group-live late ix weight-at)
             ;; an own input (past the gauges) with fewer than ten known values is
             ;; still waiting for its scale (the standardizer reads it as 0), not dead
             g-width (get-in sp [:gauge-width scale] 0)
             {:keys [ns]} (get-in r [:flow-std [scale level]])
-            waiting? (and ns (every? #(and (> % g-width) (< (nth ns (- % (inc g-width)) 0) 10)) ix))]
-        (if (and waiting? (not (and (> live 0.01) (> spread 1e-6))))
+            waiting? (and ns (every? #(and (> % g-width) (< (nth ns (- % (inc g-width)) 0) 10)) ix))
+            tag (format "%-12s %-9s %-14s" (name scale) (name level) (name g))]
+        ;; at an origin without input anywhere a group must carry no weight
+        (when (seq weighted)
+          (check false (format "%s weighted at %d origins where it has no input" tag (count weighted))))
+        (cond
+          ;; no input in the window at all (a source that ended, errors not
+          ;; yet known): dropped out of the averaging, not dead
+          dropped? (println (format "        dropped out: %s no input in the last ten years, no weight" tag))
+          (and waiting? (not (and (> live 0.01) (> spread 1e-6))))
           (println (format "        waiting: %s %s %s, fewer than ten known values" (name scale) (name level) (name g)))
-          (check (and (> live 0.01) (> spread 1e-6))
-                 (format "%-12s %-9s %-14s live %.2f spread %.2f" (name scale) (name level) (name g) live spread)))))
+          :else (check (and (> live 0.01) (> spread 1e-6))
+                       (format "%s live %.2f spread %.2f" tag live spread)))))
     ;; 2b. every gauge input live somewhere in the run (a source that never
     ;; reaches the node, through a loader's whitelist say, reads as zeros)
     (doseq [[[scale level] rows] (group-by (juxt :scale :level) (:trace r))

@@ -33,7 +33,7 @@
     place is open to it;
   - :feedback, errors passed across levels: the last resolved errors
     (outcome less forecast) of the place's coarser scales, its parent and
-    its children, each known by t.
+    its children, each known by t; unknown (nil) before any is.
   The node's own inputs (everything but the intercept and the spec's
   gauges, which the spec standardizes) are standardized by their running
   mean and spread at the node's earlier origins, capped at 5: strain, gaps
@@ -53,7 +53,10 @@
 
   The models averaged at each node read the intercept and one group each,
   or all of them (:only picks a subset): the weights through time say
-  which gauges, flows and contradictions mattered at that node. :prior
+  which gauges, flows and contradictions mattered at that node. A group
+  with no input at any of the node's places at an origin (every own input
+  0, the unknown's mean: a source that ended, a signal gone stale, errors
+  not yet known) drops out of that origin's forecasts, weight 0. :prior
   seeds coefficients with what is known."
   (:require [augur.dynamic :as d]
             [bnm.relations :as rel]
@@ -296,13 +299,15 @@
   node goes through the sheaf's restrictions (bnm.sheaf), which record
   it."
   [spec {:keys [book errors tension resolutions]} scale scale-spec level-ix place t gauges]
-  (let [{:keys [finer coarser]} (layout spec scale level-ix)
+  (let [{:keys [finer coarser width]} (layout spec scale level-ix)
         per (:per scale-spec)
         b (sh/base spec)
         ;; every read through the sheaf, none after the origin; each made
         ;; eagerly, so it is recorded whether or not its input is used
         r (sh/reader book errors {:origin t})
-        ancestors (sh/ancestors b place)
+        ;; the ancestors among the spec's levels (a parent map may run past
+        ;; them, to a world the spec has no level for): the layout's count
+        ancestors (vec (take (- (count (:levels spec)) level-ix 1) (sh/ancestors b place)))
         ;; up: finer scales over this period, children at this origin
         finer-entries (mapv (fn [f] [f (vec (sh/over r :up [f place] (- t (dec per)) t))]) finer)
         up-time (mapcat (fn [[_ es]]
@@ -380,14 +385,17 @@
         ;; exposure: what comes down, times the place's exposure to it
         exposure (when-let [f (:exposure spec)]
                    (let [e (f scale place t)] (for [dv down ev e] (* dv ev))))
-        ;; feedback: errors of the coarser scales, the parent, the children, known by t
+        ;; feedback: errors of the coarser scales, the parent, the children, known by t;
+        ;; none known yet (before the outcomes begin, a catalogue that starts
+        ;; late) is unknown, nil, not a perfect forecast of 0: zeros would
+        ;; shrink the running spread and put the first real errors at the cap
         err (fn [s p] (second (sh/latest-known r [s p] t)))
-        parent (get (:parent spec) place)
+        parent (when (seq ancestors) (first ancestors))
         ;; read (eagerly) only when the group is used
         feedback (when-not ((without spec scale) :feedback)
-                   (vec (concat (mapv #(or (err % place) 0.0) coarser)
-                                (when parent [(or (err scale parent) 0.0)])
-                                (when (pos? level-ix) [(or (mean (vec (keep #(err scale %) kids))) 0.0)]))))
+                   (vec (concat (mapv #(err % place) coarser)
+                                (when parent [(err scale parent)])
+                                (when (pos? level-ix) [(mean (vec (keep #(err scale %) kids)))]))))
         ;; relations: other kinds' states and onsets for the place, from before t
         rel (when-let [f (when-not ((without spec scale) :relations) (:relations spec))]
               (let [{:keys [x] :as r} (f scale place t)
@@ -405,6 +413,9 @@
                          (when-not (w :exposure) exposure)
                          (when-not (w :feedback) feedback)
                          (when-not (w :relations) (:x rel)))))]
+    (when (not= (count x) width)
+      (throw (ex-info "bnm.lattice: a node's inputs do not match its layout"
+                      {:scale scale :level-ix level-ix :place place :width width :got (count x)})))
     {:x x
      :reads (into (sh/reads r) (when-not ((without spec scale) :relations) (:reads rel)))
      :stated stated
@@ -438,6 +449,30 @@
                   (assoc models ka a kb b))
                 models)))
           models (partition 2 1 levels)))
+
+(defn dormant
+  "The groups of a node's `layout` with no input at any place: every one of
+  its own inputs (past the intercept and the `core` gauge indices, which
+  every model reads) exactly 0, the unknown's mean, in every row of `xs`.
+  The base and all-inputs models are never dormant."
+  [{:keys [groups parts]} core xs]
+  (let [core? (set (map #(inc (long %)) core))
+        xs (vec xs)]
+    (set (for [[g ix] (merge groups parts)
+               :when (not (#{:base :all} g))
+               :let [own (remove core? ix)]
+               :when (and (seq own) (seq xs)
+                          (every? (fn [x] (every? #(let [v (nth x %)] (or (nil? v) (zero? (double v)))) own)) xs))]
+           g))))
+
+(defn live-weights
+  "Model-averaging weights `w` with the `out` groups at 0 and the rest
+  renormalized; `w` as it is when nothing else carries weight."
+  [w out]
+  (let [kept (reduce + 0.0 (for [[g v] w :when (not (contains? out g))] v))]
+    (if (pos? kept)
+      (into {} (for [[g v] w] [g (if (contains? out g) 0.0 (/ v kept))]))
+      w)))
 
 (declare start step finish)
 
@@ -573,22 +608,31 @@
                                                                    (vec (repeat (count x) 0.0))
                                                                    (map-indexed vector (:inputs all)))]
                                                     (rel/principal mx x groups cands))))))
-                       made (vec (for [place places
+                       seen (vec (for [place places
                                        :let [g ((:gauges spec) scale place t)
                                              {:keys [x reads stated tension strain resolved]} (inputs spec st scale scale-spec level-ix place t g)
                                              raw-flows (subvec x (inc g-width))
                                              x (into (subvec x 0 (inc g-width)) (standardize flow-std raw-flows))
-                                             {:keys [os read]} (offsets-of place t)
-                                             reads (cond-> reads read (conj read))
-                                             one? (= 1 (count os))
+                                             {:keys [os read]} (offsets-of place t)]]
+                                   {:place place :x x :raw-flows raw-flows :os os :reads (cond-> reads read (conj read))
+                                    :stated stated :tension tension :strain strain :resolved resolved}))
+                       ;; a group with no input anywhere at t (its source ended, a signal
+                       ;; gone stale, errors not yet known) reads the unknown's mean, 0, at
+                       ;; every place: an intercept-only model under another name. It drops
+                       ;; out of this period's forecasts, weight 0, the others renormalized;
+                       ;; the averaging keeps its record, so it comes back when its source
+                       ;; resumes
+                       live (let [out (dormant (layout spec scale level-ix) (get-in spec [:core scale]) (map :x seen))]
+                              (if (seq out) (assoc model :w (live-weights (d/weights model) out)) model))
+                       made (vec (for [{:keys [place x os] :as e} seen
+                                       :let [one? (= 1 (count os))
                                              ;; the mean offset, learned from: the one whose
                                              ;; probability is the offsets' average
                                              o (if one? (second (first os)) (logit (reduce + (for [[w o] os] (* w (m/expit o))))))
-                                             p (if one? (d/predict model x o) (reduce + (for [[w o] os] (* w (d/predict model x o)))))
-                                             {pf :f pq :q} (d/predictive model x o)
+                                             p (if one? (d/predict live x o) (reduce + (for [[w o] os] (* w (d/predict live x o)))))
+                                             {pf :f pq :q} (d/predictive live x o)
                                              target ((:target spec) scale place t)]]
-                                   {:place place :x x :raw-flows raw-flows :o o :p p :target target :reads reads :stated stated :tension tension :strain strain
-                                    :resolved resolved :f pf :q pq :principal (when principal-of (principal-of x))}))
+                                   (assoc (dissoc e :os) :o o :p p :target target :f pf :q pq :principal (when principal-of (principal-of x)))))
                        st (reduce (fn [st {:keys [place p stated tension strain resolved f q principal]}]
                                     (-> st
                                         (update-in [:book [scale place]] (fnil assoc (sorted-map)) t
@@ -608,7 +652,7 @@
                    [st
                     (into forecasts (for [{:keys [place p target]} made]
                                               {:scale scale :place place :origin t :p p :y (:y target)}))
-                    (update weights k (fnil conj []) [t (d/weights model)])
+                    (update weights k (fnil conj []) [t (d/weights live)])
                     (if (:trace spec)
                       (into trace (for [{:keys [place reads x p o]} made]
                                             (cond-> {:scale scale :level level :place place :origin t :reads reads

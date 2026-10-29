@@ -169,9 +169,12 @@
         score (fn [without] (log-score (late (lt/run (assoc (contradiction-spec w) :without without)))))
         full (score #{})]
     (is (> full (+ 0.1 (score #{:contradiction}))) "the contradiction carries the signal")
-    (testing "errors fed across levels add to it, but only on top of it"
-      (is (> full (+ 0.02 (score #{:feedback}))))
-      (is (< (Math/abs (- (score #{:contradiction}) (score #{:contradiction :feedback}))) 0.02)))))
+    ;; the errors fed across levels carry nothing the contradiction does not
+    ;; (an earlier assertion that they added 0.02 read the inputs one place
+    ;; off: the parent map ran to a world the spec has no level for)
+    (testing "errors fed across levels are no substitute for it"
+      (is (< (Math/abs (- full (score #{:feedback}))) 0.03))
+      (is (> full (+ 0.1 (score #{:contradiction :feedback})))))))
 
 (deftest tension-resets-only-when-the-crisis-is-known
   (let [acc (lt/accumulate {:decay 0.7} [[0 1.0 nil] [1 1.0 nil] [2 1.0 {:resolved-at 5}] [3 1.0 nil] [5 1.0 nil] [6 1.0 nil]])]
@@ -588,4 +591,50 @@
                   nested (augur.dynamic/means (lt/model r :month level :rel/never))
                   ws (lt/weights r :month level)]]
       (is (= all (subvec nested 0 (count all))) (str level ": the nested model is the all-inputs model"))
-      (is (< (Math/abs (- (ws :all) (ws :rel/never))) 1e-9) (str level " weights " ws)))))
+      ;; and, never known anywhere, it carries no weight (a group without inputs drops out)
+      (is (= 0.0 (ws :rel/never)) (str level " weights " ws)))))
+
+(deftest an-error-not-yet-known-is-unknown-not-zero
+  ;; before a node's outcomes begin (a catalogue that starts late) there is
+  ;; no error to feed back: the input is unknown, standardized to the mean
+  ;; and left out of the running spread, not a perfect forecast of 0 that
+  ;; shrinks the spread until the first real error lands at the cap
+  (let [w (world 5)
+        sp (assoc (spec w) :end 359 :trace true
+                  :target (let [t0 (:target (spec w))]
+                            (fn [scale place origin] (when (>= origin 240) (t0 scale place origin)))))
+        r (lt/run sp)
+        lay (lt/layout-of sp :year 0)
+        j (- (first (get-in lay [:groups :feedback])) 2)
+        {:keys [n ns]} (get-in r [:flow-std [:year :country]])
+        fed (count (filter (fn [{:keys [scale level reads]}]
+                             (and (= :year scale) (= :country level) (some #(= :feedback (:dir %)) reads)))
+                           (:trace r)))]
+    (is (pos? fed) "the countries read their regions' errors once known")
+    (is (< fed n))
+    (is (= fed (nth ns j)) "only the known errors count toward the spread")))
+
+(deftest a-group-without-inputs-carries-no-weight
+  ;; a source that ends (a dataset that stops, a signal gone stale) leaves
+  ;; its group reading zeros, the unknown's mean, at every place: an
+  ;; intercept-only model under another name. While it has no input it
+  ;; drops out of the averaging, weight 0, and comes back when its source
+  ;; resumes
+  (let [w (world 6)
+        gone? (fn [t] (<= 200 t 299))
+        sp (assoc (spec w) :end 400
+                  :gauge-width {:month 2 :year 1}
+                  :gauges (fn [scale place origin]
+                            (if (= scale :month)
+                              [(if (= 2 (count place)) (get-in w [:gauge place origin]) 0.3)
+                               (if (gone? origin) 0.0 ((:noise w)))]
+                              [((:noise w))]))
+                  :gauge-groups {:month {:signal [0] :faded [1]}})
+        r (lt/run sp)
+        hist (into (sorted-map) (get-in r [:weights [:month :country]]))]
+    (is (every? #(pos? (get-in hist [% :faded])) (range 20 200)) "weighted while it reads something")
+    (is (every? #(= 0.0 (get-in hist [% :faded])) (range 200 300)) "no weight while it reads nothing")
+    (is (every? #(< (Math/abs (- 1.0 (reduce + (vals (hist %))))) 1e-9) (range 200 300)) "the others' weights renormalized")
+    (is (pos? (get-in hist [320 :faded])) "back when its source resumes")
+    (testing "a group known at some places is not dropped"
+      (is (every? #(pos? (get-in hist [% :signal])) (range 20 400))))))
