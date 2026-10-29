@@ -3169,6 +3169,73 @@ largest simulated) where none is.
 and with --all true (rules-test-all.edn, .txt) for the sensitivity with
 Bulgaria and Romania.
 
+**Result** (run once, 29 October 2026, on 484670b in a clean worktree;
+data/derived/sfc/rules-test.txt). Every model gave a value at all 9,723
+rows. The estimated core's skill [90%] against each baseline, net
+lending (four sectors) / private debt:
+
+| split | baseline | 1 year | 3-5 years |
+|---|---|---|---|
+| holdout (JPN, ISL) | persistence | +0.19 [-0.19, +0.77] / -0.63 [-1.23, +0.92] | +0.20 [-0.10, +0.62] / -0.38 [-0.89, +0.69] |
+| | damped reversion | +0.11 [-0.26, +0.69] / -0.39 [-0.98, +1.17] | +0.01 [-0.30, +0.43] / -0.28 [-0.78, +0.80] |
+| | current restart | +0.38 [+0.01, +0.96] / -0.07 [-0.67, +1.48] | +0.39 [+0.09, +0.81] / +0.04 [-0.47, +1.11] |
+| test (2003 on) | persistence | +0.040 [+0.018, +0.068] / -0.04 [-0.20, +0.18] | +0.099 [+0.044, +0.130] / +0.14 [+0.09, +0.20] |
+| | damped reversion | -0.028 [-0.040, -0.011] / +0.18 [-0.04, +0.42] | -0.082 [-0.138, -0.042] / +0.37 [+0.32, +0.42] |
+| | current restart | +0.41 [+0.31, +0.53] / -0.04 [-0.16, +0.15] | +0.68 [+0.51, +0.80] / +0.11 [+0.02, +0.20] |
+
+- *Primary, the holdout: inconclusive.* No cell passes, none is worse,
+  and the bounds are too wide for equivalence, as the power table said
+  they would be. The points run the same way as the test origins on net
+  lending: +0.2 against persistence, about 0 against damped reversion.
+  On debt they go the other way, -0.4 to -0.6 against persistence, from
+  30 origins in two countries. Debt is where the holdout is weakest (30
+  and 48 rows; a pass at a skill of 0.5 one time in three).
+- *Secondary, the test origins: worse.* Against damped reversion, net
+  lending is below zero at both horizon groups (-0.03 and -0.08,
+  intervals below 0). That alone makes the verdict worse. The other cells:
+  - against persistence: equivalent at one year (net lending +0.04
+    [+0.02, +0.07], debt -0.04 [-0.20, +0.18], both under their bounds),
+    and a pass at three to five years (+0.10 and +0.14, both lower ends
+    above 0);
+  - against the current restart: a pass at three to five years and
+    inconclusive at one year (debt).
+
+  These origins were seen twice before (above).
+- Per sector on the test origins, against persistence at three to five
+  years: government +0.20 [+0.12, +0.25], NFCs +0.06 [-0.00, +0.12], the
+  financial sector +0.06 [-0.19, +0.16], households +0.02 [+0.00, +0.04].
+  9f's restart was -1.36, -2.01, -5.41 and -0.32 there. Holding interest
+  as a share took away the financial sector's runaway, and the fiscal
+  rule is the largest gain.
+- With Bulgaria and Romania (rules-test-all.txt) the verdicts are the
+  same: inconclusive and worse. On the test origins, net lending is +0.10
+  against persistence and -0.06 [-0.11, -0.02] against damped reversion
+  at three to five years.
+
+What it means.
+- The estimated rules fix the core's drift. Against 9f's restart they
+  gain 0.4 to 0.7 of the squared error on net lending. Against
+  persistence they pass at three to five years on both outcomes on the
+  test origins, and debt (+0.14) is above 9f's +0.04.
+- They don't beat damped reversion of net lending itself. Moving each
+  sector's balance a fifth of the way a year to its five-year mean still
+  forecasts better than the accounts with these rules (-0.08 at three to
+  five years). On debt the core beats damped reversion by a wide margin,
+  as 9f's did, because debt ratios trend.
+- On the design origins (rules-test.txt, design split) the same gap is
+  near zero (-0.01 [-0.11, +0.06] at three to five years). The rules
+  were chosen where they did best against it.
+- By the registration: estimated is not adopted as the SFC forecast, and
+  the ensemble (bnm-tvk) stays parked. The registered reading of a
+  worse ("the error corrections overfit, and holding every ratio with
+  interest as a share is the baseline") does not fit what failed. The
+  worse is against damped reversion, which "everything held" also lost
+  to on the design origins (-0.03 and -0.12 at three and five years).
+  Against persistence and the restart the error corrections gained on
+  the test origins. Which forecasting baseline to keep (estimated or
+  everything held) needs a decision; nothing here tested "everything
+  held" out of sample.
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
