@@ -623,3 +623,247 @@
         st (sfc/init panel {} "SIM" 2015 p)
         x (sfc/observed (get-in panel ["SIM" 2015]))]
     (is (< (Math/abs (- (:nl-gov st) (/ (get-in (sfc/book x) [:nl :gov]) (:Y x)))) 1e-12))))
+
+;; -- policy-rate pass-through and the bank margin (bead bnm-4hv.15) -----------------------
+
+(def rr0
+  {:from 2001 :r0 0.03 :policy {}
+   :i0 {:hh 0.05 :nfc 0.045 :gov 0.04} :spread {:hh 0.025 :nfc 0.02 :gov 0.01}
+   :a {:hh 0.3 :nfc 0.3 :gov 0.1} :lambda {:hh 0.3 :nfc 0.25 :gov 0.15}
+   :nim0 0.01 :nim-norm 0.012 :nim-phi 0.2 :nim-beta 0.1})
+
+(defn- close? [a b] (< (Math/abs (- (double a) (double b))) 1e-12))
+
+(deftest lending-rates-pass-the-policy-rate-through
+  (testing "the policy rate held: each implicit rate closes lambda of its gap to policy plus spread a year"
+    (let [y1 (sfc/rates-at rr0 2001) y2 (sfc/rates-at rr0 2002)
+          i1 (+ 0.05 (* 0.3 (- (+ 0.03 0.025) 0.05)))]
+      (is (close? i1 (get-in y1 [:paid :hh])))
+      (is (close? (+ i1 (* 0.3 (- 0.055 i1))) (get-in y2 [:paid :hh])))
+      (is (close? (+ 0.04 (* 0.15 (- 0.04 0.04))) (get-in y1 [:paid :gov])) "at its target, it stays")
+      (is (close? 0.03 (:policy y2)))
+      (is (= (sfc/rates-at rr0 2000) {:policy 0.03 :paid (:i0 rr0) :nim 0.01}) "the origin's own rates")))
+  (testing "a policy move: a of it at once, the rest through the gap"
+    (let [rr (assoc rr0 :policy {2001 0.04 2002 0.04 2003 0.04})
+          i1 (+ 0.05 (* 0.3 0.01) (* 0.3 (- (+ 0.03 0.025) 0.05)))
+          i2 (+ i1 (* 0.3 (- (+ 0.04 0.025) i1)))]
+      (is (close? i1 (get-in (sfc/rates-at rr 2001) [:paid :hh])))
+      (is (close? i2 (get-in (sfc/rates-at rr 2002) [:paid :hh])))
+      (is (close? 0.04 (:policy (sfc/rates-at rr 2010))) "the last policy rate given is held")))
+  (testing "the margin on interest-bearing assets reverts to its norm and moves with the policy rate"
+    (is (close? (+ 0.01 (* 0.2 0.002)) (:nim (sfc/rates-at rr0 2001))))
+    (is (close? (+ 0.01 (* 0.2 0.002) (* 0.1 0.01)) (:nim (sfc/rates-at (assoc rr0 :policy {2001 0.04}) 2001)))))
+  (testing "no policy rate: lending rates held, the margin reverting"
+    (let [rr (assoc rr0 :r0 nil)]
+      (is (= (:i0 rr0) (:paid (sfc/rates-at rr 2004))))
+      (is (close? (+ 0.01 (* 0.2 0.002)) (:nim (sfc/rates-at rr 2001)))))))
+
+(def p-rates (-> p-est (dissoc :int-share) (assoc :rates rr0)))
+
+(defn- ib [b s side] (+ (sfc/pos b s :money side) (sfc/pos b s :debt side)))
+
+(deftest interest-is-rate-times-stock-and-the-margin-its-own-rule
+  (let [ye 104.0
+        pinc (sfc/property-income bsm0 p-rates ye nil 2001)
+        rt (sfc/rates-at rr0 2001)
+        x (assoc pinc :Y 100.0)]
+    (doseq [s [:hh :nfc :gov]]
+      (is (close? (* (get-in rt [:paid s]) (ib bsm0 s :l)) (get-in pinc [:int-paid s])) (str "paid " s)))
+    (is (close? (* 0.03 (ib bsm0 :row :l)) (get-in pinc [:int-paid :row])) "the rest of the world at its implicit rate")
+    (is (close? (* 0.03 (ib bsm0 :row :a)) (get-in pinc [:int-recv :row])))
+    (is (close? (* (:nim rt) (ib bsm0 :fin :a)) (sfc/margin-of x)) "the financial sector's net interest: the margin times its assets")
+    (is (close? (sfc/margin-of x)
+                (get-in (sfc/book (merge {:Y 100.0 :va {} :comp {} :ptax {} :cons {} :inv {} :other {}} pinc)) [:rows :interest :fin]))
+        "margin-of is the financial sector's net interest in the books")
+    (is (close? (/ (get-in pinc [:int-recv :hh]) (get-in pinc [:int-recv :nfc]))
+                (/ (* 0.02 (ib bsm0 :hh :a)) (* 0.02 (ib bsm0 :nfc :a))))
+        "deposit rates move together: receipts in proportion to rate times stock")
+    (testing "the identities hold every step"
+      (doseq [[s o] (rest (run-steps st-est p-rates 20))]
+        (is (< (sfc/tfm-gap (:booked o)) (* 1e-10 (:Y o))))
+        (is (< (sfc/bsm-gap (:bsm s)) (* 1e-10 (:Y o))))
+        (is (< (:fof-gap o) (* 1e-10 (:Y o))))))))
+
+(deftest a-policy-shock-raises-the-interest-bill
+  (let [shocked (sfc/policy-shock p-rates 2001 0.01)
+        base (rest (run-steps st-est p-rates 10))
+        shock (rest (run-steps st-est shocked 10))
+        gov (fn [[_ o]] (get-in o [:x :int-paid :gov]))]
+    (is (close? 0.04 (get-in shocked [:rates :policy 2001])))
+    (is (close? 0.04 (get-in shocked [:rates :policy 2030])) "held from then on")
+    (is (< (Math/abs (- (- (gov (first shock)) (gov (first base))) (* 0.1 0.01 (ib bsm0 :gov :l)))) 1e-12)
+        "the first year: a of the move on the opening stock")
+    (is (every? true? (map #(> (gov %1) (gov %2)) shock base)))
+    (is (= base (rest (run-steps st-est (sfc/policy-shock p-rates 2001 0.0) 10))) "no move, no change")))
+
+(deftest a-spending-shock-is-debt-financed-and-leaves-the-base
+  (let [p (assoc p-rates :spend-shock {2001 0.01})
+        [[s1 o1] [s0 o0]] [(second (run-steps st-est p 1)) (second (run-steps st-est p-rates 1))]
+        ye (* 100.0 1.04)]
+    (is (close? (+ (get-in o0 [:x :cons :gov]) (* 0.01 ye)) (get-in o1 [:x :cons :gov])))
+    (is (close? (:cg s0) (:cg s1)) "next year's spending grows from the base, not the shock")
+    (is (< (get-in o1 [:booked :nl :gov]) (get-in o0 [:booked :nl :gov])))
+    (doseq [[s o] (rest (run-steps st-est p 10))]
+      (is (< (max (sfc/tfm-gap (:booked o)) (:fof-gap o) (sfc/bsm-gap (:bsm s))) (* 1e-10 (:Y o)))))))
+
+(deftest modules-reproduce-the-step-under-the-rates
+  (let [p (sfc/policy-shock p-rates 2002 0.01)
+        ms (msfc/modules "SIM" st-est p)
+        n 8
+        direct (rest (run-steps st-est p n))
+        em (:emits (eng/run ms {:from 2001 :to (+ 2000 n)}))]
+    (doseq [[i [_ o]] (map-indexed vector direct)]
+      (is (< (Math/abs (- (get-in o [:net-lending :gov]) (get-in em [:sfc-accounts "sfc/net-lending-gov" i]))) 1e-12) (str "year " i)))))
+
+(defn- with-policy-series [panel rs] (into {} (for [[y ob] panel] [y (if-let [r (rs y)] (assoc ob :policy r) ob)])))
+
+(deftest rate-rows-recover-the-pass-through
+  ;; implicit rates made by di_t = a dr_t + lambda (r_{t-1} + norm_{t-1} - i_{t-1}),
+  ;; the spread's norm the 10-year weighted mean of i - r over the years to t - 1
+  (let [base (sim-panel 30)
+        years (vec (sort (keys base)))
+        rs (into {} (map-indexed (fn [i y] [y (+ 0.03 (* 0.01 (Math/sin (* 0.9 i))))]) years))
+        a 0.4 lam 0.25
+        is* (reduce (fn [acc y]
+                      (let [prior (vec (sort (filter #(< % y) (keys acc))))]
+                        (if (< (count prior) 3)
+                          (assoc acc y (+ (rs y) 0.02 (* 0.001 (count prior))))
+                          (let [i0 (acc (dec y))
+                                nd (hl-mean (for [q prior] [q (- (acc q) (rs q))]) (dec y) 10.0)]
+                            (assoc acc y (+ i0 (* a (- (rs y) (rs (dec y)))) (* lam (- (+ (rs (dec y)) nd) i0))))))))
+                    {} (rest years))
+        panel {"SIM" (with-policy-series
+                       (into {} (for [[y ob] base]
+                                  [y (if-let [i (is* y)]
+                                       (assoc-in ob [:f :hh :int_paid] (* i (ib (:bsm (sfc/close-init (:b (base (dec y))))) :hh :l)))
+                                       ob)]))
+                       rs)}
+        rows (get (sfc/rate-rows panel 2025 10.0) ["SIM" :hh])
+        y0 (nth years 4) prior (subvec years 1 4)]
+    (is (= 3 (count (first rows))) "the policy change, the gap, the rate's change")
+    (is (< (Math/abs (- (nth (first rows) 1) (- (+ (rs (dec y0)) (hl-mean (for [q prior] [q (- (is* q) (rs q))]) (dec y0) 10.0)) (is* (dec y0))))) 1e-12))
+    (let [{[ca cl] :b} (sfc/ols rows)]
+      (is (< (Math/abs (- ca a)) 1e-9) (str "a " ca))
+      (is (< (Math/abs (- cl lam)) 1e-9) (str "lambda " cl)))
+    (let [cut {"SIM" (into {} (filter #(<= (key %) 2015)) (get panel "SIM"))}]
+      (is (= (sfc/rate-rows panel 2015 10.0) (sfc/rate-rows cut 2015 10.0)) "nothing after the origin"))))
+
+(deftest margin-rows-recover-the-banks-rule
+  (let [base (sim-panel 30)
+        years (vec (sort (keys base)))
+        rs (into {} (map-indexed (fn [i y] [y (+ 0.03 (* 0.01 (Math/sin (* 0.7 i))))]) years))
+        phi 0.3 beta 0.2
+        ms (reduce (fn [acc y]
+                     (let [prior (vec (sort (filter #(< % y) (keys acc))))]
+                       (if (< (count prior) 3)
+                         (assoc acc y (+ 0.01 (* 0.0005 (count prior))))
+                         (let [m0 (acc (dec y)) nm (hl-mean (for [q prior] [q (acc q)]) (dec y) 10.0)]
+                           (assoc acc y (+ m0 (* phi (- nm m0)) (* beta (- (rs y) (rs (dec y))))))))))
+                   {} (rest years))
+        set-m (fn [y ob]
+                (if-let [m (ms y)]
+                  (let [cur (sfc/margin-of (sfc/observed ob))
+                        want (* m (ib (:bsm (sfc/close-init (:b (base (dec y))))) :fin :a))]
+                    (update-in ob [:f :row :int_paid] + (- want cur)))
+                  ob))
+        panel {"SIM" (with-policy-series (into {} (for [[y ob] base] [y (set-m y ob)])) rs)}
+        rows (get (sfc/nim-rows panel 2025 10.0) "SIM")]
+    (is (= 3 (count (first rows))) "the margin's gap to its norm, the policy change, the margin's change")
+    (let [{[cp cb] :b} (sfc/ols rows)]
+      (is (< (Math/abs (- cp phi)) 1e-9) (str "phi " cp))
+      (is (< (Math/abs (- cb beta)) 1e-9) (str "beta " cb)))
+    (let [cut {"SIM" (into {} (filter #(<= (key %) 2015)) (get panel "SIM"))}]
+      (is (= (sfc/nim-rows panel 2015 10.0) (sfc/nim-rows cut 2015 10.0)) "nothing after the origin"))))
+
+(deftest learning-the-rates
+  (let [base (sim-panel 30)
+        rs (into {} (map-indexed (fn [i y] [y (+ 0.03 (* 0.01 (Math/sin (* 0.9 i))))]) (sort (keys base))))
+        panel {"SIM" (with-policy-series base rs)}
+        o 2025
+        p (sfc/learn panel {} "SIM" o (assoc sfc/rates :rates {:estimate true}))
+        rr (:rates p)
+        rate (fn [y s] (let [st (ib (:bsm (sfc/close-init (get-in panel ["SIM" (dec y) :b]))) s :l)]
+                         (when (pos? st) (/ (get-in panel ["SIM" y :f s :int_paid]) st))))]
+    (is (nil? (:int-share p)) "interest is no longer a held share")
+    (is (map? (:div-recv-share p)) "dividends still are")
+    (is (map? (:fiscal-rule p)))
+    (is (= (inc o) (:from rr)))
+    (is (close? (rs o) (:r0 rr)) "the origin's policy rate")
+    (doseq [s [:hh :nfc :gov]]
+      (is (close? (get-in p [:i-l s]) (get-in rr [:i0 s])) (str "the origin's rate " s))
+      (let [ok (for [y (range 2001 (inc o)) :let [i (rate y s)] :when (and i (< 0.0 i 0.3))] [y (- i (rs y))])]
+        (is (close? (if (seq ok) (hl-mean ok o 10.0) (- (get-in p [:i-l s]) (rs o))) (get-in rr [:spread s]))
+            (str "spread " s ": rates on a positive stock within (0, 0.3); none, the origin's rate less its policy rate")))
+      (let [{[a lam] :b} (sfc/ols (apply concat (for [[[_ s'] v] (sfc/rate-rows panel o 10.0) :when (= s s')] v)))]
+        (is (close? a (get-in rr [:a s])))
+        (is (close? lam (get-in rr [:lambda s])))))
+    (is (every? number? (map rr [:nim0 :nim-norm :nim-phi :nim-beta])))
+    (testing "nothing after the origin is read"
+      (let [cut {"SIM" (into {} (filter #(<= (key %) 2015)) (get panel "SIM"))}]
+        (is (= (sfc/learn panel {} "SIM" 2015 sfc/rates) (sfc/learn cut {} "SIM" 2015 sfc/rates)))))
+    (testing "the selected form"
+      (is (= {:estimate true :margin-base :output :anchor true :recv :share :row :share} (:rates sfc/rates)))
+      (let [q (:rates (sfc/learn panel {} "SIM" o sfc/rates))]
+        (is (= [:output :share :share] [(:margin-base q) (:recv q) (:row q)]))
+        (is (= (:lambda rr) (:lambda q)) "the same pass-through")))))
+
+(deftest the-margin-can-be-a-share-of-output
+  (let [rr (assoc rr0 :margin-base :output)
+        pinc (sfc/property-income bsm0 (assoc p-rates :rates rr) 104.0 nil 2001)]
+    (is (close? (* (:nim (sfc/rates-at rr 2001)) 104.0) (sfc/margin-of pinc)) "the margin times expected output"))
+  (let [base (sim-panel 30)
+        panel {"SIM" (with-policy-series base (into {} (for [y (keys base)] [y 0.03])))}
+        rows (get (sfc/nim-rows panel 2025 10.0 :output) "SIM")
+        m (fn [y] (let [x (sfc/observed (get base y))] (/ (sfc/margin-of x) (:Y x))))
+        y0 2004]
+    (is (seq rows))
+    (is (close? (- (m y0) (m (dec y0))) (last (first rows))) "the change in net interest over output, the first year with three before it for the norm")))
+
+(deftest interest-on-last-years-stock-under-theta
+  ;; :stock :mix: the lending and deposit bases as property-income's mix
+  ;; (theta 0: last year's opening stock grown at n)
+  (let [rr (assoc rr0 :stock :mix)
+        p (assoc p-rates :rates rr :theta 0.0)
+        pinc (sfc/property-income (:bsm st1) p 104.0 (:bsm-prev st1) 2001)
+        rt (sfc/rates-at rr 2001)]
+    (is (close? (* (get-in rt [:paid :gov]) (ib (:bsm-prev st1) :gov :l) 1.04) (get-in pinc [:int-paid :gov])))
+    (is (close? (/ (get-in pinc [:int-recv :hh]) (get-in pinc [:int-recv :nfc]))
+                (/ (ib (:bsm-prev st1) :hh :a) (ib (:bsm-prev st1) :nfc :a))))))
+
+(deftest learning-the-rates-without-pass-through
+  (let [base (sim-panel 30)
+        panel {"SIM" (with-policy-series base (into {} (for [y (keys base)] [y 0.03])))}
+        rr (:rates (sfc/learn panel {} "SIM" 2025 (assoc-in sfc/rates [:rates :pass-through] false)))]
+    (is (= {:hh 0.0 :nfc 0.0 :gov 0.0} (:a rr) (:lambda rr)) "lending rates held at the origin's")))
+
+(deftest anchored-rates-start-from-the-held-shares
+  ;; :anchor: each rate is the effective one on the origin's stock that
+  ;; gives the held share of output (estimated's first year); the
+  ;; pass-through moves it from there (the spread shifted alike)
+  (let [base (sim-panel 30)
+        panel {"SIM" (with-policy-series base (into {} (for [y (keys base)] [y 0.03])))}
+        o 2020
+        opts (fn [ro] (update sfc/rates :rates merge ro))
+        p (sfc/learn panel {} "SIM" o (opts {:anchor true :pass-through false}))
+        held (sfc/learn panel {} "SIM" o sfc/estimated)
+        free (sfc/learn panel {} "SIM" o (opts {:pass-through false}))
+        st (sfc/init panel {} "SIM" o p)
+        ye (* (:Y st) (+ 1.0 (:n p)))
+        pinc (sfc/property-income (:bsm st) p ye (:bsm-prev st) (inc o))]
+    (doseq [s [:hh :nfc]]
+      (is (close? (* (get-in held [:int-share :paid s]) ye) (get-in pinc [:int-paid s])) (str "paid " s)))
+    (is (close? (- (get-in p [:rates :spread :hh]) (get-in p [:rates :i0 :hh]))
+                (- (get-in free [:rates :spread :hh]) (get-in free [:rates :i0 :hh])))
+        "the gap to policy plus spread is the unanchored one")))
+
+(deftest deposit-receipts-can-be-split-by-held-shares
+  ;; :recv :share: the domestic receipts the margin leaves split by each
+  ;; receiver's held share of output; :row :share: the rest of the world's
+  ;; interest as held shares of output
+  (let [rr (assoc rr0 :recv :share :row :share :margin-base :output
+                  :recv-share {:hh 0.012 :nfc 0.004 :gov 0.002} :row-share {:paid 0.008 :recv 0.01})
+        pinc (sfc/property-income bsm0 (assoc p-rates :rates rr) 104.0 nil 2001)]
+    (is (close? (/ 0.012 0.004) (/ (get-in pinc [:int-recv :hh]) (get-in pinc [:int-recv :nfc]))))
+    (is (close? (* 0.008 104.0) (get-in pinc [:int-paid :row])))
+    (is (close? (* 0.01 104.0) (get-in pinc [:int-recv :row])))
+    (is (close? (* (:nim (sfc/rates-at rr 2001)) 104.0) (sfc/margin-of pinc)))))

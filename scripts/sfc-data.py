@@ -878,6 +878,48 @@ def holdout(out=os.path.join(OUT, "panel-holdout.csv")):
     return p
 
 
+# -- the second holdout (bead bnm-4hv.15) -------------------------------------------
+
+def fill_row_from_total(w):
+    """The rest of the world's net lending (S2 B9) where Table 14 lacks it
+    and has the total economy's: minus S1's B9, the accounting identity
+    (Korea, whose only missing core item it is). Returns (panel, rows
+    filled)."""
+    w = w.copy()
+    rows = w.row_nl.isna() & w.tot_nl.notna()
+    w.loc[rows, "row_nl"] = -w.loc[rows, "tot_nl"]
+    return w, int(rows.sum())
+
+
+def holdout2(out=os.path.join(OUT, "panel-holdout2.csv")):
+    """The panel for countries in neither panel.csv nor panel-holdout.csv
+    whose core flows complete once S2's B9 is filled from the total
+    (fill_row_from_total) and any one domestic sector's item from the
+    total (fill_from_total, as holdout): Korea. No earlier test read
+    them. Measured stocks only (Table 720)."""
+    base = pd.read_csv(os.path.join(OUT, "panel.csv"))
+    have = set(base[base.flows_ok.astype(bool)].iso)
+    h1 = pd.read_csv(os.path.join(OUT, "panel-holdout.csv"))
+    have |= set(h1[h1.flows_ok.astype(bool)].iso)
+    fl = flows_long(read_t14())
+    agg = aggregate_instruments(stocks_long(read_t720()))
+    p = build_panel(fl, agg)
+    p = p[~p.iso.isin(have)]
+    p, filled = fill_from_total(p)
+    p, nrow = fill_row_from_total(p)
+    p, flipped = fix_row_sign(p)
+    p["flows_ok"] = flows_complete(p)
+    p["stocks_ok"] = stocks_complete(p)
+    p["stocks_source"] = pd.Series("oecd-t720", index=p.index, dtype=object).where(p.stocks_ok, None)
+    p["known_stocks"] = np.where(p.stocks_ok, p.year + KNOWN["oecd"], np.nan)
+    p = p[p.groupby("iso").flows_ok.transform("any")]
+    p.sort_values(["iso", "year"]).to_csv(out, index=False)
+    print("filled from the total:", filled, "; S2 B9 from S1:", nrow, "; flipped:", flipped)
+    both = p[p.flows_ok & p.stocks_ok]
+    print("countries, years with flows and measured stocks:", both.groupby("iso").year.agg(["min", "max", "count"]).to_dict("index"))
+    return p
+
+
 def test_fill_from_total():
     w = pd.DataFrame({"hh_va": [1.0, 1.0, np.nan], "nfc_va": [np.nan, 2.0, np.nan], "fin_va": [0.5, 0.5, 0.5],
                       "gov_va": [1.5, 1.5, 1.5], "tot_va": [5.0, 5.0, 5.0]})
@@ -890,6 +932,15 @@ def test_fill_from_total():
     assert f.nfc_va[1] == 2.0, "present values kept"
     assert np.isnan(f.hh_va[2]) and np.isnan(f.nfc_va[2]), "two missing: not filled"
     assert filled == {"nfc_va": 1}, filled
+
+
+def test_fill_row_from_total():
+    w = pd.DataFrame({"row_nl": [np.nan, 3.0, np.nan], "tot_nl": [-2.0, -3.0, np.nan]})
+    f, n = fill_row_from_total(w)
+    assert f.row_nl[0] == 2.0, "S2's B9 is minus the total economy's"
+    assert f.row_nl[1] == 3.0, "present values kept"
+    assert np.isnan(f.row_nl[2]), "no total: not filled"
+    assert n == 1, n
 
 
 def test_annual_policy():
@@ -1113,10 +1164,13 @@ if __name__ == "__main__":
         test()
     elif len(sys.argv) > 1 and sys.argv[1] == "unit":
         test_fill_from_total()
+        test_fill_row_from_total()
         test_annual_policy()
         print("sfc-data unit tests: ok")
     elif len(sys.argv) > 1 and sys.argv[1] == "holdout":
         holdout()
+    elif len(sys.argv) > 1 and sys.argv[1] == "holdout2":
+        holdout2()
     elif len(sys.argv) > 1 and sys.argv[1] == "policy":
         read_policy().to_csv(os.path.join(OUT, "policy.csv"), index=False)
     else:

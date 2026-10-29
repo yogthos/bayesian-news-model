@@ -83,3 +83,76 @@
     (is (= "rows with every model: 144 of 144" (first ls)))
     (is (some #(and (str/includes? % "test") (str/includes? % "estimated vs hold") (str/includes? % "h1 +0.750")) ls)
         "estimated's squared error a quarter of the held's")))
+
+(deftest scenarios-run-a-rate-shock-and-a-fiscal-expansion
+  ;; bnm-4hv.15's reported-only scenario check: the same origin and
+  ;; parameters, the policy rate +100bp from o + 1, or spending +1% of
+  ;; expected output from o + 1 to o + 5 financed by debt
+  (let [rs (into {} (map-indexed (fn [i y] [y (+ 0.03 (* 0.005 (Math/sin i)))]) (range 2000 2025)))
+        panel (update @sim-panel "SIM" (fn [rows] (into {} (for [[y ob] rows] [y (assoc ob :policy (rs y))]))))
+        sc (r/scenario-paths panel {} "SIM" 2012 10 sfc/rates)
+        gi (fn [k y] (get-in sc [k y :int-paid :gov]))]
+    (is (= #{:base :rate :fiscal} (set (keys sc))))
+    (is (= (range 2013 2023) (sort (keys (:base sc)))))
+    (doseq [k [:base :rate :fiscal] [_ o] (get sc k)]
+      (is (< (:identity o) 1e-10) (str k)))
+    (is (every? #(> (gi :rate %) (gi :base %)) (range 2013 2023)) "a dearer policy rate raises government's interest bill")
+    (is (> (get-in sc [:fiscal 2013 :gov-debt]) (get-in sc [:base 2013 :gov-debt])) "the first year's spending is borrowed")
+    (is (> (gi :fiscal 2014) (gi :base 2014)) "and next year's interest bill is higher on it")
+    (let [est (r/scenario-paths panel {} "SIM" 2012 10 sfc/estimated)]
+      (is (< (Math/abs (- (get-in est [:rate 2015 :int-paid :gov]) (get-in est [:base 2015 :int-paid :gov]))) 1e-12)
+          "estimated has no rate channel"))))
+
+(deftest the-rate-test-verdict-is-non-inferiority-against-estimated
+  ;; bnm-4hv.15 (9h): every cell's lower end above -0.05 passes; any upper
+  ;; end below -0.05 is inferior
+  (let [ok {[:h1 :nl] [0.0 -0.01 0.01] [:h1 :debt] [0.0 -0.04 0.02] [:h35 :nl] [0.01 -0.02 0.03] [:h35 :debt] [0.0 -0.03 0.03]}]
+    (is (= :non-inferior (r/non-inferior ok 0.05)))
+    (is (= :inconclusive (r/non-inferior (assoc ok [:h35 :debt] [-0.03 -0.2 0.1]) 0.05)))
+    (is (= :inferior (r/non-inferior (assoc ok [:h1 :nl] [-0.2 -0.3 -0.1]) 0.05)))
+    (is (= :inconclusive (r/non-inferior (dissoc ok [:h1 :nl]) 0.05)) "a missing cell can't pass")))
+
+(deftest forecasts-of-runs-each-named-rule-set
+  (let [panel @sim-panel
+        rows (filter #(= 2012 (:o %)) (r/mask panel #{} false))
+        fs (r/forecasts-of panel {} "SIM" rows {:rates sfc/rates :estimated sfc/estimated})]
+    (is (seq rows))
+    (doseq [{:keys [o h outcome]} rows :let [f (fs [o h outcome])]]
+      (is (= #{:rates :estimated :persistence :damped} (set (keys f))))
+      (is (number? (:rates f))))
+    (let [f (fs [2012 1 [:nl :gov]]) path (r/restart-path panel {} "SIM" 2012 5 sfc/rates)]
+      (is (< (Math/abs (- (:rates f) (get-in path [2013 :nl :gov]))) 1e-10) "the engine's restart, as the design harness's"))))
+
+(deftest the-scenario-report-takes-medians-of-differences
+  (let [path (fn [d] (into (sorted-map) (for [y (range 2013 2023)] [y {:int-paid {:hh 0.01 :nfc 0.01 :gov (+ 0.02 d)} :int-recv {:hh 0.01 :nfc 0.0 :gov 0.0}
+                                                                        :margin 0.01 :gov-debt 0.5 :identity 1e-15}])))
+        runs {"A" {:rates {:base (path 0.0) :rate (path 0.001) :fiscal (path 0.002)}}
+              "B" {:rates {:base (path 0.0) :rate (path 0.003) :fiscal (path 0.002)}}
+              "C" {:rates {:base (path 0.0) :rate (path 0.002) :fiscal (path 0.002)}}}
+        ls (r/scenario-report runs {:rates {}})]
+    (is (some #(and (str/includes? % "rate") (str/includes? % "gov interest") (str/includes? % "y1 +0.00200")) ls))
+    (is (str/includes? (last ls) "1.00e-15"))))
+
+(deftest frozen-rows-are-the-targets-not-yet-in-the-data
+  (let [mk (fn [ys] (into {} (for [y ys] [y {:flows-ok true :y 100.0 :b {:hh {:debt {:l 50.0}} :nfc {:debt {:l 60.0}}}
+                                              :stocks-source :oecd-t720 :f {:hh {:nl 1.0} :nfc {:nl -1.0} :fin {:nl 0.1} :gov {:nl -0.1}}}])))
+        panel {"A" (mk (range 1995 2025)) "B" (mk (range 1995 2026))}
+        rs (r/freeze-rows panel)]
+    (is (= #{["A" 2024] ["B" 2025]} (set (map (juxt :iso :o) rs))) "each country's latest measured origin")
+    (is (= (set (range 1 6)) (set (map :h (filter #(= "A" (:iso %)) rs)))))
+    (is (every? #(> (+ (:o %) (:h %)) 2024) (filter #(= "A" (:iso %)) rs)) "targets after the last data year")
+    (is (= 25 (count (filter #(= "A" (:iso %)) rs))) "five horizons, four sectors and debt")
+    (is (every? #(nil? (:data %)) rs))))
+
+(deftest the-rate-test-report-gives-the-registered-verdicts
+  (let [rows (for [split [:holdout :test] iso (if (= split :holdout) ["K"] ["A" "B" "C" "D"]) o (range 2010 2016) h [1 3 5]
+                   out [[:nl :hh] [:nl :gov] [:debt]]]
+               {:iso iso :o o :h h :outcome out :split split :data 0.0
+                :f {:rates (if (even? o) 1.0 1.01) :estimated 1.0 :persistence 2.0 :damped 1.5 :restart 3.0}})
+        null {[:h1 :nl] [-0.01 0.01] [:h1 :debt] [-0.01 0.01] [:h35 :nl] [-0.01 0.01] [:h35 :debt] [-0.01 0.01]}
+        {:keys [lines verdicts]} (r/rates-report rows null 0.05)]
+    (is (= :non-inferior (:holdout verdicts)) "a skill near 0 with a narrow null")
+    (is (= :non-inferior (:test verdicts)))
+    (is (some #(str/includes? % "rates vs persistence") lines))
+    (let [bad (map #(if (= :holdout (:split %)) (assoc-in % [:f :rates] 1.5) %) rows)]
+      (is (= :inferior (:holdout (:verdicts (r/rates-report bad null 0.05))))))))

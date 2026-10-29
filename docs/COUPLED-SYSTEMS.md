@@ -620,6 +620,147 @@ the registered fallback to holding every ratio is not followed; scenario
 runs keep Keen's rules (learn's defaults) until bnm-4hv.15 gives
 interest a rate channel.
 
+**Interest on the stocks, with a rate channel (bead bnm-4hv.15, October
+2026).** estimated holds interest as a share of output, so scenarios have
+no interest cost of debt and no rate shock (9g, review). The goal is
+interest that is a rate times a stock, rates that follow the policy
+rate, and a banks' margin that is its own behaviour rather than the
+residual, with the core no worse than estimated on the design origins.
+bnm.sfc/rates is estimated with interest-hold replaced by :rates
+(bnm.sfc/rates-at, property-income). Everything below was chosen on the
+design origins with targets to 2002 only (design --target-to 2002), so
+the 2003-2007 overlap the review found is not in it. The test origins
+(2003 on) were not scored for any of it.
+
+- *Lending rates.* For households, NFCs and government, the implicit
+  rate on money and debt liabilities (interest paid over the closed
+  balance sheet a year before) moves as
+  di_t = a dr_t + lambda (r_{t-1} + s - i_{t-1}), r the BIS policy rate
+  (the ECB's for euro members, a full year's mean), s the country's
+  spread over it (weighted mean of i - r, half-life 10). a is the
+  immediate pass-through and lambda the closing of the gap to policy
+  plus spread (de Bondt 2005, German Economic Review 6(1): 37-78: slow and
+  incomplete for the stock of loans, faster for short-term rates). The
+  slopes are pooled over every country's data years to the origin, one
+  regression per sector (bnm.sfc/rate-rows). Fitted on years to 2002
+  (155 rows each, 23 countries; se in brackets): households a 0.66
+  (0.08), lambda 0.17 (0.07); NFCs 0.44 (0.05), 0.12 (0.06); government
+  0.19 (0.06), 0.21 (0.05). Government's immediate pass-through is the
+  smallest, as a stock of long bonds reprices slowly. In a forecast the
+  policy rate is the origin's, held: the origin's mean is known a year
+  on, and the forecast is made at origin + 2 on the panel as known then,
+  which carries no later policy rate.
+- *Interest = rate x stock.* Households', NFCs' and government's
+  interest paid is the year's rate times the opening stock. The first
+  year's rate is anchored: the effective rate that gives the held share
+  of expected output on the origin's stock (what estimated forecasts for
+  that year), with the whole path and its target shifted by the same
+  amount, so the gap that drives pass-through is the data's. The
+  measured stocks are at market value and carry reclassifications, so
+  interest over the stock is a noisy rate, and the anchor stops that
+  noise from setting the level. After the first year, interest moves
+  with the rates and with the model's own stocks.
+- *The banks' margin.* The financial sector's net interest (the others'
+  interest paid less what they receive, its entry in the interest row)
+  over output moves as dm_t = phi (norm - m_{t-1}) + beta dr_t
+  (bnm.sfc/nim-rows). On years to 2002 (219 rows, 22 countries): phi
+  0.031 (0.045), beta 0.038 (0.019). A policy rate a point higher widens
+  the margin by 0.04% of output, and the margin barely reverts. Borio,
+  Gambacorta & Hofmann (2017, "The influence of monetary policy on bank
+  profitability", International Finance 20(1): 48-63) find net interest
+  margins rise with the level of short rates; Claessens, Coleman &
+  Donnelly (2018, "'Low-for-long' interest rates and banks' interest
+  margins and profitability", Journal of Financial Intermediation 35:
+  1-16) find low rates compress them; Ho & Saunders (1981, "The
+  determinants of bank interest margins", Journal of Financial and
+  Quantitative Analysis 16(4): 581-600) model the margin as the banks'
+  own choice. In these accounts D41 is interest after FISIM, so the
+  service margin sits in the financial sector's value added, which stays
+  a held share (its reversion didn't forecast, table above).
+- *Deposits close it.* What the domestic sectors receive is what
+  households, NFCs, government and the rest of the world pay, less the
+  rest of the world's receipts and the margin, split among households,
+  NFCs and government by their held shares of output. The banks set
+  deposit rates to earn the margin (Godley & Lavoie 2007, ch. 10), so a
+  higher policy rate reaches depositors less the margin's response. The
+  rest of the world's interest paid and received are held shares of
+  output.
+- *No policy rate* (Bulgaria, Costa Rica, and years before a series
+  starts): lending rates held, the margin reverting.
+
+The search, net lending (four sectors) against estimated on the design
+origins, targets to 2002 (rates-design.txt; 858, 593 and 437 rows at 1,
+3 and 5 years). Each line changes the one above; the margin of the
+first form is on the financial sector's interest-bearing assets:
+
+| form | 1 year | 3 years | 5 years |
+|---|---|---|---|
+| first: margin on assets, rate x opening stock, receipts by rate x deposits | -0.225 [-0.596, -0.038] | -0.097 | -0.104 |
+| margin a share of output | -0.056 | -0.090 | -0.102 |
+| (instead) interest on last year's stock grown at n | -0.031 | -0.086 | -0.106 |
+| anchored first-year rates (opening stock) | -0.007 | -0.052 | -0.065 |
+| receipts split by held shares | -0.007 | -0.035 | -0.059 |
+| rest of the world's interest held (selected) | -0.007 [-0.019, +0.008] | -0.020 [-0.030, +0.002] | -0.014 [-0.028, +0.006] |
+| selected, lending rates held (no pass-through) | -0.000 | -0.011 [-0.023, +0.004] | -0.015 [-0.028, -0.000] |
+
+- The first form lost the financial sector again (-2.36 at one year): a
+  margin on the banks' measured assets jumps with every revaluation of
+  them. On output it holds.
+- Rate x stock lost on government (-0.18 at one year) until anchored.
+- Receipts by rate x deposits moved NFCs' receipts with the model's
+  buffer deposits (+0.6% of output at five years against +0.2% in the
+  data), and the rest of the world's interest moved with its stock.
+- The criterion, set before the search began: no horizon or outcome
+  (net lending, private debt) whose interval lies below 0. The selected form meets it; the
+  version without pass-through just fails at five years. Eleven forms
+  were scored on these rows, so the numbers are optimistic.
+
+The selected core on the design origins, targets to 2002 (skill [90%]):
+
+| | 1 year | 3 years | 5 years |
+|---|---|---|---|
+| net lending vs estimated | -0.007 [-0.019, +0.008] | -0.020 [-0.030, +0.002] | -0.014 [-0.028, +0.006] |
+| net lending vs persistence | +0.030 [-0.016, +0.068] | +0.204 [+0.072, +0.257] | +0.281 [+0.114, +0.309] |
+| net lending vs damped reversion | +0.040 [-0.023, +0.079] | +0.182 [-0.007, +0.233] | +0.144 [-0.035, +0.193] |
+| private debt vs estimated | +0.004 [-0.000, +0.011] | +0.007 [+0.001, +0.015] | -0.000 [-0.017, +0.003] |
+| government's net lending vs estimated | -0.017 [-0.041, +0.017] | -0.070 [-0.089, -0.008] | -0.056 [-0.082, -0.008] |
+| NFCs' net lending vs estimated | -0.009 [-0.021, +0.002] | +0.013 [-0.024, +0.043] | +0.039 [+0.015, +0.079] |
+
+It does not lose to estimated pooled, but it is not better: every net
+lending point is a little below, and government's is below at three and
+five years with its interval under 0. Interest that follows the stocks
+costs government's forecast; the NFCs gain.
+
+*Scenarios* (reported only; bnm.sfc-rules-run scenario,
+rates-scenario.txt). For the 30 test-mask countries with a policy rate,
+from each one's latest measured year, ten years: the base, the policy
+rate 100bp higher from the first year and held, and government
+consumption 1% of expected output higher in years 1-5, borrowed. The
+median across countries of the difference from the base, over output:
+
+| scenario, quantity | year 1 | 3 | 5 | 10 |
+|---|---|---|---|---|
+| +100bp: government's interest | +0.13% | +0.25% | +0.38% | +0.60% |
+| households' interest | +0.26% | +0.28% | +0.30% | +0.35% |
+| NFCs' interest | +0.28% | +0.37% | +0.45% | +0.57% |
+| the banks' margin | +0.06% | +0.04% | +0.03% | +0.01% |
+| government debt | +0.02% | +0.19% | +0.44% | +1.05% |
+| spending +1%, years 1-5: government debt | +0.76% | +1.38% | +1.40% | -0.40% |
+| government's interest | -0.01% | +0.03% | +0.05% | -0.01% |
+
+- The identities hold in every run: the largest matrix, flow-of-funds or
+  balance-sheet gap is 5e-14 of output.
+- The rate shock passes through as fitted: within a year households'
+  rates rise by two-thirds of the point and NFCs' by nearly half,
+  government's by a fifth, and each then moves towards the full point
+  as the stocks reprice. Its higher interest raises its debt.
+- Borrowed spending raises the debt and, a year later, the interest on
+  it. The fiscal rule then cuts spending against the wider deficit, so
+  by year 10 the debt is back below the base. estimated gives the same
+  debt path with no interest response (zero to 1e-5 of output), and has
+  no response at all to the rate shock; neither do Keen's rules, whose
+  rates are held.
+
 ### 2b. Who controls credit, and what it is allocated to
 
 State against private banking:

@@ -2,13 +2,16 @@
   "The SFC core's behavioural rules estimated from data (bead bnm-4hv.14;
   docs/COUPLED-SYSTEMS.md 2a, 9g).
 
-    jolt -A:tools -M -m bnm.sfc-rules-run design [--rules estimated,hold,...] [--out FILE]
+    jolt -A:tools -M -m bnm.sfc-rules-run design [--rules estimated,hold,...] [--vs estimated] [--out FILE]
     jolt -A:tools -M -m bnm.sfc-rules-run estimates [--out FILE]
     jolt -A:tools -M -m bnm.sfc-rules-run mask|power [--split holdout]
     jolt -A:tools -M -m bnm.sfc-rules-run test --out FILE [--all true]
     jolt -A:tools -M -m bnm.sfc-rules-run score --in FILE --bounds EDN [--out FILE]
     jolt -A:tools -M -m bnm.sfc-rules-run held --in FILE [--edn FILE] [--out FILE]
     jolt -A:tools -M -m bnm.sfc-rules-run interest-drift [--out FILE]
+    jolt -A:tools -M -m bnm.sfc-rules-run scenario [--out FILE]
+    jolt -A:tools -M -m bnm.sfc-rules-run rates-shape|rates-test|rates-freeze --out FILE
+    jolt -A:tools -M -m bnm.sfc-rules-run rates-score --in FILE --null FILE [--out FILE]
 
   design takes --target-to YEAR to add the skills on targets to that
   data year only.
@@ -111,7 +114,7 @@
   "Lines: per model, its skill against persistence and against damped
   reversion with the 90% country-bootstrap interval, by outcome group
   and horizon (rows where every model and damped reversion have a value)."
-  [rows models]
+  [rows models & [vs]]
   (let [rows (filter #(number? (get-in % [:f :damped])) rows)
         groups (concat [["net lending" #(= :nl (first %))]]
                        (for [s h/nl-sectors] [(str "nl " (name s)) #(= [:nl s] %)])
@@ -122,10 +125,10 @@
        (let [rs (filter #(sel (:outcome %)) rows)]
          (format "%s: rows h1 %d, h3 %d, h5 %d; countries %d" label (count (filter #(= 1 (:h %)) rs)) (count (filter #(= 3 (:h %)) rs))
                  (count (filter #(= 5 (:h %)) rs)) (count (distinct (map :iso rs))))))
-     (for [[label sel] groups x [:persistence :damped]
+     (for [[label sel] groups x (concat [:persistence :damped] vs)
            :let [hdr (str "## " label " against " (name x))]
            line (cons hdr
-                      (for [m models]
+                      (for [m models :when (not= m x)]
                         (str (format "  %-20s" (name m))
                              (str/join "  " (for [hz horizons :let [rs (filter #(and (= hz (:h %)) (sel (:outcome %))) rows)]]
                                               (str "h" hz " " (f (h/bootstrap rs m x 500 20261029))))))))]
@@ -379,6 +382,152 @@
 (def baselines [:persistence :damped :restart])
 (def hgroups {:h1 #{1} :h35 #{3 5}})
 
+;; -- the rate channel's test (bnm-4hv.15; docs/COUPLED-SYSTEMS.md 9h) ---------------------------
+
+(def holdout2-path "data/derived/sfc/panel-holdout2.csv")
+
+(defn forecasts-of
+  "{[o h outcome] {model value}} for `iso`'s rows: each of `models` {name
+  learn-opts} as the restart through the engine (bnm.sfc-analysis/restart),
+  with :persistence and :damped."
+  [panel kn iso rows models]
+  (let [os (sort (distinct (map :o rows)))
+        hmax (apply max horizons)
+        rs (into {} (for [o os] [o (into {} (for [[k opts] models]
+                                              [k (try (sa/restart panel kn iso o hmax nil opts) (catch Exception _ nil))]))]))]
+    (into {} (for [{:keys [o h outcome]} rows :let [y (+ o h)]]
+               [[o h outcome]
+                (into {:persistence (if (= :nl (first outcome)) (h/nl-data panel iso o (second outcome)) (h/debt-data panel iso o))
+                       :damped (h/damped panel iso outcome o h)}
+                      (for [k (keys models)] [k (fin (some-> (get-in rs [o k]) (h/path-at (emit-of outcome) y)))]))]))))
+
+(defn non-inferior
+  "9h's verdict from cells {[horizon-group outcome] [point lo hi]} (h1 and
+  h35, nl and debt; the rates core's skill against estimated) and margin
+  `delta`: :non-inferior when all four lower ends are above -delta,
+  :inferior when any upper end is below -delta, else :inconclusive."
+  [cells delta]
+  (let [cs (for [hg [:h1 :h35] o [:nl :debt]] (get cells [hg o]))]
+    (cond (some #(and % (< (nth % 2) (- delta))) cs) :inferior
+          (every? #(and % (> (second %) (- delta))) cs) :non-inferior
+          :else :inconclusive)))
+
+(defn freeze-rows
+  "The rows of the later confirmation (9h): for each country, its latest
+  measured origin (bnm.sfc-horizon-run/measured-years) and horizons 1 to
+  5 whose target year is after the country's last data year with flows,
+  the four sectors' net lending and private debt; :data nil (not yet
+  published)."
+  [panel]
+  (vec (for [iso (sort (keys panel))
+             :let [ys (h/measured-years panel iso) o (last ys)
+                   last-flows (reduce max 0 (for [[y ob] (get panel iso) :when (:flows-ok ob)] y))]
+             :when o
+             hz (range 1 6) :when (> (+ o hz) last-flows)
+             out (concat (for [s h/nl-sectors] [:nl s]) [[:debt]])]
+         {:iso iso :o o :h hz :outcome out :data nil :split :frozen})))
+
+(def rate-models [:rates :estimated :persistence :damped :restart])
+
+(defn rates-report
+  "9h's lines and verdicts from scored rows (:f with every rate-models
+  value): the rates core's skill against estimated per split, outcome and
+  horizon group, its interval (the test and design origins: countries
+  resampled, 2,000 draws, seed 20261029; the holdout: [p - q95, p - q05]
+  from `null` {[hg outcome] [q05 q95]}, the error model fitted to the test
+  split, scripts/sfc-rates-null.py), and the verdicts (non-inferior,
+  margin `delta`) for the holdout (primary) and the test origins
+  (secondary); against persistence, damped reversion and Keen's restart,
+  reported. {:lines [...] :verdicts {split verdict}}."
+  [scored null delta]
+  (let [rows (filter (fn [r] (every? #(number? (get-in r [:f %])) rate-models)) scored)
+        sel (fn [split o hs] (filter #(and (= split (:split %)) (if (= o :nl) (= :nl (first (:outcome %))) (= [:debt] (:outcome %))) (hs (:h %))) rows))
+        ci (fn [split rs x hg o]
+             (when (seq rs)
+               (if (= split :holdout)
+                 (let [p (skill-rows rs :rates x) [q05 q95] (get null [hg o])]
+                   (when (and p q05) [p (- p q95) (- p q05)]))
+                 (h/bootstrap rs :rates x 2000 20261029))))
+        f (fn [[p lo hi]] (if p (format "%+.3f [%+.3f, %+.3f]" p lo hi) "-"))
+        splits [:holdout :test :design]
+        cells (fn [split] (into {} (for [[hg hs] hgroups o [:nl :debt]] [[hg o] (ci split (sel split o hs) :estimated hg o)])))
+        verdicts (into {} (for [split [:holdout :test]] [split (non-inferior (cells split) delta)]))
+        lines (concat
+               [(format "rows scored (every model present): %d of %d" (count rows) (count scored))]
+               (for [split splits o [:nl :debt]]
+                 (format "%s %s: rows h1 %d, h3 %d, h5 %d; countries %d" (name split) (name o)
+                         (count (sel split o #{1})) (count (sel split o #{3})) (count (sel split o #{5}))
+                         (count (distinct (map :iso (sel split o #{1 3 5}))))))
+               (for [split splits o [:nl :debt] x [:estimated :persistence :damped :restart]]
+                 (format "%-7s %-4s rates vs %-11s h1 %s   h3-5 %s" (name split) (name o) (name x)
+                         (f (if (= x :estimated) (ci split (sel split o #{1}) x :h1 o) (when (not= split :holdout) (ci split (sel split o #{1}) x :h1 o))))
+                         (f (if (= x :estimated) (ci split (sel split o #{3 5}) x :h35 o) (when (not= split :holdout) (ci split (sel split o #{3 5}) x :h35 o))))))
+               (for [split [:holdout] o [:nl :debt] x [:persistence :damped :restart]
+                     :let [pt (fn [hs] (some-> (seq (sel split o hs)) (skill-rows :rates x)))]]
+                 (format "holdout %-4s rates vs %-11s points only: h1 %s   h3-5 %s" (name o) (name x)
+                         (some->> (pt #{1}) (format "%+.3f")) (some->> (pt #{3 5}) (format "%+.3f"))))
+               (for [[split v] verdicts] (format "verdict, %s (%s): %s" (name split)
+                                                 (if (= split :holdout) "primary" "secondary, origins seen three times before") (name v))))]
+    {:lines (vec lines) :verdicts verdicts}))
+
+;; -- the rate channel's scenarios (bnm-4hv.15; reported only) --------------------------------
+
+(defn scenario-paths
+  "{:base :rate :fiscal} -> {data-year out}: the restart from data year `o`
+  (learned as restart-path learns it, under learn options `opts`), `years`
+  on, as is (:base), with the policy rate 100bp higher from o + 1 on
+  (:rate, bnm.sfc/policy-shock), and with government consumption raised
+  by 1% of expected output in o + 1 to o + 5, financed by debt (:fiscal,
+  :spend-shock). Each out: :Y, :int-paid, :int-recv {sector} and :margin
+  over output, :gov-debt, :private-debt, :identity (the largest of the
+  matrix, flow-of-funds and balance-sheet gaps over output)."
+  [panel kn iso o years opts]
+  (let [kp (sa/known-panel panel (+ o sfc/vintage))
+        p (sfc/learn kp kn iso o opts)
+        st (sfc/init kp kn iso o p)
+        run (fn [p] (loop [st st i 0 acc (sorted-map)]
+                      (if (= i years)
+                        acc
+                        (let [{s :state out :out} (sfc/step st p)
+                              y (:Y out) x (:x out)
+                              rel (fn [m] (into {} (for [[k v] m] [k (/ (double v) y)])))]
+                          (recur s (inc i)
+                                 (assoc acc (:year out)
+                                        {:Y y :int-paid (rel (:int-paid x)) :int-recv (rel (:int-recv x))
+                                         :margin (/ (sfc/margin-of x) y)
+                                         :gov-debt (:gov-debt out) :private-debt (:private-debt out)
+                                         :identity (/ (max (:tfm-gap out) (:fof-gap out) (:bsm-gap out)) y)}))))))]
+    {:base (run p)
+     :rate (run (sfc/policy-shock p (inc o) 0.01))
+     :fiscal (run (assoc p :spend-shock (into {} (for [y (range (inc o) (+ o 6))] [y 0.01]))))}))
+
+(defn scenario-report
+  "Lines: for each rule set in `models` {name opts}, over countries' runs
+  `runs` {iso {name scenario-paths}}, the median across countries of each
+  scenario's difference from the base (over output) in interest paid by
+  households, NFCs and government, the margin, the domestic receipts and
+  government debt, at years 1, 3, 5 and 10, and the largest identity gap."
+  [runs models]
+  (let [med (fn [xs] (let [v (vec (sort xs))] (when (seq v) (nth v (quot (count v) 2)))))
+        f (fn [x] (if x (format "%+.5f" x) "-"))
+        q {"gov interest" #(get-in % [:int-paid :gov]) "hh interest" #(get-in % [:int-paid :hh])
+           "nfc interest" #(get-in % [:int-paid :nfc]) "margin" :margin
+           "domestic receipts" #(+ (get-in % [:int-recv :hh]) (get-in % [:int-recv :nfc]) (get-in % [:int-recv :gov]))
+           "gov debt" :gov-debt}]
+    (concat
+     [(format "countries %d" (count runs))]
+     (for [k (keys models) sc [:rate :fiscal] [label g] q]
+       (let [at (fn [i] (med (for [[_ r] runs
+                                   :let [sp (get r k) ys (vec (keys (:base sp)))]
+                                   :when (>= (count ys) i)
+                                   :let [y (ys (dec i))]]
+                               (- (g (get-in sp [sc y])) (g (get-in sp [:base y]))))))]
+         (str (format "%-10s %-6s %-18s" (name k) (name sc) label)
+              (str/join "  " (for [i [1 3 5 10]] (str "y" i " " (f (at i))))))))
+     [(format "largest identity gap over output, every run, year and scenario: %.2e"
+              (double (reduce max 0.0 (for [[_ r] runs [_ sp] r [_ path] sp [_ o] path] (:identity o)))))])))
+
+
 (defn report
   "The registered test's lines and verdicts from scored rows (each with :f
   {model value}): per split, outcome and horizon group, the estimated
@@ -431,7 +580,19 @@
                "slopes-by-country" (assoc sfc/estimated :fiscal {:estimate true} :investment {:estimate true})
                "+consumption-ec" (assoc sfc/estimated :consumption-ec {:estimate true})
                "+other-ec" (assoc sfc/estimated :other-ec {:phi 0.3})
-               "+interest-adjust" (assoc sfc/estimated :interest-adjust {})}
+               "+interest-adjust" (assoc sfc/estimated :interest-adjust {})
+               ;; bnm-4hv.15's search on the design origins (2a), each a change from the first form
+               "rates" sfc/rates
+               "rates-first" (assoc sfc/rates :rates {:estimate true})
+               "rates-margin-output" (assoc sfc/rates :rates {:estimate true :margin-base :output})
+               "rates-mix" (assoc sfc/rates :rates {:estimate true :margin-base :output :stock :mix})
+               "rates-mix-held" (assoc sfc/rates :rates {:estimate true :margin-base :output :stock :mix :pass-through false})
+               "rates-open-held" (assoc sfc/rates :rates {:estimate true :margin-base :output :pass-through false})
+               "rates-anchor" (assoc sfc/rates :rates {:estimate true :margin-base :output :anchor true})
+               "rates-anchor-mix" (assoc sfc/rates :rates {:estimate true :margin-base :output :anchor true :stock :mix})
+               "rates-anchor-held" (assoc sfc/rates :rates {:estimate true :margin-base :output :anchor true :pass-through false})
+               "rates-anchor-recv" (assoc sfc/rates :rates {:estimate true :margin-base :output :anchor true :recv :share})
+               "rates-held" (update sfc/rates :rates assoc :pass-through false)}
         ks (str/split (get opts "--rules" "keen,revised") #",")
         models (vec (for [k ks] [(keyword k) (or (named k) (throw (ex-info "unknown rules" {:rules k})))]))]
     (case mode
@@ -462,6 +623,53 @@
       (let [scored (read-string (slurp (get opts "--in")))
             bounds (read-string (get opts "--bounds"))
             ls (report scored bounds)]
+        (when-let [out (get opts "--out")] (spit out (str (str/join "\n" ls) "\n"))))
+      "rates-shape"
+      (let [hp (merge panel (sfc/with-policy (sfc/read-panel holdout2-path) (sfc/read-policy policy-path)))
+            rows (mask hp (set (keys (sfc/read-panel holdout2-path))) false)
+            shape (mapv #(select-keys % [:iso :o :h :outcome]) (filter #(= :holdout (:split %)) rows))]
+        (doseq [[k v] (sort-by str (group-by (juxt :split :h) rows))]
+          (println k (count v) "rows," (count (distinct (map :iso v))) "countries," (count (distinct (map (juxt :iso :o) v))) "origins"))
+        (spit (get opts "--out") (with-out-str (clojure.pprint/pprint shape))))
+      "rates-test"
+      (let [h2 (sfc/read-panel holdout2-path)
+            hp (merge panel (sfc/with-policy h2 (sfc/read-policy policy-path)))
+            rows (mask hp (set (keys h2)) false)
+            ms {:rates sfc/rates :estimated sfc/estimated :restart {}}
+            scored (vec (for [iso (sort (distinct (map :iso rows)))
+                              :let [rs (filter #(= iso (:iso %)) rows)
+                                    fs (forecasts-of hp kn iso rs ms)
+                                    _ (println iso (count rs) "rows") _ (flush)]
+                              r rs]
+                          (assoc r :f (fs [(:o r) (:h r) (:outcome r)]))))]
+        (spit (get opts "--out") (with-out-str (clojure.pprint/pprint scored))))
+      "rates-score"
+      (let [scored (read-string (slurp (get opts "--in")))
+            null (read-string (slurp (get opts "--null")))
+            {ls :lines} (rates-report scored null 0.05)]
+        (doseq [l ls] (println l))
+        (when-let [out (get opts "--out")] (spit out (str (str/join "\n" ls) "\n"))))
+      "rates-freeze"
+      (let [h1 (sfc/read-panel holdout-path) h2 (sfc/read-panel holdout2-path)
+            pol (sfc/read-policy policy-path)
+            hp (merge panel (sfc/with-policy h1 pol) (sfc/with-policy h2 pol))
+            rows (freeze-rows hp)
+            ms {:rates sfc/rates :estimated sfc/estimated :restart {}}
+            frozen (vec (for [iso (sort (distinct (map :iso rows)))
+                              :let [rs (filter #(= iso (:iso %)) rows) fs (forecasts-of hp kn iso rs ms)]
+                              r rs]
+                          (assoc r :f (fs [(:o r) (:h r) (:outcome r)]))))]
+        (println (count frozen) "rows," (count (distinct (map :iso frozen))) "countries; targets" (sort (distinct (map #(+ (:o %) (:h %)) frozen))))
+        (spit (get opts "--out") (with-out-str (clojure.pprint/pprint frozen))))
+      "scenario"
+      (let [ms (into {} (for [k ["rates" "estimated" "keen"]] [(keyword k) (named k)]))
+            runs (into (sorted-map)
+                       (for [iso (h/countries panel) :when (not (h/hyperinflation? panel iso))
+                             :let [o (last (h/measured-years panel iso))]
+                             :when (and o (number? (get-in panel [iso o :policy])))]
+                         [iso (into {} (for [[k opts] ms] [k (scenario-paths panel kn iso o 10 opts)]))]))
+            ls (scenario-report runs ms)]
+        (doseq [l ls] (println l))
         (when-let [out (get opts "--out")] (spit out (str (str/join "\n" ls) "\n"))))
       "estimates"
       (let [ls (concat
@@ -509,12 +717,14 @@
             rows (rows-of panel kn os models)
             tt (some-> (get opts "--target-to") parse-long)
             early (when tt (filterv #(<= (+ (:o %) (:h %)) tt) rows))
+            vs (some->> (get opts "--vs") (#(str/split % #",")) (mapv keyword))
             ls (concat (cons (format "design origins %d (%d countries), rows %d" (count os) (count (distinct (map first os))) (count rows))
-                             (skills rows (map first models)))
+                             (skills rows (map first models) vs))
                        (when tt
                          (cons (format "# targets to data year %d only: rows %d (h1 %d, h3 %d, h5 %d)" tt (count early)
                                        (count (filter #(= 1 (:h %)) early)) (count (filter #(= 3 (:h %)) early)) (count (filter #(= 5 (:h %)) early)))
-                               (skills early (map first models)))))]
+                               (skills early (map first models) vs))))]
+        (when-let [e (get opts "--edn")] (spit e (with-out-str (clojure.pprint/pprint (mapv #(assoc % :split :design) rows)))))
         (doseq [l ls] (println l))
         (when-let [out (get opts "--out")] (spit out (str (str/join "\n" ls) "\n")))))
     (shutdown-agents)))

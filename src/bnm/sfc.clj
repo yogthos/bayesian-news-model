@@ -64,7 +64,10 @@
   the theory the coupled model is built on. `estimated` (bead bnm-4hv.14)
   holds interest and dividends received as shares of output and adds a
   fiscal reaction and error-correcting investment, their slopes pooled
-  across countries (estimate-rule).
+  across countries (estimate-rule). `rates` (bead bnm-4hv.15) is estimated
+  with interest a rate times a stock again: lending rates that pass the
+  policy rate through, a banks' margin of its own, deposits closing it
+  (rates-at, property-income).
 
   The data are scripts/sfc-data.py's panel (data/derived/sfc/panel.csv)."
   (:require [bnm.csv :as csv]
@@ -313,6 +316,47 @@
 
 ;; -- behaviour ------------------------------------------------------------------------
 
+(defn rates-at
+  "The rates of year `t` under policy-rate pass-through (bead bnm-4hv.15),
+  from the learned :rates `rr` (learn): {:policy r :paid {sector rate}
+  :nim margin}. From :from (the first forecast year) each year
+    r_t = (:policy rr) at t, else r_{t-1} (r0 the origin's, held),
+    i_t = i_{t-1} + a (r_t - r_{t-1}) + lambda (r_{t-1} + spread - i_{t-1})
+  for the implicit rates on households', NFCs' and government's money and
+  debt liabilities (a the immediate pass-through, lambda the closing of
+  the gap to the policy rate plus the sector's spread: de Bondt 2005), and
+    nim_t = nim_{t-1} + phi (norm - nim_{t-1}) + beta (r_t - r_{t-1})
+  for the financial sector's net interest over its interest-bearing
+  assets (Borio, Gambacorta & Hofmann 2017). Without a policy rate (r0
+  nil) the lending rates are held and the margin only reverts. Before
+  :from, the origin's own rates."
+  [{:keys [from r0 policy i0 spread a lambda nim0 nim-norm nim-phi nim-beta]} t]
+  (loop [y (long from) r (when (number? r0) (double r0)) i i0 m (double nim0)]
+    (if (> y (long t))
+      {:policy r :paid i :nim m}
+      (let [r1 (when r (double (get policy y r)))
+            i1 (if r
+                 (into {} (for [[s v] i] [s (+ (double v) (* (num (get a s)) (- r1 r)) (* (num (get lambda s)) (- (+ r (num (get spread s))) (double v))))]))
+                 i)
+            m1 (+ m (* (num nim-phi) (- (num nim-norm) m)) (if r (* (num nim-beta) (- r1 r)) 0.0))]
+        (recur (inc y) r1 i1 m1)))))
+
+(defn margin-of
+  "The financial sector's net interest in year flows `x`: what the others
+  pay less what they receive (its entry in book's interest row)."
+  [x]
+  (- (sum (for [s [:hh :nfc :gov :row]] (get-in x [:int-paid s])))
+     (sum (for [s [:hh :nfc :gov :row]] (get-in x [:int-recv s])))))
+
+(defn policy-shock
+  "Parameters `p` with the policy rate moved by `delta` from year `from`
+  on, and held there (a scenario for the :rates rule); unchanged without
+  a policy rate."
+  [p from delta]
+  (if-let [r0 (get-in p [:rates :r0])]
+    (assoc-in p [:rates :policy] (into (sorted-map) (for [y (range from (+ from 200))] [y (+ (double r0) (double delta))])))
+    p))
+
 (defn property-income
   "Interest and dividends, from the balance sheet at the year's start.
   Interest is paid on each sector's money and debt liabilities and
@@ -344,23 +388,43 @@
         r (fn [k s] (num (get-in p [k s])))
         nf [:hh :nfc :gov :row]
         ds (:div-share p)
-        paid (if ds
-               (into {} (for [s sectors] [s (* (num (get ds s)) (double ye))]))
-               (into {} (for [s sectors] [s (* (r :q-l s) (eq-l s))])))
+        paid* (if ds
+                (into {} (for [s sectors] [s (* (num (get ds s)) (double ye))]))
+                (into {} (for [s sectors] [s (* (r :q-l s) (eq-l s))])))
         wts (into {} (for [s sectors] [s (* (r :q-a s) (eq-a s))]))
         tw (sum (vals wts))
         recv (cond
                (:div-recv-share p) (into {} (for [s nf] [s (* (num (get-in p [:div-recv-share s])) (double ye))]))
                ds
-               (into {} (for [s nf] [s (if (pos? tw) (* (sum (vals paid)) (/ (wts s) tw)) 0.0)]))
+               (into {} (for [s nf] [s (if (pos? tw) (* (sum (vals paid*)) (/ (wts s) tw)) 0.0)]))
                :else
                (into {} (for [s nf] [s (wts s)])))]
+    (if-let [rr (when t (:rates p))]
+      ;; bnm-4hv.15: lending rates by pass-through times the opening
+      ;; stocks; the banks' margin its own rule; the deposit rates (every
+      ;; domestic receiver's implicit rate scaled alike) what leaves it
+      (let [rt (rates-at rr t)
+            stock (fn [f s] (if (= :mix (:stock rr)) (mix f s) (f bsm s)))
+            row-share? (= :share (:row rr))
+            paid (merge {:fin (* (r :i-l :fin) (mix ib-l :fin))
+                         :row (if row-share? (* (num (get-in rr [:row-share :paid])) (double ye)) (* (r :i-l :row) (mix ib-l :row)))}
+                        (into {} (for [s [:hh :nfc :gov]] [s (* (num (get-in rt [:paid s])) (stock ib-l s))])))
+            recv-row (if row-share? (* (num (get-in rr [:row-share :recv])) (double ye)) (* (r :i-a :row) (mix ib-a :row)))
+            margin (* (double (:nim rt)) (if (= :output (:margin-base rr)) (double ye) (ib-a bsm :fin)))
+            base (into {} (for [s [:hh :nfc :gov]]
+                            [s (if (= :share (:recv rr)) (* (num (get-in rr [:recv-share s])) (double ye)) (* (r :i-a s) (stock ib-a s)))]))
+            tb (sum (vals base))
+            k (if (> tb 1e-12) (max 0.0 (/ (- (sum (for [s [:hh :nfc :gov :row]] (paid s))) recv-row margin) tb)) 0.0)]
+        {:int-paid paid
+         :int-recv (assoc (into {} (for [[s v] base] [s (* k v)])) :row recv-row)
+         :div-paid paid*
+         :div-recv recv})
     {:int-paid (if-let [is (:int-share p)] (into {} (for [s sectors] [s (* (num (get-in is [:paid s])) (double ye) (adj :paid s))]))
                  (into {} (for [s sectors] [s (* (r :i-l s) (mix ib-l s))])))
      :int-recv (if-let [is (:int-share p)] (into {} (for [s nf] [s (* (num (get-in is [:recv s])) (double ye) (adj :recv s))]))
                  (into {} (for [s nf] [s (* (r :i-a s) (mix ib-a s))])))
-     :div-paid paid
-     :div-recv recv}))
+     :div-paid paid*
+     :div-recv recv})))
 
 (defn credit
   "New lending to households and firms (F1): to their learned
@@ -498,6 +562,9 @@
                      1.0))
                  1.0)
         cg (* (num (:cg st)) g1 fscale) ig (* (num (:ig st)) g1 fscale) ben (* (num (:ben st)) g1 fscale)
+        ;; a scenario's debt-financed spending (:spend-shock {year share of
+        ;; expected output}), on top of the rule and not in next year's base
+        cgx (+ cg (* (num (get (:spend-shock p) t)) ye))
         inv (assoc inv :gov ig)
         itot (sum (vals inv))
         mu (num (:mu p)) X (* (num (:x p)) ye)
@@ -518,7 +585,7 @@
              (num (:a1 p)))
         a2 (num (:a2 p))
         V (nfw open :hh)
-        Y (/ (+ (* (- 1.0 mu) (+ (* a1 k0) (* a2 V) cg itot)) X) (- 1.0 (* (- 1.0 mu) a1 k1)))
+        Y (/ (+ (* (- 1.0 mu) (+ (* a1 k0) (* a2 V) cgx itot)) X) (- 1.0 (* (- 1.0 mu) a1 k1)))
         W (* w Y)
         comp (into {} (for [s domestic] [s (* (ss om s) W)]))
         va3 (into {} (for [s [:hh :nfc :fin]] [s (* (ss v s) Y)]))
@@ -530,9 +597,9 @@
         socc (* socc-r W)
         yd (+ W (os-of x0 :hh) rh (- ph-h) (- (itax :hh)) (- socc) ben (* (ss oth :hh) Y))
         ch (+ (* a1 yd) (* a2 V))
-        A (+ ch cg itot)
+        A (+ ch cgx itot)
         nx (- X (* mu A))
-        x (assoc x0 :itax itax :socc socc :ben ben :cons {:hh ch :gov cg} :inv inv :nx nx
+        x (assoc x0 :itax itax :socc socc :ben ben :cons {:hh ch :gov cgx} :inv inv :nx nx
                  :other (into {} (for [s [:hh :nfc :fin :row]] [s (* (ss oth s) Y)])))
         booked (book x)
         nl (:nl booked)
@@ -603,6 +670,23 @@
   {:consumption {:phi 0.0 :half-life 0.1} :wages {:phi 0.0} :theta 0.0 :half-life 0.5 :rate-half-life 0.5
    :interest-hold true :dividend-hold true
    :fiscal {:estimate true :pool :complete} :investment {:estimate true :pool :complete}})
+
+(def rates
+  "learn's options for the rate channel (bead bnm-4hv.15): estimated, with
+  interest no longer a held share of output but each sector's rate times
+  its stock. Households', NFCs' and government's lending rates pass the
+  policy rate through (rates-at; a and lambda pooled over the countries'
+  data years to the origin, per sector, the spreads each country's own),
+  the rest of the world's and the financial sector's own rates are held,
+  the banks' margin over their interest-bearing assets is its own rule,
+  and the domestic receivers' deposit rates take what is left. The policy
+  rate is the origin's, held (known at origin + 1). Chosen on the design
+  origins, targets to 2002 (docs/COUPLED-SYSTEMS.md 2a): the margin a
+  share of output (:margin-base :output), the rates anchored on the held
+  shares (:anchor), the receipts split by held shares (:recv :share) and
+  the rest of the world's interest held as shares (:row :share)."
+  (-> estimated (dissoc :interest-hold)
+      (assoc :rates {:estimate true :margin-base :output :anchor true :recv :share :row :share})))
 
 (def block-docs
   "The behavioural blocks of a year, each a rule the audit can replace by
@@ -927,6 +1011,76 @@
                                       :when (and i0 sp)]
                                   [s (max 0.25 (min 4.0 (/ (max 1e-4 (+ (double pol) sp)) i0)))]))])))))
 
+(defn- implicit-paid
+  "Sector `s`'s implicit rate on its money and debt liabilities in data
+  year `y` of a country's `rows`: interest paid over the closed balance
+  sheet at the end of y - 1, within (0, 0.3), or nil."
+  [rows y s]
+  (let [ob (get rows y) pv (get rows (dec y))]
+    (when (and ob pv (:flows-ok ob) (:y ob) (:b pv))
+      (let [stock (ib-l (:bsm (close-init (:b pv))) s)]
+        (when (> stock 1e-9)
+          (let [i (/ (num (get-in ob [:f s :int_paid])) stock)] (when (< 0.0 i 0.3) i)))))))
+
+(defn rate-rows
+  "Pass-through rows of households', NFCs' and government's implicit rates
+  on their liabilities, {[iso sector] [[dr gap di] ...]}: each data year y
+  to `origin` with y - 1, dr the policy rate's change, gap the policy rate
+  at y - 1 plus the spread's norm (the weighted mean, half-life `hl`, of
+  the implicit rate less the policy rate over the years before y; three
+  or more) less the implicit rate at y - 1, di the implicit rate's change
+  (rates-at's rule: di = a dr + lambda gap)."
+  [panel origin hl]
+  (into {}
+        (for [[iso rows*] panel
+              :let [rows (into {} (filter #(<= (key %) origin)) rows*)
+                    ys (sort (keys rows))]
+              s [:hh :nfc :gov]
+              :let [ser (vec (keep (fn [y] (let [i (implicit-paid rows y s) r (get-in rows [y :policy])]
+                                             (when (and i (number? r)) [y i (double r)])))
+                                   ys))
+                    at (into {} (map (fn [[y i r]] [y [i r]]) ser))
+                    sp (mapv (fn [[y i r]] [y (- i r)]) ser)
+                    rs (vec (for [[y i1 r1] ser
+                                  :let [[i0 r0] (at (dec y)) nd (causal-norm sp y hl)]
+                                  :when (and i0 nd)]
+                              [(- r1 r0) (- (+ r0 nd) i0) (- i1 i0)]))]
+              :when (seq rs)]
+          [[iso s] rs])))
+
+(defn- nim-of
+  "The financial sector's net interest (margin-of) in data year `y` of a
+  country's `rows` over `base`: its money and debt assets at the end of y -
+  1 (:assets), or the year's output (:output); within (-0.2, 0.2), or nil."
+  [rows y base]
+  (let [ob (get rows y) pv (get rows (dec y))]
+    (when (and ob (:flows-ok ob) (:y ob) (or (= base :output) (and pv (:b pv))))
+      (let [x (observed ob)
+            a (if (= base :output) (double (:Y x)) (ib-a (:bsm (close-init (:b pv))) :fin))]
+        (when (> a 1e-9)
+          (let [m (/ (margin-of x) a)] (when (< -0.2 m 0.2) m)))))))
+
+(defn nim-rows
+  "The banks' margin rows, {iso [[gap dr dm] ...]}: each data year y to
+  `origin` with y - 1 and policy rates at both, gap the margin's norm
+  (weighted mean, half-life `hl`, of the years before y; three or more)
+  less the margin at y - 1, dr the policy rate's change, dm the margin's
+  change (rates-at's rule: dm = phi gap + beta dr). `base` as nim-of
+  (:assets by default)."
+  [panel origin hl & [base]]
+  (into {}
+        (for [[iso rows*] panel
+              :let [rows (into {} (filter #(<= (key %) origin)) rows*)
+                    ser (vec (keep (fn [y] (when-let [m (nim-of rows y (or base :assets))] [y m])) (sort (keys rows))))
+                    at (into {} ser)
+                    pol (fn [y] (let [r (get-in rows [y :policy])] (when (number? r) (double r))))
+                    rs (vec (for [[y m1] ser
+                                  :let [m0 (at (dec y)) nm (causal-norm ser y hl) r1 (pol y) r0 (pol (dec y))]
+                                  :when (and m0 nm r1 r0)]
+                              [(- nm m0) (- r1 r0) (- m1 m0)]))]
+              :when (seq rs)]
+          [iso rs])))
+
 (defn estimate-rule
   "partial-pool of rule `k` (rule-specs) over `panel`'s data years to
   `origin`."
@@ -944,6 +1098,22 @@
         (merge (keen/from-raw keen/gcl)
                {:alpha (g "alpha") :ustar (- 1.0 (g "l-star")) :phi-slope (g "phi-slope")}
                (into {} (for [k ["beta" "delta" "nu"] :when (g k)] [(keyword k) (g k)])))))))
+
+(defn- anchor-rates
+  "learn's parameters with :rates' :anchor applied: the lending rates
+  start from the effective ones (the path and its target shifted by the
+  same amount, so the gap is unchanged), and the held rates (the rest of
+  the world's, the financial sector's own, the deposit bases) replaced."
+  [p]
+  (if-let [an (:anchor p)]
+    (let [i0 (get-in p [:rates :i0])
+          off (into {} (for [[s v] (:paid an) :when (number? (get i0 s))] [s (- (double v) (double (i0 s)))]))]
+      (-> (dissoc p :anchor)
+          (update-in [:rates :i0] merge (:paid an))
+          (update-in [:rates :spread] #(merge-with + % off))
+          (update :i-l merge (:i-l an))
+          (update :i-a merge (:i-a an) (when (:i-a-row an) {:row (:i-a-row an)}))))
+    p))
 
 (defn learn
   "The core's parameters for `iso` from the data years up to `origin`
@@ -1030,7 +1200,8 @@
                 20.0)
         inv-rows (for [[y x] xs :let [q (xs (dec y))] :when q]
                    [(weight fit-half-life origin y) (profit-share q) (/ (get-in x [:inv :nfc]) (:Y x))])]
-    (merge
+    (anchor-rates
+     (merge
      {:n n :half-life hl
       :v (into {} (for [s [:hh :nfc :fin]] [s (e (fn [x _] (/ (get-in x [:va s]) (:Y x))) 0.0)]))
       :omega (into {} (for [s domestic] [s (e (fn [x _] (ratio (get-in x [:comp s]) (:W x))) 0.0)]))
@@ -1111,9 +1282,54 @@
              tg (interest-targets panel iso origin hl')]
          (when (and est tg)
            {:int-adjust (assoc tg :lambda (max 0.0 (min 1.0 (double (first (:b est))))) :from (inc origin))})))
+     (when-let [ro (:rates opts*)]
+       (let [hl' (double (:norm-half-life ro 10.0))
+             rows (get panel iso)
+             pol (fn [y] (let [r (get-in rows [y :policy])] (when (number? r) (double r))))
+             r0 (when (get-in rows [origin :flows-ok]) (pol origin))
+             rr (rate-rows panel origin hl')
+             i0 (into {} (for [s [:hh :nfc :gov]] [s (rate :int-paid s ib-l)]))
+             yrs (filter #(<= % origin) (keys rows))
+             fit (into {} (for [s [:hh :nfc :gov]] [s (when (:pass-through ro true) (:b (ols (apply concat (for [[[_ s'] v] rr :when (= s s')] v)))))]))
+             spread (into {} (for [s [:hh :nfc :gov]]
+                               [s (or (ew (for [y yrs :let [i (implicit-paid rows y s) r (pol y)] :when (and i r)] [y (- i r)]) hl' origin nil)
+                                      (- (double (i0 s)) (double (or r0 0.0))))]))
+             mb (:margin-base ro :assets)
+             nf (:b (ols (apply concat (vals (nim-rows panel origin hl' mb)))))
+             ms (keep (fn [y] (when-let [m (nim-of rows y mb)] [y m])) yrs)
+             nim0 (if (= mb :output)
+                    (e (fn [x _] (/ (margin-of x) (:Y x))) 0.0)
+                    (rate-of (for [[y x] xs :let [b (prev y)] :when b] [y (/ (margin-of x) (:Y x)) (/ (ib-a b :fin) (:Y x))])))]
+         (merge
+          (when (:anchor ro)
+            ;; effective rates: the held share of expected output (weighted
+            ;; at :half-life) over the first year's base, as property-income
+            ;; will take it
+            (let [b0 (:b (by origin)) bp (:b (by (dec origin)))
+                  ye0 (* (double (:y (by origin))) (+ 1.0 n))
+                  th (double (or theta 1.0))
+                  mixf (fn [f s] (if (and bp (< th 1.0)) (+ (* th (f b0 s)) (* (- 1.0 th) (+ 1.0 n) (f bp s))) (f b0 s)))
+                  open? (not= :mix (:stock ro))
+                  sh (fn [k s] (e (fn [x _] (/ (num (get-in x [k s])) (:Y x))) 0.0))
+                  eff (fn [k s base] (when (> base 1e-9) (/ (* (sh k s) ye0) base)))]
+              (when b0
+                {:anchor {:paid (into {} (for [s [:hh :nfc :gov] :let [v (eff :int-paid s (if open? (ib-l b0 s) (mixf ib-l s)))] :when v] [s v]))
+                          :i-l (into {} (for [s [:fin :row] :let [v (eff :int-paid s (mixf ib-l s))] :when v] [s v]))
+                          :i-a (into {} (for [s [:hh :nfc :gov] :let [v (eff :int-recv s (if open? (ib-a b0 s) (mixf ib-a s)))] :when v] [s v]))
+                          :i-a-row (eff :int-recv :row (mixf ib-a :row))}})))
+          {:rates {:from (inc origin) :r0 r0 :policy {} :margin-base mb :stock (:stock ro :open)
+                   :recv (:recv ro :rate) :row (:row ro :rate)
+                   :recv-share (into {} (for [s [:hh :nfc :gov]] [s (e (fn [x _] (/ (num (get-in x [:int-recv s])) (:Y x))) 0.0)]))
+                   :row-share {:paid (e (fn [x _] (/ (num (get-in x [:int-paid :row])) (:Y x))) 0.0)
+                               :recv (e (fn [x _] (/ (num (get-in x [:int-recv :row])) (:Y x))) 0.0)}
+                  :i0 i0 :spread spread
+                  :a (into {} (for [s [:hh :nfc :gov]] [s (double (or (first (fit s)) 0.0))]))
+                  :lambda (into {} (for [s [:hh :nfc :gov]] [s (max 0.0 (min 1.0 (double (or (second (fit s)) 0.0))))]))
+                  :nim0 nim0 :nim-norm (ew ms hl' origin nim0)
+                  :nim-phi (max 0.0 (min 1.0 (double (or (first nf) 0.0)))) :nim-beta (double (or (second nf) 0.0))}})))
      (when (:interest-hold opts*)
        {:int-share {:paid (into {} (for [s sectors] [s (e (fn [x _] (/ (num (get-in x [:int-paid s])) (:Y x))) 0.0)]))
-                    :recv (into {} (for [s [:hh :nfc :gov :row]] [s (e (fn [x _] (/ (num (get-in x [:int-recv s])) (:Y x))) 0.0)]))}}))))
+                    :recv (into {} (for [s [:hh :nfc :gov :row]] [s (e (fn [x _] (/ (num (get-in x [:int-recv s])) (:Y x))) 0.0)]))}})))))
 
 (defn init
   "The state at the end of data year `origin`: its balance sheet closed on
