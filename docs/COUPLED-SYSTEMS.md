@@ -2764,6 +2764,51 @@ core stays the coupled model's bookkeeping, not a forecaster.
 
 and with --all true for the sensitivity with BGR and ROU.
 
+**Result** (run once, 28 October 2026, on f7111ad;
+data/derived/coupled/horizon-test.txt). 5,922 test rows, every model
+present at each. Skill [90% interval], both horizons pooled:
+
+| test origins | net lending | private debt |
+|---|---|---|
+| ensemble vs restart | -0.47 [-1.61, +0.14] | -0.06 [-0.17, +0.04] |
+| ensemble vs persistence | -3.13 [-7.22, -1.06] | -0.02 [-0.10, +0.07] |
+| ensemble vs damped | -3.96 [-8.72, -1.48] | +0.25 [+0.19, +0.32] |
+| restart vs persistence | -1.80 [-3.56, -0.80] | +0.04 [-0.03, +0.09] |
+| restart vs damped | -2.36 [-4.39, -1.20] | +0.29 [+0.24, +0.33] |
+| conditional ensemble vs ensemble | -0.09 [-0.40, +0.22] | -0.10 [-0.25, -0.01] |
+| conditional restart vs restart | +0.26 [+0.15, +0.34] | -0.13 [-0.21, -0.04] |
+| conditional restart vs persistence | -1.09 [-2.18, -0.44] | -0.08 [-0.22, +0.02] |
+
+- *Adoption: equivalent to nothing.* Neither interval is above 0, and
+  both upper ends are under their bounds (0.14 < 0.15, 0.04 < 0.27). The
+  ensemble is not adopted: the restart is the SFC forecast, the smoother
+  a nowcast.
+- *The core at three to five years: worse.* The restart is worse than
+  persistence on net lending, interval below 0, so it fails against both
+  baselines whatever debt does. On debt it is level with persistence
+  (+0.04) and beats damped reversion (+0.29), which reverts debt ratios
+  that trend.
+- Each horizon alone gives the same signs (horizon-test.txt).
+- Conditional (no verdict): given the observed government and investment
+  path, the restart's net lending improves by a quarter of its squared
+  error (+0.26), and is still far worse than persistence (-1.09); its
+  debt gets worse (-0.13). The ensemble gains nothing from the path.
+- Sensitivity with BGR and ROU (horizon-test-all.txt): the ensemble
+  against the restart on net lending is -201 [-578, +0.01], their runaway
+  (bnm-rr7); the restart's verdict is unchanged (-1.86 [-3.37, -0.91]
+  against persistence).
+
+Diagnostics, after the result: the restart is worse than persistence in
+every sector's net lending, least in households (-0.32 [-0.93, +0.11]),
+then government (-1.36), NFCs (-2.01) and the financial sector (-5.41;
+its RMSE 0.054 against persistence's 0.021, the residual margin of 2a).
+It is still worse without the three countries with the largest squared
+errors (NZL, POL, ESP: -0.89 [-1.78, -0.39]). Over three to five years
+the core's rules drift further from the data than holding the ratios
+does, as they did one year ahead, and the accounting does not pull them
+back. The SFC core stays the coupled model's bookkeeping, not a
+forecaster of the sector balances.
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
