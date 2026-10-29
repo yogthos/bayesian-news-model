@@ -2644,6 +2644,126 @@ changed, and the primary and S1 stand as reported).*
   2.6 years for all power, against the D-E prior's mean of 4.2. Learning
   the time to build from the data, the next design, should start there.
 
+### 9f. The SFC core at three and five years (bnm-cvs)
+
+Registered on 28 October 2026, before any of its outcomes was computed.
+One-year net lending is near a random walk (2a), so this asks whether the
+accounting helps where it should: over several years, and given an
+observed shock. The model is as of commit fbab3d0 (the phase B fixes of
+6e); nothing in it is chosen on this test. The financial sector's missing
+channels (2a, the US 2009 miss) are not added: they would have had to be
+built and tested on the design origins before this registration, and are
+not.
+
+**Rows.** tools/bnm/sfc_horizon_run.clj (mask):
+- countries with eight or more years of measured stocks (Table 720) and
+  flows: the 32 of phase B's check. Left out by rule, a country with a
+  measured year whose nominal output is over twice the year before's: the
+  core's trend growth extrapolates a hyperinflation and its ensemble's
+  output runs away (6e; bead bnm-rr7). That is BGR (1997, x8.7) and ROU
+  (1997, x2.24). 30 countries are left. The results with them are
+  reported as a sensitivity, not scored;
+- origins o: measured years at least five after the country's first
+  (the ensemble has five years of analyses behind it). The forecast is
+  made at engine year o + 2, when o's data are known (the design rules'
+  origin <= to - 2: nothing later than o is read);
+- horizons h = 3 and 5: the target is data year o + h, one and three
+  years after the forecast is made;
+- outcomes: net lending over GDP of the four domestic sectors
+  (households, NFCs, financial corporations, government; Table 14 B9),
+  and private debt over GDP (households' and NFCs' F3 + F4 liabilities,
+  Table 720, measured only). A row needs the target and the origin's own
+  value in the data (latest vintage);
+- split: design origins up to 2002, test origins from 2003. Only the test
+  origins are scored for the verdicts. Test rows: net lending 2,100 (h 3)
+  and 1,860 (h 5), private debt 526 and 466; 30 countries, 525 origins.
+  Design rows: 388 + 388 and 97 + 97, in 24 countries.
+
+**Models.** At each row:
+- *the ensemble* (sfc-analysis/free-runs): 32 members from the country's
+  first measured year, analysed every year through engine year o + 2
+  (6e), then free to o + 5; the members' median. It is run on seeds 1, 2
+  and 3, and its skill is the mean of the three seeds' skills;
+- *the restart* (sfc-analysis/restart), the main comparator: phase A's
+  free run, one member, parameters learned at o on the panel as known at
+  o + 2, started from o's data;
+- *persistence*: o's value;
+- *damped reversion*: o's value moving 0.2 a year towards its mean over
+  o - 4 to o (three or more years of them), m + 0.8^h (x_o - m); 2a's
+  ceiling;
+- *conditional* (secondary): the ensemble and the restart given the
+  observed path of government consumption, investment and benefits and of
+  NFC investment, each as a share of output, for the data years after the
+  forecast is made (the restart o + 1 to o + 5; the ensemble's free run
+  from o + 3, its years to o + 2 being analysed). These are realised
+  values, so the conditional runs are not forecasts: they ask whether the
+  accounts turn a known spending and investment path into the sectors'
+  balances and debt better than the unconditional run and persistence.
+A row is scored only where every model gives a value (paired).
+
+**Metric.** Skill of model M against X = 1 - SSE_M / SSE_X, pooled over
+the test rows of an outcome (net lending's four sectors together), both
+horizons pooled for the verdicts and each horizon reported. The
+ensemble's skill is the mean of its three seeds' skills. Its 90%
+two-sided interval is the percentile interval of 2,000 draws of
+countries with replacement (seed 20261028), the seed mean taken in each
+draw.
+
+**Verdicts.** For a comparison over both outcomes, each with its
+interval [lo, hi] and its bound b:
+- *pass*: lo > 0 for both outcomes (an intersection-union test, so no
+  multiplicity correction);
+- *worse*: hi < 0 for either;
+- *equivalent to nothing*: not pass or worse, and hi < b for both;
+- *inconclusive*: otherwise.
+
+There are two verdicts.
+1. *Adoption*: the ensemble against the restart. The ensemble is adopted
+   for the coupled model's SFC forecasts only on a pass. Otherwise the
+   restart is the SFC forecast and the smoother stays a nowcast.
+2. *The core at three to five years*: the adopted one (the ensemble on a
+   pass of 1, else the restart) against persistence and against damped
+   reversion. Pass if it passes against both, worse if worse against
+   either, equivalent if equivalent against both, else inconclusive.
+
+The conditional comparisons are reported, with no verdict.
+
+**Equivalence bounds and power** (sfc-horizon-run power, on the test
+rows above; 300 simulations, 500 bootstrap draws each). The comparator's
+errors are simulated per country and outcome series with a country scale
+(lognormal, sd 0.5) and an AR(1) over origins (rho 0.8: consecutive
+origins share most of their five-year paths); the model's errors are
+correlated 0.7 with the comparator's and scaled to a true skill s. The
+probability that lo > 0:
+
+| true skill | 0 | 0.05 | 0.10 | 0.15 | 0.20 | 0.25 | 0.30 |
+|---|---|---|---|---|---|---|---|
+| net lending (3,960 rows) | 0.04 | 0.24 | 0.53 | 0.83 | 0.98 | 0.99 | 1.00 |
+| private debt (992 rows) | 0.12 | 0.19 | 0.26 | 0.42 | 0.63 | 0.76 | 0.90 |
+
+So the bounds, the skill found four times in five, are b = 0.15 for net
+lending and b = 0.27 for private debt. The test is weak: below a skill of
+about 0.1 on net lending it rarely passes, and on debt (one series per
+country, 30 countries) it needs a quarter of the comparator's squared
+error removed. Its bootstrap is also loose at zero skill: 12% false
+passes on debt, against the nominal 5%, so a debt pass near its lower end
+is weak evidence. The assumptions (rho, the correlation, the country
+scale) are not fitted to any outcome.
+
+**What would change the plan.** A pass of 1 makes the ensemble the SFC
+forecast and the restart its check. A fail of 2 under both models says
+the frame's accounting adds nothing at three to five years over holding
+or reverting the ratios, which is the one-year result again, and the SFC
+core stays the coupled model's bookkeeping, not a forecaster.
+
+**Run.**
+
+    jolt -A:tools -M -m bnm.sfc-horizon-run test --seeds 1,2,3 --out data/derived/coupled/horizon-test.edn
+    jolt -A:tools -M -m bnm.sfc-horizon-run score --in data/derived/coupled/horizon-test.edn \
+         --seeds 1,2,3 --bound-nl 0.15 --bound-debt 0.27 --out data/derived/coupled/horizon-test.txt
+
+and with --all true for the sensitivity with BGR and ROU.
+
 ## 10. Ranked plan
 
 By payoff over cost, mapped onto beads bnm-4hv.2 to .8.
