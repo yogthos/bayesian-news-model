@@ -4120,10 +4120,11 @@ The function is bnm.sfc-rules-run/scenario. Each path is keyed by the
 year after the origin (1 is o + 1). The rate path is the policy rate's
 move from the origin's rate, and the last move is held. The fiscal path
 is government consumption as a share of expected output, borrowed. The
-investment path is NFC investment as a share of expected output,
-financed through the flow of funds. Both are added on top of the rules
-in the given years only, and neither enters the base the rules move
-from next year. Every country in panel.csv and the two holdout panels
+investment path is NFC investment as a share of expected output. It
+lowers NFCs' net lending and so their net financial worth; their
+borrowing does not respond (new credit follows the debt target). Both
+are added on top of the rules in the given years only, and neither
+enters the base the rules move from next year. Every country in panel.csv and the two holdout panels
 runs from its latest measured year, base and shocked, with the same
 learned parameters (the pooled slopes are then fitted with the holdout
 countries in, unlike the scenario mode's rates-scenario.txt). The output
@@ -4148,28 +4149,52 @@ The caveats, as printed:
 - Household or NFC deposits go negative in some years in some countries
   (bnm-4hv.18, open). The run lists every country and year where this
   happens.
+- NFCs' gross investment below zero, debt/output above 5, and
+  debt/output above 1 and more than twice its first year's: each listed
+  by country and year.
 - The divergence guard applies only to the parked ensemble (bnm-tvk),
   not to these restart runs.
+- Countries the mask's hyperinflation rule leaves out of every scored
+  split (Bulgaria, Romania) are named when they run.
 
 The flags are computed from the paths, not from a list of countries. A
 year is flagged when household or NFC money assets are below 0, when
-output is not positive and finite, or when government, household or NFC
-debt is more than 5 times output. A country without a policy rate at
-its origin is named, because the rate path does nothing there (Bulgaria).
+output is not positive and finite, when NFCs' gross investment is below
+0, when government, household or NFC debt is more than 5 times output,
+or when such a ratio is above 1 and more than twice its first year's. A
+country without a policy rate at its origin is named, because the rate
+path does nothing there (Bulgaria), and so are countries the
+hyperinflation rule leaves out of the scored splits (Bulgaria, Romania).
 Ireland and Luxembourg are not excluded, because bnm-4hv.17 fixed their
-collapse. Two runs on the data (35 countries, base and shocked) confirm
-it. One is 30 years with +100bp: no flag for either country, no output
-at or below 0 and no debt above 5 times output anywhere. Households'
-deposits go negative in Bulgaria (2041-52), Greece (2052-54) and Romania
-(2040-55), and the margin's half-life is 4.0 years (median; gap -0.23%
-of output). The other is 10 years with +100bp and three years of
-borrowed spending at 1% of output: no flags. Identities hold within
-4.4e-14 of output. The +100bp medians match rates-scenario.txt's
-closely: government interest +0.15 / +0.27 / +0.38 / +0.59 points at
-years 1 / 3 / 5 / 10, and its debt +1.2 points at 10. Under the same
-shock Luxembourg's output is 2.9% below its base at year 10 and 13% at
-30, the largest fall (France's is 12%). No flag catches falls like
-these, so read long paths with care.
+collapse. Two runs on the data (35 countries, base and shocked) bear
+this out. One is 30 years with +100bp: no output at or below 0 and no
+debt above 5 times output anywhere. Households' deposits go negative in
+Bulgaria (2041-52), Greece (2052-54) and Romania (2040-55), and the
+margin's half-life is 4.0 years (median; gap -0.23% of output). The
+other is 10 years with +100bp and three years of borrowed spending at
+1% of output: no flags. Identities hold within 4.4e-14 of output. The
++100bp medians match rates-scenario.txt's closely: government interest
++0.15 / +0.27 / +0.38 / +0.59 points at years 1 / 3 / 5 / 10, and its
+debt +1.2 points at 10.
+
+Two flags were added in review, both from the 30-year run. Under +100bp
+Luxembourg's output is 2.9% below its base at year 10 and 13% at 30.
+The investment rule's debt-service term drives it. Luxembourg's NFC debt
+target is 4.4 times output, and the term reads gross NFC interest (its
+NFCs receive most of what they pay). The term is -0.165 times debt
+service over its norm. As the NFC rate closes on policy plus spread,
+debt service rises from 0.11 to 0.22 of output in the base and to 0.26
+under the shock, so gross investment falls below zero from 2037 in the
+shocked path and from 2046 in the base. Nothing floors it. The
+investment flag lists those years. France's 12% fall has a different
+cause. Its government debt runs from 1.1 to 2.6 times output in the base
+and to 3.2 under the shock, interest is 0.18 of output by year 30, and
+the fiscal rule's cuts leave spending 16% below the base's. The
+debt-growth flag lists France, Finland, Mexico and New Zealand
+(government, first flagged in 2043-50 under the shock). Germany's
+output falls 4% by year 30 the same way, unflagged. The gross debt-service term and the missing floor
+belong to the investment rule, which 9g scored. Changing them is a
+model change (bead notes), not part of this entry point.
 
 What rates is not validated for: the size of any response to a policy
 rate move (a was never tested); paths for debt and government interest

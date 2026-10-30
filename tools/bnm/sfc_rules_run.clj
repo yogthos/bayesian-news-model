@@ -555,16 +555,25 @@
   "The years of `path` {data-year out} a scenario's reader should not
   trust: [{:year :kind :sector :value}], :kind :negative-deposits
   (households' or NFCs' money assets below 0, bnm-4hv.18), :output
-  (output not positive and finite) or :debt (a sector's debt over output
-  above debt-flag)."
+  (output not positive and finite), :investment (NFCs' gross investment
+  below 0), :debt (a sector's debt over output above debt-flag) or
+  :debt-growth (below debt-flag but above output and over twice the
+  path's first year's: a ratio compounding away)."
   [path]
-  (vec (for [[y o] path
-             f (concat (for [s [:hh :nfc] :let [v (get-in o [:deposits s])] :when (and (number? v) (neg? (double v)))]
-                         {:kind :negative-deposits :sector s :value v})
-                       (let [v (:Y o)] (when-not (and (number? v) (< 0.0 (double v) Double/POSITIVE_INFINITY)) [{:kind :output :sector nil :value v}]))
-                       (for [s [:gov :hh :nfc] :let [v (get-in o [:debt s])] :when (and (number? v) (> (double v) debt-flag))]
-                         {:kind :debt :sector s :value v}))]
-         (assoc f :year y))))
+  (let [d0 (:debt (val (first path)))]
+    (vec (for [[y o] path
+               f (concat (for [s [:hh :nfc] :let [v (get-in o [:deposits s])] :when (and (number? v) (neg? (double v)))]
+                           {:kind :negative-deposits :sector s :value v})
+                         (let [v (:Y o)] (when-not (and (number? v) (< 0.0 (double v) Double/POSITIVE_INFINITY)) [{:kind :output :sector nil :value v}]))
+                         (let [v (:inv-nfc o)] (when (and (number? v) (neg? (double v))) [{:kind :investment :sector :nfc :value v}]))
+                         (for [s [:gov :hh :nfc] :let [v (get-in o [:debt s]) v0 (get d0 s)]
+                               :when (number? v)
+                               f [(cond (> (double v) debt-flag) {:kind :debt :sector s :value v}
+                                        (and (number? v0) (> (double v) (max 1.0 (* 2.0 (double v0)))))
+                                        {:kind :debt-growth :sector s :value v})]
+                               :when f]
+                           f))]
+           (assoc f :year y)))))
 
 (defn run-flags
   "{iso [flag with :path]} over scenario runs {iso {:base path :shocked
@@ -576,7 +585,9 @@
               :when (seq fs)]
           [iso fs])))
 
-(defn- med [xs] (let [v (vec (sort xs))] (when (seq v) (nth v (quot (count v) 2)))))
+(defn- med [xs]
+  (let [v (vec (sort (map double xs))) n (count v)]
+    (when (pos? n) (if (odd? n) (v (quot n 2)) (/ (+ (v (dec (quot n 2))) (v (quot n 2))) 2.0)))))
 
 (defn- flag-list
   "\"ISO (base 2031-2033, shocked 2031), ...\" for the flags of `kind`."
@@ -586,7 +597,7 @@
                                                :let [ys (sort (distinct (map :year g)))]]
                                            (str (name k) " " (first ys) (when (> (count ys) 1) (str "-" (last ys)))
                                                 (when (> (count ys) 1) (str ", " (count ys) " years")))))
-                  (when (#{:negative-deposits :debt} kind)
+                  (when (#{:negative-deposits :debt :debt-growth} kind)
                     (str "; " (str/join "/" (sort (distinct (map (comp name :sector) fs))))))
                   ")"))]
     (if (seq rs) (str/join "; " rs) "none")))
@@ -610,10 +621,14 @@
            (str "Household or NFC deposits, the flow of funds' buffer, go negative in some years in some countries (bnm-4hv.18, open). In this run: "
                 (flag-list flags :negative-deposits) ".")
            (str "Output not positive and finite in this run: " (flag-list flags :output) ".")
+           (str "NFCs' gross investment below zero in this run (the investment rule's debt-service term, on gross NFC interest, can push it there): " (flag-list flags :investment) ".")
            (str "Government, household or NFC debt/output above " (long debt-flag) " in this run: " (flag-list flags :debt) ".")
+           (str "Government, household or NFC debt/output above 1 and more than twice its first year's in this run: " (flag-list flags :debt-growth) ".")
            "The divergence guard (bnm.sfc-analysis/divergence) applies only to the parked ensemble (bnm-tvk), not to these restart runs: nothing stops a run that diverges; the flags above are the only check."]
           (when (seq nopol)
             [(str "No policy rate at the origin, so the rate path does nothing and lending rates are held: " (str/join ", " nopol) ".")])
+          (when-let [hy (seq (:hyperinflation res))]
+            [(str "Outside the validation (the mask's hyperinflation rule leaves them out of every scored split): " (str/join ", " hy) ".")])
           (when-let [sk (seq (:skipped res))]
             [(str "Not run (no measured year): " (str/join ", " sk) ".")])))))
 
@@ -626,7 +641,8 @@
   :investment paths by year after the origin). {:rules :rates :opts
   :years :spec :runs {iso {:origin :base :shocked}} :margin {iso {:phi
   :half-life :gap :policy?}} :flags (run-flags) :identity (the largest
-  gap over output in any path) :skipped [iso] :caveats
+  gap over output in any path) :skipped [iso] :hyperinflation [iso run
+  that the mask's hyperinflation rule leaves out] :caveats
   (scenario-caveats)}."
   [panel kn {:keys [countries years spec] :or {years 10}}]
   (let [isos (or (seq countries) (filter #(seq (h/measured-years panel %)) (sort (keys panel))))
@@ -643,7 +659,8 @@
         res {:rules :rates :opts sfc/rates :years years :spec spec :runs runs :margin margin
              :flags (run-flags runs)
              :identity (double (reduce max 0.0 (for [[_ r] runs k [:base :shocked] [_ o] (get r k)] (:identity o))))
-             :skipped (vec (remove (set (keys runs)) isos))}]
+             :skipped (vec (remove (set (keys runs)) isos))
+             :hyperinflation (vec (filter #(h/hyperinflation? panel %) (keys runs)))}]
     (assoc res :caveats (scenario-caveats res))))
 
 (defn scenario-lines

@@ -172,6 +172,43 @@
       (is (some #(and (str/includes? % "debt/output") (str/includes? % "BAD")) cs))
       (is (not-any? #(str/includes? % "OK") (filter #(re-find #"negative|debt/output|positive" %) cs)) "a clean country isn't listed"))))
 
+(deftest scenario-params-key-paths-by-the-year-after-the-origin
+  (let [p {:rates {:from 2013 :r0 0.03 :policy {}}}
+        q (r/scenario-params p 2012 {:rate {1 0.01 3 0.005} :fiscal {1 0.01 2 0.02} :investment {2 0.005}})]
+    (is (= {2013 0.01 2014 0.02} (:spend-shock q)))
+    (is (= {2014 0.005} (:invest-shock q)))
+    (is (every? true? (map #(< (Math/abs (- %1 (get-in q [:rates :policy %2]))) 1e-12) [0.04 0.04 0.035 0.035] [2013 2014 2015 2050])))
+    (is (= p (r/scenario-params p 2012 {})) "an empty spec is the base")))
+
+(deftest the-scenario-flags-what-the-review-sweep-checked
+  ;; bnm-4hv.19 review: gross investment below zero (Luxembourg under
+  ;; +100bp from about year 15) and debt/output above 1 and past twice its
+  ;; first year's (France's government debt, 1.1 to 3.2 by year 30) were
+  ;; not flagged
+  (let [ok {:Y 100.0 :inv-nfc 0.1 :deposits {:hh 0.4 :nfc 0.2} :debt {:gov 0.6 :hh 0.5 :nfc 0.8}}
+        path (sorted-map 2025 ok
+                         2026 (assoc ok :inv-nfc -0.002)
+                         2027 (-> ok (assoc-in [:debt :gov] 1.3) (assoc-in [:debt :hh] 1.0))
+                         2028 (assoc-in ok [:debt :gov] 5.2))]
+    (is (= [[2026 :investment :nfc] [2027 :debt-growth :gov] [2028 :debt :gov]]
+           (mapv (juxt :year :kind :sector) (r/path-flags path)))
+        "a ratio past debt-flag is :debt, not also :debt-growth; doubled but at or below output isn't flagged")
+    (let [cs (r/scenario-caveats {:years 10 :margin {} :runs {}
+                                  :flags (r/run-flags {"BAD" {:base path :shocked path}})})]
+      (is (some #(and (str/includes? % "investment") (str/includes? % "BAD")) cs))
+      (is (some #(and (str/includes? % "twice") (str/includes? % "BAD")) cs)))))
+
+(deftest the-scenario-names-countries-outside-the-validation
+  (let [cs (r/scenario-caveats {:years 10 :margin {} :runs {} :flags {} :hyperinflation ["BGR" "ROU"]})]
+    (is (some #(and (str/includes? % "hyperinflation") (str/includes? % "BGR, ROU")) cs)))
+  (is (= [] (:hyperinflation (r/scenario @policy-panel {} {:countries ["SIM"] :years 3 :spec spec})))))
+
+(deftest the-scenario-median-is-a-median
+  (let [med @#'r/med]
+    (is (= 2.0 (med [3 1 2])))
+    (is (= 2.5 (med [4 1 3 2])) "even counts: the mean of the middle two")
+    (is (nil? (med [])))))
+
 (deftest the-rate-test-verdict-is-non-inferiority-against-estimated
   ;; bnm-4hv.15 (9h): every cell's lower end above -0.05 passes; any upper
   ;; end below -0.05 is inferior

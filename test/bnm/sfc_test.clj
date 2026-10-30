@@ -745,6 +745,10 @@
     (is (close? (get-in o0 [:x :inv :nfc]) (- (get-in o1 [:x :inv :nfc]) (* 0.01 ye))) "booked")
     (is (close? (* (:kappa s0) (:Y o0)) (* (:kappa s1) (:Y o1))) "the rule's next share grows from the base, not the shock")
     (is (< (get-in o1 [:booked :nl :nfc]) (get-in o0 [:booked :nl :nfc])))
+    (testing "new credit follows the debt target, not investment: NFCs' net worth takes it"
+      (is (close? (sfc/pos (:bsm s0) :nfc :debt :l) (sfc/pos (:bsm s1) :nfc :debt :l)))
+      (is (close? (- (sfc/nfw (:bsm s1) :nfc) (sfc/nfw (:bsm s0) :nfc))
+                  (- (get-in o1 [:fof :nl :nfc]) (get-in o0 [:fof :nl :nfc])))))
     (doseq [[s o] (rest (run-steps st-est p 10))]
       (is (< (max (sfc/tfm-gap (:booked o)) (:fof-gap o) (sfc/bsm-gap (:bsm s))) (* 1e-10 (:Y o)))))))
 
@@ -755,6 +759,17 @@
     (is (close? 0.04 (pol 2002)) "held between entries")
     (is (close? 0.035 (pol 2004)))
     (is (close? 0.03 (pol 2040)) "the last held")
+    (testing "pass-through applies each year's move from the path"
+      (let [paid (fn [y] (get-in (sfc/rates-at (:rates p) y) [:paid :hh]))
+            i1 (+ 0.05 (* 0.3 0.01) (* 0.3 (- (+ 0.03 0.025) 0.05)))
+            i2 (+ i1 (* 0.3 (- (+ 0.04 0.025) i1)))
+            i3 (+ i2 (* 0.3 -0.005) (* 0.3 (- (+ 0.04 0.025) i2)))
+            i4 (+ i3 (* 0.3 (- (+ 0.035 0.025) i3)))
+            i5 (+ i4 (* 0.3 -0.005) (* 0.3 (- (+ 0.035 0.025) i4)))]
+        (is (close? i1 (paid 2001)))
+        (is (close? i2 (paid 2002)))
+        (is (close? i3 (paid 2003)) "a cut: a of it at once, from last year's rate")
+        (is (close? i5 (paid 2005)))))
     (is (= (sfc/policy-shock p-rates 2001 0.01) (sfc/policy-path p-rates {2001 0.01})) "policy-shock is a one-step path")
     (is (= p0 (sfc/policy-path p0 {2001 0.01})) "no policy rate, no change")))
 
