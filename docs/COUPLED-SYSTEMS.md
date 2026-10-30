@@ -4037,6 +4037,53 @@ Ireland's run year by year:
   is unchanged; what the fix would have changed in it is in bead
   bnm-4hv.16's notes.
 
+**Amendment A2 to the later confirmation** (29 October 2026, decided by
+the user the same day; committed on its own, before any target of data
+year 2025 or later was read, the two rows already excluded aside). It
+changes which frozen file is primary and nothing else.
+
+- *Why.* rates-frozen.edn was produced by code with two faults found
+  after the freeze (bnm-4hv.17, above): imports were a share of
+  absorption, which goes above 1 for Ireland and Luxembourg and turns
+  the domestic multiplier negative (fixed in 56249f9), and dividends
+  were split over the signed total of the holdings' weights, unbounded
+  once a holding turns negative (fixed in a85c6cc). Scoring only the
+  pre-fix forecasts would score code the project no longer runs.
+- *Primary: rates-frozen-v2.edn.* data/derived/sfc/rates-frozen-v2.edn,
+  SHA-256 6fa02f4f4d827d6c038dcbd7a1d21bfa3dcd47c5869f1ddcc44f18d8cad32446,
+  written by rates-freeze at 9b42691 (both fixes in) in a clean worktree
+  on the same inputs as the first freeze: panel.csv, panel-holdout.csv
+  and panel-holdout2.csv with the SHA-256s above, and the same
+  policy.csv and keen.csv. The same inputs rerun at 16e7ae9 reproduce
+  rates-frozen.edn byte for byte, and rates-freeze at a85c6cc gave the
+  same 6fa02f4f... (bead notes), so the two files differ by the two
+  fixes only. The cells, the overall verdict and the result's consequence
+  ("What would change the plan") are v2's.
+- *Reported: rates-frozen.edn* (SHA-256 0339880a..., unchanged, checked
+  before and after this amendment). Scored by the same rule on the same
+  vintage, its intervals printed beside v2's, with no verdict.
+- *v1 against v2* (frozen values only, no target). The same 875 rows in
+  the same order (35 countries, the same origins and target years, every
+  field but the forecasts equal, no missing value in either). Persistence
+  and damped reversion are identical. Median / max |v2 - v1|, net lending
+  and debt rows: rates 0.0001 / 0.098 and 0.0010 / 0.167, estimated
+  0.0001 / 0.087 and 0.0010 / 0.144 (both maxima Ireland, h5), Keen's
+  restart 0.0005 / 0.93 and 0.0037 / 0.79 (New Zealand h4 net lending,
+  Luxembourg h5 debt). The scored quantity, rates less estimated, moves
+  by median 0.00003 and at most 0.104 (Luxembourg h5 debt); 33 rows by
+  more than 0.001 (Ireland 14, Luxembourg 14, Estonia 4, Belgium 1), 20
+  of them at horizons 1, 3 or 5. Every other country's gap moves by under
+  0.001.
+- *Excluded rows.* Unchanged: Bulgaria and Romania, and the two debt
+  rows published at the freeze. The published check (scorer mode
+  published, presence only) on rates-frozen-v2.edn against the
+  freeze-time panels lists the same two rows, Korea origin 2024 h1 debt
+  and New Zealand origin 2023 h1 debt, and no other.
+- Everything else in the amendment above stands: the vintage and its
+  date, :data, missing targets, the cells, metric, baselines, interval,
+  null fit, minimum count and verdicts. The scorer checks both files'
+  SHA-256s and refuses a mismatch on either.
+
 ### 9i. Running scenarios (bnm-4hv.19)
 
 Scenarios that move rates or debt run under bnm.sfc/rates, the only rule
