@@ -49,26 +49,40 @@
     (spit (io/file dir "panel-holdout2.csv") (str/join "\n" (cons hdr (for [iso b y (range (inc o) (inc last))] (line iso y)))))
     dir))
 
-(defn- write-frozen! [dir rows]
-  (let [f (io/file dir "rates-frozen.edn")]
-    (spit f (with-out-str (clojure.pprint/pprint rows)))
-    (str f)))
+(defn- write-frozen!
+  ([dir rows] (write-frozen! dir "rates-frozen-v2.edn" rows))
+  ([dir name rows]
+   (let [f (io/file dir name)]
+     (spit f (with-out-str (clojure.pprint/pprint rows)))
+     (str f))))
+
+(defn- files
+  "score's file map for frozen files v2 (primary) and v1 (reported) in
+  `dir`, each with its own shape file and `nul`."
+  [dir fp2 fp1 nul]
+  {:vintage (str dir) :date "2027-11-01"
+   :v2 {:frozen fp2 :sha (c/sha256-file fp2) :shape (str (io/file dir "shape.edn")) :null nul}
+   :v1 {:frozen fp1 :sha (c/sha256-file fp1) :shape (str (io/file dir "shape-v1.edn")) :null nul}})
+
+(defn- shapes! [fs]
+  (c/write-shape! fs :v2 (get-in fs [:v2 :shape]))
+  (c/write-shape! fs :v1 (get-in fs [:v1 :shape]))
+  fs)
 
 (def ^:private null {[:h1 :nl] [-0.02 0.02] [:h1 :debt] [-0.02 0.02] [:h35 :nl] [-0.03 0.03] [:h35 :debt] [-0.03 0.03]})
 
 (defn- run
   "The scorer end to end on a synthetic vintage: n countries, targets to
-  `last`, rates' error k times estimated's. Returns score's result."
-  [{:keys [n k last seed] :or {last 2025 seed 1}}]
+  `last`, rates' error k times estimated's in v2 (primary) and k1 times in
+  v1 (reported; default k). Returns score's result."
+  [{:keys [n k k1 last seed] :or {last 2025 seed 1}}]
   (let [dir (tmp-dir)
         isos (vec (for [i (range n)] (format "C%02d" i)))
         [d e] (world isos seed)
-        fp (write-frozen! dir (frozen-rows isos 2024 d e k))
-        sha (c/sha256-file fp)]
+        fp2 (write-frozen! dir (frozen-rows isos 2024 d e k))
+        fp1 (write-frozen! dir "rates-frozen.edn" (frozen-rows isos 2024 d e (or k1 k)))]
     (write-vintage! dir isos 2024 d last)
-    (let [sh (io/file dir "shape.edn")]
-      (c/write-shape! fp sha (str dir) "2027-11-01" (str sh))
-      (c/score fp sha (str dir) "2027-11-01" (str sh) null))))
+    (c/score (shapes! (files dir fp2 fp1 null)))))
 
 (deftest sha-256-matches-the-standard-vectors
   (is (= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" (c/sha256-hex (.getBytes "" "UTF-8"))))
@@ -79,8 +93,11 @@
          (c/sha256-hex (.getBytes (apply str (repeat 1000000 "a")) "UTF-8")))
       "a million bytes, many blocks"))
 
-(deftest the-registered-constants-are-9h-and-the-amendment
-  (is (= "0339880a359941334046d651966facd9d2473811fd205c77143111997eb7ccaf" c/frozen-sha256))
+(deftest the-registered-constants-are-9h-and-the-amendments
+  (is (= "data/derived/sfc/rates-frozen-v2.edn" c/frozen-v2-path) "A2: v2 is primary")
+  (is (= "6fa02f4f4d827d6c038dcbd7a1d21bfa3dcd47c5869f1ddcc44f18d8cad32446" c/frozen-v2-sha256))
+  (is (= "data/derived/sfc/rates-frozen.edn" c/frozen-v1-path))
+  (is (= "0339880a359941334046d651966facd9d2473811fd205c77143111997eb7ccaf" c/frozen-v1-sha256))
   (is (= #{["KOR" 2024 1 [:debt]] ["NZL" 2023 1 [:debt]]} c/excluded-rows))
   (is (= #{"BGR" "ROU"} c/excluded-countries))
   (is (= 5 c/min-countries))
@@ -96,9 +113,57 @@
     (is (= 50 (count (c/read-frozen fp sha))) "the untouched file reads")
     (spit fp (str/replace-first (slurp fp) ":o 2024" ":o 2023"))
     (is (thrown-with-msg? Exception #"SHA-256" (c/read-frozen fp sha)) "a changed byte is refused")
-    (is (thrown-with-msg? Exception #"SHA-256" (c/score fp sha (str dir) "2027-11-01" "nope" null))
-        "score refuses before reading anything else")
-    (is (thrown-with-msg? Exception #"SHA-256" (c/read-frozen fp c/frozen-sha256)))))
+    (is (thrown-with-msg? Exception #"SHA-256" (c/read-frozen fp c/frozen-v2-sha256)))
+    (is (thrown-with-msg? Exception #"SHA-256" (c/read-frozen fp c/frozen-v1-sha256)))))
+
+(deftest score-takes-both-frozen-files-and-refuses-a-mismatch-on-either
+  (let [dir (tmp-dir)
+        isos (vec (for [i (range 6)] (format "C%02d" i)))
+        [d e] (world isos 11)
+        fp2 (write-frozen! dir (frozen-rows isos 2024 d e 0.7))
+        fp1 (write-frozen! dir "rates-frozen.edn" (frozen-rows isos 2024 d e 1.0))
+        _ (write-vintage! dir isos 2024 d 2025)
+        fs (shapes! (files dir fp2 fp1 null))]
+    (testing "both files as registered: scored"
+      (is (= :non-inferior (:overall (c/score fs)))))
+    (testing "the hashes are not interchangeable"
+      (is (thrown-with-msg? Exception #"SHA-256" (c/score (assoc-in fs [:v2 :sha] (get-in fs [:v1 :sha])))))
+      (is (thrown-with-msg? Exception #"SHA-256" (c/score (assoc-in fs [:v1 :sha] (get-in fs [:v2 :sha]))))))
+    (testing "a tampered v2 is refused, by score and by shape, whatever v1 is"
+      (let [orig (slurp fp2)]
+        (spit fp2 (str/replace-first orig ":o 2024" ":o 2023"))
+        (is (thrown-with-msg? Exception #"rates-frozen-v2.edn's SHA-256" (c/score fs)))
+        (is (thrown-with-msg? Exception #"SHA-256" (c/write-shape! fs :v1 (str (io/file dir "x.edn")))))
+        (spit fp2 orig)))
+    (testing "a tampered v1 is refused too, though it is only reported"
+      (let [orig (slurp fp1)]
+        (spit fp1 (str/replace-first orig ":o 2024" ":o 2023"))
+        (is (thrown-with-msg? Exception #"rates-frozen.edn's SHA-256" (c/score fs)))
+        (is (thrown-with-msg? Exception #"SHA-256" (c/write-shape! fs :v2 (str (io/file dir "x.edn")))))
+        (spit fp1 orig)))
+    (is (= :non-inferior (:overall (c/score fs))) "restored, scored again")))
+
+(deftest v2-is-primary-and-v1-is-reported-without-a-verdict
+  ;; v2 planted gain, v1 planted loss: the verdict is v2's alone
+  (let [{:keys [overall cells lines v1]} (run {:n 12 :k 0.7 :k1 (Math/sqrt 1.3)})
+        [hd tail] (split-with #(not (re-find #"^v1 " %)) lines)]
+    (is (= :non-inferior overall))
+    (is (= :non-inferior (get-in cells [[:h1 :nl] :verdict])))
+    (is (some #(re-find #"rates-frozen-v2.edn SHA-256 [0-9a-f]{64} \(checked; primary\)" %) hd))
+    (is (some #(re-find #"rates-frozen.edn SHA-256 [0-9a-f]{64} \(checked; reported, no verdict\)" %) hd))
+    (is (some #(re-find #"verdict: non-inferior" %) hd))
+    (testing "v1 is scored by the same rule"
+      (is (= #{[:h1 :nl] [:h1 :debt] [:h35 :nl] [:h35 :debt]} (set (keys (:cells v1)))))
+      (is (< (Math/abs (+ 0.3 (first (get-in v1 [:cells [:h1 :nl] :ci])))) 1e-9) "its own skill, not v2's")
+      (is (= (get-in cells [[:h1 :nl] :rows]) (get-in v1 [:cells [:h1 :nl] :rows])))
+      (is (= 12 (get-in v1 [:cells [:h1 :debt] :countries])))
+      (is (some? (get-in v1 [:cells [:h1 :nl] :boot])) "the bootstrap and baselines are printed too"))
+    (testing "with no verdict"
+      (is (not (contains? v1 :overall)))
+      (is (every? #(not (contains? % :verdict)) (vals (:cells v1))))
+      (is (seq tail) "v1's lines follow v2's")
+      (is (re-find #"v1 \(rates-frozen.edn, pre-fix code\): reported, no verdict" (first tail)))
+      (is (not-any? #(re-find #"verdict:|non-inferior|inferior|inconclusive" %) (rest tail))))))
 
 (deftest a-vintage-before-the-registered-date-is-refused
   (is (thrown-with-msg? Exception #"2027-11-01" (c/check-date "2027-10-31")))
@@ -187,12 +252,16 @@
   (let [dir (tmp-dir)
         isos (vec (for [i (range 6)] (format "C%02d" i)))
         [d e] (world isos 9)
-        fp (write-frozen! dir (frozen-rows isos 2024 d e 0.7))
-        sha (c/sha256-file fp)
-        sh (io/file dir "shape.edn")]
-    (write-vintage! dir isos 2024 d 2025)
-    (c/write-shape! fp sha (str dir) "2027-11-01" (str sh))
-    (is (= :non-inferior (:overall (c/score fp sha (str dir) "2027-11-01" (str sh) null))))
+        fp2 (write-frozen! dir (frozen-rows isos 2024 d e 0.7))
+        fp1 (write-frozen! dir "rates-frozen.edn" (frozen-rows isos 2024 d e 1.0))
+        _ (write-vintage! dir isos 2024 d 2025)
+        fs (shapes! (files dir fp2 fp1 null))]
+    (is (= :non-inferior (:overall (c/score fs))))
+    (is (= (slurp (get-in fs [:v2 :shape])) (slurp (get-in fs [:v1 :shape]))) "same rows, same shape")
+    (let [other (io/file dir "other-shape.edn")]
+      (spit other "[]\n")
+      (is (thrown-with-msg? Exception #"shape" (c/score (assoc-in fs [:v1 :shape] (str other))))
+          "v1's shape is checked too"))
     (write-vintage! dir isos 2024 d 2027)
-    (is (thrown-with-msg? Exception #"shape" (c/score fp sha (str dir) "2027-11-01" (str sh) null))
+    (is (thrown-with-msg? Exception #"shape" (c/score fs))
         "the vintage changed after the null was simulated")))

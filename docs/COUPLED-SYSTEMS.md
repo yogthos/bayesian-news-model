@@ -4084,6 +4084,27 @@ changes which frozen file is primary and nothing else.
   null fit, minimum count and verdicts. The scorer checks both files'
   SHA-256s and refuses a mismatch on either.
 
+**Run under A2** (once, on the vintage date; replaces the run above).
+bnm.sfc-rates-confirm reads both frozen files in every mode and refuses
+unless each has its SHA-256. score prints v2's cells and verdict, then
+v1's cells under "v1 (rates-frozen.edn, pre-fix code): reported, no
+verdict". The two files have the same rows, so they score the same rows
+and share one shape and one null; score checks each file's shape
+regardless (with a different one, add shape --for v1 and the null on
+it, and pass --shape-v1 and --null-v1).
+
+    shasum -a 256 data/derived/sfc/rates-frozen-v2.edn data/derived/sfc/rates-frozen.edn data/derived/sfc/rates-test.edn
+    SFC_T14=$V/DF_TABLE14_all.csv.gz SFC_T720=$V/DF_T720R_A_all.csv.gz SFC_OUT=data/derived/sfc/vintage-2027 \
+        python -I scripts/sfc-data.py              # then the same with holdout, and with holdout2
+    jolt -A:tools -M -m bnm.sfc-rates-confirm shape --vintage data/derived/sfc/vintage-2027 \
+        --vintage-date YYYY-MM-DD --out data/derived/sfc/rates-confirm-shape.edn
+    python -I scripts/sfc-rates-null.py data/derived/sfc/rates-test.edn data/derived/sfc/rates-confirm-shape.edn \
+        --split test --m rates --x estimated --sims 2000 --seed 20271101 \
+        --edn-out data/derived/sfc/rates-confirm-null.edn
+    jolt -A:tools -M -m bnm.sfc-rates-confirm score --vintage data/derived/sfc/vintage-2027 \
+        --vintage-date YYYY-MM-DD --shape data/derived/sfc/rates-confirm-shape.edn \
+        --null data/derived/sfc/rates-confirm-null.edn --out data/derived/sfc/rates-confirm.txt
+
 ### 9i. Running scenarios (bnm-4hv.19)
 
 Scenarios that move rates or debt run under bnm.sfc/rates, the only rule

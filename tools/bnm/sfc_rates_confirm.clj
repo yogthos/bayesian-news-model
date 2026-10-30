@@ -1,28 +1,42 @@
 (ns bnm.sfc-rates-confirm
   "The later confirmation of the rate channel (bead bnm-4hv.16;
-  docs/COUPLED-SYSTEMS.md 9h, \"Amendment to the later confirmation\"):
-  rates-frozen.edn scored against the first OECD Table 14/720 vintage on
-  or after 1 November 2027, nothing re-run.
+  docs/COUPLED-SYSTEMS.md 9h, \"Amendment to the later confirmation\" and
+  amendment A2): the frozen forecasts scored against the first OECD Table
+  14/720 vintage on or after 1 November 2027, nothing re-run.
+  rates-frozen-v2.edn (frozen on the fixed core) is primary and carries the
+  verdict; rates-frozen.edn (v1, pre-fix core) is scored by the same rule
+  and reported, with no verdict.
 
-    jolt -A:tools -M -m bnm.sfc-rates-confirm shape --vintage DIR --vintage-date YYYY-MM-DD --out SHAPE
+    jolt -A:tools -M -m bnm.sfc-rates-confirm shape --vintage DIR --vintage-date YYYY-MM-DD --out SHAPE [--for v1]
     python -I scripts/sfc-rates-null.py data/derived/sfc/rates-test.edn SHAPE --split test --m rates \\
         --x estimated --sims 2000 --seed 20271101 --edn-out NULL
     jolt -A:tools -M -m bnm.sfc-rates-confirm score --vintage DIR --vintage-date YYYY-MM-DD \\
-        --shape SHAPE --null NULL [--out FILE]
+        --shape SHAPE --null NULL [--shape-v1 SHAPE1 --null-v1 NULL1] [--out FILE]
     jolt -A:tools -M -m bnm.sfc-rates-confirm published
 
   DIR holds scripts/sfc-data.py's panel.csv, panel-holdout.csv and
   panel-holdout2.csv built from the vintage (SFC_T14, SFC_T720, SFC_OUT).
-  --frozen FILE overrides data/derived/sfc/rates-frozen.edn; its SHA-256
-  must be 9h's. published lists the frozen rows whose targets the
-  freeze-time panels already had (presence only, no values)."
+  Every mode reads both frozen files and refuses unless each has its
+  registered SHA-256. --frozen FILE and --frozen-v1 FILE override their
+  paths, not their hashes. shape writes v2's scored rows (v1's with --for
+  v1); v1's shape and null default to v2's, and score refuses either
+  shape if it is not that file's scored rows. published lists the frozen
+  rows whose targets the freeze-time panels already had (presence only,
+  no values)."
   (:require [bnm.sfc :as sfc]
             [bnm.sfc-horizon-run :as h]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
-(def frozen-path "data/derived/sfc/rates-frozen.edn")
-(def frozen-sha256 "0339880a359941334046d651966facd9d2473811fd205c77143111997eb7ccaf")
+(def frozen-v2-path
+  "The primary frozen file (amendment A2): rates-freeze at 9b42691, both
+  bnm-4hv.17 fixes in, on the first freeze's inputs."
+  "data/derived/sfc/rates-frozen-v2.edn")
+(def frozen-v2-sha256 "6fa02f4f4d827d6c038dcbd7a1d21bfa3dcd47c5869f1ddcc44f18d8cad32446")
+(def frozen-v1-path
+  "The first frozen file (9h, at 16e7ae9, pre-fix core): reported, no verdict."
+  "data/derived/sfc/rates-frozen.edn")
+(def frozen-v1-sha256 "0339880a359941334046d651966facd9d2473811fd205c77143111997eb7ccaf")
 (def vintage-from "2027-11-01")
 (def excluded-countries #{"BGR" "ROU"})
 (def excluded-rows
@@ -199,91 +213,131 @@
 (defn confirm
   "Cells and verdicts from scored rows and the null {[hg outcome] [q05
   q95]}: {:cells {cell {:rows :countries :ci :verdict :boot :baselines}}
-  :overall :lines}."
-  [rows null]
-  (let [f (fn [[p lo hi]] (if lo (format "%+.3f [%+.3f, %+.3f]" p lo hi) (if p (format "%+.3f" p) "-")))
-        cs (into {} (for [c cells
-                          :let [rs (filter #(= c (cell-of %)) rows)
-                                n (count (distinct (map :iso rs)))
-                                p (when (seq rs) (skill rs :rates :estimated))
-                                [q05 q95] (get null c)
-                                _ (when (and p (>= n min-countries) (not (and q05 q95)))
-                                    (throw (ex-info (str "the null has no quantiles for " (cell-name c)) {:cell c})))
-                                ci (when (and p q05) [p (- p q95) (- p q05)])
-                                big (>= n min-countries)]]
-                      [c {:rows (count rs) :countries n :ci ci
-                          :verdict (if (and big ci) (cell-verdict ci n) :too-few)
-                          :boot (when (and big p) (h/bootstrap rs :rates :estimated 2000 seed))
-                          :baselines (into {} (for [x [:persistence :damped :restart]]
-                                                [x (when (seq rs) (if big (h/bootstrap rs :rates x 2000 seed) [(skill rs :rates x)]))]))}]))
-        vs (into {} (for [[c v] cs] [c (:verdict v)]))
-        ov (overall vs)
-        judged (filter #(not= :too-few (vs %)) cells)
-        few (filter #(= :too-few (vs %)) cells)]
-    {:cells cs :overall ov
-     :lines (vec (concat
-                  (for [c cells :let [{:keys [rows countries ci verdict boot baselines]} (cs c)]]
-                    (str (format "%-10s rows %d, countries %d; rates vs estimated %s (null interval); %s" (cell-name c) rows countries
-                                 (f ci) (if (= verdict :too-few) "inconclusive, too few countries" (name verdict)))
-                         (format "%n           reported: countries bootstrap %s; vs persistence %s, damped %s, Keen's restart %s"
-                                 (f boot) (f (:persistence baselines)) (f (:damped baselines)) (f (:restart baselines)))))
-                  [(str "verdict: " (name ov)
-                        "; rests on: " (if (seq judged) (str/join ", " (map cell-name judged)) "no cell")
-                        (when (seq few) (str "; too few countries: " (str/join ", " (for [c few] (str (cell-name c) " (" (:countries (cs c)) ")"))))))]))}))
+  :overall :lines}. With :verdicts? false (v1, reported) the same numbers
+  with no :verdict, no :overall and no verdict in the lines."
+  ([rows null] (confirm rows null {}))
+  ([rows null {:keys [verdicts?] :or {verdicts? true}}]
+    (let [f (fn [[p lo hi]] (if lo (format "%+.3f [%+.3f, %+.3f]" p lo hi) (if p (format "%+.3f" p) "-")))
+          cs (into {} (for [c cells
+                            :let [rs (filter #(= c (cell-of %)) rows)
+                                  n (count (distinct (map :iso rs)))
+                                  p (when (seq rs) (skill rs :rates :estimated))
+                                  [q05 q95] (get null c)
+                                  _ (when (and p (>= n min-countries) (not (and q05 q95)))
+                                      (throw (ex-info (str "the null has no quantiles for " (cell-name c)) {:cell c})))
+                                  ci (when (and p q05) [p (- p q95) (- p q05)])
+                                  big (>= n min-countries)]]
+                        [c {:rows (count rs) :countries n :ci ci
+                            :verdict (if (and big ci) (cell-verdict ci n) :too-few)
+                            :boot (when (and big p) (h/bootstrap rs :rates :estimated 2000 seed))
+                            :baselines (into {} (for [x [:persistence :damped :restart]]
+                                                  [x (when (seq rs) (if big (h/bootstrap rs :rates x 2000 seed) [(skill rs :rates x)]))]))}]))
+          vs (into {} (for [[c v] cs] [c (:verdict v)]))
+          ov (overall vs)
+          judged (filter #(not= :too-few (vs %)) cells)
+          few (filter #(= :too-few (vs %)) cells)
+          cell-lines (for [c cells :let [{:keys [rows countries ci verdict boot baselines]} (cs c)]]
+                       (str (format "%-10s rows %d, countries %d; rates vs estimated %s (null interval)%s" (cell-name c) rows countries (f ci)
+                                    (cond (not verdicts?) (if (< countries min-countries) "; fewer than five countries" "")
+                                          (= verdict :too-few) "; inconclusive, too few countries"
+                                          :else (str "; " (name verdict))))
+                            (format "%n           reported: countries bootstrap %s; vs persistence %s, damped %s, Keen's restart %s"
+                                    (f boot) (f (:persistence baselines)) (f (:damped baselines)) (f (:restart baselines)))))]
+      (if verdicts?
+        {:cells cs :overall ov
+         :lines (vec (concat
+                      cell-lines
+                      [(str "verdict: " (name ov)
+                            "; rests on: " (if (seq judged) (str/join ", " (map cell-name judged)) "no cell")
+                            (when (seq few) (str "; too few countries: " (str/join ", " (for [c few] (str (cell-name c) " (" (:countries (cs c)) ")"))))))]))}
+        {:cells (into {} (for [[c v] cs] [c (dissoc v :verdict)]))
+         :lines (vec cell-lines)}))))
 
 ;; -- the run ------------------------------------------------------------------------------------
 
-(defn- prepare [frozen sha vintage date]
-  (let [fr (read-frozen frozen sha)
-        date (check-date date)
-        rows (attach-data fr (vintage-panel vintage))]
-    {:frozen fr :date date :rows rows :scored (scorable rows)}))
+(def ^:private which-name {:v2 "rates-frozen-v2.edn" :v1 "rates-frozen.edn"})
+
+(defn- read-both
+  "Both frozen files {:v2 rows :v1 rows}, each checked against its own
+  SHA-256 before anything else is read; a mismatch on either is refused."
+  [fs]
+  (into {} (for [w [:v2 :v1] :let [{:keys [frozen sha]} (get fs w)]]
+             [w (read-frozen frozen sha)])))
+
+(defn- prepare
+  "`fs` {:vintage DIR :date D :v2 {:frozen :sha ...} :v1 {...}}: both files
+  checked, the date checked, then each file's rows with the vintage's
+  data and the rows scored."
+  [fs]
+  (let [fr (read-both fs)
+        date (check-date (:date fs))
+        vp (vintage-panel (:vintage fs))]
+    (into {:date date}
+          (for [w [:v2 :v1] :let [rows (attach-data (fr w) vp)]]
+            [w {:frozen (fr w) :rows rows :scored (scorable rows)}]))))
 
 (defn write-shape!
-  "Writes the scored rows' shape for the null script; returns it."
-  [frozen sha vintage date out]
-  (let [{:keys [scored]} (prepare frozen sha vintage date) t (shape-text scored)]
+  "Writes the scored rows' shape of frozen file `which` (:v2 or :v1) for
+  the null script, after checking both files; returns it."
+  [fs which out]
+  (let [t (shape-text (get-in (prepare fs) [which :scored]))]
     (spit out t)
     t))
 
 (defn score
-  "The confirmation: refuses a frozen file whose SHA-256 is not `sha`, a
-  vintage date before 2027-11-01, and a shape file other than the scored
-  rows' (the null must be simulated on the rows scored). `null` {[hg
-  outcome] [q05 q95]}. confirm's result, :lines headed by the run's
-  facts."
-  [frozen sha vintage date shape-path null]
-  (let [{:keys [frozen date rows scored]} (prepare frozen sha vintage date)
-        t (shape-text scored)]
-    (when-not (= t (slurp shape-path))
-      (throw (ex-info (str "the shape in " shape-path " is not the scored rows'; rerun shape and the null") {:shape shape-path})))
-    (let [r (confirm scored null)
-          hd [(str "vintage downloaded " date "; rates-frozen.edn SHA-256 " sha " (checked)")
+  "The confirmation (amendments to 9h, A2). `fs` {:vintage DIR :date D :v2
+  {:frozen :sha :shape :null} :v1 {...}}: refuses a frozen file whose
+  SHA-256 is not its :sha, a vintage date before 2027-11-01, and a shape
+  file other than that file's scored rows (each null must be simulated on
+  the rows it scores). v2 is primary: confirm's result for it, with :v1
+  v1's cells reported without a verdict, and :lines headed by the run's
+  facts, v1's after v2's."
+  [fs]
+  (let [{:keys [date] :as pr} (prepare fs)]
+    (doseq [w [:v2 :v1] :let [sp (get-in fs [w :shape])]]
+      (when-not (= (shape-text (get-in pr [w :scored])) (slurp sp))
+        (throw (ex-info (str "the shape in " sp " is not " (which-name w) "'s scored rows; rerun shape and the null")
+                        {:shape sp :which w}))))
+    (let [{:keys [frozen rows scored]} (:v2 pr)
+          r (confirm scored (get-in fs [:v2 :null]))
+          r1 (confirm (get-in pr [:v1 :scored]) (get-in fs [:v1 :null]) {:verdicts? false})
+          hd [(str "vintage downloaded " date)
+              (str "rates-frozen-v2.edn SHA-256 " (get-in fs [:v2 :sha]) " (checked; primary)")
+              (str "rates-frozen.edn SHA-256 " (get-in fs [:v1 :sha]) " (checked; reported, no verdict)")
               (format "frozen rows %d; excluded countries %s; excluded rows %s; h2 and h4 rows dropped %d"
                       (count frozen) (str/join " " (sort excluded-countries))
                       (str/join " " (sort-by str (filter (set (map row-key frozen)) excluded-rows)))
                       (count (filter #(#{2 4} (:h %)) frozen)))
               (format "scored rows %d (target in the vintage, every model present); countries absent from the vintage: %s"
-                      (count scored) (if-let [a (seq (absent rows))] (str/join " " a) "none"))]]
-      (update r :lines #(vec (concat hd %))))))
+                      (count scored) (if-let [a (seq (absent rows))] (str/join " " a) "none"))]
+          v1-hd [(format "v1 (rates-frozen.edn, pre-fix code): reported, no verdict; scored rows %d" (count (get-in pr [:v1 :scored])))]]
+      (assoc r
+             :v1 (select-keys r1 [:cells])
+             :lines (vec (concat hd (:lines r) v1-hd (:lines r1)))))))
 
 (defn -main [mode & args]
   (let [opts (into {} (for [[k v] (partition-all 2 args)] [k v]))
-        frozen (get opts "--frozen" frozen-path)]
+        fs {:vintage (get opts "--vintage") :date (get opts "--vintage-date")
+            :v2 {:frozen (get opts "--frozen" frozen-v2-path) :sha frozen-v2-sha256
+                 :shape (get opts "--shape") :null (some-> (get opts "--null") slurp read-string)}
+            :v1 {:frozen (get opts "--frozen-v1" frozen-v1-path) :sha frozen-v1-sha256
+                 :shape (get opts "--shape-v1" (get opts "--shape"))
+                 :null (some-> (get opts "--null-v1" (get opts "--null")) slurp read-string)}}]
     (case mode
       "shape"
-      (let [t (write-shape! frozen frozen-sha256 (get opts "--vintage") (get opts "--vintage-date") (get opts "--out"))]
-        (println (count (re-seq #"\{:iso" t)) "rows scored; shape written to" (get opts "--out")))
+      (let [w (keyword (get opts "--for" "v2"))
+            _ (when-not (#{:v2 :v1} w) (throw (ex-info "--for is v2 or v1" {:for w})))
+            t (write-shape! fs w (get opts "--out"))]
+        (println (count (re-seq #"\{:iso" t)) "rows of" (which-name w) "scored; shape written to" (get opts "--out")))
       "score"
-      (let [{:keys [lines]} (score frozen frozen-sha256 (get opts "--vintage") (get opts "--vintage-date")
-                                   (get opts "--shape") (read-string (slurp (get opts "--null"))))]
+      (let [{:keys [lines]} (score fs)]
         (doseq [l lines] (println l))
         (when-let [out (get opts "--out")] (spit out (str (str/join "\n" lines) "\n"))))
       "published"
-      (let [fr (read-frozen frozen frozen-sha256)
+      (let [fr (read-both fs)
             d "data/derived/sfc/"
             p (merge (sfc/read-panel (str d "panel.csv")) (sfc/read-panel (str d "panel-holdout.csv"))
                      (sfc/read-panel (str d "panel-holdout2.csv")))]
-        (doseq [r (published-at-freeze fr p)]
-          (println (row-key r) "target" (+ (:o r) (:h r))))))
+        (doseq [w [:v2 :v1] r (published-at-freeze (fr w) p)]
+          (println (which-name w) (row-key r) "target" (+ (:o r) (:h r))))))
     (shutdown-agents)))
