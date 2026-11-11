@@ -126,7 +126,17 @@ trigger terms multiply it.
    library and a set of data mappings. What the model learns is the form
    crashes share, so a scenario with no precedent in its own type can
    still be found.
-6. **Every claim is scored forward.** 2003-2022 is development data from now
+6. **Priors from data, coefficients that evolve.** Added 11 November
+   2026 on the user's direction. No structure is frozen: recipes, network
+   weights, lags, pass-through, buffer thresholds and slopes start from
+   heavy priors set by the best available data and theory (the input-output
+   tables, published lags, the literature's ranges), and are updated online
+   as each period's data arrive, with discounting so they can drift when
+   patterns change. The model is a living one. Two guards: the prior is
+   strong enough that a few events cannot overturn it (fitting point
+   coefficients to a handful of past shocks is what failed in P1), and every
+   update uses only data known at the time.
+7. **Every claim is scored forward.** 2003-2022 is development data from now
    on. New results count when a dated, frozen forecast meets its outcome.
 
 ## 4. Phases
@@ -410,12 +420,22 @@ and pass-through fitted on past shocks worse.
    (BLS, by industry and stage of processing) and Eurostat producer
    prices, mapped to the graph's products; BACI unit values on trade
    edges.
-3. Model, in order, nothing fitted to past shocks: (a) static
-   partitioned Leontief, the same as fixed network weights; (b) with a
-   lag per production stage, fixed beforehand from the measured lags;
-   (c) with each sector's published frequency of price changes;
-   (d) the non-linear correction only for shocks above a size fixed in
-   advance.
+3. Model: a dynamic Bayesian price network, no static weights.
+   - Priors: pass-through centred on the Leontief network weights from
+     the latest published table, each stage's lag centred on the
+     measured lags, each sector's frequency of price changes from
+     published data, margin absorption from the literature's 50-100%
+     range. Heavy enough that one shock cannot move them far.
+   - Updating: each period's observed producer prices update every
+     coefficient online (augur's discounted dynamic models), so
+     pass-through, lags and margins drift when behaviour changes, for
+     example the faster price-setting of 2022. The yearly tables update
+     the network weights' prior means as each is published.
+   - Non-linearity: the large-shock amplification enters as a prior on
+     how pass-through grows with shock size, updated like the rest.
+   - Baselines in the test: each sector's own trend, and the same model
+     with its priors frozen, so the value of letting it evolve is
+     measured.
 4. Feed margins into the buffers: cost rises not passed on lower carry
    and raise the claim gap; they drain cash buffers.
 
@@ -427,10 +447,9 @@ correlation across sectors and sign; rises and falls reported apart.
 The realistic target is ranking which sectors rise, with a small gain
 in size and the least in timing.
 
-**Decision needed:** EXIOBASE 3.9 and later are licensed for
-non-commercial use only. Use it for the yearly coefficients if this
-work is non-commercial; otherwise use OECD ICIO (free; licence to be
-confirmed) or Eurostat FIGARO.
+**Decided 11 November 2026:** EXIOBASE 3.10 for the yearly
+coefficients; the project is non-commercial, which its licence (3.9 and
+later) requires.
 
 ### Phase 6: operations (about 5 days)
 
