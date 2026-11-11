@@ -117,9 +117,9 @@
         q (- (Math/expm1 (* ratio (Math/log1p (- p)))))]
     (logit q)))
 
-(def ^:private hermite
+(def hermite
   "Five-point Gauss-Hermite quadrature for the standard normal: nodes and
-  weights."
+  weights (also bnm.compose's, over a shared frailty)."
   [[0.0 0.5333333333333333] [1.3556261799742657 0.2220759220056126] [-1.3556261799742657 0.2220759220056126]
    [2.8569700138728056 0.011257411327720691] [-2.8569700138728056 0.011257411327720691]])
 

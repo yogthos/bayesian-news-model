@@ -23,6 +23,8 @@
             [bnm.paired-test]
             [bnm.lattice-test]
             [bnm.lattice-golden-test]
+            [bnm.compose-test]
+            [bnm.node-test]
             [bnm.factors-test]
             [bnm.sheaf-test]
             [bnm.ews-test]
@@ -137,6 +139,8 @@
     bnm.paired-test
     bnm.lattice-test
     bnm.lattice-golden-test
+    bnm.compose-test
+    bnm.node-test
     bnm.factors-test
     bnm.sheaf-test
     bnm.ews-test
