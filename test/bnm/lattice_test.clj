@@ -704,3 +704,19 @@
       (is (every? (fn [[_ t {:keys [p s]}]] (or (> t 24) (< (Math/abs (- s (lt/logit-of p))) 1e-9)))
                   (for [[[sc place] byo] (:book net) :when (= :month sc) [t e] byo :when (<= t 11)] [place t e]))))
     (is (not= (:forecasts plain) (:forecasts net)) "the year reads other states, so the forecasts move")))
+
+(deftest the-finer-states-can-be-read-a-period-late
+  ;; :up-lag (bnm-56c.2's loop): a node reads its finer scales' states over
+  ;; the period before its last, not its last, so the quarters a year's own
+  ;; forecast came down to are not read back the next period; its children
+  ;; at its own scale are read as before
+  (let [w (world 5)
+        reads-of (fn [r] (for [{:keys [scale origin reads]} (:trace r) :when (= :year scale)
+                               {s :scale o :origin dir :dir} reads :when (and (= :up dir) (= :month s))]
+                           [origin o]))
+        plain (lt/run (assoc (spec w) :end 200 :trace true))
+        lagged (lt/run (assoc (spec (world 5)) :end 200 :trace true :up-lag {:year 1}))]
+    (is (some (fn [[t o]] (> o (- t 12))) (reads-of plain)) "without it, this period's months")
+    (is (seq (reads-of lagged)))
+    (is (every? (fn [[t o]] (<= (- t 23) o (- t 12))) (reads-of lagged)) "with it, the period before")
+    (is (not= (:forecasts plain) (:forecasts lagged)))))

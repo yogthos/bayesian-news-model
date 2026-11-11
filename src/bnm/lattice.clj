@@ -316,8 +316,10 @@
         ;; the ancestors among the spec's levels (a parent map may run past
         ;; them, to a world the spec has no level for): the layout's count
         ancestors (vec (take (- (count (:levels spec)) level-ix 1) (sh/ancestors b place)))
-        ;; up: finer scales over this period, children at this origin
-        finer-entries (mapv (fn [f] [f (vec (sh/over r :up [f place] (- t (dec per)) t))]) finer)
+        ;; up: finer scales over this period (:up-lag {scale n}: n periods
+        ;; before it, bnm-56c.2), children at this origin
+        lag (* per (long (get-in spec [:up-lag scale] 0)))
+        finer-entries (mapv (fn [f] [f (vec (sh/over r :up [f place] (- t (dec per) lag) (- t lag)))]) finer)
         up-time (mapcat (fn [[_ es]]
                           (if (seq es) [(:s (val (last es))) (mean (map (comp :s val) es))] [0.0 0.0]))
                         finer-entries)
@@ -510,6 +512,9 @@
    :weighting: tempered posterior or stacked; posterior weights without),
    :weighting-at {scale weighting} the same at one scale, :hold-links, a
    nested link's own coefficients not discounted (augur.dynamic's :hold),
+   :up-lag {scale n}, the node at that scale reads its finer scales'
+   states over the period n of its periods before its last (bnm-56c.2's
+   loop through :downscale; this period's without),
    :up-net-of-downscale, a node with :downscale passes up its log odds
    less the part of its offset that came down (bnm-56c.2: otherwise the
    coarser node reads its own forecast back through the finer states),
