@@ -3578,6 +3578,136 @@ countries are issued for the record, not scored.
   year node (2027-2028) is scorable from 2029, when the catalogues cover
   December 2028.
 
+**Amendment L1 to the forward ledger** (11 November 2026, decided by the
+user the same day; beads bnm-8ul, bnm-56c.13, bnm-56c.14). Committed on
+its own, before the data are rebuilt and before any rebuilt file or
+forecast is looked at. No outcome of the first issue has been read: its
+first windows close in 2027 and nothing has been scored.
+
+- *Why.* (1) The first issue read event and political files built
+  through a country-name bug in scripts/slow-normalize.py: the gazetteer's
+  regex ran from one entry of resources/bnm/countries.edn into the next,
+  so Georgia was filed as GBR, Burkina Faso as BES, the Republic of Congo
+  as COD and Svalbard as SHN (fixed in cca822d, with the ESRB's starred
+  UK code and Reinhart & Rogoff's currency crashes coded 2; the episode
+  library was rebuilt on the fix in 9de7195). data/slow/events.tsv,
+  data/derived/econ-events.csv and political-*.csv, and data/raw/slow/rr/
+  onsets.csv are still the pre-fix files, and they are inputs of the
+  first issue. (2) The reproduction rule contradicts the online learning
+  it freezes once the data are refreshed (bnm-56c.13): rows the base has
+  with outcomes not yet known fill in when a catalogue extends, the model
+  learns from them, and every later origin moves, so the next issue would
+  refuse on refreshed data or issue forecasts that ignore everything
+  published since. (3) What counts as a claim was left open: which
+  measure, against which baseline, with which interval and decision rule,
+  and published? let a partial catalogue update score a kind once with
+  most rows unscored (bnm-56c.14).
+- *The corrected issue is primary.* A corrected 2026-Q4 issue, issue
+  2026-Q4-r1, is written to registered/ledger/2026-Q4-r1/, dated the day
+  it is made, from the rebuilt data, with its inputs archived in
+  data/ledger-inputs/2026-Q4-r1/. It carries the verdicts. The first
+  issue, registered/ledger/2026-Q4/, stays on record unchanged: it is
+  scored by the same rule on the same outcomes and reported beside the
+  corrected issue, with no verdict (as rates-frozen.edn beside
+  rates-frozen-v2.edn in the 2027 SFC confirmation, amendment A2 of
+  docs/COUPLED-SYSTEMS.md). Its year node and the corrected issue's are
+  the same windows, so they count once, as the corrected issue's.
+- *The base of record* becomes t49-world-norel: t48's command
+  (bnm.world-run --without-relations true) on the rebuilt data and the
+  current code, compared with t48 before the corrected issue is made.
+- *The reproduction rule, from the corrected issue on.* Replaces "The run
+  must reproduce t48-world-norel byte for byte on every row the base
+  has". Code identity is checked by rerunning the previous issue on its
+  own archived inputs (data/ledger-inputs/<issue>/, whose SHA-256s must
+  be the ones in that issue's manifest) and matching that issue's
+  forecasts.tsv byte for byte; a code change that moves the previous
+  issue's reproduction refuses. The new issue then runs on the data on
+  disk at its date, refreshed, and its own inputs are archived read-only
+  and hashed in its manifest. Data may change between issues: the
+  manifest records each input that changed (old and new SHA-256), was
+  added or was dropped. When a run's inputs are byte for byte those the
+  base of record was built on, it must also reproduce the base on every
+  row the base has, as before. For the corrected issue the previous issue
+  is the first one (its inputs, data/ledger-inputs/2026-Q4/) and the
+  base check is against t49-world-norel; for 2027-Q1 the reproduction is
+  against the corrected issue's inputs, data/ledger-inputs/2026-Q4-r1/.
+  Refreshing the catalogues before each issue is part of the procedure
+  (bnm-56c.13: several stop 5-18 months short of what the model treats
+  as known at a December origin).
+- *The claim* (bnm-56c.14), fixed now, before any issue is scored:
+  - **Measure.** Brier skill and log skill (floor 1e-4), 1 - loss(base)
+    / loss(baseline), at the country year node, on the counted rows
+    that are at risk and covered, pooled over the scored issues: per kind
+    the rows of every scored issue together, then the kinds weighed
+    equally. Brier is primary; log is reported beside it with the same
+    interval and decision rule. Quarter and half-decade nodes are scored
+    and reported, not claimed.
+  - **Baselines,** each a probability from what was known at the issue
+    (the run's own rows whose outcome was known by the origin, and the
+    catalogue as archived with the issue): *rate*, a constant, the
+    kind's observed rate over the node's country rows known by the
+    origin (the level rate bnm.benchmarks smooths clim and last12
+    towards); *persistence*, that rate among rows in the same state, the
+    state being whether the place had an onset known in the ten years to
+    the origin, smoothed with one pseudo-row at the rate (last12's
+    form, a ten-year window instead of the last 12 months published);
+    *last12*, as defined in bnm.benchmarks. clim and share stay for the
+    record. The corrected issue freezes rate and persistence beside the
+    others; for the first issue they are computed from its archived
+    inputs and its run, and the scorer checks that the same computation
+    gives the clim and last12 it froze.
+  - **Watch list.** Top-10 recall on hard onsets at the year node as
+    registered above, against persistence, climatology and last12
+    ranked the same way; v2 with A1-A3 where a candidate is issued.
+  - **Interval.** With one to a few issues, blocks of issue years cannot
+    carry an interval (three year nodes give two blocks). Instead a
+    country-cluster bootstrap: each draw resamples countries with
+    replacement and takes every row of a drawn country, in every scored
+    issue and kind, once per draw, so a country's rows across issues and
+    kinds move together; the pooled skill (or recall gain) is recomputed
+    on each draw; 2,000 draws, seed 1, the 90% two-sided percentile
+    interval.
+  - **Size check,** run before any issue is scored and recorded with the
+    tool: on development data (t49-world-norel's year nodes at three
+    year-end origins, 2016, 2018 and 2020, as three issues), outcomes
+    are drawn under the null of equal expected Brier, each row's y from
+    the mean of the base's and the baseline's probability, 1,000 sets
+    per baseline, and the interval must claim a gain in at most 5% of
+    them (one-sided; Monte Carlo error about 1.4 points). If it claims in
+    more than 7.5% against any baseline, no claim is made on this
+    interval until a further amendment, before the first year node is
+    scorable.
+  - **Decision.** The base is better than a baseline when the interval's
+    lower end is above 0, worse when its upper end is below 0, else
+    undecided; each baseline is reported. "The base beats the baselines"
+    is claimed only when the Brier lower end is above 0 against all
+    three. The watch list's gain the same way, against each of its
+    baselines.
+  - **Minimum.** No claim before three year-node issues are scored, as
+    registered: the corrected 2026-Q4 issue's and the 2027-Q4 and 2028-Q4
+    issues' year nodes, so 2031 at the earliest. Before that, results
+    are reported as they fall.
+  - **published?** A kind is published for scoring at a node only when
+    the window has closed and the catalogue then on disk covers the
+    window's end at every country with a counted row that it follows
+    past the issue's origin (covered through a month at or after the
+    origin): no share below all. Rows at countries it stopped following
+    before the origin are left out and counted as unscored. A partial
+    update can no longer score a kind once with most rows unscored.
+  - The registration's sentence "(as bnm-82j.1), with fewer than three
+    year nodes scored a result is reported as it falls" is a comma splice:
+    a full stop was meant after "(as bnm-82j.1)". The registration is not
+    edited; the interval it names is replaced above.
+- *Scoring guards.* A score is recorded in a committed file
+  (registered/ledger/<issue>/scores/<scale>/<kind>.edn) whose SHA-256 is
+  registered in bnm.ledger/scored and checked by the test suite. The
+  scorer refuses a kind and scale already registered, already on disk,
+  or ever committed (in git's history), so deleting a score file does not
+  allow a rescore. --kinds naming a kind the issue does not hold is
+  refused as such, not as unpublished.
+- Everything else in the registration stands: what is issued, when, what
+  is counted, the outcome, the losses, the watch-list rule and v2.
+
 ## Registered, 11 November 2026: one pooled hazard over the buffer invariants, and the scanner (bead bnm-56c.6, PLAN 1.5-1.7)
 
 Written and committed before any model is fitted to break labels. The
