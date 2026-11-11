@@ -8,7 +8,7 @@
   and reported, with no verdict.
 
     jolt -A:tools -M -m bnm.sfc-rates-confirm shape --vintage DIR --vintage-date YYYY-MM-DD --out SHAPE [--for v1]
-    python -I scripts/sfc-rates-null.py data/derived/sfc/rates-test.edn SHAPE --split test --m rates \\
+    python -I scripts/sfc-rates-null.py registered/sfc-2027/rates-test.edn SHAPE --split test --m rates \\
         --x estimated --sims 2000 --seed 20271101 --edn-out NULL
     jolt -A:tools -M -m bnm.sfc-rates-confirm score --vintage DIR --vintage-date YYYY-MM-DD \\
         --shape SHAPE --null NULL [--shape-v1 SHAPE1 --null-v1 NULL1] [--out FILE]
@@ -16,9 +16,13 @@
 
   DIR holds scripts/sfc-data.py's panel.csv, panel-holdout.csv and
   panel-holdout2.csv built from the vintage (SFC_T14, SFC_T720, SFC_OUT).
-  Every mode reads both frozen files and refuses unless each has its
-  registered SHA-256. --frozen FILE and --frozen-v1 FILE override their
-  paths, not their hashes. shape writes v2's scored rows (v1's with --for
+  The two frozen files and rates-test.edn (the null's fit) are committed
+  under registered/sfc-2027/ and read from there. Every mode first checks
+  the three committed copies and refuses if one is missing, if one lacks
+  its registered SHA-256, or if its copy under data/derived/sfc/, when
+  there is one, differs from it. Every mode then reads both frozen files
+  and refuses unless each has its registered SHA-256. --frozen FILE and
+  --frozen-v1 FILE override their paths, not their hashes. shape writes v2's scored rows (v1's with --for
   v1); v1's shape and null default to v2's, and score refuses either
   shape if it is not that file's scored rows. published lists the frozen
   rows whose targets the freeze-time panels already had (presence only,
@@ -28,15 +32,30 @@
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
+(def registered-dir
+  "The committed copies of the registered files (committed 2026-11-10,
+  hashes unchanged); never edited."
+  "registered/sfc-2027/")
+(def data-dir "Where the files were written, outside git." "data/derived/sfc/")
 (def frozen-v2-path
   "The primary frozen file (amendment A2): rates-freeze at 9b42691, both
   bnm-4hv.17 fixes in, on the first freeze's inputs."
-  "data/derived/sfc/rates-frozen-v2.edn")
+  (str registered-dir "rates-frozen-v2.edn"))
 (def frozen-v2-sha256 "6fa02f4f4d827d6c038dcbd7a1d21bfa3dcd47c5869f1ddcc44f18d8cad32446")
 (def frozen-v1-path
   "The first frozen file (9h, at 16e7ae9, pre-fix core): reported, no verdict."
-  "data/derived/sfc/rates-frozen.edn")
+  (str registered-dir "rates-frozen.edn"))
 (def frozen-v1-sha256 "0339880a359941334046d651966facd9d2473811fd205c77143111997eb7ccaf")
+(def rates-test-path
+  "The fit of the null interval (scripts/sfc-rates-null.py's first argument)."
+  (str registered-dir "rates-test.edn"))
+(def rates-test-sha256 "226f71e10ff406aa3f7e87af1231c383b2f3227ac0acdbd4c58d835aa402d52b")
+(def registered-files
+  "The committed files, their registered hashes and their data/ copies."
+  (vec (for [[n p sha] [["rates-frozen-v2.edn" frozen-v2-path frozen-v2-sha256]
+                        ["rates-frozen.edn" frozen-v1-path frozen-v1-sha256]
+                        ["rates-test.edn" rates-test-path rates-test-sha256]]]
+         {:name n :path p :sha sha :data (str data-dir n)})))
 (def vintage-from "2027-11-01")
 (def excluded-countries #{"BGR" "ROU"})
 (def excluded-rows
@@ -106,6 +125,8 @@
     (apply str (map #(format "%08x" %) (vec hs)))))
 
 (defn- file-bytes [path]
+  (when-not (.exists (io/file (str path)))
+    (throw (ex-info (str path " is missing; refusing to score") {:path (str path)})))
   (java.nio.file.Files/readAllBytes (java.nio.file.Paths/get (str path) (into-array String []))))
 
 (defn sha256-file [path] (sha256-hex (file-bytes path)))
@@ -119,6 +140,26 @@
       (throw (ex-info (str path "'s SHA-256 is " got ", not the registered " expected "; refusing to score")
                       {:path path :sha256 got :expected expected})))
     (read-string (String. bs "UTF-8"))))
+
+(defn check-registered!
+  "Checks `files` [{:name :path :sha :data}]: each committed copy (:path)
+  must exist with SHA-256 :sha, and its copy at :data, when there is one,
+  must be the same bytes. Refuses otherwise; returns the files with
+  :data-copy? (whether a data/ copy was there)."
+  [files]
+  (mapv (fn [{:keys [name path sha data] :as f}]
+          (let [got (sha256-file path)
+                copy? (boolean (and data (.exists (io/file data))))]
+            (when-not (= got sha)
+              (throw (ex-info (str path "'s SHA-256 is " got ", not the registered " sha "; refusing to score")
+                              {:path path :sha256 got :expected sha})))
+            (when copy?
+              (let [dg (sha256-file data)]
+                (when-not (= dg sha)
+                  (throw (ex-info (str data " (SHA-256 " dg ") differs from the committed " path "; refusing to score")
+                                  {:path path :data data :sha256 dg :expected sha})))))
+            (assoc f :data-copy? copy?)))
+        files))
 
 (defn check-date
   "The vintage's download date, YYYY-MM-DD, refused before 2027-11-01."
@@ -323,6 +364,7 @@
             :v1 {:frozen (get opts "--frozen-v1" frozen-v1-path) :sha frozen-v1-sha256
                  :shape (get opts "--shape-v1" (get opts "--shape"))
                  :null (some-> (get opts "--null-v1" (get opts "--null")) slurp read-string)}}]
+    (check-registered! registered-files)
     (case mode
       "shape"
       (let [w (keyword (get opts "--for" "v2"))

@@ -4083,22 +4083,33 @@ changes which frozen file is primary and nothing else.
   date, :data, missing targets, the cells, metric, baselines, interval,
   null fit, minimum count and verdicts. The scorer checks both files'
   SHA-256s and refuses a mismatch on either.
+- *10 November 2026: the three files committed.* rates-frozen-v2.edn,
+  rates-frozen.edn and rates-test.edn were copied byte for byte from
+  data/derived/sfc/ (outside git) into registered/sfc-2027/ and committed
+  on 2026-11-10 with unchanged SHA-256s (6fa02f4f..., 0339880a...,
+  226f71e1..., each checked on disk before the copy and after), before
+  any target of data year 2025 or later was read. No rule, row or number
+  changes; the scorer now reads the committed copies.
 
 **Run under A2** (once, on the vintage date; replaces the run above).
-bnm.sfc-rates-confirm reads both frozen files in every mode and refuses
-unless each has its SHA-256. score prints v2's cells and verdict, then
+The registered files are the committed copies in registered/sfc-2027/
+(its README gives their hashes); they are never edited. In every mode
+bnm.sfc-rates-confirm first checks the three committed copies and refuses
+if one is missing, lacks its SHA-256, or differs from its copy under
+data/derived/sfc/ where there is one. It reads both frozen files in every
+mode and refuses unless each has its SHA-256. score prints v2's cells and verdict, then
 v1's cells under "v1 (rates-frozen.edn, pre-fix code): reported, no
 verdict". The two files have the same rows, so they score the same rows
 and share one shape and one null; score checks each file's shape
 regardless (with a different one, add shape --for v1 and the null on
 it, and pass --shape-v1 and --null-v1).
 
-    shasum -a 256 data/derived/sfc/rates-frozen-v2.edn data/derived/sfc/rates-frozen.edn data/derived/sfc/rates-test.edn
+    shasum -a 256 registered/sfc-2027/rates-frozen-v2.edn registered/sfc-2027/rates-frozen.edn registered/sfc-2027/rates-test.edn
     SFC_T14=$V/DF_TABLE14_all.csv.gz SFC_T720=$V/DF_T720R_A_all.csv.gz SFC_OUT=data/derived/sfc/vintage-2027 \
         python -I scripts/sfc-data.py              # then the same with holdout, and with holdout2
     jolt -A:tools -M -m bnm.sfc-rates-confirm shape --vintage data/derived/sfc/vintage-2027 \
         --vintage-date YYYY-MM-DD --out data/derived/sfc/rates-confirm-shape.edn
-    python -I scripts/sfc-rates-null.py data/derived/sfc/rates-test.edn data/derived/sfc/rates-confirm-shape.edn \
+    python -I scripts/sfc-rates-null.py registered/sfc-2027/rates-test.edn data/derived/sfc/rates-confirm-shape.edn \
         --split test --m rates --x estimated --sims 2000 --seed 20271101 \
         --edn-out data/derived/sfc/rates-confirm-null.edn
     jolt -A:tools -M -m bnm.sfc-rates-confirm score --vintage data/derived/sfc/vintage-2027 \

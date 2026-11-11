@@ -6,7 +6,8 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]))
 
-;; Synthetic vintages only: nothing here reads data/.
+;; Synthetic vintages only: nothing here reads data/. The registered files
+;; under registered/sfc-2027/ are hashed, never parsed.
 
 (defn- tmp-dir []
   (doto (io/file (System/getProperty "java.io.tmpdir") (str "bnm-confirm-" (System/nanoTime))) .mkdirs))
@@ -94,15 +95,61 @@
       "a million bytes, many blocks"))
 
 (deftest the-registered-constants-are-9h-and-the-amendments
-  (is (= "data/derived/sfc/rates-frozen-v2.edn" c/frozen-v2-path) "A2: v2 is primary")
+  (is (= "registered/sfc-2027/rates-frozen-v2.edn" c/frozen-v2-path) "A2: v2 is primary; the committed copy")
   (is (= "6fa02f4f4d827d6c038dcbd7a1d21bfa3dcd47c5869f1ddcc44f18d8cad32446" c/frozen-v2-sha256))
-  (is (= "data/derived/sfc/rates-frozen.edn" c/frozen-v1-path))
+  (is (= "registered/sfc-2027/rates-frozen.edn" c/frozen-v1-path))
   (is (= "0339880a359941334046d651966facd9d2473811fd205c77143111997eb7ccaf" c/frozen-v1-sha256))
+  (is (= "registered/sfc-2027/rates-test.edn" c/rates-test-path))
+  (is (= "226f71e10ff406aa3f7e87af1231c383b2f3227ac0acdbd4c58d835aa402d52b" c/rates-test-sha256))
   (is (= #{["KOR" 2024 1 [:debt]] ["NZL" 2023 1 [:debt]]} c/excluded-rows))
   (is (= #{"BGR" "ROU"} c/excluded-countries))
   (is (= 5 c/min-countries))
   (is (= 0.05 c/delta))
   (is (= "2027-11-01" c/vintage-from)))
+
+(deftest the-committed-files-have-their-registered-hashes
+  ;; fails if anyone edits a file under registered/sfc-2027/
+  (doseq [[path sha] [["registered/sfc-2027/rates-frozen-v2.edn" "6fa02f4f4d827d6c038dcbd7a1d21bfa3dcd47c5869f1ddcc44f18d8cad32446"]
+                      ["registered/sfc-2027/rates-frozen.edn" "0339880a359941334046d651966facd9d2473811fd205c77143111997eb7ccaf"]
+                      ["registered/sfc-2027/rates-test.edn" "226f71e10ff406aa3f7e87af1231c383b2f3227ac0acdbd4c58d835aa402d52b"]]]
+    (is (.exists (io/file path)) (str path " is committed"))
+    (is (= sha (c/sha256-file path)) (str path " is as registered")))
+  (is (= ["registered/sfc-2027/rates-frozen-v2.edn" "registered/sfc-2027/rates-frozen.edn" "registered/sfc-2027/rates-test.edn"]
+         (mapv :path c/registered-files)))
+  (is (= ["data/derived/sfc/rates-frozen-v2.edn" "data/derived/sfc/rates-frozen.edn" "data/derived/sfc/rates-test.edn"]
+         (mapv :data c/registered-files)) "the data/ copies they are checked against")
+  (is (= [c/frozen-v2-sha256 c/frozen-v1-sha256 c/rates-test-sha256] (mapv :sha c/registered-files)))
+  (is (= 3 (count (c/check-registered! c/registered-files))) "the committed copies pass the scorer's check"))
+
+(deftest check-registered-refuses-a-tampered-missing-or-diverging-copy
+  (let [dir (tmp-dir)
+        ddir (doto (io/file dir "data") .mkdirs)
+        mk (fn [n text] (let [f (io/file dir n)] (spit f text) (str f)))
+        a (mk "a.edn" "[1 2 3]\n")
+        b (mk "b.edn" "[4 5 6]\n")
+        fs [{:name "a.edn" :path a :sha (c/sha256-file a) :data (str (io/file ddir "a.edn"))}
+            {:name "b.edn" :path b :sha (c/sha256-file b) :data (str (io/file ddir "b.edn"))}]]
+    (testing "committed copies as registered, no data/ copy: passes"
+      (is (= ["a.edn" "b.edn"] (mapv :name (c/check-registered! fs))))
+      (is (= [false false] (mapv :data-copy? (c/check-registered! fs)))))
+    (testing "a data/ copy equal to the committed one passes"
+      (spit (io/file ddir "a.edn") "[1 2 3]\n")
+      (is (= [true false] (mapv :data-copy? (c/check-registered! fs)))))
+    (testing "a data/ copy that differs from the committed one is refused"
+      (spit (io/file ddir "b.edn") "[4 5 7]\n")
+      (is (thrown-with-msg? Exception #"differs from the committed" (c/check-registered! fs)))
+      (.delete (io/file ddir "b.edn")))
+    (testing "a tampered committed copy is refused"
+      (spit b "[4 5 7]\n")
+      (is (thrown-with-msg? Exception #"b.edn's SHA-256" (c/check-registered! fs)))
+      (spit b "[4 5 6]\n"))
+    (testing "a missing committed copy is refused"
+      (.delete (io/file a))
+      (is (thrown-with-msg? Exception #"a.edn is missing" (c/check-registered! fs)))
+      (is (thrown-with-msg? Exception #"missing" (c/read-frozen a (:sha (first fs))))))
+    (testing "restored: passes"
+      (spit a "[1 2 3]\n")
+      (is (= 2 (count (c/check-registered! fs)))))))
 
 (deftest a-tampered-frozen-file-is-refused
   (let [dir (tmp-dir)
