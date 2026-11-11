@@ -220,6 +220,52 @@ it is gone.
   and on doubt that the flow returns; market prices (futures basis,
   forward curves) enter as fast readings of the runway.
 
+### Phase 1b: investment booms (about 8 days) - expectations 4, 5
+
+Added 10 November 2026: the US AI build-out as the live case, the
+1996-2002 telecom build-out (dark fibre) as the closest precedent.
+
+An investment boom is a buffer problem with the stocks on the asset side.
+Spending runs ahead of the income it was meant to earn, and financing
+covers the gap. The break comes when financing stops covering it.
+
+- **The capital pipeline as stocks.** Ordered, delivered, installed,
+  powered, earning. Capacity that is installed but not earning is the
+  dark-fibre stock: fibre laid and unlit, chips delivered and unpowered.
+  The capacity module has build times but no idle stock and no asset
+  lives; both are added.
+- **The complement that binds.** Usable capacity is the least of its
+  inputs: chips, buildings, grid connection. The supply model's recipes
+  already work this way. The contradiction is between time scales: chips
+  arrive in months and lose value in a few years, grid capacity takes
+  years.
+- **The carrying cost.** A short-lived stock must earn its depreciation
+  and its cost of capital every year. Required income against realised
+  income is the expectation gap.
+- **The financing runway.** Operating cash flow plus borrowing and equity
+  raised, against capital spending. The runway is how long financing
+  covers the gap at the current drawdown, and it shortens when lenders or
+  the equity market doubt the income will come.
+- **Who holds the loss decides the kind of crisis.** Funded from cash and
+  equity, a bust is a market crash and an investment slump (telecom
+  2000-02). Funded by debt held in banks, it is a banking crisis (housing
+  2008). Financing structure is an input, not a detail.
+- **Data, all open:** company filings (capital spending, depreciation
+  schedules, cash flow, debt), national-accounts investment in
+  information equipment and data-centre construction, grid connection
+  queues and generator data, monthly customs data for servers and chips,
+  credit spreads and equity valuations.
+- **Limits.** Our panels stop years short of the present at sector level
+  (credit by sector to 2014, industry accounts to 2021), so this needs
+  fast US sector data. The capacity test came out null on industry
+  investment data; this uses physical capacity (megawatts, connections).
+  Episodes are few, so power is low.
+- **Test.** Hindcasts with settings fixed beforehand: telecom 1996-2002,
+  US shale 2014-16 (debt-funded, sector defaults, no systemic crisis),
+  China property from 2021 (unsold stock). Does the financing runway and
+  the idle stock date the break better than credit growth alone? Then a
+  forward entry in the ledger for the AI build-out.
+
 ### Phase 2: sub-national level (about 12 days) - expectation 2
 
 - Province nodes in the lattice for protest and violence surges and
