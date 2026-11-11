@@ -731,3 +731,39 @@
     (is (= (:forecasts plain) (:forecasts (run {:weight-prior {}}))) "an empty prior is none")
     (is (> (:base (first-ws favoured)) 0.85) (first-ws favoured))
     (is (not= (:forecasts plain) (:forecasts favoured)))))
+
+(deftest evidence-weighting-sets-links-against-the-node-without-them
+  ;; bnm-56c.2's ranked increments (augur's :evidence): the base model is the
+  ;; reference, a nested link's model is set against the all-inputs model
+  (let [spec {:scales [{:name :month :per 1 :horizon 1 :discount 0.9}]
+              :levels [[:country countries]] :parent {} :start 0 :end 40 :forget 0.99
+              :target (fn [_ place t] {:y (odd? (+ t (count place))) :known-at (inc t)})
+              :gauges (fn [_ _ _] [0.0]) :gauge-width {:month 1}
+              :relations (fn [_ place t] {:x [(if (odd? (+ t (count place))) 1.0 -1.0)] :reads []})
+              :relation-width {:month 1} :relation-groups {:month {:rel/x [0]}}
+              :relation-nest true}
+        r (lt/run (assoc spec :weighting {:rule :evidence :scale 0.005}))
+        wt (get-in r [:models [:month :country] :weighting])
+        ws (lt/weights r :month :country)]
+    (is (= :base (:base wt)))
+    (is (= {:rel/x :all} (:parents wt)))
+    (is (< (Math/abs (- 1.0 (reduce + (vals ws)))) 1e-9))
+    (is (> (:rel/x ws) 0.5) "a link that reads the outcome earns most of the weight")))
+
+(deftest group-shrinkage-on-one-model
+  ;; bnm-56c.2 (B): one all-inputs model, each group of its inputs shrunk by
+  ;; its own scale (augur's :group-shrink), the scales recorded beside the
+  ;; weights; opt-in
+  (let [run #(lt/run (merge (spec (world 8)) {:only #{:all}} %))
+        plain (run {})
+        shrunk (run {:group-shrink {:tau 0.5}})
+        lay (lt/layout-of (spec (world 8)) :year 0)
+        mdl (lt/model shrunk :year :country :all)
+        pos (zipmap (:inputs mdl) (range))
+        ws (lt/weights shrunk :year :country)]
+    (is (nil? (:gshrink (lt/model plain :year :country :all))))
+    (is (= (set (for [[g ix] (:groups lay) :when (and (not (#{:base :all} g)) (seq ix))] (set (map pos ix))))
+           (set (map set (get-in mdl [:gshrink :groups])))))
+    (is (= 1.0 (:all ws)))
+    (is (seq (filter #(= "scale" (namespace %)) (keys ws))) ws)
+    (is (not= (:forecasts plain) (:forecasts shrunk)))))

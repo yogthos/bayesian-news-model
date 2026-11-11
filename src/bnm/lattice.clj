@@ -266,6 +266,19 @@
   [spec scale level-ix]
   (layout spec scale level-ix))
 
+(defn- shrink-groups
+  "[[group positions] ...]: under :group-shrink, the groups of a node's
+  layout (each relation group's own inputs) and where their inputs sit
+  among the model inputs `ix`, the core inputs left out; by name."
+  [{:keys [groups parts]} ix core?]
+  (let [pos (zipmap ix (range))]
+    (vec (sort-by (comp str first)
+                  (for [[g gix] (merge groups parts)
+                        :when (not (#{:base :all} g))
+                        :let [ps (vec (keep pos (remove core? gix)))]
+                        :when (seq ps)]
+                    [g ps])))))
+
 (defn- node-model
   "A node's model average: one dynamic logistic per group of its inputs and
   one over all of them, each reading the intercept and the spec's :core
@@ -283,7 +296,11 @@
     (as-> (into {} (for [g (if (:only spec) (filter (:only spec) order) order)
                                :let [ix (vec (distinct (concat [0] core (remove core? (groups g)))))]
                                :when (or (= g :base) (seq (groups g)))]
-                           [g (d/logistic {:hold (when (and (:hold-links spec) (contains? nested g))
+                           [g (d/logistic {:group-shrink (when-let [gs (when (= g :all) (:group-shrink spec))]
+                                                           ;; bnm-56c.2 (B): each group of the
+                                                           ;; all-inputs model shrunk by its own scale
+                                                           (assoc gs :groups (mapv second (shrink-groups lay ix core?))))
+                                           :hold (when (and (:hold-links spec) (contains? nested g))
                                                    ;; a nested link's own inputs, not discounted
                                                    (let [own (set (get (:parts lay) g))]
                                                      (vec (keep-indexed (fn [pos i] (when (own i) pos)) ix))))
@@ -300,6 +317,11 @@
                   ;; weights without; :weight-prior {group share}, the shares
                   ;; they start from and fade toward, equal without (bnm-56c.2)
                   (let [wt (get-in spec [:weighting-at scale] (:weighting spec))
+                        ;; :evidence (ranked increments): the base model is the
+                        ;; reference, a nested link set against the all-inputs model
+                        wt (if (= :evidence (:rule wt))
+                             (merge {:base :base :parents (zipmap (filter models nested) (repeat :all))} wt)
+                             wt)
                         pr (not-empty (select-keys (:weight-prior spec) (keys models)))]
                     (cond-> {:forget (:forget spec)} wt (assoc :weighting wt) pr (assoc :prior pr)))))))
 
@@ -518,6 +540,14 @@
    :weight-prior {group share}, the averaging's prior weights (augur's
    :prior: what the weights start from and the forgetting fades them
    toward; the groups not named share the rest),
+   :weighting {:rule :evidence :scale c} ranks the models by their proven
+   increment over the base model (a nested link's over the all-inputs
+   model; augur's :evidence, bnm-56c.2), {:rule :synth :discount d :var v}
+   a dynamic synthesis of them,
+   :group-shrink {:tau t}, the all-inputs model's groups each shrunk by
+   their own horseshoe-type scale (augur's :group-shrink; with :only #{:all}
+   one model and no averaging), the scales recorded in :weights as
+   :scale/<group>,
    :up-lag {scale n}, the node at that scale reads its finer scales'
    states over the period n of its periods before its last (bnm-56c.2's
    loop through :downscale; this period's without),
@@ -684,7 +714,15 @@
                    [st
                     (into forecasts (for [{:keys [place p target]} made]
                                               {:scale scale :place place :origin t :p p :y (:y target)}))
-                    (update weights k (fnil conj []) [t (d/weights live)])
+                    (update weights k (fnil conj [])
+                            [t (cond-> (d/weights live)
+                                 ;; :group-shrink: each group's scale beside the weights
+                                 (and (:group-shrink spec) (get-in model [:models :all :scales]))
+                                 (merge (zipmap (map #(keyword "scale" (name (first %)))
+                                                     (shrink-groups (layout spec scale level-ix)
+                                                                    (get-in model [:models :all :inputs])
+                                                                    (set (map (fn [i] (inc (long i))) (get-in spec [:core scale])))))
+                                                (d/group-scales (get-in model [:models :all])))))])
                     (if (:trace spec)
                       (into trace (for [{:keys [place reads x p o]} made]
                                             (cond-> {:scale scale :level level :place place :origin t :reads reads

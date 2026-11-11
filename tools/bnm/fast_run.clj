@@ -5,11 +5,16 @@
 
     jolt -A:tools -M -m bnm.fast-run --out fs-a --family commodities [--placebo true]
                                      [--seed s] [--null derange|shift] [--end m] [--kinds a,b] [--smoke true]
-                                     [--set '{:forget 1.0 :coupling nil}']
+                                     [--set '{:forget 1.0 :coupling nil}'] [--archive data/ledger-inputs/2026-Q4]
 
   --set merges an EDN map into every kind's spec after the family is put
   on it (a nil value removes the key): the diagnostics and the weighting
   candidates of bnm-56c.2 (bnm.lattice's :weighting).
+
+  --archive root reads the base's inputs (bnm.ledger/inputs) from an
+  issue's archive instead of data/ (the first issue's holds t48's): runs
+  compared with t48-world-norel need its inputs, and the data on disk are
+  rebuilt under them (bnm-8ul).
 
   --family planted [--strength s] is the noise group with its first
   column moved by s (default 1.0) where the quarter node's outcome happens
@@ -37,6 +42,7 @@
   (:require [bnm.fast :as fast]
             [bnm.kinds :as kinds]
             [bnm.lattice :as lt]
+            [bnm.ledger :as lg]
             [bnm.lattice-smoke :as smoke]
             [bnm.named :as nm]
             [bnm.slow-train :as st]
@@ -90,8 +96,16 @@
   [sp m]
   (reduce-kv (fn [sp k v] (if (nil? v) (dissoc sp k) (assoc sp k v))) sp m))
 
+(declare run-main)
+
 (defn -main [& args]
-  (let [{:keys [out family placebo end kinds smoke seed null strength] set-edn :set} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [opts (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))]
+    (if-let [root (:archive opts)]
+      (first (lg/recording #(run-main opts) (lg/redirect-to root lg/inputs)))
+      (run-main opts))))
+
+(defn- run-main [opts]
+  (let [{:keys [out family placebo end kinds smoke seed null strength] set-edn :set} opts
         family (keyword (or family "none"))
         _ (when-not (or (#{:none :noise :planted} family) (fast/families family))
             (throw (ex-info (str "bnm.fast-run: no family " family) {})))
