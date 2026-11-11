@@ -4021,3 +4021,132 @@ against t48-world-norel byte for byte. augur v0.14.0 adds slopes pooled
 across groups of places (augur.dynamic :by), v0.15.0 the tempered and
 stacked weights and held coefficients; the lattice does not pool slopes
 by region yet (bnm-56c.12).
+
+## Results, 11 November 2026: the pooled hazard and the scanner, as registered (bead bnm-56c.6)
+
+Run once at commit d0abc90 (`jolt -A:tools -M -m bnm.hazard-run`, 54
+minutes; data/derived/hazard/report.txt, preds.tsv, hidden.tsv). Before
+it the code ran once on labels drawn at random (`--smoke true`, no
+result read), which found two bugs, fixed in d0abc90 before the run: a
+channel model's inputs had one length per record rather than per
+family, and a stock reported as zero at every date (Eurostat gas storage
+of countries with no storage site, PSD ending stocks of countries that
+keep none) was read as an empty buffer; it is now not measured. Nothing
+else changed from the registration. 1040 stock records (822 with a
+family); 41,264 place-family-years with an invariant measured. All
+results but (d) are development results.
+
+Gazetteer exposure (bnm-8ul): no feature reads events.tsv or
+political-*.csv. 11,509 rows read data/slow/series.tsv (private credit,
+investment, share prices), built with the same name lookup; 352 of them
+are on the affected codes (GBR, GEO, COD, COG, BFA, BES), 17 positive.
+
+**(a) Leave one family out** (12 months, main labels, 1980-2024; AUC
+[90% country-cluster interval], recall at the top 10%, the baselines'
+AUC: own lagged level, last 12 months of any family):
+
+| fold | n | breaks | AUC | recall@10% | level | last12 | verdict |
+|---|---|---|---|---|---|---|---|
+| asset_price_break | 1534 | 167 | 0.528 [0.494, 0.563] | 0.150 | 0.470 | 0.541 | fail |
+| banking_break | 1777 | 65 | 0.663 [0.600, 0.728] | 0.277 | 0.359 | 0.552 | **pass** |
+| commodity_stockout | 2642 | 225 | 0.498 [0.462, 0.538] | 0.124 | 0.490 | 0.478 | fail |
+| energy_break | 83 | 10 | 0.490 [0.389, 0.539] | 0.100 | 0.370 | 0.356 | no verdict (thin) |
+| investment_bust | 5901 | 192 | 0.510 [0.480, 0.540] | 0.104 | 0.505 | 0.548 | fail |
+| price_level_break | 6114 | 120 | 0.591 [0.540, 0.646] | 0.192 | 0.643 | 0.647 | fail (below both baselines) |
+| reserve_crisis | 6927 | 239 | 0.544 [0.502, 0.584] | 0.184 | 0.556 | 0.527 | fail (below its level) |
+| sovereign_debt_break | 7082 | 177 | 0.543 [0.501, 0.583] | 0.186 | 0.504 | 0.536 | **pass** |
+| physical (commodity + energy) | 2725 | 235 | 0.506 [0.467, 0.540] | 0.123 | 0.498 | 0.473 | fail |
+
+Two of seven families with a verdict pass, sovereign debt only just
+(interval 0.501). Banking's pass is the clearest: 0.663 against 0.552
+for the last 12 months (+0.111 [+0.033, +0.192]); its features are the
+private-credit stretch and the debt service ratio, so what transfers is
+largely the generic stretch learned from other families' stocks. The
+physical stocks (grain, energy) are not found from the other families:
+AUC 0.50. Reserve crises with every catalogue's breaks counted: 0.560
+[0.535, 0.584] (543 breaks); without GRA-only breaks 0.558 [0.525,
+0.591]. energy_break's ten scored episodes ranked 8th to 83rd of 83
+(USA 2005 8th, USA 2014 14th, EUR 2021 50th, JPN 2021 last). 24-month
+window: banking passes (0.693) and investment busts pass (0.548
+[0.516, 0.580]); the rest fail. Without the revised-vintage invariants
+(every banking, grain and investment series is revised, so those
+families drop out): reserve crises 0.579 [0.545, 0.610] and sovereign
+debt 0.607 [0.571, 0.644] pass; the real-time-ish IMF IL reserves do
+better alone than with the revised WDI imports and debt.
+
+**(b) Invariants against channels: no.** The pooled model beats each
+family's own raw series in 10 of 20 family-era cells with ten breaks or
+more; the era means of the difference (families equal) are positive
+(+0.064, +0.026, +0.043) but the majority rule fails, so by the
+registered rule the invariants do not hold up against the channels. The
+channels win for reserves, sovereign debt and investment busts in most
+eras (reserves 1995-2007 -0.073 [-0.149, -0.003]); the invariants win
+for share prices and for banking after 2008 (+0.335 [+0.231, +0.438]).
+
+**(c) False alarms: pass.** Precision in each year's top decile, real
+rows 0.076 against decoys (series shuffled in time) 0.033, difference
++0.043 [+0.032, +0.052]. But decoys are 91% of the top decile against
+83% of the rows: the pooled hazard ranks shuffled histories above real
+ones more often than not, because shuffling makes series jumpy and the
+displacement terms read jumps as stress.
+
+**Development diagnostic** (origins 2016-2024, trained to 2014): AUC
+0.709 pooled over families (much of it between families' base rates);
+within families price level 0.701, reserves 0.675, sovereign debt
+0.629, grain 0.516, share prices 0.497, investment 0.424, energy 0.380.
+
+**The model** (2020 block): the shared slopes are small next to the
+missing indicators and the family intercepts. Cover below two years and
+gross cover below half a year raise the hazard (+0.32, +0.33); the lower
+cover bins do not add to it (-0.22, -0.31), so the registered bins give
+no sign of a hazard convex in cover. The debt service ratio is the
+largest slope (+3.4 a unit share) and only banking measures it. Family
+slope deviations are small (the half-normal kept them near zero).
+
+**Hindcasts** (rank among every stock measured at the origin):
+- Asia 1997: private credit of Thailand 28th of 765 at the 1996 origin,
+  23rd in 1997 (top 4%); Korea and Malaysia top 8%; the Philippines'
+  reserves 33rd. Thailand's and Indonesia's reserves were not near the top.
+- Food 2007-08: world grain 304th of 871 (2006) and 552nd (2007): missed.
+- Sri Lanka 2022: reserves 149th of 1002 at the 2021 origin, 10th at
+  2022 (external debt 20th); the break came in 2022.
+- European gas 2021-22: 612th of 1002 at the 2021 origin: missed (a flow
+  cut, not a runway, as the literature notes said).
+- Telecom 2001: communication structures 66th of 789 at the 2001 origin
+  (top 8%), communication equipment 184th; at 2000, 208th.
+- US shale 2015: gas storage 95th of 993 at 2015 (top 10%), mining
+  machinery 117th, petroleum and gas structures 157th.
+
+**(d) Forward**, as of 11 November 2026: 1004 stocks ranked, top decile
+101 (registered/ledger/2026-Q4/scanner.tsv, SHA-256 e7f3bed9...,
+scanner.edn dd6a4073...; bnm.ledger/scanners and the test suite hash
+them; the issue's own files are unchanged).
+- Energy stocks in the top decile: **yes**, 22 of 115, but they are
+  JODI crude stocks of small producers and importers (Gabon 1st, Morocco
+  2nd, Jamaica, Oman, Colombia, Papua New Guinea, Bolivia, Dominican
+  Republic in the top 20) and Belgian, Norwegian and North Macedonian gas
+  storage. The large ones are not: India's crude 75th, German gas 151st,
+  the EU's 222nd, US gas 392nd, the SPR 418th, US commercial crude 883rd.
+- The US investment build-out in the top decile: **yes**, 2 of 6:
+  investment in computers 70th and data-centre construction (Census) 92nd;
+  software 254th, communication equipment 339th, power 405th, BEA data
+  centres 547th (six years of data). US software and services firms
+  (SIC 73) rank 15th, by their capex stretch.
+- Top 20 otherwise: grain stocks of Eswatini, Botswana, Venezuela,
+  Lesotho, Bahrain, Morocco and Malawi; reserves of Gabon, Malawi,
+  Bahrain and South Sudan.
+Scored when the 2027 catalogues are published.
+
+**Hidden buffers (1.7, flags).** 319 residual series checked (IMF IL
+against WDI reserves in 180 countries, IRFCL against IL in 96, EIA
+against JODI US crude, the SFC net-lending identity in 42); one
+flagged: US crude stocks, EIA (with the SPR) against JODI, a gap of
++22.6% in mid-2026 stretched 2.8 against its last ten readings.
+
+**Reading.** The hypothesis that one function of the invariants finds a
+family it has not seen holds for banking and, barely, sovereign debt; it
+fails for the physical stocks, investment busts, share prices, price
+level breaks and reserve crises (whose own level does as well), and the
+invariants do not beat each family's raw channels. What the model
+learns across families is mostly where stocks are measured and how
+often each family breaks, not a shared form. Not tuned in response.

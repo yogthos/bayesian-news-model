@@ -85,6 +85,14 @@
   {"2026-Q4" {:files {"forecasts.tsv" "70e31c27c8bf7afe9d20fe4c6befcb3def80e32c19c99fd3b08c0ab0f5d4968d"
                       "manifest.edn" "2eb4b6a5fe1e1fe4227983e8307e028243d24831f2abd9b0e439dc9a3e676d8a"}}})
 
+(def scanners
+  "The scanner's forward rankings written beside an issue (bnm.hazard-run;
+  docs/PHASE-CHANGES.md, 11 November 2026, bead bnm-56c.6): {quarter
+  {name SHA-256}}. New files in the issue's directory, never edited; the
+  issue's own files and hashes (`issued`) are untouched by them."
+  {"2026-Q4" {"scanner.tsv" "e7f3bed96c4dd269568d23a1b6f5c5b3dd8eb8f64cf30a1c26d1c416138874cb"
+              "scanner.edn" "dd6a4073587fd9d502e7242eb6b1bd8f79411ba7b6c3bf15dcc7f2390314d74b"}})
+
 ;; --- months -------------------------------------------------------------------
 
 (defn quarter-end

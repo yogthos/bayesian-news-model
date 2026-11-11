@@ -118,6 +118,11 @@
           [n sha] files]
     (is (= sha (sfc/sha256-file (str "registered/ledger/" q "/" n))) (str q "/" n))))
 
+(deftest every-registered-scanner-ranking-is-intact
+  (doseq [[q files] lg/scanners
+          [n sha] files]
+    (is (= sha (sfc/sha256-file (str "registered/ledger/" q "/" n))) (str q "/" n))))
+
 (deftest a-window-is-scored-only-once-published
   (let [cat {:through {"AAA" 24347 "BBB" 24340}}]
     (is (true? (lg/published? cat 24347 24360)) "covered through the window's end, and it has closed")
