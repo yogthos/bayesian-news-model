@@ -4022,6 +4022,49 @@ across groups of places (augur.dynamic :by), v0.15.0 the tempered and
 stacked weights and held coefficients; the lattice does not pool slopes
 by region yet (bnm-56c.12).
 
+**Review** (same day, development). Tempered at 0.01 is close to equal
+weights: at 2022 the quarter nodes' weights have normalized entropy
+0.96-0.99 in all thirteen kinds, the year nodes' 0.91-1.00 in ten (coup
+0.61, conflict onsets 0.76, banking crises 0.79); under t48 the year's are
+0.06 or less in eleven. The four noise draws' cost is a small gain
+(+0.00005, every draw's interval above zero): one more model in a near
+even blend, not an ignored one. It does not ignore everything, though. A
+planted signal (bnm.fast-run --family planted --strength 1: the noise
+group with its first column moved by 1 where the quarter's outcome
+happens, so it reads the future; four kinds, against each setting
+without it):
+- t48's posterior weights: the quarters +0.00097 [-0.00083, +0.00289],
+  the year nodes -0.0056 [-0.0146, +0.0024] (market crashes -0.018): the
+  quarters put 0.64-1.00 on it and the year's selection flips as it does
+  for noise. Under posterior weights a real link at the quarters does
+  not reach the year either;
+- tempered 0.01 everywhere: quarters +0.0019 [+0.0006, +0.0036], year
+  +0.00067 [+0.00034, +0.00100]; the planted group earns 0.18-0.63 at the
+  quarters (1/n 0.10-0.14) where the noise group holds 0.06-0.24;
+- tempered 0.01 at the year only: quarters +0.0033 [+0.0016, +0.0054],
+  year +0.00087 [+0.00053, +0.00127]; the quarters select (0.73-1.00 on
+  it) and the year blends. With its noise cost (+0.00008) and base
+  (+0.00001) this is the better candidate; it loses the 2020-2022 fold
+  alike (-0.0058 [-0.0095, -0.0024] on the four kinds).
+Not better (four kinds, noise seed 1; cost against the same setting
+without noise, base against t48's): tempered at the year only at 0.2,
+cost -0.0039, base -0.0033; at 0.5, -0.0046, base -0.0013; the year
+reading the quarters' states a year late (:up-lag {:year 1}), +0.0027
+[-0.0005, +0.0064], base -0.0131 [-0.0247, -0.0019]; a prior of 0.5 on
+the base model (:weight-prior, augur v0.17.0 :prior), -0.0025, base
+-0.0078. A prior that strong does not stop a selection made on a
+period's likelihood over every row.
+
+The fold rule is not in the bead (its description has only the noise
+rule); the blocks were fixed in bnm.links before the candidates ran.
+The 2020-2022 loss is food price shocks alone (without them the fold is
+-0.0004 [-0.0015, +0.0008]), at origins 2020, 2021 and 2022 (-0.019,
+-0.030, -0.009): one episode, and an interval over three origin years.
+Defaults: a 13-kind rerun with --family none matches t48-world-norel in
+all 39 files. augur v0.17.0 also fixes the predictive mean of a model
+with :hold or :by (scaled by 1/sqrt(discount)); c-hold-noise ran with it
+and is slightly off.
+
 ## Results, 11 November 2026: the pooled hazard and the scanner, as registered (bead bnm-56c.6)
 
 Run once at commit d0abc90 (`jolt -A:tools -M -m bnm.hazard-run`, 54
