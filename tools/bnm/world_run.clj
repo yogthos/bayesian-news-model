@@ -260,16 +260,16 @@
 
 (defn world-of
   "The world for bnm.world from the final states: each kind's year-node
-  forecasts by country and, per parent, its edge's form, effect and lag."
+  forecasts by country (the issued ones, under bnm.lattice's :state-from) and, per parent, its edge's form, effect and lag."
   [specs states parents graph cats end]
   (into {} (for [[k sp] specs
                  :let [st (states k)
                        eff (if (:relations sp) (lt/relation-effects sp st :year 0) [])
                        book (lt/book st)]]
              [k {:f (into {} (for [[[s p] byo] book :when (and (= s :year) (= 3 (count p)))
-                                   :let [[_ e] (first (rsubseq byo <= end))] :when e] [p (:f e)]))
+                                   :let [[_ e] (first (rsubseq byo <= end))] :when e] [p (:f (:issued e e))]))
                  :q (into {} (for [[[s p] byo] book :when (and (= s :year) (= 3 (count p)))
-                                   :let [[_ e] (first (rsubseq byo <= end))] :when e] [p (:q e)]))
+                                   :let [[_ e] (first (rsubseq byo <= end))] :when e] [p (:q (:issued e e))]))
                  :window 24
                  :parents (into {} (for [[i j] (map-indexed vector (parents k)) :when (seq eff)]
                                      [j {:form (:form (graph [j k])) :coef (nth eff i) :lag (:known-lag (cats j) 12)}]))}])))

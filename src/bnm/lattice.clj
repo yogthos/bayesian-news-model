@@ -323,8 +323,53 @@
                              (merge {:base :base :parents (zipmap (filter models nested) (repeat :all))} wt)
                              wt)
                         pr (not-empty (select-keys (:weight-prior spec) (keys models)))]
-                    (cond-> {:forget (:forget spec)} wt (assoc :weighting wt) pr (assoc :prior pr)))))))
+                    (cond-> {:forget (:forget spec)} wt (assoc :weighting wt) pr (assoc :prior pr)
+                      ;; :evidence-at :issue (loop audit issue 2): each row scored by
+                      ;; the predictive each model issued for it, not at learn time
+                      (:evidence-at spec) (assoc :evidence-at (:evidence-at spec))))))))
 
+(defn model-state
+  "{:p :f :q}: one model's forecast for inputs x, the probability averaged
+  over the offsets `os` ([[weight offset] ...]) as the node's is, and its
+  linear predictor's moments at the mean offset o."
+  [mdl x o os]
+  (let [{:keys [f q]} (d/predictive mdl x o)]
+    {:p (if (= 1 (count os)) (d/predict mdl x o) (reduce + (for [[w o'] os] (* w (d/predict mdl x o')))))
+     :f f :q q}))
+
+(defn reference-state
+  "The default reference state of a node (:state-from :reference): the
+  all-inputs model's forecast, {:s log odds :p :f :q}. That model reads
+  everything the node reads, so the states passed on carry what the node
+  knows, and it is the model the posterior weights of the base of record
+  (t48) settle on; it depends on no weight."
+  [{:keys [models x o os]}]
+  (let [st (model-state (:all models) x o os)]
+    (assoc st :s (logit (:p st)))))
+
+(defn- state-fn
+  "The spec's :state-from as a function of the node, or nil (the state is
+  the combined forecast). A function is called with {:scale :level :place
+  :t :models :x :o :os}, the node's models before they average, and
+  returns a map with at least :s (and :p :f :q, else from :s): it must
+  not read the weights. :reference is `reference-state`; another keyword
+  names the model whose forecast is the state."
+  [{sf :state-from}]
+  (let [f (cond (nil? sf) nil
+                (fn? sf) sf
+                (= :reference sf) reference-state
+                (keyword? sf) (fn [{:keys [models x o os scale level]}]
+                                (if-let [mdl (models sf)]
+                                  (let [st (model-state mdl x o os)] (assoc st :s (logit (:p st))))
+                                  (throw (ex-info (str "bnm.lattice: :state-from names a model the node does not average " sf)
+                                                  {:state-from sf :scale scale :level level :models (vec (keys models))}))))
+                :else (throw (ex-info "bnm.lattice: :state-from must be :reference, a model's group or a function" {:state-from sf})))]
+    (when f
+      (fn [node]
+        (let [{:keys [s] :as st} (f node)]
+          (when-not (number? s)
+            (throw (ex-info "bnm.lattice: a :state-from state needs a number :s" {:state st})))
+          (merge {:p (m/expit s) :f s :q 0.0} st))))))
 
 (defn- inputs
   "The node's inputs for `place` at origin t, what it read, its own state
@@ -362,7 +407,8 @@
         ;; the place's own state: its gauges' when the spec says, else its
         ;; last forecast's (never this one's, which these inputs make)
         stated (when-let [f (:state spec)] (f scale place t gauges))
-        own (or stated (some-> (get-in book [[scale place] (- t per)]) :s) 0.0)
+        ;; read through the sheaf, so the audit sees the loop (loop audit issue 19)
+        own (or stated (some-> (sh/latest-before r :self [scale place] t) second :s) 0.0)
         ;; the dialectic, like against like: the place against its parent at
         ;; this scale, and against each coarser scale; each gap, and the
         ;; strain each way (the place above, the place below) accumulated
@@ -551,6 +597,19 @@
    :up-lag {scale n}, the node at that scale reads its finer scales'
    states over the period n of its periods before its last (bnm-56c.2's
    loop through :downscale; this period's without),
+   :state-from, where a node's state comes from (loop audit issue 1):
+   by default the combined forecast, which its own models then read back
+   (its own state, :up through a finer node's offset, :down, exposure, the
+   errors fed back), so a weighting changes the models it weighs; a group's
+   name (:all, the all-inputs model) takes the state, and the errors, from
+   that model's forecast, :reference the default reference, the all-inputs
+   model's (`reference-state`), and the combination is only issued (the
+   book keeps it as :issued); a function of the node ({:scale :level
+   :place :t :models :x :o :os}, never the weights) -> {:s ...} supplies
+   any other, the map kept in the book,
+   :evidence-at :issue, each row's evidence for the averaging the log score
+   of the predictive each model issued for it at the origin, not of its
+   state when the row is learned (augur's :evidence-at; loop audit issue 2),
    :up-net-of-downscale, a node with :downscale passes up its log odds
    less the part of its offset that came down (bnm-56c.2: otherwise the
    coarser node reads its own forecast back through the finer states),
@@ -606,13 +665,15 @@
                        model (or (get-in st [:models k]) (node-model spec scale level scale-spec (layout spec scale level-ix)))
                        ;; learn from what is known by t; its errors become known now
                        {ready true waiting false} (group-by #(<= (:known-at %) t) (get-in st [:pending k]))
-                       rows (map #(select-keys % [:x :y :o]) ready)
+                       ;; each model's issue-time predictive, the averaging's evidence
+                       ;; under :evidence-at :issue
+                       rows (map #(cond-> (select-keys % [:x :y :o]) (:lp %) (assoc :issued (:lp %))) ready)
                        ;; traced: each model's evidence, the log score of the outcomes it
                        ;; learns from now, scored before it learns them
                        st (if (and (:trace spec) (seq rows))
-                            (reduce (fn [st [g m]]
-                                      (update-in st [:evidence k g] (fn [[ll n]] [(+ (or ll 0.0) (d/log-score m rows)) (+ (or n 0) (count rows))])))
-                                    st (:models model))
+                            (reduce (fn [st [g ll]]
+                                      (update-in st [:evidence k g] (fn [[ll0 n]] [(+ (or ll0 0.0) ll) (+ (or n 0) (count rows))])))
+                                    st (d/evidence model rows))
                             st)
                        model (d/step model rows)
                        ;; climatology: the rate among this node's resolved outcomes
@@ -683,6 +744,7 @@
                        ;; resumes
                        live (let [out (dormant (layout spec scale level-ix) (get-in spec [:core scale]) (map :x seen))]
                               (if (seq out) (assoc model :w (live-weights (d/weights model) out)) model))
+                       state-of (state-fn spec)
                        made (vec (for [{:keys [place x os] :as e} seen
                                        :let [one? (= 1 (count os))
                                              ;; the mean offset, learned from: the one whose
@@ -691,17 +753,29 @@
                                              p (if one? (d/predict live x o) (reduce + (for [[w o] os] (* w (d/predict live x o)))))
                                              {pf :f pq :q} (d/predictive live x o)
                                              target ((:target spec) scale place t)]]
-                                   (assoc (dissoc e :os) :o o :p p :target target :f pf :q pq :principal (when principal-of (principal-of x)))))
-                       st (reduce (fn [st {:keys [place p stated tension strain resolved f q principal down]}]
+                                   (assoc (dissoc e :os) :o o :p p :target target :f pf :q pq :principal (when principal-of (principal-of x))
+                                          ;; :state-from: the node's state, and the errors it feeds back,
+                                          ;; from a fixed reference rather than the combination, which is
+                                          ;; only issued (loop audit issue 1)
+                                          :ref (when state-of
+                                                 (state-of {:scale scale :level level :place place :t t
+                                                            :models (:models model) :x x :o o :os os}))
+                                          :issued (d/issued model x o))))
+                       st (reduce (fn [st {:keys [place p stated tension strain resolved f q principal down ref]}]
                                     (-> st
                                         (update-in [:book [scale place]] (fnil assoc (sorted-map)) t
                                                    ;; a node's state: the spec's when it gives one, else its
                                                    ;; forecast's log odds; f and q its linear predictor's moments
                                                    ;; :up-net-of-downscale: less what came down from the
                                                    ;; coarser node, so it does not read its own forecast back
-                                                   (cond-> {:p p :s (or stated (if (:up-net-of-downscale spec) (- (logit p) down) (logit p)))
-                                                            :strain strain :f f :q q}
-                                                     principal (assoc :principal principal)))
+                                                   ;; an open map: with :state-from, the reference's state (and
+                                                   ;; whatever else it gives) apart from the forecast issued
+                                                   (let [{sp :p sf :f sq :q :as base} (or ref {:p p :f f :q q})
+                                                         s (or stated
+                                                               (if ref (:s ref) (if (:up-net-of-downscale spec) (- (logit sp) down) (logit sp))))]
+                                                     (cond-> (assoc (if ref base {}) :p sp :s s :strain strain :f sf :q sq)
+                                                       ref (assoc :issued {:p p :f f :q q})
+                                                       principal (assoc :principal principal))))
                                         (assoc-in [:tension [scale place]] tension)
                                         (cond-> resolved (update-in [:resets [scale place]] (fnil into []) resolved))))
                                   st made)
@@ -709,8 +783,13 @@
                        st (-> st
                               (assoc-in [:models k] model)
                               (assoc-in [:pending k] (into (vec waiting)
-                                                           (for [{:keys [place x o p target]} made :when target]
-                                                             {:place place :x x :o o :p p :y (:y target) :known-at (:known-at target)}))))]
+                                                           ;; the error fed back is the state's (the reference's p
+                                                           ;; under :state-from); :lp each model's predictive at issue;
+                                                           ;; :regime-at-issue a slot for the regime layer
+                                                           (for [{:keys [place x o p target ref issued]} made :when target]
+                                                             (cond-> {:place place :x x :o o :p (if ref (:p ref) p) :y (:y target) :known-at (:known-at target)
+                                                                      :regime-at-issue nil}
+                                                               issued (assoc :lp issued))))))]
                    [st
                     (into forecasts (for [{:keys [place p target]} made]
                                               {:scale scale :place place :origin t :p p :y (:y target)}))
@@ -724,10 +803,11 @@
                                                                     (set (map (fn [i] (inc (long i))) (get-in spec [:core scale])))))
                                                 (d/group-scales (get-in model [:models :all])))))])
                     (if (:trace spec)
-                      (into trace (for [{:keys [place reads x p o]} made]
+                      (into trace (for [{:keys [place reads x p o issued]} made]
                                             (cond-> {:scale scale :level level :place place :origin t :reads reads
                                                      :learned (map #(select-keys % [:known-at]) ready)}
-                                              (= :inputs (:trace spec)) (assoc :x x :p p :o o))))
+                                              (= :inputs (:trace spec)) (assoc :x x :p p :o o)
+                                              (and (= :inputs (:trace spec)) (= :issue (:evidence-at spec))) (assoc :lp issued))))
                       trace)]))
                [st forecasts weights trace]
                (for [s due level-ix (range (count levels))] [s level-ix]))

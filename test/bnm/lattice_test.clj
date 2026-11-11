@@ -80,7 +80,9 @@
           ;; finer scales and children: issued by the origin
           :up (is (and (<= o origin) (or (lt/finer? (spec w) s scale) (= s scale))) [scale place origin s o])
           ;; coarser scales and parents: issued before it
-          :down (is (and (< o origin) (not (lt/finer? (spec w) s scale))) [scale place origin s o])))
+          :down (is (and (< o origin) (not (lt/finer? (spec w) s scale))) [scale place origin s o])
+          ;; its own state: before it, at its own scale
+          :self (is (and (< o origin) (= s scale)) [scale place origin s o])))
       (doseq [{k :known-at} learned]
         (is (<= k origin))))))
 
@@ -767,3 +769,123 @@
     (is (= 1.0 (:all ws)))
     (is (seq (filter #(= "scale" (namespace %)) (keys ws))) ws)
     (is (not= (:forecasts plain) (:forecasts shrunk)))))
+
+;; Loop audit, Round 1 (bnm-56c): the node's combined forecast must not
+;; feed its own models. Every route a node's state comes back by is on:
+;; its own state, :up through the months' offset from the year (pooled
+;; with what is known), :down from its ancestors and coarser scales,
+;; exposure, and the feedback errors.
+(defn- loop-spec [w]
+  (assoc (spec w) :trace :inputs
+         :downscale {:month {:from :year}} :downscale-pool 0.5 :downscale-uncertainty true
+         :offset (fn [scale _ _] (when (= scale :month) -2.0))
+         :exposure (fn [_ place t] [(Math/sin (/ (+ t (count place)) 7.0))]) :exposure-width 1
+         :coupling 0.3))
+
+(defn- by-row [r] (into {} (for [{:keys [scale place origin x o]} (:trace r)] [[scale place origin] (cons o x)])))
+
+(defn- book-states [r]
+  (into {} (for [[cell byo] (:book r) [t e] byo] [[cell t] [(:s e) (:p e) (:f e) (:q e)]])))
+
+(defn- max-gap
+  "The largest difference between two runs' traced inputs (or another
+  {key [numbers]} view of them)."
+  ([a b] (max-gap by-row a b))
+  ([view a b]
+   (let [a (view a) b (view b)]
+     (assert (= (set (keys a)) (set (keys b))))
+     (reduce max 0.0 (for [[k va] a d (map - va (b k))] (Math/abs (double d)))))))
+
+(def ^:private tempered {:weighting {:rule :temper :power 0.01}})
+
+(defn- loop-run [extra] (lt/run (merge (loop-spec (world 7)) {:end 300} extra)))
+
+(deftest c7-states-and-inputs-are-the-same-under-any-weighting
+  (testing "today the weighting changes the inputs its models read"
+    (is (> (max-gap (loop-run {}) (loop-run tempered)) 1e-3)))
+  (testing "with states from the reference model, every model reads the same inputs"
+    (let [a (loop-run {:state-from :reference})
+          b (loop-run (merge tempered {:state-from :reference}))]
+      (is (< (max-gap a b) 1e-12) (max-gap a b))
+      (is (< (max-gap book-states a b) 1e-12) (max-gap book-states a b))
+      (is (not= (map :p (:forecasts a)) (map :p (:forecasts b))) "the combination is still what is issued")
+      (testing "the book keeps the state apart from the issued forecast"
+        (let [rows (filter #(and (= :year (:scale %)) (= :country (:level %))) (:trace a))
+              {:keys [place origin x o]} (last rows)
+              e (get-in a [:book [:year place] origin])
+              issued (some #(when (and (= :year (:scale %)) (= place (:place %)) (= origin (:origin %))) (:p %)) (:forecasts a))]
+          (is (= issued (get-in e [:issued :p])))
+          (is (< (Math/abs (- (:s e) (lt/logit-of (:p e)))) 1e-12))
+          (is (< (Math/abs (- (:p e) (augur.dynamic/predict (lt/model a :year :country :all) x o))) 1e-12))))))
+  (testing "another reference gives other states"
+    (is (> (max-gap (loop-run {:state-from :reference :end 200}) (loop-run {:state-from :base :end 200})) 1e-3)))
+  (testing ":state-from is pluggable: a function of the node and its models gives its state, an open map"
+    (let [by-fn (loop-run {:state-from (fn [{:keys [models x o os]}]
+                                         (let [st (lt/model-state (:all models) x o os)]
+                                           (assoc st :s (lt/logit-of (:p st)) :z 1.0)))})
+          by-key (loop-run {:state-from :reference})]
+      (is (< (max-gap by-fn by-key) 1e-12))
+      (is (= (map :p (:forecasts by-fn)) (map :p (:forecasts by-key))))
+      (is (every? #(= 1.0 (:z %)) (mapcat vals (vals (:book by-fn)))) "what else it returns is kept")))
+  (is (thrown? clojure.lang.ExceptionInfo (loop-run {:state-from :nope :end 20})) "a reference the node does not average"))
+
+(deftest c6-no-node-reads-its-own-issued-forecast
+  ;; with the issued forecasts made as different as the weighting can make
+  ;; them (nearly even weights against the posterior's selection), every
+  ;; state, every error fed back and so every read is the same: nothing a
+  ;; node reads is its issued forecast
+  (let [a (loop-run {:state-from :reference})
+        b (loop-run {:state-from :reference :weighting {:rule :temper :power 1e-6}})
+        errs (fn [r] (into {} (for [{:keys [scale place origin y]} (:forecasts r) :when (some? y)]
+                                [[scale place origin] [(- (if y 1.0 0.0) (get-in r [:book [scale place] origin :p]))]])))]
+    (is (> (reduce max (map #(Math/abs (- (:p %1) (:p %2))) (:forecasts a) (:forecasts b))) 0.01) "the issued forecasts differ")
+    (is (< (max-gap book-states a b) 1e-12))
+    (is (< (max-gap errs a b) 1e-12))
+    (is (< (max-gap a b) 1e-12))))
+
+(deftest the-own-state-read-is-recorded
+  ;; issue 19: the node's read of its own last state goes through the sheaf
+  ;; (latest-before, :self), so the read audit sees the loop
+  (let [r (lt/run (assoc (spec (world 2)) :end 60 :trace true))]
+    (is (every? (fn [{:keys [scale place origin reads]}]
+                  (let [own (filter #(= :self (:dir %)) reads)
+                        before (some-> (get-in r [:book [scale place]]) (rsubseq < origin) first key)]
+                    (if before
+                      (= [{:dir :self :scale scale :place place :origin before}] (vec own))
+                      (empty? own))))
+                (:trace r)))
+    (is (some (fn [{:keys [reads]}] (some #(= :self (:dir %)) reads)) (:trace r)))))
+
+(defn- late-run
+  "The synthetic run with the year's outcomes learned two years after its
+  next period, as the real year rows are (learned at once, the state that
+  scores a row is the one that issued it)."
+  [extra]
+  (let [sp (spec (world 3))
+        late (fn [s p o] (when-let [tg ((:target sp) s p o)] (cond-> tg (= s :year) (update :known-at + 24))))]
+    (lt/run (merge sp {:end 300 :target late} extra))))
+
+(deftest c9-evidence-can-be-scored-as-issued
+  ;; issue 2: each pending row carries every model's predictive at its
+  ;; origin (:lp); with :evidence-at :issue the averaging scores it with that
+  (let [learn (late-run {})
+        issue (late-run {:evidence-at :issue :trace :inputs})]
+    (is (= :issue (get-in issue [:models [:year :country] :evidence-at])))
+    (is (nil? (get-in learn [:models [:year :country] :evidence-at])))
+    (is (not= (lt/weights learn :year :country) (lt/weights issue :year :country)))
+    (is (= (take 6 (:forecasts learn)) (take 6 (:forecasts issue))) "the same until a row is learned")
+    (testing "each model's evidence is the log score of the forecast it issued"
+      (let [ys (into {} (for [{:keys [scale place origin y]} (:forecasts issue)] [[scale place origin] y]))
+            last-t (apply max (map :origin (filter #(= :year (:scale %)) (:forecasts issue))))
+            learned (for [{:keys [scale level place origin lp]} (:trace issue)
+                          :when (and (= :year scale) (= :country level) (some? (ys [:year place origin]))
+                                     (<= (+ origin 36) last-t))]
+                      [(ys [:year place origin]) lp])
+            score (fn [g] (reduce + (for [[y lp] learned
+                                          :let [{:keys [f q]} (lp g)
+                                                p (m/expit (/ f (Math/sqrt (+ 1.0 (/ (* Math/PI q) 8.0)))))]]
+                                      (Math/log (if y p (- 1.0 p))))))
+            [ll n] (get-in issue [:evidence [:year :country] :all])]
+        (is (= n (count learned)))
+        (is (< (Math/abs (- ll (score :all))) 1e-9) [ll (score :all)])
+        (is (< (Math/abs (- (first (get-in issue [:evidence [:year :country] :base])) (score :base))) 1e-9))))))

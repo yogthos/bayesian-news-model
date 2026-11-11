@@ -138,6 +138,7 @@
                     rd reads
                     :when (case (:dir rd)
                             :down (>= (:origin rd) origin)
+                            :self (>= (:origin rd) origin)
                             :downscale (>= (:origin rd) origin)
                             :relation (>= (:origin rd) origin)
                             :up (> (:origin rd) origin)
