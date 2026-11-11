@@ -3577,3 +3577,228 @@ countries are issued for the record, not scored.
   nodes scored a result is reported as it falls, not claimed. The first
   year node (2027-2028) is scorable from 2029, when the catalogues cover
   December 2028.
+
+## Registered, 11 November 2026: one pooled hazard over the buffer invariants, and the scanner (bead bnm-56c.6, PLAN 1.5-1.7)
+
+Written and committed before any model is fitted to break labels. The
+hypothesis (PLAN.md phase 1, principles 5 and 6): breaks of different
+stocks share a form in the invariants, which are times or ratios, so a
+hazard fitted on some families of breaks finds the breaks of a family it
+has never seen. Nothing in the code names a stock type: families are
+labels from resources/bnm/episodes/rules.csv and stocks are rows of a
+data mapping. 2003-2022 (and 2023-24) are development data
+(PRINCIPLES.md 13); every result below is a development result except
+the forward ranking, which is a dated forecast.
+
+**Inputs, frozen.** The episode library as of commit 9de7195 (rules.csv
+SHA-256 66f96d17..., episodes.csv f46836e5...), its panel
+data/derived/episodes/panel.csv (0a41934e070dd766d7be3d1c4f9375ee8a1043b696ccaea2d21d4742986cea86),
+data/slow/series.tsv (4c02c698...), and data/derived/buffers/*.csv as on
+disk today (README there); the run records every input's SHA-256.
+
+**Training and scored rows.** A row is a panel place-year of one family.
+Its forecast date (origin) is 1 January of the year; its label is an
+onset of the family at the place in the window. Windows: **12 months**
+(onset in the year; the window of every verdict) and 24 months (the
+year or the next, reported beside it). A model used at origin T trains
+only on rows whose label is known by T (panel `known`, and for 24 months
+the next year's row too), with `ongoing` empty and `covered_by` not
+empty (a break outside any catalogue's coverage has no non-events
+beside it); the same rule selects scored rows. Features are computed
+by bnm.buffers as of the origin from observations known by then
+(series.tsv's own known dates, else the mapping's lag). A row with no
+invariant measured is neither trained on nor scored (the scanner cannot
+rank an unmeasured stock). Rows whose features come from a series the
+mapping flags `:revised-vintage` (current revised data read with an
+assumed lag, not real time) are marked; a sensitivity run sets those
+invariants missing and repeats test (a).
+
+**Families**, frozen as in rules.csv at 9de7195: asset_price_break,
+banking_break, commodity_stockout, energy_break, investment_bust,
+price_level_break, reserve_crisis, sovereign_debt_break. Reserve
+crises: the main result labels as breaks only episodes with at least
+one catalogue other than the IMF GRA drawing rule, and, for onsets from
+1970, other than Reinhart-Rogoff's currency column; place-years whose
+only breaks are GRA-only or RR-currency-only after 1970 are dropped
+(neither break nor non-event). A secondary result counts them as breaks
+(with and without GRA-only episodes reported separately). In panel
+counts: 649 main episodes, 356 GRA-only, 161 RR-only after 1970; 300
+main positive place-years with the stock measured.
+
+**Thin families.** A family gets a pass or fail only with at least 30
+positive place-years scored in test (a) (12-month window, main labels,
+an invariant measured). energy_break (13 positive place-years measured
+in the panel) gets no verdict whatever the count: each of its episodes'
+rank is reported, and it is also left out together with
+commodity_stockout as one physical-stocks fold, which gets a verdict
+under the same rule.
+
+**Stocks** (a data mapping, resources/buffers/hazard-stocks.edn; one
+record per family and place, plus stocks with no family for the
+scanner). Each record lists its series by bnm.buffers role:
+- reserve_crisis, price_level_break: stock = IMF IL reserves less gold
+  (monthly, lag 2 months); gross outflow = WDI imports of goods and
+  services (annual, lag 1 year, revised); claims = WDI external debt
+  against income = GNI (lag 1 year, revised).
+- sovereign_debt_break: the same reserves stock; gross outflow = WDI
+  external debt service (rigid 1.0); claims external debt against GNI.
+- banking_break: claims = BIS credit to the private non-financial
+  sector (series.tsv finance/credit_gdp, % of GDP, against income 100);
+  rigidity = BIS debt service ratio (finance/dsr_private, the share of
+  income committed to debt service); displacement measured on the
+  claims.
+- commodity_stockout: stock = USDA PSD ending stocks of wheat, maize
+  and rice summed (the place's, or the world's), gross outflow = their
+  domestic consumption (market year, lag 1 year, revised).
+- energy_break: EUR: Eurostat gas in storage (EU27_2020, closing, TJ)
+  against inland consumption; USA: EIA working gas against consumption;
+  JPN: JODI crude closing stocks against refinery intake (monthly, lag 2
+  months). WLD has no record (unmeasured).
+- investment_bust: inflow = gross investment share of GDP
+  (series.tsv economy/investment_share, revised), displacement measured
+  on it.
+- asset_price_break: price = share prices (series.tsv
+  markets/share_prices), displacement measured on it.
+- Scanner-only stocks (no family, no label): EIA US crude less SPR, the
+  SPR, gasoline and distillate (against product supplied); JODI crude
+  closing stocks of every reporting country (against refinery intake);
+  Eurostat gas storage of each member reporting; world wheat, maize and
+  rice (PSD); US investment by asset type (BEA NIPA quantity indexes:
+  data centres, computers and peripherals, communication equipment,
+  software, power, communication structures, petroleum and natural gas
+  structures, mining and oilfield machinery; Census C30 data-centre
+  construction, monthly); US industries' claims (SEC frames by two-digit
+  SIC: long-term debt against operating cash flow, capex as the inflow).
+  `:sector` marks energy and US investment records for test (d) only;
+  the model never reads it.
+
+Sub-annual series are read on an annual grid at the latest known month
+(the same calendar month in earlier years), so that displacement
+windows are years and seasonal stocks compare; flows are rates per year
+(the mean of the last 12 months).
+
+**Features** (the invariants of bnm.buffers, fixed now):
+- cover over net drawdown, 1-year window: four cumulative bins, cover
+  below 0.25, 0.5, 1 and 2 years (not draining or capped counts as above
+  2). This is the non-linearity allowed in cover: the literature says
+  the break is convex in cover and comes before exhaustion; the bins let
+  the hazard rise faster near exhaustion, monotonicity is not imposed
+  and is reported;
+- log cover, 3-year window (capped at 100 years, floored at 0.01);
+- drain rate, 1-year window, clipped to [-2, 2] per year;
+- gross cover (usable stock over the gross outflow, years: stocks-to-use,
+  reserves over imports; added to bnm.buffers as `gross-cover`): its log
+  and three cumulative bins, below 0.125, 0.25 and 0.5 years;
+- claim gap, log years of income;
+- rigidity (share);
+- restoration, carry, idle share, holder concentration and leverage,
+  market reading: entered when measured; no series on disk measures
+  them for these stocks today, and an invariant measured on fewer than
+  1% of a fit's training rows is dropped from that fit (reported);
+- displacement at 5, 10 and 20 observations (signed z, clipped to +-5),
+  resonance, log(1 + stock x flow);
+- one missing indicator per invariant; a missing value is set to the
+  training mean.
+Breadth (across stocks at a date) is not used: it is the same for every
+row of a year.
+
+**The model.** A discrete-time hazard: logit P(onset in the window |
+x) = a + a_f + sum_j (b_j + d_fj) x_j, x standardized on the training
+rows. Pooled slopes b_j ~ N(0, 1) on the standardized scale; a free.
+Family deviations: a_f ~ N(0, t_0^2), d_fj ~ N(0, t_j^2), each t with a
+half-normal prior (scale 1.0 for the intercepts, 0.5 for the slopes),
+fitted by Laplace EM to the posterior mode as augur.hier/intercepts
+does for intercepts (empirical Bayes partial pooling: a family with
+little data stays near the pooled slopes). Fitted in augur (a new
+function for grouped slopes, released and pinned). A family left out,
+and any stock with no family, is scored by the pooled part alone (a_f =
+d_f = 0). The scanner's score is the pooled hazard, a + b.x, for every
+stock; family deviations are reported beside it.
+
+**Development folds** (PRINCIPLES.md 13, bnm.dev-folds). Rolling
+origin over test years 1980-2024 (12 months; 1980-2023 for 24 months),
+refitted every five years (1980, 1985, ..., 2020), each block's fit
+trained on rows whose origin is at least the gap before the block's
+first origin, gap = window + 12 months (the catalogues' known-lag of up
+to 11 months; 24 and 36 months), with labels known by that origin, and
+rows whose label window touches a global episode
+(bnm.dev-folds/global-episodes) that a scored row's window touches
+dropped. As a development diagnostic the last 20% of origins (2016-2024)
+are held out, trained on origins to 2014; labelled development, not
+validation. Seeds: augur.math/rng-mixed, base seed 56, mixed with the
+stream's index.
+
+**Tests.**
+- **(a) Leave one family out.** For each family (and the
+  physical-stocks fold), each block's model is fitted with that family's
+  rows removed and scores its rows. Pass when all three hold on the
+  family's scored rows pooled over 1980-2024: the AUC's 90% interval
+  from a country-cluster bootstrap (places resampled, 1000 draws) lies
+  above 0.5; recall at the top 10% of its rows is above 0.10 (precision
+  there above the family's base rate); and the AUC is above both
+  baselines' AUCs: the family's own lagged stock level alone (a
+  logistic on the log of the latest known value of the record's main
+  series, fitted on the family's own rows in the same blocks), and the
+  last 12 months (a break of any family at the place known in the 12
+  months before the origin; the same-family form is reported, though
+  after dropping ongoing rows it is nearly always quiet). The
+  differences from the baselines get paired cluster-bootstrap intervals,
+  reported, not required. Fail otherwise; no verdict under the thin
+  rule. Reported for main and secondary reserve labels, and with the
+  revised-vintage invariants removed.
+- **(b) Invariants against channels.** The pooled model (all families,
+  the scored family included) against a channel model per family: a
+  logistic (augur.logit/fit, prior 1) on the family's raw series, the
+  log of each one's latest known value and its change over a year, with
+  missing indicators, fitted on that family's rows only; both on the
+  same rolling blocks. AUC per family and era (1980-1994, 1995-2007,
+  2008-2024) with the cluster-bootstrap interval of the difference. The
+  invariants hold up if the pooled model's AUC is at least the channel
+  model's in each era with the families weighed equally, and in a
+  majority of family-era cells with at least 10 positives.
+- **(c) False alarms.** Each record gets five decoys whose series'
+  values are shuffled in time (augur.math/rng-mixed, seed 56 mixed with
+  the decoy and record index; each series its own stream), carrying the
+  original row's label. The rolling-origin pooled model (trained on real
+  rows only) scores real and decoy rows; each origin's real and decoy
+  rows are ranked together. Pass when the precision of real rows in each
+  year's top decile, pooled over years, exceeds the decoys' with the
+  cluster-bootstrap interval of the difference above zero. The decoys'
+  share of the top decile is reported against their share of the rows
+  (5/6).
+- **(d) Forward.** The scanner as of the forward ledger's 2026-Q4 issue
+  date (11 November 2026), from a model fitted on every row known then,
+  ranks every stock record with an invariant measured, by the pooled
+  hazard of an onset in 12 months. The registered questions: does any
+  energy stock (EU or US gas storage, US crude or product stocks, JODI
+  crude stocks) rank in the top decile, unprompted; and does any US
+  investment build-out record (BEA data centres, computers, communication
+  equipment, software, power; Census data-centre construction) rank in
+  the top decile. Each yes or no; not entering them by hand is the
+  test, and a no is a finding. The ranking is written to
+  registered/ledger/2026-Q4/scanner.tsv, a new file beside the issue
+  with its own manifest (scanner.edn: date, commit, command, inputs'
+  SHA-256); the issue's existing files are not touched. It is scored
+  when the 2027 catalogues are published.
+
+**Illustrations** (not tests): the rank of each hindcast in
+resources/bnm/episodes/hindcasts.csv among all stocks at origins before
+its break, from the rolling-origin model (Asia 1997, food 2007-08, Sri
+Lanka 2022, European gas 2021-22, telecom 2001, US shale 2015).
+
+**Hidden buffers (1.7), flags only.** A stock is flagged when its
+accounts stop closing: the SFC core's net-lending identity residual
+(data/derived/sfc/flows.csv, the five sectors' B9 summed) or the gap
+between two measures of one stock (IMF IL against WDI reserves, IRFCL
+official reserve assets against IL, EIA against JODI US crude, PSD world
+against the sum of countries) above 2% of the stock and stretched past 2
+against its own past (bnm.invariants/stretch, 10 observations). Not a
+scored test.
+
+**Known limits.** The episode library is fixed for the gazetteer bug;
+the features read series.tsv, built by scripts/slow-normalize.py with
+the same name lookup, so the run reports how many feature rows fall on
+the affected codes (GBR, GEO, COD, COG, BFA, BES). Unmeasured stocks
+cannot be ranked. Episodes per family are few; pooling across families
+is itself the hypothesis. A shock from outside (2020) is not
+predictable.
