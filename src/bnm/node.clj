@@ -30,7 +30,8 @@
   passes z). bnm.buffers records give its stocks and buffers
   (`from-buffer-rows`)."
   (:require [bnm.buffers :as b]
-            [bnm.compose :as c]))
+            [bnm.compose :as c]
+            [bnm.sheaf :as sh]))
 
 ;; -- the hazard ------------------------------------------------------------------
 
@@ -105,6 +106,18 @@
   (if-let [ps (seq (problems node))]
     (throw (ex-info (str "bnm.node: " (first ps)) {:problems (vec ps) :id (:id node)}))
     node))
+
+(defn state-reader
+  "A bnm.sheaf reader of a book of node states ({[scale place] (sorted-map
+  t node)}) that refuses any section holding an issued forecast (C6): the
+  ledger's book, or a states book an issued forecast leaked into, cannot
+  be read as states. opts as bnm.sheaf/reader's."
+  ([book] (state-reader book {}))
+  ([book opts]
+   (sh/reader book {} (assoc opts :guard (fn [dir cell o e]
+                                           (when (holds-issued? e)
+                                             (throw (ex-info "bnm.node: a read of an issued forecast (C6)"
+                                                             {:dir dir :cell cell :origin o}))))))))
 
 ;; -- from the lattice ---------------------------------------------------------------
 
@@ -198,14 +211,17 @@
 ;; -- C11: the read graph of one step ---------------------------------------------------
 
 (defn read-graph
-  "{origin {[scale place] #{[scale place] read at that same origin}}} from
-  a lattice trace: the reads within one step. Reads of earlier origins
-  (down, self, a parent at t - per) and errors fed back are not edges of
-  the step: they come from before it."
+  "{origin {[kind scale place] #{[kind scale place] read at that same
+  origin}}} from lattice traces (one kind's, or several kinds' each entry
+  tagged :kind): the reads within one step. A read names its kind when it
+  is of another kind's book (bnm.relations); otherwise it is of the
+  reading node's own kind. Reads of earlier origins (down, self, a parent
+  at t - per) and errors fed back are not edges of the step: they come
+  from before it."
   [trace]
-  (reduce (fn [g {:keys [scale place origin reads]}]
-            (let [same (set (for [{s :scale p :place o :origin} reads :when (= o origin)] [s p]))]
-              (update-in g [origin [scale place]] (fnil into #{}) same)))
+  (reduce (fn [g {:keys [kind scale place origin reads]}]
+            (let [same (set (for [{k :kind s :scale p :place o :origin} reads :when (= o origin)] [(or k kind) s p]))]
+              (update-in g [origin [kind scale place]] (fnil into #{}) same)))
           (sorted-map) trace))
 
 (defn cycle-of

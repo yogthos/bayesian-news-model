@@ -127,6 +127,54 @@
   (testing "a node read back at its own origin is a cycle of one"
     (is (seq (node/cycle-of {[:year "a"] #{[:year "a"]}})))))
 
+;; -- review of step 1, finding 7 -------------------------------------------------------
+
+(deftest c6-a-leaked-issued-forecast-is-refused
+  ;; not tautological: a states book into which an issued forecast leaks
+  ;; must be refused by the node layer's reader, not merely not produced
+  (let [{book :states issued :issued} (states (loop-run {:state-from :reference :end 120}))
+        states book
+        [cell byo] (first states)
+        [t n] (last byo)
+        leaked (assoc-in states [cell t] (assoc n :issued {:p 0.5}))
+        leaked-deep (assoc-in states [cell t :hazard :crisis :forecast] {:p 0.5})]
+    (testing "a clean book reads"
+      (is (some? (sh/latest-before (node/state-reader states {:origin (inc t)}) :self cell (inc t)))))
+    (testing "a node holding an issued forecast is refused, wherever it sits"
+      (is (thrown? clojure.lang.ExceptionInfo (sh/latest-before (node/state-reader leaked {:origin (inc t)}) :self cell (inc t))))
+      (is (thrown? clojure.lang.ExceptionInfo (sh/at (node/state-reader leaked-deep {:origin (inc t)}) :down cell t)))
+      (is (thrown? clojure.lang.ExceptionInfo (vec (sh/over (node/state-reader leaked {:origin (inc t)}) :up cell 0 t)))))
+    (testing "the issued book itself cannot be read as states"
+      (do
+        (is (thrown? clojure.lang.ExceptionInfo (sh/latest-before (node/state-reader issued {:origin 1000}) :self cell 1000)))))))
+
+(deftest c11-the-read-graph-keeps-the-kind
+  (testing "a read of another kind's cell is not a read of one's own"
+    (let [g (node/read-graph [{:kind "a" :scale :year :place "X" :origin 5
+                               :reads [{:dir :relation :kind "b" :scale :year :place "X" :origin 5}]}])]
+      (is (= #{["b" :year "X"]} (get-in g [5 ["a" :year "X"]])))
+      (is (empty? (node/cycle-of (get g 5))) "no self-loop from dropping the kind")))
+  (testing "a cycle across kinds is found"
+    (let [g (node/read-graph [{:kind "a" :scale :year :place "X" :origin 5
+                               :reads [{:dir :relation :kind "b" :scale :year :place "X" :origin 5}]}
+                              {:kind "b" :scale :year :place "X" :origin 5
+                               :reads [{:dir :relation :kind "a" :scale :year :place "X" :origin 5}]}])]
+      (is (seq (node/cycle-of (get g 5)))))))
+
+(deftest c11-holds-with-the-downscale-and-the-reference
+  ;; the loop spec: the year's forecast down as the months' offset, the
+  ;; months' states up, :state-from the reference
+  (doseq [extra [{} {:state-from :reference} {:state-from :reference :evidence-at :issue}]]
+    (let [r (loop-run (assoc extra :end 200))
+          g (node/read-graph (:trace r))]
+      (is (seq g))
+      (is (every? (fn [[_ edges]] (empty? (node/cycle-of edges))) g) extra)
+      (doseq [{:keys [origin reads]} (:trace r) {:keys [dir] :as rd} reads]
+        (case dir
+          (:down :self :downscale) (is (< (:origin rd) origin) [extra rd])
+          :feedback (is (<= (:known-at rd) origin))
+          :up (is (<= (:origin rd) origin)))))))
+
 ;; -- random trees of node states (property style) -------------------------------------
 
 (deftest random-node-trees-validate-and-compose

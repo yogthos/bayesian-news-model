@@ -65,11 +65,20 @@
   the cells' resolved `errors` ({[scale place] (sorted-map known-at
   error)}), recording every read. Options: :kind, named in each read (a
   reader of another kind's book); :origin, the reading node's origin,
-  after which any read throws."
+  after which any read throws; :guard, a function of each section read
+  (fn [dir cell origin entry]) that throws on one the reader must refuse
+  (bnm.node/state-reader: an issued forecast)."
   ([book] (reader book {} {}))
   ([book errors] (reader book errors {}))
-  ([book errors {:keys [kind origin]}]
-   {:book book :errors errors :kind kind :origin origin :reads (atom [])}))
+  ([book errors {:keys [kind origin guard]}]
+   (cond-> {:book book :errors errors :kind kind :origin origin :reads (atom [])}
+     guard (assoc :guard guard))))
+
+(defn- guarded
+  "The section, after the reader's guard (if any) has passed it."
+  [{:keys [guard]} dir cell o e]
+  (when guard (guard dir cell o e))
+  e)
 
 (defn- record!
   "Records a read; throws when it is after the reader's origin."
@@ -85,14 +94,14 @@
   [r dir cell t]
   (when-let [[o e] (some-> (get (:book r) cell) (rsubseq < t) first)]
     (record! r dir cell o :origin)
-    [o e]))
+    [o (guarded r dir cell o e)]))
 
 (defn latest-n-before
   "[[origin entry] ...] of the cell's n latest sections strictly before t,
   newest first; each recorded."
   [r dir cell t n]
   (let [es (take n (some-> (get (:book r) cell) (rsubseq < t)))]
-    (doseq [[o _] es] (record! r dir cell o :origin))
+    (doseq [[o e] es] (record! r dir cell o :origin) (guarded r dir cell o e))
     es))
 
 (defn over
@@ -100,7 +109,7 @@
   oldest first; each recorded."
   [r dir cell lo hi]
   (let [es (some-> (get (:book r) cell) (subseq >= lo <= hi))]
-    (doseq [[o _] es] (record! r dir cell o :origin))
+    (doseq [[o e] es] (record! r dir cell o :origin) (guarded r dir cell o e))
     es))
 
 (defn at
@@ -108,7 +117,7 @@
   [r dir cell t]
   (when-let [e (get-in (:book r) [cell t])]
     (record! r dir cell t :origin)
-    e))
+    (guarded r dir cell t e)))
 
 (defn latest-known
   "[known-at error] of the cell's latest error known by t, or nil;
