@@ -1,0 +1,21 @@
+# Python packages for scripts/, exact versions in use (Python 3.15.0, venv rebuilt 11 November 2026).
+#   python3.15 -m venv venv && venv/bin/pip install -r requirements.txt
+# Run scripts as venv/bin/python -I scripts/<name>.py. The episode library (episodes.py, rr-crises.py,
+# lv-crises.py, lv2018-dates.py, slow-normalize.py) needs only the standard library.
+openpyxl==3.1.5
+et_xmlfile==2.0.0
+
+# Not installed in that venv, so not pinned: older research scripts import them and fail without them.
+#   pandas      capacity-test, econ-structure, sfc-data, minerals, supply-stocks, jst-credit-gap and ~30 more
+#   numpy       most of the pandas scripts, cells, cell-grids, routes, located-shocks, sfc-rules-null
+#   pycountry   control, material, minerals, supply-shocks-data, supply-stocks, capacity-test, recipe-obs
+#   scikit-learn uk-regime, nonlinear-check, interstate
+#   statsmodels regime-hmm, jst-credit-gap
+#   scipy       migration-h12, protection-value
+#   shapely, pyogrio, pyshp (shapefile)   cells, cell-assets, routes, located-shocks, minerals
+#   rasterio, netCDF4   cell-grids
+#   pyreadstat  econ-factors, econ-factors-check
+#   rdata       control
+#   xgboost     t7_shap
+#   lppls       lppls-confidence
+# Pin each with its exact version when it is next installed.

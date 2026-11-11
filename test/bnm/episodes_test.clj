@@ -27,6 +27,19 @@
         (is (or (= "" (:end_date r)) (ep/date? (:end_date r))) (:row_id r))
         (is (.startsWith ^String (:episode r) (str (:family r) ":" (:place r) ":")))))))
 
+(deftest tables-well-formed
+  (doseq [f ["rules.csv" "episodes.csv" "families.csv" "hindcasts.csv" "mechanisms.csv"]]
+    (let [[h & rs] (ep/parse-csv (slurp (str ep/dir "/" f)))]
+      (is (every? #(= (count h) (count %)) rs) (str f ": a row with more or fewer fields than the header")))))
+
+(deftest known-no-earlier-than-the-date
+  (doseq [r (ep/episodes)]
+    (is (ep/date? (:known_date r)) (:row_id r))
+    (is (<= (compare (:date r) (:known_date r)) 0) (:row_id r))
+    (is (<= (compare (:episode_known r) (:known_date r)) 0) (:row_id r)))
+  (is (every? (set (keys (first (ep/episodes)))) ep/outcome-columns)
+      "the outcome columns are the episode table's"))
+
 (deftest families-defined-and-counted
   (let [fams (ep/families-of-rules (ep/rules))
         counted (into {} (for [r (ep/families) :when (= "family" (:by r))] [(:name r) (parse-long (:episodes r))]))
@@ -40,5 +53,8 @@
   (if-let [p (ep/panel)]
     (let [breaks (count (filter #(= "1" (:break %)) p))]
       (is (> (- (count p) breaks) (* 10 breaks)))
-      (is (every? #(or (seq (:covered_by %)) (= "1" (:break %))) p)))
+      (is (every? #(or (seq (:covered_by %)) (= "1" (:break %))) p))
+      (is (every? #(re-matches #"\d{4}-\d{2}" (:known %)) p))
+      (is (every? #(<= (compare (str (:year %) "-12") (:known %)) 0) (filter #(= "0" (:break %)) p))
+          "a non-event is known no earlier than its year's end"))
     (println "bnm.episodes-test: no data/derived/episodes/panel.csv - panel checks skipped (python -I scripts/episodes.py)")))

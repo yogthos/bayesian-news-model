@@ -20,8 +20,13 @@ Labels are not hindsight:
 Inputs (all under data/; the builder reads, never fetches):
   derived/lv2018.csv                 Laeven-Valencia 2018 (banking, currency, sovereign, restructuring), 1970-2017
   raw/slow/lv/lv2026.csv             Laeven-Valencia 2026 Table A1 banking starts (transcribed; scripts/lv-crises.py)
-  raw/slow/rr/onsets.csv             Reinhart-Rogoff onsets with *_known coverage flags, 1800-2016
-  slow/events.tsv                    ESRB banking crises; market crashes by the slow layer's rule
+  raw/slow/rr/global_crisis_data.xlsx  Reinhart-Rogoff, read through scripts/rr-crises.py's onsets (not
+                                     raw/slow/rr/onsets.csv, the forward ledger's pinned vintage, which
+                                     reads currency crashes coded 2 as no crisis and has "HUN ")
+  raw/slow/esrb/crises.xlsx          ESRB/ECB European financial crises database (systemic, not exogenous)
+  slow/events.tsv                    market crashes by the slow layer's rule
+  raw/slow/ucdp/iisystem.dat         Gleditsch-Ward independent states: a country-year is covered only
+                                     while the state exists (else IMF membership, from FA quotas)
   raw/slow/jst/jst.csv               Jorda-Schularick-Taylor crisisJST
   derived/econ-events.csv            the project's rule kinds (tools/bnm/economic_events.clj)
   derived/econ-coverage.csv          their coverage by country, in months
@@ -38,7 +43,23 @@ Outputs:
   <out>/families.csv   episodes and rows by family and by catalogue
   <out>/hindcasts.csv  the plan's named hindcasts and the episodes that match them
   <out>/manifest.csv   sha256 of every input read (the library's version)
-  <panel>/panel.csv    place,year,family,covered_by,break,episodes,stock_measured,stock_series
+  <panel>/panel.csv    PANEL_COLUMNS: place,year,family,covered_by,break,episodes,ongoing,known,
+                       stock_measured,stock_series
+
+When a label is known: every row has known_date, the month its rule's
+condition can first be seen (rules.csv known_lag_months after the dated
+month; an investment bust is known when the fall reaches 20%, up to three
+years after its onset). In the panel, known is the month the place-year's
+label is final: for a break, when its episode is first known; for a
+non-event, when the slowest covering rule could still have dated a break
+in that year. A forecast at month t may train only on panel rows with
+known <= t. ongoing names an earlier episode still running that year: such
+a 0 is not a clean non-event. Catalogue publication lags (LV2018 was
+published in 2018) are not in known: what they hold is in rules.csv
+hindsight.
+
+followed_by, next_buffers, end_date and mechanism_note look after the
+break: they describe outcomes and are never model inputs.
 
 Output is sorted and has no timestamps: rebuilding from the same inputs
 gives the same bytes.
@@ -52,13 +73,25 @@ import os
 import sys
 import zipfile
 from collections import defaultdict
+import importlib.util
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 DATA = os.path.join(ROOT, "data")
 RES = os.path.join(ROOT, "resources", "bnm", "episodes")
 
-VERSION = "1"
+
+def _load(name, file):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, file))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+sn = _load("slow_normalize", "slow-normalize.py")  # its gazetteer, xlsx reader and ESRB codes
+rr = _load("rr_crises", "rr-crises.py")
+
+VERSION = "2"
 
 # Fixed rules, written before fitting (bead bnm-56c.5).
 SPIKE_RISE = 0.50        # Pink Sheet: price up 50% or more on twelve months before
@@ -99,11 +132,21 @@ BEA_ASSETS = {
     "A681RA": "transportation_equipment",
     "A011RA": "residential",
 }
-ESRB_COUNTRIES = ("AUT BEL BGR CYP CZE DEU DNK ESP EST FIN FRA GBR GRC HRV HUN IRL ITA LTU LUX LVA MLT NLD "
-                  "NOR POL PRT ROU SVK SVN SWE").split()
-ESRB_YEARS = (1970, 2016)
+# catalogue spans. ESRB: the countries its workbook lists (EU and Norway, no Malta), 1970 to 2020 (the
+# update's latest dates are 2021-04, so 2020 is its last whole year); the UK (starred) left the update
+# that added crises from 2019, so to 2018. LV2026: "Systemic Banking Crises Database: 1970-2025".
+ESRB_YEARS = (1970, 2020)
+ESRB_STARRED_END = 2018
 LV2018_YEARS = (1970, 2017)
-LV2026_YEARS = (1970, 2023)
+LV2026_YEARS = (1970, 2025)
+
+PLACE_ALIAS = {"KOS": "XKX", "WBG": "PSE"}  # IMF FA's Kosovo, ICSD's West Bank and Gaza
+# Gleditsch-Ward codes whose names the gazetteer does not read, or reads as the successor
+GW_CODES = {255: "DEU", 300: "AUT", 315: "CSK", 437: "CIV", 678: "YAR", 680: "YMD", 817: "RVN"}
+GW_LAST = 2017  # the list's last year: a state then is taken to exist still
+# codes that are places though not current countries (kept in coverage; other non-country FA codes,
+# such as regional central banks and country groups, are not)
+HISTORICAL = {"CSK", "YUG", "YAR", "YMD", "TWN"}
 
 FAMILY_STOCKS = {  # the panel's stock_measured: which series measure a family's candidate buffer
     "reserve_crisis": ["wdi:FI.RES.TOTL.CD"],
@@ -208,28 +251,95 @@ def gra_drawings(outstanding, quota):
 
 
 def investment_busts(levels):
-    """Onset years of investment busts from {year: real investment}: a peak
-    year p, the highest of p-5..p and BUST_RISE times p-5 or more, followed
-    within three years by a level at or below BUST_FALL times the peak;
-    the onset is p+1; once in BUST_GAP_YEARS."""
-    hits = []
+    """Investment busts from {year: real investment}, as [(onset year, year
+    known)]: a peak year p, the highest of p-5..p and BUST_RISE times p-5 or
+    more; the first year f in p+1..p+3 at or below BUST_FALL times the peak,
+    with no year before f above the peak (else p was not the peak). The
+    onset is p+1; the bust is known in f, not before. Once in
+    BUST_GAP_YEARS of onsets."""
+    hits = {}
     for p, x in levels.items():
         b = levels.get(p - 5)
         window = [levels.get(y) for y in range(p - 5, p + 1)]
-        after = [levels.get(y) for y in range(p + 1, p + 4) if levels.get(y) is not None]
-        if b is None or b <= 0 or any(w is None for w in window) or not after:
+        if b is None or b <= 0 or any(w is None for w in window):
             continue
-        if x >= BUST_RISE * b and x >= max(window) and min(after) <= BUST_FALL * x:
-            hits.append(p + 1)
-    return once_in(hits, BUST_GAP_YEARS)
+        if not (x >= BUST_RISE * b and x >= max(window)):
+            continue
+        for f in range(p + 1, p + 4):
+            v = levels.get(f)
+            if v is None:
+                continue
+            if v > x:
+                break
+            if v <= BUST_FALL * x:
+                hits[p + 1] = f
+                break
+    return [(t, hits[t]) for t in once_in(hits, BUST_GAP_YEARS)]
 
 
 # ---------------------------------------------------------------- catalogues
 # each reader yields dicts: catalogue, kind, place, month, end (month or None), subject, flag, source
 
-def row(catalogue, kind, place, mi, source, end=None, subject="", flag="", group=""):
-    return {"catalogue": catalogue, "kind": kind, "place": place, "month": mi, "end": end,
-            "subject": subject, "flag": flag, "source": source, "group": group}
+def place(code):
+    """A place code as the project joins it: stripped, ISO3 where the source differs."""
+    c = code.strip().upper()
+    return PLACE_ALIAS.get(c, c)
+
+
+def row(catalogue, kind, where, mi, source, end=None, subject="", flag="", group="", known=None):
+    """known: the month the row could first be known, when its rule says
+    more than rules.csv known_lag_months (an investment bust)."""
+    return {"catalogue": catalogue, "kind": kind, "place": place(where), "month": mi, "end": end,
+            "subject": subject, "flag": flag, "source": source, "group": group, "known": known}
+
+
+# ---------------------------------------------------------------- states
+
+class StateYears:
+    """Whether a place is a state in a year: from the Gleditsch-Ward
+    intervals {iso: [(first, last)]} where it is listed, else from IMF
+    membership {iso: first year}; a place neither knows (a market, a
+    territory) always."""
+
+    def __init__(self, intervals, joined):
+        self.iv = {k: [(a, 9999 if b >= GW_LAST else b) for a, b in v] for k, v in intervals.items()}
+        self.joined = dict(joined)
+
+    def exists(self, iso, y):
+        if iso in self.iv:
+            return any(a <= y <= b for a, b in self.iv[iso])
+        if iso in self.joined:
+            return y >= self.joined[iso]
+        return True
+
+    def known(self, iso):
+        return iso in self.iv or iso in self.joined
+
+
+def state_years(joined):
+    """StateYears from data/raw/slow/ucdp/iisystem.dat and {iso: IMF membership year}."""
+    p = path("raw", "slow", "ucdp", "iisystem.dat")
+    iv = defaultdict(list)
+    INPUTS.append(p)
+    with open(p, encoding="latin-1") as f:
+        for line in f:
+            k = line.rstrip("\n").split("\t")
+            if len(k) < 5:
+                continue
+            iso = GW_CODES.get(int(k[0])) or sn.iso3_of_name(k[2])
+            if iso:
+                iv[iso].append((int(k[3][-4:]), int(k[4][-4:])))
+    return StateYears(iv, joined)
+
+
+def imf_joined(fa):
+    """{iso: first year with an IMF quota} from imf_fa's output."""
+    out = {}
+    for iso, (_o, q) in fa.items():
+        ms = [t for t, v in q.items() if v and v > 0]
+        if ms:
+            out[iso] = min(ms) // 12
+    return out
 
 
 def read_lv2018(p):
@@ -248,23 +358,52 @@ def read_lv2026(p):
                       "Laeven and Valencia (2026), IMF WP/26/94 Table A1; data/raw/slow/lv/lv2026.csv", end=end)
 
 
-def read_rr(p):
-    with opened(p) as f:
-        for r in csv.DictReader(f):
-            for kind in ("banking", "currency", "inflation", "default"):
-                if r[kind] == "1":
-                    yield row("rr", kind, r["iso"], month(int(r["year"])),
-                              "Reinhart and Rogoff, Global Crises Data (HBS BFFS); data/raw/slow/rr/onsets.csv")
+def rr_onsets(p):
+    """Reinhart-Rogoff onsets (scripts/rr-crises.py's) from the workbook."""
+    INPUTS.append(p)
+    return rr.onsets(rr.read_xlsx(p))
 
 
-def rr_coverage(p):
+def read_rr(onsets):
+    for r in onsets:
+        for kind in ("banking", "currency", "inflation", "default"):
+            if r[kind] == 1:
+                yield row("rr", kind, r["iso"], month(int(r["year"])),
+                          "Reinhart and Rogoff, Global Crises Data (HBS BFFS); data/raw/slow/rr/global_crisis_data.xlsx")
+
+
+def rr_coverage(onsets):
     cov = defaultdict(set)  # kind -> {(iso, year)}
-    with opened(p) as f:
-        for r in csv.DictReader(f):
-            for kind in ("banking", "currency", "inflation", "default"):
-                if r[kind + "_known"] == "1":
-                    cov[kind].add((r["iso"], int(r["year"])))
+    for r in onsets:
+        for kind in ("banking", "currency", "inflation", "default"):
+            if r[kind + "_known"] == 1:
+                cov[kind].add((place(r["iso"]), int(r["year"])))
     return cov
+
+
+def read_esrb(p):
+    """(rows, codes): systemic crises that are not exogenous shocks (COVID-19
+    is recorded everywhere as one), and the country codes the workbook lists."""
+    INPUTS.append(p)
+    rows, codes = [], set()
+    for name, sheet in sn.xlsx(p).items():
+        if not name.lower().startswith("systemic"):
+            continue
+        for r in sheet[2:]:
+            if not r or not r[0] or len(r[0].strip()) > 3 or len(r) < 7:
+                continue
+            codes.add(r[0].strip())
+            exogenous = (r[6] or "").strip().lower().startswith("exogenous")
+            if r[5] == "1" and not exogenous and r[2] and r[2][:4].isdigit():
+                rows.append(row("esrb", "banking", sn.esrb_iso(r[0]), parse_month(r[2][:7]),
+                                "ESRB/ECB European financial crises database; data/raw/slow/esrb/crises.xlsx"))
+    return rows, codes
+
+
+def esrb_coverage(codes):
+    """{iso: (first year, last year)} of the ESRB database."""
+    return {sn.esrb_iso(c): (ESRB_YEARS[0], ESRB_STARRED_END if c.strip().endswith("*") else ESRB_YEARS[1])
+            for c in codes if sn.esrb_iso(c)}
 
 
 def read_slow_events(p):
@@ -273,10 +412,7 @@ def read_slow_events(p):
             k = line.rstrip("\n").split("\t")
             if len(k) < 4:
                 continue
-            if k[0] == "banking_crisis" and k[3].startswith("ESRB"):
-                yield row("esrb", "banking", k[1], parse_month(k[2]),
-                          "ESRB/ECB European financial crises database; data/slow/events.tsv")
-            elif k[0] == "market_crash":
+            if k[0] == "market_crash":
                 yield row("rule:slow-normalize", "market_crash", k[1], parse_month(k[2]),
                           "share prices 30% below their 24-month high (scripts/slow-normalize.py); data/slow/events.tsv")
 
@@ -346,14 +482,19 @@ def imf_fa(p):
                 continue
             t = r["TIME_PERIOD"]  # 1990-M01
             mi = month(int(t[:4]), int(t[-2:]))
-            (o if ind == "IMFOPGRA_XDR" else q)[r["COUNTRY"]][mi] = float(r["OBS_VALUE"])
+            (o if ind == "IMFOPGRA_XDR" else q)[place(r["COUNTRY"])][mi] = float(r["OBS_VALUE"])
     return {c: (o[c], q.get(c, {})) for c in o}
+
+
+def gra_years(o, q):
+    """Whole years in which a large drawing could be seen: every month a
+    member (quota > 0) with the outstanding of twelve months before."""
+    months = {t for t in o if q.get(t, 0) > 0 and (t - 12) in o}
+    return sorted(y for y in {t // 12 for t in months} if all(month(y, m) in months for m in range(1, 13)))
 
 
 def read_gra(fa):
     for iso, (o, q) in sorted(fa.items()):
-        if len(iso) != 3 or not iso.isalpha():
-            continue
         for t in gra_drawings(o, q):
             yield row("rule:imf-gra", "gra_drawing", iso, t,
                       "IMF Fund accounts (FA), GRA outstanding purchases and quota; data/raw/buffers/imf-fa/FA.csv.gz")
@@ -364,16 +505,16 @@ def icsd_private(p):
     with opened(p) as f:
         for r in csv.DictReader(f):
             if r["INDICATOR"] == "P51G_PS_Q_PU_RY2017" and r["OBS_VALUE"]:
-                out[r["COUNTRY"]][int(r["TIME_PERIOD"])] = float(r["OBS_VALUE"])
+                out[place(r["COUNTRY"])][int(r["TIME_PERIOD"])] = float(r["OBS_VALUE"])
     return out
 
 
 def read_icsd_busts(icsd):
     for iso, lv in sorted(icsd.items()):
-        for y in investment_busts(lv):
+        for y, k in investment_busts(lv):
             yield row("rule:investment-bust", "icsd_private", iso, month(y),
                       "IMF ICSD private investment, constant 2017 PPP; data/raw/econ/imf-sdmx-holdings-reserves/ICSD.csv.gz",
-                      subject="private investment")
+                      subject="private investment", known=month(k, 12))
 
 
 def bea_assets(nipa_dir):
@@ -392,10 +533,10 @@ def bea_assets(nipa_dir):
 
 def read_bea_busts(assets):
     for a, lv in sorted(assets.items()):
-        for y in investment_busts(lv):
+        for y, k in investment_busts(lv):
             yield row("rule:investment-bust", "bea_asset", "USA", month(y),
                       "BEA NIPA real private fixed investment by type (quantity index); data/raw/buffers/bea-nipa/NipaDataA.txt",
-                      subject=a)
+                      subject=a, known=month(k, 12))
 
 
 # ---------------------------------------------------------------- library
@@ -418,7 +559,10 @@ def classify(rows, rules):
         rule = rules.get((r["catalogue"], r["kind"]))
         if rule is None:
             raise KeyError("no rule for %s %s" % (r["catalogue"], r["kind"]))
-        out.append(dict(r, family=rule["family"]))
+        known = r.get("known")
+        if known is None:
+            known = r["month"] + int(rule["known_lag_months"] or 0)
+        out.append(dict(r, family=rule["family"], known=known))
     return out
 
 
@@ -461,8 +605,11 @@ def followed(episodes, outcomes):
 
 
 COLUMNS = ["episode", "family", "place", "stock_group", "episode_start", "row_id", "catalogue", "kind", "subject", "date",
-           "date_precision", "end_date", "flag", "buffers", "restoring_flows", "loss_holder", "followed_by",
-           "next_buffers", "source", "mechanism_note", "mechanism_source"]
+           "date_precision", "known_date", "episode_known", "episode_catalogues", "end_date", "flag", "buffers",
+           "restoring_flows", "loss_holder", "followed_by", "next_buffers", "source", "mechanism_note",
+           "mechanism_source"]
+# what happened after the break: outcomes, never model inputs
+OUTCOME_COLUMNS = ["end_date", "followed_by", "next_buffers", "mechanism_note", "mechanism_source"]
 
 
 def date_of(mi, precision):
@@ -489,6 +636,8 @@ def library(rows, rules, mechanisms):
         follow = nxt[eid]
         first_fam = next((f for _, f in follow if f in fam_buffers and f != "-"), None)
         mrow = mech.get((e["place"], e["family"], e["month"] // 12))
+        e_known = min(r["known"] for r in e["rows"])
+        e_cats = ";".join(sorted({r["catalogue"] for r in e["rows"]}))
         for r in e["rows"]:
             rule = rules[(r["catalogue"], r["kind"])]
             prec = rule["date_precision"]
@@ -498,6 +647,8 @@ def library(rows, rules, mechanisms):
                 "row_id": "%s|%s|%s|%s|%s" % (r["catalogue"], r["kind"], r["place"], month_str(r["month"]), r["subject"]),
                 "catalogue": r["catalogue"], "kind": r["kind"], "subject": r["subject"],
                 "date": date_of(r["month"], prec), "date_precision": prec,
+                "known_date": date_of(r["known"], "month"), "episode_known": date_of(e_known, "month"),
+                "episode_catalogues": e_cats,
                 "end_date": date_of(r["end"], "month") if r["end"] is not None else "",
                 "flag": r["flag"], "buffers": rule["buffers"], "restoring_flows": rule["restoring_flows"],
                 "loss_holder": rule["loss_holder"],
@@ -592,6 +743,7 @@ def wdi_json_years(p):
 def iso2to3():
     m = {}
     p = path("ref", "countryInfo.txt")
+    INPUTS.append(p)
     with open(p, encoding="utf-8") as f:
         for line in f:
             if not line.startswith("#"):
@@ -753,9 +905,10 @@ def stock_coverage():
     }
 
 
-def catalogue_coverage(countries, rrc, jstc, econc, series, fa, icsd, bea):
-    """{family: {(place, year): set of catalogues}}: the place-years where a
-    catalogue of the family could have recorded a break."""
+def catalogue_coverage(countries, rrc, jstc, econc, series, fa, icsd, bea, esrb_cov, states):
+    """{family: {(place, year): {(catalogue, kind)}}}: the place-years where a
+    catalogue of the family could have recorded a break. A country-year
+    counts only while the state exists (states: StateYears)."""
     rules = load_rules(os.path.join(RES, "rules.csv"))
     cov = defaultdict(lambda: defaultdict(set))
 
@@ -763,9 +916,9 @@ def catalogue_coverage(countries, rrc, jstc, econc, series, fa, icsd, bea):
         fam = rules[(cat, kind)]["family"]
         if fam == "-":
             return
-        label = "%s/%s" % (cat, kind) if cat.startswith("rule:") else cat
-        for k in keys:
-            cov[fam][k].add(label)
+        for (where, y) in keys:
+            if states.exists(where, y):
+                cov[fam][(where, y)].add((cat, kind))
 
     allc = sorted(countries)
     for kind in ("banking", "currency", "sovereign", "restructuring"):
@@ -773,7 +926,7 @@ def catalogue_coverage(countries, rrc, jstc, econc, series, fa, icsd, bea):
     add("lv2026", "banking", [(c, y) for c in allc for y in range(LV2026_YEARS[0], LV2026_YEARS[1] + 1)])
     for kind in ("banking", "currency", "inflation", "default"):
         add("rr", kind, rrc.get(kind, ()))
-    add("esrb", "banking", [(c, y) for c in ESRB_COUNTRIES for y in range(ESRB_YEARS[0], ESRB_YEARS[1] + 1)])
+    add("esrb", "banking", [(c, y) for c, (a, b) in sorted(esrb_cov.items()) for y in range(a, b + 1)])
     add("jst", "banking", jstc)
     for kind, keys in econc.items():
         if ("rule:econ-events", kind) in rules:
@@ -785,36 +938,58 @@ def catalogue_coverage(countries, rrc, jstc, econc, series, fa, icsd, bea):
         if ms:
             add("rule:pinksheet-spike", "spike:" + s,
                 [(SPIKE_PLACE.get(s, "WLD"), y) for y in range((ms[0] + SPIKE_HIGH_MONTHS) // 12, ms[-1] // 12 + 1)])
-    for iso, (o, _quota) in fa.items():
-        ms = sorted(o)
-        if len(iso) == 3 and ms:
-            add("rule:imf-gra", "gra_drawing", [(iso, y) for y in range((ms[0] + 12) // 12, ms[-1] // 12 + 1)])
+    for iso, (o, q) in fa.items():
+        add("rule:imf-gra", "gra_drawing", [(iso, y) for y in gra_years(o, q)])
     for iso, lv in icsd.items():
         ys = sorted(lv)
-        add("rule:investment-bust", "icsd_private", [(iso, y) for y in range(ys[0] + 6, ys[-1] - 1)])
+        if ys:
+            add("rule:investment-bust", "icsd_private", [(iso, y) for y in range(ys[0] + 6, ys[-1] - 1)])
     for lv in bea.values():
         ys = sorted(lv)
         add("rule:investment-bust", "bea_asset", [("USA", y) for y in range(ys[0] + 6, ys[-1] - 1)])
     return cov
 
 
-def panel(lib, cov, series):
-    starts = defaultdict(set)
+PANEL_COLUMNS = ["place", "year", "family", "covered_by", "break", "episodes", "ongoing", "known",
+                 "stock_measured", "stock_series"]
+LAST_DATED = {"year": 1, "quarter": 10, "month": 12}  # the last month of a year a row of that precision can carry
+
+
+def label(cat, kind):
+    return "%s/%s" % (cat, kind) if cat.startswith("rule:") else cat
+
+
+def panel(lib, cov, series, rules):
+    """Rows of PANEL_COLUMNS for every covered place-year of a family, and
+    every break outside coverage (covered_by empty)."""
+    starts, ongoing, known = defaultdict(set), defaultdict(set), {}
+    last = defaultdict(int)
     for r in lib:
-        starts[(r["family"], r["place"], int(r["episode_start"][:4]))].add(r["episode"])
-    out = []
-    for fam in sorted(cov):
-        for (place, y) in sorted(cov[fam]):
-            eps = sorted(starts.get((fam, place, y), ()))
-            measured = [s for s in FAMILY_STOCKS.get(fam, []) if (place, y) in series.get(s, ())]
-            out.append((place, y, fam, ";".join(sorted(cov[fam][(place, y)])), 1 if eps else 0, ";".join(eps),
-                        1 if measured else 0, ";".join(measured)))
+        last[r["episode"]] = max(last[r["episode"]], int(r["date"][:4]))
+        known[r["episode"]] = r["episode_known"][:7]
+    for r in lib:
+        s = int(r["episode_start"][:4])
+        starts[(r["family"], r["place"], s)].add(r["episode"])
+        for y in range(s + 1, last[r["episode"]] + 1):
+            ongoing[(r["family"], r["place"], y)].add(r["episode"])
+
+    def nonevent_known(y, cats):
+        return month_str(max(month(y, LAST_DATED[rules[c]["date_precision"]]) + int(rules[c]["known_lag_months"] or 0)
+                             for c in cats))
+
+    def line(fam, where, y, cats):
+        eps = sorted(starts.get((fam, where, y), ()))
+        measured = [s for s in FAMILY_STOCKS.get(fam, []) if (where, y) in series.get(s, ())]
+        k = min(known[e] for e in eps) if eps else nonevent_known(y, cats)
+        return (where, y, fam, ";".join(sorted({label(*c) for c in cats})), 1 if eps else 0, ";".join(eps),
+                ";".join(sorted(ongoing.get((fam, where, y), ()))), k, 1 if measured else 0, ";".join(measured))
+
+    out = [line(fam, where, y, cov[fam][(where, y)]) for fam in sorted(cov) for (where, y) in sorted(cov[fam])]
     # breaks outside any catalogue's stated coverage still belong in the panel
     seen = {(p, y, f) for p, y, f, *_ in out}
-    for (fam, place, y), eps in sorted(starts.items()):
-        if (place, y, fam) not in seen:
-            measured = [s for s in FAMILY_STOCKS.get(fam, []) if (place, y) in series.get(s, ())]
-            out.append((place, y, fam, "", 1, ";".join(sorted(eps)), 1 if measured else 0, ";".join(measured)))
+    for (fam, where, y) in sorted(starts):
+        if (where, y, fam) not in seen:
+            out.append(line(fam, where, y, set()))
     out.sort()
     return out
 
@@ -839,41 +1014,58 @@ def sha256(p):
 
 
 def collect_rows():
+    """(rows, fa, icsd, bea, rr onsets, esrb codes, states)."""
+    fa = {iso: v for iso, v in imf_fa(path("raw", "buffers", "imf-fa", "FA.csv.gz")).items()}
+    states = state_years(imf_joined(fa))
+    onsets = rr_onsets(path("raw", "slow", "rr", "global_crisis_data.xlsx"))
+    esrb_rows, esrb_codes = read_esrb(path("raw", "slow", "esrb", "crises.xlsx"))
     rows = []
     rows += read_lv2018(path("derived", "lv2018.csv"))
     rows += read_lv2026(path("raw", "slow", "lv", "lv2026.csv"))
-    rows += read_rr(path("raw", "slow", "rr", "onsets.csv"))
+    rows += read_rr(onsets)
+    rows += esrb_rows
     rows += read_slow_events(path("slow", "events.tsv"))
     rows += read_jst(path("raw", "slow", "jst", "jst.csv"))
     rows += read_econ_events(path("derived", "econ-events.csv"))
     rows += read_spikes(pinksheet(path("raw", "market", "pinksheet", "pinksheet-monthly.csv")))
-    fa = imf_fa(path("raw", "buffers", "imf-fa", "FA.csv.gz"))
     rows += read_gra(fa)
-    icsd = icsd_private(path("raw", "econ", "imf-sdmx-holdings-reserves", "ICSD.csv.gz"))
+    # investment levels only for years the state existed (ICSD back-casts the Soviet republics from 1960)
+    icsd = {iso: {y: v for y, v in lv.items() if states.exists(iso, y)}
+            for iso, lv in icsd_private(path("raw", "econ", "imf-sdmx-holdings-reserves", "ICSD.csv.gz")).items()}
     rows += read_icsd_busts(icsd)
     bea = bea_assets(path("raw", "buffers", "bea-nipa"))
     rows += read_bea_busts(bea)
-    return rows, fa, icsd, bea
+    return rows, fa, icsd, bea, onsets, esrb_codes, states
+
+
+def places_known(countries, states):
+    """Places the panel may hold: current countries, states in the
+    Gleditsch-Ward list, a few historical codes, and the markets. Not
+    regional central banks or IMF country groups (FA's BCE, G001...)."""
+    markets = set(SPIKE_PLACE.values()) | {"WLD"}
+    return lambda p: p in countries or p in states.iv or p in HISTORICAL or p in markets
 
 
 def build(out_dir, panel_dir):
     del INPUTS[:]
     rules = load_rules(os.path.join(RES, "rules.csv"))
     mech = load_mechanisms(os.path.join(RES, "mechanisms.csv"))
-    rows, fa, icsd, bea = collect_rows()
+    rows, fa, icsd, bea, onsets, esrb_codes, states = collect_rows()
+    countries, series = stock_coverage()
+    ok = places_known(countries, states)
+    rows = [r for r in rows if ok(r["place"])]
+    fa = {iso: v for iso, v in fa.items() if ok(iso)}
     lib, _ = library(rows, rules, mech)
     write_csv(os.path.join(out_dir, "episodes.csv"), COLUMNS, lib)
     write_csv(os.path.join(out_dir, "families.csv"), ["by", "name", "kind", "episodes", "rows"], family_counts(lib))
     write_csv(os.path.join(out_dir, "hindcasts.csv"),
               ["hindcast", "places", "from", "through", "families", "episodes", "episode_ids", "catalogue_kinds"],
               hindcasts(lib))
-    countries, series = stock_coverage()
-    cov = catalogue_coverage(countries, rr_coverage(path("raw", "slow", "rr", "onsets.csv")),
-                             jst_coverage(path("raw", "slow", "jst", "jst.csv")),
-                             econ_coverage(path("derived", "econ-coverage.csv")), series, fa, icsd, bea)
-    pan = panel(lib, cov, series)
-    write_csv(os.path.join(panel_dir, "panel.csv"),
-              ["place", "year", "family", "covered_by", "break", "episodes", "stock_measured", "stock_series"], pan)
+    cov = catalogue_coverage(countries, rr_coverage(onsets), jst_coverage(path("raw", "slow", "jst", "jst.csv")),
+                             econ_coverage(path("derived", "econ-coverage.csv")), series, fa, icsd, bea,
+                             esrb_coverage(esrb_codes), states)
+    pan = panel(lib, cov, series, rules)
+    write_csv(os.path.join(panel_dir, "panel.csv"), PANEL_COLUMNS, pan)
     ins = sorted(set(os.path.relpath(p, ROOT) for p in INPUTS))
     write_csv(os.path.join(out_dir, "manifest.csv"), ["input", "sha256"],
               [("version", VERSION)] + [(p, sha256(os.path.join(ROOT, p))) for p in ins])

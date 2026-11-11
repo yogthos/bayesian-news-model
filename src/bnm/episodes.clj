@@ -12,7 +12,14 @@
   - mechanisms.csv: free text from the literature, never a model input.
 
   The panel of place-years with and without a break is data/derived/
-  episodes/panel.csv (rebuilt, not versioned)."
+  episodes/panel.csv (rebuilt, not versioned).
+
+  Known dates: every row has known_date (when its rule's condition could
+  first be seen; an investment bust only when the fall reaches 20%) and
+  episode_known. The panel's known is when a place-year's label is final;
+  a forecast at month t trains only on rows with known <= t. A 0 with
+  ongoing set lies inside an earlier episode and is not a clean non-event.
+  outcome-columns look past the break and are never model inputs."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -43,6 +50,10 @@
   (let [[h & rs] (parse-csv (slurp path))
         ks (mapv keyword h)]
     (mapv #(zipmap ks %) rs)))
+
+(def outcome-columns
+  "Episode columns that describe what happened after the break: never inputs."
+  #{:end_date :followed_by :next_buffers :mechanism_note :mechanism_source})
 
 (defn rules [] (read-table (str dir "/rules.csv")))
 (defn episodes [] (read-table (str dir "/episodes.csv")))
