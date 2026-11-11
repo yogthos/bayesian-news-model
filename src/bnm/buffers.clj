@@ -235,6 +235,35 @@
                                                  (when (> s 0.0) {:value (* k (/ d s)) :sd (* k (ratio-sd d sd s ssd))})))]))))
       windows))))
 
+;; -- gross cover --------------------------------------------------------------------------
+
+(defn gross-cover
+  "Row :gross-cover, usable stock over the gross outflow, in years: the
+  mean :outflow over the first window of opts :windows ([1] years) up to
+  its latest known value. What stocks-to-use and reserves in months of
+  imports measure: how long the stock lasts if the inflow stops, where
+  cover over net drawdown says how long it lasts at the current
+  imbalance. nil, flagged, without a stock or an outflow; :no-outflow
+  when the outflow is not positive."
+  [rec series as-of {:keys [windows] :or {windows [1]}}]
+  (let [k (tu rec)
+        st (latest rec (:stock series) as-of)
+        out (known rec (:outflow series) as-of)
+        ow (when (seq out) (in-window out (:t (peek out)) (* (first windows) k)))
+        [u usd uk uflags] (usable-of rec series as-of)
+        flags (-> (lag-flags rec) (into uflags) (into (unit-flags rec))
+                  (cond-> (nil? st) (conj :missing-stock) (empty? ow) (conj :missing-outflow)))]
+    (if (or (nil? st) (empty? ow))
+      (row rec as-of :gross-cover {:window (first windows) :flags flags})
+      (let [[mo so] (mean-sd ow)
+            s (* (double (:v st)) (double u))
+            ssd (prod-sd (:v st) (:sd st) u usd)
+            kn (reduce max (keep identity [(known-at rec st) uk (max-known rec ow)]))]
+        (if (<= mo 0.0)
+          (row rec as-of :gross-cover {:window (first windows) :known kn :flags (conj flags :no-outflow)})
+          (row rec as-of :gross-cover {:window (first windows) :known kn :flags flags
+                                       :value (/ (max 0.0 s) mo k) :sd (/ (ratio-sd s ssd mo so) k)}))))))
+
 ;; -- restoration ------------------------------------------------------------------------
 
 (defn restoration
@@ -271,13 +300,17 @@
   unknown rigidity bounds the share between all cut and all rigid: the
   midpoint, with a uniform spread over the bounds, flagged
   :partial-rigidity. nil, flagged, when no outflow's rigidity or any
-  outflow's level is known."
+  outflow's level is known. With no outflows declared, the latest known
+  :rigidity observation (a share measured directly, say the debt service
+  ratio), else the record's {:rigidity {:share :sd}}."
   [rec series as-of {:keys [windows] :or {windows [1]}}]
   (let [w (* (first windows) (tu rec)) outs (:outflows rec)]
     (if (empty? outs)
-      (if-let [r (get-in rec [:rigidity :share])]
+      (if-let [o (latest rec (:rigidity series) as-of)]
+        (row rec as-of :rigidity {:value (:v o) :sd (or (:sd o) 0.0) :known (known-at rec o) :flags (lag-flags rec)})
+       (if-let [r (get-in rec [:rigidity :share])]
         (row rec as-of :rigidity {:value r :sd (or (get-in rec [:rigidity :sd]) 0.0) :flags (lag-flags rec)})
-        (row rec as-of :rigidity {:flags #{:missing-outflows}}))
+        (row rec as-of :rigidity {:flags #{:missing-outflows}})))
       (let [parts (for [o outs :let [os (known rec (get-in series [:flows (:var o)]) as-of)]]
                     {:rigid (:rigid o) :rsd (or (:rigid-sd o) 0.0)
                      :level (when (seq os) (first (mean-sd (in-window os (:t (peek os)) w))))
@@ -407,9 +440,11 @@
   :disp-windows ([5 10 20] observations) before it; :resonance, the
   smallest absolute stretch of the three (displaced at every scale); and
   :stock-x-flow, the middle window's stretch of the stock times that of
-  its net flow (the changes of the stock), both absolute."
+  its net flow (the changes of the stock), both absolute. The record's
+  :displace names another series to measure (say :claims, for a stock of
+  debt that is a claim, not a buffer drawn)."
   [rec series as-of {:keys [disp-windows] :or {disp-windows [5 10 20]}}]
-  (let [os (known rec (:stock series) as-of)
+  (let [os (known rec (get series (or (:displace rec) :stock)) as-of)
         xs (mapv :v os) i (dec (count xs))
         kn (when (seq os) (known-at rec (peek os)))
         flows (vec (cons nil (map - (rest xs) xs)))
@@ -446,6 +481,7 @@
 
 (defn- buffer-rows [rec series as-of opts]
   (concat (cover rec series as-of opts)
+          [(gross-cover rec series as-of opts)]
           (restoration rec series as-of opts)
           [(rigidity rec series as-of opts)
            (carry rec series as-of opts)

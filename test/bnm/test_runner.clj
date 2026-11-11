@@ -11,6 +11,7 @@
             [bnm.polecon-test]
             [bnm.invariants-test]
             [bnm.buffers-test]
+            [bnm.hazard-test]
             [bnm.pit-test]
             [bnm.mix-test]
             [bnm.eval-test]
@@ -122,6 +123,7 @@
     bnm.polecon-test
     bnm.invariants-test
     bnm.buffers-test
+    bnm.hazard-test
     bnm.pit-test
     bnm.mix-test
     bnm.eval-test

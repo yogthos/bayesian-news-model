@@ -1,0 +1,158 @@
+;; The stocks the pooled hazard and the scanner read (bnm.hazard, bnm.scanner;
+;; the registration in docs/PHASE-CHANGES.md, 11 November 2026, bead
+;; bnm-56c.6). Data, not code: a source names a file and the columns of one
+;; series per key; a record template names, for each bnm.buffers role
+;; (:stock :outflow :inflow :claims :income :rigidity :price), the source
+;; that fills it. tools/bnm/hazard_data.clj reads them.
+;;
+;; A source: :file; :format :csv (default) or :series-tsv (data/slow/
+;; series.tsv: place, var, freq, period end, known, value; its own known
+;; dates); :key the column naming the place (or :place, one fixed place);
+;; :time the period column (YYYY, YYYY-MM, YYYY-MM-DD, YYYYQn); :value;
+;; :filter {column [values]}; :sum true to add the filtered rows of one key
+;; and period; :scale a factor (12 makes a monthly flow a yearly rate);
+;; :lag months from the period's end to when it is known; :revised true for
+;; a current revised vintage read with an assumed lag (not real time).
+;; t is the period's end in decimal years.
+;;
+;; A record: :id with {place}; :families, the episode families whose panel
+;; rows it measures (none: scanner only); :places, a list, or :from a source
+;; (every key it has, three-letter codes only); :aggregate, places summed
+;; into one (the world from every country); :series {role source}; any
+;; bnm.buffers record field. :sector is read only by the forward question.
+{:sources
+ {:reserves {:file "data/derived/buffers/reserves-monthly.csv" :key :iso :time :month :value :reserves_ex_gold_usd :lag 2}
+  :imports {:file "data/derived/buffers/external-annual.csv" :key :iso :time :year :value :imports_gs_usd :lag 12 :revised true}
+  :ext-debt {:file "data/derived/buffers/external-annual.csv" :key :iso :time :year :value :external_debt_usd :lag 12 :revised true}
+  :debt-service {:file "data/derived/buffers/external-annual.csv" :key :iso :time :year :value :external_debt_service_usd :lag 12 :revised true}
+  :gni {:file "data/derived/buffers/external-annual.csv" :key :iso :time :year :value :gni_usd :lag 12 :revised true}
+  :credit {:file "data/slow/series.tsv" :format :series-tsv :var "finance/credit_gdp" :scale 0.01 :revised true}
+  :dsr {:file "data/slow/series.tsv" :format :series-tsv :var "finance/dsr_private" :scale 0.01 :revised true}
+  :one {:const 1.0}
+  :grain-stock {:file "data/derived/buffers/grain-stocks.csv" :key :iso :time :market_year :value :ending_stocks_kt
+                :filter {:commodity ["Wheat" "Corn" "Rice, Milled"]} :sum true :lag 12 :revised true}
+  :grain-use {:file "data/derived/buffers/grain-stocks.csv" :key :iso :time :market_year :value :domestic_consumption_kt
+              :filter {:commodity ["Wheat" "Corn" "Rice, Milled"]} :sum true :lag 12 :revised true}
+  :investment {:file "data/slow/series.tsv" :format :series-tsv :var "economy/investment_share" :revised true}
+  :shares {:file "data/slow/series.tsv" :format :series-tsv :var "markets/share_prices"}
+  ;; energy
+  :eu-gas {:file "data/derived/buffers/energy-eu.csv" :key :geo :time :period :value :value
+           :filter {:table ["nrg_stk_gasm"] :dims ["siec=G3000;stk_flow=STKCL_NAT;unit=TJ_GCV"]} :lag 2}
+  :eu-gas-use {:file "data/derived/buffers/energy-eu.csv" :key :geo :time :period :value :value :scale 12
+               :filter {:table ["nrg_cb_gasm"] :dims ["nrg_bal=IC_CAL_MG;siec=G3000;unit=TJ_GCV"]} :lag 2}
+  :us-gas {:file "data/derived/buffers/energy-us.csv" :place "USA" :time :date :value :value
+           :filter {:series ["gas_working_storage"] :frequency ["M"]} :lag 2}
+  :us-gas-use {:file "data/derived/buffers/energy-us.csv" :place "USA" :time :date :value :value :scale 12
+               :filter {:series ["gas_consumption"] :frequency ["M"]} :lag 2}
+  :us-crude {:file "data/derived/buffers/energy-us.csv" :place "USA" :time :date :value :value
+             :filter {:series ["crude_ex_spr"] :frequency ["M"]} :lag 2}
+  :us-spr {:file "data/derived/buffers/energy-us.csv" :place "USA" :time :date :value :value
+           :filter {:series ["crude_spr"] :frequency ["M"]} :lag 2}
+  :us-gasoline {:file "data/derived/buffers/energy-us.csv" :place "USA" :time :date :value :value
+                :filter {:series ["gasoline"] :frequency ["M"]} :lag 2}
+  :us-distillate {:file "data/derived/buffers/energy-us.csv" :place "USA" :time :date :value :value
+                  :filter {:series ["distillate"] :frequency ["M"]} :lag 2}
+  :us-refinery-input {:file "data/derived/buffers/energy-us.csv" :place "USA" :time :date :value :value :scale 365.25
+                      :filter {:series ["refinery_crude_input"] :frequency ["M"]} :lag 2}
+  :us-product-supplied {:file "data/derived/buffers/energy-us.csv" :place "USA" :time :date :value :value :scale 365.25
+                        :filter {:series ["product_supplied_total"] :frequency ["M"]} :lag 2}
+  :jodi-crude {:file "data/derived/buffers/jodi-oil-monthly.csv" :key :iso :time :month :value :kbbl
+               :filter {:product ["CRUDEOIL"] :flow ["CLOSTLV"]} :lag 2}
+  :jodi-refinery {:file "data/derived/buffers/jodi-oil-monthly.csv" :key :iso :time :month :value :kbbl :scale 12
+                  :filter {:product ["CRUDEOIL"] :flow ["REFINOBS"]} :lag 2}
+  ;; US investment by asset type (BEA quantity indexes) and data-centre construction (Census C30)
+  :bea-data-centers {:file "data/derived/buffers/us-investment-annual.csv" :place "USA" :time :year :value :value
+                     :filter {:table ["T50403"] :line ["5"]} :lag 7 :revised true}
+  :bea-computers {:file "data/derived/buffers/us-investment-annual.csv" :place "USA" :time :year :value :value
+                  :filter {:table ["T50503"] :line ["4"]} :lag 7 :revised true}
+  :bea-communication-equipment {:file "data/derived/buffers/us-investment-annual.csv" :place "USA" :time :year :value :value
+                                :filter {:table ["T50503"] :line ["5"]} :lag 7 :revised true}
+  :bea-software {:file "data/derived/buffers/us-investment-annual.csv" :place "USA" :time :year :value :value
+                 :filter {:table ["T50603"] :line ["2"]} :lag 7 :revised true}
+  :bea-power {:file "data/derived/buffers/us-investment-annual.csv" :place "USA" :time :year :value :value
+              :filter {:table ["T50403"] :line ["18"]} :lag 7 :revised true}
+  :bea-communication {:file "data/derived/buffers/us-investment-annual.csv" :place "USA" :time :year :value :value
+                      :filter {:table ["T50403"] :line ["23"]} :lag 7 :revised true}
+  :bea-petroleum-gas {:file "data/derived/buffers/us-investment-annual.csv" :place "USA" :time :year :value :value
+                      :filter {:table ["T50403"] :line ["25"]} :lag 7 :revised true}
+  :bea-mining-machinery {:file "data/derived/buffers/us-investment-annual.csv" :place "USA" :time :year :value :value
+                         :filter {:table ["T50503"] :line ["29"]} :lag 7 :revised true}
+  :census-data-centers {:file "data/derived/buffers/us-construction-monthly.csv" :place "USA" :time :month :value :musd_saar
+                        :filter {:table ["privsatime"] :category ["Data center"]} :lag 1}
+  ;; US industries (SEC XBRL frames, two-digit SIC; sums over filers)
+  :sec-debt {:file "data/derived/buffers/sec-industry-annual.csv" :key :sic2 :time :year :value :value_usd
+             :filter {:concept ["long_term_debt"]} :lag 6 :any-key true}
+  :sec-cash {:file "data/derived/buffers/sec-industry-annual.csv" :key :sic2 :time :year :value :value_usd
+             :filter {:concept ["operating_cash_flow"]} :lag 6 :any-key true}
+  :sec-capex {:file "data/derived/buffers/sec-industry-annual.csv" :key :sic2 :time :year :value :value_usd
+              :filter {:concept ["capex"]} :lag 6 :any-key true}}
+
+ :records
+ [{:id "reserves/{place}" :name "foreign exchange reserves" :unit "USD" :families ["reserve_crisis" "price_level_break"]
+   :holder {:unit "monetary authority"} :places {:from :reserves}
+   :series {:stock :reserves :outflow :imports :claims :ext-debt :income :gni}}
+  {:id "external-debt/{place}" :name "reserves against external debt service" :unit "USD" :families ["sovereign_debt_break"]
+   :holder {:unit "sovereign"} :places {:from :reserves}
+   :outflows [{:var "external debt service" :rigid 1.0}]
+   :series {:stock :reserves :outflow :debt-service :claims :ext-debt :income :gni}}
+  {:id "private-credit/{place}" :name "private non-financial credit" :unit "share of GDP" :families ["banking_break"]
+   :holder {:unit "households and firms"} :places {:from :credit} :displace :claims
+   :series {:claims :credit :income :one :rigidity :dsr}}
+  {:id "grain/{place}" :name "wheat, maize and rice stocks" :unit "1000 MT" :families ["commodity_stockout"]
+   :holder {:unit "all holders"} :places {:from :grain-stock}
+   :series {:stock :grain-stock :outflow :grain-use}}
+  {:id "grain/WLD" :name "world wheat, maize and rice stocks" :unit "1000 MT" :families ["commodity_stockout"]
+   :holder {:unit "all holders"} :places ["WLD"] :aggregate true
+   :series {:stock :grain-stock :outflow :grain-use}}
+  {:id "investment/{place}" :name "gross investment" :unit "share of GDP" :families ["investment_bust"]
+   :holder {:unit "investors"} :places {:from :investment} :displace :inflow
+   :series {:inflow :investment}}
+  {:id "equity/{place}" :name "share prices" :unit "index" :families ["asset_price_break"]
+   :holder {:unit "equity holders"} :places {:from :shares} :displace :price
+   :series {:price :shares}}
+  ;; energy, with a family where the panel has the place
+  {:id "gas-storage/EUR" :name "gas in storage, EU" :unit "TJ" :families ["energy_break"] :sector "energy"
+   :holder {:unit "storage operators"} :places ["EUR"] :source-place "EU27_2020"
+   :series {:stock :eu-gas :outflow :eu-gas-use}}
+  {:id "gas-storage/USA" :name "working gas in storage, US" :unit "mmcf" :families ["energy_break"] :sector "energy"
+   :holder {:unit "storage operators"} :places ["USA"]
+   :series {:stock :us-gas :outflow :us-gas-use}}
+  {:id "crude-stocks/JPN" :name "crude oil stocks, Japan" :unit "kbbl" :families ["energy_break"] :sector "energy"
+   :holder {:unit "refiners and government"} :places ["JPN"]
+   :series {:stock :jodi-crude :outflow :jodi-refinery}}
+  ;; scanner only: no family, no label
+  {:id "gas-storage/{place}" :name "gas in storage" :unit "TJ" :sector "energy" :geo2 true
+   :holder {:unit "storage operators"} :places {:from :eu-gas}
+   :series {:stock :eu-gas :outflow :eu-gas-use}}
+  {:id "crude-stocks/{place}" :name "crude oil stocks" :unit "kbbl" :sector "energy"
+   :holder {:unit "refiners and government"} :places {:from :jodi-crude} :except ["JPN"]
+   :series {:stock :jodi-crude :outflow :jodi-refinery}}
+  {:id "us-crude-commercial/USA" :name "US crude stocks less the SPR" :unit "kbbl" :sector "energy"
+   :holder {:unit "refiners and traders"} :places ["USA"] :series {:stock :us-crude :outflow :us-refinery-input}}
+  {:id "us-spr/USA" :name "US strategic petroleum reserve" :unit "kbbl" :sector "energy"
+   :holder {:unit "government"} :places ["USA"] :series {:stock :us-spr :outflow :us-product-supplied}}
+  {:id "us-gasoline/USA" :name "US gasoline stocks" :unit "kbbl" :sector "energy"
+   :holder {:unit "refiners and distributors"} :places ["USA"] :series {:stock :us-gasoline :outflow :us-product-supplied}}
+  {:id "us-distillate/USA" :name "US distillate stocks" :unit "kbbl" :sector "energy"
+   :holder {:unit "refiners and distributors"} :places ["USA"] :series {:stock :us-distillate :outflow :us-product-supplied}}
+  {:id "us-investment/data-centers" :name "US investment in data centres (BEA)" :unit "index" :sector "us-investment"
+   :holder {:unit "investors"} :places ["USA"] :displace :inflow :series {:inflow :bea-data-centers}}
+  {:id "us-investment/computers" :name "US investment in computers and peripherals (BEA)" :unit "index" :sector "us-investment"
+   :holder {:unit "investors"} :places ["USA"] :displace :inflow :series {:inflow :bea-computers}}
+  {:id "us-investment/communication-equipment" :name "US investment in communication equipment (BEA)" :unit "index" :sector "us-investment"
+   :holder {:unit "investors"} :places ["USA"] :displace :inflow :series {:inflow :bea-communication-equipment}}
+  {:id "us-investment/software" :name "US investment in software (BEA)" :unit "index" :sector "us-investment"
+   :holder {:unit "investors"} :places ["USA"] :displace :inflow :series {:inflow :bea-software}}
+  {:id "us-investment/power" :name "US investment in power structures (BEA)" :unit "index" :sector "us-investment"
+   :holder {:unit "investors"} :places ["USA"] :displace :inflow :series {:inflow :bea-power}}
+  {:id "us-investment/data-center-construction" :name "US data-centre construction (Census C30)" :unit "USD m a year" :sector "us-investment"
+   :holder {:unit "investors"} :places ["USA"] :displace :inflow :series {:inflow :census-data-centers}}
+  {:id "us-investment/communication-structures" :name "US investment in communication structures (BEA)" :unit "index"
+   :holder {:unit "investors"} :places ["USA"] :displace :inflow :series {:inflow :bea-communication}}
+  {:id "us-investment/petroleum-gas-structures" :name "US investment in petroleum and gas structures (BEA)" :unit "index"
+   :holder {:unit "investors"} :places ["USA"] :displace :inflow :series {:inflow :bea-petroleum-gas}}
+  {:id "us-investment/mining-machinery" :name "US investment in mining and oilfield machinery (BEA)" :unit "index"
+   :holder {:unit "investors"} :places ["USA"] :displace :inflow :series {:inflow :bea-mining-machinery}}
+  {:id "us-industry/sic{place}" :name "US industry: long-term debt against operating cash flow (SEC)" :unit "USD"
+   :holder {:unit "listed firms"} :places {:from :sec-debt} :except ["unknown"] :place-is "USA" :displace :inflow
+   :series {:claims :sec-debt :income :sec-cash :inflow :sec-capex}}]}

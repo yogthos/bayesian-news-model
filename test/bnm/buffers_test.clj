@@ -307,7 +307,7 @@
         p (b/invariants full-rec (perturb full-series as-of) as-of opts)]
     (is (some #(some? (:value %)) a))
     (is (= (set (map :invariant a))
-           #{:cover :drain-rate :restoration :rigidity :carry :claim-gap :idle-share :holder-hhi
+           #{:cover :drain-rate :gross-cover :restoration :rigidity :carry :claim-gap :idle-share :holder-hhi
              :holder-leverage :market-reading :displacement :resonance :stock-x-flow}))
     (is (every? some? (map :value (filter #(#{:cover :drain-rate :rigidity :claim-gap :idle-share :market-reading :displacement}
                                              (:invariant %)) a)))
@@ -436,3 +436,35 @@
 (deftest supply-units
   (let [{:keys [records]} (b/supply-records [{:region "DE" :product "C_GASE" :months "1.55" :year "2011" :known "2013" :basis "data" :source "GIE"}])]
     (is (= "year" (:time-unit (first records))) "t is a year")))
+
+(deftest gross-cover-against-gross-use
+  (let [s {:stock (obs [[0 100.0] [1 90.0] [2 80.0]])
+           :outflow (obs [[1 40.0] [2 60.0]])}]
+    (testing "usable stock over the mean gross outflow in the window, in years"
+      (is (close? (/ 80.0 60.0) (:value (b/gross-cover rec s 2 {:windows [1]}))))
+      (is (close? (/ 80.0 50.0) (:value (b/gross-cover rec s 2 {:windows [2]})))))
+    (testing "the usable share applies"
+      (is (close? (/ 40.0 60.0) (:value (b/gross-cover (assoc rec :usable {:share 0.5 :sd 0.0}) s 2 {:windows [1]})))))
+    (testing "a monthly record's outflow is per month: years are its months over 12"
+      (let [m (assoc rec :time-unit "month")]
+        (is (close? (/ 80.0 50.0 12.0) (:value (b/gross-cover m s 2 {:windows [1]}))) "a 1-year window is 12 months: both outflows")))
+    (testing "no outflow: nil, flagged, never zero"
+      (let [r (b/gross-cover rec (dissoc s :outflow) 2 {:windows [1]})]
+        (is (nil? (:value r)))
+        (is (contains? (:flags r) :missing-outflow))))
+    (testing "nothing after the as-of date"
+      (is (close? (/ 90.0 40.0) (:value (b/gross-cover rec s 1 {:windows [1]})))))))
+
+(deftest displacement-of-a-named-series
+  (let [jump (obs (for [t (range 0 30)] [t (if (< t 29) (+ 10.0 (if (even? t) 0.1 -0.1)) 20.0)]))
+        r (assoc rec :displace :claims)
+        rows (b/displacement r {:claims jump} 29 {:disp-windows [5 10 20]})
+        d (first (filter #(= :displacement (:invariant %)) rows))]
+    (is (pos? (:value d)) "the record's :displace series is the one measured")
+    (is (nil? (:value (first (filter #(= :displacement (:invariant %)) (b/displacement rec {:claims jump} 29 {}))))))))
+
+(deftest rigidity-from-a-series
+  (testing "a record with no outflows reads its latest known :rigidity observation"
+    (let [r (b/rigidity rec {:rigidity (obs [[0 0.1] [1 0.2] [2 0.3]])} 1 {})]
+      (is (close? 0.2 (:value r)))
+      (is (close? 1.0 (:known r))))))
