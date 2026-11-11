@@ -115,6 +115,34 @@
   (when (.exists (io/file "data/runs" lg/base "coup" "forecasts.tsv"))
     (is (= lg/base-files (lg/check-base (str "data/runs/" lg/base) lg/base-files)) "the files on disk are the base's")))
 
+(deftest the-base's-inputs-are-the-ones-the-issue-reads
+  ;; t50 reads the onsets run r6-at-8ul, rebuilt on the fixed catalogues
+  ;; with the lapse fix (bead bnm-8ul); a command naming a run whose preds
+  ;; are not an input would be refused as a stray read at issue time
+  (is (= (set lg/inputs) (set (keys lg/base-inputs))))
+  (let [args (lg/command "ledger-x" 24323)
+        known (second (drop-while #(not= "--known" %) args))]
+    (is (= lg/known known))
+    (is (some #{(str "data/runs/" known "/preds.tsv")} lg/inputs))
+    (is (not-any? #{"data/runs/r6-at/preds.tsv"} lg/inputs) "r6-at was fit on the pre-fix catalogues")))
+
+(deftest the-previous-issue-is-rerun-with-its-own-command
+  ;; the first issue ran without --known (r6-at); the corrected issue names
+  ;; r6-at-8ul: each is rerun with the command in its own manifest
+  (is (= ["--out" "ledger-2026-Q4-repro" "--without-relations" "true" "--end" "24323"]
+         (lg/manifest-args "jolt -A:tools -M -m bnm.world-run --out ledger-2026-Q4 --without-relations true --end 24323"
+                           "ledger-2026-Q4-repro")))
+  (is (= ["--out" "r" "--without-relations" "true" "--end" "24323" "--known" "r6-at-8ul"]
+         (lg/manifest-args "jolt -A:tools -M -m bnm.world-run --out ledger-2026-Q4-r1 --without-relations true --end 24323 --known r6-at-8ul"
+                           "r")))
+  (is (thrown-with-msg? Exception #"refusing" (lg/manifest-args "jolt -A:tools -M -m bnm.onsets --name x" "r"))
+      "not a world run")
+  (is (thrown-with-msg? Exception #"refusing" (lg/manifest-args "jolt -A:tools -M -m bnm.world-run --without-relations true" "r"))
+      "no --out to replace")
+  (when (.exists (io/file "registered/ledger/2026-Q4/manifest.edn"))
+    (is (= ["--out" "r" "--without-relations" "true" "--end" "24323"]
+           (lg/manifest-args (:command (lg/read-manifest "2026-Q4")) "r")))))
+
 (deftest every-registered-issue-is-intact
   (doseq [[q {:keys [files]}] lg/issued
           [n sha] files]

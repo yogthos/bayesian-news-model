@@ -2,7 +2,7 @@
   "The forward ledger (docs/PLAN.md 0.1; the registration in
   docs/PHASE-CHANGES.md, 11 November 2026, and its amendment L1). Each
   quarter the frozen base (the world without relations; the base of record
-  is t49-world-norel) issues every kind, place and window at the quarter's
+  is t50-world-norel) issues every kind, place and window at the quarter's
   last month, from the data on disk at the issue date, to
   registered/ledger/<issue>/, with its hashes; nothing is refit between
   issue and outcome, and an issue is never edited. Later, when a window's
@@ -59,7 +59,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t49-world-norel")
+(def base "t50-world-norel")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -70,29 +70,30 @@
    "data/derived/jst-credit-gap.csv" "data/derived/lattice-annual.csv" "data/derived/lattice-quarterly.csv"
    "data/derived/political-annual.csv" "data/derived/political-long.csv" "data/derived/political-states.csv"
    "data/raw/slow/jst/jst.csv" "data/raw/slow/kaopen/kaopen.csv" "data/raw/slow/pwt/pwt110-full.csv"
-   "data/raw/slow/rr/onsets.csv" "data/runs/r6-at/preds.tsv" "data/slow/coverage.tsv" "data/slow/events.tsv"
+   "data/raw/slow/rr/onsets.csv" "data/runs/r6-at-8ul/preds.tsv" "data/slow/coverage.tsv" "data/slow/events.tsv"
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t49-world-norel/<kind>/
+  "The base of record's forecasts, data/runs/t50-world-norel/<kind>/
   forecasts.tsv (written 11 November 2026 on the data rebuilt after the
-  gazetteer fix, bead bnm-8ul), by SHA-256."
-  {"banking_crisis" "2d5ee8ec677bb99687ff1c3ad4a29f2c6b3e662e8f50b1ba0e31e2829443a690"
-   "conflict_onset" "f6cabcf9e122a56bf879a9a3e2782b59a9ffbca80c63e3b2558fe0eb8535c923"
-   "coup" "b478ebc6c6466c1cb32b261f33b850513e44b90213a96ba8630e80eeb1c4c519"
+  gazetteer fix, its quarters pooled with r6-at-8ul, bead bnm-8ul), by
+  SHA-256."
+  {"banking_crisis" "853869f61b302908149a37d044eebb944118625bab3c52c9ed5800846864163e"
+   "conflict_onset" "a9079363ee8e794bd1fc0e6fec60979c3811d18b34b1bee0e4c853209b59df4b"
+   "coup" "da950b77d2fef828795d17404087f855756d9a099eb81c386d21ea9f0b58f7c4"
    "currency_crisis" "68dea1c7e3a6bbdf77c584bcf32ca0faa9356e711f53e7a7baaec4cbf67f92e4"
    "fiscal_consolidation" "d5641ad89431f1a518671a1ebe3df3891b40f9f122014602783af399385f3b50"
    "food_price_shock" "e49b33f12552290f5e3d27a8bc35fb8d29a9ac6cc9171f63234954554b474c4d"
    "growth_collapse" "1e61875f80b6a5dbefc0ee97e2435b3113dffa39f9d270d3dd36a1f6e9ec211f"
    "inflation_crisis" "1857a999f1819f3b7edc99fa341a9f6c17d63ff5184481d0d4e169a476923b71"
    "market_crash" "890294f50bd395bf9a6e70545cb14d0bee465725253416add625155f09b2ef1b"
-   "protest_surge" "132eee7bf322123d62207a466386c16f544156410feb6e36bd89563d5aab754f"
+   "protest_surge" "377a9af2380b868bbfbd82b078e2a5d29df5060e8514c66d512197c87cc0399c"
    "sovereign_default" "9761e8ec60415a780cadbe3a9c305d864688736b46cf0e79cbde45de5271b675"
-   "violence_surge" "cc6d7102e49a75643974aabd675d9f8116e5fbdae0b92bd2723e8dfd0a3ff1ed"
-   "war_onset" "bfe6aa96a1c805c8c4dc5cc9be71e58f2b65f7fe15fcb19f1bb7eac1e0936d32"})
+   "violence_surge" "0313995d20dba1d88dd3d0d117e607129d63fc9d928340e6fe800eb3ffa9fa4a"
+   "war_onset" "0e69bd96a0d5b35b6f4f3a7ed2a0daf4f03be356e6c955c23bb96ce63fb20947"})
 
 (def base-inputs
-  "The SHA-256 of every input t49-world-norel was built on: a run on these
+  "The SHA-256 of every input t50-world-norel was built on: a run on these
   must reproduce it."
   {"data/derived/econ-coverage.csv" "863b42e001b45e7eb43569b3f48eb92035d62821f3a3ea9cd543d38c1c2a4c7f"
    "data/derived/econ-events.csv" "db737e6ef92fafe1c37ae3d4ac1bd801f7f5acd8ddada2f5e4c9e37bcb572267"
@@ -107,7 +108,7 @@
    "data/raw/slow/kaopen/kaopen.csv" "5b2d58021c0f3874f51730f0fbadba9eeb62d21beff6985abf809f1aeb5dd4dd"
    "data/raw/slow/pwt/pwt110-full.csv" "310920974fb86512c2176110a8b790712d108584ed1ac7035aa94fe2b3040302"
    "data/raw/slow/rr/onsets.csv" "5ed893bdfe01e294aa9d8834b6906ced3b603cb7db9daa51888eb03df10a0a0d"
-   "data/runs/r6-at/preds.tsv" "df5edb60add737231b48018eb30b9ce84a001347c12bd9b51550ba7a287a5ca5"
+   "data/runs/r6-at-8ul/preds.tsv" "eb79d8bc568e5081add82c4c27754eefe2ccf5f069695249ffc52717bfcdb9d5"
    "data/slow/coverage.tsv" "c1937d50f6a3ff2d2eb34342e1540ebae2c19cbe6742cce7d4883b861f9e54b3"
    "data/slow/events.tsv" "4405a6d552a2fe549ae67c0b0ead5a88cbef98c0ecd8b139e437617c4ed493c0"
    "data/slow/series.tsv" "2900140fe79f6934f8736ac799df0eec29dd2d5f62b1a59605c90fed00ee7673"
@@ -392,8 +393,27 @@
                       {:issue issue})))
     {:issue issue :reproduced true :inputs-dir root :lines (count (str/split-lines expected))}))
 
+(def known
+  "The bnm.onsets run the base's quarters pool with (bnm.world-run --known):
+  r6-at-8ul, refit on the catalogues rebuilt after the gazetteer fix with
+  lapsed sources kept (bead bnm-8ul). The first issue, and t48 and t49,
+  read r6-at."
+  "r6-at-8ul")
+
 (defn command [out end]
-  ["--out" out "--without-relations" "true" "--end" (str end)])
+  ["--out" out "--without-relations" "true" "--end" (str end) "--known" known])
+
+(defn manifest-args
+  "The bnm.world-run arguments of a manifest's :command, its --out
+  replaced by `out`: an issue is rerun with its own command, whatever the
+  base's command is now."
+  [command out]
+  (let [[_ rest] (re-matches #"jolt -A:tools -M -m bnm\.world-run (.*)" (str command))
+        args (some-> rest (str/split #" "))
+        i (.indexOf (vec args) "--out")]
+    (when (or (nil? args) (neg? i) (odd? i) (>= (inc i) (count args)))
+      (throw (ex-info (str "bnm.ledger: cannot rerun the command " (pr-str command) "; refusing") {:command command})))
+    (assoc (vec args) (inc i) out)))
 
 (defn- benchmarks-at
   "{[kind scale place origin] {:clim :last12 :share :rate :persist :pers
@@ -456,7 +476,7 @@
         r (reproduce {:issue prev :root (str inputs-root prev) :inputs (:inputs m) :expected expected
                       :allowed #(str/starts-with? % run-dir)
                       :run! (fn []
-                              (apply wr/-main (command run (:end m)))
+                              (apply wr/-main (manifest-args (:command m) run))
                               (let [rs (build-rows run-dir (kinds/catalogues) (run-kinds run-dir)
                                                    {:end (:end m) :issue-month (:issue-month m)})]
                                 (reset! rows rs)
