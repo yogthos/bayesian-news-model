@@ -4543,3 +4543,20 @@ Issue-time evidence was not checked against the weighting diagnostic's
 Q4 table on t48's inputs (the audit's test 2b); the synthetic test that
 the averaging's evidence is the issued forecasts' log score to 1e-9 is
 in test/bnm/lattice_test.clj.
+
+**Correction, 11 November 2026 (review of Round 1).** At the quarter nodes, which run with `:downscale-uncertainty`, each model's `:lp` scored the mean offset, not the offset mixture the node issued, so the quarters' issue-time evidence was not the issued forecast's score. The synthetic test passed vacuously, comparing the evidence with the same `:lp`. The fix is commit "Lattice: score the offset mixture each model issued", tested at month nodes. Its consequences:
+- The year nodes are unaffected. Their forecasts are byte-identical in every rerun, so every year column above stands.
+- The quarter-node runs were redone (data/runs/lp1b-*, four kinds; B is one model and unaffected; ty01 tempers only the year, so its quarters equal post's). Quarter-lead Brier, 2003–2022:
+
+| setting | noise, quarter | planted, quarter | base quarters vs lp1 | base quarters vs t48 |
+|---|---|---|---|---|
+| post, ty01 | -0.00001, -0.00001 | +0.0003 [-0.0010, +0.0016] (was +0.0006) | +0.0002 [+0.0001, +0.0004] | -0.0021 (was -0.0023) |
+| A | 0.00000, +0.00001 | +0.0025 [+0.0007, +0.0043] (was +0.0022) | -0.0003 [-0.0008, +0.0002] | -0.0014 (was -0.0011) |
+| C | 0.0000, -0.0001 | +0.0078 [+0.0039, +0.0124] (was +0.0042) | -0.0073 [-0.0165, +0.0007] | -0.0216 (was -0.0143) |
+
+- **What changes in the reading:**
+  - The noise rule at the quarters still holds.
+  - A's and C's planted gains at the quarters stand and grow.
+  - C's base quarters get worse, mostly in food price shocks (-0.035 against lp1).
+  - The verdict is unchanged: no weighting passes.
+- The learning path still uses the mean offset (bnm-56c.22). Fixing it moves the base.
