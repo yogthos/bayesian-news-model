@@ -26,6 +26,19 @@ registered intervals. Rerun on it (bnm-82j.7): T1(b), SS, FSa, T8b, T9,
 T4, T6 and H4, no verdict changed; the rest recorded as unaffected
 (docs/PHASE-CHANGES.md, under t48-world-norel).
 
+Corrected base, 11 November 2026 (bnm-8ul, not a trial and not counted):
+the base of record is t50-world-norel, t48's command on the catalogues
+rebuilt after the gazetteer fix with its quarters pooled with r6-at-8ul
+(`--known r6-at-8ul`), the onsets run refit on those catalogues with
+lapsed sources kept (a source that stops keeps its last values and a
+lapse flag; before, its presence indicator stepped every forecast from
+2025q3). Against t49-world-norel on 2003-2022 it is the same to about
+1e-5 pooled and on the watch list; against t48 it moves as t49 did
+(year Brier +0.0003 [+0.0002 +0.0005] pooled, market crashes most; hard
+top-10 recall 0.284 against 0.273). No verdict below is rerun; trials
+from now on bench against t50-world-norel (docs/PHASE-CHANGES.md, note
+to amendment L1).
+
 | # | configuration | first scored | note |
 |---|---|---|---|
 | 1 | mix | 2026-10 | event-code mix |
