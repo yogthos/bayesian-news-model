@@ -59,9 +59,13 @@ step "US drawdown hazard of record"
 jolt -A:tools -M -m bnm.trader --name trader-live > /dev/null
 
 if [[ $ONSETS == 1 ]]; then
+  step "event-code mix per country and quarter"
+  scripts/event-mix.sh
+
   step "onset hazards on fresh rows (hours)"
   jolt -A:tools -M -m bnm.onsets --name onsets-live \
-    --kinds conflict_onset,war_onset,protest_surge,violence_surge,coup,banking_crisis --models history,named
+    --kinds conflict_onset,war_onset,protest_surge,violence_surge,coup,banking_crisis \
+    --models history,named,mix,named+mix --groups mix
   cp data/runs/onsets-live/preds.tsv data/derived/onset-preds.tsv
 fi
 

@@ -34,9 +34,14 @@
 (def names [:us-norm :us-breadth :us-norm-short :us-norm-long :us-resonance :us-flow-norm
             :us-stock-x-flow :us-invariants-present :crisis-transfer :credit-gap])
 
+(def transfer-k
+  "Inputs of the panel's banking-crisis hazard (bnm.macrohistory/transfer-names)."
+  5)
+
 (defn read-betas
-  "{year [b0 b-credit b-mortgages b-house b-norm]}: the banking-crisis hazard
-  fitted on the Macrohistory panel by year (bnm.macrohistory, crisis-betas.tsv)."
+  "{year [b0 b1..b5 m1..m5]}: the banking-crisis hazard fitted on the
+  Macrohistory panel by year, its coefficients then its inputs' means
+  (bnm.macrohistory, crisis-betas.tsv)."
   []
   (let [f (io/file bnm.paths/crisis-betas)]
     (if (.exists f)
@@ -112,6 +117,31 @@
                        (iv/stretch (if flow? ch lv) w w n)
                        (at (if flow? (flows d) (vecs d)) i w n)))
         betas (read-betas)
+        ;; the credit-financed boom against the US's own past, as the panel measures it:
+        ;; three-year growth of credit to GDP, real share prices and real house prices
+        g3 (fn [f] (let [xs (mapv f months)]
+                     (mapv (fn [i] (let [a (get xs (- i 36)) b (get xs i)] (when (and a b (>= i 36)) (- b a))))
+                           (range (count xs)))))
+        credit-3y (g3 (slow "finance/credit_gdp"))
+        equity-3y (g3 (let [sp (slow "markets/share_prices")]
+                        (fn [m] (when-let [p (sp m)] (when-let [c (lcpi m)] (when (pos? p) (- (Math/log p) c)))))))
+        house-3y (g3 (let [hp (slow "finance/real_house_prices")] (fn [m] (some-> (hp m) (as-> x (when (pos? x) (Math/log x)))))))
+        ;; yearly samples before month i, as the panel's annual rows
+        own-past (fn [xs i] (vec (keep #(get xs %) (range (- i 12) -1 -12))))
+        boom-own (memoize
+                  (fn [i]
+                    (let [c (get credit-3y i)
+                          be (iv/boom c (get equity-3y i) (own-past credit-3y i) (own-past equity-3y i))
+                          bh (iv/boom c (get house-3y i) (own-past credit-3y i) (own-past house-3y i))
+                          both (remove nil? [be bh])
+                          past (own-past credit-3y i)
+                          n (count past)]
+                      [(when (and c (>= n 30))
+                         (let [mu (/ (reduce + past) n)
+                               sd (Math/sqrt (/ (reduce + (map #(* (- % mu) (- % mu)) past)) (dec n)))]
+                           (when (> sd 1e-12) (/ (- c mu) sd))))
+                       (when (seq both) (apply max (map :zone both)))
+                       (when (seq both) (apply max (map :interaction both)))])))
         credit-gap (slow "finance/credit_gap")
         gaps (mapv credit-gap months)
         ;; the gap over the standard deviation of its earlier values (40 months at least)
@@ -137,10 +167,13 @@
             (conj (when (some some? vals) 1.0))
             ;; the BIS credit gap in units of its own past spread, and the displacement,
             ;; with the panel's coefficients of the latest year known
-            (conj (when-let [[_ b] (first (rsubseq betas <= (quot t 12)))]
-                    (let [zs [(gap-z i) (:norm mid)]]
-                      (when (every? some? zs)
-                        (reduce + (first b) (map * (rest b) zs))))))
+            ;; and the boom against the US's own past, the panel's means standing in
+            ;; until there are thirty years of it
+            (conj (when-let [[_ bm] (first (rsubseq betas <= (quot t 12)))]
+                    (let [b (subvec bm 0 (inc transfer-k)) means (subvec bm (inc transfer-k))
+                          zs (into [(gap-z i) (:norm mid)] (boom-own i))]
+                      (when (and (some? (zs 0)) (some? (zs 1)))
+                        (reduce + (first b) (map * (rest b) (map #(if (some? %1) %1 %2) zs means)))))))
             ;; the BIS credit-to-GDP gap: credit's stretch against a one-sided trend
             ;; of 20-30 years (Drehmann & Tsatsaronis 2014), the long financial cycle
             (conj (credit-gap (dec t))))))))

@@ -21,8 +21,9 @@
 
   Reads data/raw/slow/market/ (scripts/fetch-slow.sh market); writes
   data/runs/<name>/trader.txt."
-  (:require [bnm.calibrate :as cal]
-            [bnm.hazard :as hz]
+  (:require [augur.calibrate :as pcal]
+            [augur.logit :as lgt]
+            [augur.score :as sc]
             [bnm.named :as nm]
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
@@ -244,12 +245,12 @@
                            (let [tr (for [r known :let [v (nth (:xs r) i)] :when v]
                                       {:x (double-array [1.0 v]) :y (:y r) :w (wt r)})]
                              (when (>= (count (filter :y tr)) 5)
-                               (let [b (hz/fit tr 2 {:prior prior})]
+                               (let [b (lgt/fit tr 2 {:prior prior})]
                                  (when (pos? (* (aget b 1) (signs i))) b))))))
               scored (for [{:keys [t xs y unit]} rows :when (= yr (quot t 12))]
                        (let [ps (for [i (range (count names))
                                       :let [b (betas i) v (nth xs i)]]
-                                  (if (and b v) (hz/predict b (double-array [1.0 v])) rate))]
+                                  (if (and b v) (lgt/predict b (double-array [1.0 v])) rate))]
                          [t (/ (reduce + ps) (count ps)) y unit]))]
           (recur more betas (into out scored)))))))
 
@@ -266,9 +267,9 @@
         (let [t0 (* 12 yr)
               train (for [{:keys [t x y]} rows :when (and (some? y) (< (+ t h) t0))]
                       {:x x :y y :w (Math/pow discount (/ (- t0 t) 12.0))})
-              beta (if (>= (count (filter :y train)) 5) (hz/fit train k {:prior prior :start beta}) beta)
+              beta (if (>= (count (filter :y train)) 5) (lgt/fit train k {:prior prior :start beta}) beta)
               scored (for [{:keys [t x y unit]} rows :when (and beta (= yr (quot t 12)))]
-                       [t (hz/predict beta x) y unit])]
+                       [t (lgt/predict beta x) y unit])]
           (recur more beta (into out scored)))))))
 
 (defn log-score [preds]
@@ -350,8 +351,8 @@
                           ;; base rate known before the period
                           b (base 1940 (dec lo))]
                       {:n (count ps) :pos (count (filter true? ys))
-                       :auc (hz/auc (map second ps) ys) :ap (hz/avg-precision (map second ps) ys)
-                       :bss (- 1.0 (/ (hz/brier (map second ps) ys) (hz/brier (repeat (count ps) b) ys)))}))
+                       :auc (sc/auc (map second ps) ys) :ap (sc/avg-precision (map second ps) ys)
+                       :bss (- 1.0 (/ (sc/brier (map second ps) ys) (sc/brier (repeat (count ps) b) ys)))}))
             ;; threshold by Sharpe on the tuning years, as multiples of the base rate
             taus (map #(* % (base 1940 1949)) [1.0 1.25 1.5 2.0 2.5 3.0 4.0])
             ex-model (fn [tau] (fn [t] (if (< (p-at t 0.0) tau) 1.0 0.0)))
@@ -415,7 +416,7 @@
         (let [years (range 1950 (inc (quot (first (last preds)) 12)))
               recal (vec (mapcat (fn [yr]
                                    (let [known (filter #(and (some? (nth % 2)) (< (+ (first %) h) (* 12 yr))) preds)
-                                         f (cal/logistic-map (map second known) (map #(true? (nth % 2)) known))]
+                                         f (pcal/logistic-map (map second known) (map #(true? (nth % 2)) known))]
                                      (for [[t p y u] preds :when (= yr (quot t 12))] [t (f p) y u])))
                                  years))
               held (filter #(some? (nth % 2)) (in-years recal 1990 2100))
@@ -424,9 +425,9 @@
               ps (sort-by second held)
               n (count ps)]
           (say (format "  recalibrated (logistic on resolved forecasts, refit yearly), held out: bss %.3f (raw %.3f), auc %.3f"
-                       (- 1.0 (/ (hz/brier (map second held) ys) (hz/brier (repeat (count held) b) ys)))
-                       (- 1.0 (/ (hz/brier (map #(p-at (first %) 0.0) held) ys) (hz/brier (repeat (count held) b) ys)))
-                       (hz/auc (map second held) ys)))
+                       (- 1.0 (/ (sc/brier (map second held) ys) (sc/brier (repeat (count held) b) ys)))
+                       (- 1.0 (/ (sc/brier (map #(p-at (first %) 0.0) held) ys) (sc/brier (repeat (count held) b) ys)))
+                       (sc/auc (map second held) ys)))
           (say "    by fifth, mean predicted vs observed:"
                (str/join "  " (for [qi (range 5)
                                     :let [chunk (subvec (vec ps) (quot (* qi n) 5) (quot (* (inc qi) n) 5))]]
@@ -438,7 +439,7 @@
           (let [[t-now p-now] (last preds)
                 recent (filter #(and (some? (nth % 2)) (>= (first %) (- t-now 120))) recal)
                 ps (map second recent) ys (map #(true? (nth % 2)) recent)
-                up (hz/cusum ps ys 2.0 :overlap h) down (hz/cusum ps ys 0.5 :overlap h)
+                up (sc/cusum ps ys 2.0 :overlap h :h 4.0) down (sc/cusum ps ys 0.5 :overlap h :h 4.0)
                 held (map second (filter #(>= (quot (first %) 12) 1990) preds))]
             (io/make-parents (str paths/derived "x"))
             (spit (str paths/derived "trader-now-" (str/replace label #"[^0-9a-z]+" "-") ".edn")

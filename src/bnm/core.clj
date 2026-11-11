@@ -23,11 +23,12 @@
   is rebuilt from recent volumes by `restructure`; call it now and then (say
   monthly), or let `add-events` do it every `:restructure-every` bins."
   (:refer-clojure :exclude [load])
-  (:require [bnm.calibrate :as cal]
+  (:require [augur.calibrate :as pcal]
+            [bnm.calibrate :as cal]
             [bnm.events :as ev]
             [bnm.eval :as eval]
             [bnm.geo :as geo]
-            [bnm.math :as math]
+            [augur.math :as math]
             [bnm.model :as model]
             [bnm.ontology :as ont]
             [bnm.series :as series]
@@ -178,7 +179,7 @@
         :stratum stratum
         :p-escalate p
         :sims sims
-        :p-cal (cal/calibrate (:calibration m) [ch stratum] p)
+        :p-cal (pcal/calibrate (:calibration m) [ch stratum] p cal/probability)
         :p-clim p-clim
         :p-hist p-hist
         :bin (:bin m)

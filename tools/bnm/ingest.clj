@@ -14,7 +14,8 @@
             [bnm.time]
             [babashka.process :as p]
             [clojure.java.io :as io]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [dodeca.core :as a5]))
 
 (def unknown (atom {}))
 
@@ -63,10 +64,11 @@
 (defn- gdelt-sector [eth rel t1 t2]
   (ont/sector-of-codes (cond-> [t1 t2] (seq eth) (conj "ETH") (seq rel) (conj "REL"))))
 
-(defn gdelt-row
-  "GDELT 1.0 event fields, cut down to `gdelt-columns`."
-  [f]
-  (when (and (= (count f) 15)
+(defn- gdelt-event
+  "An event from GDELT fields cut to `gdelt-columns` (and more after them),
+  its place within the country given by `place` of the fields."
+  [f width place]
+  (when (and (= (count f) width)
              (or (nil? *file-day*)
                  (let [d (f 0)]
                    (and (= 8 (count d))
@@ -77,9 +79,47 @@
           [[a1 s1] [a2 s2]] (ev/actors (code (f 1)) (gdelt-sector (f 2) (f 3) (f 4) (f 5))
                                        (code (f 6)) (gdelt-sector (f 7) (f 8) (f 9) (f 10))
                                        (fips (f 13)))
-          adm (when (not= (f 12) "1") (adm1 (f 14)))]
+          adm (place f)]
       (when (and a1 (not= type :other))
         [(f 0) a1 s1 a2 s2 adm type mode]))))
+
+(defn gdelt-row
+  "GDELT 1.0 event fields, cut down to `gdelt-columns`."
+  [f]
+  (gdelt-event f 15 #(when (not= (% 12) "1") (adm1 (% 14)))))
+
+(def gdelt-a5-columns
+  "`gdelt-columns` and ActionGeo_Lat and ActionGeo_Long."
+  (str gdelt-columns ",54,55"))
+
+(def cell-resolution
+  "A5 resolution of the cell nodes: 8,300 km2 each."
+  6)
+
+(defn- cell-node
+  "The cell node of a point in the country with FIPS code `fips`: the
+  country's alpha-3, \".A\" and the cell's hex id in capitals, a province id
+  as far as bnm.geo can tell."
+  [country lat lon]
+  (when-let [iso3 (fips country)]
+    (when-let [lat (parse-double lat)]
+      (when-let [lon (parse-double lon)]
+        (str iso3 ".A" (str/upper-case (a5/cell->hex (a5/lon-lat->cell [lon lat] cell-resolution))))))))
+
+(def ^:private cell
+  (let [m (java.util.HashMap.)]
+    (fn [c lat lon]
+      (let [k (str c " " lat " " lon)]
+        (if (.containsKey m k)
+          (.get m k)
+          (let [v (cell-node c lat lon)] (.put m k v) v))))))
+
+(defn gdelt-a5-row
+  "GDELT fields cut to `gdelt-a5-columns`, placed in an A5 cell when ActionGeo
+  is a city (types 3 and 4, in the US and elsewhere) or a subdivision outside
+  the US (5); countries and US states (1 and 2) have no cell."
+  [f]
+  (gdelt-event f 17 #(when (#{"3" "4" "5"} (% 12)) (cell (% 13) (% 15) (% 16)))))
 
 (def icews-columns
   "ICEWS columns: Event Date, Source Sectors, Source Country, CAMEO Code,
@@ -167,6 +207,9 @@
 (def sources
   {"gdelt" {:sep \tab :header? false :row gdelt-row :cut gdelt-columns
             :raw? #(str/ends-with? % ".zip")}
+   ;; GDELT again with A5 cells in place of provinces
+   "gdelt-a5" {:sep \tab :header? false :row gdelt-a5-row :cut gdelt-a5-columns
+               :raw-dir "gdelt" :raw? #(str/ends-with? % ".zip")}
    "icews" {:sep \tab :header? true :row icews-row
             :raw? #(re-find #"(?i)events.*\.(tab|zip|txt|csv)$" %)
             :columns icews-columns
@@ -237,8 +280,8 @@
     @rows))
 
 (defn raw-files [source]
-  (let [dir (io/file "data/raw" source)
-        raw? (:raw? (sources source))]
+  (let [{:keys [raw? raw-dir]} (sources source)
+        dir (io/file "data/raw" (or raw-dir source))]
     (->> (.listFiles dir)
          (map #(.getName %))
          (filter raw?)
@@ -266,7 +309,7 @@
       (let [t0 (System/currentTimeMillis)
             file-day (when-let [[_ d] (re-matches #"(\d{8})\..*" f)] (bnm.time/day d))
             n (binding [*file-day* file-day]
-                (normalize-file source (str "data/raw/" source "/" f) out))]
+                (normalize-file source (str "data/raw/" (or (:raw-dir (sources source)) source) "/" f) out))]
         (println source f n "rows" (- (System/currentTimeMillis) t0) "ms")
         (flush)))
     (write-unknown! source)))

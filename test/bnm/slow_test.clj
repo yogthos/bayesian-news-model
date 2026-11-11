@@ -1,5 +1,5 @@
 (ns bnm.slow-test
-  (:require [bnm.math :as m]
+  (:require [augur.math :as m]
             [bnm.slow :as slow]
             [clojure.test :refer [deftest is testing]]))
 

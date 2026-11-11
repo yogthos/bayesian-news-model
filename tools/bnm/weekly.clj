@@ -13,7 +13,8 @@
   on 1950-1989; 1990 on is held out.
 
     jolt -A:tools -M -m bnm.weekly [--name weekly]"
-  (:require [bnm.hazard :as hz]
+  (:require [augur.logit :as lgt]
+            [augur.score :as sc]
             [bnm.trade :as tr]
             [bnm.trader :as us]
             [clojure.java.io :as io]
@@ -86,10 +87,10 @@
         (let [k0 (first (keep #(when (= yr (year-of (:k %))) (:k %)) rows))
               train (for [{:keys [x y] kk :k} rows :when (and k0 (some? y) (< (+ kk h) k0))]
                       {:x x :y y :w (Math/pow discount (/ (- k0 kk) 52.0))})
-              beta (if (and k0 (>= (count (filter :y train)) 5)) (hz/fit train k {:prior prior :start beta}) beta)]
+              beta (if (and k0 (>= (count (filter :y train)) 5)) (lgt/fit train k {:prior prior :start beta}) beta)]
           (recur more beta
                  (into out (for [{:keys [x y] kk :k} rows :when (and beta (= yr (year-of kk)))]
-                             [kk (hz/predict beta x) y]))))))))
+                             [kk (lgt/predict beta x) y]))))))))
 
 (defn run [{:keys [name]}]
   (let [run-name (or name "weekly")
@@ -153,8 +154,8 @@
         (doseq [[era lo hi] [["tune 1950-89" 1950 1989] ["held out 1990-" 1990 2100]]]
           (let [ps (in-yrs lo hi) ys (map #(nth % 2) ps)]
             (say (format "  %-15s weeks %5d pos %4d  auc %.3f  ap %.3f  bss %.3f" era (count ps) (count (filter true? ys))
-                         (hz/auc (map second ps) ys) (hz/avg-precision (map second ps) ys)
-                         (- 1.0 (/ (hz/brier (map second ps) ys) (hz/brier (repeat (count ps) base) ys)))))))
+                         (sc/auc (map second ps) ys) (sc/avg-precision (map second ps) ys)
+                         (- 1.0 (/ (sc/brier (map second ps) ys) (sc/brier (repeat (count ps) base) ys)))))))
         (doseq [[era ks] [["tune 1950-89" tune] ["held out 1990-" held]]]
           (say (str "  strategies, " era))
           (line "buy and hold" (strat ks (constantly 1.0)))

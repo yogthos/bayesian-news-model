@@ -11,6 +11,9 @@
     jolt -A:tools -M -m bnm.train --sources gdelt --eval-from 2000 --name base
     jolt -A:tools -M -m bnm.train --sources gdelt --eval-from 2000 --every 13 --name base-q
 
+  --bins w reads data/bins/<source>-w.tsv, bins of another width (whose
+  :bin-days the config must give), e.g. scripts/rebin.sh's 28 or 91 days.
+
   Writes data/runs/<name>/: report.txt, periods.edn (per-origin scores),
   scored.edn (the escalation rows the report pools), rows/<period>.tsv,
   forecasts/<period>.edn (what was predicted, for inspection) and model.edn
@@ -18,7 +21,8 @@
   model and the scoring context at each origin, for `bnm.refit`. With
   --ppc true, ppc.txt: posterior predictive checks of the weekly series of a
   sample of nodes in every scored period (see `bnm.eval/ppc`)."
-  (:require [bnm.calibrate :as cal]
+  (:require [augur.calibrate :as pcal]
+            [bnm.calibrate :as cal]
             [bnm.eval :as ev]
             [bnm.geo :as geo]
             [bnm.model :as model]
@@ -122,7 +126,7 @@
              [k {:n n :mean (/ sum n) :low (/ low (double n)) :high (/ high (double n))}])))
 
 (defn run
-  [{:keys [sources eval-from eval-to sims from config to save-origins every ppc] run-name :name
+  [{:keys [sources eval-from eval-to sims from config to save-origins every ppc bins] run-name :name
     :or {sims "100" from "1979"}}]
   (let [sources (str/split sources #",")
         eval-from (parse-long eval-from)
@@ -140,7 +144,7 @@
         label-of (fn [b] (if every (t/date-str (* b bin-days)) (str (year-of b))))
         dir (str "data/runs/" run-name)
         open-stream (fn []
-                      (let [readers (into {} (for [s sources] [s (io/reader (str "data/bins/" s ".tsv"))]))]
+                      (let [readers (into {} (for [s sources] [s (io/reader (str "data/bins/" s (when bins (str "-" bins)) ".tsv"))]))]
                         [readers
                          (->> (merged (into {} (for [[s r] readers] [s (bin-records r)])))
                               (drop-while #(< (year-of (first %)) from)))]))
@@ -211,8 +215,9 @@
                   results (cond-> results scored (conj (ev/slim scored)))
                   ;; the calibration and the climatology learn from the period just scored
                   mdl (cond-> mdl
-                        scored (-> (update :calibration cal/learn (:outcomes scored))
-                                   (update :spread #(cal/learn-by (get-in mdl [:config :spread-mode]) % (:rows r)))))
+                        scored (-> (update :calibration pcal/learn (:outcomes scored))
+                                   (update :spread #(cal/learn-by (get-in mdl [:config :spread-mode]) % (:rows r)
+                                                             (cal/shock-learning (:config mdl))))))
                   clim (cond-> clim scored (ev/learn-climate (:scored scored)))
                   hist (ev/add-history hist actual)
                   mdl (if (or (not every) (not= (year-of b) (year-of start)))

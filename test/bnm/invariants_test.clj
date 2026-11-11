@@ -61,3 +61,19 @@
       (is (< (iv/autocorrelation fast 10 10 6) -0.9))
       (is (nil? (iv/autocorrelation fast 10 3 6)) "too few pairs")
       (is (nil? (iv/autocorrelation [1.0 nil 1.0 nil 1.0 nil 1.0] 6 6 3)) "pairs need both"))))
+
+(deftest booms-against-the-panels-past
+  ;; Greenwood, Hanson, Shleifer & Sorensen (2022): credit growth in its top
+  ;; fifth with asset growth in its top third, each against what the panel
+  ;; had seen before
+  (let [past-credit (range 0.0 10.0 0.1)   ; 100 values: 80th percentile near 8
+        past-asset (range 0.0 3.0 0.03)]    ; 67th percentile near 2
+    (is (= 1.0 (:zone (iv/boom 9.0 2.5 past-credit past-asset))))
+    (is (= 0.0 (:zone (iv/boom 9.0 1.0 past-credit past-asset))) "credit alone is not a boom")
+    (is (= 0.0 (:zone (iv/boom 5.0 2.9 past-credit past-asset))) "nor asset prices alone")
+    (testing "the interaction grows with both and is zero when either is below its mean"
+      (is (> (:interaction (iv/boom 9.9 2.9 past-credit past-asset))
+             (:interaction (iv/boom 8.0 2.0 past-credit past-asset)) 0.0))
+      (is (zero? (:interaction (iv/boom 9.0 0.5 past-credit past-asset)))))
+    (testing "nil without enough history to say what is high"
+      (is (nil? (iv/boom 9.0 2.5 (range 5) (range 5)))))))

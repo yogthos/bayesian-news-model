@@ -233,3 +233,27 @@ what to do.
 - **Shrinkage.** Ridge is stable when many inputs have small effects, but
   is poorly calibrated on sparse events. The prior should be chosen by log
   score on a tuning window, and calibration checked on held-out data.
+
+## Equal-area cells in place of provinces: the A5 pilot
+
+GDELT's action coordinates were mapped to A5 cells at resolution 6 (about
+8,300 km², `dodeca`), the cells standing in for provinces as sub-national
+nodes (source `gdelt-a5`). Two runs on the same settings (events from 1979,
+scored 2015-26 every 13 weeks, 100 simulations) compared the sub-national
+level. The runs are `data/runs/a5p-gdelt` (provinces) and
+`data/runs/a5p-gdelt-a5` (cells).
+
+| | provinces | cells |
+|---|---|---|
+| violence, skill against persistence | +5.3% | +5.2% |
+| coercion / verbal co-operation skill | +9.5% / +7.9% | +8.2% / +5.3% |
+| violence escalation from quiet, AUC (own history 0.54 / 0.53) | 0.859 | 0.764 |
+| violence escalation from quiet, Brier skill | +2.4% | +0.6% |
+
+Cells are worse on both measures that were chosen beforehand, and in five of
+six event kinds (protest is the exception, +9.4% against +8.9%). Country
+results do not move. Provinces carry a place's political identity, and much
+of GDELT's sub-national geocoding resolves to province centroids anyway (type
+4 locations), so a geometric grid adds no information and splits the signal.
+The inference-path work (bnm-7u4.2), conditional on a win, is not done, and
+dodeca stays a research-tooling dependency.

@@ -31,7 +31,7 @@
   Both are scored out of sample, so the layer always says whether knowing the
   other domains helps forecast a variable (`skill`). The full regression's
   coefficients are how the domains drive each other (`drivers`)."
-  (:require [bnm.math :as m]
+  (:require [augur.math :as m]
             [clojure.string :as str]))
 
 (set! *unchecked-math* true)

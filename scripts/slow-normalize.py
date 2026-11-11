@@ -93,6 +93,17 @@ VARS = {}
 ROWS = []
 EVENTS = []
 COVERAGE = {}  # kind -> last month (YYYY-MM) its catalogue covers
+# events known only to the year: (kind, unit, date) -> the year. Dated 1
+# January for labels; the onset may be as late as 31 December, and the
+# yearly catalogues (UCDP, Laeven-Valencia) publish a year about six months
+# after it ends, which is when it can enter a forecast's inputs
+YEAR_ONLY = {}
+
+
+def year_only(kind, unit, year, desc):
+    d = "%04d-01-01" % year
+    YEAR_ONLY[(kind, unit, d)] = year
+    EVENTS.append((kind, unit, d, desc))
 
 
 def var(name, transform, freq, source, desc):
@@ -244,6 +255,11 @@ WB = {
     "IP.JRN.ARTC.SC": ("technology/articles", "log1p", "scientific and technical articles"),
     "MS.MIL.XPND.GD.ZS": ("state/military_gdp", "id", "military expenditure, % GDP"),
     "GC.TAX.TOTL.GD.ZS": ("state/tax_gdp", "id", "tax revenue, % GDP"),
+    "MS.MIL.XPND.CD": ("state/military_usd", "log", "military expenditure, current US$"),
+    "NY.GDP.MINR.RT.ZS": ("energy/mineral_rents_gdp", "id", "mineral rents, % GDP"),
+    "NY.GDP.PETR.RT.ZS": ("energy/oil_rents_gdp", "id", "oil rents, % GDP"),
+    "SE.TER.ENRR": ("people/tertiary_enrolment", "id", "tertiary enrolment, % gross"),
+    "GOV_WGI_GE.EST": ("state/government_effectiveness", "id", "government effectiveness (WGI estimate)"),
 }
 
 
@@ -260,6 +276,129 @@ def worldbank():
             if iso in ISO3 and r.get("value") is not None:
                 emit(iso, name, "a", period_end("a", r["date"]), 9, r["value"])
         var(name, tr, "a", "World Bank WDI " + code, desc)
+
+
+VDEM = {
+    "v2x_polyarchy": ("regime/electoral_democracy", "electoral democracy index"),
+    "v2x_libdem": ("regime/liberal_democracy", "liberal democracy index"),
+    "v2xcs_ccsi": ("regime/civil_society", "core civil society index"),
+    "v2x_clphy": ("regime/physical_integrity", "physical violence index (freedom from)"),
+    "v2x_corr": ("regime/corruption", "political corruption index"),
+    "v2x_ex_military": ("regime/military_executive", "military dimension of the executive index"),
+    "v2xel_elecparl": ("regime/election_legislative", "legislative or constituent assembly election held"),
+    "v2xel_elecpres": ("regime/election_presidential", "presidential election held"),
+    "v2x_regime": ("regime/regime_type", "regimes of the world: closed autocracy 0 to liberal democracy 3"),
+}
+
+
+def vdem():
+    """V-Dem country-year core (data/raw/slow/vdem/V-Dem-CY-Core-v16_csv.zip, CC
+    BY-SA 4.0). Each version is published in March for the year before, so a
+    year is known three months on. Later versions revise earlier years; this
+    is one vintage."""
+    path = os.path.join(RAW, "vdem", "V-Dem-CY-Core-v16_csv.zip")
+    if not os.path.exists(path):
+        return
+    with zipfile.ZipFile(path) as z:
+        with z.open("V-Dem-CY-Core-v16.csv") as f:
+            for r in csv.DictReader(io.TextIOWrapper(f, encoding="utf-8")):
+                iso = r["country_text_id"]
+                if iso not in ISO3 or int(r["year"]) < 1950:
+                    continue
+                for col, (name, _) in VDEM.items():
+                    if r.get(col):
+                        emit(iso, name, "a", period_end("a", r["year"]), 3, r[col])
+    for col, (name, desc) in VDEM.items():
+        var(name, "id", "a", "V-Dem v16 " + col, desc)
+
+
+def imf_ctot():
+    """IMF commodity terms of trade by country (Gruss & Kebhaj, WP 19/21), via
+    DBnomics (data/raw/slow/imf/ctot.json): the monthly net export price index
+    of commodities, weighted by net exports to GDP with fixed weights, so a
+    world price change reaches each country through its own commodity trade.
+    Known two months on."""
+    path = os.path.join(RAW, "imf", "ctot.json")
+    if not os.path.exists(path):
+        return
+    for s in json.load(open(path))["series"]["docs"]:
+        iso = ISO2.get(s["series_code"].split(".")[1])
+        for p, v in zip(s["period"], s["value"]):
+            if v not in (None, "NA") and v > 0:
+                emit(iso, "trade/commodity_tot", "m", period_end("m", p), 2, v)
+    var("trade/commodity_tot", "log", "m", "IMF PCTOT xm_gdp R_FW_IX (DBnomics)",
+        "commodity terms of trade, net exports to GDP, fixed weights")
+
+
+IRR_NAMES = {
+    "Azerbaijan Rep. of": "AZE", "Bahrain Kingdom of": "BHR", "Bosnia & Herzegovina": "BIH",
+    "Central African Rep.": "CAF", "China, PR": "CHN", "Congo Dem. Rep. of": "COD", "Congo Rep. of": "COG",
+    'Cote D"Ivoire': "CIV", "Czech Rep.": "CZE", "Guinea Bissau": "GNB", "Kyrgyz Rep.": "KGZ",
+    "Lao Dem. Rep.": "LAO", "Liechtesntein": "LIE", "Macedonia FYR": "MKD", "Netherlands": "NLD",
+    "PNG": "PNG", "Sao Tome & Principe": "STP", "Serbia, Rep. of": "SRB", "Slovak Republic": "SVK",
+    "St Vincent & Grenadines": "VCT", "St. Kitts and Nevis": "KNA", "St. Lucia": "LCA",
+    "Syrian Arab Rep.": "SYR", "The Bahamas": "BHS", "Trinidad Tobago": "TTO", "UAE": "ARE",
+    "West Bank and Gaza": "PSE", "Yemen Rep. of": "YEM",
+}
+
+IRR_ANCHORS = {"usd": {"USD"}, "euro": {"EUR", "DEM", "FRF"}, "gbp": {"GBP"}, "cny": {"CNY"}, "rub": {"RUB"}}
+
+
+def irr():
+    """Exchange-rate regimes and anchor currencies (Ilzetzki, Reinhart & Rogoff;
+    data/raw/slow/irr), yearly from 1946 (December's, as regimes change rarely). The coarse code (1 hard peg, 2
+    crawling peg or narrow band, 3 managed float, 4 free float, 5 freely
+    falling, 6 dual market with missing data), a peg indicator (1-2), freely
+    falling, and which currency the country anchors to, one indicator per
+    anchor: the euro bloc counts the mark and the franc before 1999. The
+    classification is de facto and revised after the fact, so a year is taken
+    as known a year on."""
+    era = os.path.join(RAW, "irr", "ERA_Classification_Monthly_1940-2025.xlsx")
+    anchor = os.path.join(RAW, "irr", "Anchor_monthly_1946-2025.xlsx")
+    month = re.compile(r"^(\d{4})M(\d{1,2})$")
+    if os.path.exists(anchor):
+        rows = xlsx(anchor)["Master"]
+        isos = next(r for r in rows if r and r[0] == "ISO3 Code")
+        for r in rows:
+            m = r and month.match(str(r[0]).strip())
+            if not m or int(m.group(2)) != 12:
+                continue
+            pend = period_end("a", m.group(1))
+            for iso, cur in zip(isos[1:], r[1:]):
+                if iso in ISO3 and cur not in (None, "n.a.", "None"):
+                    for k, curs in IRR_ANCHORS.items():
+                        emit(iso, "finance/anchor_" + k, "a", pend, 12, 1.0 if str(cur).strip() in curs else 0.0)
+        for k in IRR_ANCHORS:
+            var("finance/anchor_" + k, "id", "a", "Ilzetzki, Reinhart & Rogoff anchor currency",
+                "anchors its currency to " + k)
+    if os.path.exists(era):
+        rows = xlsx(era)["Coarse"]
+        hdr = [i for i, r in enumerate(rows) if r and len(r) > 1 and str(r[1]).strip() == "Country"][0]
+        width = max(len(rows[hdr]), len(rows[hdr + 1]))
+        cell = lambda r, i: str(r[i]).strip() if i < len(r) and r[i] not in (None, "None") else ""
+        names = [(cell(rows[hdr], i) + " " + cell(rows[hdr + 1], i)).strip() for i in range(width)]
+        isos = [IRR_NAMES.get(n) or iso3_of_name(n) if n else None for n in names]
+        for r in rows[hdr + 2:]:
+            m = r and len(r) > 1 and month.match(str(r[1]).strip())
+            if not m or int(m.group(2)) != 12:
+                continue
+            pend = period_end("a", m.group(1))
+            for i in range(2, min(len(r), width)):
+                try:
+                    c = int(float(r[i]))
+                except (TypeError, ValueError):
+                    continue
+                if isos[i] in ISO3:
+                    emit(isos[i], "finance/fx_regime", "a", pend, 12, c)
+                    emit(isos[i], "finance/fx_peg", "a", pend, 12, 1.0 if c <= 2 else 0.0)
+                    emit(isos[i], "finance/fx_falling", "a", pend, 12, 1.0 if c == 5 else 0.0)
+        var("finance/fx_regime", "id", "a", "Ilzetzki, Reinhart & Rogoff coarse classification",
+            "exchange-rate regime, coarse code 1 (hard peg) to 6")
+        var("finance/fx_peg", "id", "a", "Ilzetzki, Reinhart & Rogoff coarse classification", "pegged (coarse 1-2)")
+        var("finance/fx_falling", "id", "a", "Ilzetzki, Reinhart & Rogoff coarse classification", "freely falling (coarse 5)")
+        unmatched = sorted(n for n, iso in zip(names[2:], isos[2:]) if n and iso not in ISO3)
+        if unmatched:
+            print("irr: unmatched names", unmatched, file=sys.stderr)
 
 
 def pwt():
@@ -682,11 +821,16 @@ def ucdp():
         names = [iso3_of_name(n) for n in r["location"].split(",")]
         units = {u for u in locs + names if u}
         for u in units:
-            episodes.add((u, r["start_date2"], r["conflict_id"], r["type_of_conflict"]))
+            # known only to the year or worse (start_prec2 5+, dated 31 December)
+            exact = int(r["start_prec2"]) < 5
+            episodes.add((u, r["start_date2"] if exact else int(r["start_date2"][:4]), r["conflict_id"], r["type_of_conflict"]))
             if r["intensity_level"] == "2":
                 wars.add((u, r["year"], r["conflict_id"]))
     for u, d, cid, t in episodes:
-        EVENTS.append(("conflict_onset", u, d, "conflict %s type %s" % (cid, t)))
+        if isinstance(d, int):
+            year_only("conflict_onset", u, d, "conflict %s type %s" % (cid, t))
+        else:
+            EVENTS.append(("conflict_onset", u, d, "conflict %s type %s" % (cid, t)))
     # a war year is an escalation the first year a conflict reaches it in a run of years
     seen = defaultdict(set)
     for u, y, cid in wars:
@@ -694,7 +838,7 @@ def ucdp():
     for (u, cid), ys in seen.items():
         for y in sorted(ys):
             if y - 1 not in ys:
-                EVENTS.append(("war_onset", u, "%d-07-01" % y, "conflict %s reaches 1000 deaths" % cid))
+                year_only("war_onset", u, y, "conflict %s reaches 1000 deaths" % cid)
 
 
 def esrb():
@@ -756,7 +900,7 @@ def laeven_valencia():
         y = int(r["start"])
         if r["borderline"] == "1" or any(abs(y - e) <= 2 for e in esrb_years[r["iso"]]):
             continue
-        EVENTS.append(("banking_crisis", r["iso"], "%04d-07-01" % y, "Laeven-Valencia systemic crisis"))
+        year_only("banking_crisis", r["iso"], y, "Laeven-Valencia systemic crisis")
     COVERAGE["banking_crisis"] = max(COVERAGE.get("banking_crisis", ""), "2025-12")
 
 
@@ -813,12 +957,15 @@ def mechanical(dedup):
             m = int(pend[:4]) * 12 + int(pend[5:7])
             if last is not None and m - last < 12:
                 continue
+            # the months before, not the observations: a gap must not reach back years
+            def before(months):
+                return [x for p, x in xs[max(0, i - months):i] if m - (int(p[:4]) * 12 + int(p[5:7])) <= months]
             if name == "markets/share_prices":
-                prior = [x for _, x in xs[max(0, i - 24):i]]
+                prior = before(24)
                 hit = len(prior) >= 12 and v <= 0.7 * max(prior)
                 kind = "market_crash"
             else:
-                prior = [x for _, x in xs[max(0, i - 36):i]]
+                prior = before(36)
                 base = sum(prior) / len(prior) if prior else 0
                 hit = len(prior) >= 24 and v >= 1.0 and v >= 3.0 * base
                 kind = name.split("/")[1] + "_surge"
@@ -831,7 +978,7 @@ def mechanical(dedup):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    steps = [fred, worldbank, pwt, shocks, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb, laeven_valencia, coups, disasters]
+    steps = [fred, worldbank, vdem, imf_ctot, irr, pwt, shocks, bis, oecd, owid, jodi, faostat, epu, climate, openalex, politics, ucdp, esrb, laeven_valencia, coups, disasters]
     for step in steps:
         n0, e0 = len(ROWS), len(EVENTS)
         step()
@@ -840,6 +987,12 @@ def main():
     dedup = {}
     for r in ROWS:
         dedup[(r[0], r[1], r[3])] = r
+    # a logged variable at or below zero is a gap, not a value (Brazil's share
+    # prices are 0 for 1980-88): it would be logged to -28 and read as a crash
+    bad = [k for k, r in dedup.items() if r[5] <= 0 and VARS.get(r[1], (None, None))[1] == "log"]
+    for k in bad:
+        del dedup[k]
+    print("dropped %d non-positive values of logged variables" % len(bad), file=sys.stderr)
     n0 = len(EVENTS)
     mechanical(dedup)
     print("mechanical %d events" % (len(EVENTS) - n0), file=sys.stderr)
@@ -852,8 +1005,12 @@ def main():
             if name in used:
                 f.write("\t".join((name,) + VARS[name]) + "\n")
     with open(os.path.join(OUT, "events.tsv"), "w") as f:
+        # kind unit date description latest known: the onset's date, the latest
+        # it may have been, and when it was known
         for e in sorted(set(x for x in EVENTS if x[1])):
-            f.write("\t".join(e) + "\n")
+            y = YEAR_ONLY.get(e[:3])
+            latest, known = ("%04d-12-31" % y, "%04d-06-30" % (y + 1)) if y else (e[2], e[2])
+            f.write("\t".join(e + (latest, known)) + "\n")
     with open(os.path.join(OUT, "coverage.tsv"), "w") as f:
         for k in sorted(COVERAGE):
             f.write("%s\t%s\n" % (k, COVERAGE[k]))

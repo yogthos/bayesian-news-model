@@ -7,7 +7,8 @@
 
   The calibrated probabilities are replayed: each period's forecast is
   calibrated by what the periods before it taught, as in training."
-  (:require [bnm.calibrate :as cal]
+  (:require [augur.calibrate :as pcal]
+            [bnm.calibrate :as cal]
             [bnm.eval :as ev]
             [bnm.model :as model]
             [bnm.train :as train]
@@ -51,14 +52,13 @@
                     (let [lbl (:period r)
                           rows (read-rows (str dir "/rows/" lbl ".tsv") (horizon lbl every bin-days) sims lbl)
                           scored (vec (for [x rows :when (ev/scored-kinds (:level x))]
-                                        (assoc x :p-cal (cal/calibrate calibration [(:channel x) (:stratum x)]
-                                                                       (:p-escalate x)))))
+                                        (assoc x :p-cal (pcal/calibrate calibration [(:channel x) (:stratum x)] (:p-escalate x) cal/probability))))
                           outcomes (for [x rows :when (not (#{:region :world} (:level x)))]
-                                     {:channel [(:channel x) (:stratum x)] :p (:p-escalate x)
+                                     {:key [(:channel x) (:stratum x)] :p (:p-escalate x)
                                       :outcome (:escalated x)})
                           summary (ev/summary-line (assoc r :scored (filter #(= :country (:level %)) scored)))]
                       (ev/write-scored! out scored)
                       (println summary)
-                      (recur more (cal/learn calibration outcomes) (conj acc (assoc r :summary summary))))))]
+                      (recur more (pcal/learn calibration outcomes cal/probability) (conj acc (assoc r :summary summary))))))]
     (ev/close-scored! out)
     (ev/write-report! dir results scored-path)))

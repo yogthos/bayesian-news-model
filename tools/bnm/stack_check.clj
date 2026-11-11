@@ -13,8 +13,9 @@
   of linking the slow stocks to the event model (bnm-t5b.4).
 
     jolt -A:tools -M -m bnm.stack-check v3-q-iso [events-2]"
-  (:require [bnm.eval :as ev]
-            [bnm.hazard :as hz]
+  (:require [augur.pool :as pl]
+            [augur.score :as sc]
+            [bnm.eval :as ev]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -47,9 +48,9 @@
                                (let [past (mapcat by-period (take i periods))
                                      fits (into {} (for [[k g] (group-by key-of past)
                                                          :when (>= (count (filter :escalated g)) 10)]
-                                                     [k (hz/fit-stack (map xs g) (map :escalated g) (repeat 1.0) {:prior 10.0})]))]
+                                                     [k (pl/fit-stack (map xs g) (map :escalated g) (repeat 1.0) {:prior 10.0})]))]
                                  (for [r (by-period per)]
-                                   (assoc r :p-stack (if-let [b (fits (key-of r))] (hz/predict-stack b (xs r)) (:p-cal r))))))
+                                   (assoc r :p-stack (if-let [b (fits (key-of r))] (pl/predict-stack b (xs r)) (:p-cal r))))))
                              (map-indexed vector periods)))
         f3 #(format "%.3f" (double %))]
     (println "Country escalation, the stack of model, own history and climatology learned on earlier periods")
@@ -61,4 +62,4 @@
             :when (some true? ys)]
       (println (format "  %-16s %-6s n=%5d  BSS %+6.1f%% %+6.1f%% %+6.1f%%  auc %s %s"
                        (name ch) (name st) (count g) (sk :p-escalate) (sk :p-cal) (sk :p-stack)
-                       (f3 (hz/auc (map :p-escalate g) ys)) (f3 (hz/auc (map :p-stack g) ys)))))))
+                       (f3 (sc/auc (map :p-escalate g) ys)) (f3 (sc/auc (map :p-stack g) ys)))))))

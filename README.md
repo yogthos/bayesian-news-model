@@ -5,7 +5,9 @@ self-exciting processes, and forecasts how they are likely to evolve. It
 learns online from events that an LLM (or an event dataset) has coded from
 the news. The whole model is plain data that can be stored in a database.
 
-The library has no dependencies. [newsroom](../newsroom) uses it: newsroom
+Its one dependency is [augur](https://github.com/jlt-commons/augur), the
+statistics core (posteriors, calibration, hazards, scores and forecast tests),
+which has none. [newsroom](../newsroom) uses it: newsroom
 codes articles into events, feeds them to the model, and stores the model.
 
 ## Usage

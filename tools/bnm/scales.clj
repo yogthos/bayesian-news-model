@@ -19,7 +19,8 @@
   scales); scored on 1990 on at every scale.
 
     jolt -A:tools -M -m bnm.scales [--name scales-1]"
-  (:require [bnm.hazard :as hz]
+  (:require [augur.logit :as lgt]
+            [augur.score :as sc]
             [bnm.paths]
             [bnm.trade :as tr]
             [bnm.trader :as us]
@@ -70,15 +71,15 @@
         out (StringBuilder.)
         say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
         train-of (fn [rs] (for [r rs :when (<= 1930 (:yr r) 1989)] {:x (:x r) :y (:y r) :w 1.0}))
-        fit (fn [train] (hz/fit train (inc (count names)) {:prior 10.0}))
+        fit (fn [train] (lgt/fit train (inc (count names)) {:prior 10.0}))
         ;; pooled over scales, the scale's own intercept as dummies
         pooled-x (fn [r h] (double-array (concat (seq (:x r)) (for [{h' :h} (rest scales)] (if (= h h') 1.0 0.0)))))
-        pooled (hz/fit (for [{:keys [h]} scales r (rows h) :when (<= 1930 (:yr r) 1989)]
+        pooled (lgt/fit (for [{:keys [h]} scales r (rows h) :when (<= 1930 (:yr r) 1989)]
                          {:x (pooled-x r h) :y (:y r) :w 1.0})
                        (+ 1 (count names) (dec (count scales))) {:prior 10.0})
         betas (into {} (for [{:keys [h]} scales] [h (fit (train-of (rows h)))]))
         auc (fn [beta xf rs] (let [rs (filter #(>= (:yr %) 1990) rs)]
-                               (hz/auc (map #(hz/predict beta (xf %)) rs) (map :y rs))))
+                               (sc/auc (map #(lgt/predict beta (xf %)) rs) (map :y rs))))
         fmt (fn [x] (if x (format "%.3f" (double x)) "  -  "))]
     (say "Do small falls teach about big ones? Weekly US market; fitted on 1930-1989, scored on 1990 on.")
     (say "Rows are the scale fitted on, columns the scale scored. Inputs are scale-free (volatility units,")
@@ -106,7 +107,7 @@
                              beta (fit (for [r small :when (< (+ (:k r) 4) k0)] {:x (:x r) :y (:y r) :w 1.0}))]
                        k (range k0 n) :while (= yr (year-of k))
                        :let [x (large-x k)] :when x]
-                   [(:month (weeks k)) (let [p (hz/predict beta x)] (Math/log (/ p (- 1.0 p))))])
+                   [(:month (weeks k)) (let [p (lgt/predict beta x)] (Math/log (/ p (- 1.0 p))))])
           by-month (into (sorted-map) series)
           dir (str "data/runs/" name)]
       (io/make-parents (str dir "/x"))

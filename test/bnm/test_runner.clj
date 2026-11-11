@@ -1,6 +1,6 @@
 (ns bnm.test-runner
   (:require [clojure.test :as t]
-            [bnm.math-test]
+            [bnm.time-test]
             [bnm.calibrate-test]
             [bnm.core-test]
             [bnm.model-test]
@@ -8,13 +8,22 @@
             [bnm.slow-test]
             [bnm.stocks-test]
             [bnm.trade-test]
-            [bnm.hazard-test]
             [bnm.polecon-test]
             [bnm.invariants-test]
-            [bnm.pit-test]))
+            [bnm.pit-test]
+            [bnm.mix-test]
+            [bnm.eval-test]
+            [bnm.ties-test]
+            [bnm.onset-test]
+            [bnm.calm-test]
+            [bnm.sync-test]
+            [bnm.ingest-test]
+            [bnm.fstats-test]
+            [bnm.vol-test]
+            [bnm.normal-test]))
 
 (def namespaces
-  '[bnm.math-test
+  '[bnm.time-test
     bnm.model-test
     bnm.core-test
     bnm.calibrate-test
@@ -22,10 +31,19 @@
     bnm.slow-test
     bnm.stocks-test
     bnm.trade-test
-    bnm.hazard-test
     bnm.polecon-test
     bnm.invariants-test
-    bnm.pit-test])
+    bnm.pit-test
+    bnm.mix-test
+    bnm.eval-test
+    bnm.ties-test
+    bnm.onset-test
+    bnm.calm-test
+    bnm.sync-test
+    bnm.ingest-test
+    bnm.fstats-test
+    bnm.vol-test
+    bnm.normal-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]

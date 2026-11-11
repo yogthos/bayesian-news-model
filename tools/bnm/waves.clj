@@ -17,7 +17,8 @@
   Macrohistory hazards.
 
     jolt -A:tools -M -m bnm.waves [--name waves-1]"
-  (:require [bnm.hazard :as hz]
+  (:require [augur.logit :as lgt]
+            [augur.score :as sc]
             [bnm.invariants :as iv]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -82,8 +83,8 @@
         {:preds preds :world world}
         (let [train (for [r rows :when (and (>= (:year r) train-from) (< (+ (:year r) 2) yr))]
                       {:x (vectorize r names) :y (:y r) :w 1.0})
-              beta (if (>= (count (filter :y train)) 10) (hz/fit train k {:prior prior :start beta}) beta)
-              ps (when beta (for [r (by-year yr)] [yr (hz/predict beta (vectorize r names)) (:y r)]))]
+              beta (if (>= (count (filter :y train)) 10) (lgt/fit train k {:prior prior :start beta}) beta)
+              ps (when beta (for [r (by-year yr)] [yr (lgt/predict beta (vectorize r names)) (:y r)]))]
           (recur (inc yr) beta (into preds ps)
                  (if (seq ps) (assoc world yr (/ (reduce + (map second ps)) (count ps))) world)))))))
 
@@ -99,8 +100,8 @@
         timing (fn [world lo hi]
                  (let [ys (filter #(and (<= lo % hi) (contains? world %) (contains? wave %)) (keys world))]
                    (when (and (some wave ys) (some (complement wave) ys))
-                     (hz/auc (map world ys) (map wave ys)))))
-        within (fn [preds lo hi] (hz/auc-within (filter #(<= lo (first %) hi) preds)))]
+                     (sc/auc (map world ys) (map wave ys)))))
+        within (fn [preds lo hi] (sc/auc-within (filter #(<= lo (first %) hi) preds)))]
     (say "Global banking crisis waves, Reinhart-Rogoff, 70 countries. Real time: refit yearly on")
     (say (format "known outcomes from 1830. %d country-years, %d with a start within two years." (count rows) (count (filter :y rows))))
     (say "Timing: AUC of the world's mean probability against three or more starts within two years.")
