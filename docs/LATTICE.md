@@ -102,6 +102,19 @@ lattice's outputs and reads exactly, in full and with groups dropped.
   with the base pooled, but lose the 2020-2022 fold by 0.002 (food price
   shocks); a development result, opt-in through :weighting, not the
   base (docs/PHASE-CHANGES.md, 11 November 2026, bnm-56c.2).
+  Ranked increments (:weighting {:rule :evidence :scale 0.005}, augur
+  v0.19.0) rank the models by their discounted out-of-sample log score
+  over the base model's (a nested link's over the all-inputs model's),
+  weight each in proportion to that gain shrunk by a prior, and add each
+  increment to the base's log odds, a weaker one capped by the stronger.
+  On thirteen kinds a noise group costs nothing (+0.000005, its weight 0,
+  the year's order unchanged) and a planted signal at the quarters
+  reaches the year (+0.0016 [+0.0011, +0.0021]); but where the models
+  gain alike the weights are near even, so a slightly stronger model
+  cannot override, and it loses the 2020-2022 fold by 0.003 (food price
+  shocks again). Shrinkage on one all-inputs model (:group-shrink) and a
+  dynamic synthesis (:weighting {:rule :synth}) both let noise move the
+  forecast. Development results, opt-in, not the base.
 - **Pooling**: sibling nodes (the countries of a subregion at one scale)
   share a prior on their slopes, centred on their parent's; slopes, not
   levels, since trials 31-33 found that levels learned from a country's

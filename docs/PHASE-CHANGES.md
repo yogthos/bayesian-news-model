@@ -4065,6 +4065,129 @@ all 39 files. augur v0.17.0 also fixes the predictive mean of a model
 with :hold or :by (scaled by 1/sqrt(discount)); c-hold-noise ran with it
 and is slightly off.
 
+**Ranking signals** (same day, development; the user's question: can a
+weaker signal enter as a secondary input that stronger ones override,
+rather than winner-take-all selection or an even blend?). Literature
+(URLs in bead bnm-56c.2's notes): dynamic model averaging selects by
+construction (Raftery, Karny & Ettler 2010; McCormick et al. 2012;
+Minka's "BMA is not model combination"), and tempering it (Grunwald & van
+Ommen 2017) slows but does not stop that; stacking and optimal pools
+(Yao et al. 2018; Geweke & Amisano 2011; Del Negro et al. 2016) weigh a
+model by its marginal gain to the pool; Bayesian predictive synthesis
+(McAlinn & West 2019) regresses the outcome on the models' forecasts with
+dynamic coefficients that also calibrate; horseshoe-type shrinkage
+(Carvalho, Polson & Scott 2010; Kowal, Matteson & Ruppert 2019;
+Cadonna et al. 2020) keeps every signal in one model and shrinks the weak
+ones; boosting and encompassing tests (Buhlmann & Hothorn 2007; Ng 2014;
+Harvey, Leybourne & Newbold 1998) add a weaker signal only for what the
+stronger ones miss. Three candidates, built in augur v0.19.0 (opt-in):
+- **(A) ranked increments** (bnm.lattice :weighting {:rule :evidence
+  :scale c}): each model's discounted log score (each period's, before it
+  learns, discounted by the averaging's :forget), less its parent's, per
+  discounted row, is its gain g (the parent is the base model; a nested
+  link's is the all-inputs model). Weight g+ / (c + sum of g+), the base
+  c / (c + sum); the forecast's log odds are the base's plus each
+  increment over its parent times its weight, and taken strongest first no
+  increment moves it further than the largest stronger one. c = 0.005
+  nats per row, set from the gains' size in a run without the fast group
+  (the year node's base share in market crashes 0.07), before any score
+  was read;
+- **(B) group shrinkage, no averaging** (:only #{:all} :relation-nest nil
+  :group-shrink {:tau 0.5}): one all-inputs model, each group of its
+  coefficients pulled to zero by a pseudo-observation with variance tau^2
+  u / (1 - discount), u the group's horseshoe scale (the mode of a
+  half-Cauchy local scale given its coefficients' second moments), so the
+  prior is refreshed as fast as the discount forgets it;
+- **(C) a dynamic synthesis** (:weighting {:rule :synth :discount 0.99
+  :var 0.05}): a dynamic logistic of the outcome on an intercept and each
+  model's linear predictor, starting from an even log pool.
+
+Acceptance, stated before the runs: the noise cost at the year nodes
+within 0.0003 of zero (noise seeds 1 and 2, each against the same
+setting without it); the planted signal (strength 1) gaining at the year
+nodes with an interval above zero; no development fold lost with an
+interval below zero. Four kinds (market crashes, food price shocks, coup,
+growth collapses), every run on t48's archived inputs (bnm.fast-run
+--archive data/ledger-inputs/2026-Q4: t48's base comes back byte for byte
+on the four kinds; the data on disk were rebuilt). Brier, 2003-2022:
+
+| setting | noise cost, year (seeds 1, 2) | noise, quarter | planted, year | planted, quarter | base against t48, year | 2020-2022 fold | folds lost |
+|---|---|---|---|---|---|---|---|
+| t48 (posterior) | -0.0077, -0.0055 | -0.0028, -0.0008 | -0.0056 [-0.0146, +0.0024] | +0.0010 [-0.0008, +0.0029] | - | - | - |
+| tempered 0.01, year only | +0.00008, +0.00006 | -0.0001, 0.0000 | +0.00083 [+0.00047, +0.00118] | +0.0033 [+0.0015, +0.0055] | +0.00001 [-0.0084, +0.0081] | -0.0058 [-0.0095, -0.0024] | 1 |
+| (A) ranked increments | -0.00002, -0.00000 | -0.00003, -0.00000 | +0.00106 [+0.00019, +0.00200] | +0.0013 [+0.0004, +0.0020] | -0.0024 [-0.0105, +0.0050] | -0.0077 [-0.0115, -0.0038] | 1 |
+| (B) group shrinkage | +0.0008, +0.0018 | +0.0002, +0.0001 | +0.0034 [-0.0005, +0.0073] | +0.0028 [+0.0011, +0.0044] | -0.0026 [-0.0105, +0.0050] | -0.0101 [-0.0187, -0.0034] | 2 (also 2007-2009) |
+| (C) synthesis | -0.0004, -0.0037 | -0.0001, -0.0002 | +0.0031 [+0.0003, +0.0058] | +0.0029 [+0.0007, +0.0056] | -0.0089 [-0.0169, -0.0013] | -0.0085 [-0.0125, -0.0047] | 3 and pooled |
+
+- **(A)** meets the noise rule (-0.00001) and the planted rule; it loses
+  2020-2022, food price shocks -0.029 there, as every blend does. Its
+  quarters are slightly better than t48's (+0.0006 [-0.0014, +0.0024]); its
+  year nodes lose food price shocks (-0.0097 over 2003-2022);
+- **(B)** blends the groups and gains most from the planted signal, but a
+  noise group in the one model moves it: +0.009 in food price shocks,
+  -0.006 in market crashes, so the mean cost (+0.0013) fails;
+- **(C)** learns the planted signal but its noise cost swings between
+  draws (-0.0004, -0.0037; market crashes -0.011) and its base loses three
+  folds: a regression on nine to twenty nearly collinear forecasts is
+  itself fragile.
+
+**How the weights move** (bnm.links --weights; country year nodes,
+2003-2022, normalized entropy, rank agreement of consecutive years'
+weights, and the year node's order with the noise group against without
+it, the same year):
+- t48: entropy 0.00-0.29, the leading group changing up to six times,
+  rank agreement 0.53-0.91; with noise the order agrees 0.70 in market
+  crashes, the leader different in 15 of 20 years;
+- tempered at the year: entropy 0.68-1.00, agreement 0.70-1.00; with noise
+  0.95-0.99, the leader different in up to 3 years;
+- (A): entropy 0.50-0.88, agreement 0.87-1.00; **with noise the order is
+  unchanged** (0.98-1.00, the leader the same every year, the weights
+  moving 0.000-0.096 in sum). A ranks: in market crashes 2022 the
+  all-inputs model 0.62, economy 0.16, fiscal 0.08, the base 0.07. The
+  planted group leads the quarters at 0.60-0.72 in three kinds (food
+  price shocks, coup, growth collapses; 0.25 in market crashes, where the
+  all-inputs model leads); the noise group gets 0.000;
+- (B) and (C): the order with noise agrees 0.85-0.99 but the leader
+  differs in up to 9 years.
+Why (A) loses food price shocks: there its year node's models all gain
+about as much over the base (top weight 0.13, entropy 0.85 in 2022), so
+weights proportional to the gain are near even; t48 put 1.000 on the
+all-inputs model, which was about 0.001 nats a row better and happened to
+be right in 2022. A gain measured from the base is mostly what every
+model shares; proportional weights do not let a slightly stronger model
+override. That is the open problem: measuring each increment against the
+stronger models rather than the base (an online encompassing test, or
+the synthesis with a shrinkage prior) is the next candidate, not tried.
+
+**(A) on thirteen kinds** (rk13-A-*, archived inputs):
+- noise cost +0.000005 (+0.00001 [-0.00004, +0.00005], +0.00000 [-0.00001,
+  +0.00002]; quarters 0.00000; fresh draw [-0.00001, +0.00002]): **within
+  0.0003 of zero, accepted**, the smallest of any weighting so far;
+- planted: year **+0.00157 [+0.00108, +0.00211], accepted**, quarters
+  +0.00150 [+0.00104, +0.00204]; no kind loses at either (fiscal
+  consolidation most, +0.015 at the year); the planted group leads the
+  quarter weights in 11 of 13 kinds (0.45-0.87);
+- against t48, year nodes: Brier -0.00115 [-0.00367, +0.00120], log
+  -0.0065 [-0.0144, +0.0001]; quarters +0.00025 [-0.00041, +0.00085]. By
+  fold: 2003-2006 -0.0019 [-0.0073, +0.0025], 2007-2009 -0.0103 [-0.0187,
+  +0.0029], 2010-2012 +0.0034 [-0.0014, +0.0079], 2013-2019 +0.0004
+  [-0.0021, +0.0031], **2020-2022 -0.0030 [-0.0045, -0.0015], a loss**:
+  food price shocks -0.029, conflict onsets -0.0068, currency crises
+  -0.0035, market crashes -0.0038;
+- year-node entropy 0.50-0.89 in every kind (t48: 0.00-0.29), the order
+  stable (agreement 0.87-1.00).
+
+**Verdict.** (A) answers the question in part: signals can be ranked by
+accumulated out-of-sample evidence, a group that carries nothing gets no
+weight and moves nothing, and a real one at the quarters earns weight and
+reaches the year (the first weighting where both hold with intervals
+clear of zero). It does not let a slightly stronger model override the
+rest, and loses the 2020-2022 fold by 0.003, so by the rule fixed before
+the runs it is not accepted. Not adopted; defaults unchanged (the default
+run reproduces t48-world-norel byte for byte on market crashes and food
+price shocks, test/bnm/links_test.clj). If adopted it enters by a ledger
+amendment at the 2027-Q1 issue.
+
 ## Results, 11 November 2026: the pooled hazard and the scanner, as registered (bead bnm-56c.6)
 
 Run once at commit d0abc90 (`jolt -A:tools -M -m bnm.hazard-run`, 54
