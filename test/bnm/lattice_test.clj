@@ -909,3 +909,12 @@
     (is (some #(= :month (:scale %)) rows))
     (is (< (reduce max (map gap (filter #(= :month (:scale %)) rows))) 1e-9) "month nodes, offsets mixed")
     (is (< (reduce max (map gap (filter #(= :year (:scale %)) rows))) 1e-9) "year nodes, one offset")))
+
+(deftest the-state-from-options-compose
+  (testing ":up-net-of-downscale applies to a reference state: its log odds less what came down"
+    (let [a (loop-run {:state-from :reference :end 60})
+          b (loop-run {:state-from :reference :up-net-of-downscale true :end 60})
+          month (fn [r] (for [[[s _] byo] (:book r) :when (= :month s) [t e] byo] [t e]))]
+      (is (every? (fn [[_ e]] (< (Math/abs (- (:s e) (lt/logit-of (:p e)))) 1e-12)) (month a)) "without it, the state's log odds")
+      (is (some (fn [[_ e]] (> (Math/abs (- (:s e) (lt/logit-of (:p e)))) 1e-6)) (month b))
+          "with it, the log odds less the offset that came down"))))

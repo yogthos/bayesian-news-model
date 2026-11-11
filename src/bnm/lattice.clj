@@ -785,7 +785,8 @@
                                                    ;; whatever else it gives) apart from the forecast issued
                                                    (let [{sp :p sf :f sq :q :as base} (or ref {:p p :f f :q q})
                                                          s (or stated
-                                                               (if ref (:s ref) (if (:up-net-of-downscale spec) (- (logit sp) down) (logit sp))))]
+                                                               (cond-> (if ref (:s ref) (logit sp))
+                                                                 (:up-net-of-downscale spec) (- down)))]
                                                      (cond-> (assoc (if ref base {}) :p sp :s s :strain strain :f sf :q sq)
                                                        ref (assoc :issued {:p p :f f :q q})
                                                        principal (assoc :principal principal))))
