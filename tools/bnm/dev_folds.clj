@@ -10,7 +10,11 @@
   - Grouped by year and by episode: a year's rows are scored together,
     and a training row whose label window touches a global episode that
     any scored row's window touches is dropped, so one global event never
-    sits on both sides.
+    sits on both sides. At the year node the gap already does this: with
+    a known-lag of two months or more a training label ends at least a
+    year before a scored label begins, and no episode of the list spans
+    that (it drops no row of t48-world-norel, test years 1990-2022). It
+    bites at the quarter nodes, whose labels start in the test year.
   - The drop from naive folds: the same fit scored on random k-fold
     splits of the rows (augur.math/rng-mixed), the leak those let in, is
     reported beside the grouped score.
