@@ -510,6 +510,9 @@
    :weighting: tempered posterior or stacked; posterior weights without),
    :weighting-at {scale weighting} the same at one scale, :hold-links, a
    nested link's own coefficients not discounted (augur.dynamic's :hold),
+   :up-net-of-downscale, a node with :downscale passes up its log odds
+   less the part of its offset that came down (bnm-56c.2: otherwise the
+   coarser node reads its own forecast back through the finer states),
    :without, groups dropped from the inputs altogether, :without-at
    {scale #{groups}} the same at one scale,
    :trace, to record what each node read and learned from (:inputs, also
@@ -592,9 +595,12 @@
                                         (if-let [[_ {:keys [p f q]}] (when ds (sh/latest-before r :downscale [(:from ds) place] t))]
                                           (let [os (if (:downscale-uncertainty spec) (offsets-under f q ratio) [[1.0 (window-log-odds p ratio)]])
                                                 known (when (and pool (:offset spec)) ((:offset spec) scale place t))
+                                                ;; the part of the offset that came down: the scaled
+                                                ;; coarser forecast's mean, times its share in the pool
+                                                down (* (if known (- 1.0 pool) 1.0) (reduce + (for [[w o] os] (* w o))))
                                                 os (if known (mapv (fn [[w o]] [w (+ (* pool known) (* (- 1.0 pool) o))]) os) os)]
-                                            {:os os :read (first (sh/reads r))})
-                                          {:os [[1.0 (offset-of place t)]]}))))
+                                            {:os os :read (first (sh/reads r)) :down down})
+                                          {:os [[1.0 (offset-of place t)]] :down 0.0}))))
                        st (reduce (fn [st {:keys [place y p known-at]}]
                                     (update-in st [:errors [scale place]] (fnil assoc (sorted-map)) known-at
                                                (- (if y 1.0 0.0) p)))
@@ -625,8 +631,8 @@
                                              {:keys [x reads stated tension strain resolved]} (inputs spec st scale scale-spec level-ix place t g)
                                              raw-flows (subvec x (inc g-width))
                                              x (into (subvec x 0 (inc g-width)) (standardize flow-std raw-flows))
-                                             {:keys [os read]} (offsets-of place t)]]
-                                   {:place place :x x :raw-flows raw-flows :os os :reads (cond-> reads read (conj read))
+                                             {:keys [os read down]} (offsets-of place t)]]
+                                   {:place place :x x :raw-flows raw-flows :os os :down down :reads (cond-> reads read (conj read))
                                     :stated stated :tension tension :strain strain :resolved resolved}))
                        ;; a group with no input anywhere at t (its source ended, a signal
                        ;; gone stale, errors not yet known) reads the unknown's mean, 0, at
@@ -645,12 +651,15 @@
                                              {pf :f pq :q} (d/predictive live x o)
                                              target ((:target spec) scale place t)]]
                                    (assoc (dissoc e :os) :o o :p p :target target :f pf :q pq :principal (when principal-of (principal-of x)))))
-                       st (reduce (fn [st {:keys [place p stated tension strain resolved f q principal]}]
+                       st (reduce (fn [st {:keys [place p stated tension strain resolved f q principal down]}]
                                     (-> st
                                         (update-in [:book [scale place]] (fnil assoc (sorted-map)) t
                                                    ;; a node's state: the spec's when it gives one, else its
                                                    ;; forecast's log odds; f and q its linear predictor's moments
-                                                   (cond-> {:p p :s (or stated (logit p)) :strain strain :f f :q q}
+                                                   ;; :up-net-of-downscale: less what came down from the
+                                                   ;; coarser node, so it does not read its own forecast back
+                                                   (cond-> {:p p :s (or stated (if (:up-net-of-downscale spec) (- (logit p) down) (logit p)))
+                                                            :strain strain :f f :q q}
                                                      principal (assoc :principal principal)))
                                         (assoc-in [:tension [scale place]] tension)
                                         (cond-> resolved (update-in [:resets [scale place]] (fnil into []) resolved))))

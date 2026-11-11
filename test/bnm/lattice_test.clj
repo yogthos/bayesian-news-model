@@ -677,3 +677,30 @@
     (is (< (Math/abs (- (var-of held :rel/x 0) (var-of plain :rel/x 0))) 1e-12) "the rest as before")
     (is (every? true? (map #(< (Math/abs (- (:p %1) (:p %2))) 1e-12) (:forecasts held) (:forecasts plain)))
         "an input that is 0 everywhere moves nothing")))
+
+(deftest a-finer-state-can-leave-out-what-came-down
+  ;; :up-net-of-downscale (bnm-56c.2): a node whose offset comes from a
+  ;; coarser forecast passes up its log odds less the coarser part of that
+  ;; offset (pooled with what is known, that part's share), so the coarser
+  ;; node does not read its own forecast back through it; its forecast is
+  ;; unchanged
+  (let [w (world 1)
+        base (assoc (spec w) :trace :inputs :downscale {:month {:from :year}} :downscale-pool 0.5
+                    :offset (fn [scale _ _] (when (= scale :month) -3.0)))
+        plain (lt/run base)
+        net (lt/run (assoc base :up-net-of-downscale true))
+        latest (fn [r place t] (some-> (get-in r [:book [:year place]]) (rsubseq < t) first val))
+        months (fn [r] (for [[[s place] byo] (:book r) :when (= :month s) [t e] byo :when (> t 24)] [place t e]))]
+    (testing "the month's own forecast at the first origin is the same"
+      (is (= (first (:forecasts plain)) (first (:forecasts net)))))
+    (testing "its state is its log odds less half the year's scaled forecast"
+      (is (seq (months net)))
+      (is (every? (fn [[place t {:keys [p s]}]]
+                    (let [y (latest net place t)
+                          down (* 0.5 (lt/window-log-odds (:p y) (/ 1.0 12.0)))]
+                      (< (Math/abs (- s (- (lt/logit-of p) down))) 1e-9)))
+                  (months net))))
+    (testing "where nothing comes down, the state is the log odds"
+      (is (every? (fn [[_ t {:keys [p s]}]] (or (> t 24) (< (Math/abs (- s (lt/logit-of p))) 1e-9)))
+                  (for [[[sc place] byo] (:book net) :when (= :month sc) [t e] byo :when (<= t 11)] [place t e]))))
+    (is (not= (:forecasts plain) (:forecasts net)) "the year reads other states, so the forecasts move")))
