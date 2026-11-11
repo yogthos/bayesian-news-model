@@ -4472,3 +4472,74 @@ groups cannot reach the year nodes in A, C, post and ty01 (rule 1 met
 exactly, rule 2 failed at the year by construction); the quarters'
 planted gain is the test of whether a weighting lets a real link earn
 weight where it is read.
+
+**Results** (scored after the section above was committed; Brier, year
+nodes, 2003-2022, four kinds unless said; bnm.links; files under
+data/runs/lp1-*):
+
+| setting | noise, year (seeds 1, 2) | noise, quarter | planted, year | planted, quarter | base vs t48, pooled | 2020-2022 vs t48 | food 2020-2022 vs t48 | folds lost |
+|---|---|---|---|---|---|---|---|---|
+| post | 0, 0 | -0.00001, -0.00001 | 0 | +0.0006 [-0.0006, +0.0017] | -0.0052 [-0.0151, +0.0036] | -0.0062 [-0.0101, -0.0025] | -0.0236 | 1 (2020-2022) |
+| ty01 | 0, 0 | -0.00001, -0.00001 | 0 | +0.0006 [-0.0006, +0.0017] | -0.0006 [-0.0097, +0.0078] | -0.0054 [-0.0096, -0.0015] | -0.0240 | 1 (2020-2022) |
+| A | 0, 0 | 0.00000, -0.00000 | 0 | +0.0022 [+0.0004, +0.0042] | -0.0025 [-0.0105, +0.0053] | -0.0043 [-0.0097, +0.0002] | -0.0269 | 0 |
+| B | +0.0008, +0.0018 | +0.0002, +0.0001 | +0.0034 [-0.0005, +0.0073] | +0.0028 [+0.0011, +0.0044] | -0.0026 [-0.0105, +0.0050] | -0.0101 [-0.0187, -0.0034] | -0.0264 | 2 (2007-2009, 2020-2022) |
+| C | 0, 0 | -0.0001, -0.0004 | 0 | +0.0042 [+0.0018, +0.0069] | -0.0107 [-0.0249, +0.0023] | -0.0011 [-0.0048, +0.0023] | -0.0121 | 1 (2013-2019) |
+| state-from only (post, learn-time evidence) | - | - | - | - | -0.0076 [-0.0157, +0.0009] | -0.0075 [-0.0131, -0.0025] | -0.0217 | 1 (2020-2022) |
+
+- **The noise rule is now met by construction** in post, ty01, A and C:
+  the noise group is nested, the reference (the all-inputs model) does
+  not read it, so the year nodes' forecasts are identical with and
+  without it (0.00000 exactly). B's one model reads it and fails, as
+  before (+0.0013).
+- **The planted rule fails at the year for the same reason**: a link the
+  reference does not read cannot reach the year through the quarters'
+  states. At the quarters, where it is read, A and C let it earn weight
+  with intervals above zero (+0.0022, +0.0042); posterior and ty01 do
+  not (+0.0006 [-0.0006, +0.0017]).
+- **With the inputs fixed, the rules alone** (each against post on the
+  same states): ty01 +0.0046 [-0.0035, +0.0147], loses 2010-2012
+  (-0.0123 [-0.0254, -0.0015]); A +0.0027 [-0.0030, +0.0092], no fold
+  lost, 2020-2022 +0.0019 [-0.0019, +0.0064]; C -0.0055 [-0.0143,
+  +0.0013], loses 2007-2009. A is the best rule once the comparison is
+  clean, and no longer loses to the posterior anywhere.
+- **Food price shocks 2020-2022: most of the loss remains** (-0.022 to
+  -0.027 against t48 in every setting except C's -0.012; A had -0.029
+  with the loop). It is not the weighting: t48's own posterior rule with
+  the loop cut loses -0.024 there, and with the loop cut but learn-time
+  evidence -0.022. t48's edge in that episode came through the loop
+  itself (its combined forecast read back through the quarters, the
+  ancestors and its own state), not through the weights, which is the
+  level miss the audit's issue 3 puts down to the year node not reading
+  world food prices.
+- **Against t50-world-norel** (the base of record since this afternoon;
+  these runs are on t48's archived inputs, so input changes are mixed
+  in, t48 against t50 is +0.0012 pooled and -0.0007 in 2020-2022): post
+  -0.0041 pooled, 2020-2022 -0.0069 (lost); ty01 +0.0005, -0.0061
+  (lost); A -0.0014, -0.0050 [-0.0091, -0.0012] (lost); B -0.0015,
+  -0.0108 (lost, and 2007-2009); C -0.0095, -0.0017 (2013-2019 lost).
+
+**A on thirteen kinds** (lp13-A-*): base against t48 -0.0012 [-0.0038,
++0.0011] pooled, 2020-2022 -0.0022 [-0.0039, -0.0003], lost (food price
+shocks -0.027, conflict onsets -0.0071, currency crises -0.0034); against
+t50 -0.0009 pooled, 2020-2022 -0.0028 [-0.0042, -0.0013], lost.
+Noise at the year 0.00000 in both draws (quarters -0.00000); planted at
+the year 0, at the quarters +0.0018 [+0.0012, +0.0025].
+
+**Verdict.** No weighting passes once the loop is cut. Noise is now met
+by every rule but B, and for a structural reason, not the rule's; the
+planted rule fails at the year for every rule for the same reason; and
+every setting loses a development fold against t48 except A on the four
+kinds, which loses 2020-2022 on thirteen. With the inputs held fixed A
+is the best rule (+0.0027 over the posterior, no fold lost), but the
+2020-2022 food price shocks loss stays at about 0.024 whatever the rule:
+it was the loop, which happened to carry the year's level in that
+episode, not the weighting. Not adopted; the base of record is
+unchanged and every option is off by default. The next step is the
+audit's Round 2 (world prices at the year node), and the reference is
+the natural place for a state built up from the children (the
+recursive design), so that a link read at a finer node can reach the
+coarser one without the combined forecast going round.
+Issue-time evidence was not checked against the weighting diagnostic's
+Q4 table on t48's inputs (the audit's test 2b); the synthetic test that
+the averaging's evidence is the issued forecasts' log score to 1e-9 is
+in test/bnm/lattice_test.clj.

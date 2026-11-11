@@ -115,6 +115,20 @@ lattice's outputs and reads exactly, in full and with groups dropped.
   shocks again). Shrinkage on one all-inputs model (:group-shrink) and a
   dynamic synthesis (:weighting {:rule :synth}) both let noise move the
   forecast. Development results, opt-in, not the base.
+- **A state apart from the forecast** (loop audit Round 1, bnm-56c.17):
+  by default a node's state is its combined forecast, and its own models
+  read it back (its own last state, :up through the finer nodes' offset
+  from it, :down from its ancestors, exposure, the errors fed back), so
+  a weighting changes the models it weighs. With `:state-from` the state,
+  and the errors fed back, come from a reference that never reads the
+  weights: `:reference` is the all-inputs model's forecast
+  (`bnm.lattice/reference-state`), and any function of the node's models
+  and inputs returning a map with `:s` can stand in (a state built up from
+  the children, later). The combination is only issued; the book keeps it
+  as `:issued`. With `:evidence-at :issue` (augur v0.20.0) the averaging
+  scores each row by the predictive each model issued for it, kept on the
+  pending row as `:lp`, not by its state three or four years later. The
+  node's read of its own state is recorded (`:self`). All opt-in.
 - **Pooling**: sibling nodes (the countries of a subregion at one scale)
   share a prior on their slopes, centred on their parent's; slopes, not
   levels, since trials 31-33 found that levels learned from a country's
