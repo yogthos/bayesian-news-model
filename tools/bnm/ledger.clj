@@ -56,7 +56,8 @@
 (def issued
   "Registered issues: {quarter {:files {name SHA-256}}}. An issue enters
   here in the commit that adds it, and is never edited."
-  {})
+  {"2026-Q4" {:files {"forecasts.tsv" "70e31c27c8bf7afe9d20fe4c6befcb3def80e32c19c99fd3b08c0ab0f5d4968d"
+                      "manifest.edn" "2eb4b6a5fe1e1fe4227983e8307e028243d24831f2abd9b0e439dc9a3e676d8a"}}})
 
 ;; --- months -------------------------------------------------------------------
 

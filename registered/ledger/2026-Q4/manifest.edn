@@ -1,0 +1,102 @@
+{:issue "2026-Q4",
+ :issued "2026-11-11",
+ :base "t48-world-norel",
+ :model "the world without relations",
+ :code-commit "387e541d072162c10c83f691c39b0b18ac4978b8",
+ :command
+ "jolt -A:tools -M -m bnm.world-run --out ledger-2026-Q4 --without-relations true --end 24323",
+ :jolt "jolt v0.8.26",
+ :deps
+ #:io.github.jlt-commons{augur
+                         #:git{:url
+                               "https://github.com/jlt-commons/augur",
+                               :tag "v0.13.0",
+                               :sha
+                               "d791bbb5e6f8bbf5e26c459771580ee74bb26a30"},
+                         dodeca
+                         #:git{:url
+                               "https://github.com/jlt-commons/dodeca",
+                               :tag "v0.1.0",
+                               :sha
+                               "20b01f749d8789ae5d6a6756649a2278d240199d"}},
+ :end 24323,
+ :issue-month 24322,
+ :origins
+ {:half-decade 24299,
+  :quarter-lead 24323,
+  :quarter-w2 24323,
+  :year 24323},
+ :inputs
+ {"data/derived/econ-coverage.csv"
+  "53f77ebec54ef99f94ca7d3777db99930daf07084b8357a7664a8109844766d4",
+  "data/derived/econ-events.csv"
+  "8107d4575fd0cc447ddc88371b928ded42ba364bdddb45437edd348075cd359b",
+  "data/derived/fiscal.csv"
+  "cf8a1f4e5769901d3f09e85f4925f1b0e89dddf4f2f1b7aae1aebab8e67d98bc",
+  "data/derived/jst-credit-gap.csv"
+  "334bac25217589ad7d1f1d9e03e41e4770655bed0bea24e4d58b54da2906e9c4",
+  "data/derived/lattice-annual.csv"
+  "6bf028adc82c45e33d7d7d4d7bcd4581092ef8853b1dbbb3ebfd2dfebab6cf03",
+  "data/derived/lattice-quarterly.csv"
+  "6d90af49651238dd955526ea825a65796bcc30cf8f4aaaa8ec1d8630173a4923",
+  "data/derived/political-annual.csv"
+  "fe8c62af9b56f806c362e99c40f50b266bed9d684059c578982685e769275dfa",
+  "data/derived/political-long.csv"
+  "6e8b1ad7813b98eb00c2e93ed05d123d1aba7b0994f17af3833f63a00eff7dd1",
+  "data/derived/political-states.csv"
+  "6088535f6fbcfd3e310e2428c8014455c0ef419b8238a84c1014b3372b52be8e",
+  "data/raw/slow/jst/jst.csv"
+  "c4e930b520a9b4488620c766292f1e2b55f3bbd67742097a634e5aa54a9c2020",
+  "data/raw/slow/kaopen/kaopen.csv"
+  "5b2d58021c0f3874f51730f0fbadba9eeb62d21beff6985abf809f1aeb5dd4dd",
+  "data/raw/slow/pwt/pwt110-full.csv"
+  "310920974fb86512c2176110a8b790712d108584ed1ac7035aa94fe2b3040302",
+  "data/raw/slow/rr/onsets.csv"
+  "7e48559cd00441d77c7d9ba17794cd5a25a6782325fc5389a1e4aab1051c787f",
+  "data/runs/r6-at/preds.tsv"
+  "df5edb60add737231b48018eb30b9ce84a001347c12bd9b51550ba7a287a5ca5",
+  "data/slow/coverage.tsv"
+  "c1937d50f6a3ff2d2eb34342e1540ebae2c19cbe6742cce7d4883b861f9e54b3",
+  "data/slow/events.tsv"
+  "464010ed09b3cc3530e08f3a08ee279f74b19594a2d9c00471bf1424f9077cf5",
+  "data/slow/series.tsv"
+  "4c02c69815abe3e4d7563816d42d6d03949757c1e654979991cbccb00adbd3b2",
+  "data/slow/variables.tsv"
+  "1e2f1de00b9d9ab0855c79210480e69b7617b1c98ed3934d9aace7dbd3ccce99"},
+ :reproduces
+ {:base "t48-world-norel",
+  :through 24311,
+  :kinds
+  {"banking_crisis" {:rows 220990, :differing 0},
+   "conflict_onset" {:rows 288435, :differing 0},
+   "coup" {:rows 292740, :differing 0},
+   "currency_crisis" {:rows 272376, :differing 0},
+   "fiscal_consolidation" {:rows 279825, :differing 0},
+   "food_price_shock" {:rows 265356, :differing 0},
+   "growth_collapse" {:rows 279825, :differing 0},
+   "inflation_crisis" {:rows 266760, :differing 0},
+   "market_crash" {:rows 92664, :differing 0},
+   "protest_surge" {:rows 277992, :differing 0},
+   "sovereign_default" {:rows 281260, :differing 0},
+   "violence_surge" {:rows 286416, :differing 0},
+   "war_onset" {:rows 284130, :differing 0}}},
+ :rows 8495,
+ :kinds
+ ["banking_crisis"
+  "conflict_onset"
+  "coup"
+  "currency_crisis"
+  "fiscal_consolidation"
+  "food_price_shock"
+  "growth_collapse"
+  "inflation_crisis"
+  "market_crash"
+  "protest_surge"
+  "sovereign_default"
+  "violence_surge"
+  "war_onset"],
+ :files
+ {"forecasts.tsv"
+  "70e31c27c8bf7afe9d20fe4c6befcb3def80e32c19c99fd3b08c0ab0f5d4968d"},
+ :rule
+ "never edited; nothing refit between issue and outcome; scored once"}
