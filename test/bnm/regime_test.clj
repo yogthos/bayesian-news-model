@@ -3,6 +3,7 @@
   stock the engine holds gives each outflow the lesser of what is wanted
   and what it can supply; a cut outflow is a cut inflow downstream."
   (:require [bnm.buffers :as buf]
+            [bnm.coupled :as coupled]
             [bnm.engine :as eng]
             [bnm.modules.held :as held]
             [bnm.modules.world3 :as mw]
@@ -208,3 +209,153 @@
       (let [r (first (:records (buf/engine-stocks [m] {})))]
         (is (= ["x/external debt service" "x/import payments"] (map :var (:outflows r))))
         (is (= 1.0 (:rigid (first (:outflows r)))))))))
+
+;; -- review (bead bnm-56c.4): the whole-step rule, missing values, the accounts --------
+
+(defn- spy
+  "A module that reads `v` at `lag` and keeps every value it saw in its
+  state, emitting it back as <id>/seen."
+  [id group v lag]
+  {:module id :group group :place :world :dt 1 :init []
+   :reads [{:var v :unit "u/year" :lag lag :as "x"}]
+   :emits [{:var (str (name id) "/seen") :unit "u/year"}]
+   :step (fn [s in _ _ _] {:state (conj s (get in "x")) :emits {(str (name id) "/seen") (get in "x")}})})
+
+(deftest no-reader-sees-an-uncut-outflow
+  ;; the stock can give 1 a year from its third year; it wants 3: any
+  ;; reader that saw 3 after the switch saw the uncut value
+  (let [a (holder :a :W :s {:init 4.0 :inflows [{:var "a/in"}] :outflows [{:var "a/out"}]
+                            :wants {"a/out" 3.0} :extra {"a/in" 1.0}})
+        seen (atom [])
+        r (eng/run [a (spy :z0 :F "a/out" 0) (spy :z1 :F "a/out" 1)]
+                   {:from 2000 :to 2005 :on-step (fn [id t e] (when (= id :a) (swap! seen conj (get e "a/out"))))})
+        delivered (map #(get-in % [:flows "a/out" :delivered]) (recs r :a :s))]
+    (is (= [3.0 3.0 1.0 1.0 1.0 1.0] delivered))
+    (is (= delivered (get-in r [:states :z0])) "a lag-0 reader gets the cut the same step")
+    (is (= (cons nil (butlast delivered)) (get-in r [:states :z1])) "a lag-1 reader gets it a year later")
+    (is (= delivered @seen) "the table sees only what was delivered")
+    (is (= delivered (get-in r [:emits :a "a/out"])))))
+
+(deftest an-analysis-may-not-rewrite-what-a-held-stock-settled
+  (let [a (holder :a :W :s {:init 4.0 :outflows [{:var "a/out"}] :wants {"a/out" 3.0} :extra {"a/other" 1.0}})
+        rn (eng/advance (eng/runner [a (spy :z1 :F "a/out" 1)] {:from 2000 :to 2002}))]
+    (is (thrown? clojure.lang.ExceptionInfo (eng/update-emits rn :a #(assoc % "a/out" 9.0))) "an outflow the stock delivered")
+    (is (thrown? clojure.lang.ExceptionInfo (eng/update-emits rn :a #(assoc % "a/s" 9.0))) "the level the engine holds")
+    (is (some? (eng/update-emits rn :a #(assoc % "a/other" 9.0))) "an emit the stock does not use")))
+
+(deftest a-shared-held-stock-is-the-same-in-every-member
+  ;; a module shared by an ensemble's members is stepped by member 0; the
+  ;; others must keep its holdings too, or a member that takes over member
+  ;; 0's place starts the stock again from its :init
+  (let [a (holder :a :W :s {:init 4.0 :outflows [{:var "a/out"}] :wants {"a/out" 3.0}})
+        r (coupled/run-ensemble (fn [_] [a (spy :z0 :F "a/out" 0)])
+                                {:members 2 :from 2000 :to 2003 :shared #{:a} :keep true})
+        [m0 m1] (:members r)]
+    (is (= (:holdings m0) (:holdings m1)))
+    (is (= (:regimes m0) (:regimes m1)))
+    (is (= [3.0 1.0 0.0 0.0] (get-in r [:states 1 :z0])) "member 1's reader sees the delivered values")))
+
+(deftest a-missing-value-never-becomes-zero
+  (let [mk (fn [ser floor] (held/series-module {:module :x :place :world :stock :s :unit "u" :init 10.0 :floor floor
+                                               :inflows [{:var "in"}] :outflows [{:var "out"} {:var "other"}]
+                                               :series ser}))
+        base {"in" {2000 1.0 2001 1.0 2002 1.0} "out" {2000 2.0 2001 2.0 2002 2.0}
+              "other" {2000 1.0 2001 1.0 2002 1.0} "floor" {2000 0.0 2001 0.0 2002 0.0}}
+        run (fn [ser] (eng/run [(mk ser "floor")] {:from 2000 :to 2002}))
+        nan? (fn [x] (and (number? x) (Double/isNaN (double x))))]
+    (testing "a missing outflow"
+      (let [r (run (update base "out" dissoc 2001))
+            x (second (recs r :x :s))]
+        (is (nil? (get-in r [:emits :x "x/out" 1])) "not emitted, and not emitted as 0")
+        (is (= :unknown (:regime x)))
+        (is (nan? (:next x)) "the level after it is unknown")
+        (is (nan? (get-in r [:emits :x "x/other" 1])) "what the other outflow delivered is unknown")
+        (is (nan? (get-in r [:emits :x "x/s" 2])))))
+    (testing "a missing inflow"
+      (let [x (second (recs (run (update base "in" dissoc 2001)) :x :s))]
+        (is (= :unknown (:regime x)))
+        (is (nan? (:next x)))))
+    (testing "a missing floor"
+      (let [x (second (recs (run (update base "floor" dissoc 2001)) :x :s))]
+        (is (= :unknown (:regime x)))
+        (is (nan? (:next x)))))
+    (testing "a NaN outflow is unknown, not buffered"
+      (let [x (second (recs (run (assoc-in base ["out" 2001] ##NaN)) :x :s))]
+        (is (= :unknown (:regime x)))))
+    (testing "the first year is untouched"
+      (is (= :buffered (:regime (first (recs (run (update base "out" dissoc 2001)) :x :s))))))))
+
+(deftest edge-cases-of-the-constraint
+  (let [run1 (fn [opts] (first (recs (eng/run [(holder :a :W :s opts)] {:from 2000 :to 2000}) :a :s)))]
+    (testing "a negative inflow is not the stock's to cut: it can take the level below its floor, and says so"
+      (let [x (run1 {:init 5.0 :floor 2.0 :inflows [{:var "a/in"}] :outflows [{:var "a/out"}]
+                     :wants {"a/out" 1.0} :extra {"a/in" -6.0}})]
+        (is (= 0.0 (get-in x [:flows "a/out" :delivered])))
+        (is (close? -1.0 (:next x)))
+        (is (contains? (:flags x) :below-floor))))
+    (testing "an outflow wanted negative is an inflow, never cut"
+      (let [x (run1 {:init 1.0 :outflows [{:var "a/out"} {:var "a/back"}] :wants {"a/out" 3.0 "a/back" -2.0}})]
+        (is (close? 3.0 (get-in x [:flows "a/out" :delivered])))
+        (is (close? 0.0 (:next x)))))
+    (testing "a floor above the level at the start: nothing can go"
+      (let [x (run1 {:init 1.0 :floor 3.0 :outflows [{:var "a/out"}] :wants {"a/out" 1.0}})]
+        (is (= :constrained (:regime x)))
+        (is (= 0.0 (:available x)))
+        (is (close? 1.0 (:next x)))))
+    (testing "two outflows to one counterpart are booked apart"
+      (let [x (run1 {:init 2.0 :outflows [{:var "a/p" :shortfall :arrears :counterpart "b/world/s"}
+                                          {:var "a/q" :shortfall :arrears :counterpart "b/world/s"}]
+                     :wants {"a/p" 2.0 "a/q" 2.0}})]
+        (is (close? 1.0 (get-in x [:flows "a/p" :amount])))
+        (is (close? 1.0 (get-in x [:flows "a/q" :amount])))))))
+
+(deftest arrears-net-to-zero
+  (let [a (holder :a :W :s {:init 2.0 :outflows [{:var "a/p" :shortfall :arrears :counterpart "b/world/t"}
+                                                 {:var "a/q" :shortfall :arrears :counterpart "c/world/u"}]
+                            :wants {"a/p" 2.0 "a/q" 2.0}})
+        r (eng/run [a] {:from 2000 :to 2002})
+        pos (eng/arrears (:holdings r) [a])]
+    (is (close? 0.0 (reduce + (vals pos))) "the holder's liability is its counterparts' asset")
+    (is (close? -10.0 (pos "a/world/s")))
+    (is (close? 5.0 (pos "b/world/t")))
+    (is (close? 5.0 (pos "c/world/u")))
+    (testing "an outflow booked as arrears names who holds the claim"
+      (is (= #{:holdings} (set (map :error (eng/validate [(update-in a [:stocks :s :outflows 0] dissoc :counterpart)]))))))))
+
+(deftest a-cut-cannot-vanish-between-modules
+  ;; when an outflow's counterpart is a module of the run, that module must
+  ;; read the flow, and a stock it holds there must count it as an inflow:
+  ;; else what was delivered leaves one account and enters none
+  (let [a (holder :a :W :s {:init 2.0 :outflows [{:var "a/out" :counterpart "b/world/s"}] :wants {"a/out" 3.0}})
+        b (holder :b :F :s {:init 0.0 :reads [{:var "a/out" :unit "u/year"}] :inflows [{:var "a/out"}]
+                            :outflows [{:var "b/out"}] :wants {"b/out" 0.0}})
+        errs (fn [ms] (set (map :error (eng/validate ms))))]
+    (is (empty? (errs [a b])))
+    (is (= #{:holdings} (errs [a (-> b (assoc :reads []) (assoc-in [:stocks :s :inflows] []))])) "the counterpart does not read it")
+    (is (= #{:holdings} (errs [a (assoc-in b [:stocks :s :inflows] [])])) "it reads it but its stock does not count it")))
+
+(deftest stocks-that-feed-each-other-in-a-ring-are-an-error
+  (let [m {:module :m :group :W :place :world :dt 1 :reads []
+           :emits [{:var "m/a" :unit "u" :phase :level} {:var "m/b" :unit "u" :phase :level} {:var "m/c" :unit "u" :phase :level}
+                   {:var "m/ab" :unit "u/year"} {:var "m/bc" :unit "u/year"} {:var "m/ca" :unit "u/year"}]
+           :stocks {:a {:unit "u" :level "m/a" :init 1.0 :inflows [{:var "m/ca"}] :outflows [{:var "m/ab"}]}
+                    :b {:unit "u" :level "m/b" :init 1.0 :inflows [{:var "m/ab"}] :outflows [{:var "m/bc"}]}
+                    :c {:unit "u" :level "m/c" :init 1.0 :inflows [{:var "m/bc"}] :outflows [{:var "m/ca"}]}}
+           :step (fn [s _ _ _ _] {:state s :emits {"m/ab" 1.0 "m/bc" 1.0 "m/ca" 1.0}})}]
+    (is (contains? (set (map :error (eng/validate [m]))) :holdings) "three stocks in a ring cannot be ordered within the step")))
+
+(deftest engine-stocks-give-a-read-inflow-its-unit
+  (let [hh (holder :hh :W :deposits {:init 5.0 :reads [{:var "firm/wages" :unit "u/year" :lag 1}]
+                                     :inflows [{:var "firm/wages"}] :outflows [{:var "hh/spend"}] :wants {"hh/spend" 9.0}})
+        r (first (:records (buf/engine-stocks [hh] {})))]
+    (is (= ["u/year"] (map :unit (:inflows r))) "an inflow read from another module has the read's unit")
+    (is (= ["u/year"] (map :unit (:outflows r))))))
+
+(deftest the-holder-sees-its-own-level-at-t
+  ;; a module may not read its own emit; the engine gives it the level it
+  ;; holds in its inputs, the level at t, the same its record starts from
+  (let [a (-> (holder :a :W :s {:init 4.0 :outflows [{:var "a/out"}] :wants {"a/out" 3.0}})
+              (assoc :init [] :step (fn [s in _ _ _] {:state (conj s (get in "a/s")) :emits {"a/out" 3.0}})))
+        r (eng/run [a] {:from 2000 :to 2002})]
+    (is (= (map :level (recs r :a :s)) (get-in r [:states :a])))
+    (is (= [4.0 1.0 0.0] (get-in r [:states :a])))))

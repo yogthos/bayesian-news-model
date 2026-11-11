@@ -174,7 +174,10 @@ held level changes only between steps). A cut outflow is then a cut
 inflow to whatever reads it. A reader at lag 0 (later in the causal
 order) gets it the same step, and its own stock can switch the same
 step; a reader at lag n gets it n years later. So a cascade runs at the
-lags of the wiring, and no chain is written by hand.
+lags of the wiring, and no chain is written by hand. In an ensemble a
+shared module's held stocks are the stepping member's in every member,
+and an analysis may not rewrite what a held stock settled with
+`update-emits`; it corrects the stock with `update-holdings`.
 
 **Where a cut lands** is data per outflow (`:shortfall`):
 
@@ -189,6 +192,24 @@ Each step's record per stock (`regimes`, and `:regimes` in a run's
 result) holds the level, inflow, floor, available amount, wanted,
 delivered, shortfall, regime, the outflows cut and, per outflow, its
 booking. `holdings` gives the levels and each booking's running total.
+Only arrears are a stock: `arrears` turns them into claims, the holder's
+negative and its counterpart's positive, which sum to zero, so an outflow
+booked as arrears must name its `:counterpart`. The other bookings are
+records; none moves money. A cut reaches the counterpart's accounts only
+through the wiring, so when the counterpart is a module of the run it must
+read the flow, and a stock it holds there must count it as an inflow;
+`validate` refuses the run otherwise, since what was delivered would leave
+one account and enter none. That is what keeps forced saving and price
+bookings consistent. The SFC core cannot hold a stock today (its flows are
+matrices); wired in, its identities would hold for the same reason, with
+every sector reading the delivered flow.
+
+**Missing values.** A missing or NaN level, inflow, outflow or floor makes
+the step `:unknown`: what went and the level after are NaN, readers see
+NaN, and an outflow not emitted stays not emitted. Nothing becomes a zero,
+except a lagged inflow before the run's start: the run starts with nothing
+in transit. An inflow that runs negative is not the stock's to cut and can
+take it below its floor; the record flags `:below-floor`.
 
 **Accounts.** A held stock moves only by what was delivered, so cuts
 create and destroy nothing. In a test economy of three sectors that pay

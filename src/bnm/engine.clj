@@ -97,7 +97,22 @@
   per stock (regimes; result's :regimes {[module stock] [...]}): level,
   inflow, floor, available, wanted, delivered, shortfall, regime, the
   outflows cut, each outflow's wanted, delivered, shortfall and booking,
-  the next level; holdings gives the levels and the bookings' totals.
+  the next level; holdings gives the levels and the bookings' totals, and
+  arrears the claims they make, the holder's negative and its
+  counterpart's positive (an outflow booked as arrears must name its
+  :counterpart). When an outflow's :counterpart (\"<module>/<place>/
+  <stock>\") is a module of the run, that module must read the flow and a
+  stock it holds there must count it as an inflow (validate's :holdings),
+  so what one account delivers another receives.
+
+  A missing value is never a zero. When the level, an inflow, an outflow
+  or the floor is missing or NaN, the step is :unknown: what went and the
+  level after are NaN, so the stock stays unknown, an outflow not emitted
+  stays not emitted, and its readers see NaN. The one exception is a
+  lagged inflow before the run's start, which is 0: the run starts with
+  nothing in transit. An inflow run negative is not the stock's to cut,
+  so it can take the level below its floor; the record flags
+  :below-floor.
 
   Propagation is the wiring, never a written chain: readers see only the
   delivered value of an outflow, so a cut outflow is a cut inflow to
@@ -107,10 +122,14 @@
   before any reader sees the emit, and a held level is given in the level
   pass and changes only between steps. Nothing is cut that the step does
   not hold: the level at t, inflows and the floor as read at t. A module
-  whose stocks hold none of this runs exactly as before. Not handled: a
-  stock of a module :given to advance (its emits are given, its holdings not
-  kept), and row-valued flows (a held stock's flows are numbers at its
-  place)."
+  whose stocks hold none of this runs exactly as before. An analysis may
+  not change, with update-emits, what a held stock settled (its level, its
+  outflows, its own inflows and floor); it corrects the stock with
+  update-holdings between steps. A module :given to advance takes its
+  holdings and records from the given :holdings and :regimes when they are
+  given (bnm.coupled gives a shared module's from the member that steps
+  it). Not handled: row-valued flows (a held stock's flows are numbers at
+  its place)."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -263,20 +282,26 @@
   is given) before any flexible part, then the flexible parts pro rata."
   #{:pro-rata :rigid-first})
 
-(defn held-stocks
-  "[[stock declaration] ...]: the stocks of module `m` that the engine
-  holds (those that declare :outflows), in the order the module's own
-  flows between them need (a stock before one its outflow feeds)."
+(defn- held-order
+  "[ordered left]: module `m`'s held stocks in the order their flows between
+  them need, and those that feed each other in a ring (cannot be ordered)."
   [m]
   (let [held (vec (filter (comp seq :outflows val) (sort-by (comp str key) (:stocks m))))
         feeds? (fn [[_ a] [_ b]] (some (set (map :var (:outflows a))) (map :var (:inflows b))))]
     (loop [left held out []]
       (if (empty? left)
-        out
+        [out []]
         (let [ready (first (filter (fn [s] (not-any? #(and (not= % s) (feeds? % s)) left)) left))]
           (if ready
             (recur (vec (remove #(= % ready) left)) (conj out ready))
-            (into out left)))))))
+            [out left]))))))
+
+(defn held-stocks
+  "[[stock declaration] ...]: the stocks of module `m` that the engine
+  holds (those that declare :outflows), in the order the module's own
+  flows between them need (a stock before one its outflow feeds)."
+  [m]
+  (let [[out left] (held-order m)] (into out left)))
 
 (defn- held-errors
   "Errors in module `m`'s held stocks (see the namespace), {:error :holdings}."
@@ -290,11 +315,8 @@
         share? (fn [x] (or (nil? x) (and (number? x) (<= 0.0 (double x) 1.0))))
         held (held-stocks m)
         outs (for [[_ s] held f (:outflows s)] (:var f))
-        ;; a cycle among the module's own stocks cannot be ordered
-        cyc (let [fed (set (for [[_ a] held [_ b] held :when (not= a b)
-                                 :when (some (set (map :var (:outflows a))) (map :var (:inflows b)))]
-                             [a b]))]
-              (some (fn [[a b]] (contains? fed [b a])) fed))]
+        ;; a ring among the module's own stocks cannot be ordered
+        cyc (seq (second (held-order m)))]
     (concat
      (for [[v c] (frequencies outs) :when (> c 1)] (err :outflows (str v " is the outflow of two stocks")))
      (when cyc [(err :inflows "its stocks feed each other within the step; read one a step late")])
@@ -310,8 +332,31 @@
               (for [f (:inflows s) :when (not (or (own (:var f)) (read-keys (:var f))))] (str "its inflow " (pr-str (:var f)) " is neither an emit nor a read"))
               (for [f (:outflows s) :when (not (or (nil? (:shortfall f)) (bookings (:shortfall f))))]
                 (str (:var f) "'s :shortfall " (pr-str (:shortfall f)) " is not one of " (sort bookings)))
+              (for [f (:outflows s) :when (and (= :arrears (:shortfall f)) (not (and (string? (:counterpart f)) (seq (:counterpart f)))))]
+                (str (:var f) " is booked as arrears but names no :counterpart to hold the claim"))
               (for [f (concat (:inflows s) (:outflows s)) :when (not (share? (:rigid f)))] (str (:var f) "'s :rigid is not a share in [0, 1]")))]
        (err k e)))))
+
+(defn- counterpart-errors
+  "Held outflows whose :counterpart (\"<module label>/<place>/<stock>\", as
+  bnm.buffers/stock-id writes it) is a module of the run that does not
+  read the flow, or reads it but holds the named stock without counting it
+  as an inflow: what was delivered would leave one account and enter none."
+  [ms]
+  (let [vn (fn [x] (if (keyword? x) (name x) (str x)))
+        label (fn [m] (or (:label m) (name (:module m))))]
+    (for [m ms [_ s] (held-stocks m) f (:outflows s)
+          :let [[lab place stock] (str/split (str (:counterpart f)) #"/")
+                v (:var f)]
+          c ms :when (and (= lab (label c)) (or (nil? place) (= place (vn (:place c)))))
+          :let [rs (filter #(and (not (:source %)) (var-match? v (:var %))) (:reads c))
+                held-there (when stock (some (fn [[k cs]] (when (= stock (vn k)) cs)) (held-stocks c)))
+                msg (cond (empty? rs) (str (:module c) ", its counterpart, does not read it")
+                          (and held-there (not-any? (set (map key-of rs)) (map :var (:inflows held-there))))
+                          (str (:module c) ", its counterpart, reads it but its stock " stock " does not count it as an inflow"))]
+          :when msg]
+      {:error :holdings :module (:module m) :var v
+       :msg (str (:module m) "'s outflow " v " goes to " (:counterpart f) ", but " msg ": what was delivered would vanish")})))
 
 (defn share-cut
   "What each of the outflows `ws` [{:wanted w :rigid r} ...] delivers when
@@ -340,40 +385,82 @@
   "Stock `k` (declaration `s`, level `level`) through a step of `dt` at t:
   {:record r :emits e (outflows as delivered) :next level}. Available is
   the level plus the step's inflows less the floor; outflows wanted beyond
-  it are cut by the stock's sharing, and each shortfall booked."
-  [id k s level in e ps t dt]
+  it are cut by the stock's sharing, and each shortfall booked. `pre`:
+  the read keys whose lag reaches before the run's start; nothing was sent
+  then (the run starts with nothing in transit), so such an inflow is 0,
+  while any other missing value leaves the step unknown."
+  [id k s level in e ps t dt pre]
   (let [dt (double dt)
-        val-of (fn [x] (cond (number? x) (double x) (keyword? x) (double (get ps x)) (string? x) (flow-of in e x)))
-        ins (for [f (:inflows s)] [(:var f) (flow-of in e (:var f))])
+        known? (fn [x] (and (number? x) (not (Double/isNaN (double x)))))
+        val-of (fn [x] (cond (number? x) (double x)
+                             (keyword? x) (let [p (get ps x)] (when (number? p) (double p)))
+                             (string? x) (flow-of in e x)))
+        ins (for [f (:inflows s) :let [v (:var f) x (flow-of in e v)]]
+              [v (if (and (nil? x) (contains? pre v) (not (contains? e v))) 0.0 x)])
         outs (for [f (:outflows s)] [f (flow-of in e (:var f))])
-        flags (cond-> #{}
-                (some (comp nil? second) ins) (conj :inflow-missing)
-                (some (comp nil? second) outs) (conj :outflow-missing))
         floor (if (some? (:floor s)) (val-of (:floor s)) 0.0)
-        flags (cond-> flags (nil? floor) (conj :floor-missing))
-        floor (or floor 0.0)
-        ;; an outflow run backwards is an inflow, never cut
-        back (reduce + 0.0 (for [[_ x] outs :when (and x (neg? x))] (- x)))
-        inflow (+ back (reduce + 0.0 (keep second ins)))
-        wanted (mapv (fn [[f x]] {:wanted (max 0.0 (or x 0.0)) :rigid (:rigid f)}) outs)
-        avail (max 0.0 (- (+ level (* dt inflow)) floor))
-        total (reduce + 0.0 (map :wanted wanted))
-        binds (> (* dt total) (* avail (+ 1.0 1e-12)))
-        given (if binds (share-cut (or (:sharing s) :pro-rata) wanted (/ avail dt)) (mapv :wanted wanted))
-        flows (into {} (for [[[f x] w d] (map vector outs wanted given)
-                             :let [short (- (:wanted w) d)]]
-                         [(:var f) (cond-> {:wanted (:wanted w) :delivered d :shortfall short}
-                                     (pos? short) (assoc :booked (or (:shortfall f) :unmet-demand) :amount (* dt short))
-                                     (and (pos? short) (= :price (:shortfall f))) (assoc :price-factor (if (pos? d) (/ (:wanted w) d) Double/POSITIVE_INFINITY)))]))
-        delivered (reduce + 0.0 given)
-        cut (vec (for [[f] outs :when (pos? (get-in flows [(:var f) :shortfall]))] (:var f)))
-        next (+ level (* dt (- inflow delivered)))]
-    {:record {:t t :module id :stock k :level level :inflow inflow :floor floor :available avail
-              :wanted total :delivered delivered :shortfall (- total delivered)
-              :regime (if (seq cut) :constrained :buffered) :cut cut :flows flows :next next :flags flags}
-     ;; readers see what moved; an outflow run backwards is left as emitted
-     :emits (reduce (fn [e [[f x] d]] (if (and x (neg? x)) e (assoc e (:var f) d))) e (map vector outs given))
-     :next next}))
+        flags (cond-> #{}
+                (not-every? (comp known? second) ins) (conj :inflow-missing)
+                (not-every? (comp known? second) outs) (conj :outflow-missing)
+                (not (known? floor)) (conj :floor-missing)
+                (not (known? level)) (conj :level-missing))]
+    (if (seq flags)
+      ;; a value the step needs is missing (nil) or not a number (NaN): what
+      ;; could go is unknown, so what went and the level after are unknown
+      ;; too (NaN), never a zero; an outflow not emitted stays not emitted,
+      ;; one run backwards stays as emitted
+      (let [nan Double/NaN]
+        {:record {:t t :module id :stock k :level level :inflow nan :floor floor :available nan
+                  :wanted nan :delivered nan :shortfall nan :regime :unknown :cut []
+                  :flows (into {} (for [[f x] outs]
+                                    [(:var f) (cond-> {:wanted (if (known? x) (max 0.0 x) nan) :delivered nan :shortfall nan}
+                                                (:counterpart f) (assoc :counterpart (:counterpart f)))]))
+                  :next nan :flags flags}
+         :emits (reduce (fn [e [f x]] (if (or (nil? x) (and (known? x) (neg? x))) e (assoc e (:var f) nan))) e outs)
+         :next nan})
+      (let [;; an outflow run backwards is an inflow, never cut
+            back (reduce + 0.0 (for [[_ x] outs :when (neg? x)] (- x)))
+            inflow (+ back (reduce + 0.0 (map second ins)))
+            wanted (mapv (fn [[f x]] {:wanted (max 0.0 x) :rigid (:rigid f)}) outs)
+            avail (max 0.0 (- (+ level (* dt inflow)) floor))
+            total (reduce + 0.0 (map :wanted wanted))
+            binds (> (* dt total) (* avail (+ 1.0 1e-12)))
+            given (if binds (share-cut (or (:sharing s) :pro-rata) wanted (/ avail dt)) (mapv :wanted wanted))
+            flows (into {} (for [[[f x] w d] (map vector outs wanted given)
+                                 :let [short (- (:wanted w) d)]]
+                             [(:var f) (cond-> {:wanted (:wanted w) :delivered d :shortfall short}
+                                         (:counterpart f) (assoc :counterpart (:counterpart f))
+                                         (pos? short) (assoc :booked (or (:shortfall f) :unmet-demand) :amount (* dt short))
+                                         (and (pos? short) (= :price (:shortfall f))) (assoc :price-factor (if (pos? d) (/ (:wanted w) d) Double/POSITIVE_INFINITY)))]))
+            delivered (reduce + 0.0 given)
+            cut (vec (for [[f] outs :when (pos? (get-in flows [(:var f) :shortfall]))] (:var f)))
+            next (+ level (* dt (- inflow delivered)))]
+        {:record {:t t :module id :stock k :level level :inflow inflow :floor floor :available avail
+                  :wanted total :delivered delivered :shortfall (- total delivered)
+                  :regime (if (seq cut) :constrained :buffered) :cut cut :flows flows :next next
+                  ;; an inflow run negative is not the stock's to cut, and can
+                  ;; take it below its floor
+                  :flags (cond-> #{} (< next (- floor 1e-9)) (conj :below-floor))}
+         ;; readers see what moved; an outflow run backwards is left as emitted
+         :emits (reduce (fn [e [[f x] d]] (if (neg? x) e (assoc e (:var f) d))) e (map vector outs given))
+         :next next}))))
+
+(defn arrears
+  "{party amount}: the claims that arrears booked in `holdings` (the
+  runner's, or a result's :holdings) make, by the declarations `ms`: each
+  holder's stock (\"<module>/<place>/<stock>\") owes a negative amount,
+  each counterpart holds the same amount positive, so they sum to zero."
+  [holdings ms]
+  (let [by (into {} (map (juxt :module identity)) ms)
+        cp (fn [id k v] (some #(when (= v (:var %)) (:counterpart %)) (get-in by [id :stocks k :outflows])))
+        place (fn [m] (let [p (:place m)] (if (keyword? p) (name p) (str p))))]
+    (reduce (fn [acc [[id k v b] x]]
+              (if (= :arrears b)
+                (let [m (by id)
+                      holder (str (or (:label m) (name id)) "/" (place m) "/" (name k))]
+                  (-> acc (update holder (fnil - 0.0) x) (update (cp id k v) (fnil + 0.0) x)))
+                acc))
+            {} (:books holdings))))
 
 (defn validate
   "Errors in the declarations, each {:error :module :var :msg}: a read
@@ -392,7 +479,7 @@
         dup (for [[id c] (frequencies ids) :when (> c 1)] {:error :duplicate :module id :msg (str "module " id " declared " c " times")})
         lags (for [m ms r (:reads m) :let [l (:lag r)] :when (and (some? l) (not (and (number? l) (>= l 0))))]
                (err :lag m (:var r) (str (:module m) " reads " (:var r) " at lag " (pr-str l) ": a lag is a number of years, at least 0")))
-        holds (mapcat held-errors ms)
+        holds (concat (mapcat held-errors ms) (counterpart-errors ms))
         observes (for [m ms :when (not (:observe m))
                        :let [held (set (map (comp :level val) (held-stocks m)))]
                        e (:emits m) :when (and (= :level (phase-of e)) (not (held (:var e))))]
@@ -617,7 +704,17 @@
         within (distinct (for [[reader es] (:plan rn) {:keys [var emitter lag-steps]} es
                                :when (and (= emitter id) (zero? lag-steps))
                                v changed :when (var-match? v var)]
-                           [reader v]))]
+                           [reader v]))
+        ;; what its held stocks settled: their levels, the outflows they
+        ;; delivered, and the inflows and floors of its own they read
+        settled (set (for [[_ s] (get-in rn [:held id])
+                           v (concat [(:level s) (when (string? (:floor s)) (:floor s))] (map :var (:inflows s)) (map :var (:outflows s)))
+                           :when v]
+                       v))
+        held-changed (filter settled changed)]
+    (when (seq held-changed)
+      (throw (ex-info (str "bnm.engine: " id "'s emits " (pr-str (vec held-changed)) " are what its held stocks settled; correct the stock with update-holdings")
+                      {:module id :settled (vec held-changed)})))
     (when (seq within)
       (throw (ex-info (str "bnm.engine: " id "'s emits " (pr-str (vec within)) " were read within their step; an analysis may not change them")
                       {:module id :read-by (vec within)})))
@@ -653,7 +750,8 @@
   "The runner stepped once (see run). opts :given {module {:level emits
   :rate emits}}: those modules are not stepped, their emits this step
   are the given ones (a module shared by an ensemble's members, stepped
-  once). The step's emits are left as :cur {module emits} (:level-cur
+  once); with :holdings {:levels {stock level} :books {key amount}} and
+  :regimes {[module stock] records} its held stocks are those. The step's emits are left as :cur {module emits} (:level-cur
   after the level pass) and :stepped #{module}, and its time as :t."
   ([rn] (advance rn {}))
   ([{:keys [by order t-at every plan ps max-lag declared! on-step keep i states hist out held] :as rn} {:keys [given]}]
@@ -690,10 +788,15 @@
          (reduce (fn [[cur states hd regs] id]
                    (let [m (by id) tm (whole-t m t) g (get given id)]
                      (cond (not (steps? id)) [cur states hd regs]
-                           g [(assoc cur id (:rate g)) states hd regs]
+                           ;; a shared module's held stocks are the stepping member's
+                           g [(assoc cur id (:rate g)) states
+                              (cond-> hd (:holdings g) (-> (assoc-in [:levels id] (get-in g [:holdings :levels]))
+                                                           (update :books #(merge (into {} (remove (fn [[[m]]] (= m id))) %) (get-in g [:holdings :books])))))
+                              (if (:regimes g) (merge regs (:regimes g)) regs)]
                            :else
                            (let [hl (held-levels id)
                                  in (merge (gather (plan id) cur hist i) hl)
+                                 pre (set (for [p (plan id) :when (> (:lag-steps p) i)] (:key p)))
                                  {s :state e :emits} ((:step m) (states id) in (ps id) tm (:dt m))
                                  lv (when (or (:observe m) hl) (cur id))
                                  _ (doseq [[v x] e :let [d (declared! id v)]]
@@ -704,7 +807,7 @@
                                      (check-known! id d v tm x))
                                  [e hd regs]
                                  (reduce (fn [[e hd regs] [k sd]]
-                                           (let [{r :record e :emits nx :next} (settle id k sd (get-in hd [:levels id k]) in e (ps id) tm (:dt m))]
+                                           (let [{r :record e :emits nx :next} (settle id k sd (get-in hd [:levels id k]) in e (ps id) tm (:dt m) pre)]
                                              [e
                                               (-> (assoc-in hd [:levels id k] nx)
                                                   (update :books (fn [b] (reduce (fn [b [v f]] (if (:booked f) (update b [id k v (:booked f)] (fnil + 0.0) (:amount f)) b))

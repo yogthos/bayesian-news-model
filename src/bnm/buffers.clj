@@ -554,7 +554,9 @@
                                            {:var (:var r) :unit (:unit r) :counterpart nil :from (:from r) :source :inferred :net true})))]
                    [k s] (sort-by (comp vname key) (:stocks m))
                    :let [info? (boolean (:info s))
-                         declared-flow (fn [fl] (merge {:unit (:unit (eng/emit-for m (:var fl)))}
+                         declared-flow (fn [fl] (merge {:unit (or (:unit (eng/emit-for m (:var fl)))
+                                                                  ;; an inflow read from another module: the read's unit
+                                                                  (some #(when (= (:var fl) (or (:as %) (:var %))) (:unit %)) (:reads m)))}
                                                        (select-keys fl [:var :unit :counterpart :rigid :rigid-sd :shortfall])
                                                        {:source :declared}))
                          [ins outs] (cond

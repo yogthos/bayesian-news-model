@@ -97,7 +97,12 @@
         step-all (fn [rs]
                    (let [r0 (eng/advance (first rs))
                          given (into {} (for [id shared :when ((:stepped r0) id)]
-                                          [id {:level (get (:level-cur r0) id) :rate (get (:cur r0) id)}]))]
+                                          [id (cond-> {:level (get (:level-cur r0) id) :rate (get (:cur r0) id)}
+                                                ;; a stock the engine holds for it, kept alike in every member
+                                                (get-in r0 [:held id])
+                                                (assoc :holdings {:levels (get-in r0 [:holdings :levels id])
+                                                                  :books (into {} (filter (fn [[[m]]] (= m id))) (get-in r0 [:holdings :books]))}
+                                                       :regimes (into {} (filter (fn [[[m]]] (= m id))) (:regimes r0))))]))]
                      (into [r0] (map #(eng/advance % {:given given}) (rest rs)))))
         fork (fn [rs]
                (loop [rs rs k (:years forks)]
