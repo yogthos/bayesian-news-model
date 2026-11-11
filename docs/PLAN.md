@@ -122,7 +122,11 @@ trigger terms multiply it.
    is a red zone on stocks and their growth; uneven development is slopes
    that differ by place and structure. The principal contradiction stays a
    description, not a forecasting device.
-5. **Every claim is scored forward.** 2003-2022 is development data from now
+5. **Cases are data, not code.** A crash enters as an episode in a
+   library and a set of data mappings. What the model learns is the form
+   crashes share, so a scenario with no precedent in its own type can
+   still be found.
+6. **Every claim is scored forward.** 2003-2022 is development data from now
    on. New results count when a dated, frozen forecast meets its outcome.
 
 ## 4. Phases
@@ -150,44 +154,110 @@ Estimates are agent working days, one or two agents at a time.
 - **0.5 Housekeeping** (running): registered 2027 files in git, the
   `world-run` default, stale docs, banking coverage 2020-25.
 
-### Phase 1: buffers and runways (about 12 days) - expectations 4, 5
+### Phase 1: the general buffer model (about 20 days) - expectations 3, 4, 5
 
-Added 10 November 2026 on the user's direction: the stock-flow model is
-the key to unexpected events, because a buffer hides the imbalance until
-it is gone.
+Revised 10 November 2026 on the user's direction. The stock-flow model
+is the key to unexpected events, because a buffer hides an imbalance
+until it is gone. And the model must find new scenarios from what
+crashes have in common, not from a case written in by hand. Reserves,
+energy stocks, grain and investment booms are entries in a library and
+rows of data, not separate code.
 
-- **A buffer registry.** Each buffer is a stock with its inflow and
-  outflow, who holds it, how often it is measured, and what breaks when it
-  is exhausted. First set:
-  - foreign reserves against external financing need (import cover,
-    reserves over short-term debt): currency crises, defaults;
-  - oil and gas stocks in days of cover, strategic and commercial: energy
-    price breaks;
-  - grain stocks-to-use: food price shocks;
-  - debt service against income, bank liquidity, fiscal space: banking
-    and fiscal crises.
-- **The runway.** Stock over net drawdown, as a posterior for the
-  exhaustion date. Flows are read at the week and month, trends at the
-  year and decade, so the time scales meet here.
-- **Restoration.** Whether the flow can be restored: other suppliers and
-  routes, substitution, and the lead time of new capacity, from the
-  supply model. The inventory and outage-path code is the start.
-- **Anticipation.** Breaks come before zero: holders run, prices rise as
-  stocks fall. The hazard is a function of the runway with a learned
-  threshold, not a step at exhaustion.
-- **Cascade.** One exhausted buffer becomes a drawdown on the next:
-  energy to the trade balance to reserves to default to unrest. The
-  engine runs the chain.
-- **What our record already says.** T1(b)'s pass after the warm-up fix
-  was carried by reserves (+0.160) and food import exposure (+0.088).
-  Stock levels as inputs were level (trial 45, T4, T9).
-- **Test.** Hindcasts with parameters fixed beforehand: the 1997 Asian
-  crisis (reserves), the 2007-08 food price spike (stocks-to-use), Sri
-  Lanka 2022 (reserves to default to unrest), European gas 2021-22
-  (storage). Scored on hard onsets, where persistence fails, against the
-  levels-only model. Forward: the runway of current energy stocks is the
-  first entry in the ledger.
-- **What the literature says** (searched 10 November 2026; several items
+docs/INVARIANTS.md already made the argument and a first test: no rule
+covers every era, the channel differs each time, and measures that are
+indifferent to which dimension is stretched held up where channels
+flipped (US held-out AUC 0.808 to 0.831, and 2022 caught). Those
+measures were stretches against a series' own past. This phase gives
+them the structure of a buffer and applies them to every stock.
+
+**1.1 One schema for every stock.** A record per stock: who holds it and
+where, its inflows and outflows, whose stock each flow leaves or enters,
+its unit, how often and how late it is measured, and the share that is
+usable. The engine's modules already declare levels and rates, so the
+schema is read off the engine's graph. Adding a stock is adding a data
+mapping.
+
+**1.2 Invariants, computed for every stock.** All are times or ratios, so
+they compare across domains:
+
+- **cover:** usable stock over net drawdown;
+- **rigidity:** the share of the outflow that cannot be cut (debt
+  service, depreciation, subsistence);
+- **restoration:** time to restore the inflow, over cover. Above one, the
+  buffer runs out first;
+- **carry:** what the stock loses by sitting (decay, cost of capital)
+  against what it earns;
+- **claim gap:** claims on a flow against the flow itself: debt or
+  valuation against the income that must service it (Minsky's hedge,
+  speculative and Ponzi positions are this ratio in three bands);
+- **idle share:** installed but not earning, with the complement that
+  binds;
+- **holder:** how concentrated and how leveraged the holder is, which
+  says where the loss lands;
+- **market reading:** the cover a price implies (futures basis, spread).
+
+The existing ones stay: displacement, breadth, resonance across scales,
+stock times flow.
+
+**1.3 The break as a regime switch.** In the engine every flow becomes
+the lesser of what is wanted and what the stock allows. A unit is either
+buffered or constrained; the phase transition is the switch. One unit's
+outflow is another's inflow, so cascades follow from the accounts. No
+chain is written by hand.
+
+**1.4 An episode library.** Known crashes encoded in the schema: which
+stock, the path of its cover, what failed to restore, who held it, what
+followed. It starts from the crash-by-crash audit in docs/INVARIANTS.md
+and adds currency, food, energy and investment-boom episodes across
+countries. This is the training data.
+
+**1.5 One pooled hazard.** The chance of a break as a function of the
+invariants, shared across every type of stock, with partial pooling for
+what is specific to a type. Reserves then teach about fuel stocks, and
+telecom teaches about data centres.
+
+**1.6 The scanner.** Each period, every stock in the world is ranked by
+the pooled hazard. The output is a watch list of buffers, including
+types with no crisis on record.
+
+**1.7 Hidden buffers.** When the accounts stop closing (identity
+residuals, growing gaps between overlapping measures), something
+unmeasured is absorbing a flow. The scanner flags the residual itself.
+
+**1.8 A wider field of view.** The scanner only sees stocks that are
+measured. So the data widen: sector by instrument balance sheets,
+industry capital stocks and inventories, commodity and reserve stocks,
+company filings aggregated by industry, and fast US sector series. Two
+schema features come from the boom case: asset lives and idle stock.
+
+**Tests**
+
+- **Leave one family out.** Train with a whole family of episodes removed
+  (all investment booms, or all energy breaks, or all reserve crises) and
+  ask whether its episodes are flagged. This is the test of finding the
+  new from the invariants.
+- **Invariants against channels.** The pooled hazard against type-specific
+  inputs, era by era, as in docs/INVARIANTS.md.
+- **False alarms.** Precision of the top of the list against stocks with
+  shuffled histories.
+- **Forward.** The energy stocks and the AI build-out are not entered by
+  hand. The registered question is whether the scanner ranks them near
+  the top unprompted. If it does not, that is a finding.
+
+**Limits**
+
+- Unmeasured stocks cannot be ranked; 1.7 helps only in part.
+- Episodes per family are few. Pooling across families is what makes
+  learning possible, and it is itself a hypothesis.
+- A shock from outside (2020) is not predictable. The model says how long
+  the buffers last once it arrives.
+
+**What our record already says.** T1(b)'s pass after the warm-up fix was
+carried by reserves (+0.160) and food import exposure (+0.088). Stock
+levels as inputs were level (trial 45, T4, T9). The capacity test was
+null on industry investment data.
+
+**What the literature says** (searched 10 November 2026; several items
   from search summaries only):
   - **Stock relative to flow beats the level** for most buffers. The best
     reserve indicators are ratios (broad money to reserves, reserves to
@@ -220,51 +290,10 @@ it is gone.
   and on doubt that the flow returns; market prices (futures basis,
   forward curves) enter as fast readings of the runway.
 
-### Phase 1b: investment booms (about 8 days) - expectations 4, 5
-
-Added 10 November 2026: the US AI build-out as the live case, the
-1996-2002 telecom build-out (dark fibre) as the closest precedent.
-
-An investment boom is a buffer problem with the stocks on the asset side.
-Spending runs ahead of the income it was meant to earn, and financing
-covers the gap. The break comes when financing stops covering it.
-
-- **The capital pipeline as stocks.** Ordered, delivered, installed,
-  powered, earning. Capacity that is installed but not earning is the
-  dark-fibre stock: fibre laid and unlit, chips delivered and unpowered.
-  The capacity module has build times but no idle stock and no asset
-  lives; both are added.
-- **The complement that binds.** Usable capacity is the least of its
-  inputs: chips, buildings, grid connection. The supply model's recipes
-  already work this way. The contradiction is between time scales: chips
-  arrive in months and lose value in a few years, grid capacity takes
-  years.
-- **The carrying cost.** A short-lived stock must earn its depreciation
-  and its cost of capital every year. Required income against realised
-  income is the expectation gap.
-- **The financing runway.** Operating cash flow plus borrowing and equity
-  raised, against capital spending. The runway is how long financing
-  covers the gap at the current drawdown, and it shortens when lenders or
-  the equity market doubt the income will come.
-- **Who holds the loss decides the kind of crisis.** Funded from cash and
-  equity, a bust is a market crash and an investment slump (telecom
-  2000-02). Funded by debt held in banks, it is a banking crisis (housing
-  2008). Financing structure is an input, not a detail.
-- **Data, all open:** company filings (capital spending, depreciation
-  schedules, cash flow, debt), national-accounts investment in
-  information equipment and data-centre construction, grid connection
-  queues and generator data, monthly customs data for servers and chips,
-  credit spreads and equity valuations.
-- **Limits.** Our panels stop years short of the present at sector level
-  (credit by sector to 2014, industry accounts to 2021), so this needs
-  fast US sector data. The capacity test came out null on industry
-  investment data; this uses physical capacity (megawatts, connections).
-  Episodes are few, so power is low.
-- **Test.** Hindcasts with settings fixed beforehand: telecom 1996-2002,
-  US shale 2014-16 (debt-funded, sector defaults, no systemic crisis),
-  China property from 2021 (unsold stock). Does the financing runway and
-  the idle stock date the break better than credit growth alone? Then a
-  forward entry in the ledger for the AI build-out.
+The same three forms recur across these literatures: the break is convex
+in cover, it comes before exhaustion, and usable differs from headline.
+No source tests one pooled function across types of stock. That is this
+phase's hypothesis.
 
 ### Phase 2: sub-national level (about 12 days) - expectation 2
 
@@ -360,7 +389,7 @@ covers the gap. The break comes when financing stops covering it.
 1. **The split.** Keep the split by time and add the forward ledger
    (recommended), with the last-20%-by-time diagnostic reported, rather
    than a random 80/20.
-2. **Order.** Phase 0, then 1 (buffers and runways), then 2 and 3 in
+2. **Order.** Phase 0, then 1 (the general buffer model), then 2 and 3 in
    parallel, then 4, then 5 (recommended). Phase 5's shock hindcasts share
    machinery with phase 1 and can start alongside it.
 3. **Scope of expectation 3.** Accept that links between kinds are built
