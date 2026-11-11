@@ -12,9 +12,15 @@
   (trial 43's graph, data/runs/sequencing/graph-t43.edn, bnm.relation-
   diag), each nested in the node's own model (with-relations).
 
-    jolt -A:tools -M -m bnm.world-run --out world [--end m] [--kinds a,b] [--without-relations true]
-                                      [--smoke true] [--graph path] [--placebo true] [--ews path]
-                                      [--states path]
+    jolt -A:tools -M -m bnm.world-run --out world --without-relations true [--end m] [--kinds a,b] [--smoke true]
+    jolt -A:tools -M -m bnm.world-run --out world --graph path [--placebo true] [--ews path] [--states path]
+                                      [--end m] [--kinds a,b] [--smoke true]
+
+  A run names its model: --without-relations true is the world without
+  relations, the base of record (t48-world-norel); --graph path turns on
+  that graph's links (trial 43's is data/runs/sequencing/graph-t43.edn,
+  which a run with neither flag used to read). A run with neither is
+  refused, as is the base with a link option.
 
   With --placebo, each country reads its parents at the next country in
   sorted order: the links' placebo. With --ews, each kind's early warning
@@ -253,14 +259,39 @@
                  :parents (into {} (for [[i j] (map-indexed vector (parents k)) :when (seq eff)]
                                      [j {:form (:form (graph [j k])) :coef (nth eff i) :lag (:known-lag (cats j) 12)}]))}])))
 
+(def graph-t43
+  "Trial 43's graph, what a run with no --graph read until 10 November 2026."
+  "data/runs/sequencing/graph-t43.edn")
+
+(defn model-choice
+  "The model the options name, {:relations? :graph}: --without-relations
+  true is the base of record, the world without relations (no graph is
+  read); --graph path is the world with that graph's links. Neither is
+  refused: a bare run used to turn on trial 43's links. The base with a
+  link option (--graph, --placebo, --ews, --states) is refused too, since
+  it would drop the option silently."
+  [{:keys [without-relations graph placebo ews states]}]
+  (let [norel (= "true" without-relations)
+        links (seq (for [[k v] [["--graph" graph] ["--placebo" placebo] ["--ews" ews] ["--states" states]] :when v] k))]
+    (cond (and norel links)
+          (throw (ex-info (str "bnm.world-run: --without-relations true is the world without relations; it does not take "
+                               (str/join ", " links))
+                          {:options (vec links)}))
+          norel {:relations? false :graph nil}
+          graph {:relations? true :graph graph}
+          :else (throw (ex-info (str "bnm.world-run: name the model: --without-relations true (the base of record, "
+                                     "t48-world-norel) or --graph path (links; trial 43's is " graph-t43 ")")
+                                {})))))
+
 (defn -main [& args]
-  (let [{:keys [out end kinds without-relations smoke graph placebo ews states]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [out end kinds without-relations smoke graph placebo ews states] :as opts} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+        graph (:graph (model-choice opts))
         out (or out "world")
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
         cats (kinds/catalogues)
         ks (if kinds (str/split kinds #",") (sort (keys kinds/tiers)))
-        graph (read-graph (or graph "data/runs/sequencing/graph-t43.edn"))
+        graph (if graph (read-graph graph) {})
         parents (parents-of graph ks)
         warn (when ews
                (warnings (read-string (slurp ews))

@@ -161,3 +161,27 @@
     (is (< (Math/abs (- 0.3 (first (:x ((:relations sp) :year "Reg" (+ 11 (* 12 2000))))))) 1e-12))
     (is (= {3 [0.2 0.1] 4 [-0.2 0.1]}
            ((:prior sp) :year :country {:parts {:rel/food-import_dependence [3] :rel/keen-debt [4]}})))))
+
+(deftest a-run-names-its-model
+  ;; the base of record (t48-world-norel) is the world without relations;
+  ;; a bare run used to turn on trial 43's links (graph-t43.edn) silently
+  (testing "no choice: refused, naming both"
+    (is (thrown-with-msg? Exception #"--without-relations true.*--graph" (wr/model-choice {})))
+    (is (thrown-with-msg? Exception #"--without-relations true" (wr/model-choice {:out "x" :end "24000" :smoke "true"})))
+    (is (thrown-with-msg? Exception #"--without-relations true" (wr/model-choice {:without-relations "false"}))))
+  (testing "the base of record: no relations, no graph read"
+    (is (= {:relations? false :graph nil} (wr/model-choice {:without-relations "true"})))
+    (is (= {:relations? false :graph nil} (wr/model-choice {:without-relations "true" :smoke "true" :kinds "coup"}))))
+  (testing "links: the graph named"
+    (is (= {:relations? true :graph "data/runs/sequencing/graph-t43.edn"}
+           (wr/model-choice {:graph "data/runs/sequencing/graph-t43.edn"})))
+    (is (= {:relations? true :graph "g.edn"} (wr/model-choice {:graph "g.edn" :placebo "true" :ews "e.edn" :states "s.edn"})))
+    (is (= {:relations? true :graph "g.edn"} (wr/model-choice {:graph "g.edn" :without-relations "false"}))))
+  (testing "a link option without a graph is refused, not run on a default graph"
+    (doseq [k [:placebo :ews :states]]
+      (is (thrown-with-msg? Exception #"--graph" (wr/model-choice {k "x"})))))
+  (testing "the base with a link option is refused: it would be dropped silently"
+    (doseq [k [:graph :placebo :ews :states]]
+      (is (thrown-with-msg? Exception #"without relations" (wr/model-choice {:without-relations "true" k "x"})))))
+  (testing "the two recorded graphs and their commands"
+    (is (= "data/runs/sequencing/graph-t43.edn" wr/graph-t43))))

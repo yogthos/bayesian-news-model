@@ -902,6 +902,18 @@ Three runs: **t43-world**, **t43-world-placebo** (each country reading
 its parents at the next country in sorted order), and trial 42's
 **t42-world-norel** as the bench (the code it ran is unchanged).
 
+Commands, noted 10 November 2026: the two runs passed no --graph, and
+bnm.world-run then read data/runs/sequencing/graph-t43.edn by default.
+A run now has to name its model (--without-relations true, or --graph),
+so they are
+
+    jolt -A:tools -M -m bnm.world-run --out t43-world --graph data/runs/sequencing/graph-t43.edn
+    jolt -A:tools -M -m bnm.world-run --out t43-world-placebo --graph data/runs/sequencing/graph-t43.edn --placebo true
+
+and the bench is --without-relations true. Trials 44 and 45 passed
+their graphs (below); the bases t44 to t48-world-norel passed
+--without-relations true.
+
 **Tests**, one-sided 5%, 2003-2022:
 1. (primary) the eight linked kinds' year nodes (banking, currency and
    inflation crises, coups, conflict and war onsets, protest and violence
@@ -2008,7 +2020,11 @@ bnm.train's calibration call, bnm.geo, bnm.hypergraph, the diagnostics),
 as a regression check. Expected: identical forecasts to t44-world-norel;
 any difference is explained before anything else is read. Smoke first
 (bnm.world-run --smoke true), then the full run, then bnm.world-score
-against t44-world-norel.
+against t44-world-norel. (Noted 10 November 2026: the smoke's other
+flags were not recorded. A smoke with no model flag read trial 43's
+graph; bnm.world-run now refuses one, so the base's smoke is
+--without-relations true --smoke true, and the old bare smoke is --graph
+data/runs/sequencing/graph-t43.edn --smoke true.)
 
 **Result, 23 October 2026 (t46-world-norel).** Smoke: every kind's checks
 passed. Full run on 02f980a: all thirteen kinds' forecasts.tsv are
