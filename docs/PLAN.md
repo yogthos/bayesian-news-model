@@ -187,10 +187,38 @@ it is gone.
   (storage). Scored on hard onsets, where persistence fails, against the
   levels-only model. Forward: the runway of current energy stocks is the
   first entry in the ledger.
-- **Literature to verify before registration:** competitive storage
-  (price spikes at stockouts), first-generation currency crisis models
-  (the attack is timed by reserve depletion), reserve adequacy as a
-  leading indicator, oil inventories and price.
+- **What the literature says** (searched 10 November 2026; several items
+  from search summaries only):
+  - **Stock relative to flow beats the level** for most buffers. The best
+    reserve indicators are ratios (broad money to reserves, reserves to
+    short-term debt); reserves were the most consistent predictor across
+    80+ studies and predicted who was hit in 2008-09 (Frankel and
+    Saravelos). The debt service ratio, a flow over a flow, has the best
+    timing record found: 1-2 years ahead of banking crises (BIS).
+  - **Critical thresholds flag risk while the price is calm.** Grain
+    stocks-to-use thresholds do this (Bobenrieth, Wright and Zeng), as
+    competitive storage theory predicts: price is convex in availability.
+  - **The break comes before exhaustion.** In the first-generation
+    currency crisis models the attack happens with reserves still
+    positive, timed by the drain rate. Oil prices rise on precautionary
+    demand before a physical shortfall (Kilian and Murphy). The futures
+    basis is a daily market reading of the runway (Gorton, Hayashi and
+    Rouwenhorst).
+  - **Usable, not headline, stocks.** Sri Lanka had about $50m usable
+    against $1.8bn official in May 2022; Lebanon's net reserves were
+    about -$55bn against $38bn gross in 2019.
+  - **Flow loss can break without exhaustion.** European gas peaked in
+    August 2022 while storage was filling; the 2008 rice spike came from
+    export bans with stocks adequate. The model needs both paths: a
+    runway running down, and a flow cut that the buffer cannot cover in
+    time.
+  - **Not found:** a validated model that dates a price break from
+    inventory depletion; out-of-sample hit rates for 1997 or 2007-08.
+    Early-warning models were weak out of sample (Berg and Pattillo).
+- **Design changes from this:** the runway uses usable stocks with
+  uncertainty on the unusable share; the hazard depends on the runway
+  and on doubt that the flow returns; market prices (futures basis,
+  forward curves) enter as fast readings of the runway.
 
 ### Phase 2: sub-national level (about 12 days) - expectation 2
 
