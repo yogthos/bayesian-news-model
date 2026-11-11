@@ -5,6 +5,11 @@
 
     jolt -A:tools -M -m bnm.fast-run --out fs-a --family commodities [--placebo true]
                                      [--seed s] [--null derange|shift] [--end m] [--kinds a,b] [--smoke true]
+                                     [--set '{:forget 1.0 :coupling nil}']
+
+  --set merges an EDN map into every kind's spec after the family is put
+  on it (a nil value removes the key): the diagnostics and the weighting
+  candidates of bnm-56c.2 (bnm.lattice's :weighting).
 
   --family none runs the base itself (a regression check against
   t44-world-norel). --family noise (reported only, not a trial) puts a
@@ -74,8 +79,13 @@
   [family null]
   (not (and (= "shift" null) (short-history family))))
 
+(defn with-set
+  "`sp` with the EDN map `m` merged in, a nil value removing its key."
+  [sp m]
+  (reduce-kv (fn [sp k v] (if (nil? v) (dissoc sp k) (assoc sp k v))) sp m))
+
 (defn -main [& args]
-  (let [{:keys [out family placebo end kinds smoke seed null]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [out family placebo end kinds smoke seed null] set-edn :set} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         family (keyword (or family "none"))
         _ (when-not (or (#{:none :noise} family) (fast/families family))
             (throw (ex-info (str "bnm.fast-run: no family " family) {})))
@@ -103,6 +113,7 @@
         specs (into {} (for [[k sp] (wr/build-specs ks end cats)]
                          [k (cond-> sp
                               inputs (fast/with-fast inputs width (group-of family) source)
+                              set-edn (with-set (read-string set-edn))
                               (= "true" smoke) (assoc :trace :inputs))]))
         _ (println "running")
         finished (into {} (pmap (fn [[k sp]] (let [r (lt/run sp)] (println "done" k) [k r])) specs))]

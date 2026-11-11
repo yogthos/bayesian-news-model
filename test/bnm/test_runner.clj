@@ -106,6 +106,7 @@
             [bnm.shock-trial-test]
             [bnm.warm-up-test]
             [bnm.fast-test]
+            [bnm.links-test]
             [bnm.fast-score-test]))
 
 (def namespaces
@@ -212,6 +213,7 @@
     bnm.shock-trial-test
     bnm.warm-up-test
     bnm.fast-test
+    bnm.links-test
     bnm.fast-score-test
     bnm.benchmarks-test
     bnm.dev-folds-test

@@ -283,14 +283,22 @@
     (d/averaged (into {} (for [g (if (:only spec) (filter (:only spec) order) order)
                                :let [ix (vec (distinct (concat [0] core (remove core? (groups g)))))]
                                :when (or (= g :base) (seq (groups g)))]
-                           [g (d/logistic {:mean (map #(first (get prior % [0.0])) ix)
+                           [g (d/logistic {:hold (when (and (:hold-links spec) (contains? nested g))
+                                                   ;; a nested link's own inputs, not discounted
+                                                   (let [own (set (get (:parts lay) g))]
+                                                     (vec (keep-indexed (fn [pos i] (when (own i) pos)) ix))))
+                                           :mean (map #(first (get prior % [0.0])) ix)
                                            :var (map #(or (second (get prior % [nil nil]))
                                                           (cond (zero? %) 4.0
                                                                 (and shrink (or (= g :all) (contains? nested g)) (not (core? %))) shrink
                                                                 :else 1.0))
                                                      ix)
                                            :discount discount :inputs ix})]))
-                {:forget (:forget spec)})))
+                ;; :weighting (every node) or :weighting-at {scale ...}: how the
+                ;; averaging sets its weights (augur.dynamic/averaged), posterior
+                ;; weights without (bnm-56c.2)
+                (let [wt (get-in spec [:weighting-at scale] (:weighting spec))]
+                  (cond-> {:forget (:forget spec)} wt (assoc :weighting wt))))))
 
 
 (defn- inputs
@@ -498,6 +506,10 @@
    :exposure (fn [scale place origin]) -> [exposures], :exposure-width n,
    :coupling, the strength levels share what they learn (none without),
    :forget, the model averaging's forgetting, :only, a subset of groups,
+   :weighting, how the averaging sets its weights (augur.dynamic/averaged's
+   :weighting: tempered posterior or stacked; posterior weights without),
+   :weighting-at {scale weighting} the same at one scale, :hold-links, a
+   nested link's own coefficients not discounted (augur.dynamic's :hold),
    :without, groups dropped from the inputs altogether, :without-at
    {scale #{groups}} the same at one scale,
    :trace, to record what each node read and learned from (:inputs, also

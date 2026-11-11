@@ -638,3 +638,42 @@
     (is (pos? (get-in hist [320 :faded])) "back when its source resumes")
     (testing "a group known at some places is not dropped"
       (is (every? #(pos? (get-in hist [% :signal])) (range 20 400))))))
+
+(deftest the-averaging-s-weighting-is-opt-in-and-by-scale
+  ;; bnm-56c.2: posterior weights by default; :weighting for every node,
+  ;; :weighting-at for one scale
+  (let [run #(lt/run (merge (spec (world 7)) %))
+        plain (run {})
+        one (run {:weighting {:rule :temper :power 1.0}})
+        stacked (run {:weighting-at {:year {:rule :stack :rate 0.02 :floor 0.1}}})
+        n (count (lt/weights stacked :year :country))]
+    (is (= (:forecasts plain) (:forecasts one)) "a power of one is the default")
+    (is (= :stack (get-in stacked [:models [:year :country] :weighting :rule])))
+    (is (nil? (get-in stacked [:models [:month :country] :weighting])) "only at the scale named")
+    (is (every? #(>= % (- (/ 0.1 n) 1e-12)) (vals (lt/weights stacked :year :country))))
+    (is (not= (:forecasts plain) (:forecasts stacked)))))
+
+(deftest a-link-s-coefficients-can-be-held
+  ;; :hold-links: a nested link's own coefficients are not discounted, the
+  ;; rest of its model is; without it every coefficient is
+  (let [spec {:scales [{:name :month :per 1 :horizon 1 :discount 0.9}]
+              :levels [[:country countries]] :parent {} :start 0 :end 30 :forget 0.99
+              :target (fn [_ place t] {:y (odd? (+ t (count place))) :known-at (inc t)})
+              :gauges (fn [_ _ _] [0.0]) :gauge-width {:month 1}
+              :relations (fn [_ _ _] {:x [0.0] :reads []})
+              :relation-width {:month 1} :relation-groups {:month {:rel/x [0]}}
+              :relation-nest true :shrink 0.5}
+        lay (lt/layout-of spec :month 0)
+        link (first (get-in lay [:parts :rel/x]))
+        held (lt/run (assoc spec :hold-links true))
+        plain (lt/run spec)
+        var-of (fn [r grp i] (let [mdl (lt/model r :month :country grp)
+                                   pos (.indexOf ^java.util.List (vec (:inputs mdl)) i)
+                                   k (:k mdl)]
+                               (aget ^doubles (:c mdl) (+ (* pos k) pos))))]
+    ;; the link reads 0 everywhere: no row informs it, only the discount moves it
+    (is (< (Math/abs (- (var-of held :rel/x link) 0.5)) 1e-9) "held: its prior variance")
+    (is (> (var-of plain :rel/x link) 5.0) "discounted: grown")
+    (is (< (Math/abs (- (var-of held :rel/x 0) (var-of plain :rel/x 0))) 1e-12) "the rest as before")
+    (is (every? true? (map #(< (Math/abs (- (:p %1) (:p %2))) 1e-12) (:forecasts held) (:forecasts plain)))
+        "an input that is 0 everywhere moves nothing")))
