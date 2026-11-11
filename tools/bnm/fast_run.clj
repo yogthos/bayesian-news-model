@@ -11,6 +11,12 @@
   on it (a nil value removes the key): the diagnostics and the weighting
   candidates of bnm-56c.2 (bnm.lattice's :weighting).
 
+  --family planted [--strength s] is the noise group with its first
+  column moved by s (default 1.0) where the quarter node's outcome happens
+  (bnm.fast/planted-inputs: it reads the future, a diagnostic only): a
+  link that carries something, for bnm-56c.2's check that a weighting
+  which ignores noise still lets a real group earn weight.
+
   --family none runs the base itself (a regression check against
   t44-world-norel). --family noise (reported only, not a trial) puts a
   group of nine standard normal draws per country and origin at the
@@ -55,7 +61,7 @@
        :fertiliser (g "economy/agriculture_share")
        :open (g "trade/openness")})))
 
-(def group-of {:commodities :fast/commodities :fx :fast/fx :ports :fast/ports :noise :fast/noise})
+(def group-of {:commodities :fast/commodities :fx :fast/fx :ports :fast/ports :noise :fast/noise :planted :fast/planted})
 
 (def noise-width "The noise group's width: FSa's nine." 9)
 
@@ -85,12 +91,14 @@
   (reduce-kv (fn [sp k v] (if (nil? v) (dissoc sp k) (assoc sp k v))) sp m))
 
 (defn -main [& args]
-  (let [{:keys [out family placebo end kinds smoke seed null] set-edn :set} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [out family placebo end kinds smoke seed null strength] set-edn :set} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         family (keyword (or family "none"))
-        _ (when-not (or (#{:none :noise} family) (fast/families family))
+        _ (when-not (or (#{:none :noise :planted} family) (fast/families family))
             (throw (ex-info (str "bnm.fast-run: no family " family) {})))
         _ (when-not (contains? #{nil "derange" "shift"} null)
             (throw (ex-info (str "bnm.fast-run: no null " null " (derange or shift)") {})))
+        _ (when (and (= :planted family) null)
+            (throw (ex-info "bnm.fast-run: a planted signal has no null draw" {})))
         _ (when-not (null-allowed? family null)
             (throw (ex-info (str "bnm.fast-run: no time-shift null for " (name family) ": its series start too late (derange)") {})))
         dir (str "data/runs/" out)
@@ -105,14 +113,18 @@
         inputs (case family
                  :none nil
                  :noise (fast/noise-inputs noise-width seed)
+                 :planted :per-kind
                  (fast/family-inputs family (fast/read-series series-path)
                                      (exposure-fn (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")))))
         inputs (if (and inputs (= "shift" null)) (fast/shift-inputs inputs (shift-months seed)) inputs)
-        width (if (= family :noise) noise-width (count (fast/families family)))
+        width (if (#{:noise :planted} family) noise-width (count (fast/families family)))
         _ (println "building" (count ks) "kinds, family" (name family) (if (= "true" placebo) "(placebo)" ""))
         specs (into {} (for [[k sp] (wr/build-specs ks end cats)]
                          [k (cond-> sp
-                              inputs (fast/with-fast inputs width (group-of family) source)
+                              inputs (fast/with-fast (if (= :per-kind inputs)
+                                                       (fast/planted-inputs (:target sp) (or (some-> strength parse-double) 1.0) noise-width seed)
+                                                       inputs)
+                                                     width (group-of family) source)
                               set-edn (with-set (read-string set-edn))
                               (= "true" smoke) (assoc :trace :inputs))]))
         _ (println "running")

@@ -199,6 +199,20 @@
       (is (< (Math/abs mu) 0.1))
       (is (< 0.9 sd 1.1)))))
 
+(deftest a-planted-signal-is-noise-plus-the-outcome
+  ;; bnm-56c.2's check that a weighting which ignores noise still lets a
+  ;; real link earn weight: the noise group with its first column moved by
+  ;; `strength` where the node's own outcome happens (it reads the future:
+  ;; a diagnostic, never a trial)
+  (let [target (fn [scale c t] (when (= scale :quarter-lead) {:y (= c "AAA") :known-at (+ t 12)}))
+        planted (f/planted-inputs target 2.0 9 1)
+        noise (f/noise-inputs 9 1)]
+    (is (= (count (planted "AAA" 120)) 9))
+    (is (< (Math/abs (- (first (planted "AAA" 120)) (+ 2.0 (first (noise "AAA" 120))))) 1e-12) "an onset moves the first column")
+    (is (= (planted "BBB" 120) (noise "BBB" 120)) "no onset, the noise itself")
+    (is (= (rest (planted "AAA" 120)) (rest (noise "AAA" 120))) "the other columns are noise")
+    (is (= (planted "ZZZ" 120) ((f/planted-inputs (fn [_ _ _] nil) 2.0 9 1) "ZZZ" 120)) "no target, no signal")))
+
 (deftest shuffled-nulls-for-the-watch-list
   ;; the watch-list rule's shuffled null draws (bnm.watchlist, v2): a
   ;; seeded random derangement of the countries, and a shift back in time

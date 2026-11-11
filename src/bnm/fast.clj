@@ -156,6 +156,21 @@
           g (m/rng-mixed seed (mod code 1000000007) t)]
       (vec (repeatedly width #(m/normal! g))))))
 
+(defn planted-inputs
+  "(fn [country t]) -> `noise-inputs` of `width` and `seed` with the first
+  moved by `strength` where the kind's `target` ((fn [scale place t]) ->
+  {:y}) has the quarter node's outcome happen: a link that carries
+  something, for checking that a weighting which ignores a group of noise
+  still lets a real group earn weight (bnm-56c.2). It reads the outcome,
+  the future at the origin: a diagnostic, never a trial."
+  [target strength width seed]
+  (let [noise (noise-inputs width seed)]
+    (fn [c t]
+      (let [x (noise c t)]
+        (if (:y (target :quarter-lead c t))
+          (update x 0 + (double strength))
+          x)))))
+
 (defn derange-source
   "A shuffled null draw of the watch-list rule (bnm.watchlist, v2): a map
   from each country to another, a uniformly random derangement of the
