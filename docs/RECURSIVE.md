@@ -205,7 +205,7 @@ New `test/bnm/coherence_test.clj` (synthetic) and `tools/bnm/coherence_report.cl
 | C1 | **Stock and flow identity up the place tree**: for every parent and stock, \|S_P − Σ S_c\| ≤ tol·\|S_P\|, and the same for external flows; internal flows sum to 0 | synthetic tree of 3 levels; real: `coherence_report` on world grain and reserves |
 | C2 | **SFC closure at every node**: rows and columns of the TFM/BSM sum to 0 (`bnm.stockflow/imbalance`); Σ net lending of children = parent's external net lending | sfc_test extension; a run hitting a clamp fails (issue 16) |
 | C3 | **Zoom is lossless for identities**: `(aggregate (allocate x shares)) = x` and `(allocate (aggregate xs) (shares xs)) = xs` to 1e-12; `survival-chain` ∘ `cumhaz-split` = identity | compose_test, property-based over random trees |
-| C4 | **Hazard composition**: λ_P = Σ λ_c exactly; P_any with v = 0 equals `1 − Π(1−p_c)`; P_any increases with v at a fixed mean (correlation lowers the chance of any onset at a fixed sum? check the sign on synthetic data and assert the computed direction) | compose_test |
+| C4 | **Hazard composition**: λ_P = Σ λ_c exactly; P_any with v = 0 equals `1 − Π(1−p_c)`; computed and asserted: P_any falls as v grows at a fixed expected count (z = −v/2), and rises as v grows at a fixed mean log rate (z = 0) when events are rare | compose_test |
 | C5 | **Time composition**: for a linearly rising hazard over 24 months, the coarse p from the fine pieces matches the analytic window probability to 1e-9; overlapping windows are refused | Round 3 Test 9b |
 | C6 | **No node reads its own issued forecast**: no read in any trace has `:dir :issued`; the ledger book is not reachable from `sh/reader`; the `:self` read is of `:state` only | node_test plus golden; Round 1 Test 1b |
 | C7 | **Weighting invariance of states**: two runs differing only in `:weighting` have identical states and `x` to 1e-12 | Round 1 Test 1a, extended to every node state field |
@@ -310,6 +310,10 @@ The base stays t48 until a step is adopted.
 **Step 1: node schema, compose and the coherence report. No forecast change.**
 - Files: `src/bnm/node.clj` (schema, `validate`, `from-lattice-entry`, `from-buffer-rows`), `src/bnm/compose.clj`, `test/bnm/compose_test.clj` (C3–C5), `test/bnm/node_test.clj` (C6, C11), `tools/bnm/coherence_report.clj`.
 - Delivers: t48 unchanged, plus a report of C1/C4 gaps on t48's book. For example, how far the year p differs from the composition of its quarters' p.
+- **Status (11 November 2026): done, no forecast changed** (bnm-56c.18).
+  - Built: `bnm.node`, `bnm.compose`, compose_test, node_test, coherence_report_test and `tools/bnm/coherence_report.clj`. docs/COHERENCE.md has the gaps on t50 and t48.
+  - C4's sign: at a fixed expected count, frailty variance lowers P(any onset); at a fixed mean log rate, it raises P(any onset) for rare events. The tests assert both.
+  - The lattice's Hermite nodes are now public (`bnm.lattice/hermite`).
 
 **Step 2: the world node (audit Round 2, issues 3, 4, 10).** Bead `bnm-56c.16`/`bnm-tee`/`bnm-0cd.2`.
 - `src/bnm/world_state.clj`: series with known-at; the reader throws after t (Test 3b).

@@ -25,6 +25,7 @@
             [bnm.lattice-golden-test]
             [bnm.compose-test]
             [bnm.node-test]
+            [bnm.coherence-report-test]
             [bnm.factors-test]
             [bnm.sheaf-test]
             [bnm.ews-test]
@@ -141,6 +142,7 @@
     bnm.lattice-golden-test
     bnm.compose-test
     bnm.node-test
+    bnm.coherence-report-test
     bnm.factors-test
     bnm.sheaf-test
     bnm.ews-test

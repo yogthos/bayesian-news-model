@@ -34,6 +34,20 @@ docs/PHASE-CHANGES.md)
 - Nothing is scored before the first windows close; no claim before
   three year-node issues (2031 at the earliest).
 
+**The recursive model** (docs/RECURSIVE.md; epic bnm-56c)
+- Step 0, loop audit Round 1, is in (bnm-56c.17): `:state-from`, `:evidence-at :issue` and the `:self` read, all opt-in. The review of Round 1 found four bugs, now fixed:
+  - at quarter nodes with `:downscale-uncertainty`, `:lp` scored the mean offset, not the offset mixture that was issued;
+  - the C9 test passed vacuously;
+  - `:up-net-of-downscale` was dropped under `:state-from`;
+  - `:reference` without `:all` failed with a nil error.
+  The learning path still uses the mean offset (bnm-56c.22, a base change).
+- Step 1 is in (bnm-56c.18), with no forecast change:
+  - `bnm.node` holds the node contract, built from lattice book entries (`split-book` keeps the issued forecasts in their own book) and from bnm.buffers records;
+  - `bnm.compose` holds the identities up both trees;
+  - the tests are compose_test (C3–C5), node_test (C6, C11) and coherence_report_test;
+  - `tools/bnm/coherence_report.clj` produced docs/COHERENCE.md on t50 and t48. Parents sit below the independent composition of their children (subregion year −0.10), and the year sits above its quarters' rates at the country (log ratio +0.28).
+- Next is step 2, the world node (bnm-56c.19). Its acceptance harness must plant the signal where the reference reads it (see that bead's notes).
+
 ## State as of 2026-11-10 (branch `structure`)
 
 The sections below are the 2026-10-17 and 2026-10-16 handovers, kept as
