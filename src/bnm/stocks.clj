@@ -7,7 +7,11 @@
 
   A series is [period available value] entries, months as integers, sorted
   by period; values already transformed (logs for prices). One vintage per
-  period, so a value's availability rises with its period.")
+  period. A value's availability usually rises with its period, but not
+  where frequencies mix (an annual December value published in September,
+  after the monthly values that follow it): such a series is read through
+  the values published by t alone (loop audit Test 18), never a row
+  published after t.")
 
 (set! *unchecked-math* true)
 
@@ -17,7 +21,22 @@
   (let [es (vec (sort-by first entries))]
     {:period (long-array (map first es))
      :available (long-array (map second es))
-     :value (double-array (map #(nth % 2) es))}))
+     :value (double-array (map #(nth % 2) es))
+     ;; availability non-decreasing in period order: binary search holds
+     :monotone (every? (fn [[a b]] (<= (long (second a)) (long (second b)))) (partition 2 1 es))}))
+
+(defn- as-of
+  "`s` itself when its availability rises with its period, else the
+  series of its values published by t (every one then known at t)."
+  [s ^long t]
+  (if (:monotone s)
+    s
+    (let [^longs av (:available s) ^longs ps (:period s) ^doubles vs (:value s)
+          ix (filterv #(<= (aget av %) t) (range (alength av)))]
+      {:period (long-array (map #(aget ps %) ix))
+       :available (long-array (map #(aget av %) ix))
+       :value (double-array (map #(aget vs %) ix))
+       :monotone true})))
 
 (defn- last-index
   "The last index i with a[i] <= x, below `end`, or -1."
@@ -47,7 +66,8 @@
 (defn value
   ([s t] (value s t nil))
   ([s ^long t {:keys [stale]}]
-   (let [i (latest s t stale)]
+   (let [s (as-of s t)
+         i (latest s t stale)]
      (when (>= i 0) (aget ^doubles (:value s) i)))))
 
 (defn change
@@ -55,7 +75,8 @@
   latest at or before that period, no more than a year earlier still)."
   ([s t months] (change s t months nil))
   ([s ^long t ^long months {:keys [stale]}]
-   (let [i (latest s t stale)]
+   (let [s (as-of s t)
+         i (latest s t stale)]
      (when (>= i 0)
        (let [^longs ps (:period s)
              target (- (aget ps i) months)
@@ -68,7 +89,8 @@
   `months` up to the latest known one, or nil with fewer than three."
   ([s t months] (volatility s t months nil))
   ([s ^long t ^long months {:keys [stale]}]
-   (let [i (latest s t stale)]
+   (let [s (as-of s t)
+         i (latest s t stale)]
      (when (>= i 0)
        (let [^longs ps (:period s)
              ^doubles vs (:value s)
@@ -84,8 +106,9 @@
 
 (defn known
   "[period value] of every value published by t, oldest first."
-  [{:keys [^longs available ^longs period ^doubles value]} ^long t]
-  (let [i (last-index available t (alength available))]
+  [s ^long t]
+  (let [{:keys [^longs available ^longs period ^doubles value]} (as-of s t)
+        i (last-index available t (alength available))]
     (mapv (fn [j] [(aget period j) (aget value j)]) (range (inc i)))))
 
 (defn periods-where

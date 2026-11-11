@@ -46,3 +46,33 @@
     (testing "when the value last changed"
       (is (= (+ (* 12 2009) 11) (sk/last-change s (* 12 2012))))
       (is (nil? (sk/last-change s (+ (* 12 2008) 6))) "no change known yet"))))
+
+(deftest availability-out-of-period-order
+  ;; loop audit Test 18: an annual and a monthly row of one variable whose
+  ;; availability is not monotone in the period (data/slow/series.tsv mixes
+  ;; frequencies: USA unemployment's annual December value is published
+  ;; in September, after the monthly January value)
+  (let [s (sk/series [[10 11 1.0]      ; monthly, Nov, known Dec
+                      [11 20 5.0]      ; annual, Dec, known nine months later
+                      [12 13 2.0]      ; monthly, Jan, known Feb
+                      [13 14 3.0]])]   ; monthly, Feb, known Mar
+    (testing "known never returns a row published after t"
+      (is (= [[10 1.0] [12 2.0] [13 3.0]] (sk/known s 15)))
+      (is (every? (fn [[p]] (not= 11 p)) (sk/known s 19)))
+      (is (= [[10 1.0] [11 5.0] [12 2.0] [13 3.0]] (sk/known s 20))))
+    (testing "the latest value is the latest period published by t, not skipped"
+      (is (= 3.0 (sk/value s 15)))
+      (is (= 2.0 (sk/value s 13)))
+      (is (= 1.0 (sk/value s 12))))
+    (testing "a change never reads an unpublished value"
+      (is (= 2.0 (sk/change s 15 2)) "Feb less Nov, the Dec row unknown at 15")
+      (is (= -2.0 (sk/change s 20 2)) "Feb less Dec once Dec is out"))
+    (testing "volatility over the published values only"
+      (let [published (sk/series [[10 11 1.0] [12 13 2.0] [13 14 3.0] [14 15 1.0]])
+            s (sk/series [[10 11 1.0] [11 20 5.0] [12 13 2.0] [13 14 3.0] [14 15 1.0]])]
+        (is (some? (sk/volatility s 15 12)))
+        (is (= (sk/volatility published 15 12) (sk/volatility s 15 12)))))
+    (testing "a monotone series is read as before"
+      (let [m (sk/series (for [p (range 0 30)] [p (inc p) (double p)]))]
+        (is (= 19.0 (sk/value m 20)))
+        (is (= 12.0 (sk/change m 20 12)))))))
