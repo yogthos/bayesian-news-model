@@ -90,6 +90,7 @@
             [bnm.watchlist-test]
             [bnm.benchmarks-test]
             [bnm.dev-folds-test]
+            [bnm.ledger-test]
             [bnm.engine-test]
             [bnm.modules-world3-test]
             [bnm.modules-stocks-test]
@@ -213,7 +214,8 @@
     bnm.fast-test
     bnm.fast-score-test
     bnm.benchmarks-test
-    bnm.dev-folds-test])
+    bnm.dev-folds-test
+    bnm.ledger-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]
