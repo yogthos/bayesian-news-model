@@ -10,6 +10,7 @@
             [bnm.trade-test]
             [bnm.polecon-test]
             [bnm.invariants-test]
+            [bnm.buffers-test]
             [bnm.pit-test]
             [bnm.mix-test]
             [bnm.eval-test]
@@ -116,6 +117,7 @@
     bnm.trade-test
     bnm.polecon-test
     bnm.invariants-test
+    bnm.buffers-test
     bnm.pit-test
     bnm.mix-test
     bnm.eval-test

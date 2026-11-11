@@ -1,0 +1,62 @@
+;; Stocks the engine does not hold, and flows it does not declare, as data
+;; (bnm.buffers/read-mappings; docs/BUFFERS.md). A record follows the schema
+;; in bnm.buffers; an extension {:match "glob" ...} adds to every engine
+;; record whose id matches. :series names where a record's observations come
+;; from; loaders read them (tools/bnm/buffers_run.clj for the two checks).
+{:records
+ [;; world grain: USDA PSD, ending stocks against domestic consumption
+  {:id "grain/WLD/wheat" :name "wheat ending stocks" :unit "1000 MT" :time-unit "year"
+   :holder {:unit "world, all holders" :place "WLD"}
+   :inflows [{:var "production" :unit "1000 MT per year" :counterpart nil}]
+   :outflows [{:var "domestic consumption" :unit "1000 MT per year" :counterpart nil :rigid 0.8}]
+   :measure {:frequency 1 :lag 1}
+   :series {:stock "USDA PSD Wheat Ending Stocks, summed over countries"
+            :outflow "USDA PSD Wheat Domestic Consumption" :inflow "USDA PSD Wheat Production"}
+   :note "Rigid share a prior: food use is hard to cut, feed use is not. Usable share not set: China holds about half of world stocks off the market; buffers_run reports the world with and without China."}
+  {:id "grain/WLD/maize" :name "maize ending stocks" :unit "1000 MT" :time-unit "year"
+   :holder {:unit "world, all holders" :place "WLD"}
+   :inflows [{:var "production" :unit "1000 MT per year" :counterpart nil}]
+   :outflows [{:var "domestic consumption" :unit "1000 MT per year" :counterpart nil}]
+   :measure {:frequency 1 :lag 1}
+   :series {:stock "USDA PSD Corn Ending Stocks" :outflow "USDA PSD Corn Domestic Consumption" :inflow "USDA PSD Corn Production"}}
+  {:id "grain/WLD/rice" :name "rice ending stocks" :unit "1000 MT" :time-unit "year"
+   :holder {:unit "world, all holders" :place "WLD"}
+   :inflows [{:var "production" :unit "1000 MT per year" :counterpart nil}]
+   :outflows [{:var "domestic consumption" :unit "1000 MT per year" :counterpart nil}]
+   :measure {:frequency 1 :lag 1}
+   :series {:stock "USDA PSD Rice, Milled Ending Stocks" :outflow "USDA PSD Rice, Milled Domestic Consumption" :inflow "USDA PSD Rice, Milled Production"}}
+
+  ;; foreign reserves, one record per country (holder: the monetary authority)
+  {:id "reserves/country/fx" :name "foreign exchange reserves" :unit "USD m" :time-unit "year"
+   :holder {:unit "monetary authority" :place "country"}
+   :inflows [{:var "export receipts" :counterpart "rest of the world/deposits"}
+             {:var "capital inflows" :counterpart "rest of the world/claims"}]
+   :outflows [{:var "import payments" :counterpart "rest of the world/deposits"}
+              {:var "external debt service" :counterpart "rest of the world/claims" :rigid 1.0}]
+   :measure {:frequency 1 :lag 1}
+   :series {:stock "Lane & Milesi-Ferretti EWN, FX Reserves minus gold (data/raw/econ/lmf-external-wealth; data/derived/buffers/reserves.csv)"
+            :cover "World Bank WDI FI.RES.TOTL.MO, reserves in months of imports (data/slow/series.tsv debt/reserves_months)"}
+   :note "Usable share unknown in general: pledged, swapped and encumbered reserves (Sri Lanka May 2022 about $50m usable of $1.8bn; Lebanon 2019 net about -$55bn against $38bn gross)."
+   :flags #{:per-country}}
+
+  ;; household and firm debt against the income that services it (the BIS DSR)
+  {:id "debt/country/private" :name "private non-financial debt" :unit "% GDP" :time-unit "year"
+   :holder {:unit "households and firms" :place "country"}
+   :inflows [{:var "new credit" :counterpart "banks/loans"}]
+   :outflows [{:var "repayment" :counterpart "banks/loans" :rigid 1.0}]
+   :measure {:frequency 0.25 :lag 0.5}
+   :series {:claims "BIS total credit, finance/credit_gdp" :income "GDP (the ratio's denominator)"
+            :dsr "BIS debt service ratios, finance/dsr_private"}
+   :flags #{:per-country}}]
+
+ :extensions
+ [;; the SFC core's balance sheet integrates the flow of funds (read a year late)
+  {:match "sfc-finance/*/bsm" :usable {:share 1.0 :sd 0.0}
+   :note "A balance sheet of the five sectors: buffers inside it (deposits, reserves) are its instruments; the matrix is one record until it is split by sector and instrument (PLAN 1.8)."}
+  ;; Keen's debt ratio: claims on firms' income
+  {:match "keen/country/d" :claims {:rate nil :maturity nil}
+   :inflows [{:var "keen/investment less profit" :counterpart "banks/loans"}]
+   :outflows [{:var "keen/repayment" :counterpart "banks/loans" :rigid 1.0}]}
+  ;; World3's capital stocks have declared lives (alic, alsc: 14 and 20 years)
+  {:match "capital/world/ic" :life 14.0}
+  {:match "capital/world/sc" :life 20.0}]}
