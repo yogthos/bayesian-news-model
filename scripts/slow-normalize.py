@@ -33,9 +33,11 @@ for line in open(os.path.join(ROOT, "data", "ref", "countryInfo.txt"), encoding=
     M49[int(f[2])] = f[1]
     NAMES[f[4].lower()] = f[1]
 edn = open(os.path.join(ROOT, "resources", "bnm", "countries.edn"), encoding="utf-8").read()
-for iso3, names in re.findall(r':iso3 "([A-Z]{3})".*?:names \[([^\]]*)\]', edn, re.S):
+# within one entry ({...}): a long :names vector is printed on its own line, and
+# a match that ran on into the next entry gave it this entry's code
+for iso3, names in re.findall(r':iso3 "([A-Z]{3})"[^{}]*?:names\s*\[([^\]]*)\]', edn):
     for n in re.findall(r'"([^"]*)"', names):
-        NAMES[n.lower()] = iso3
+        NAMES[n.strip().lower()] = iso3
 ISO3 = set(ISO2.values())
 NAMES.update({  # names the sources use that GeoNames and M49 don't
     "russia (soviet union)": "RUS", "soviet union": "RUS", "russia": "RUS", "yemen (north yemen)": "YEM",
@@ -878,6 +880,13 @@ def ucdp():
                 year_only("war_onset", u, y, "conflict %s reaches 1000 deaths" % cid)
 
 
+def esrb_iso(code):
+    """The ESRB database's country code to ISO3: EU codes (UK, EL), and the
+    UK is starred (it left the database's update from 2019)."""
+    c = code.strip().rstrip("*").upper()
+    return ISO2.get({"UK": "GB", "EL": "GR"}.get(c, c))
+
+
 def esrb():
     path = os.path.join(RAW, "esrb", "crises.xlsx")
     if not os.path.exists(path):
@@ -892,7 +901,7 @@ def esrb():
         for r in rows[2:]:
             if not r or not r[0] or len(r) < 7:
                 continue
-            iso = ISO2.get(r[0].strip().upper().replace("UK", "GB").replace("EL", "GR"))
+            iso = esrb_iso(r[0])
             # COVID-19 is recorded as a systemic crisis everywhere, flagged as an
             # exogenous shock: not the culmination of a financial build-up
             exogenous = (r[6] or "").strip().lower().startswith("exogenous")

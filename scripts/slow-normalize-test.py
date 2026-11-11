@@ -133,6 +133,26 @@ class XlsxTest(unittest.TestCase):
                          [[None, None, "3"]])
 
 
+class GazetteerTest(unittest.TestCase):
+    """countries.edn pretty-prints a long :names vector on its own line; the
+    entry before it must not take the next entry's names (Georgia was read
+    as GBR, Burkina Faso as BES, the Republic of Congo as COD)."""
+
+    def test_names_on_their_own_line(self):
+        self.assertEqual(sn.iso3_of_name("Georgia"), "GEO")
+        self.assertEqual(sn.iso3_of_name("Burkina Faso"), "BFA")
+        self.assertEqual(sn.iso3_of_name("Republic of the Congo"), "COG")
+        self.assertEqual(sn.iso3_of_name("Svalbard and Jan Mayen"), "SJM")
+        self.assertEqual(sn.iso3_of_name("Bonaire, Sint Eustatius and Saba"), "BES")
+        self.assertEqual(sn.iso3_of_name("United Kingdom"), "GBR")
+
+    def test_esrb_codes(self):
+        self.assertEqual(sn.esrb_iso("UK*"), "GBR", "the database stars the UK (left out after 2018)")
+        self.assertEqual(sn.esrb_iso("EL"), "GRC")
+        self.assertEqual(sn.esrb_iso("UK"), "GBR")
+        self.assertEqual(sn.esrb_iso("DE"), "DEU")
+
+
 class PeriodEndTest(unittest.TestCase):
     def test_quarters(self):
         self.assertEqual(sn.period_end("q", "2001-Q2"), "2001-06-30")
