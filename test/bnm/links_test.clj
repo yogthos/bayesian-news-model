@@ -1,16 +1,20 @@
 (ns bnm.links-test
   "bnm-56c.2: the weighting candidates are opt-in. The default run still
-  reproduces the base of record, t48-world-norel, byte for byte (market
-  crashes, the kind a group with nothing in it cost most)."
+  reproduces t48-world-norel byte for byte (market crashes, the kind a
+  group with nothing in it cost most) on t48's own inputs, read from the
+  first ledger issue's archive (data/ledger-inputs/2026-Q4/): the data on
+  disk were rebuilt after it (bnm-8ul)."
   (:require [bnm.fast-run :as fr]
             [bnm.kinds :as kinds]
             [bnm.lattice :as lt]
+            [bnm.ledger :as lg]
             [bnm.links :as links]
             [bnm.world-run :as wr]
             [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]))
 
 (def bench "data/runs/t48-world-norel")
+(def archive "t48's inputs, as archived with the first ledger issue." "data/ledger-inputs/2026-Q4")
 
 (defn- written
   "{file text} as bnm.world-run writes a kind's result."
@@ -20,12 +24,13 @@
     (into {} (for [f ["forecasts.tsv" "preds.tsv" "weights.tsv"]] [f (slurp (str dir "/" f))]))))
 
 (deftest the-default-run-is-the-base-of-record
-  (if-not (.exists (io/file bench "market_crash" "forecasts.tsv"))
-    (println "skipped: no" bench)
+  (if-not (and (.exists (io/file bench "market_crash" "forecasts.tsv")) (.exists (io/file archive)))
+    (println "skipped: no" bench "or" archive)
     (let [kind "market_crash"
           end (+ (* 12 2025) 11)
-          sp (get (wr/build-specs [kind] end (kinds/catalogues)) kind)
-          got (written kind (lt/run sp))]
+          [r] (lg/recording #(lt/run (get (wr/build-specs [kind] end (kinds/catalogues)) kind))
+                            (lg/redirect-to archive lg/inputs))
+          got (written kind r)]
       (doseq [[f text] got]
         (testing f
           (is (= (slurp (io/file bench kind f)) text) (str kind "/" f " differs from " bench)))))))
