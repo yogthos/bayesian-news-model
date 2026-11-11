@@ -4036,6 +4036,17 @@ else changed from the registration. 1040 stock records (822 with a
 family); 41,264 place-family-years with an invariant measured. All
 results but (d) are development results.
 
+Inputs. The registration said the run records every input's SHA-256;
+the tool did not (scanner.edn has only its own file's hash), so they are
+recorded here. The run read its inputs at its start (07:34; it ended at
+08:27). data/slow/series.tsv was rebuilt in the shared data directory at
+08:12 (bnm-8ul), after it was read: the run used the registered vintage
+4c02c69815abe3e4d7563816d42d6d03949757c1e654979991cbccb00adbd3b2, which
+is no longer on disk. panel.csv (0a41934e...), episodes.csv and rules.csv
+at 9de7195, every data/derived/buffers/*.csv and data/derived/sfc/flows.csv
+(1ee51d5e...) are the hashes listed in the registration and unchanged.
+A rerun on the rebuilt series.tsv will not reproduce these numbers.
+
 Gazetteer exposure (bnm-8ul): no feature reads events.tsv or
 political-*.csv. 11,509 rows read data/slow/series.tsv (private credit,
 investment, share prices), built with the same name lookup; 352 of them
