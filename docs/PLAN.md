@@ -109,9 +109,14 @@ trigger terms multiply it.
    the links the framing calls for. A link that carries nothing must cost
    nothing. Today it does cost: a noise group loses about 0.002 Brier.
    Fixing that comes first.
-3. **Predict windows and places; condition on shocks.** Onset forecasts are
-   hazards over one-to-five-year windows. The material side forecasts what
-   follows a shock, not when a shock comes.
+3. **Buffers explain when.** While a stock can cover a flow imbalance,
+   nothing changes on the surface, which is why "the last 12 months"
+   wins in general. The break comes when the buffer runs out and the flow
+   cannot be restored. So the quantity to forecast is the runway: a
+   stock over its net drawdown, as a date with uncertainty, plus the
+   chance the flow is restored. Our tests so far used stock levels as
+   plain inputs; the runway was never tested. Where no buffer is
+   measured, onset forecasts stay hazards over one-to-five-year windows.
 4. **The dialectic is in the form of the model.** Contradictions are
    multiplied pressures and strain between levels; quantity into quality
    is a red zone on stocks and their growth; uneven development is slopes
@@ -145,7 +150,49 @@ Estimates are agent working days, one or two agents at a time.
 - **0.5 Housekeeping** (running): registered 2027 files in git, the
   `world-run` default, stale docs, banking coverage 2020-25.
 
-### Phase 1: sub-national level (about 12 days) - expectation 2
+### Phase 1: buffers and runways (about 12 days) - expectations 4, 5
+
+Added 10 November 2026 on the user's direction: the stock-flow model is
+the key to unexpected events, because a buffer hides the imbalance until
+it is gone.
+
+- **A buffer registry.** Each buffer is a stock with its inflow and
+  outflow, who holds it, how often it is measured, and what breaks when it
+  is exhausted. First set:
+  - foreign reserves against external financing need (import cover,
+    reserves over short-term debt): currency crises, defaults;
+  - oil and gas stocks in days of cover, strategic and commercial: energy
+    price breaks;
+  - grain stocks-to-use: food price shocks;
+  - debt service against income, bank liquidity, fiscal space: banking
+    and fiscal crises.
+- **The runway.** Stock over net drawdown, as a posterior for the
+  exhaustion date. Flows are read at the week and month, trends at the
+  year and decade, so the time scales meet here.
+- **Restoration.** Whether the flow can be restored: other suppliers and
+  routes, substitution, and the lead time of new capacity, from the
+  supply model. The inventory and outage-path code is the start.
+- **Anticipation.** Breaks come before zero: holders run, prices rise as
+  stocks fall. The hazard is a function of the runway with a learned
+  threshold, not a step at exhaustion.
+- **Cascade.** One exhausted buffer becomes a drawdown on the next:
+  energy to the trade balance to reserves to default to unrest. The
+  engine runs the chain.
+- **What our record already says.** T1(b)'s pass after the warm-up fix
+  was carried by reserves (+0.160) and food import exposure (+0.088).
+  Stock levels as inputs were level (trial 45, T4, T9).
+- **Test.** Hindcasts with parameters fixed beforehand: the 1997 Asian
+  crisis (reserves), the 2007-08 food price spike (stocks-to-use), Sri
+  Lanka 2022 (reserves to default to unrest), European gas 2021-22
+  (storage). Scored on hard onsets, where persistence fails, against the
+  levels-only model. Forward: the runway of current energy stocks is the
+  first entry in the ledger.
+- **Literature to verify before registration:** competitive storage
+  (price spikes at stockouts), first-generation currency crisis models
+  (the attack is timed by reserve depletion), reserve adequacy as a
+  leading indicator, oil inventories and price.
+
+### Phase 2: sub-national level (about 12 days) - expectation 2
 
 - Province nodes in the lattice for protest and violence surges and
   conflict, from GDELT and UCDP GED (open).
@@ -161,7 +208,7 @@ Estimates are agent working days, one or two agents at a time.
   against the weekly model's own ranking (AUC 0.86). Expect the gain to be
   in where; say so in the registration.
 
-### Phase 2: uneven slopes, multiplied pressures, red zones (about 10 days) - expectations 3, 4
+### Phase 3: uneven slopes, multiplied pressures, red zones (about 10 days) - expectations 3, 4
 
 - Slopes partially pooled by region and by structure type. Structure types
   come from the map: cell profiles and export mix (labour-intensive
@@ -181,7 +228,7 @@ Estimates are agent working days, one or two agents at a time.
 - **Test:** each against the pooled, additive, levels-only base on
   development folds, then on the forward ledger.
 
-### Phase 3: one time tree (about 12 days) - expectation 5
+### Phase 4: one time tree (about 12 days) - expectation 5
 
 - Add month and decade nodes. The decade node is driven by cohort
   demography, which has a real 20-year lead.
@@ -195,7 +242,7 @@ Estimates are agent working days, one or two agents at a time.
 - **Test:** reconciled against unreconciled at each level; news layer on
   hard-onset recall under watch-list v2.
 
-### Phase 4: coupling as conditional impact (about 15 days) - expectations 1, 3
+### Phase 5: coupling as conditional impact (about 15 days) - expectations 1, 3
 
 - The supply model as a shock engine: given a strait closure, export ban
   or disaster, propagate through the product graph and report output loss
@@ -208,7 +255,7 @@ Estimates are agent working days, one or two agents at a time.
 - Stocks inside flow coefficients (Chen's occupancy), replacing the fixed
   2011 recipes where stock data exist.
 - Coupling between kinds moves to severity and duration given onset, and
-  to sign-specific interactions from phase 2. Main effects on onset stay
+  to sign-specific interactions from phase 3. Main effects on onset stay
   off.
 - Close the loop in the engine: event hazards set shock scenarios, the
   supply model propagates them, the stock-flow core takes the output
@@ -217,7 +264,7 @@ Estimates are agent working days, one or two agents at a time.
 - **Test:** conditional output forecasts for the three shocks against
   persistence; severity and duration scored by CRPS given onset.
 
-### Phase 5: operations (about 5 days)
+### Phase 6: operations (about 5 days)
 
 - One run produces all of it: the lattice with provinces, the event model
   as its week level, the engine as its scenario layer.
@@ -239,9 +286,9 @@ Estimates are agent working days, one or two agents at a time.
 1. **The split.** Keep the split by time and add the forward ledger
    (recommended), with the last-20%-by-time diagnostic reported, rather
    than a random 80/20.
-2. **Order.** Phase 0, then 1 and 2 in parallel, then 3, then 4
-   (recommended). Phase 4's hindcasts could move earlier if the material
-   side matters more to you than sub-national forecasts.
+2. **Order.** Phase 0, then 1 (buffers and runways), then 2 and 3 in
+   parallel, then 4, then 5 (recommended). Phase 5's shock hindcasts share
+   machinery with phase 1 and can start alongside it.
 3. **Scope of expectation 3.** Accept that links between kinds are built
    but carry weight only where tested (recommended), rather than forcing
    them on.
