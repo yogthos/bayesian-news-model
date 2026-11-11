@@ -760,7 +760,20 @@
                                           :ref (when state-of
                                                  (state-of {:scale scale :level level :place place :t t
                                                             :models (:models model) :x x :o o :os os}))
-                                          :issued (d/issued model x o))))
+                                          ;; each model's predictive as issued: over several
+                                          ;; offsets (:downscale-uncertainty) the forecast issued
+                                          ;; is their mixture, so each model's is too, carried as
+                                          ;; the log odds of its mixed p with no spread (what
+                                          ;; augur's issue-time score reads), its moments at the
+                                          ;; mean offset beside it
+                                          :issued (if one?
+                                                    (d/issued model x o)
+                                                    (into {} (for [[g mdl] (:models model)
+                                                                   :let [pg (reduce + (for [[w o'] os] (* w (d/predict mdl x o'))))]]
+                                                               [g (assoc (d/predictive mdl x o)
+                                                                         :mean-offset (d/predictive mdl x o)
+                                                                         :f (m/logit (Math/max 1e-300 (Math/min (- 1.0 1e-16) pg)))
+                                                                         :q 0.0)]))))))
                        st (reduce (fn [st {:keys [place p stated tension strain resolved f q principal down ref]}]
                                     (-> st
                                         (update-in [:book [scale place]] (fnil assoc (sorted-map)) t

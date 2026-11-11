@@ -889,3 +889,23 @@
         (is (= n (count learned)))
         (is (< (Math/abs (- ll (score :all))) 1e-9) [ll (score :all)])
         (is (< (Math/abs (- (first (get-in issue [:evidence [:year :country] :base])) (score :base))) 1e-9))))))
+
+(defn- lp-p
+  "The probability an issued predictive {:f :q} scores an onset at."
+  [{:keys [f q]}]
+  (m/expit (/ f (Math/sqrt (+ 1.0 (/ (* Math/PI q) 8.0))))))
+
+(deftest c9-the-issued-predictive-is-the-forecast-issued
+  ;; Round 1 review: under :downscale-uncertainty a month node issues the
+  ;; mixture over the year's offsets, so each model's :lp must score that
+  ;; mixture, not the one mean offset; weighted by the node's weights, the
+  ;; models' lp give back the p it issued
+  (let [r (loop-run {:state-from :reference :evidence-at :issue :end 120})
+        ws (into {} (for [[k hist] (:weights r) [t w] hist] [[k t] w]))
+        rows (filter #(and (:lp %) (#{:month :year} (:scale %))) (:trace r))
+        gap (fn [{:keys [scale level origin p lp]}]
+              (let [w (ws [[scale level] origin])]
+                (Math/abs (- p (reduce + (for [[g pr] lp] (* (get w g 0.0) (lp-p pr))))))))]
+    (is (some #(= :month (:scale %)) rows))
+    (is (< (reduce max (map gap (filter #(= :month (:scale %)) rows))) 1e-9) "month nodes, offsets mixed")
+    (is (< (reduce max (map gap (filter #(= :year (:scale %)) rows))) 1e-9) "year nodes, one offset")))
