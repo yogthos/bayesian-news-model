@@ -100,3 +100,11 @@
       (let [v (scan/known-view (:stock series) as-of false)]
         (is (every? #(< (Math/abs (- (mod (- (:t %) (:t (peek v))) 1.0) 0.0)) 1e-6) (butlast v)))
         (is (<= (:known (peek v)) as-of))))))
+
+(deftest a-stock-that-is-always-zero-is-not-measured
+  (require 'bnm.hazard-data)
+  (let [drop (resolve 'bnm.hazard-data/drop-empty-stocks)
+        zeros {:stock [{:t 1.0 :v 0.0 :known 1.0} {:t 2.0 :v 0.0 :known 2.0}] :outflow [{:t 1.0 :v 5.0 :known 1.0}]}]
+    (is (= #{:outflow} (set (keys (drop zeros)))))
+    (let [one (assoc-in zeros [:stock 1 :v] 3.0)]
+      (is (= one (drop one)) "one non-zero value keeps it"))))

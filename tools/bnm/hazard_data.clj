@@ -69,6 +69,16 @@
 
 (def ^:private place-re #"[A-Z]{2,3}")
 
+(defn drop-empty-stocks
+  "The series without a :stock that is zero at every observation: a
+  place that holds no such stock (Eurostat's gas storage of a country
+  with no storage site, PSD's ending stocks of a country that keeps
+  none) reports zeros that are not a buffer run down."
+  [series]
+  (if (and (seq (:stock series)) (every? #(zero? (double (:v %))) (:stock series)))
+    (dissoc series :stock)
+    series))
+
 (defn load-stocks
   "{:records [...] :series {id {role [obs]}}} for every record of the
   mapping. A record carries :families, :sector and :revised-roles (the
@@ -104,6 +114,7 @@
                                         (assoc ser role (mapv #(assoc % :v c) base)))
                                       ser))
                                   series (:series tmpl))
+                   series (drop-empty-stocks series)
                    id (str/replace (:id tmpl) "{place}" p)
                    revised (set (for [[role k] (:series tmpl) :when (and (:revised (sources k)) (contains? series role))] role))]
                (if (empty? series)
@@ -115,6 +126,7 @@
                                                 :families (vec (:families tmpl)) :sector (:sector tmpl)
                                                 :measure {:frequency 1 :lag 0}
                                                 :revised-roles revised
+                                                :reads-slow (boolean (some #(= :series-tsv (:format (sources %))) (vals (:series tmpl))))
                                                 :flags (if (seq revised) #{:revised-vintage} #{})}
                                          (:outflows tmpl) (assoc :outflows (:outflows tmpl))
                                          (:displace tmpl) (assoc :displace (:displace tmpl)))))

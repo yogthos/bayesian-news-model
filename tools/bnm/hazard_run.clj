@@ -8,7 +8,8 @@
   writes <out>/report.txt (every test, per family), <out>/preds.tsv (the
   rolling-origin and leave-one-family-out scores), <out>/hidden.tsv (1.7's
   flags), and the forward ranking to registered/ledger/2026-Q4/scanner.tsv
-  with its manifest scanner.edn (new files beside the issue)."
+  with its manifest scanner.edn (new files beside the issue). --smoke true
+  runs the code on labels drawn at random and writes only under --out."
   (:require [augur.logit :as lg]
             [augur.math :as m]
             [bnm.dev-folds :as df]
@@ -141,8 +142,11 @@
   (when (and (some :y rows) (some (complement :y) rows))
     (lg/fit (map #(assoc % :w 1.0) rows) k {:prior 1.0})))
 
+(def channel-roles [:claims :income :inflow :outflow :price :rigidity :stock])
+
 (defn channel-x
-  "The channel inputs of a record as of t: for each role, the log of its
+  "The channel inputs of a record as of t: for each role (the same list
+  for every record, so a family's rows have one length), the log of its
   latest known value (the value itself when not positive) and its change
   over a year, with missing indicators."
   [rec series t]
@@ -154,7 +158,7 @@
                          (if a
                            [(lv a) (if b (- (lv a) (lv b)) 0.0) 0.0 (if b 0.0 1.0)]
                            [0.0 0.0 1.0 1.0])))
-                     (sort (keys series))))))
+                     channel-roles))))
 
 (defn last12-index
   "{place sorted [known month]} of every episode's first known month, and
@@ -209,7 +213,14 @@
         years (range 1950 2027)
         _ (println "features" (count recs) "records")
         ftab (feature-table recs #(series (:id %)) years)
-        labels (hd/label-rows)
+        smoke (= "true" (:smoke opts))
+        labels (if smoke
+                 ;; a dry run of the code on labels drawn at random: no result is read from it
+                 (let [g (m/rng-mixed seed 999)]
+                   (mapv #(let [a (< (m/next-double! g) 0.05) b (< (m/next-double! g) 0.05)]
+                            (assoc % :y12 a :y24 (or a b) :class :main :class24 :main))
+                         (hd/label-rows)))
+                 (hd/label-rows))
         rows (model-rows labels recs ftab)
         families (sort (distinct (map :family labels)))
         _ (println "rows" (count rows) (- (System/currentTimeMillis) t0) "ms")
@@ -268,10 +279,11 @@
     (say "Pooled hazard over the buffer invariants: the registered run (docs/PHASE-CHANGES.md, 11 November 2026; bead bnm-56c.6).")
     (say (format "Records %d (%d with a family); model rows (place-family-years with an invariant measured, covered, not ongoing) %d; families %s."
                  (count recs) (count panel-recs) (count rows) (str/join ", " families)))
-    (say (format "Rows on codes the gazetteer bug touches (%s): %d, of which positive (12m, all labels) %d; by family %s."
-                 (str/join " " (sort affected-codes)) (count (filter #(affected-codes (:place %)) rows))
-                 (count (filter #(and (affected-codes (:place %)) (:y12 %)) rows))
-                 (frequencies (map :family (filter #(affected-codes (:place %)) rows)))))
+    (let [slow (set (map :id (filter :reads-slow recs)))
+          hit (filter #(and (affected-codes (:place %)) (slow (:id %))) rows)]
+      (say (format "Features from data/slow/series.tsv (built with the gazetteer's name lookup): %d of %d rows; on the codes the bug touches (%s) %d rows, %d positive (12m, all labels); by family %s. No feature reads events.tsv or political-*.csv."
+                   (count (filter #(slow (:id %)) rows)) (count rows) (str/join " " (sort affected-codes)) (count hit)
+                   (count (filter :y12 hit)) (frequencies (map :family hit)))))
     (say "")
     (say "(a) Leave one family out, 12-month window, main labels, scored 1980-2024 (development). AUC [90% country-cluster interval], recall at top 10% [interval], baselines' AUC.")
     (say (format "  %-30s %5s %4s %6s  %-22s %-22s %6s %6s %6s  %-26s %-26s  %s" "fold" "n" "pos" "base" "AUC" "recall@10%" "level" "last12" "l12-fam" "AUC-level" "AUC-last12" "verdict"))
@@ -387,7 +399,7 @@
                         (str/join "\t" (concat [(:quarter issue) (:date issue) (:rank s) n (:id r) (get-in r [:holder :place]) (:name r)
                                                 (str/join ";" (:families r)) (or (:sector r) "") (format "%.6f" (:p s))]
                                                (map #(if-let [v (get (:features s) %)] (format "%.4f" (double v)) "") fcols)))))
-          path (str "registered/ledger/" (:quarter issue) "/scanner.tsv")]
+          path (if smoke (str out "/scanner.tsv") (str "registered/ledger/" (:quarter issue) "/scanner.tsv"))]
       (say (format "(d) Forward: the scanner as of %s (the %s issue date), fitted on %d rows known by then; %d stocks ranked, top decile = %d."
                    (:date issue) (:quarter issue) (:n m) n dec))
       (say "  Top 20:")
@@ -405,7 +417,7 @@
         (let [text (str (str/join "\n" lines) "\n")
               commit (str/trim (:out (sh/sh "git" "rev-parse" "HEAD")))]
           (spit path text)
-          (spit (str "registered/ledger/" (:quarter issue) "/scanner.edn")
+          (spit (str (subs path 0 (str/last-index-of path "/")) "/scanner.edn")
                 (pr-str {:issue (:quarter issue) :written (:date issue) :as-of as-of :code-commit commit
                          :command "jolt -A:tools -M -m bnm.hazard-run" :model "bnm.hazard pooled, 12-month window, main labels"
                          :rows (:n m) :stocks n :files {"scanner.tsv" (sfc/sha256-file path)}}))

@@ -48,15 +48,16 @@ so a monthly stock and a yearly one compare. Windows are in years.
 | invariant | definition | unit |
 |---|---|---|
 | cover | usable stock over net drawdown, for each window (default 1, 3 and 5 years). Drawdown is outflow less inflow when both are measured within the window, else the stock's least-squares slope. `:exhaustion` is the last observation plus cover. A stock not draining gets the cap (100 years), flagged `:not-draining`, never a negative value. An empty stock gets 0, flagged `:empty`. With no usable share, the headline is used and flagged `:usable-missing`. A declared flow whose unit is not the stock's per time is flagged `:flow-unit-mismatch` | years |
+| gross-cover | usable stock over the mean gross outflow in the first window: how long the stock lasts if the inflow stops (stocks-to-use, reserves over imports), where cover is how long it lasts at the current imbalance. nil, `:missing-outflow`, without one | years |
 | drain-rate | net drawdown over usable stock: the inverse of cover, continuous through zero, negative when the stock grows; none for an empty stock | 1/year |
 | restoration | time to restore the inflow times the drain rate, which is that time over cover but continuous past the cap and negative for a growing stock. Above 1 it is flagged `:runs-out-first`. An empty stock has run out: nil, `:empty` | ratio |
-| rigidity | rigid share of each outflow, weighted by the outflow's level. An outflow of unknown rigidity bounds the share between all cut and all rigid: the midpoint, with a uniform spread over the bounds, flagged `:partial-rigidity`. nil when no outflow's rigidity is known | share |
+| rigidity | rigid share of each outflow, weighted by the outflow's level; a record with no outflows reads a `:rigidity` series (a share measured directly, say the debt service ratio). An outflow of unknown rigidity bounds the share between all cut and all rigid: the midpoint, with a uniform spread over the bounds, flagged `:partial-rigidity`. nil when no outflow's rigidity is known | share |
 | carry | yield less (cost + decay, or 1/life), all in the record's time unit | 1/year |
 | claim-gap | claims over the flow that services them. Minsky's bands on the same ratio (Foley 2003): hedge when income covers interest and principal, at or below 1/(r + 1/m); speculative when it covers the interest, at or below 1/r (any ratio at r = 0); otherwise Ponzi. Claims and income of different dates are flagged `:dates-differ` | years |
 | idle-share | installed but not earning, with what binds instead | share |
 | holder-hhi, holder-leverage | concentration over holders, and the holder's leverage | index, ratio |
 | market-reading | the cover a price implies: competitive storage's convex price (bnm.food's storage pressure, a curve whose terms are data) inverted, cover_ref((1 + c)/(p/p_ref) - c). The cover is what `:ref-cover` measures, stock over gross use when the curve is fitted to stocks-to-use, not the net-drawdown cover above | years |
-| displacement | the stock's stretch against its own past at 5, 10 and 20 observations (`bnm.invariants/stretch`) | z |
+| displacement | the stock's stretch against its own past at 5, 10 and 20 observations (`bnm.invariants/stretch`); a record's `:displace` names another series to measure (claims, a price, an investment flow) | z |
 | resonance | the smallest absolute stretch of the three: displaced at every scale | z |
 | stock-x-flow | absolute stretch of the stock times that of its net flow | z² |
 | breadth | across stocks at one date, the share of displacements past 1.5 (`bnm.invariants/aggregate`) | share |
