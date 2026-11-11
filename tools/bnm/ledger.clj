@@ -128,7 +128,11 @@
   issue's own archived inputs."
   {"2026-Q4" {:files {"forecasts.tsv" "70e31c27c8bf7afe9d20fe4c6befcb3def80e32c19c99fd3b08c0ab0f5d4968d"
                       "manifest.edn" "2eb4b6a5fe1e1fe4227983e8307e028243d24831f2abd9b0e439dc9a3e676d8a"}
-              :role :reported}})
+              :role :reported}
+   "2026-Q4-r1" {:files {"forecasts.tsv" "bdb361c83ff63d11a7451e0c4cc6339fa0f82b1e671c3523722dae6524f0a576"
+                         "2026-Q4-baselines.tsv" "432ea3cf6457771a075f56641f9fe1531930408b99d9b6ce7b4ffbfb03d234b8"
+                         "manifest.edn" "cf557fedb45171b1b40cdca1b28f15f4651520a9720ff6d39af974342acedaf3"}
+                 :role :primary}})
 
 (def scanners
   "The scanner's forward rankings written beside an issue (bnm.hazard-run;
