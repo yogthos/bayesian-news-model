@@ -560,6 +560,9 @@
         closures (es/portwatch-closures "data/raw/material/imf-portwatch/portwatch_disruptions_database.csv")
         restr-rows (es/load-restrictions (str dir "/export-restrictions.csv"))
         n-codes (count (distinct (map :hs6 restr-rows)))
+        ;; t44-world-norel, the base the recorded result ran on (docs/ESSENTIALS.md);
+        ;; the base of record is t48-world-norel, whose hazards differ, so the
+        ;; pointer is not moved without a dated rerun (bnm-1pq.33)
         fc (es/load-forecasts "data/runs/t44-world-norel" es/event-kinds)
         _ (tick "forecasts")
         ctx {:parents parents :losses losses :shares shares :model-use model-use :exposure exposure :keyfn keyfn

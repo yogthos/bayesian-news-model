@@ -1,9 +1,92 @@
 # Handover
 
+## State as of 2026-11-10 (branch `structure`)
+
+The sections below are the 2026-10-17 and 2026-10-16 handovers, kept as
+written. They predate the lattice, the world model and the coupled
+systems; read them for the event model and the US hazard only. Every
+number here is from the record it names; docs/TRIALS.md is the ledger and
+docs/PHASE-CHANGES.md holds each registration and result.
+
+**The event model is a lattice** (docs/LATTICE.md, bnm.lattice; trials
+36-41)
+- A node is one place at one time scale (country, subregion, region,
+  world; quarter, year, half-decade), each its own model, learning from
+  1870 by dynamic model averaging.
+- Thirteen kinds of onset are stepped together (docs/WORLD-MODEL.md,
+  `bnm.world-run`; trial 42): banking, currency, sovereign and inflation
+  crises, growth collapses, fiscal consolidations, food price shocks,
+  market crashes, protest and violence surges, coups, conflict and war
+  onsets.
+- The quarters take the year's forecast as their offset, pooled with
+  named's (trial 41's C). Against named this was level; against the
+  trial 39/40 quarters coups gain after Holm. Trial 41 tested C
+  reconciled; the reconciliation is a separate step (`bnm.reconcile`)
+  that no world run has had, so the base's quarters are unreconciled
+  (bnm-con). The year nodes are not affected.
+
+**The base of record is t48-world-norel**, the world without relations:
+`bnm.world-run --without-relations true`. A run now has to name its
+model; with neither `--without-relations true` nor `--graph` it is
+refused (until 10 November a bare run read trial 43's graph).
+- Its history: t44-world-norel, rebuilt as t46 (regression check), t47
+  (WDI zeros that were missing values, bnm-as1) and t48 (unknown errors
+  fed back as 0, groups without inputs, bnm-wns). t48 against t47: Brier
+  +0.002 [+0.000 +0.004] pooled; hard top-10 recall 0.271 against 0.274.
+- Links between kinds (trials 42-45) did not gain: trial 42 lost, 43 was
+  level, 44 and 45 level. docs/RELATIONS.md has each edge's form and the
+  weight it earned.
+- Nothing added over the base since has been kept: the stock-flow states
+  (T1-T9, H4), supply shocks (SS) and fast signals (FSa-FSc) are level,
+  failing or equivalent to nothing. T5 passes on JST 1996-2015 against
+  history alone and does not carry to the lattice, which already reads
+  those states. T1(b) passes only after a fix made after the outcome.
+- Cells against provinces (CVP) fails: provinces stay the unit inference
+  reads; cells are storage and the material layer. Located shocks (LS):
+  countries stay the unit.
+- The use is the watch list (bnm.watchlist; rule registered under
+  bnm-82j.1, second form bnm-82j.6): top-10 recall on hard onsets.
+- 2023 on is locked. `bnm.anticipation --confirm true` has never been
+  run: no confirmation output is in data/runs, the docs or the history.
+  Runs learn through 2025, and the lattice trials score origins
+  2003-2022, whose two-year windows read onsets to 2024.
+
+**Coupled systems** (docs/COUPLED-SYSTEMS.md, epic bnm-4hv)
+- Built and tested: the engine (bnm.engine), the stock-flow consistent
+  core (bnm.sfc), the control layer (bnm.control), credit allocation
+  (bnm.allocation) and capacity from investment (bnm.capacity).
+- Results: the core is consistent and does not beat persistence; the
+  allocation and capacity tests are equivalent to nothing (9d, 9e); damped
+  reversion is the net-lending forecast (9g); bnm.sfc/rates is
+  non-inferior to estimated on one holdout country and is the core for
+  scenario runs (9h, 9i).
+- Not built: real to political (bnm-4hv.4), political to control
+  (bnm-4hv.5), the hindcasts (bnm-4hv.7), the registered event test
+  (bnm-4hv.8).
+
+**Due: the 2027 rates score** (bnm-4hv.16, deferred to 2027-11-01)
+- The frozen forecasts are scored once against the first OECD Table
+  14/720 vintage downloaded on or after 1 November 2027, by
+  `bnm.sfc-rates-confirm`, as docs/COUPLED-SYSTEMS.md 9h "Run under A2"
+  gives it.
+- The three registered files are committed in `registered/sfc-2027/`
+  (hashes in its README) and must never be edited; the scorer and the
+  test suite check them. No target of data year 2025 or later has been
+  read.
+
+**Elsewhere**: the essentials and essentiality (docs/ESSENTIALS.md; it
+reads t44-world-norel's hazards, see there), the economy's character
+(docs/ECONOMIC-CHARACTER.md), ties and structure (docs/STRUCTURE.md).
+
+**Working**
+- Tests: `jolt -M:test`. `data/` is outside git; in a worktree it is a
+  symlink to the main checkout's.
+- Issues are in beads (`bd ready`, `bd show <id>`).
+
 ## State as of 2026-10-17 (branch `forecast-calibration`)
 
 The sections below this one are the 2026-10-16 handover; most of their
-"next" items are done. Where things stand now:
+"next" items are done. Where things stood then:
 
 **Crash and crisis hazards** (docs/TRADING.md, docs/INVARIANTS.md)
 - The US drawdown hazard of record (`bnm.trader`, run `data/runs/record`)

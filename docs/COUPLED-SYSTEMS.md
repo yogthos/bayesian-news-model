@@ -32,8 +32,12 @@ This document covers:
 - the mapping of today's namespaces onto modules;
 - the gaps, a validation plan and a ranked plan.
 
-No project code was written. The exploratory scripts are in the session
-scratchpad (coupled/: explore1.py to explore5.py).
+No project code was written for the research itself (sections 1 to 3);
+the exploratory scripts are in the session scratchpad (coupled/:
+explore1.py to explore5.py). The engine, the SFC core, the control
+layer, allocation and capacity have been built and tested since, and are
+recorded in sections 2a, 4d, 5.2a and 9d to 9i; "Built since" in the
+summary and in section 7 lists them.
 
 ## Summary
 
@@ -127,9 +131,40 @@ scratchpad (coupled/: explore1.py to explore5.py).
     Privatization Barometer);
   - the OECD SOE dataset.
 
-  These models are not built: the SFC core, the control layer, sectoral
-  credit allocation, capacity by sector from investment, typed
-  real-to-political inputs, and the political-to-control hazards.
+  When this was written none of these models was built: the SFC core,
+  the control layer, sectoral credit allocation, capacity by sector from
+  investment, typed real-to-political inputs, and the political-to-control
+  hazards.
+- **Built since (as of 10 November 2026).** Four of the six, and the
+  engine:
+  - *The engine* (bnm.engine, bnm-4hv.9 and .6): today's models as
+    declared modules, one coupled table.
+  - *The SFC core* (bnm.sfc, bnm.modules.sfc; bnm-4hv.10, section 2a "The
+    core as built"). It is consistent (the matrices close to 4e-14 of
+    GDP) and does not forecast better than persistence. At three and five
+    years the ensemble is equivalent to nothing against the restart and
+    is not adopted (9f, bnm-cvs). With rules estimated from data
+    (bnm.sfc/estimated, bnm-4hv.14) the holdout is inconclusive; damped
+    reversion is the net-lending forecast and estimated is the best
+    structural core, not adopted (9g). With a rate channel
+    (bnm.sfc/rates, bnm-4hv.15) it is non-inferior to estimated on one
+    holdout country, and is the core for scenario runs (9h, 9i); its
+    later confirmation is frozen and scored on or after 1 November 2027
+    (bnm-4hv.16).
+  - *The control layer* (bnm.control, bnm-4hv.2, section 4d): a factor
+    with sign priors, an engine module, written to
+    data/derived/stocks/control.csv.
+  - *Sectoral credit allocation* (bnm.allocation, bnm-4hv.3): its
+    registered test (9d, bnm-4hv.12) is equivalent to nothing:
+    control/state does not forecast the manufacturing share of new credit
+    beyond persistence and income.
+  - *Capacity from investment* (bnm.capacity, bnm-4hv.11, 5.2a): its
+    registered test (9e) fails and is equivalent to nothing at the yearly
+    step.
+
+  Not built: typed real-to-political inputs (bnm-4hv.4), the
+  political-to-control hazards (bnm-4hv.5), the hindcasts (bnm-4hv.7) and
+  the registered event test (bnm-4hv.8).
 - **Plan.**
   1. The interface and engine, wrapping today's modules, which must
      reproduce today's stock files exactly.
@@ -2281,7 +2316,7 @@ does not, and what is missing.
 | bnm.stockflow | glue | the model form, imbalance | | the SFC matrix form (sector x instrument) |
 | bnm.world3 | reference | World3-03 standard run | | (a test of the engine: World3's sectors declared as modules must reproduce the monolithic run) |
 
-**What is missing entirely:**
+**What was missing entirely** when this section was written:
 - the SFC core;
 - the control layer as a stock model with flows;
 - allocation by sector;
@@ -2290,6 +2325,22 @@ does not, and what is missing.
   shares and transfers);
 - the politics-to-control hazards;
 - the government as a sector with a fiscal rule.
+
+**Built since (as of 10 November 2026).** The table above is the mapping
+as designed; these now exist as namespaces and engine modules:
+
+| namespace | module | built in | tested in | result |
+|---|---|---|---|---|
+| bnm.engine, bnm.coupled (tools engine-run, coupled-run) | glue | bnm-4hv.9, bnm-4hv.6 | 6e: golden equality with the stock files; the World3 split | reproduces today's stock files and bnm.world3 |
+| bnm.sfc, bnm.modules.sfc (tools sfc-run, sfc-audit, sfc-horizon-run, sfc-rules-run) | F, R, D | bnm-4hv.10, .14, .15, .17 | 2a, 9f, 9g, 9h | consistent; no better than persistence as built; damped reversion is the net-lending forecast; bnm.sfc/rates is the scenario core (9i), confirmation due 2027-11 |
+| bnm.control (tools control-run) | C | bnm-4hv.2 | 4d | a factor with sign priors; in effect V-Dem's state ownership |
+| bnm.allocation (tools allocation-run) | F | bnm-4hv.3 | 9d | equivalent to nothing |
+| bnm.capacity | R | bnm-4hv.11 | 9e | fails, equivalent to nothing at the yearly step |
+
+The SFC core carries the government as a sector and the estimated rules
+its behaviour (9g). Still missing: the household distribution block and
+the politics-to-control hazards (bnm-4hv.5), and with them the typed
+real-to-political inputs (bnm-4hv.4).
 
 World3 gives the engine a cheap first test: split World3-03 into its five
 sectors, declare them as modules with their cross-sector auxiliaries as
@@ -2333,6 +2384,10 @@ substeps on a known answer (principle 9).
   intensity, not for GFCF by product.
 
 ### 8c. Models not built
+
+As of 10 November 2026, items 1 to 4 and 7 are built (the summary's
+"Built since" and section 7 give where each is recorded and what its
+test said); 5 and 6 are not. The list is kept as written.
 
 1. **The SFC core** (new bead). Five sectors per country-year, the
    transaction-flow matrix from Table 14 (and Z.1, Eurostat), stocks from

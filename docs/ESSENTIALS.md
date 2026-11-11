@@ -1156,6 +1156,15 @@ before any test year is scored (PRINCIPLES 9).
        PortWatch strait events (Red Sea 2023 on Suez and Bab-el-Mandeb,
        Panama 2023, Hormuz 2026): 0.045 a year for those four at K = 2026,
        0.015 for the rest.
+     - Note, 10 November 2026: the event model's base of record is now
+       t48-world-norel (bnm-as1, bnm-wns). This result was run on
+       t44-world-norel's hazards and tools/bnm/essentiality_run.clj still
+       reads them. Reading t48 would change the result: over year-end
+       origins 2009-2021 the two runs' country year forecasts differ by a
+       median of 0.001 for conflict onsets, 0.0005 for wars, 0.0008 for
+       coups and 0.007 for violence surges (at most 0.05, 0.04, 0.03 and
+       0.22), which moves P and with it the losses and ranks. The pointer
+       is left as it is; a rerun on t48 is bead bnm-1pq.33.
      - Loss: bnm.supply outages of every region's use of each EXIOBASE
        product at once (cuts 0.1 and 0.5; steady, and months 3 and 12
        with the data stocks; data/derived/supply/essentiality-loss.csv,
