@@ -5,8 +5,8 @@
  ;; Space is A5 equal-area cells (dodeca, docs/PRINCIPLES.md 11).
  :paths ["src" "resources"]
  :deps {io.github.jlt-commons/augur {:git/url "https://github.com/jlt-commons/augur"
-                                     :git/tag "v0.17.0"
-                                     :git/sha "9a16cc98a1f123141fcf0aa28b0e0d5101f5445b"}
+                                     :git/tag "v0.18.0"
+                                     :git/sha "8ceb26575bf7b841c3c10fd192249b72b67b6da2"}
         io.github.jlt-commons/dodeca {:git/url "https://github.com/jlt-commons/dodeca"
                                       :git/tag "v0.1.0"
                                       :git/sha "20b01f749d8789ae5d6a6756649a2278d240199d"}}

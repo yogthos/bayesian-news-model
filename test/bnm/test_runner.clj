@@ -18,6 +18,7 @@
             [bnm.ties-test]
             [bnm.onset-test]
             [bnm.onsets-test]
+            [bnm.named-test]
             [bnm.precursors-test]
             [bnm.paired-test]
             [bnm.lattice-test]
@@ -131,6 +132,7 @@
     bnm.ties-test
     bnm.onset-test
     bnm.onsets-test
+    bnm.named-test
     bnm.precursors-test
     bnm.paired-test
     bnm.lattice-test

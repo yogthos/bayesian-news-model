@@ -30,12 +30,17 @@
           (recur (inc mid) hi mid)
           (recur lo (dec mid) best))))))
 
+(def ^:dynamic *keep-stale*
+  "When true, :stale is ignored: the latest value published by t however
+  old (bnm.named/vectorizer reads a source that has lapsed this way)."
+  false)
+
 (defn- latest
   "Index of the latest value known at t, or -1 if none or staler than :stale
   months."
   ^long [{:keys [^longs available ^longs period]} ^long t stale]
   (let [i (last-index available t (alength available))]
-    (if (and (>= i 0) (or (nil? stale) (<= (- t (aget period i)) (long stale))))
+    (if (and (>= i 0) (or (nil? stale) *keep-stale* (<= (- t (aget period i)) (long stale))))
       i
       -1)))
 

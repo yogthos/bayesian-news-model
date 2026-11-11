@@ -20,7 +20,8 @@
     channels have been rising.
 
   Missing values are 0, with an indicator per source so the hazard can tell
-  absent from neutral."
+  absent from neutral, and a source that has lapsed keeps its last values
+  with a flag of its own (`vectorizer`)."
   (:require [bnm.calm :as calm]
             [augur.changepoint :as cp]
             [bnm.geo :as geo]
@@ -71,10 +72,19 @@
           (.put acc k (conj (or (.get acc k) []) [(st/month-of pend) (st/month-of avail) z])))))
     (into {} (for [[k es] acc] [k (sk/series es)]))))
 
-(defn- getter [db unit]
-  (fn
-    ([v t] (some-> (db [unit v]) (sk/value t {:stale 30})))
-    ([v t months] (some-> (db [unit v]) (sk/change t months {:stale 30})))))
+(defn- getter
+  ([db unit] (getter db unit {}))
+  ([db unit stale]
+   (fn
+     ([v t] (some-> (db [unit v]) (sk/value t {:stale (get stale v 30)})))
+     ([v t months] (some-> (db [unit v]) (sk/change t months {:stale (get stale v 30)}))))))
+
+(def publication-stale
+  "Staleness (months) for sources published too late for the default 30:
+  the Penn World Table's year comes out two years after it ends, so with 30
+  its latest year went stale every September for every country, three
+  months before the next one was out."
+  {"economy/profit_rate" 36 "economy/labor_share" 36})
 
 (defn- x* [a b] (when (and a b) (* (double a) (double b))))
 (defn- minus [a b] (when (and a b) (- (double a) (double b))))
@@ -151,21 +161,24 @@
   its change over three years, the change in labour's share (a squeeze on
   profits, or on wages); growth over five years relative to the world's
   (uneven development, Lenin); and the core's profit rate falling times the
-  country's resource rents (capital looking outward for raw materials)."
-  [db units months]
+  country's resource rents (capital looking outward for raw materials).
+  :stale overrides the staleness by variable (`publication-stale`; the
+  lattice reads the default, bnm.onsets the override)."
+  ([db units months] (political-economy db units months {}))
+  ([db units months {:keys [stale]}]
   (let [names political-economy-names
         world-growth (into {} (for [t months]
                                 [t (mean-of (keep #(some-> (db [% "economy/gdp_per_capita"]) (sk/change t 60 {:stale 30})) units))]))
         core-profit (into {} (for [t months]
-                               [t (mean-of (keep #(some-> (db [% "economy/profit_rate"]) (sk/change t 36 {:stale 30})) core))]))]
+                               [t (mean-of (keep #(some-> (db [% "economy/profit_rate"]) (sk/change t 36 {:stale (get stale "economy/profit_rate" 30)})) core))]))]
     [names
      (fn [unit t]
-       (let [g (getter db unit)
+       (let [g (getter db unit stale)
              growth (g "economy/gdp_per_capita" t 60)
              cp (core-profit t)
              rents (some-> (g "energy/resource_rents_gdp" t) (/ 100.0))]
          [(g "economy/profit_rate" t) (g "economy/profit_rate" t 36) (g "economy/labor_share" t 36)
-          (minus growth (world-growth t)) cp (x* rents (some-> cp -))]))]))
+          (minus growth (world-growth t)) cp (x* rents (some-> cp -))]))])))
 
 (def structure-names
   [:agriculture :manufacturing :services :fuel-exports :food-exports :metal-exports :hightech-exports
@@ -401,16 +414,51 @@
    :market-calm [[:vol-gap :vol-gap5]]
    :leaders [[:military-executive :since-regime-change] [:since-election] [:election-due]]})
 
-(defn vectorize
-  "Inputs as doubles, missing as 0, then one presence indicator per group:
-  [labels f] with f of the raw values."
-  [names family]
-  (let [groups (presence family)
-        pos (zipmap names (range))]
-    [(into (vec names) (for [g groups] (keyword (str (name (first g)) "-present"))))
-     (fn [vals]
-       (double-array (concat (map #(if % (double %) 0.0) vals)
-                             (for [g groups] (if (some #(nth vals (pos %)) g) 1.0 0.0)))))]))
+(defn lapsed-labels
+  "The lapse flags of a family's presence groups, one per group."
+  [family]
+  (vec (for [g (presence family)] (keyword (str (name (first g)) "-lapsed")))))
+
+(defn vectorizer
+  "[labels f] for the inputs of `build` (a thunk giving [names g], g of
+  unit and month the raw values, nil for missing) and its presence `groups`
+  (a family's in `presence`); f of unit and month gives the doubles: the
+  inputs, missing as 0, then per group whether its source is known for the
+  unit, then whether it has lapsed.
+
+  A source a unit has never had reads zeros and absent, as before. One
+  that has published for the unit but has nothing fresh at t (past its
+  staleness, or stopped) is not absent: it keeps its last values, read with
+  the staleness ignored and still only what was published by t, and is
+  flagged lapsed. So a source that stops for every country at once leaves
+  the forecasts where they were; the lapse flag is a pattern of its own,
+  its coefficient given a prior on its own scale (augur.logit :raw, from
+  bnm.onsets), so it stays at zero until lapses appear with outcomes and
+  then learns from them; when the source resumes its values come in fresh
+  through their own coefficients. An input in no group keeps its last
+  value the same way."
+  [build groups]
+  (let [[names f] (build)
+        [_ g] (binding [sk/*keep-stale* true] (build))
+        carried (fn [u t] (binding [sk/*keep-stale* true] (vec (g u t))))
+        pos (zipmap names (range))
+        grouped (set (mapcat identity groups))
+        loose (vec (remove grouped names))
+        labels (-> (vec names)
+                   (into (for [gr groups] (keyword (str (name (first gr)) "-present"))))
+                   (into (for [gr groups] (keyword (str (name (first gr)) "-lapsed")))))]
+    [labels
+     (fn [u t]
+       (let [fresh (vec (f u t))
+             old (delay (carried u t))
+             has? (fn [vs gr] (some #(nth vs (pos %)) gr))
+             state (mapv #(cond (has? fresh %) :fresh (has? @old %) :lapsed :else :absent) groups)
+             take-old (fn [vs ks] (reduce #(assoc %1 (pos %2) (nth @old (pos %2))) vs ks))
+             vs (reduce (fn [vs [gr st]] (if (= :lapsed st) (take-old vs gr) vs)) fresh (map vector groups state))
+             vs (take-old vs (filter #(nil? (nth vs (pos %))) loose))]
+         (double-array (concat (map #(if % (double %) 0.0) vs)
+                               (map #(if (= :absent %) 0.0 1.0) state)
+                               (map #(if (= :lapsed %) 1.0 0.0) state)))))]))
 
 (def family
   {"banking_crisis" :financial "market_crash" :financial})

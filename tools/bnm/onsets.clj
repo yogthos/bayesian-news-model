@@ -117,13 +117,15 @@
   among the rows with the same sources present."
   [build names family]
   (let [p (count (get nm/presence family))]
-    [(+ (count names) p)
+    [(+ (count names) (* 2 p))
      (fn [{:keys [db units rows]}]
        (let [months (distinct (map #(+ 2 (* 3 (:q %))) rows))
-             [names f] (build db units months)
-             [_ vf] (nm/vectorize names family)]
-         (into {} (for [{:keys [unit q]} rows] [[unit q] (vf (f unit (+ 2 (* 3 q))))]))))
-     (fn [^doubles x] (vec (take-last p x)))]))
+             [_ vf] (nm/vectorizer #(build db units months) (nm/presence family))]
+         (into {} (for [{:keys [unit q]} rows] [[unit q] (vf unit (+ 2 (* 3 q)))]))))
+     ;; presence and lapse flags, the last 2p columns
+     (fn [^doubles x] (vec (take-last (* 2 p) x)))
+     ;; the lapse flags' columns (prior on their own scale)
+     (vec (range (+ (count names) p) (+ (count names) (* 2 p))))]))
 
 (def history-kinds
   "The catalogues whose histories feed every kind (the histories group)."
@@ -196,7 +198,7 @@
                   (into {} (for [{:keys [unit q]} rows] [[unit q] (o/histories events history-kinds unit q)])))]})
 
 (defn load-groups
-  "[[name width {[unit quarter] double[]}] ...] for `names`, each followed by
+  "[[name width {[unit quarter] double[]} lapse-columns] ...] for `names`, each followed by
   its placebo; the event model's view first when `event-run` is given. A
   group without values for every row gets a presence column
   (bnm.onset/with-presence), and the placebo shuffles values only among
@@ -210,7 +212,7 @@
                     ["event-placebo" (count nm/event-labels)
                      (ties/placebo xs 1 #(aget ^doubles % (dec (count nm/event-labels))))]]))
                (for [g names
-                     :let [[width load stratum] (or (group-loaders g) (throw (ex-info (str "unknown group " g) {})))
+                     :let [[width load stratum lapsed] (or (group-loaders g) (throw (ex-info (str "unknown group " g) {})))
                            ;; --delay n: each row sees the group as it was n quarters
                            ;; before, so a gain that survives is not same-quarter leakage
                            delayed (if (pos? (:delay ctx 0))
@@ -223,7 +225,7 @@
                            strat (if stratum
                                    (fn [^doubles x] (stratum (java.util.Arrays/copyOf x (int width0))))
                                    (constantly nil))]
-                     entry [[g width xs] [(str g "-placebo") width (ties/placebo xs 1 strat)]]]
+                     entry [[g width xs lapsed] [(str g "-placebo") width (ties/placebo xs 1 strat) lapsed]]]
                  entry))))
 
 (def cases
@@ -298,7 +300,7 @@
   "Indices into a row's full input vector [1 hist hist inputs... named...
   groups...] for each model, given `m` named inputs of which the last `p`
   are the political economy ones, and the input `groups` ([name width _])."
-  [labels m p groups]
+  [labels m p groups & [named-labels]]
   (let [n (count labels)
         named (range (+ 3 n) (+ 3 n (- m p)))
         polecon (range (+ 3 n (- m p)) (+ 3 n m))
@@ -322,7 +324,11 @@
     (into {} (for [[g span] spans
                    entry [[(keyword g) (vec (concat [0 1 2] span))]
                           [(keyword (str "named+" g)) (vec (concat [0 1 2] named span))]]]
-               entry)))))
+               entry))
+     ;; the lapse flags' columns in the full row, whose priors are on their
+     ;; own scale (bnm.named/vectorizer)
+     {:raw (set (concat (keep-indexed (fn [i l] (when (str/ends-with? (name l) "-lapsed") (+ 3 n i))) named-labels)
+                        (mapcat (fn [[_ span] [_ _ _ lapsed]] (map #(nth span %) lapsed)) spans groups)))})))
 
 (def model-order [:base :history :politics :local :domains :all])
 
@@ -432,14 +438,14 @@
   precision moves by under 1e-3 in log and the variances by under 1e-3. Warm from
   `start` ({:beta :fx :prior}). {:beta :fx :prior, the precision the
   coefficients were fit at, :next-prior, the next step's, :rounds}."
-  [train k {:keys [beta fx prior]} {:keys [tau2 sweeps rounds sd-prior] start-prior :prior}]
+  [train k {:keys [beta fx prior]} {:keys [tau2 sweeps rounds sd-prior raw] start-prior :prior}]
   (let [train (vec train)
         settled? (fn [p p' t t'] (and t (< (Math/abs (- (Math/log p') (Math/log p))) 1e-3)
                                       ;; absolute for the variances: one with no signal
                                       ;; drifts toward zero by a constant factor
                                       (every? #(< (Math/abs %) 1e-3) (map - t' t))))]
     (loop [r 0 beta beta fx fx prior (double (or prior start-prior))]
-      (let [beta (lgt/fit (map #(assoc % :o (if fx (hier/effect fx (:path %)) 0.0)) train) k {:prior prior :start beta})
+      (let [beta (lgt/fit (map #(assoc % :o (if fx (hier/effect fx (:path %)) 0.0)) train) k {:prior prior :start beta :raw raw})
             fx' (hier/intercepts (map #(assoc % :o (dot beta (:x %))) train)
                                  {:tau2 (or (:tau2 fx) tau2) :sweeps sweeps :sd-prior sd-prior :start (:effects fx)})
             prior' (lgt/evidence-step (map #(assoc % :o (hier/effect fx' (:path %))) train) k beta prior)
@@ -551,7 +557,18 @@
         aux-prepared (delay (vec (o/other-kind-rows rows units window aux full-of)))
         years (range (quot (apply min (map :q prepared)) 4) (inc (quot (apply max (map :q prepared)) 4)))]
     (fn [sets]
-      (let [;; at-risk cuts depend on the inputs and the year, not the prior
+      (let [raw-full (:raw sets #{})
+            ;; positions of the lapse flags among a model's fitted inputs:
+            ;; their prior precision is on their own scale (augur.logit :raw)
+            raw-of (fn [idx mode]
+                     (let [n (count idx)
+                           js (keep-indexed (fn [j i] (when (raw-full i) j)) idx)]
+                       (set (case mode
+                              :flags (mapcat #(let [o (+ 3 (* 2 (- % 3)))] [o (inc o)]) js)
+                              :hier (concat js (map #(+ n (- % 3)) js))
+                              :calm (concat js (map #(+ n %) js))
+                              js))))
+            ;; at-risk cuts depend on the inputs and the year, not the prior
             cuts-for (memoize (fn [idx q0] (o/tail-cuts (for [{:keys [q full]} prepared
                                                               :when (<= (+ q (second window)) q0)]
                                                           (pick full idx))
@@ -567,7 +584,8 @@
               (let [k (cond flags? (+ 3 (* 2 (- (count idx) 3)))
                             hier? (- (* 2 (count idx)) 3)
                             calm? (* 2 (count idx))
-                            :else (count idx))]
+                            :else (count idx))
+                    raw (raw-of idx (cond flags? :flags hier? :hier calm? :calm :else :plain))]
                 (loop [[yr & more] (filter #(>= % (+ 10 (first years))) years)
                        beta nil
                        fx nil
@@ -592,10 +610,10 @@
                                    :w (* (Math/pow 0.95 (/ (- q0 q) 4.0)) (if y 1.0 (/ 100.0 15.0)))})
                           [beta fx prior] (cond
                                             (not (some :y train)) [beta fx prior]
-                                            hier? (let [f (fit-hier train k {:beta beta :fx fx :prior prior} hier-opts)]
+                                            hier? (let [f (fit-hier train k {:beta beta :fx fx :prior prior} (assoc hier-opts :raw raw))]
                                                     [(:beta f) (:fx f) (:next-prior f)])
-                                            shrunk? [(lgt/fit-shrunk train k {:prior prior :start beta}) fx prior]
-                                            :else [(lgt/fit train k {:prior prior :start beta}) fx prior])
+                                            shrunk? [(lgt/fit-shrunk train k {:prior prior :start beta :raw raw}) fx prior]
+                                            :else [(lgt/fit train k {:prior prior :start beta :raw raw}) fx prior])
                           scored (for [{:keys [unit q y] :as r} prepared
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
                                    [q (checked (lgt/predict beta (xf r) (if fx (hier/effect fx (hier-path unit)) 0.0))
@@ -609,6 +627,7 @@
             run-mt
             (fn [idx lam]
               (let [k (inc (count idx))
+                    raw (raw-of idx :plain)
                     x+ (fn [full other?] (let [x (pick full idx) out (double-array k)]
                                            (System/arraycopy x 0 out 0 (alength x))
                                            (aset out (dec k) (if other? 1.0 0.0))
@@ -627,7 +646,7 @@
                                        :when (and (<= (o/resolves-at q window alag) q0) (some? y) (or y (keep-negative? unit q)))]
                                    {:x (x+ full true) :y y :w (* lam (w q y))})
                           train (concat own others)
-                          beta (if (some :y own) (lgt/fit train k {:prior 100.0 :start beta}) beta)
+                          beta (if (some :y own) (lgt/fit train k {:prior 100.0 :start beta :raw raw}) beta)
                           scored (for [{:keys [unit q y full]} prepared
                                        :when (and beta (= (quot q 4) yr) (>= yr score-from))]
                                    [q (lgt/predict beta (x+ full false)) y unit])]
@@ -818,18 +837,17 @@
                           [rows labels]))
         all-units (set (map :unit rows))
         db (nm/load-series "data/slow/series.tsv" variables)
-        rows (let [wc (nm/world-credit db all-units (distinct (map #(+ 2 (* 3 (:q %))) rows)))
-                   [fn* ff] (nm/financial db wc)
-                   [pn* pf] (nm/political db)
-                   [_ fv] (nm/vectorize fn* :financial)
-                   [_ pv] (nm/vectorize pn* :political)
-                   [en* ef] (nm/political-economy db all-units (distinct (map #(+ 2 (* 3 (:q %))) rows)))
-                   [_ ev] (nm/vectorize en* :political-economy)
-                   both (fn [^doubles a ^doubles b] (double-array (concat a b)))]
+        months (distinct (map #(+ 2 (* 3 (:q %))) rows))
+        [fl fv] (nm/vectorizer #(nm/financial db (nm/world-credit db all-units months)) (nm/presence :financial))
+        [pl pv] (nm/vectorizer #(nm/political db) (nm/presence :political))
+        [el ev] (nm/vectorizer #(nm/political-economy db all-units months {:stale nm/publication-stale})
+                               (nm/presence :political-economy))
+        named-labels {:financial (into fl el) :political (into pl el)}
+        rows (let [both (fn [^doubles a ^doubles b] (double-array (concat a b)))]
                (mapv (fn [{:keys [unit q] :as r}]
                        (let [t (+ 2 (* 3 q))]
-                         (assoc r :named (let [e (ev (ef unit t))]
-                                          {:financial (both (fv (ff unit t)) e) :political (both (pv (pf unit t)) e)}))))
+                         (assoc r :named (let [e (ev unit t)]
+                                          {:financial (both (fv unit t) e) :political (both (pv unit t) e)}))))
                      rows))
         _ (when groups
             (when-let [unused (seq (o/unused-groups models (str/split groups #",")))]
@@ -838,7 +856,7 @@
         groups (load-groups (if groups (str/split groups #",") ["mix"]) event-run {:db db :units all-units :rows rows :events (:known event-sets)
                                                                                       :delay (or (some-> delay parse-long) 0)})
         n-named (into {} (for [fam [:financial :political]] [fam (alength ^doubles (get-in (first rows) [:named fam]))]))
-        n-polecon (count (first (nm/vectorize nm/political-economy-names :political-economy)))
+        n-polecon (count el)
         market-units (set (for [{:keys [unit ^doubles x]} rows
                                 :let [i (first (keep-indexed #(when (and (= "markets" (:domain %2)) (= :present (:feature %2))) %1) labels))]
                                 :when (and i (pos? (aget x (long i))))]
@@ -869,7 +887,7 @@
                     {:kind k :sets (update-vals event-sets #(get % k)) :last-q (coverage-q k)}))
             runs (combine ((evaluate-kind rows (update-vals event-sets #(get % kind)) units window score-from last-q models fam groups aux
                                           (some-> threads parse-long))
-                           (feature-sets labels (n-named fam) n-polecon groups))
+                           (feature-sets labels (n-named fam) n-polecon groups (named-labels fam)))
                           (lagged window (get-in event-sets [:lags kind] 0)))
             preds (update-vals runs :preds)
             base (:base preds)]
