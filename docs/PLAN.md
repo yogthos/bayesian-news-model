@@ -367,6 +367,71 @@ phase's hypothesis.
 - **Test:** conditional output forecasts for the three shocks against
   persistence; severity and duration scored by CRPS given onset.
 
+### Phase 5b: the price network (about 8 days) - expectations 1, 3
+
+Added 11 November 2026 (bnm-56c.16). A price rise in an input (steel,
+energy, grain) moves the prices of everything made from it, with lags,
+and squeezes margins where it is not passed on. Today the product graph
+(bnm.supply, EXIOBASE hybrid 2011) carries quantity shocks and a static
+cost-push share; nothing moves prices over time. The energy pilot (P1)
+found fixed network weights a small point gain over each sector's trend,
+and pass-through fitted on past shocks worse.
+
+**What the literature says** (searched 11 November 2026):
+- The Leontief price model ranks exposure well: p = (I - A')^-1 v; with
+  commodities exogenous, dp_n = (I - A_nn')^-1 A_xn' dp_x. Sector price
+  responses match its sensitivities (Luo and Villar 2023); the most
+  exposed sectors found before 2020 were the ones hit in 2021-22 (Weber
+  et al. 2024). It is wrong on timing, margins and substitution.
+- Each production stage adds a lag: cumulative pass-through after h steps
+  is the sum of (A')^k for k up to h. Measured lags: crude to pump 1-2
+  months, wholesale to retail beef 2 months, flour to bread 2-4 months.
+  How often each sector changes prices matters more than the network
+  links (Pasten, Schoenle and Weber).
+- Pass-through is incomplete and asymmetric: about half of the 2018 US
+  steel tariff reached domestic steel prices; imported input costs pass
+  70-100% to producer prices; fuel prices rise fast and fall slowly.
+- Large shocks with little substitution amplify beyond the linear model
+  (Baqaee and Farhi: nearly triple for the 1970s oil shocks).
+- Fitting pass-through to past shocks does not forecast: producer prices
+  lead consumer prices in-sample but do not improve forecasts out of
+  sample (Clark), as in our P1. The one scored out-of-sample result
+  (Monti and Van Keirsbilck, ECB 2025) shows input-output structure
+  helps headline inflation forecasts but not during the 2021-22 surge.
+  No study scores sector-level price forecasts out of sample.
+
+**Build:**
+1. Structure: keep the 2011 hybrid recipes for physical quantities;
+   take each year's coefficients from a yearly multi-regional table,
+   using the table that was published at the forecast date (about t-2).
+   Long-run WIOD (CC BY 4.0) for tests before 1995.
+2. Prices: commodity inputs from the World Bank Pink Sheet and IMF
+   monthly series, USGS for metals; targets are US producer prices
+   (BLS, by industry and stage of processing) and Eurostat producer
+   prices, mapped to the graph's products; BACI unit values on trade
+   edges.
+3. Model, in order, nothing fitted to past shocks: (a) static
+   partitioned Leontief, the same as fixed network weights; (b) with a
+   lag per production stage, fixed beforehand from the measured lags;
+   (c) with each sector's published frequency of price changes;
+   (d) the non-linear correction only for shocks above a size fixed in
+   advance.
+4. Feed margins into the buffers: cost rises not passed on lower carry
+   and raise the claim gap; they drain cash buffers.
+
+**Test** (registered before running): the events 1973, 1979, 1990,
+2008, 2014-16, the 2018 steel tariff and 2021-22; real-time inputs; each
+sector's own trend and static network weights as baselines; cumulative
+3, 6, 12 and 24-month sector price changes scored by error, rank
+correlation across sectors and sign; rises and falls reported apart.
+The realistic target is ranking which sectors rise, with a small gain
+in size and the least in timing.
+
+**Decision needed:** EXIOBASE 3.9 and later are licensed for
+non-commercial use only. Use it for the yearly coefficients if this
+work is non-commercial; otherwise use OECD ICIO (free; licence to be
+confirmed) or Eurostat FIGARO.
+
 ### Phase 6: operations (about 5 days)
 
 - One run produces all of it: the lattice with provinces, the event model
