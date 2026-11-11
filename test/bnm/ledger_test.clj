@@ -76,6 +76,43 @@
       (is (thrown-with-msg? Exception #"refusing" (lg/check-file f sha)))
       (is (thrown-with-msg? Exception #"refusing" (lg/check-file (str d "/missing.tsv") sha))))))
 
+(deftest an-issue-is-dated-in-its-quarter-s-last-two-months
+  ;; the registration: dated inside the quarter, refused outside its last two months
+  (is (thrown? Exception (lg/check-issue-date "2026-Q4" "2026-10-31")) "October is the quarter's first month")
+  (is (= 24322 (lg/check-issue-date "2026-Q4" "2026-11-11")))
+  (is (= 24323 (lg/check-issue-date "2026-Q4" "2026-12-31")))
+  (is (thrown? Exception (lg/check-issue-date "2026-Q4" "2027-01-02")))
+  (is (thrown? Exception (lg/check-issue-date "2027-Q1" "2027-01-15"))))
+
+(deftest the-code-checked-clean-is-everything-the-run-loads
+  ;; resources are on the classpath (countries, provinces): an uncommitted
+  ;; change there moves the run as surely as one in src
+  (let [deps (read-string (slurp "deps.edn"))
+        loaded (concat (:paths deps) (get-in deps [:aliases :tools :extra-paths]) ["deps.edn"])]
+    (is (every? (set lg/code-paths) loaded) (str "not checked: " (vec (remove (set lg/code-paths) loaded))))))
+
+(deftest every-read-inside-the-run-is-recorded
+  (let [d (tmp-dir) a (str d "/a.txt") b (str d "/b.txt") c (str d "/c.txt")]
+    (spit a "1") (spit b "2") (spit c "3")
+    (let [[v opened] (lg/recording (fn [] (+ (count (slurp a)) (with-open [r (io/reader b)] (count (line-seq r)))
+                                             (with-open [s (io/input-stream c)] (.read s) 0))))]
+      (is (= 2 v))
+      (is (= #{a b c} opened) "slurp, io/reader and io/input-stream (the gzip readers)"))
+    (is (= "1" (slurp a)) "slurp is itself again after")))
+
+(deftest the-base-of-record-is-the-pinned-one
+  (is (= 13 (count lg/base-files)))
+  (is (every? #(re-matches #"[0-9a-f]{64}" %) (vals lg/base-files)))
+  (let [d (tmp-dir)]
+    (.mkdirs (io/file d "coup"))
+    (spit (str d "/coup/forecasts.tsv") "year\tAAA\t24299\t0.1\tfalse\n")
+    (let [sha (sfc/sha256-file (str d "/coup/forecasts.tsv"))]
+      (is (= {"coup" sha} (lg/check-base d {"coup" sha})))
+      (is (thrown-with-msg? Exception #"refusing" (lg/check-base d {"coup" (apply str (repeat 64 "0"))})))
+      (is (thrown-with-msg? Exception #"refusing" (lg/check-base d {"war_onset" sha})) "missing")))
+  (when (.exists (io/file "data/runs" lg/base "coup" "forecasts.tsv"))
+    (is (= lg/base-files (lg/check-base (str "data/runs/" lg/base) lg/base-files)) "the files on disk are t48's")))
+
 (deftest every-registered-issue-is-intact
   (doseq [[q {:keys [files]}] lg/issued
           [n sha] files]

@@ -10,11 +10,14 @@
     jolt -A:tools -M -m bnm.ledger issue --quarter 2026-Q4 [--date 2026-11-11]
     jolt -A:tools -M -m bnm.ledger score --quarter 2026-Q4 --scale year [--kinds a,b]
 
-  issue refuses unless the code (src, tools, test, deps.edn) is committed
-  and clean; runs the base's command (`command`) in this process, recording
-  every file it reads, and refuses if it reads one not in `inputs` or one
-  changes during the run; refuses unless the run reproduces the base of
-  record on every row it has (origins to `base-end`); then writes
+  issue refuses a date outside the quarter's last two months, and unless
+  the code (`code-paths`: src, resources, tools, test, deps.edn) is
+  committed and clean; runs the base's command (`command`) in this
+  process and reads the catalogues, recording every file read, and
+  refuses if it reads one not in `inputs` or one changes during the run;
+  refuses unless the base of record's files are the pinned ones
+  (`base-files`) and the run reproduces them on every row they have
+  (origins to `base-end`); then writes
   forecasts.tsv (every row at each scale's latest origin, with the
   benchmarks frozen beside it), manifest.edn and README.md, and prints the
   hashes to register in `issued`.
@@ -53,6 +56,29 @@
    "data/raw/slow/rr/onsets.csv" "data/runs/r6-at/preds.tsv" "data/slow/coverage.tsv" "data/slow/events.tsv"
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
+(def base-files
+  "The base of record's forecasts, data/runs/t48-world-norel/<kind>/
+  forecasts.tsv (written 28 October 2026), by SHA-256: the reproduction
+  check compares against these files and refuses others."
+  {"banking_crisis" "1b1cf77e2b849d3ce2edce7fad416532bd3b83f0ef681d27d8af4be7aa771d62"
+   "conflict_onset" "3ffe7bb8fb1773f6134b10612440084b2f8b3da7e87a43c1f2970653027b844d"
+   "coup" "dce6322793f0566e211426647d8aa2a99ed46d156d152c51dcaa92bcee895af4"
+   "currency_crisis" "e4f685eb2108449a8742b7d59bd506f2b58cf04f8d68b6dac629b8e8d546d99c"
+   "fiscal_consolidation" "d2f9e81b90ab9305a2bcff2311d96b291014e0a0d94b8322a81b94b333fad664"
+   "food_price_shock" "655695430c0311b39b98da5d157c0f39e8d5f93ef8eed4702c53cbcea3ce98bc"
+   "growth_collapse" "5082166dfa74cee558ec3481c6bd9f2573698b55bcc815b3b92a8aaa49dc3fd3"
+   "inflation_crisis" "ec8e9f8213ee6729b8be7bca3d77daafb9e8c97adc62f11647f532e94908e3d5"
+   "market_crash" "37c23cb3f6e1b8d3d8bc8b9f23ec86c3181747d7bc79c68d29f878e0bb309305"
+   "protest_surge" "3e31c22eb51b0942f943b541c34caa7bc26c80f18ae2755d12b423f033e054b1"
+   "sovereign_default" "a99f51ba0eee65a63a2669434209fb1dcf0191f80c1769824131b0e8d23555ff"
+   "violence_surge" "ba4208623e7ee55f34cc4b2162954236fffa78511ecdf58a3fa2b84999b1a6bf"
+   "war_onset" "58a13eb387ff741f3296bc87a18ad77c4f920e6fb9c2c5c2a2bed7727364811f"})
+
+(def code-paths
+  "What must be committed and clean before an issue: everything on the
+  run's classpath (deps.edn :paths and the tools alias) and deps.edn."
+  ["src" "resources" "tools" "test" "deps.edn"])
+
 (def issued
   "Registered issues: {quarter {:files {name SHA-256}}}. An issue enters
   here in the commit that adds it, and is never edited."
@@ -76,6 +102,16 @@
     (when-not (and y (<= 1 mo 12) (<= 1 (parse-long dd) 31))
       (throw (ex-info (str "bnm.ledger: a date is YYYY-MM-DD, not " d) {:date d})))
     (+ (* 12 (parse-long y)) (dec mo))))
+
+(defn check-issue-date
+  "The month of `date` when it is in the last two months of `quarter`
+  (the registration); refuses otherwise."
+  [quarter date]
+  (let [end (quarter-end quarter) m (date-month date)]
+    (when-not (<= (dec end) m end)
+      (throw (ex-info (str "bnm.ledger: " date " is not in the last two months of " quarter "; refusing")
+                      {:date date :quarter quarter})))
+    m))
 
 (def ^:private scale-of (into {} (map (juxt :name identity) lb/scales)))
 
@@ -154,6 +190,19 @@
     (when-not (zero? (:exit r)) (throw (ex-info (str "bnm.ledger: cannot hash " path) r)))
     (first (str/split (:out r) #"\s+"))))
 
+(defn check-base
+  "{kind SHA-256} of the base's forecasts under `dir` when each is the
+  pinned one in `pinned`; refuses otherwise."
+  [dir pinned]
+  (into (sorted-map)
+        (for [[k sha] pinned :let [f (str dir "/" k "/forecasts.tsv")]]
+          (do (when-not (.exists (io/file f))
+                (throw (ex-info (str f " is missing; refusing") {:path f})))
+              (let [got (sha256-big f)]
+                (when-not (= got sha)
+                  (throw (ex-info (str f "'s SHA-256 is " got ", not the base of record's " sha "; refusing") {:path f :got got})))
+                [k got])))))
+
 ;; --- issuing ---------------------------------------------------------------------
 
 (defn command [out end]
@@ -161,18 +210,22 @@
 
 (defn- git [& args] (str/trim (:out (apply sh/sh "git" args))))
 
-(defn- run-recording
-  "Runs the base's command in this process; the set of files read."
-  [args]
+(defn recording
+  "[(f) files-read]: calls `f`, recording every file opened by name
+  through io/reader, io/input-stream or slurp (resources, read by URL,
+  are code)."
+  [f]
   (let [opened (atom #{})
-        rec (fn [f] (fn [x & more] (when (or (string? x) (instance? java.io.File x)) (swap! opened conj (str x))) (apply f x more)))
-        r0 io/reader s0 slurp]
+        rec (fn [g] (fn [x & more] (when (or (string? x) (instance? java.io.File x)) (swap! opened conj (str x))) (apply g x more)))
+        r0 io/reader i0 io/input-stream s0 slurp]
     (alter-var-root #'io/reader rec)
+    (alter-var-root #'io/input-stream rec)
     (alter-var-root #'clojure.core/slurp rec)
-    (try (apply wr/-main args)
-         (finally (alter-var-root #'io/reader (constantly r0))
-                  (alter-var-root #'clojure.core/slurp (constantly s0))))
-    @opened))
+    (let [v (try (f)
+                 (finally (alter-var-root #'io/reader (constantly r0))
+                          (alter-var-root #'io/input-stream (constantly i0))
+                          (alter-var-root #'clojure.core/slurp (constantly s0))))]
+      [v @opened])))
 
 (defn- benchmarks-at
   "{[kind scale place origin] {:clim :last12 :share :pers :wclim}} for
@@ -226,31 +279,32 @@ To check by hand:
   [{:keys [quarter date run]}]
   (let [dir (str ledger-dir quarter)
         end (quarter-end quarter)
-        issue-month (date-month date)
+        issue-month (check-issue-date quarter date)
         run (or run (str "ledger-" quarter))
         run-dir (str "data/runs/" run)]
     (when (.exists (io/file dir)) (throw (ex-info (str dir " exists; an issue is never redone") {:dir dir})))
-    (when-not (<= (- end 2) issue-month end)
-      (throw (ex-info (str "bnm.ledger: " date " is not in " quarter) {:date date :quarter quarter})))
-    (let [dirty (git "status" "--porcelain" "--untracked-files=no" "--" "src" "tools" "test" "deps.edn")]
+    (let [dirty (apply git "status" "--porcelain" "--" code-paths)]
       (when (seq dirty) (throw (ex-info (str "bnm.ledger: commit the code first:\n" dirty) {}))))
-    (let [commit (git "rev-parse" "HEAD")
+    (let [base-shas (check-base (str "data/runs/" base) base-files)
+          commit (git "rev-parse" "HEAD")
           before (into (sorted-map) (for [f inputs] [f (sha256-big f)]))
           args (command run end)
           _ (println "running the base:" (str/join " " (concat ["jolt -A:tools -M -m bnm.world-run"] args)))
-          opened (run-recording args)
+          ;; the run and the catalogues the benchmarks read, both recorded
+          [cats opened] (recording (fn [] (apply wr/-main args) (kinds/catalogues)))
           stray (remove (fn [f] (or (some #{f} inputs) (str/starts-with? f run-dir)
                                     (not (.exists (io/file f)))))
                         opened)
           after (into (sorted-map) (for [f inputs] [f (sha256-big f)]))]
       (when (seq stray) (throw (ex-info (str "bnm.ledger: the run read files not in bnm.ledger/inputs: " (vec stray)) {:files stray})))
       (when (not= before after) (throw (ex-info "bnm.ledger: an input changed during the run" {:before before :after after})))
-      (let [cats (kinds/catalogues)
-            ks (sort (filter #(.exists (io/file (str run-dir "/" % "/forecasts.tsv"))) (keys kinds/tiers)))
+      (let [ks (sort (filter #(.exists (io/file (str run-dir "/" % "/forecasts.tsv"))) (keys kinds/tiers)))
             repro (into (sorted-map)
                         (for [k ks]
                           [k (reproduction (str/split-lines (slurp (str "data/runs/" base "/" k "/forecasts.tsv")))
                                            (str/split-lines (slurp (str run-dir "/" k "/forecasts.tsv"))) base-end)]))
+            _ (when (not= (set ks) (set (keys base-files)))
+                (throw (ex-info (str "bnm.ledger: the run's kinds " (vec ks) " are not the base's") {:kinds ks})))
             _ (when (some (comp pos? :differing) (vals repro))
                 (throw (ex-info (str "bnm.ledger: the run does not reproduce " base ": " repro) {:reproduction repro})))
             rows (vec (mapcat (fn [k]
@@ -273,7 +327,7 @@ To check by hand:
                       :end end :issue-month issue-month
                       :origins (into (sorted-map) (for [s [:quarter-lead :quarter-w2 :year :half-decade]] [s (latest-origin s end)]))
                       :inputs before
-                      :reproduces {:base base :through base-end :kinds repro}
+                      :reproduces {:base base :through base-end :kinds repro :base-files base-shas}
                       :rows (count rows) :kinds (vec ks)
                       :files {"forecasts.tsv" fsha}
                       :rule "never edited; nothing refit between issue and outcome; scored once"}
