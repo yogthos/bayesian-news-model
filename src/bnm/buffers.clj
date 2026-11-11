@@ -534,8 +534,10 @@
   (bnm.engine declarations, or graph.edn's :modules) declare in :stocks,
   and their :level emits (measures of stocks). Flows attach from opts
   :models {module stock-flow model} (bnm.stockflow: a flow's :from and
-  :to, the other end its counterpart, :source :model), else, for a module
-  with one material stock, from its lagged level reads of another
+  :to, the other end its counterpart, :source :model), else from the
+  stock's own :inflows and :outflows (a stock the engine holds, the regime
+  switch in bnm.engine, :source :declared), else, for a module with one
+  material stock, from its lagged level reads of another
   module's emit (a stock integrates the flows it reads a step late,
   :source :inferred, :net true: the read is a net flow, its direction
   unknown, listed with the inflows). A stock with neither has no flows: it needs a
@@ -552,11 +554,19 @@
                                            {:var (:var r) :unit (:unit r) :counterpart nil :from (:from r) :source :inferred :net true})))]
                    [k s] (sort-by (comp vname key) (:stocks m))
                    :let [info? (boolean (:info s))
-                         [ins outs] (if model
+                         declared-flow (fn [fl] (merge {:unit (:unit (eng/emit-for m (:var fl)))}
+                                                       (select-keys fl [:var :unit :counterpart :rigid :rigid-sd :shortfall])
+                                                       {:source :declared}))
+                         [ins outs] (cond
+                                      model
                                       [(vec (for [[f fl] (sort-by (comp vname key) (:flows model)) :when (= k (:to fl))]
                                               {:var f :unit (flow-unit f fl) :counterpart (when (:from fl) (stock-id m (:from fl))) :source :model}))
                                        (vec (for [[f fl] (sort-by (comp vname key) (:flows model)) :when (= k (:from fl))]
                                               {:var f :unit (flow-unit f fl) :counterpart (when (:to fl) (stock-id m (:to fl))) :source :model}))]
+                                      ;; a stock the engine holds declares its flows
+                                      (or (seq (:inflows s)) (seq (:outflows s)))
+                                      [(mapv declared-flow (:inflows s)) (mapv declared-flow (:outflows s))]
+                                      :else
                                       [(if (and (not info?) (= 1 (count material))) (or inferred []) []) []])
                          declared (or (:unit s) (get-in model [:stocks k :unit]))
                          inferred-unit (when-not declared (unit-from-flows (concat ins outs)))]]

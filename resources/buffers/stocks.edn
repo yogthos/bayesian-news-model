@@ -34,8 +34,10 @@
    :holder {:unit "monetary authority" :place "country"}
    :inflows [{:var "export receipts" :counterpart "rest of the world/deposits"}
              {:var "capital inflows" :counterpart "rest of the world/claims"}]
-   :outflows [{:var "import payments" :counterpart "rest of the world/deposits"}
-              {:var "external debt service" :counterpart "rest of the world/claims" :rigid 1.0}]
+   ;; :shortfall, where a cut lands (bnm.engine/bookings): imports not paid
+   ;; for are not bought; debt service not paid is owed
+   :outflows [{:var "import payments" :counterpart "rest of the world/deposits" :shortfall :unmet-demand}
+              {:var "external debt service" :counterpart "rest of the world/claims" :rigid 1.0 :shortfall :arrears}]
    :measure {:frequency 1 :lag 1}
    :series {:stock "Lane & Milesi-Ferretti EWN, FX Reserves minus gold (data/raw/econ/lmf-external-wealth; data/derived/buffers/reserves.csv)"
             :cover "World Bank WDI FI.RES.TOTL.MO, reserves in months of imports (data/slow/series.tsv debt/reserves_months)"}

@@ -1,0 +1,24 @@
+;; Historical drawdowns replayed through a stock the engine holds (bnm.engine's
+;; regime switch, docs/BUFFERS.md "Regime switch"; tools/bnm/regime_run.clj).
+;; Descriptive, nothing fitted: the outflows wanted are the outflows recorded,
+;; the inflow is the residual that closes the recorded stock's change, and the
+;; floor is data. A case names a buffer record (resources/buffers/stocks.edn)
+;; for its terms (rigidity, where a cut lands) and the columns that measure it.
+;; A hindsight replay of data years, current vintages: an illustration, not a
+;; forecast.
+{:cases
+ [{:id "reserves/LKA/fx"
+   :record "reserves/country/fx"
+   :place "LKA" :from 2018 :to 2023
+   ;; WDI, USD; the stock at each year's end, the run from the end of the year before :from
+   :table {:file "data/derived/buffers/external-annual.csv" :match {:iso "LKA"} :t :year :scale 1e-6}
+   :stock :reserves_ex_gold_usd
+   :outflows {"import payments" :imports_gs_usd
+              "external debt service" :external_debt_service_usd}
+   :residual "receipts, net"
+   ;; the minimum operating level: reserves committed to short forward
+   ;; positions (swaps) within a year, IMF IRFCL, as of the December before
+   ;; (known within the year)
+   :floor {:file "data/derived/buffers/irfcl-monthly.csv" :match {:iso "LKA"} :month "12"
+           :column :forwards_short_positions_1y :negate true :scale 1e-6 :lag 1}
+   :note "Sri Lanka defaulted on external debt in April 2022; fuel and import shortages from early 2022."}]}

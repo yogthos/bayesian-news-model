@@ -145,6 +145,109 @@ unexplained, so EWN's recent values for Sri Lanka should not be read as
 usable reserves. No usable-share series is on disk. This is one case,
 seen with hindsight, from a revised vintage.
 
+## Regime switch
+
+`bnm.engine` (bead bnm-56c.4; PLAN 1.3; the engine docstring has the
+rules). A break is a regime switch: every outflow from a stock is the
+lesser of what is wanted and what the stock can supply in the step.
+
+**The constraint.** A module stock that declares `:outflows` is held by
+the engine. The module says what it wants to send (its own rate emits);
+the engine gives the stock's level (a `:level` emit, from `:init`) and
+integrates it. Each step the stock can supply its level plus the step's
+inflows less a floor (`:floor`: 0 by default, or a minimum operating
+level as a number, a parameter, or an emit or read, so it can move with
+data). Outflows wanted beyond that are cut. The stock is `:buffered` when
+nothing is cut and `:constrained` when something is. Nothing in the rule
+names a kind of stock.
+
+**The sharing rule** is data per stock (`:sharing`): `:pro-rata` by
+default, each outflow cut by the same share; or `:rigid-first`, each
+outflow's rigid share (the schema's `:rigid`, 0 when not given) served
+before any flexible part, the flexible parts then pro rata. A part-rigid
+flow is split: its rigid share first, its flexible share with the rest.
+
+**Propagation.** Readers see only what was delivered: the cut is made
+right after the module's step, before anything reads its emits, so the
+whole-step rule holds (no reader ever sees two values of one emit, and a
+held level changes only between steps). A cut outflow is then a cut
+inflow to whatever reads it. A reader at lag 0 (later in the causal
+order) gets it the same step, and its own stock can switch the same
+step; a reader at lag n gets it n years later. So a cascade runs at the
+lags of the wiring, and no chain is written by hand.
+
+**Where a cut lands** is data per outflow (`:shortfall`):
+
+| booking | what it is |
+|---|---|
+| `:arrears` | a claim of the counterpart on the holder; it accumulates (the holder's liability, the counterpart's asset, so it nets to zero) |
+| `:forced-saving` | the counterpart keeps what it would have paid: its saving rises above plan and the holder's receipts fall below it by the same amount |
+| `:unmet-demand` (default) | the counterpart wanted the flow and went without |
+| `:price` | the delivered amount clears at a price higher by wanted over delivered |
+
+Each step's record per stock (`regimes`, and `:regimes` in a run's
+result) holds the level, inflow, floor, available amount, wanted,
+delivered, shortfall, regime, the outflows cut and, per outflow, its
+booking. `holdings` gives the levels and each booking's running total.
+
+**Accounts.** A held stock moves only by what was delivered, so cuts
+create and destroy nothing. In a test economy of three sectors that pay
+each other in a ring with every stock constrained in turn, the stocks
+plus what is in transit on the lagged edges stay at their starting total
+to 1e-10. Each stock's next level equals its level plus delivered inflow
+less delivered outflow, and each outflow's wanted amount equals what was
+delivered plus what was booked (test/bnm/regime_test.clj).
+
+**The default run.** The constraint is always on, but only for stocks
+that declare outflows. No module in today's golden runs does: World3
+integrates its own stocks, and the SFC core's balance sheet is a matrix.
+So it cannot bind there. `tools/bnm/coupled_run.clj`'s golden checks
+pass, and the coupled table is byte-identical to the one before the
+change. A test checks that World3's modules hold no stock and leave no
+regime record.
+
+**Synthetic demonstrations** (test/bnm/regime_test.clj): a stock drained
+to its floor switches on the step its level plus inflow less the floor
+first falls short of what is wanted. In a chain of three stocks, A
+exhausted cuts B and then C, a year apart each when the inflows are read
+a year late, and all in the same step when they are read at lag 0. With
+a rigid debt service and flexible imports, rigid-first cuts only the
+imports, while pro rata cuts both and books the debt service's shortfall
+as arrears. A run whose series change after a date has the same records
+up to that date.
+
+**One real illustration, descriptive only** (`tools/bnm/regime_run.clj`,
+case in `resources/buffers/regimes.edn`, output
+data/derived/buffers/regime-demo.txt). Sri Lanka's foreign reserves
+(WDI, ex gold, USD m) go through the reserves record in
+`resources/buffers/stocks.edn`: debt service is rigid and booked as
+arrears, imports are flexible and booked as unmet demand. The wanted
+outflows are the recorded imports and debt service. The inflow is the
+residual that closes the recorded change in reserves. The floor is the
+reserves committed to short forward positions within a year (IMF IRFCL,
+as of the December before): 357 for 2020, 1,373 for 2021, 2,143 for
+2022.
+
+| year | level | floor | wanted | regime | cut |
+|---|---|---|---|---|---|
+| 2018 | 7,031 | 1,495 | 34,236 | buffered | |
+| 2019 | 6,100 | 723 | 30,803 | buffered | |
+| 2020 | 6,690 | 357 | 23,320 | buffered | |
+| 2021 | 5,257 | 1,373 | 26,276 | buffered | |
+| 2022 | 2,962 | 2,143 | 22,578 | constrained | imports 275 (rigid first); imports 234 and debt service 41 in arrears (pro rata) |
+| 2023 | 2,143 | 2,263 | 22,033 | buffered | |
+
+The replay switches in 2022, the year Sri Lanka defaulted (April) and ran
+short of fuel and imports. With no floor it never switches, since
+recorded reserves never reached zero. Recorded reserves ended 2022 at
+1,869, below the floor: the encumbered part was drawn on. The cut is
+small (1.2% of what was wanted) because the wanted flows are the recorded
+ones, which already include the import compression of 2022. In reality
+the debt service, not the imports, went into arrears, which the
+pro-rata rule shows only in part. This is one case, replayed with
+hindsight from data years and current vintages. It is an illustration,
+not a result.
+
 ## Data still needed
 
 - Usable shares: encumbered, pledged and swapped reserves (IMF reserve
