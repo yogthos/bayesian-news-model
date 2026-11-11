@@ -720,3 +720,14 @@
     (is (seq (reads-of lagged)))
     (is (every? (fn [[t o]] (<= (- t 23) o (- t 12))) (reads-of lagged)) "with it, the period before")
     (is (not= (:forecasts plain) (:forecasts lagged)))))
+
+(deftest the-weights-can-have-a-prior
+  ;; :weight-prior (bnm-56c.2): the averaging starts from the shares named
+  ;; and fades toward them; without it, equal weights
+  (let [run #(lt/run (merge (spec (world 6)) %))
+        plain (run {})
+        favoured (run {:weight-prior {:base 0.9}})
+        first-ws (fn [r] (second (first (get-in r [:weights [:year :country]]))))]
+    (is (= (:forecasts plain) (:forecasts (run {:weight-prior {}}))) "an empty prior is none")
+    (is (> (:base (first-ws favoured)) 0.85) (first-ws favoured))
+    (is (not= (:forecasts plain) (:forecasts favoured)))))

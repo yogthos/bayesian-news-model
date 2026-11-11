@@ -280,7 +280,7 @@
         core (mapv #(inc (long %)) (get-in spec [:core scale]))
         core? (set core)
         shrink (:shrink spec)]
-    (d/averaged (into {} (for [g (if (:only spec) (filter (:only spec) order) order)
+    (as-> (into {} (for [g (if (:only spec) (filter (:only spec) order) order)
                                :let [ix (vec (distinct (concat [0] core (remove core? (groups g)))))]
                                :when (or (= g :base) (seq (groups g)))]
                            [g (d/logistic {:hold (when (and (:hold-links spec) (contains? nested g))
@@ -293,12 +293,15 @@
                                                                 (and shrink (or (= g :all) (contains? nested g)) (not (core? %))) shrink
                                                                 :else 1.0))
                                                      ix)
-                                           :discount discount :inputs ix})]))
-                ;; :weighting (every node) or :weighting-at {scale ...}: how the
-                ;; averaging sets its weights (augur.dynamic/averaged), posterior
-                ;; weights without (bnm-56c.2)
-                (let [wt (get-in spec [:weighting-at scale] (:weighting spec))]
-                  (cond-> {:forget (:forget spec)} wt (assoc :weighting wt))))))
+                                           :discount discount :inputs ix})])) models
+      (d/averaged models
+                  ;; :weighting (every node) or :weighting-at {scale ...}: how the
+                  ;; averaging sets its weights (augur.dynamic/averaged), posterior
+                  ;; weights without; :weight-prior {group share}, the shares
+                  ;; they start from and fade toward, equal without (bnm-56c.2)
+                  (let [wt (get-in spec [:weighting-at scale] (:weighting spec))
+                        pr (not-empty (select-keys (:weight-prior spec) (keys models)))]
+                    (cond-> {:forget (:forget spec)} wt (assoc :weighting wt) pr (assoc :prior pr)))))))
 
 
 (defn- inputs
@@ -512,6 +515,9 @@
    :weighting: tempered posterior or stacked; posterior weights without),
    :weighting-at {scale weighting} the same at one scale, :hold-links, a
    nested link's own coefficients not discounted (augur.dynamic's :hold),
+   :weight-prior {group share}, the averaging's prior weights (augur's
+   :prior: what the weights start from and the forgetting fades them
+   toward; the groups not named share the rest),
    :up-lag {scale n}, the node at that scale reads its finer scales'
    states over the period n of its periods before its last (bnm-56c.2's
    loop through :downscale; this period's without),
