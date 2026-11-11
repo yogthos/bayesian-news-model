@@ -9,9 +9,9 @@
   A stock record (`record`):
 
     {:id        \"sfc-finance/USA/bsm\"     ; unique
-     :name      \"bsm\"  :unit \"USD m\"  :time-unit \"year\"
+     :name      \"bsm\"  :unit \"USD m\"  :time-unit \"year\"  ; of t, rates, lag, terms
      :holder    {:unit \"central bank\" :place \"LKA\"}  ; who and where
-     :kind      :material                 ; or :information (a perception)
+     :kind      :material                 ; or :information (a perception), :state (a share or rate)
      :inflows   [{:var v :unit u :counterpart stock-id-or-nil :rigid share :rigid-sd sd}]
      :outflows  [...]                     ; the same; :rigid the share that cannot be cut
      :measure   {:frequency dt :lag n}    ; how often (time units), how late:
@@ -31,12 +31,16 @@
   [obs] :idle [obs] :leverage [obs] :restore [obs]}, an obs {:t time :v
   value :known time :sd sd}; flows are rates per time unit. An obs is
   known at :known, else at t plus the record's lag (`known`): every
-  invariant as of a date reads only what was known by it.
+  invariant as of a date reads only what was known by it, and of several
+  vintages of one t the last published by then.
 
   Every invariant gives rows of one flat table, what the hazard and the
   scanner read: {:stock :holder :place :date :invariant :value :sd :known
-  :flags} (plus :window, :exhaustion, :band where they apply). A missing
-  input gives a nil value and a flag, never a zero."
+  :flags} (plus :window, :exhaustion, :band where they apply), the flags
+  including the record's own. Times are in years and rates per year
+  (`per-year`), whatever the record's time unit, so stocks compare; a
+  window is in years; :exhaustion is a date on the series' own axis. A
+  missing input gives a nil value and a flag, never a zero."
   (:require [bnm.engine :as eng]
             [bnm.invariants :as iv]
             [clojure.edn :as edn]
@@ -47,10 +51,18 @@
 
 (defn- num? [x] (and (number? x) (not (Double/isNaN (double x))) (not (Double/isInfinite (double x)))))
 
+(def per-year
+  "A record's :time-unit, the unit of its t, rates, lag and terms, as so
+  many per year. Rows give times in years and rates per year, so that
+  monthly, quarterly and yearly stocks compare."
+  {"year" 1.0 "quarter" 4.0 "month" 12.0 "week" (/ 365.25 7.0) "day" 365.25})
+
+(defn- tu "Time units per year." [rec] (per-year (:time-unit rec)))
+
 (defn record
   "A stock record with its defaults (see the namespace), or an error when
-  it lacks an id, a name, a unit or a holder with a place, or has a usable
-  or idle share outside [0, 1]."
+  it lacks an id, a name, a unit or a holder with a place, has a usable
+  or idle share outside [0, 1], or a :time-unit not in `per-year`."
   [m]
   (let [bad (fn [msg] (throw (ex-info (str "bnm.buffers/record: " msg " in " (pr-str (:id m))) {:record m})))
         share-ok? (fn [s] (or (nil? s) (and (num? s) (<= 0.0 (double s) 1.0))))]
@@ -60,8 +72,10 @@
     (when-not (and (map? (:holder m)) (contains? (:holder m) :place)) (bad "no :holder with a :place"))
     (when-not (share-ok? (get-in m [:usable :share])) (bad "a usable share outside [0, 1]"))
     (when-not (share-ok? (get-in m [:idle :share])) (bad "an idle share outside [0, 1]"))
-    (merge {:time-unit "year" :kind :material :inflows [] :outflows [] :measure {} :flags #{}}
-           (update m :flags #(set (or % #{}))))))
+    (let [r (merge {:time-unit "year" :kind :material :inflows [] :outflows [] :measure {} :flags #{}}
+                   (update m :flags #(set (or % #{}))))]
+      (when-not (per-year (:time-unit r)) (bad (str "a time unit " (pr-str (:time-unit r)) " not in bnm.buffers/per-year")))
+      r)))
 
 (defn lag-flags
   "#{:lag-assumed-zero} when the record declares no publication lag."
@@ -75,10 +89,14 @@
   (or (:known o) (+ (:t o) (or (get-in rec [:measure :lag]) 0))))
 
 (defn known
-  "The observations `xs` of `rec` known by `as-of`, with a value, by t."
+  "The observations `xs` of `rec` known by `as-of`, with a value, by t;
+  of several vintages of one t, the last published by `as-of`."
   [rec xs as-of]
   (->> xs
        (filter #(and (num? (:v %)) (num? (:t %)) (<= (known-at rec %) as-of)))
+       (group-by #(double (:t %)))
+       vals
+       (map #(apply max-key (partial known-at rec) %))
        (sort-by :t)
        vec))
 
@@ -90,11 +108,17 @@
 
 (defn- sq [x] (* (double x) (double x)))
 
-(defn- rel-sd
-  "Relative spread of a product or ratio from its parts' [value sd]
-  (nil sd counted 0)."
-  [& parts]
-  (Math/sqrt (reduce + 0.0 (for [[v s] parts :when (and s (num? v) (not (zero? (double v))))] (sq (/ (double s) (double v)))))))
+(defn- ratio-sd
+  "The sd of a/b from the parts' sds (nil counted 0), to first order, in
+  absolute terms so that it holds at a = 0."
+  [a sa b sb]
+  (let [a (double a) b (double b)]
+    (Math/sqrt (+ (sq (/ (double (or sa 0.0)) b)) (sq (/ (* a (double (or sb 0.0))) (* b b)))))))
+
+(defn- prod-sd
+  "The sd of a*b from the parts' sds (nil counted 0), to first order."
+  [a sa b sb]
+  (Math/sqrt (+ (sq (* (double (or sa 0.0)) (double b))) (sq (* (double a) (double (or sb 0.0)))))))
 
 (defn- slope
   "[slope sd] of the obs' values on t by least squares: the sd from the
@@ -125,10 +149,13 @@
 ;; -- rows -------------------------------------------------------------------------
 
 (defn- row
+  "One row; the record's own flags (a prior, a revised vintage, ...) join
+  the row's."
   [rec as-of inv m]
-  (merge {:stock (:id rec) :holder (get-in rec [:holder :unit]) :place (get-in rec [:holder :place])
-          :date as-of :invariant inv :value nil :sd nil :known nil :flags #{}}
-         m))
+  (-> (merge {:stock (:id rec) :holder (get-in rec [:holder :unit]) :place (get-in rec [:holder :place])
+              :date as-of :invariant inv :value nil :sd nil :known nil :flags #{}}
+             m)
+      (update :flags #(into (set %) (:flags rec)))))
 
 ;; -- cover ---------------------------------------------------------------------------
 
@@ -142,88 +169,111 @@
       [u (or (get-in rec [:usable :sd]) 0.0) nil #{}]
       [1.0 0.0 nil #{:usable-missing}])))
 
+(defn- unit-flags
+  "#{:flow-unit-mismatch} when a declared flow's unit does not begin with
+  the stock's (a flow is the stock's unit per time unit)."
+  [rec]
+  (let [u (str (:unit rec))]
+    (if (some #(and (:unit %) (not (str/starts-with? (str (:unit %)) u))) (concat (:inflows rec) (:outflows rec)))
+      #{:flow-unit-mismatch}
+      #{})))
+
 (defn- drawdown
   "{:d net drawdown per time unit :sd :from :known} over the `w` time units
-  ending at the latest flow (both flows measured) or stock observation;
-  nil when neither has enough."
+  ending at the latest flow (both flows measured within the window) or
+  else stock observation; nil when neither has enough."
   [rec series as-of w]
   (let [out (known rec (:outflow series) as-of)
-        in (known rec (:inflow series) as-of)]
-    (if (and (seq out) (seq in))
-      (let [t (max (:t (peek out)) (:t (peek in)))
-            ow (in-window out t w) iw (in-window in t w)]
-        (when (and (seq ow) (seq iw))
-          (let [[mo so] (mean-sd ow) [mi si] (mean-sd iw)]
-            {:d (- mo mi) :sd (Math/sqrt (+ (sq so) (sq si))) :from :flows
-             :known (max (max-known rec ow) (max-known rec iw))})))
-      (let [st (known rec (:stock series) as-of)]
-        (when (seq st)
-          (let [t (:t (peek st))
-                pts (filterv #(>= (:t %) (- t w)) st)]
-            (when-let [[b s] (slope pts)]
-              {:d (- b) :sd s :from :stock :known (max-known rec pts)})))))))
+        in (known rec (:inflow series) as-of)
+        flows (when (and (seq out) (seq in))
+                (let [t (max (:t (peek out)) (:t (peek in)))
+                      ow (in-window out t w) iw (in-window in t w)]
+                  (when (and (seq ow) (seq iw))
+                    (let [[mo so] (mean-sd ow) [mi si] (mean-sd iw)]
+                      {:d (- mo mi) :sd (Math/sqrt (+ (sq so) (sq si))) :from :flows
+                       :known (max (max-known rec ow) (max-known rec iw))}))))]
+    (or flows
+        (let [st (known rec (:stock series) as-of)]
+          (when (seq st)
+            (let [t (:t (peek st))
+                  pts (filterv #(>= (:t %) (- t w)) st)]
+              (when-let [[b s] (slope pts)]
+                {:d (- b) :sd s :from :stock :known (max-known rec pts)})))))))
 
 (defn cover
-  "Rows of :cover (usable stock over net drawdown, in time units, with its
-  :exhaustion date, the last stock observation plus cover) and :drain-rate
-  (net drawdown over usable stock, per time unit; negative when the stock
-  grows) for each window in opts :windows (time units; [1 3 5]). A stock
-  not draining has cover at opts :cap (100 time units), flagged
-  :not-draining, never negative; one above it is :capped."
+  "Rows of :cover (usable stock over net drawdown, in years, with its
+  :exhaustion date, the last stock observation plus cover on the series'
+  own time axis) and :drain-rate (net drawdown over usable stock, per
+  year; negative when the stock grows, continuous through zero) for each
+  window in opts :windows (years; [1 3 5]). A stock not draining has cover
+  at opts :cap (100 years), flagged :not-draining, never negative; one
+  above it is :capped. An empty stock has cover 0 and no drain rate."
   [rec series as-of {:keys [windows cap] :or {windows [1 3 5] cap 100.0}}]
-  (let [st (latest rec (:stock series) as-of)
+  (let [k (tu rec)
+        st (latest rec (:stock series) as-of)
         [u usd uk uflags] (usable-of rec series as-of)
-        base-flags (into (lag-flags rec) uflags)]
+        base-flags (-> (lag-flags rec) (into uflags) (into (unit-flags rec)))]
     (vec
      (mapcat
       (fn [w]
-        (let [dd (when st (drawdown rec series as-of w))
+        (let [dd (when st (drawdown rec series as-of (* w k)))
               flags (cond-> base-flags (nil? st) (conj :missing-stock) (and st (nil? dd)) (conj :missing-drawdown))]
           (if (or (nil? st) (nil? dd))
             [(row rec as-of :cover {:window w :flags flags}) (row rec as-of :drain-rate {:window w :flags flags})]
             (let [s (* (double (:v st)) (double u))
+                  ssd (prod-sd (:v st) (:sd st) u usd)
                   {:keys [d sd from]} dd
                   kn (reduce max (keep identity [(known-at rec st) uk (:known dd)]))
-                  rel (rel-sd [(:v st) (:sd st)] [u usd] [d sd])
-                  drain (when (> s 0.0) (/ d s))
                   c (cond (<= s 0.0) {:value 0.0 :sd 0.0 :exhaustion (when (> d 0.0) (:t st)) :flags (conj flags :empty)}
                           (<= d 0.0) {:value cap :sd 0.0 :flags (conj flags :not-draining)}
-                          (> (/ s d) cap) {:value cap :sd 0.0 :flags (conj flags :capped)}
-                          :else (let [c (/ s d)] {:value c :sd (* c rel) :exhaustion (+ (:t st) c) :flags flags}))]
+                          (> (/ s d k) cap) {:value cap :sd 0.0 :flags (conj flags :capped)}
+                          :else (let [c (/ s d)]
+                                  {:value (/ c k) :sd (/ (ratio-sd s ssd d sd) k) :exhaustion (+ (:t st) c) :flags flags}))]
               [(row rec as-of :cover (merge {:window w :known kn :drawdown-from from} c))
-               (row rec as-of :drain-rate {:window w :known kn :drawdown-from from
-                                           :flags (cond-> flags (<= s 0.0) (conj :empty))
-                                           :value drain :sd (when drain (* (Math/abs drain) rel))})]))))
+               (row rec as-of :drain-rate (merge {:window w :known kn :drawdown-from from
+                                                  :flags (cond-> flags (<= s 0.0) (conj :empty))}
+                                                 (when (> s 0.0) {:value (* k (/ d s)) :sd (* k (ratio-sd d sd s ssd))})))]))))
       windows))))
 
 ;; -- restoration ------------------------------------------------------------------------
 
 (defn restoration
   "Rows of :restoration, the time to restore the inflow over cover, per
-  window: above 1 the buffer runs out first (:runs-out-first). The time
-  is the latest known :restore obs, else the record's :restore."
+  window, as that time (in the record's time units) times the drain rate:
+  the same as time over cover, but continuous past the cover's cap and
+  negative when the stock grows. Above 1 the buffer runs out first
+  (:runs-out-first). An empty stock has run out: nil, flagged :empty. The
+  time is the latest known :restore obs, else the record's :restore."
   [rec series as-of opts]
   (let [o (latest rec (:restore series) as-of)
-        [t tsd] (if o [(:v o) (:sd o)] [(get-in rec [:restore :time]) (get-in rec [:restore :sd])])]
-    (vec (for [c (filter #(= :cover (:invariant %)) (cover rec series as-of opts))]
-           (cond (nil? t) (assoc c :invariant :restoration :value nil :sd nil :exhaustion nil :flags (conj (:flags c) :missing-restore))
-                 (nil? (:value c)) (assoc c :invariant :restoration)
-                 :else (let [v (/ (double t) (:value c))]
-                         (-> (dissoc c :exhaustion)
-                             (assoc :invariant :restoration :value v
-                                    :sd (* v (rel-sd [t tsd] [(:value c) (:sd c)]))
-                                    :flags (cond-> (:flags c) (> v 1.0) (conj :runs-out-first))))))))))
+        [t tsd] (if o [(:v o) (:sd o)] [(get-in rec [:restore :time]) (get-in rec [:restore :sd])])
+        rows (cover rec series as-of opts)
+        drain (into {} (for [r rows :when (= :drain-rate (:invariant r))] [(:window r) r]))]
+    (vec (for [c rows :when (= :cover (:invariant c))
+               :let [dr (drain (:window c))
+                     base (-> (dissoc c :exhaustion) (assoc :invariant :restoration :value nil :sd nil))]]
+           (cond (not (num? t)) (update base :flags conj :missing-restore)
+                 (nil? (:value dr)) base
+                 :else (let [ty (/ (double t) (tu rec))
+                             v (* ty (:value dr))]
+                         (assoc base :value v
+                                :sd (prod-sd ty (some-> tsd (/ (tu rec))) (:value dr) (:sd dr))
+                                :known (if o (max (:known c) (known-at rec o)) (:known c))
+                                :flags (cond-> (:flags c) (> v 1.0) (conj :runs-out-first)))))))))
 
 ;; -- rigidity ------------------------------------------------------------------------------
 
 (defn rigidity
   "Row :rigidity, the share of the outflow that cannot be cut: each
   outflow's :rigid share weighted by its mean over the first window of
-  opts :windows ([1]) up to its latest known value; the record's
-  {:rigidity {:share :sd}} when it gives no outflows. nil, flagged, when
-  an outflow's rigidity or level is unknown."
+  opts :windows ([1] years) up to its latest known value; the record's
+  {:rigidity {:share :sd}} when it gives no outflows. An outflow of
+  unknown rigidity bounds the share between all cut and all rigid: the
+  midpoint, with a uniform spread over the bounds, flagged
+  :partial-rigidity. nil, flagged, when no outflow's rigidity or any
+  outflow's level is known."
   [rec series as-of {:keys [windows] :or {windows [1]}}]
-  (let [w (first windows) outs (:outflows rec)]
+  (let [w (* (first windows) (tu rec)) outs (:outflows rec)]
     (if (empty? outs)
       (if-let [r (get-in rec [:rigidity :share])]
         (row rec as-of :rigidity {:value r :sd (or (get-in rec [:rigidity :sd]) 0.0) :flags (lag-flags rec)})
@@ -233,54 +283,62 @@
                      :level (when (seq os) (first (mean-sd (in-window os (:t (peek os)) w))))
                      :known (max-known rec os)})
             flags (cond-> (lag-flags rec)
-                    (some (comp nil? :rigid) parts) (conj :missing-rigidity)
+                    (every? (comp nil? :rigid) parts) (conj :missing-rigidity)
                     (some (comp nil? :level) parts) (conj :missing-flow))]
         (if (or (contains? flags :missing-rigidity) (contains? flags :missing-flow))
           (row rec as-of :rigidity {:flags flags})
-          (let [tot (reduce + 0.0 (map :level parts))]
+          (let [tot (reduce + 0.0 (map :level parts))
+                {kn true un false} (group-by (comp some? :rigid) parts)]
             (if (<= tot 0.0)
               (row rec as-of :rigidity {:flags (conj flags :no-outflow)})
-              (row rec as-of :rigidity
-                   {:value (/ (reduce + 0.0 (map #(* (:rigid %) (:level %)) parts)) tot)
-                    :sd (Math/sqrt (reduce + 0.0 (map #(sq (* (/ (:level %) tot) (:rsd %))) parts)))
-                    :known (reduce max (map :known parts)) :flags flags}))))))))
+              (let [q (/ (reduce + 0.0 (map :level un)) tot)]
+                (row rec as-of :rigidity
+                     {:value (+ (/ (reduce + 0.0 (map #(* (:rigid %) (:level %)) kn)) tot) (/ q 2.0))
+                      :sd (Math/sqrt (+ (reduce + 0.0 (map #(sq (* (/ (:level %) tot) (:rsd %))) kn)) (/ (sq q) 12.0)))
+                      :known (reduce max (map :known parts))
+                      :flags (cond-> flags (seq un) (conj :partial-rigidity))})))))))))
 
 ;; -- carry, claims, idle, holder, market ---------------------------------------------------------
 
 (defn carry
   "Row :carry, what the stock earns less what it loses by sitting, per
-  time unit: :yield against :cost plus decay (:decay, or 1 / :life).
-  nil, flagged, without a yield or a cost."
+  year: :yield against :cost plus decay (:decay, or 1 / :life), all three
+  in the record's time units. nil, flagged, without a yield or a cost."
   [rec _series as-of _opts]
   (let [{:keys [cost yield cost-sd yield-sd]} (:carry rec)
+        k (tu rec)
         decay (or (:decay rec) (when (num? (:life rec)) (/ 1.0 (double (:life rec)))))
         lost (when (or cost decay) (+ (or cost 0.0) (or decay 0.0)))]
     (cond (nil? yield) (row rec as-of :carry {:flags #{:missing-yield}})
           (nil? lost) (row rec as-of :carry {:flags #{:missing-cost}})
-          :else (row rec as-of :carry {:value (- (double yield) lost)
-                                       :sd (Math/sqrt (+ (sq (or yield-sd 0.0)) (sq (or cost-sd 0.0))))}))))
+          :else (row rec as-of :carry {:value (* k (- (double yield) lost))
+                                       :sd (* k (Math/sqrt (+ (sq (or yield-sd 0.0)) (sq (or cost-sd 0.0)))))}))))
 
 (defn claim-gap
-  "Row :claim-gap, claims on a flow over the flow (time units: years of
-  income to repay), with Minsky's bands on the same ratio from the
-  record's {:claims {:rate r :maturity m}}: :hedge when the income covers
-  interest and principal (ratio <= 1/(r + 1/m)), :speculative when it
-  covers the interest (<= 1/r), else :ponzi. No income: :no-income, band
-  :ponzi, no value."
+  "Row :claim-gap, claims on a flow over the flow (years of income to
+  repay), with Minsky's bands on the same ratio from the record's
+  {:claims {:rate r :maturity m}} (per and in its time units): :hedge
+  when the income covers interest and principal (ratio <= 1/(r + 1/m)),
+  :speculative when it covers the interest (<= 1/r; any ratio at r = 0),
+  else :ponzi. No income: :no-income, band :ponzi, no value. Claims and
+  income of different dates: :dates-differ."
   [rec series as-of _opts]
   (let [c (latest rec (:claims series) as-of) f (latest rec (:income series) as-of)
         {r :rate m :maturity} (:claims rec)
-        flags (cond-> (lag-flags rec) (not (and (num? r) (num? m))) (conj :missing-terms))]
+        k (tu rec)
+        flags (cond-> (lag-flags rec)
+                (not (and (num? r) (>= (double r) 0.0) (num? m) (pos? (double m)))) (conj :missing-terms)
+                (and c f (not= (double (:t c)) (double (:t f)))) (conj :dates-differ))]
     (cond (or (nil? c) (nil? f)) (row rec as-of :claim-gap {:flags (conj flags (if c :missing-income :missing-claims))})
           (<= (double (:v f)) 0.0) (row rec as-of :claim-gap {:flags (conj flags :no-income) :band :ponzi
                                                               :known (max (known-at rec c) (known-at rec f))})
           :else (let [v (/ (double (:v c)) (double (:v f)))]
                   (row rec as-of :claim-gap
-                       {:value v :sd (* v (rel-sd [(:v c) (:sd c)] [(:v f) (:sd f)]))
+                       {:value (/ v k) :sd (/ (ratio-sd (:v c) (:sd c) (:v f) (:sd f)) k)
                         :known (max (known-at rec c) (known-at rec f)) :flags flags
                         :band (when-not (contains? flags :missing-terms)
                                 (cond (<= v (/ 1.0 (+ r (/ 1.0 m)))) :hedge
-                                      (<= v (/ 1.0 r)) :speculative
+                                      (or (zero? (double r)) (<= v (/ 1.0 r))) :speculative
                                       :else :ponzi))})))))
 
 (defn idle-share
@@ -319,16 +377,21 @@
 
 (defn market-reading
   "Row :market-reading, the cover the latest known :price implies
-  (implied-cover, the record's :market {:ref-price :ref-cover :c});
-  at 0, flagged :below-floor, for a price past the convex curve's floor."
+  (implied-cover, the record's :market {:ref-price :ref-cover :c}), in
+  years. The cover is whatever :ref-cover measures, usually stock over
+  gross use (stocks-to-use, as bnm.food's curve is fitted), not the net
+  drawdown of :cover. At 0, flagged :below-floor, for a price past the
+  convex curve's floor; nil, :bad-price, for a price at or below 0."
   [rec series as-of _opts]
-  (let [o (latest rec (:price series) as-of) {:keys [ref-price ref-cover c]} (:market rec)]
+  (let [o (latest rec (:price series) as-of) {:keys [ref-price ref-cover c]} (:market rec) k (tu rec)]
     (cond (nil? o) (row rec as-of :market-reading {:flags #{:missing-price}})
-          (not (and (num? ref-price) (num? ref-cover) (num? c))) (row rec as-of :market-reading {:flags #{:missing-market-terms} :known (known-at rec o)})
+          (not (and (num? ref-price) (pos? (double ref-price)) (num? ref-cover) (num? c)))
+          (row rec as-of :market-reading {:flags #{:missing-market-terms} :known (known-at rec o)})
+          (<= (double (:v o)) 0.0) (row rec as-of :market-reading {:flags (conj (lag-flags rec) :bad-price) :known (known-at rec o)})
           :else (let [v (implied-cover (:v o) ref-price ref-cover c)
                       p (/ (double (:v o)) ref-price)
                       d (/ (* ref-cover (+ 1.0 c)) (* p p ref-price))]
-                  (row rec as-of :market-reading {:value (max 0.0 v) :sd (* d (or (:sd o) 0.0)) :known (known-at rec o)
+                  (row rec as-of :market-reading {:value (/ (max 0.0 v) k) :sd (/ (* d (or (:sd o) 0.0)) k) :known (known-at rec o)
                                                   :flags (cond-> (lag-flags rec) (neg? v) (conj :below-floor))})))))
 
 ;; -- the dimension-free measures (bnm.invariants, docs/INVARIANTS.md) -----------------------------
@@ -381,19 +444,30 @@
 
 ;; -- all of them -------------------------------------------------------------------------------------
 
+(defn- buffer-rows [rec series as-of opts]
+  (concat (cover rec series as-of opts)
+          (restoration rec series as-of opts)
+          [(rigidity rec series as-of opts)
+           (carry rec series as-of opts)
+           (claim-gap rec series as-of opts)
+           (idle-share rec series as-of opts)]
+          (holder rec series as-of opts)
+          [(market-reading rec series as-of opts)]))
+
 (defn invariants
   "Every invariant of `rec` as of `as-of` from its `series`, as flat rows
-  (see the namespace); opts as cover's, rigidity's and displacement's."
+  (see the namespace); opts as cover's, rigidity's and displacement's.
+  Only a :material stock is a buffer: an :information or :state stock (a
+  perception, a wage share) has the buffer rows with nil values, flagged
+  :not-a-buffer, and its displacement measures."
   [rec series as-of opts]
   (let [opts (merge {:windows [1 3 5]} opts)]
-    (vec (concat (cover rec series as-of opts)
-                 (restoration rec series as-of opts)
-                 [(rigidity rec series as-of opts)
-                  (carry rec series as-of opts)
-                  (claim-gap rec series as-of opts)
-                  (idle-share rec series as-of opts)]
-                 (holder rec series as-of opts)
-                 [(market-reading rec series as-of opts)]
+    (vec (concat (if (= :material (:kind rec))
+                   (buffer-rows rec series as-of opts)
+                   (for [r (buffer-rows rec {} as-of opts)]
+                     (-> (assoc r :value nil :sd nil :known nil)
+                         (dissoc :exhaustion :band :drawdown-from)
+                         (update :flags conj :not-a-buffer))))
                  (displacement rec series as-of opts)))))
 
 ;; -- records from the engine's graph ---------------------------------------------------------------
@@ -401,6 +475,14 @@
 (defn- vname [v] (if (keyword? v) (name v) (str v)))
 
 (defn- module-label [m] (or (:label m) (name (:module m))))
+
+(defn- unit-from-flows
+  "The unit every flow's unit shares before \"/year\" or \" per year\" (any
+  time unit), or nil."
+  [flows]
+  (let [us (distinct (map #(some->> (:unit %) str (re-matches #"(.+?)\s*(?:/|\bper\b)\s*(?:year|quarter|month|week|day)s?") second)
+                          flows))]
+    (when (and (seq flows) (= 1 (count us))) (first us))))
 
 (defn stock-id [m k] (str (module-label m) "/" (vname (:place m)) "/" (vname k)))
 
@@ -419,7 +501,8 @@
   :to, the other end its counterpart, :source :model), else, for a module
   with one material stock, from its lagged level reads of another
   module's emit (a stock integrates the flows it reads a step late,
-  :source :inferred). A stock with neither has no flows: it needs a
+  :source :inferred, :net true: the read is a net flow, its direction
+  unknown, listed with the inflows). A stock with neither has no flows: it needs a
   mapping (resources/buffers/stocks.edn)."
   [modules {:keys [models]}]
   (let [records
@@ -430,7 +513,7 @@
                          flow-unit (fn [f fl] (or (:unit fl) (:unit (eng/emit-for m f)) (:unit (eng/emit-for m (vname f)))))
                          inferred (when (and (nil? model) (= 1 (count material)))
                                     (vec (for [r (:reads m) :when (and (not (:source r)) (= :level (:phase r)) (pos? (or (:lag r) 0)))]
-                                           {:var (:var r) :unit (:unit r) :counterpart nil :from (:from r) :source :inferred})))]
+                                           {:var (:var r) :unit (:unit r) :counterpart nil :from (:from r) :source :inferred :net true})))]
                    [k s] (sort-by (comp vname key) (:stocks m))
                    :let [info? (boolean (:info s))
                          [ins outs] (if model
@@ -438,24 +521,30 @@
                                               {:var f :unit (flow-unit f fl) :counterpart (when (:from fl) (stock-id m (:from fl))) :source :model}))
                                        (vec (for [[f fl] (sort-by (comp vname key) (:flows model)) :when (= k (:from fl))]
                                               {:var f :unit (flow-unit f fl) :counterpart (when (:to fl) (stock-id m (:to fl))) :source :model}))]
-                                      [(if (and (not info?) (= 1 (count material))) (or inferred []) []) []])]]
-               (record {:id (stock-id m k) :name (vname k) :unit (or (:unit s) (get-in model [:stocks k :unit]) "unknown")
+                                      [(if (and (not info?) (= 1 (count material))) (or inferred []) []) []])
+                         declared (or (:unit s) (get-in model [:stocks k :unit]))
+                         inferred-unit (when-not declared (unit-from-flows (concat ins outs)))]]
+               (record {:id (stock-id m k) :name (vname k) :unit (or declared inferred-unit "unknown")
                         :holder {:unit (module-label m) :place (vname (:place m))}
                         :kind (if info? :information :material)
                         :inflows ins :outflows outs
                         :measure (cond-> {:frequency (:dt m)} lag (assoc :lag lag))
                         :source :engine :module (:module m) :table (:table m)
-                        :flags (cond-> #{} (nil? lag) (conj :lag-unknown) (= :country (:place m)) (conj :per-country))})))
+                        :flags (cond-> #{} (nil? lag) (conj :lag-unknown) (= :country (:place m)) (conj :per-country)
+                                 inferred-unit (conj :unit-from-flows)
+                                 (not (or declared inferred-unit)) (conj :unit-unknown))})))
         levels (vec (for [m modules e (:emits m) :when (= :level (:phase e))]
                       {:module (:module m) :label (module-label m) :var (:var e) :unit (:unit e) :known (:known e)}))]
     {:records records :levels levels}))
 
 (defn report
-  "{:stocks n :material n :by-module {label n} :no-flows [id ...]}: what
-  the records hold, and the material stocks with no declared flows."
+  "{:stocks n :material n :by-kind {kind n} :by-module {label n} :no-flows
+  [id ...]}: what the records hold, and the material stocks with no
+  declared flows."
   [records]
   {:stocks (count records)
    :material (count (filter #(= :material (:kind %)) records))
+   :by-kind (frequencies (map :kind records))
    :by-module (frequencies (map #(keyword (get-in % [:holder :unit])) records))
    :no-flows (vec (for [r records :when (and (= :material (:kind r)) (empty? (:inflows r)) (empty? (:outflows r)))] (:id r)))})
 
@@ -495,15 +584,16 @@
   stock rows (bnm.supply/outage-path's stocks: region, product, months of
   normal use, year, known, basis, source). A stock there is already cover
   against gross use; its net drawdown under a cut of share f is f times
-  use, so its cover under the cut is months / f. A prior is flagged."
+  use, so its cover under the cut is months / f (months / 12f years). t
+  is the year, so the time unit is the year. A prior is flagged."
   [rows]
   (let [rs (for [{:keys [region product months year known basis source]} rows
                  :let [m (some-> months str not-empty parse-double)]
                  :when m]
-             [(record {:id (str "supply/" region "/" product) :name product :unit "months of use" :time-unit "month"
+             [(record {:id (str "supply/" region "/" product) :name product :unit "months of use" :time-unit "year"
                        :holder {:unit "region" :place region}
-                       :outflows [{:var "use" :unit "months of use per month" :counterpart nil}]
-                       :measure {:frequency 12 :lag (- (parse-long (str known)) (parse-long (str year)))}
+                       :outflows [{:var "use" :unit "months of use per year" :counterpart nil}]
+                       :measure {:frequency 1 :lag (- (parse-long (str known)) (parse-long (str year)))}
                        :source :supply :note source
                        :flags (cond-> #{} (= "prior" basis) (conj :prior))})
               {:t (parse-long (str year)) :v m :known (parse-long (str known))}])]

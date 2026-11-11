@@ -12,9 +12,9 @@ One record per stock:
 
 | field | meaning |
 |---|---|
-| `:id` `:name` `:unit` `:time-unit` | id `module/place/stock` for engine stocks |
+| `:id` `:name` `:unit` `:time-unit` | id `module/place/stock` for engine stocks. The time unit (year, quarter, month, week, day) is the unit of t, of the flows, the lag and every term below |
 | `:holder {:unit :place}` | who holds it, and where (`country` = one per country) |
-| `:kind` | `:material` or `:information` (a perception; not a buffer) |
+| `:kind` | `:material`, `:information` (a perception) or `:state` (a share or rate, like the wage share); only `:material` is a buffer |
 | `:inflows`, `:outflows` | `{:var :unit :counterpart :rigid :rigid-sd}`: the counterpart is the stock the flow leaves or enters, nil for outside; `:rigid` is the share of the flow that can't be cut |
 | `:measure {:frequency :lag}` | how often it is measured, and how late: a value for t is known at t + lag (the engine's known-year rule) |
 | `:usable {:share :sd}` | usable against headline (Sri Lanka 2022: about 3%) |
@@ -29,7 +29,9 @@ One record per stock:
 The series are observations `{:t :v :known :sd}` under `:stock :inflow
 :outflow :flows :usable :claims :income :price :idle :leverage :restore`.
 An observation is known at `:known`, else at t plus the lag. Every
-invariant as of a date reads only what was known by then.
+invariant as of a date reads only what was known by then; of several
+vintages of one t, the last published by then. A record's flags
+(`:prior`, `:revised-vintage`, `:lag-unknown`) are carried onto its rows.
 
 ## The invariants
 
@@ -39,25 +41,32 @@ invariant, value, sd, known (the latest input's known date), flags`, plus
 regime switch (bnm-56c.4) and the hazard and scanner (bnm-56c.6) read. A
 missing input gives a nil value and a flag, never a zero (bug bnm-as1).
 
+Times are in years and rates per year whatever the record's time unit,
+so a monthly stock and a yearly one compare. Windows are in years.
+`:exhaustion` is a date on the series' own time axis.
+
 | invariant | definition | unit |
 |---|---|---|
-| cover | usable stock over net drawdown, for each window (default 1, 3 and 5 time units). Drawdown is outflow less inflow when both are measured, else the stock's least-squares slope. `:exhaustion` is the last observation plus cover. A stock not draining gets the cap (100 time units), flagged `:not-draining`, never a negative value. An empty stock gets 0, flagged `:empty`. With no usable share, the headline is used and flagged `:usable-missing`. | time |
-| drain-rate | net drawdown over usable stock: the inverse of cover, continuous through zero, negative when the stock grows | 1/time |
-| restoration | time to restore the inflow over cover. Above 1 it is flagged `:runs-out-first` | ratio |
-| rigidity | rigid share of each outflow, weighted by the outflow's level | share |
-| carry | yield less (cost + decay, or 1/life) | 1/time |
-| claim-gap | claims over the flow that services them. Minsky's bands on the same ratio: hedge at or below 1/(r + 1/m), speculative at or below 1/r, otherwise Ponzi | time |
+| cover | usable stock over net drawdown, for each window (default 1, 3 and 5 years). Drawdown is outflow less inflow when both are measured within the window, else the stock's least-squares slope. `:exhaustion` is the last observation plus cover. A stock not draining gets the cap (100 years), flagged `:not-draining`, never a negative value. An empty stock gets 0, flagged `:empty`. With no usable share, the headline is used and flagged `:usable-missing`. A declared flow whose unit is not the stock's per time is flagged `:flow-unit-mismatch` | years |
+| drain-rate | net drawdown over usable stock: the inverse of cover, continuous through zero, negative when the stock grows; none for an empty stock | 1/year |
+| restoration | time to restore the inflow times the drain rate, which is that time over cover but continuous past the cap and negative for a growing stock. Above 1 it is flagged `:runs-out-first`. An empty stock has run out: nil, `:empty` | ratio |
+| rigidity | rigid share of each outflow, weighted by the outflow's level. An outflow of unknown rigidity bounds the share between all cut and all rigid: the midpoint, with a uniform spread over the bounds, flagged `:partial-rigidity`. nil when no outflow's rigidity is known | share |
+| carry | yield less (cost + decay, or 1/life), all in the record's time unit | 1/year |
+| claim-gap | claims over the flow that services them. Minsky's bands on the same ratio (Foley 2003): hedge when income covers interest and principal, at or below 1/(r + 1/m); speculative when it covers the interest, at or below 1/r (any ratio at r = 0); otherwise Ponzi. Claims and income of different dates are flagged `:dates-differ` | years |
 | idle-share | installed but not earning, with what binds instead | share |
 | holder-hhi, holder-leverage | concentration over holders, and the holder's leverage | index, ratio |
-| market-reading | the cover a price implies: competitive storage's convex price (bnm.food's storage pressure) inverted, cover_ref((1 + c)/(p/p_ref) - c) | time |
+| market-reading | the cover a price implies: competitive storage's convex price (bnm.food's storage pressure, a curve whose terms are data) inverted, cover_ref((1 + c)/(p/p_ref) - c). The cover is what `:ref-cover` measures, stock over gross use when the curve is fitted to stocks-to-use, not the net-drawdown cover above | years |
 | displacement | the stock's stretch against its own past at 5, 10 and 20 observations (`bnm.invariants/stretch`) | z |
 | resonance | the smallest absolute stretch of the three: displaced at every scale | z |
 | stock-x-flow | absolute stretch of the stock times that of its net flow | z² |
 | breadth | across stocks at one date, the share of displacements past 1.5 (`bnm.invariants/aggregate`) | share |
 
-The uncertainty combines the parts' relative spreads: the usable share's
-sd, the drawdown's standard error (from residuals and the observations'
-own `:sd`), and the restoration time's sd. A z-score's sd is its sampling
+The uncertainty propagates the parts' sds to first order, in absolute
+terms (sd of a/b is sqrt((sa/b)^2 + (a sb/b^2)^2)), so a ratio whose
+numerator is zero keeps its spread: the usable share's sd, the
+drawdown's standard error (from residuals and the observations' own
+`:sd`), and the restoration time's sd. A cover at the cap has sd 0; the
+drain rate carries the spread there. A z-score's sd is its sampling
 spread against n past values.
 
 ## Derived from the engine, and what needs a mapping
@@ -71,24 +80,23 @@ Flows attach in two ways:
   counterpart.
 - **Inferred**: a module with one material stock that reads another
   module's emit at a lag in the level pass integrates it. This is how
-  sfc-finance's balance sheet takes the flow of funds.
+  sfc-finance's balance sheet takes the flow of funds. Such a flow is
+  marked `:net`: its direction is not known, and revaluations reach the
+  balance sheet without being a flow.
 
 The publication lag is the one known rule the module's level emits (or
-all its emits) share.
+all its emits) share. A stock with no unit takes the one its flows share
+per time (World3's stocks, flagged `:unit-from-flows`).
 
 Today (`tools/bnm/buffers_run.clj`, data/derived/buffers/report.txt):
-134 modules, 148 stock records (128 material, 20 information), 208 level
-emits. 51 material stocks have flows: World3's 15 (population 4,
-capital 2, agriculture 4, resources 1, pollution 4), sfc-finance's
-balance sheet in 35 countries, and Keen's debt (by mapping). 77 have none
-and need mappings:
-
-- sfc-accounts' wage share and employment, 35 countries each (state
-  variables, not buffers);
-- Keen's omega and lambda;
-- cycles' capacity and pipeline;
-- food's and food-world's grain stock;
-- technology's adoption.
+134 modules, 148 stock records (55 material, 73 state, 20 information),
+208 level emits. The state variables are marked in the mapping file:
+sfc-accounts' wage share and employment in 35 countries, Keen's omega
+and lambda, technology's adoption. 51 material stocks have flows:
+World3's 15 (population 4, capital 2, agriculture 4, resources 1,
+pollution 4), sfc-finance's balance sheet in 35 countries, and Keen's
+debt (by mapping). 4 have none and need mappings: cycles' capacity and
+pipeline, food's and food-world's grain stock.
 
 The table modules declare stocks but not flows, since they replay a
 model's table.
@@ -105,8 +113,10 @@ gross use, and under a cut of share f its cover is months / f.
 
 ## Two descriptive checks (nothing fitted)
 
-**Grain, USDA PSD around 2007-08** (current vintage, revised since;
-known a year after the market year). World stocks-to-use, in months:
+**Grain, USDA PSD around 2007-08** (current vintage, revised since: the
+EU's 2007/08 figures were last revised in 2015; known a year after the
+market year, and flagged `:revised-vintage`). World stocks-to-use, in
+months:
 
 | | 2005 | 2006 | 2007 | 2008 | 2009 |
 |---|---|---|---|---|---|
@@ -128,10 +138,12 @@ cover.
 later). As of 2022, from 2021's data, cover over the one-year drawdown was
 1.29 years, running out at 2022.29 (about April). The three-year
 window gave 2.7 years. WDI's gross months of imports read 1.6. Sri Lanka
-defaulted in April 2022. EWN puts end-2022 reserves at $33m, against
-about $1.9bn official, so EWN already shows something close to the usable
-figure. No usable-share series is on disk. This is one case, seen with
-hindsight.
+defaulted in April 2022. EWN puts end-2022 reserves at $33m and end-2023
+at $69m, against about $1.9bn and $4.4bn official. That is not the
+usable figure: the gap with the official series after 2021 is
+unexplained, so EWN's recent values for Sri Lanka should not be read as
+usable reserves. No usable-share series is on disk. This is one case,
+seen with hindsight, from a revised vintage.
 
 ## Data still needed
 

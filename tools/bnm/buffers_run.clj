@@ -47,8 +47,9 @@
         flowed (by-label (remove #(and (empty? (:inflows %)) (empty? (:outflows %))) mat))]
     (concat
      ["# 1. Stocks declared by the engine's modules (graph.edn; World3 flows from bnm.world3/sectors)"
-      (str "modules " (count mods) ", stock records " (:stocks rep) " (material " (:material rep)
-           ", information " (- (:stocks rep) (:material rep)) "), level emits " (count levels))
+      (str "modules " (count mods) ", stock records " (:stocks rep) " ("
+           (str/join ", " (for [[k n] (sort-by (comp str key) (:by-kind rep))] (str (name k) " " n)))
+           "; state variables are marked in resources/buffers/stocks.edn), level emits " (count levels))
       "module: records (material, with flows)"]
      (for [[k n] (sort-by (comp str key) (by-label records))]
        (str "  " k ": " n " (" (get (by-label mat) k 0) ", " (get flowed k 0) ")"))
@@ -117,7 +118,7 @@
     ["# 3. Reserves: data/derived/buffers/reserves.csv missing (python -I scripts/ewn-reserves.py)" ""]
     (let [rec (b/record {:id "reserves/LKA/fx" :name "fx reserves" :unit "USD m" :time-unit "year"
                          :holder {:unit "monetary authority" :place "LKA"} :measure {:frequency 1 :lag 1}
-                         :usable {:share 1.0 :sd 0.0}})
+                         :usable {:share 1.0 :sd 0.0} :flags #{:revised-vintage}})
           ser {:stock (read-reserves "Sri Lanka")}
           months (read-slow "LKA" "debt/reserves_months")]
       (concat

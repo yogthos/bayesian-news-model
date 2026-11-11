@@ -4,12 +4,15 @@
 ;; record whose id matches. :series names where a record's observations come
 ;; from; loaders read them (tools/bnm/buffers_run.clj for the two checks).
 {:records
- [;; world grain: USDA PSD, ending stocks against domestic consumption
+ [;; world grain: USDA PSD, ending stocks against domestic consumption. t is
+  ;; the market year (local marketing years begin in it); the file holds the
+  ;; current revision only (EU 2007/08 last revised in 2015), taken as known
+  ;; a year after the market year, so every record is :revised-vintage.
   {:id "grain/WLD/wheat" :name "wheat ending stocks" :unit "1000 MT" :time-unit "year"
    :holder {:unit "world, all holders" :place "WLD"}
    :inflows [{:var "production" :unit "1000 MT per year" :counterpart nil}]
    :outflows [{:var "domestic consumption" :unit "1000 MT per year" :counterpart nil :rigid 0.8}]
-   :measure {:frequency 1 :lag 1}
+   :measure {:frequency 1 :lag 1} :flags #{:revised-vintage}
    :series {:stock "USDA PSD Wheat Ending Stocks, summed over countries"
             :outflow "USDA PSD Wheat Domestic Consumption" :inflow "USDA PSD Wheat Production"}
    :note "Rigid share a prior: food use is hard to cut, feed use is not. Usable share not set: China holds about half of world stocks off the market; buffers_run reports the world with and without China."}
@@ -17,13 +20,13 @@
    :holder {:unit "world, all holders" :place "WLD"}
    :inflows [{:var "production" :unit "1000 MT per year" :counterpart nil}]
    :outflows [{:var "domestic consumption" :unit "1000 MT per year" :counterpart nil}]
-   :measure {:frequency 1 :lag 1}
+   :measure {:frequency 1 :lag 1} :flags #{:revised-vintage}
    :series {:stock "USDA PSD Corn Ending Stocks" :outflow "USDA PSD Corn Domestic Consumption" :inflow "USDA PSD Corn Production"}}
   {:id "grain/WLD/rice" :name "rice ending stocks" :unit "1000 MT" :time-unit "year"
    :holder {:unit "world, all holders" :place "WLD"}
    :inflows [{:var "production" :unit "1000 MT per year" :counterpart nil}]
    :outflows [{:var "domestic consumption" :unit "1000 MT per year" :counterpart nil}]
-   :measure {:frequency 1 :lag 1}
+   :measure {:frequency 1 :lag 1} :flags #{:revised-vintage}
    :series {:stock "USDA PSD Rice, Milled Ending Stocks" :outflow "USDA PSD Rice, Milled Domestic Consumption" :inflow "USDA PSD Rice, Milled Production"}}
 
   ;; foreign reserves, one record per country (holder: the monetary authority)
@@ -36,8 +39,8 @@
    :measure {:frequency 1 :lag 1}
    :series {:stock "Lane & Milesi-Ferretti EWN, FX Reserves minus gold (data/raw/econ/lmf-external-wealth; data/derived/buffers/reserves.csv)"
             :cover "World Bank WDI FI.RES.TOTL.MO, reserves in months of imports (data/slow/series.tsv debt/reserves_months)"}
-   :note "Usable share unknown in general: pledged, swapped and encumbered reserves (Sri Lanka May 2022 about $50m usable of $1.8bn; Lebanon 2019 net about -$55bn against $38bn gross)."
-   :flags #{:per-country}}
+   :note "Usable share unknown in general: pledged, swapped and encumbered reserves (Sri Lanka May 2022 about $50m usable of $1.8bn; Lebanon 2019 net about -$55bn against $38bn gross). EWN is the current vintage, known a year later only by assumption."
+   :flags #{:per-country :revised-vintage}}
 
   ;; household and firm debt against the income that services it (the BIS DSR)
   {:id "debt/country/private" :name "private non-financial debt" :unit "% GDP" :time-unit "year"
@@ -59,4 +62,12 @@
    :outflows [{:var "keen/repayment" :counterpart "banks/loans" :rigid 1.0}]}
   ;; World3's capital stocks have declared lives (alic, alsc: 14 and 20 years)
   {:match "capital/world/ic" :life 14.0}
-  {:match "capital/world/sc" :life 20.0}]}
+  {:match "capital/world/sc" :life 20.0}
+  ;; state variables the engine declares as stocks, not buffers: shares and
+  ;; rates with no inflow or outflow of their own (bnm.buffers/invariants
+  ;; gives them displacement only)
+  {:match "sfc-accounts/*/w" :kind :state}
+  {:match "sfc-accounts/*/lambda" :kind :state}
+  {:match "keen/*/omega" :kind :state}
+  {:match "keen/*/lambda" :kind :state}
+  {:match "technology/*/adoption" :kind :state}]}
