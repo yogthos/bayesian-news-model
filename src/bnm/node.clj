@@ -37,11 +37,14 @@
 (def p->rate "The per-month rate giving chance p in w months." c/p->rate)
 
 (defn hazard-p
-  "A hazard's chance of an onset in its window: 1 - exp(-λ w E[e^z]), z ~
-  N(:z, :z-var), E[e^z] = exp(z + v/2) exactly (the lognormal mean)."
+  "A hazard's chance of an onset in its window, integrated over its
+  frailty z ~ N(:z, :z-var): E_z[1 - exp(-λ w e^z)] (bnm.compose/window-p,
+  any-onset's quadrature). Not 1 - exp(-λ w E[e^z]), which overstates it
+  once the variance is positive (review of step 1)."
   ^double [{:keys [z z-var rate window]}]
-  (let [m (Math/exp (+ (double (or z 0.0)) (* 0.5 (double (or z-var 0.0)))))]
-    (- (Math/expm1 (- (* (double rate) (double window) m))))))
+  (if (zero? (double (or z-var 0.0)))
+    (- (Math/expm1 (- (* (double rate) (double window) (Math/exp (double (or z 0.0)))))))
+    (c/window-p rate {:z z :z-var z-var} window)))
 
 ;; -- the schema -------------------------------------------------------------------
 
@@ -85,7 +88,7 @@
                                 (or (nil? z) (num? z)) (or (nil? z-var) (and (num? z-var) (>= z-var 0.0)))))
                       [(str "hazard " k ": :rate >= 0, :window > 0, :z-var >= 0")]
                       (and (some? p) (> (Math/abs (- (double p) (hazard-p h))) 1e-9))
-                      [(str "hazard " k ": :p " p " is not 1 - exp(-rate window E[e^z]) = " (hazard-p h))]))
+                      [(str "hazard " k ": :p " p " is not E_z[1 - exp(-rate window e^z)] = " (hazard-p h))]))
               hazard)
       (when-let [ps (:probs regime)]
         (when-not (and (every? num? (vals ps)) (< (Math/abs (- 1.0 (reduce + (vals ps)))) 1e-9))

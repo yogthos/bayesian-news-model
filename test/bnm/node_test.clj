@@ -141,6 +141,26 @@
         (testing "the rates a node carries give back its p"
           (is (every? #(close? (get-in % [:hazard :coup :p]) (node/hazard-p (get-in % [:hazard :coup])) 1e-12) kids)))))))
 
+;; -- review of step 1, finding 3: P(onset) is E_z[1 - exp(-λ w e^z)] ----------------------
+
+(defn- normal-expect [f mu v]
+  (let [sd (Math/sqrt v) n 200000 a -14.0 h (/ 28.0 n)]
+    (reduce + (for [i (range n) :let [x (+ a (* h (+ i 0.5)))]]
+                (* h (/ (Math/exp (* -0.5 x x)) (Math/sqrt (* 2 Math/PI))) (f (+ mu (* sd x))))))))
+
+(deftest hazard-p-integrates-over-the-frailty
+  ;; 1 - exp(-λ w E[e^z]) is not the chance: at λ 0.01, w 24, v 1 it gives
+  ;; 0.327 against 0.273
+  (let [h {:z 0.0 :z-var 1.0 :rate 0.01 :window 24}
+        exact (normal-expect #(- (Math/expm1 (- (* 0.01 24 (Math/exp %))))) 0.0 1.0)]
+    (is (close? exact (node/hazard-p h) 1e-7) [exact (node/hazard-p h)])
+    (is (close? 0.273 exact 5e-4))
+    (testing "validate enforces that p"
+      (is (empty? (node/problems (assoc minimal :hazard {:coup (assoc h :p exact)}))))
+      (is (seq (node/problems (assoc minimal :hazard {:coup (assoc h :p (- (Math/expm1 (* -0.24 (Math/exp 0.5)))))}))))))
+  (testing "with no frailty variance it is 1 - exp(-λ w e^z)"
+    (is (close? (- (Math/expm1 (* -0.024 (Math/exp 0.3)))) (node/hazard-p {:z 0.3 :z-var 0.0 :rate 0.001 :window 24}) 1e-15))))
+
 ;; -- stocks and buffers from bnm.buffers records --------------------------------------------
 
 (deftest stocks-and-buffers-from-records

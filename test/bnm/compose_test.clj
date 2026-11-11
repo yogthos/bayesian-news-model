@@ -212,3 +212,59 @@
                 {:keys [values]} (c/reconcile-project vals ident)]
             (doseq [{:keys [coefs b]} ident]
               (is (close? b (reduce + (for [[k a] coefs] (* a (values k)))) 1e-9)))))))))
+
+;; -- review of step 1 (findings 3-5) ----------------------------------------------
+
+(defn- normal-expect
+  "E[f(z)], z ~ N(mu, v), by a fine midpoint rule over +-14 sd: the
+  reference the quadrature is checked against."
+  [f mu v]
+  (let [sd (Math/sqrt v) n 200000 a -14.0 h (/ 28.0 n)]
+    (reduce + (for [i (range n) :let [x (+ a (* h (+ i 0.5)))]]
+                (* h (/ (Math/exp (* -0.5 x x)) (Math/sqrt (* 2 Math/PI))) (f (+ mu (* sd x))))))))
+
+(deftest c4-quadrature-holds-at-parent-scale
+  ;; a parent's expected count over its window (Λw) can be 10 or more and
+  ;; its frailty variance several: five Gauss-Hermite points gave 0.889
+  ;; at Λw 12, v 4 against 0.906
+  (doseq [[lw v z] [[12.0 4.0 0.0] [12.0 4.0 -2.0] [0.24 1.0 0.0] [30.0 9.0 0.0] [3.0 2.0 -1.0] [0.01 6.0 0.0]]]
+    (let [cs [{:id [:country "a" :year] :hazard {:k {:rate (/ lw 24.0)}}}]
+          exact (- 1.0 (normal-expect #(Math/exp (- (* lw (Math/exp %)))) z v))]
+      (is (close? exact (c/any-onset cs :k {:z z :z-var v} 24) 1e-7) [lw v z exact])))
+  (testing "the expected count's factor is the lognormal mean at large v"
+    (is (close? (Math/exp 2.0) (c/frailty-mean {:z 0.0 :z-var 4.0}) 1e-7))))
+
+(deftest cumhaz-split-edges
+  (testing "bounds compare as numbers: 0 and 0.0 are the same month"
+    (is (= 2 (count (c/cumhaz-split {:p 0.3 :from 0 :to 24} [{:from 0.0 :to 12 :share 1.0} {:from 12 :to 24.0 :share 1.0}])))))
+  (testing "a certain onset with a zero share: that window is empty, the rest certain, no NaN"
+    (let [fine (c/cumhaz-split {:p 1.0 :from 0 :to 24} [{:from 0 :to 12 :share 0.0} {:from 12 :to 24 :share 1.0}])]
+      (is (every? #(not (Double/isNaN (double (:p %)))) fine) fine)
+      (is (= 0.0 (:p (first fine))))
+      (is (= 1.0 (:p (second fine))))
+      (is (= 1.0 (:p (c/survival-chain fine)))))))
+
+(deftest c3-random-splits-reach-the-edges
+  ;; the C3 generator widened: zero shares, p up to and at 1, bounds as doubles
+  (let [g (m/rng 99)]
+    (dotimes [i 200]
+      (let [p (case (mod i 4) 0 1.0 1 0.0 (m/next-double! g))
+            cuts (vec (sort (distinct (map #(double (long %)) (repeatedly 4 #(* 24 (m/next-double! g)))))))
+            bounds (vec (distinct (concat [0.0] (remove #{0.0 24.0} cuts) [24])))
+            parts (mapv (fn [a b] {:from a :to b :share (if (< (m/next-double! g) 0.3) 0.0 (m/next-double! g))}) bounds (rest bounds))
+            parts (if (every? (comp zero? :share) parts) (assoc-in parts [0 :share] 1.0) parts)
+            fine (c/cumhaz-split {:p p :from 0 :to 24} parts)
+            back (c/survival-chain fine)]
+        (is (every? #(not (Double/isNaN (double (:p %)))) fine))
+        (is (close? p (:p back) 1e-12) [p parts])))))
+
+(deftest reconcile-weighted-by-unequal-sds
+  ;; min Σ (x' - x)^2 / sd^2 subject to Σ a x' = b: x'_i = x_i - sd_i^2 a_i r / Σ a_j^2 sd_j^2,
+  ;; r the residual. An inverted scaling (sd for 1/sd) moves the precise values most and fails
+  (let [vals {:a {:level 1.0 :sd 1.0} :b {:level 2.0 :sd 2.0} :c {:level 3.0 :sd 3.0} :p {:level 7.0 :sd 0.5}}
+        coefs {:a 1.0 :b 1.0 :c 1.0 :p -1.0}
+        r (- (+ 1.0 2.0 3.0) 7.0)
+        denom (reduce + (for [[k a] coefs] (* a a (Math/pow (get-in vals [k :sd]) 2))))
+        expect (into {} (for [[k a] coefs] [k (- (get-in vals [k :level]) (/ (* (Math/pow (get-in vals [k :sd]) 2) a r) denom))]))
+        {:keys [values]} (c/reconcile-project vals [{:coefs coefs :b 0.0}])]
+    (doseq [k (keys coefs)] (is (close? (expect k) (values k) 1e-12) [k (expect k) (values k)]))))

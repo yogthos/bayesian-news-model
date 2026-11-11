@@ -118,11 +118,31 @@
      :n (count have)
      :missing (vec (map :id (remove #(get-in % [:hazard kind :rate]) children)))}))
 
+(def ^:private simpson-points
+  "[[weight x]] for the standard normal: composite Simpson's rule over
+  [-12, 12] in 1200 intervals. Five Gauss-Hermite points (the lattice's,
+  which its downscale keeps) are inaccurate at a parent's scale, where
+  the expected count over the window reaches 10 or more and the frailty
+  variance several (review of step 1: 0.889 against 0.906 at Λw 12, v 4)."
+  (let [n 1200 a -12.0 h (/ 24.0 n)
+        phi (fn [x] (/ (Math/exp (* -0.5 x x)) (Math/sqrt (* 2.0 Math/PI))))]
+    (vec (for [i (range (inc n))
+               :let [x (+ a (* h i))
+                     c (cond (or (zero? i) (= i n)) 1.0 (odd? i) 4.0 :else 2.0)]]
+           [(* (/ h 3.0) c (phi x)) x]))))
+
 (defn- frailty-points
-  "[[weight z]] for z ~ N(z, v) by the lattice's Gauss-Hermite nodes."
+  "[[weight z]] for z ~ N(z, v), by Simpson's rule over +-12 sd."
   [{:keys [z z-var]}]
   (let [z (double (or z 0.0)) sd (Math/sqrt (Math/max 0.0 (double (or z-var 0.0))))]
-    (if (zero? sd) [[1.0 z]] (mapv (fn [[x w]] [w (+ z (* sd x))]) lt/hermite))))
+    (if (zero? sd) [[1.0 z]] (mapv (fn [[w x]] [w (+ z (* sd x))]) simpson-points))))
+
+(defn window-p
+  "One hazard's chance of an onset in w months at a per-month rate lam
+  under a frailty z ~ N(:z, :z-var): E_z[1 - exp(-lam w e^z)]."
+  ^double [lam frailty w]
+  (- 1.0 (reduce + (for [[wt z] (frailty-points frailty)]
+                     (* wt (Math/exp (- (* (double lam) (Math/exp z) (double w)))))))))
 
 (defn frailty-mean
   "E[e^z] by the same quadrature: the factor on the expected count."
@@ -132,8 +152,8 @@
 (defn any-onset
   "P(any onset of `kind` among `children` in w months), the children
   independent given a frailty z ~ N(:z, :z-var) they share:
-  1 - E_z[Π_c exp(-λ_c e^z w)], by Gauss-Hermite quadrature (the
-  lattice's nodes). With :z-var 0 and :z 0 it is 1 - Π(1 - p_c)."
+  1 - E_z[Π_c exp(-λ_c e^z w)], by quadrature over the frailty. With
+  :z-var 0 and :z 0 it is 1 - Π(1 - p_c)."
   ^double [children kind frailty w]
   (let [{:keys [rate missing]} (rate-sum children kind)]
     (when (seq missing) (fail "a child without a rate" {:kind kind :missing missing}))
@@ -180,11 +200,18 @@
     (allocate coarse shares)
     (let [ws (sort-by :from shares)
           lam (cumhaz-of coarse)]
-      (when-not (and (= (:from (first ws)) (:from coarse)) (= (:to (last ws)) (:to coarse))
-                     (every? (fn [[a b]] (= (:to a) (:from b))) (map vector ws (rest ws))))
+      (when-not (and (== (:from (first ws)) (:from coarse)) (== (:to (last ws)) (:to coarse))
+                     (every? (fn [[a b]] (== (:to a) (:from b))) (map vector ws (rest ws))))
         (fail "the shares must tile the coarse window" {:coarse coarse :shares shares}))
-      (mapv (fn [w l] {:from (:from w) :to (:to w) :cumhaz l :p (- (Math/expm1 (- l)))})
-            ws (allocate lam (map :share ws))))))
+      (let [tot (aggregate (map :share ws))]
+        (when-not (pos? tot) (fail "allocation weights must have a positive sum" {:shares shares}))
+        ;; a zero share is an empty window even when the coarse hazard is
+        ;; infinite (p = 1): never 0 * infinity
+        (mapv (fn [w]
+                (let [sh (double (:share w))
+                      l (if (zero? sh) 0.0 (* lam (/ sh tot)))]
+                  {:from (:from w) :to (:to w) :cumhaz l :p (- (Math/expm1 (- l)))}))
+              ws)))))
 
 ;; -- reconciliation onto linear identities ------------------------------------------------------
 
