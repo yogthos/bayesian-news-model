@@ -138,10 +138,25 @@ trigger terms multiply it.
    update uses only data known at the time.
 7. **Every claim is scored forward.** 2003-2022 is development data from now
    on. New results count when a dated, frozen forecast meets its outcome.
+8. **One recursive model.** Added 11 November 2026 on the user's direction.
+   Every place and time scale is the same kind of node: stocks, flows,
+   buffers, a frailty per kind, a regime and tensions, plus an issued
+   forecast that no node reads back. Children build up into parents by
+   identities (stocks and flows sum, rates add, hazards compose over a
+   shared frailty), and the parent learns only what is emergent: world
+   prices, breadth, dispersion, contagion, the common shock. One world node
+   sits at the top and feeds down as lagged context. Nodes pass states,
+   never forecasts. The spec and its coherence tests are in RECURSIVE.md.
 
 ## 4. Phases
 
 Estimates are agent working days, one or two agents at a time.
+
+The build order is now RECURSIVE.md §7, which replaces the loop audit's
+rounds 2-6 and orders the phases below: step 2 (world node) takes in
+phase 5b's world prices and round 4's data hygiene; step 3 (frailty) and
+step 4 (time tree) are phase 4; step 6 is phase 1's wiring into the
+forecast; step 7 is phase 5; step 8 is phase 2; step 9 is phase 5b.
 
 ### Phase 0: foundations (about 5 days)
 
