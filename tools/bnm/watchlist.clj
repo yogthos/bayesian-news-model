@@ -46,6 +46,7 @@
   data/runs/sequencing/watchlist-record.txt."
   (:require [augur.math :as m]
             [augur.special :as sp]
+            [bnm.benchmarks :as bm]
             [bnm.kinds :as kinds]
             [bnm.paired :as pd]
             [bnm.relation-diag :as rd]
@@ -227,7 +228,8 @@
                :when fr]
            {:c c :t (quot o 12) :y y :hard (hard? on o)
             :p (-> (into {} (for [[s] srcs] [s (first (get-in ps [s [c o]]))]))
-                   (assoc :pers (persistence on lag o) :clim (climatology on fr lag o)))}))))
+                   (assoc :pers (persistence on lag o) :clim (climatology on fr lag o)
+                          :last12 (if (bm/last-12? cat c o) 1.0 0.0)))}))))
 
 (defn- cells
   "{origin {:hits :pos :slots}} of ranked rows for `source`'s list of `k`."
@@ -478,22 +480,25 @@
   (sort (filter #(.exists (io/file (str "data/runs/" run "/" % "/forecasts.tsv"))) (keys kinds/tiers))))
 
 (defn report-base
-  "The base against persistence and climatology, every kind."
+  "The base against persistence, climatology and the last 12 months
+  published (bnm.benchmarks), every kind."
   [say run cats {:keys [from to] :as opts}]
   (let [kds (all-kinds run)
-        res (compare-sources (by-kind {:m run} kds cats from to) [:m :pers :clim] [[:m :pers] [:m :clim]] opts)]
-    (say (format "A. The base (%s) against persistence and climatology, %d kinds, origins %d-%d." run (count kds) from to))
+        res (compare-sources (by-kind {:m run} kds cats from to) [:m :pers :clim :last12]
+                             [[:m :pers] [:m :clim] [:m :last12]] opts)]
+    (say (format "A. The base (%s) against persistence, climatology and the last 12 months, %d kinds, origins %d-%d." run (count kds) from to))
     (say "   recall / precision / mean lead (origins) / share caught; differences in recall, 90% interval, years in blocks of 2.")
     (doseq [sample [:hard :all] k ks
             :let [{:keys [rates pairs]} (res [sample k])
                   rp (fn [s] (let [{:keys [recall precision lead caught]} (rates s)] (format "%s/%s/%s/%s" (f3 recall) (f3 precision) (f1 lead) (f3 caught))))]]
-      (say (format "   %-4s k=%-3s base %s  pers %s  clim %s  base-pers %s  base-clim %s"
-                   (name sample) (kname k) (rp :m) (rp :pers) (rp :clim) (fmtd (pairs [:m :pers])) (fmtd (pairs [:m :clim])))))
-    (say "   per kind, hard rows, k=10: positive country-origins, recall base / pers / clim")
+      (say (format "   %-4s k=%-3s base %s  pers %s  clim %s  last12 %s  base-pers %s  base-clim %s  base-last12 %s"
+                   (name sample) (kname k) (rp :m) (rp :pers) (rp :clim) (rp :last12)
+                   (fmtd (pairs [:m :pers])) (fmtd (pairs [:m :clim])) (fmtd (pairs [:m :last12])))))
+    (say "   per kind, hard rows, k=10: positive country-origins, recall base / pers / clim / last12")
     (let [{:keys [per-kind]} (res [:hard 10])]
       (doseq [[kd by] (sort-by key per-kind)
               :let [r (fn [s] (let [c (vals (by s)) p (reduce + (map :pos c))] (when (pos? p) (/ (reduce + (map :hits c)) p))))]]
-        (say (format "     %-22s %4d  %s  %s  %s" kd (reduce + (map :pos (vals (by :m)))) (f3 (r :m)) (f3 (r :pers)) (f3 (r :clim))))))
+        (say (format "     %-22s %4d  %s  %s  %s  %s" kd (reduce + (map :pos (vals (by :m)))) (f3 (r :m)) (f3 (r :pers)) (f3 (r :clim)) (f3 (r :last12))))))
     res))
 
 (defn report-pair

@@ -87,6 +87,7 @@
             [bnm.essentiality-test]
             [bnm.located-shocks-test]
             [bnm.watchlist-test]
+            [bnm.benchmarks-test]
             [bnm.engine-test]
             [bnm.modules-world3-test]
             [bnm.modules-stocks-test]
@@ -207,7 +208,8 @@
     bnm.shock-trial-test
     bnm.warm-up-test
     bnm.fast-test
-    bnm.fast-score-test])
+    bnm.fast-score-test
+    bnm.benchmarks-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]

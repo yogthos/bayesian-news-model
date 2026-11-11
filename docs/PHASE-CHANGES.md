@@ -3437,3 +3437,68 @@ they are slightly tighter than 80% power now supports, so an
 "equivalent to nothing" read against them is, if anything, conservative.
 No later verdict turns on the difference: T4's upper ends (+0.00018
 Brier, +0.0008 log) and T8b's (+0.0003 Brier) are well inside either.
+
+## Development figure, 11 November 2026: the base against the new benchmarks (bead bnm-56c.1, PLAN 0.3)
+
+Not a trial and not a test: 2003-2022 is development data (PLAN.md 3.6),
+and nothing is tuned on this. bnm.benchmarks adds two benchmarks beside
+climatology and persistence, each a probability from what was known at
+the origin:
+- **last12**, the last 12 months of the same place: whether the place
+  had an onset of the kind in the last 12 months published at the
+  origin, (t - lag - 12, t - lag], made a probability by the level's
+  past rate among rows in the same state (one pseudo-row at the level's
+  rate). The literal 12 months to the origin cannot be used: with a
+  known-lag of a year or more nothing in them is known, and a scored
+  row is at risk only when no crisis was under way in them, so on the
+  rows scored they are always quiet (0 of 97,188 year rows, 1960-2022).
+- **share**, the parent's probability times the place's long-run share
+  of the parent's members' known onsets (an equal share with none). It
+  is meant for sub-national places under the country; here, at the
+  country, the parent is the base's own subregion node.
+- **clim**, the place's own past rate at the node, smoothed the same way.
+
+The base (t48-world-norel), year nodes, country rows, origins
+2003-2022; skill = 1 - loss(base) / loss(benchmark), above 0 the base
+is better; the last column is the paired Brier gain over last12 per row
+with its 90% interval (countries and years resampled, 400 draws).
+
+| kind | n | onsets | Brier vs clim / last12 / share | log vs clim / last12 / share | Brier gain over last12 |
+|---|---|---|---|---|---|
+| banking_crisis | 2538 | 82 | -0.020 / **-0.065** / -0.054 | +0.102 / -0.053 / +0.149 | -0.0021 [-0.0047, -0.0001] |
+| conflict_onset | 3306 | 272 | +0.019 / +0.130 / +0.113 | -0.006 / +0.181 / +0.162 | +0.0096 [+0.0049, +0.0160] |
+| coup | 3461 | 157 | +0.121 / +0.022 / +0.012 | +0.157 / +0.104 / +0.166 | +0.0010 [-0.0009, +0.0028] |
+| currency_crisis | 3222 | 117 | +0.030 / +0.026 / -0.011 | -0.023 / +0.062 / +0.061 | +0.0009 [-0.0004, +0.0025] |
+| fiscal_consolidation | 2908 | 793 | +0.039 / +0.019 / +0.167 | +0.060 / +0.017 / +0.323 | +0.0037 [-0.0040, +0.0119] |
+| food_price_shock | 2308 | 327 | +0.171 / +0.041 / +0.082 | +0.140 / -0.031 / +0.400 | +0.0053 [-0.0027, +0.0136] |
+| growth_collapse | 3168 | 333 | +0.013 / **-0.009** / +0.022 | +0.113 / -0.024 / +0.210 | -0.0009 [-0.0022, +0.0006] |
+| inflation_crisis | 3157 | 39 | +0.165 / +0.018 / +0.001 | +0.223 / +0.147 / +0.290 | +0.0002 [-0.0000, +0.0004] |
+| market_crash | 798 | 142 | +0.066 / **-0.079** / -0.045 | +0.070 / -0.052 / +0.117 | -0.0127 [-0.0490, +0.0285] |
+| protest_surge | 3371 | 104 | -0.028 / +0.064 / +0.043 | +0.069 / +0.185 / +0.218 | +0.0019 [-0.0011, +0.0061] |
+| sovereign_default | 3179 | 101 | +0.037 / **-0.006** / +0.006 | +0.144 / -0.007 / +0.207 | -0.0002 [-0.0007, +0.0002] |
+| violence_surge | 3387 | 271 | +0.166 / +0.117 / +0.053 | +0.129 / +0.152 / +0.128 | +0.0093 [+0.0073, +0.0114] |
+| war_onset | 3381 | 87 | +0.075 / +0.041 / +0.068 | +0.094 / +0.158 / +0.178 | +0.0010 [-0.0001, +0.0025] |
+
+Kinds weighed equally, the base's Brier skill is +0.066 over clim,
++0.025 over last12 and +0.035 over share; log skill +0.098, +0.065 and
++0.201.
+
+**The base loses to the last 12 months on Brier for four kinds at the
+year node: banking crises (-0.065, its interval below zero), market
+crashes (-0.079), growth collapses (-0.009) and sovereign defaults
+(-0.006); on log score it loses on those four and on food price
+shocks.** On banking crises it loses to all three benchmarks on Brier.
+At the quarter nodes it loses to last12 on Brier for banking crises
+(lead -0.056), growth collapses (-0.022, -0.023), sovereign defaults
+(-0.013, -0.007), currency crises (-0.002, -0.003), and at w2 also
+protest surges (-0.031), coups (-0.023), war onsets (-0.009) and
+inflation crises (-0.001); at the half-decade on sovereign defaults
+(-0.162). Nothing is tuned in
+response (data/runs/t48-world-norel/benchmarks-dev.txt has every scale).
+
+On the watch list (top-10 recall on hard onsets), last12 ranks nothing:
+a hard row has no onset in the ten years to the origin, so its last 12
+months are always quiet and every row ties (recall 0.135 against the
+base's 0.271, +0.136 [+0.094, +0.178]); on all rows 0.096 against 0.213
+(data/runs/t48-world-norel/watchlist-base-last12.txt). bnm.watchlist's
+base report prints it beside persistence and climatology from now on.
