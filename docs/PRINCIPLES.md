@@ -84,3 +84,25 @@ mechanical ones are smoke checks (bnm.lattice-smoke).
     others: each module declares what it reads and what it emits, with
     known years, and the coupling is a graph, not ad hoc links
     (docs/COUPLED-SYSTEMS.md, epic bnm-4hv).
+
+13. **Development results are rolling, grouped and gapped; claims are
+    forward.** From 11 November 2026 the years to 2022 (2023-24 too, read
+    by every lattice trial since 36) are development data: a result on
+    them is a development result, never a test. A development result is
+    scored with bnm.dev-folds: rolling origin, each test year scored on
+    a model trained only on rows whose origins are at least a gap before
+    it, the gap at least the label window (plus the outcome's known-lag);
+    a year's rows scored together, and a training row whose label touches
+    a global episode (bnm.dev-folds/global-episodes) that a scored row's
+    label touches dropped, so one global event never sits on both sides.
+    It reports the drop from naive random folds to these (on the base,
+    with a place's past rate as the fit, +0.002 to +0.042 Brier per row,
+    every kind: naive folds always flatter), and, as a standard
+    diagnostic, the last 20% of origins by time held out with the same
+    gap, labelled development, not validation. A random 80/20 split of
+    rows is not used: neighbouring years share outcomes through
+    overlapping windows and episodes that span countries and years, so a
+    random split scores rows whose outcomes the training rows already
+    hold. A claim of a result is made only by the forward ledger
+    (registered/ledger/, docs/PHASE-CHANGES.md): a dated, frozen forecast
+    meeting its outcome.
