@@ -1,5 +1,39 @@
 # Handover
 
+## State as of 2026-11-11 (branch `structure`)
+
+**The base of record is t50-world-norel** (note to amendment L1,
+docs/PHASE-CHANGES.md): `bnm.world-run --out t50-world-norel
+--without-relations true --known r6-at-8ul`, t48's command on the
+catalogues rebuilt after the gazetteer fix (bnm-8ul), its quarters pooled
+with the onsets run r6-at-8ul. r6-at-8ul is r6-at's command on those
+catalogues with lapsed sources kept: a source that has published for a
+country but has nothing fresh keeps its last values and a lapse flag
+whose prior is on its own scale (bnm.named/vectorizer, augur v0.18.0
+logit :raw). Before, a presence indicator learned from the countries a
+source never covers was applied to every country when the source went
+stale, and r6-at's named forecasts stepped at 2025q3 (CRU climate).
+The lattice reads PWT with a 30-month staleness and so misses its
+political-economy gauges at September origins (bnm-h8d, needs a
+decision: fixing it moves the base and the first issue's reproduction).
+
+**The forward ledger** (bnm.ledger; registration and amendment L1 in
+docs/PHASE-CHANGES.md)
+- Issued: 2026-Q4 (11 November, on t48 and r6-at; role :reported, no
+  verdict) and 2026-Q4-r1 (11 November, on t50; role :primary),
+  registered/ledger/<issue>/, inputs archived read-only in
+  data/ledger-inputs/<issue>/. 2026-Q4-r1 reproduced 2026-Q4 byte for
+  byte on its archive with 2026-Q4's own manifest command, and t50 on
+  every row to December 2025.
+- Next: refresh the catalogues (several stop 5-18 months short of a
+  December origin), then, dated in February or March 2027,
+  `jolt -A:tools -M -m bnm.ledger issue --issue 2027-Q1 --date <date>`.
+  It reruns 2026-Q4-r1 on data/ledger-inputs/2026-Q4-r1/ and refuses
+  unless that issue's forecasts come back byte for byte; register the
+  printed hashes in bnm.ledger/issued in the commit that adds the issue.
+- Nothing is scored before the first windows close; no claim before
+  three year-node issues (2031 at the earliest).
+
 ## State as of 2026-11-10 (branch `structure`)
 
 The sections below are the 2026-10-17 and 2026-10-16 handovers, kept as
@@ -25,7 +59,8 @@ docs/PHASE-CHANGES.md holds each registration and result.
   that no world run has had, so the base's quarters are unreconciled
   (bnm-con). The year nodes are not affected.
 
-**The base of record is t48-world-norel**, the world without relations:
+**The base of record was t48-world-norel** (t50-world-norel since 11
+November, above), the world without relations:
 `bnm.world-run --without-relations true`. A run now has to name its
 model; with neither `--without-relations true` nor `--graph` it is
 refused (until 10 November a bare run read trial 43's graph).
