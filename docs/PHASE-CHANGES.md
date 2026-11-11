@@ -3802,3 +3802,92 @@ the affected codes (GBR, GEO, COD, COG, BFA, BES). Unmeasured stocks
 cannot be ranked. Episodes per family are few; pooling across families
 is itself the hypothesis. A shock from outside (2020) is not
 predictable.
+
+## Development result, 11 November 2026: links that cost nothing (bead bnm-56c.2, PLAN 0.4)
+
+Development, not a test: origins 2003-2022 (PLAN principle 6). The base
+of record stays t48-world-norel; this gives a candidate weighting, opt-in,
+not a new base. Acceptance was fixed before the full runs: with the noise
+group at the quarter nodes (bnm.fast-run --family noise, nine standard
+normals, seeds 1-4, the fast-signal trials' shape), the year nodes' mean
+paired Brier against the same weighting without it within 0.0003 of
+zero (bnm.links --noise, beside it the v2 interval for a fresh draw,
+A3's form); and the candidate not losing to t48 on development folds.
+
+**Where the cost comes from.** On t48 the four noise draws cost the
+year nodes -0.00193 (sd 0.00035; -0.0023, -0.0017, -0.0016, -0.0021).
+About 80% of it is two late-catalogue kinds: market crashes (-0.016 to
+-0.025 per draw) and food price shocks (-0.002 to -0.008); coup, growth
+collapses and protest surges add -0.0002 to -0.0005 each, the rest
+nothing. Small runs on those four kinds (market crashes, food price
+shocks, coup, growth collapses; noise seed 1, each against its own
+setting without noise; cost with t48's settings -0.0077):
+- the averaging's forgetting at 1.0: -0.0083; the coupling off: -0.0100;
+  the noise not nested, so the all-inputs model reads it: -0.0069. None
+  of these is the channel;
+- the quarters' offset from the year (:downscale) off: +0.0007 [-0.0003,
+  +0.0018]. The cost runs through a loop: the year's forecast comes down
+  as the quarters' offset, their states go back up as the year's :up
+  inputs, and a small change in them flips the year node's model
+  average from one model to another. In market crashes the base puts
+  0.99995 on the all-inputs model in 2010, the noise run 0.999999 on
+  the world group, 2010-2016; growth collapses flip to exposure in 2012.
+  The noise model's own weight at the quarters is incidental: the year
+  selects rather than blends, so any perturbation reshuffles it.
+Dropping the downscale is no candidate (its base loses -0.0046 on the
+four kinds), nor is passing the quarters' states up net of what came
+down (:up-net-of-downscale): its base loses -0.0134 [-0.028, -0.002]
+and its noise draws swing +0.009 to +0.012. Reading its own forecast
+back helps the year; what costs is the sharp selection.
+
+**Candidates** (four kinds, noise seed 1, cost against the candidate's
+own base; the base against t48):
+- t48's posterior weights: -0.0077;
+- link coefficients held out of the discount (:hold-links, augur's
+  :hold): -0.0052, partial;
+- tempered posterior weights (augur.dynamic :weighting {:rule :temper},
+  each period's likelihoods to a power), 0.05: +0.00004 [-0.0005,
+  +0.0005], base +0.0008; 0.01: +0.00017 [+0.0001, +0.0003], seed 2
+  +0.00018, base +0.0002;
+- stacked weights (exponentiated gradient on the mixture's log score,
+  rate 0.01, floor 0.1): +0.00016, seed 2 +0.00017, base -0.0001;
+- tempering at the year only (0.01): +0.00008, base +0.00001.
+Stacking and tempering remove the cost alike. Tempered at 0.01
+everywhere was chosen: the smaller change (one parameter, the weights
+keep their posterior form and its penalty on a model's extra
+uncertainty) and its base slightly the better. On synthetic data
+(augur's tests) stacking keeps a noisy copy of a good model near half
+the weight: blending is not ignoring.
+
+**The candidate** (l04-t01, --set '{:weighting {:rule :temper :power
+0.01}}', thirteen kinds, 1870-2025; noise draws l04-t01-noise-1..4):
+- **noise cost +0.00005** (+0.00005, +0.00005, +0.00004, +0.00006; sd
+  0.00001; fresh draw [+0.00002, +0.00008]): **within 0.0003 of zero,
+  accepted.** The empty group now costs nothing; it nudges the year
+  nodes very slightly up;
+- against t48, year nodes, 2003-2022: Brier -0.00019 [-0.00276,
+  +0.00214], log -0.0026 [-0.0091, +0.0037], level; quarters +0.00014
+  [-0.00053, +0.00073]. Watch-list rule, top-10 recall on hard onsets
+  0.261 against 0.271, -0.010 [-0.037, +0.023];
+- by development fold (bnm.links --folds: blocks of origin years, each
+  of bnm.dev-folds' global episodes in one; the forecasts are online,
+  so rolling origin holds by construction): 2003-2006 -0.0019 [-0.0079,
+  +0.0027], 2007-2009 -0.0096 [-0.0155, +0.0030], 2010-2012 +0.0032
+  [-0.0044, +0.0100], 2013-2019 +0.0022 [-0.0008, +0.0056], **2020-2022
+  -0.0020 [-0.0032, -0.0006], a loss**, carried by food price shocks
+  (-0.021: the 2022 food crisis, which the base's sharp selection
+  caught). Year-only tempering and stacking lose that fold too (-0.0058
+  and -0.0052 on the four kinds); forgetting at 1.0 does not but keeps
+  the cost.
+
+**Verdict.** The noise rule is met; the fold rule is not cleanly met:
+level pooled and in four folds, a loss of 0.002 in 2020-2022 (one of
+five folds at one-sided 5% each; a false loss in some fold has about a
+23% chance, so it may be noise, but it is recorded as a loss). Not
+adopted; t48 stays the base. The weighting is opt-in
+(bnm.lattice :weighting / :weighting-at; bnm.fast-run --set), and a test
+(test/bnm/links_test.clj) reruns market crashes with the defaults
+against t48-world-norel byte for byte. augur v0.14.0 adds slopes pooled
+across groups of places (augur.dynamic :by), v0.15.0 the tempered and
+stacked weights and held coefficients; the lattice does not pool slopes
+by region yet (bnm-56c.12).

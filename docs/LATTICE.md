@@ -91,6 +91,17 @@ lattice's outputs and reads exactly, in full and with groups dropped.
   ended, a signal gone stale, errors not yet known) is an intercept-only
   model under another name: it drops out of that origin's forecasts,
   weight 0, and comes back when its source resumes (bnm-wns).
+  Posterior weights select: a period's likelihood over every row of a
+  level swings them to near 1 on one model (coup 2022 all 1.000), and a
+  small change in what a node reads flips which one. That is why a group
+  of pure noise at the quarters cost the year nodes about 0.002 Brier:
+  the year's forecast comes down as the quarters' offset, their states
+  go back up, and the perturbation flips the year's selection. Tempered
+  weights (each period's likelihoods to the power 0.01, augur's
+  :weighting {:rule :temper}) remove the cost (+0.00005) and are level
+  with the base pooled, but lose the 2020-2022 fold by 0.002 (food price
+  shocks); a development result, opt-in through :weighting, not the
+  base (docs/PHASE-CHANGES.md, 11 November 2026, bnm-56c.2).
 - **Pooling**: sibling nodes (the countries of a subregion at one scale)
   share a prior on their slopes, centred on their parent's; slopes, not
   levels, since trials 31-33 found that levels learned from a country's
