@@ -185,3 +185,11 @@
       (is (thrown-with-msg? Exception #"without relations" (wr/model-choice {:without-relations "true" k "x"})))))
   (testing "the two recorded graphs and their commands"
     (is (= "data/runs/sequencing/graph-t43.edn" wr/graph-t43))))
+
+(deftest the-onsets-run-the-quarters-read-is-named
+  ;; the quarters' offset pools the year with bnm.onsets' named model from
+  ;; this run; t48 and t49 read r6-at, t50 r6-at-8ul (bead bnm-8ul)
+  (is (= "r6-at" (wr/known-run {})) "a run that names none reads r6-at, as t48 and the first issue did")
+  (is (= "r6-at-8ul" (wr/known-run {:known "r6-at-8ul"})))
+  (is (= {:relations? false :graph nil} (wr/model-choice {:without-relations "true" :known "r6-at-8ul"}))
+      "the base takes it: it is not a link option"))

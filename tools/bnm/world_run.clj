@@ -13,8 +13,13 @@
   diag), each nested in the node's own model (with-relations).
 
     jolt -A:tools -M -m bnm.world-run --out world --without-relations true [--end m] [--kinds a,b] [--smoke true]
+                                      [--known r6-at-8ul]
     jolt -A:tools -M -m bnm.world-run --out world --graph path [--placebo true] [--ews path] [--states path]
                                       [--end m] [--kinds a,b] [--smoke true]
+
+  --known names the bnm.onsets run whose named model the quarters pool
+  with (r6-at when none is named; the base of record, t50-world-norel,
+  reads r6-at-8ul).
 
   A run names its model: --without-relations true is the world without
   relations, the base of record (t48-world-norel); --graph path turns on
@@ -218,13 +223,23 @@
                [k (vec (for [[n sign] ss :let [f (read n)] :when f]
                          {:name n :sign sign :at (fn [c t] (f c (lp/ended t)))}))]))))
 
+(defn known-run
+  "The bnm.onsets run whose named model the quarters' offset pools with
+  (--known; r6-at, as t48, t49 and the first ledger issue read, when none
+  is named). t50-world-norel reads r6-at-8ul, refit on the catalogues
+  rebuilt after the gazetteer fix with lapsed sources kept (bead bnm-8ul)."
+  [{:keys [known]}]
+  (or known "r6-at"))
+
 (defn build-specs
-  "{kind spec} for `ks` to month `end`."
-  [ks end cats]
-  (into {} (pmap (fn [k]
-                   [k (merge (if (= k lb/kind) (lb/build end "r6-at") (lp/build k end "r6-at" cats start))
-                             quarter-design)])
-                 ks)))
+  "{kind spec} for `ks` to month `end`, the quarters' offset pooled with
+  run `known`'s named model."
+  ([ks end cats] (build-specs ks end cats "r6-at"))
+  ([ks end cats known]
+   (into {} (pmap (fn [k]
+                    [k (merge (if (= k lb/kind) (lb/build end known) (lp/build k end known cats start))
+                              quarter-design)])
+                  ks))))
 
 (defn- write-kind [dir kind r]
   (io/make-parents (str dir "/x"))
@@ -300,7 +315,7 @@
         chosen (when states
                  (states-of (read-string (slurp states)) (set (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats))))))
         _ (println "building" (count ks) "kinds")
-        specs0 (build-specs ks end cats)
+        specs0 (build-specs ks end cats (known-run opts))
         books (atom {})
         specs (into {} (for [[k sp] specs0]
                          [k (cond-> (if (= "true" without-relations) sp
