@@ -343,7 +343,10 @@
   everything the node reads, so the states passed on carry what the node
   knows, and it is the model the posterior weights of the base of record
   (t48) settle on; it depends on no weight."
-  [{:keys [models x o os]}]
+  [{:keys [models x o os scale level]}]
+  (when-not (:all models)
+    (throw (ex-info "bnm.lattice: :state-from :reference needs the all-inputs model (:all), which the node does not average"
+                    {:state-from :reference :scale scale :level level :models (vec (keys models))})))
   (let [st (model-state (:all models) x o os)]
     (assoc st :s (logit (:p st)))))
 

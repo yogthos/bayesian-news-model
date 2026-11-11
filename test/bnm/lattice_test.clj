@@ -917,4 +917,9 @@
           month (fn [r] (for [[[s _] byo] (:book r) :when (= :month s) [t e] byo] [t e]))]
       (is (every? (fn [[_ e]] (< (Math/abs (- (:s e) (lt/logit-of (:p e)))) 1e-12)) (month a)) "without it, the state's log odds")
       (is (some (fn [[_ e]] (> (Math/abs (- (:s e) (lt/logit-of (:p e)))) 1e-6)) (month b))
-          "with it, the log odds less the offset that came down"))))
+          "with it, the log odds less the offset that came down")))
+  (testing ":state-from :reference needs the all-inputs model"
+    (let [e (try (loop-run {:state-from :reference :only #{:base :gauges} :end 20}) nil
+                 (catch clojure.lang.ExceptionInfo e e))]
+      (is (some? e))
+      (is (re-find #":all" (str (ex-message e)))))))
