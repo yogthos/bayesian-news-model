@@ -43,6 +43,17 @@ class WdiTest(Tmp):
         self.assertEqual(countries, {"THA"}, "aggregates have no region")
 
 
+class ImfTest(Tmp):
+    def test_kosovo_is_xkx(self):
+        """IMF data code Kosovo KOS; WDI and the project use XKX."""
+        g = self.p("FA.csv.gz")
+        with gzip.open(g, "wt", encoding="utf-8") as f:
+            f.write("COUNTRY,INDICATOR,FREQUENCY,TIME_PERIOD,OBS_VALUE,SCALE\n"
+                    "KOS,IMFQ_XDR,M,2010-M01,59,\nTHA,IMFQ_XDR,M,2010-M01,1081.9,\n")
+        rows, _ = bd.fa_rows(g)
+        self.assertEqual(sorted(r[0] for r in rows), ["THA", "XKX"])
+
+
 class BisTest(Tmp):
     def test_dsr(self):
         z = self.p("dsr.zip")

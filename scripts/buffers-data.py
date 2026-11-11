@@ -60,10 +60,15 @@ def ym(period):
 
 # ---------------------------------------------------------------- IMF
 
+IMF_ISO = {"KOS": "XKX"}  # IMF codes that differ from the ISO3 the project (and WDI) use
+
+
 def sdmx_csv(p):
     with gzip.open(p, "rt", encoding="utf-8-sig", newline="") as f:
         for r in csv.DictReader(f):
             if r.get("TIME_PERIOD") and r.get("OBS_VALUE") not in (None, ""):
+                if "COUNTRY" in r:
+                    r["COUNTRY"] = IMF_ISO.get(r["COUNTRY"], r["COUNTRY"])
                 yield r
 
 
