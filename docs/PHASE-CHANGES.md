@@ -3502,3 +3502,78 @@ months are always quiet and every row ties (recall 0.135 against the
 base's 0.271, +0.136 [+0.094, +0.178]); on all rows 0.096 against 0.213
 (data/runs/t48-world-norel/watchlist-base-last12.txt). bnm.watchlist's
 base report prints it beside persistence and climatology from now on.
+
+## Registered, 11 November 2026: the forward ledger (bead bnm-56c.1, PLAN 0.1)
+
+From now on the years to 2024 are development data (PRINCIPLES.md 13):
+2003-2022 has been scored about sixty times and every lattice trial
+since 36 has read 2023-24 outcomes. A result counts only when a dated,
+frozen forecast meets its outcome. This registers how; it is written and
+committed before the first issue.
+
+**What is issued.** The base of record, t48-world-norel (the world
+without relations), run by `jolt -A:tools -M -m bnm.world-run --out
+ledger-<quarter> --without-relations true --end <month>`. Every kind,
+every place (countries, subregions, regions, the world) and every window
+(quarter-lead, quarter-w2, year, half-decade) at each scale's latest
+origin at or before the quarter's last month, with the base's
+probability and, frozen beside it from what was known at the origin,
+the benchmarks of bnm.benchmarks (clim, last12, share) and the watch
+list's persistence and climatology scores. bnm.ledger issue writes it to
+registered/ledger/<quarter>/ (forecasts.tsv, manifest.edn, README.md).
+
+**When.** One issue a quarter, dated inside the quarter (the tool
+refuses a date outside its last two months), its origin the quarter's
+last month. The quarter nodes are new each issue; the year node is new
+in the fourth quarter's issue (December origin); the half-decade in
+December 2029, 2034 and so on. The first issue is 2026-Q4, dated 11
+November 2026. The data are those on disk at the issue date: an origin
+after the issue date reads nothing published after it.
+
+**Frozen.** The manifest pins the code commit (the tool refuses
+uncommitted code), the command, the jolt version, the pinned libraries
+and the SHA-256 of every input the run reads (the tool records the
+reads and refuses a file outside bnm.ledger/inputs or one that changes
+during the run). The run must reproduce t48-world-norel byte for byte on
+every row the base has (origins to December 2025), or the tool refuses:
+a code change that moves the base cannot issue. Frozen means the code,
+its settings and the command; the model's own online learning from data
+published since is part of it, as at every origin of the base. **Nothing
+is refit, retuned or re-issued between an issue and its outcome**; an
+issue is never edited, and the scorer refuses a file whose SHA-256 is
+not the one registered in bnm.ledger/issued (and the test suite hashes
+them).
+
+**What is counted.** Country rows whose window opens after the issue
+date. Rows whose window opened before it (the 2026-Q4 issue's
+half-decade, December 2024 to December 2029) and the rows above the
+countries are issued for the record, not scored.
+
+**How it is scored** (bnm.ledger score), once per issue, scale and kind:
+- A window is scored when its outcomes are published: it has closed and
+  the kind's catalogue, as then on disk, covers its end. The scorer
+  refuses earlier, and refuses a second scoring. The outcome is the
+  base's own: an onset of the kind in the window at a country at risk and
+  covered (bnm.lattice-banking/onset-in?, the target the base learns
+  from); rows not at risk or not covered are left out and counted.
+- Brier and log loss (floor 1e-4) and skill, 1 - loss(base) /
+  loss(benchmark), against clim, last12 and share, per kind and scale and
+  pooled with the kinds weighed equally.
+- The watch-list rule where it applies: the year node of the fourth
+  quarter's issue, whose origin is the rule's year end and whose window is
+  its (t, t+2]. **A hit** is an onset of the kind in the window at a
+  country on the kind's top-10 list of hard rows (no onset in the ten
+  years to the origin, ranked among themselves, ties at the cutoff
+  sharing the slots left); recall is hits over the hard onsets, pooled
+  with the kinds weighed equally, for the base and for persistence,
+  climatology and the last 12 months ranked the same way. All rows,
+  precision and k = 5, 20 and 10% are for the record.
+- The v2 rule (bnm-82j.6 with A1-A3) applies to a change to the base: a
+  candidate is issued beside the base in the same issue with its R = 8
+  null draws of the same shape, and the rule decides from their forward
+  scores. The first issue has no candidate.
+- A claim is the result over the scored issues pooled, its interval from
+  blocks of two issue years (as bnm-82j.1), with fewer than three year
+  nodes scored a result is reported as it falls, not claimed. The first
+  year node (2027-2028) is scorable from 2029, when the catalogues cover
+  December 2028.
