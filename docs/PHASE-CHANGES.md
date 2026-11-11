@@ -3708,6 +3708,78 @@ first windows close in 2027 and nothing has been scored.
 - Everything else in the registration stands: what is issued, when, what
   is counted, the outcome, the losses, the watch-list rule and v2.
 
+**Note to amendment L1, 11 November 2026** (bead bnm-8ul; decided by the
+user the same day, option 1 below; written before the corrected issue is
+made, L1 itself unchanged). The base of record is **t50-world-norel**, not
+t49-world-norel: t48's command with `--known r6-at-8ul`,
+`bnm.world-run --out t50-world-norel --without-relations true --known
+r6-at-8ul`. Wherever L1 names t49 as the base (the base check of the
+corrected issue) read t50; the size check stays as recorded on t49.
+
+- *Why not t49.* The base's quarter nodes pool the year with bnm.onsets'
+  named model from an onsets run, and t48, t49 and the first issue read
+  r6-at. (1) r6-at was fit on the catalogues with the country-code bug
+  L1 names (Georgia as GBR, Burkina Faso as BES and the rest), so t49
+  rebuilt everything but that input. (2) r6-at's named forecasts step at
+  2025q3 for every country: CRU temperature and precipitation end in
+  December 2022 (published December 2023) and pass their 30-month
+  staleness in 2025q3, so the source's presence indicator went to 0 for
+  every country. Its coefficient was learned from the 31 territories CRU
+  never covers, then applied to every country at once: conflict x1.28
+  (lead) and x1.30 (w2), coup w2 x1.72, war w2 x1.47, protest x0.75 and
+  x0.73, violence x0.82 and x0.80. The factor is arbitrary (on the
+  rebuilt catalogues the same code gives x0.64). The quarter nodes at
+  2025-26 origins pooled with these, so **the first issue's 2025-26
+  forecasts (registered/ledger/2026-Q4/) carried the step**; development
+  rows (origins to 2022) did not.
+- *The fix* (option 1, in the model, not for climate): a source that has
+  published for a country but has nothing fresh at the origin keeps its
+  last values, read only from what was published by then, and sets a
+  lapse flag of its own (bnm.named/vectorizer); a country the source
+  never covered reads absent as before. The flag's prior is centred on
+  zero on its own scale (augur v0.18.0 logit :raw), so a pattern absent
+  from the training rows moves nothing and one seen in a few rows moves
+  little; it learns from outcomes as lapsed rows resolve, and a source
+  that resumes is read fresh through its own coefficient. Also fixed: the
+  Penn World Table inputs of bnm.onsets went stale every September (30
+  months against a 24-month publication lag); they now allow 36. The
+  lattice reads the same PWT inputs with 30 months, so its political-
+  economy gauges are missing at September origins; fixing that would move
+  the first issue's reproduction, so it is left for a decision (bead
+  bnm-h8d).
+- *Audit.* Of the named sources, the ones that stop for every country by
+  2026: CRU climate (stale from 2025q3, political kinds), WDI resource
+  rents (ends 2021, stale from 2024q3; the core's profit times rents),
+  PWT profit rate and labour share (2023, stale from 2027q1 now; every
+  September before), and the 24-month-lagged rents inputs of the
+  institutions group (2026q3, no model of the base reads them). Only
+  CRU stepped r6-at's forecasts beyond the yearly refit; the 2026q1 moves
+  are the refit at the year's start, of the size seen every year. The
+  lattice's gauges have no presence indicators: a missing input reads the
+  unknown's mean, 0, and a group with no input anywhere drops out.
+- *Control.* r6-at's command with the fix on the pre-rebuild catalogues
+  (r6-at-8ul-control): the 2025q3 steps are gone (conflict x0.99 and
+  x0.97, coup w2 x1.01, war w2 x0.98, protest x1.07 and x0.94, violence
+  x0.98 and x0.96); the history model is r6-at's except NLD (d829c0c's
+  name); the named model's development scores (2003-2022, lead and w2,
+  the six kinds) are r6-at's to the fourth decimal (Brier 0.01267 and
+  0.01527 against 0.01266 and 0.01522).
+- *r6-at-8ul* (r6-at's command on the rebuilt data): the steps are gone
+  as in the control; against the control, labels move only at GEO, GBR,
+  BES and BFA, and the named model's development Brier is 0.01265 and
+  0.01516.
+- *t50 against t49* on development origins (2003-2022, country rows):
+  Brier pooled over the 13 kinds, year -0.00000 [-0.00001 +0.00001],
+  quarter-lead +0.00002 [-0.00001 +0.00006], quarter-w2 -0.00001 [-0.00002
+  +0.00000]; the watch list (hard top-10) is the same on every kind; the
+  kinds that move are the six with named offsets, by little (coup
+  quarter-lead Brier +0.00023 [-0.00003 +0.00070] is the largest). At
+  2025 origins the quarter nodes no longer step at September (coup w2
+  -4.27 to -4.02 mean log odds in t49, -4.26 to -4.30 in t50). Against
+  t48, t50 moves as t49 did (pooled year Brier +0.00032 [+0.00015
+  +0.00049], log -0.00098 [-0.00167 -0.00030]; hard top-10 recall 0.284
+  against 0.273).
+
 ## Registered, 11 November 2026: one pooled hazard over the buffer invariants, and the scanner (bead bnm-56c.6, PLAN 1.5-1.7)
 
 Written and committed before any model is fitted to break labels. The
