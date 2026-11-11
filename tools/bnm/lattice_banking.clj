@@ -115,11 +115,16 @@
 
 (defn- history
   "The own-history inputs at origin t from onsets known by then: log years
-  since the last, and the counts in the last 10 and 30 years."
-  [{:keys [onsets from] :as cat} unit t]
-  (let [known (subseq (get onsets unit (sorted-set)) <= (- t (get cat :known-lag known-lag)))
+  since the last, and the counts in the last 10 and 30 years; nil when the
+  catalogue does not reach t less its publication lag (:through, loop
+  audit Test 7, under the catalogue's :unknown-past-through, which a base
+  that predates it leaves off): its uncovered tail is unknown, not calm."
+  [{:keys [onsets from through unknown-past-through] :as cat} unit t]
+  (let [k (- t (get cat :known-lag known-lag))
+        known (subseq (get onsets unit (sorted-set)) <= k)
         last-m (last known)]
-    (when (and (from unit) (<= (from unit) t))
+    (when (and (from unit) (<= (from unit) t)
+               (or (not unknown-past-through) (nil? (get through unit)) (<= k (get through unit))))
       [(if last-m (Math/log (+ 1.0 (/ (- t last-m) 12.0))) (Math/log (+ 1.0 (/ (- t (from unit)) 12.0))))
        (double (count (filter #(> % (- t 120)) known)))
        (double (count (filter #(> % (- t 360)) known)))])))

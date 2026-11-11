@@ -160,12 +160,30 @@
 
 (defn- count-known
   "Onsets of `cat` at `unit` known by t within the last `months`, or nil
-  before its catalogue covers the unit."
+  before its catalogue covers the unit, or once t less the publication lag
+  is past the catalogue's :through when it says :unknown-past-through
+  (loop audit Test 7: the uncovered tail is unknown, not quiet; off in the
+  bases that predate it)."
   [cat unit t months]
-  (let [from (get-in cat [:from unit])]
-    (when (and from (<= (+ from months) t))
-      (let [k (- t (:known-lag cat))]
-        (double (count (subseq (get-in cat [:onsets unit] (sorted-set)) > (- k months) <= k)))))))
+  (let [from (get-in cat [:from unit])
+        through (get-in cat [:through unit])
+        k (- t (:known-lag cat))]
+    (when (and from (<= (+ from months) t) (or (not (:unknown-past-through cat)) (nil? through) (<= k through)))
+      (double (count (subseq (get-in cat [:onsets unit] (sorted-set)) > (- k months) <= k))))))
+
+(defn world-share
+  "The share of `countries` in the system at t (`in-system`) with an onset
+  of `cat` known in the last three years, over those whose catalogue
+  covers that span (count-known); nil when none does. Without the
+  catalogue's :unknown-past-through, every place in the system counts in
+  the denominator, as the bases before it read."
+  [cat countries in-system t]
+  (if (:unknown-past-through cat)
+    (let [cs (keep #(when (in-system % t) (count-known cat % t 36)) countries)]
+      (when (seq cs) (/ (double (count (filter pos? cs))) (count cs))))
+    (let [us (filter #(in-system % t) countries)
+          n (count (filter #(some-> (count-known cat % t 36) pos?) us))]
+      (when (seq us) (/ (double n) (count us))))))
 
 (defn ended
   "The last year ended by month t (a year-end origin's own year): data
@@ -191,9 +209,7 @@
         origins (fn [{:keys [per]}] (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end))))
         in-system (fn [u t] (when-let [f (get-in cat [:from u])] (<= f t)))
         ;; the world's share of states in the system with an onset known in the last three years
-        world3 (memoize (fn [t] (let [us (filter #(in-system % t) countries)
-                                      n (count (filter #(some-> (count-known cat % t 36) pos?) us))]
-                                  (when (seq us) (/ (double n) (count us))))))
+        world3 (memoize (fn [t] (world-share cat countries in-system t)))
         hist (fn [u t] (or (#'lb/history cat u t) [nil nil nil]))
         row (memoize (fn [u y] (pg/year-row annual wdi u y)))
         year-raw (fn [u t]
