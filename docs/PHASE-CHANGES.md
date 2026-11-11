@@ -4399,3 +4399,76 @@ level breaks and reserve crises (whose own level does as well), and the
 invariants do not beat each family's raw channels. What the model
 learns across families is mostly where stocks are measured and how
 often each family breaks, not a shared form. Not tuned in response.
+
+## Development, 11 November 2026: weightings with the self-loop cut (bead bnm-56c.17, loop audit Round 1)
+
+Development, origins 2003-2022, as bnm-56c.2's candidates were. The base
+of record stays t48-world-norel. Written before any of the runs below
+was scored.
+
+**What changed.** The loop audit (bnm-56c) found that a node's combined
+forecast was its state, read back by its own models five ways (its own
+state, :up through the quarters' offset from the year, :down from its
+ancestors, exposure, and the errors fed back), so every weighting
+compared so far also changed the models it weighed; and that the
+averaging scored a year row with the model's state when the row became
+known, three to four years after it was issued (hindsight). Three
+opt-in changes, inert when off (the golden snapshot's numbers are
+unchanged; its reads gain the :self rows of the third):
+- `:state-from` (bnm.lattice): the node's state and the errors it feeds
+  back come from a reference, a function of the node's models and
+  inputs that never reads the weights; the combination is only issued
+  (the book keeps it as `:issued`). `:reference` is the all-inputs
+  model's forecast. Chosen over the base model because the all-inputs
+  model reads everything the node reads, so the states passed up, down
+  and across still carry what the node knows; the base model reads only
+  the intercept, the core gauges and the offset, and as the reference
+  would turn every flow into climatology. It is also the model t48's
+  posterior weights settle on (1.000 at the food, conflict and market
+  crash year nodes, 2017-2022), so of the two it moves the states least
+  from the base of record. The cost: a nested link (the fast families,
+  the noise and planted groups) is not read by the all-inputs model, so
+  under the reference it can no longer reach the year through the
+  quarters' states. That is the loop being cut, not a side effect: the
+  year read the quarters' combined forecast, which is what the noise
+  moved.
+- `:evidence-at :issue` (bnm.lattice, augur v0.20.0): every rule scores
+  a row by the predictive each model issued for it (pending rows carry
+  it as `:lp`).
+- the node's read of its own state goes through the sheaf (`:self`).
+
+**Runs.** Four kinds (market crashes, food price shocks, coup, growth
+collapses), every run on t48's archived inputs (bnm.fast-run --archive
+data/ledger-inputs/2026-Q4), each with `{:state-from :reference
+:evidence-at :issue}`, one run directory per setting and family
+(prefix lp1-):
+- post: posterior weights (t48's rule);
+- ty01: tempered at 0.01 at the year only;
+- A: ranked increments, `:weighting {:rule :evidence :scale 0.005}`;
+- B: group shrinkage, `:only #{:all} :relation-nest nil :group-shrink
+  {:tau 0.5}` (one model: the reference is the forecast, so nothing is
+  cut; its noise group is read by that model, so noise can still move
+  it);
+- C: synthesis, `:weighting {:rule :synth :discount 0.99 :var 0.05}`;
+- and post with `:state-from` alone (learn-time evidence), to split the
+  two changes' effects on the base.
+Each setting with --family none, noise (seeds 1 and 2) and planted
+(strength 1). The best setting on the four kinds is then run on all
+thirteen.
+
+**Acceptance, as in bnm-56c.2's notes:**
+1. noise: the year nodes' mean paired Brier against the same setting
+   without noise within 0.0003 of zero, pooled over seeds 1 and 2
+   (bnm.links --noise), and no single draw outside it;
+2. planted: the planted group (strength 1) gaining at the year nodes
+   with an interval above zero; the quarters reported beside it;
+3. base against t48-world-norel at the year nodes by development fold
+   (bnm.links --folds), no fold lost with an interval below zero,
+   2020-2022 included, and the food price shocks' share of 2020-2022
+   reported.
+A setting passes only if it meets all three. Expected before scoring,
+from the construction: with the reference, the noise and planted
+groups cannot reach the year nodes in A, C, post and ty01 (rule 1 met
+exactly, rule 2 failed at the year by construction); the quarters'
+planted gain is the test of whether a weighting lets a real link earn
+weight where it is read.
