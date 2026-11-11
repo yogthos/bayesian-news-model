@@ -107,7 +107,8 @@
             [bnm.warm-up-test]
             [bnm.fast-test]
             [bnm.links-test]
-            [bnm.fast-score-test]))
+            [bnm.fast-score-test]
+            [bnm.episodes-test]))
 
 (def namespaces
   '[bnm.time-test
@@ -217,7 +218,8 @@
     bnm.fast-score-test
     bnm.benchmarks-test
     bnm.dev-folds-test
-    bnm.ledger-test])
+    bnm.ledger-test
+    bnm.episodes-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)]

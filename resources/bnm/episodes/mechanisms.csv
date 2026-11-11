@@ -1,0 +1,9 @@
+place,family,year,mechanism,source
+LKA,reserve_crisis,2022,"Usable reserves about $50m against about $1.8bn official in May 2022; the rest was a swap line and gold not usable for payments.",docs/PLAN.md phase 1 literature notes (searched 10 November 2026; from search summaries)
+LBN,banking_break,2019,"Central bank net reserves about -$55bn against $38bn gross in 2019: gross reserves were owed to banks, whose deposits funded the sovereign.",docs/PLAN.md phase 1 literature notes (searched 10 November 2026; from search summaries)
+EUR,energy_break,2021,"A flow loss (Russian pipeline supply) rather than exhaustion: the price peaked in August 2022 while storage was filling.",docs/PLAN.md phase 1 literature notes
+WLD,commodity_stockout,2007,"The 2008 rice spike followed export bans by large exporters with world stocks adequate: a flow cut, not a runway.",docs/PLAN.md phase 1 literature notes
+THA,reserve_crisis,1997,"The Bank of Thailand's forward swap book committed most of its gross reserves, so usable reserves were far below the headline figure when the baht was floated in July 1997.",Nukul Commission report (1998); Radelet and Sachs (1998) Brookings Papers on Economic Activity 1998:1
+KOR,reserve_crisis,1997,"Short-term external debt of banks exceeded usable reserves; part of the reserves had been deposited with overseas branches of Korean banks and could not be used.",Radelet and Sachs (1998) Brookings Papers on Economic Activity 1998:1
+USA,banking_break,2007,"Household mortgage debt and shadow-bank leverage; wholesale funding of the shadow banks ran.",docs/INVARIANTS.md crash-by-crash audit
+USA,investment_bust,2001,"Technology and telecom overinvestment ahead of demand; capacity idle after the build-out.",docs/INVARIANTS.md crash-by-crash audit (2000-02)
