@@ -70,6 +70,22 @@
       (is (false? (bm/last-12? cat "A" 71)) "(47, 59] holds nothing")
       ;; at 71 the resolved rows (t 11, 23, 35) were all quiet then: 2 of 6
       (is (close? (/ (+ 2 (/ 2.0 6)) 7) (:last12 (at "A" 71)))))
+    (testing "the constant: the level's observed rate over rows resolved by the origin"
+      (is (close? (/ 2.0 6) (:rate (at "A" 71))))
+      (is (close? (/ 2.0 6) (:rate (at "B" 71))) "the same for every place")
+      (is (close? 0.5 (:rate (at "A" 59))) "t 11 and 23 resolved: A's two onsets of four rows")
+      (is (nil? (:rate (at "A" 11)))))
+    (testing "persistence: the level's rate among rows in the same ten-year state"
+      ;; A's onset at 30 is known at 42; the state is an onset in (t - 120, t - lag]
+      (is (false? (bm/ten-years? cat "A" 41)))
+      (is (true? (bm/ten-years? cat "A" 42)))
+      (is (true? (bm/ten-years? cat "A" 149)))
+      (is (false? (bm/ten-years? cat "A" 150)) "ten years on, (30, 138] no longer holds it")
+      ;; every resolved row by 59 was in the quiet state: A at 59 (state on) has
+      ;; no history in its state and takes the prior; B the quiet rows' 2 of 4
+      (is (close? 0.5 (:persist (at "A" 59))))
+      (is (close? (/ (+ 2 0.5) 5) (:persist (at "B" 59))))
+      (is (nil? (:persist (at "A" 11)))))
     (testing "parent probability times the long-run share"
       (is (close? 0.5 (:share (at "A" 71))) "A has every known onset")
       (is (close? 0.0 (:share (at "B" 71))))

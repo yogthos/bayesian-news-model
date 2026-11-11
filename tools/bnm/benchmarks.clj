@@ -60,6 +60,14 @@
   (let [[lo hi] (published-12 cat t)]
     (boolean (seq (subseq (get-in cat [:onsets place] (sorted-set)) > lo <= hi)))))
 
+(defn ten-years?
+  "Whether `place` had an onset in the ten years to `t` known at `t`:
+  (t - 120, t - lag], the persistence baseline's state (the forward
+  ledger's amendment L1; the watch list's hard rows are those without)."
+  [cat place t]
+  (let [lag (or (:known-lag cat) 0)]
+    (boolean (seq (subseq (get-in cat [:onsets place] (sorted-set)) > (- t 120) <= (- t lag))))))
+
 (defn past-counts
   "(fn [key t]) -> [onsets rows] of `rows` ({:t :y}) under `key-fn` whose
   outcome is known by t: :t + `after` <= t, :y true or false."
@@ -92,25 +100,31 @@
       (/ 1.0 (max 1 (count members))))))
 
 (defn with-benchmarks
-  "`rows` ({:place :t :y}, one kind, scale and level) with :clim, :last12
-  and :share added, each nil where nothing it needs is known yet.
-  opts: :cat the kind's catalogue, :ends the scale's months to its
-  window's end, :parent (fn [place]), :members {parent [places]},
-  :parent-p (fn [parent t]) the parent node's forecast."
+  "`rows` ({:place :t :y}, one kind, scale and level) with :clim, :last12,
+  :share, :rate and :persist added, each nil where nothing it needs is
+  known yet. :rate is the level's observed rate (a constant across
+  places); :persist that rate among rows in the same ten-year state
+  (`ten-years?`), smoothed as :last12 is. opts: :cat the kind's
+  catalogue, :ends the scale's months to its window's end, :parent (fn
+  [place]), :members {parent [places]}, :parent-p (fn [parent t]) the
+  parent node's forecast."
   [rows {:keys [cat ends parent members parent-p]}]
   (let [after (+ ends (or (:known-lag cat) 0))
-        rows (mapv #(assoc % :flag (last-12? cat (:place %) (:t %))) rows)
+        rows (mapv #(assoc % :flag (last-12? cat (:place %) (:t %)) :ten (ten-years? cat (:place %) (:t %))) rows)
         level (past-counts rows (constantly :all) after)
         own (past-counts rows :place after)
-        state (past-counts rows :flag after)]
+        state (past-counts rows :flag after)
+        ten (past-counts rows :ten after)]
     (mapv (fn [{:keys [place t flag] :as r}]
             (let [[lk ln] (level :all t)
                   rate (when (pos? ln) (/ lk (double ln)))
                   pp (when parent-p (some-> (parent place) (parent-p t)))]
-              (assoc r
-                     :clim (when rate (let [[k n] (own place t)] (smoothed k n rate)))
-                     :last12 (when rate (let [[k n] (state flag t)] (smoothed k n rate)))
-                     :share (when pp (* (double pp) (long-run-share cat (get members (parent place) []) place t))))))
+              (-> (dissoc r :ten)
+                  (assoc :clim (when rate (let [[k n] (own place t)] (smoothed k n rate)))
+                         :last12 (when rate (let [[k n] (state flag t)] (smoothed k n rate)))
+                         :share (when pp (* (double pp) (long-run-share cat (get members (parent place) []) place t)))
+                         :rate rate
+                         :persist (when rate (let [[k n] (ten (:ten r) t)] (smoothed k n rate)))))))
           rows)))
 
 (defn skill

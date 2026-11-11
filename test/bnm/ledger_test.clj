@@ -2,6 +2,8 @@
   (:require [bnm.ledger :as lg]
             [bnm.sfc-rates-confirm :as sfc]
             [clojure.java.io :as io]
+            [clojure.java.shell :as sh]
+            [bnm.benchmarks]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]))
 
@@ -54,7 +56,7 @@
 
 (deftest the-issue-file-round-trips
   (let [rows [{:kind "coup" :scale :year :place "AAA" :origin 24323 :lo 24323 :hi 24347 :opened false :p 0.125
-               :clim 0.01 :last12 0.02 :share nil :pers -3.5 :wclim 0.05}]
+               :clim 0.01 :last12 0.02 :share nil :pers -3.5 :wclim 0.05 :rate 0.03 :persist nil}]
         text (lg/rows->tsv rows)]
     (is (str/starts-with? text (str (str/join "\t" lg/columns) "\n")) "a header")
     (is (= rows (lg/tsv->rows text)))))
@@ -111,7 +113,7 @@
       (is (thrown-with-msg? Exception #"refusing" (lg/check-base d {"coup" (apply str (repeat 64 "0"))})))
       (is (thrown-with-msg? Exception #"refusing" (lg/check-base d {"war_onset" sha})) "missing")))
   (when (.exists (io/file "data/runs" lg/base "coup" "forecasts.tsv"))
-    (is (= lg/base-files (lg/check-base (str "data/runs/" lg/base) lg/base-files)) "the files on disk are t48's")))
+    (is (= lg/base-files (lg/check-base (str "data/runs/" lg/base) lg/base-files)) "the files on disk are the base's")))
 
 (deftest every-registered-issue-is-intact
   (doseq [[q {:keys [files]}] lg/issued
@@ -124,11 +126,24 @@
     (is (= sha (sfc/sha256-file (str "registered/ledger/" q "/" n))) (str q "/" n))))
 
 (deftest a-window-is-scored-only-once-published
-  (let [cat {:through {"AAA" 24347 "BBB" 24340}}]
-    (is (true? (lg/published? cat 24347 24360)) "covered through the window's end, and it has closed")
-    (is (false? (lg/published? cat 24348 24360)) "the catalogue stops short")
-    (is (false? (lg/published? cat 24347 24347)) "the window has not closed by the scoring month")
-    (is (false? (lg/published? {:through {}} 24300 24400)) "no coverage")))
+  ;; amendment L1: published when closed and covered to the window's end at
+  ;; every country with a counted row the catalogue follows past the origin
+  (let [rows [{:place "AAA" :origin 24323 :hi 24347} {:place "BBB" :origin 24323 :hi 24347}
+              {:place "CCC" :origin 24323 :hi 24347}]
+        cat {:through {"AAA" 24347 "BBB" 24350 "CCC" 24000}}]
+    (is (true? (lg/published? cat rows 24360)) "CCC stopped before the origin: left out, not waited for")
+    (is (false? (lg/published? cat rows 24347)) "the window has not closed by the scoring month")
+    (is (false? (lg/published? (assoc-in cat [:through "AAA"] 24340) rows 24360))
+        "a partial update: AAA followed past the origin but not to the window's end")
+    (is (false? (lg/published? (assoc-in cat [:through "AAA"] 24323) rows 24360))
+        "followed to the origin itself counts as followed")
+    (is (false? (lg/published? {:through {}} rows 24400)) "no coverage")
+    (is (false? (lg/published? cat [] 24400)) "no rows")))
+
+(deftest a-kind-not-in-the-issue-is-refused-as-such
+  (is (= ["coup"] (lg/check-kinds ["coup"] ["coup" "war_onset"])))
+  (is (thrown-with-msg? Exception #"not in the issue" (lg/check-kinds ["coups"] ["coup" "war_onset"])))
+  (is (= ["coup" "war_onset"] (lg/check-kinds nil ["coup" "war_onset"])) "all of them by default"))
 
 (deftest scoring-a-kind-and-a-scale
   ;; four countries; AAA has the onset; hard rows only where no onset in ten years
@@ -148,3 +163,150 @@
       (is (close? 0.0 (get-in s [:recall :hard :wclim])) "climatology lists CCC")
       (is (close? 1.0 (get-in s [:recall :hard :pers])))
       (is (close? (/ 1.0 3) (get-in s [:recall :hard :last12])) "three tied for one slot"))))
+
+;; --- amendment L1: reproduction on the previous issue's archived inputs ----------------
+
+(deftest issue-ids-name-their-quarter
+  (is (= "2026-Q4" (lg/issue-quarter "2026-Q4")))
+  (is (= "2026-Q4" (lg/issue-quarter "2026-Q4-r1")) "a corrected issue")
+  (is (thrown? Exception (lg/issue-quarter "2026-Q4-x")))
+  (is (thrown? Exception (lg/issue-quarter "2026-Q4r1"))))
+
+(deftest the-previous-issue-is-the-latest-primary-one-before
+  (let [one {"2026-Q4" {:role :reported}}
+        two (assoc one "2026-Q4-r1" {:role :primary})]
+    (is (nil? (lg/previous-issue {} "2026-Q4")) "the first issue has none")
+    (is (= "2026-Q4" (lg/previous-issue one "2026-Q4-r1")) "the corrected issue reproduces the first")
+    (is (= "2026-Q4-r1" (lg/previous-issue two "2027-Q1")) "the next quarter reproduces the primary one")
+    (is (= "2027-Q1" (lg/previous-issue (assoc two "2027-Q1" {:role :primary}) "2027-Q2")))
+    (is (= "2026-Q4-r1" (lg/previous-issue (assoc two "2027-Q1" {:role :primary}) "2026-Q4-r2"))
+        "an issue never reproduces a later quarter")))
+
+(defn- archive-fixture
+  "A live input with `v`, archived under a fresh root: [live root shas]."
+  [v]
+  (let [d (tmp-dir) live (str d "/live/in.txt") root (str d "/archive")]
+    (io/make-parents live)
+    (spit live v)
+    [live root (lg/archive! root [live])]))
+
+(deftest an-issue's-inputs-are-archived-read-only-and-hashed
+  (let [[live root shas] (archive-fixture "1")
+        copy (io/file (str root "/" live))]
+    (is (= {live (sfc/sha256-file live)} shas))
+    (is (= "1" (slurp copy)))
+    (is (not (.canWrite copy)) "read-only")
+    (is (= shas (lg/check-archive root shas)))
+    (is (= shas (lg/archive! root [live])) "archiving the same files again is a no-op")
+    (spit live "2")
+    (is (thrown-with-msg? Exception #"refusing" (lg/archive! root [live]))
+        "an archive is never overwritten with other data")))
+
+(deftest a-tampered-archive-is-refused
+  (let [[live root shas] (archive-fixture "1")
+        copy (io/file (str root "/" live))]
+    (.setWritable copy true)
+    (spit copy "9")
+    (is (thrown-with-msg? Exception #"refusing" (lg/check-archive root shas)))
+    (.setWritable (.getParentFile copy) true)
+    (.delete copy)
+    (is (thrown-with-msg? Exception #"missing; refusing" (lg/check-archive root shas)))))
+
+(deftest the-previous-issue-is-reproduced-on-its-own-inputs
+  (let [[live root shas] (archive-fixture "1")
+        code (fn [] (str "out:" (slurp live) "\n"))
+        expected (code)
+        reproduce (fn [run!] (lg/reproduce {:issue "2026-Q4" :root root :inputs shas :expected expected :run! run!}))]
+    (testing "a data refresh since is allowed: the run reads the archive"
+      (spit live "2")
+      (is (= "out:2\n" (code)) "the live file moved")
+      (let [r (reproduce code)]
+        (is (:reproduced r))
+        (is (= 1 (:lines r))))
+      (is (= {live {:old (shas live) :new (sfc/sha256-file live)}}
+             (lg/data-changes shas {live (sfc/sha256-file live)}))
+          "and recorded: which input changed, its old and new hash"))
+    (testing "a code change that moves the previous issue refuses"
+      (is (thrown-with-msg? Exception #"does not reproduce" (reproduce (fn [] (str "out!" (slurp live) "\n"))))))
+    (testing "a read outside the inputs refuses"
+      (let [other (str (tmp-dir) "/other.txt")]
+        (spit other "x")
+        (is (thrown-with-msg? Exception #"not in" (reproduce (fn [] (slurp other) (code)))))))
+    (testing "a tampered archive refuses before anything runs"
+      (let [copy (io/file (str root "/" live)) ran (atom false)]
+        (.setWritable copy true)
+        (spit copy "3")
+        (is (thrown-with-msg? Exception #"refusing" (reproduce (fn [] (reset! ran true) (code)))))
+        (is (false? @ran))))))
+
+(deftest data-changes-record-changed-added-and-dropped-inputs
+  (is (= {} (lg/data-changes {"a" "1"} {"a" "1"})))
+  (is (= {"a" {:old "1" :new "2"} "b" {:old nil :new "3"} "c" {:old "4" :new nil}}
+         (lg/data-changes {"a" "1" "c" "4"} {"a" "2" "b" "3"}))))
+
+;; --- amendment L1: scoring guards ----------------------------------------------------
+
+(defn- git! [dir & args] (apply sh/sh "git" "-C" dir args))
+
+(deftest a-score-is-recorded-once-even-if-its-file-is-deleted
+  (let [repo (tmp-dir)
+        rel "registered/ledger/2026-Q4-r1/scores/year/coup.edn"
+        f (str repo "/" rel)
+        opts {:scored {} :issue "2026-Q4-r1" :scale :year :kinds ["coup"] :repo repo
+              :path-of (fn [k] (str "registered/ledger/2026-Q4-r1/scores/year/" k ".edn"))}]
+    (git! repo "init" "-q")
+    (git! repo "config" "user.email" "t@example.com")
+    (git! repo "config" "user.name" "t")
+    (is (= ["coup"] (lg/check-unscored opts)) "nothing scored yet")
+    (io/make-parents f)
+    (spit f "{:n 1}")
+    (is (thrown-with-msg? Exception #"already scored" (lg/check-unscored opts)) "the file on disk")
+    (git! repo "add" rel)
+    (git! repo "commit" "-q" "-m" "score")
+    (.delete (io/file f))
+    (is (not (.exists (io/file f))))
+    (is (thrown-with-msg? Exception #"already scored" (lg/check-unscored opts))
+        "deleted, but committed once: git's history keeps it")
+    (is (thrown-with-msg? Exception #"already scored"
+                          (lg/check-unscored (assoc opts :scored {["2026-Q4-r1" :year "coup"] "ab"} :repo (tmp-dir))))
+        "registered in bnm.ledger/scored")))
+
+(deftest every-registered-score-is-intact
+  (doseq [[[issue scale kind] sha] lg/scored]
+    (is (= sha (sfc/sha256-file (str "registered/ledger/" issue "/scores/" (name scale) "/" kind ".edn")))
+        (str issue " " scale " " kind))))
+
+;; --- amendment L1: the claim ---------------------------------------------------------
+
+(defn- rows-of [n p b y-of]
+  (vec (for [i (range n)] {:place (format "C%02d" i) :p p :rate b :persist b :last12 b :y (y-of i)})))
+
+(deftest pooled-skill-weighs-the-kinds-equally
+  (let [k1 [{:place "A" :p 0.5 :rate 0.5 :y true} {:place "B" :p 0.5 :rate 0.5 :y false}]
+        k2 [{:place "A" :p 1.0 :rate 0.5 :y true} {:place "B" :p 0.0 :rate 0.5 :y false}]]
+    (is (close? 0.5 (lg/pooled-skill {"k1" k1 "k2" k2} :rate bnm.benchmarks/brier))
+        "skill 0 and 1, the mean of the two")))
+
+(deftest the-claim-needs-three-year-node-issues-and-an-interval-above-zero
+  ;; the base knows who has the onset, the baselines do not
+  (let [ys #(zero? (mod % 4))
+        good {"k" (mapv #(assoc % :p (if (:y %) 0.6 0.1)) (rows-of 80 0.0 0.25 ys))}
+        bad {"k" (mapv #(assoc % :p (if (:y %) 0.1 0.6)) (rows-of 80 0.0 0.25 ys))}
+        three [good good good]
+        c (lg/claim three {:draws 200 :seed 1})]
+    (is (= 3 (:issues c)))
+    (is (every? #(= :better (get-in c [:brier % :verdict])) [:rate :persist :last12]))
+    (is (pos? (get-in c [:brier :rate :lo])))
+    (is (true? (:claimed c)) "beats all three on Brier, three issues")
+    (is (false? (:claimed (lg/claim [good good] {:draws 200 :seed 1}))) "two issues: reported, not claimed")
+    (is (= :worse (get-in (lg/claim [bad bad bad] {:draws 200 :seed 1}) [:brier :rate :verdict])))
+    (is (= (lg/claim three {:draws 200 :seed 1}) c) "the same seed, the same interval")))
+
+(deftest the-interval's-size-under-the-null
+  (let [rows (fn [s] (vec (for [i (range 60)] {:place (format "C%02d" i) :p (+ 0.05 (* 0.002 i)) :rate 0.1 :persist 0.1 :last12 0.1 :y false})))
+        issues [{"k" (rows 1)} {"k" (rows 2)} {"k" (rows 3)}]]
+    (is (= 0.0 (lg/null-claim-rate (mapv #(update-vals % (fn [rs] (mapv (fn [r] (assoc r :p 0.1)) rs))) issues)
+                                   :rate {:sims 20 :draws 100 :seed 1}))
+        "identical forecasts never claim")
+    (let [r (lg/null-claim-rate issues :rate {:sims 40 :draws 100 :seed 1})]
+      (is (<= 0.0 r 0.25) "outcomes drawn at the midpoint: few claims"))))
