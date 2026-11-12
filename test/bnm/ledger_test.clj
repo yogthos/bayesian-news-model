@@ -116,28 +116,31 @@
     (is (= lg/base-files (lg/check-base (str "data/runs/" lg/base) lg/base-files)) "the files on disk are the base's")))
 
 (deftest the-base's-inputs-are-the-ones-the-issue-reads
-  ;; t52 reads the onsets run r6-at-fx, r6-at-8ul's command on the
-  ;; series.tsv corrected for look-ahead (bnm-56c.23); a command naming a run whose preds
-  ;; are not an input would be refused as a stray read at issue time
+  ;; t53 reads the onsets run r7-at-fx, r6-at-fx's command on the
+  ;; series.tsv with FAOSTAT's prices at their publication lag (bnm-56c.31);
+  ;; a command naming a run whose preds are not an input would be refused
+  ;; as a stray read at issue time
   (is (= (set lg/inputs) (set (keys lg/base-inputs))))
   (let [args (lg/command "ledger-x" 24323)
         known (second (drop-while #(not= "--known" %) args))]
     (is (= lg/known known))
     (is (some #{(str "data/runs/" known "/preds.tsv")} lg/inputs))
-    (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv"} lg/inputs)
-        "r6-at was fit on the pre-fix catalogues, r6-at-8ul on the leaky series.tsv")))
+    (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
+        "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t52-with-the-leak-fixes
-  ;; note to L1, 12 November 2026: t51b's command with --known r6-at-fx
-  (is (= "t52-world-norel" lg/base))
-  (is (= "r6-at-fx" lg/known))
+(deftest the-base-of-record-is-t53-with-the-leak-fixes
+  ;; note to L1, 12 November 2026: t52's command with --known r7-at-fx and
+  ;; bnm-56c.33's fix, on the data of bnm-56c.31 and .32
+  (is (= "t53-noclim" lg/base))
+  (is (= "r7-at-fx" lg/known))
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (= "true" (opt "--without-relations")))
     (is (= "true" (opt "--leak-fixes")))
     (is (= "true" (opt "--pwt-stale")))
     (is (nil? (opt "--clim-prior")) "bnm-56c.26 not adopted")
-    (is (= {:learn-offsets :mixture} (read-string (opt "--set"))))
+    (is (= {:learn-offsets :mixture :flow-std-from :resolved} (read-string (opt "--set")))
+        "bnm-56c.33's fix is the base's option; the lattice's default is the registered issues' code")
     (testing "the command written to a manifest reads back as the same arguments"
       (is (= (assoc args 1 "r") (lg/manifest-args (lg/command-line args) "r"))))))
 

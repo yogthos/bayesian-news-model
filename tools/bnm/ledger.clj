@@ -2,7 +2,7 @@
   "The forward ledger (docs/PLAN.md 0.1; the registration in
   docs/PHASE-CHANGES.md, 11 November 2026, and its amendment L1). Each
   quarter the frozen base (the world without relations; the base of record
-  is t52-world-norel, note to L1 of 12 November 2026) issues every kind, place and window at the quarter's
+  is t53-noclim, note to L1 of 12 November 2026) issues every kind, place and window at the quarter's
   last month, from the data on disk at the issue date, to
   registered/ledger/<issue>/, with its hashes; nothing is refit between
   issue and outcome, and an issue is never edited. Later, when a window's
@@ -59,7 +59,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t52-world-norel")
+(def base "t53-noclim")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -70,32 +70,33 @@
    "data/derived/jst-credit-gap.csv" "data/derived/lattice-annual.csv" "data/derived/lattice-quarterly.csv"
    "data/derived/political-annual.csv" "data/derived/political-long.csv" "data/derived/political-states.csv"
    "data/raw/slow/jst/jst.csv" "data/raw/slow/kaopen/kaopen.csv" "data/raw/slow/pwt/pwt110-full.csv"
-   "data/raw/slow/rr/onsets.csv" "data/runs/r6-at-fx/preds.tsv" "data/slow/coverage.tsv" "data/slow/events.tsv"
+   "data/raw/slow/rr/onsets.csv" "data/runs/r7-at-fx/preds.tsv" "data/slow/coverage.tsv" "data/slow/events.tsv"
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t52-world-norel/<kind>/
-  forecasts.tsv (12 November 2026: t51b's command with --known r6-at-fx,
-  byte for byte t51b-world-norel's; note to L1), by SHA-256."
-  {"banking_crisis" "20080efdccbf010d16a7413d11a3668ecb31a871dc4eaafbfb8a7a856b7ea298"
-   "conflict_onset" "06daea9c93163f87b6f9d00e80ec02b7de91e0a09d8050f231f2c30dcbb26b58"
-   "coup" "510194173d3247fcc44036d8bf1c6e14ab56e64d4280273003a854a80304d5bb"
-   "currency_crisis" "d992a9422bffafd86f0a5f0c7162a7ce86e45d5bd17b4b3778a1b5e6e7663a88"
-   "fiscal_consolidation" "6f9f20b8874506d7c743efc73e378cf85d92fc6f02f26074317d33dcd408c27d"
-   "food_price_shock" "8e9b0e7b745b3570a52ca8603cb8a515fbf939faf9f495b845db048e86184a82"
-   "growth_collapse" "ef9e02732fb46467db9893a74fea8fa7e21aead9290a8127ddb91f07ac1f5968"
-   "inflation_crisis" "33b4bd4840c55625c97beb0ca27deb8b051965111994fe45eec7981579217d17"
-   "market_crash" "af0580a0174d2068bb52cf5a7bfa57f5dee882d23e067e4978642f3c327d1def"
-   "protest_surge" "2c2fe358c6c86ee468d77d5203555b6c7ad4043b57f4b66b30ebdb5adf09523a"
-   "sovereign_default" "cf1c11404294275782b078cf0cde274569db37b7fe0b6e242eeb2d477de04920"
-   "violence_surge" "4c4e3cd3f6da0f6701074cf2b8f8543bbb1f746f83842a5fb015f38502e8a9b6"
-   "war_onset" "5b7ac895f83aabf01fc1b6590a0ab11ddbb5afc5def9e7e4105648bb8ea5b948"})
+  "The base of record's forecasts, data/runs/t53-noclim/<kind>/
+  forecasts.tsv (12 November 2026: t52's command with --known r7-at-fx and
+  :flow-std-from :resolved, on the series.tsv and econ-events.csv of
+  bnm-56c.31 and .32; note to L1), by SHA-256."
+  {"banking_crisis" "bd8c81eeed37cc410e62f797120e6e6796072355e6026ac8c3ce02d5d4d987ec"
+   "conflict_onset" "0b36d83ed8e0d343b24069345472ea910b146f60153d07e97df2b7d7147f7e58"
+   "coup" "bb0485c03fad7cff073c0315b11b3c139af0bfbff925b90bc6ad4c24414f3374"
+   "currency_crisis" "5f56ea0ad66bf54a9321671e5526693025bceb02ba4fe59e4454a4b0ba452bcb"
+   "fiscal_consolidation" "52a2698a2ec8d7ec449e074280d311f64679da5d8cdce376d8b26425b1e26cdf"
+   "food_price_shock" "9ffff0b98a0de11df49845726796e2dc2d2c2d98dce45823169e6d28b97f5040"
+   "growth_collapse" "400769fe0e9162a5fb40c0ce70ab44368c897cbe61054b6bea5e596674ccc26d"
+   "inflation_crisis" "3915256d800f167ca349017462f5115c8a91948be356c761a5c5076fc5716180"
+   "market_crash" "01070e50c8b181f37d45167368f4f37ee2bc64b6d84051a51539bf86fe26d3da"
+   "protest_surge" "5c69c10d9eb054ce9ccb330e7a64ea80742557369a5db603eada3077772ae348"
+   "sovereign_default" "c16f6a4eee363b684c3a48f0bd8ba49b1d222a5b5092b038cbcfa56e39d364e8"
+   "violence_surge" "782a51640cc3e553fdcd09a7f9ada96c135398a7bd844bc51b1eadfe6e5a461a"
+   "war_onset" "9c6f884a3ec60b25cfaaebc1f04e8a079e3792fa3b93c0313e452cf73a3d7315"})
 
 (def base-inputs
-  "The SHA-256 of every input t52-world-norel was built on: a run on these
+  "The SHA-256 of every input t53-noclim was built on: a run on these
   must reproduce it."
   {"data/derived/econ-coverage.csv" "863b42e001b45e7eb43569b3f48eb92035d62821f3a3ea9cd543d38c1c2a4c7f"
-   "data/derived/econ-events.csv" "db737e6ef92fafe1c37ae3d4ac1bd801f7f5acd8ddada2f5e4c9e37bcb572267"
+   "data/derived/econ-events.csv" "4070fd4d07cfb6134781a40aabb36e00b6b2e07293f8987041e58be5065e2f0f"
    "data/derived/fiscal.csv" "cf8a1f4e5769901d3f09e85f4925f1b0e89dddf4f2f1b7aae1aebab8e67d98bc"
    "data/derived/jst-credit-gap.csv" "334bac25217589ad7d1f1d9e03e41e4770655bed0bea24e4d58b54da2906e9c4"
    "data/derived/lattice-annual.csv" "6bf028adc82c45e33d7d7d4d7bcd4581092ef8853b1dbbb3ebfd2dfebab6cf03"
@@ -107,10 +108,10 @@
    "data/raw/slow/kaopen/kaopen.csv" "5b2d58021c0f3874f51730f0fbadba9eeb62d21beff6985abf809f1aeb5dd4dd"
    "data/raw/slow/pwt/pwt110-full.csv" "310920974fb86512c2176110a8b790712d108584ed1ac7035aa94fe2b3040302"
    "data/raw/slow/rr/onsets.csv" "5ed893bdfe01e294aa9d8834b6906ced3b603cb7db9daa51888eb03df10a0a0d"
-   "data/runs/r6-at-fx/preds.tsv" "075c32e65ce00618c79112ee9e0edeafce15eb019a2520e8765b3e5a90cecb7c"
+   "data/runs/r7-at-fx/preds.tsv" "2cb2d9be87712b79b3b5bdc2c0c125240ecc0f70c55c772f2b89b42970961fc7"
    "data/slow/coverage.tsv" "c1937d50f6a3ff2d2eb34342e1540ebae2c19cbe6742cce7d4883b861f9e54b3"
    "data/slow/events.tsv" "4405a6d552a2fe549ae67c0b0ead5a88cbef98c0ecd8b139e437617c4ed493c0"
-   "data/slow/series.tsv" "30d0f7c106813bceb703a7bb808cc186f3ebf659eadfac1ec94512efc67d60cb"
+   "data/slow/series.tsv" "9eba3cd75dc0e5519cbac7ae4a3f6b04a873aec31f522a4c1ecaccc641bcfeee"
    "data/slow/variables.tsv" "1e2f1de00b9d9ab0855c79210480e69b7617b1c98ed3934d9aace7dbd3ccce99"})
 
 (def code-paths
@@ -398,19 +399,23 @@
 
 (def known
   "The bnm.onsets run the base's quarters pool with (bnm.world-run --known):
-  r6-at-fx, r6-at-8ul's command (the catalogues rebuilt after the
-  gazetteer fix, lapsed sources kept, bead bnm-8ul) on the series.tsv
-  corrected for look-ahead (bnm-56c.23). The first issue, and t48 and t49,
-  read r6-at; 2026-Q4-r1 and t50 read r6-at-8ul."
-  "r6-at-fx")
+  r7-at-fx, r6-at-fx's command on the series.tsv with FAOSTAT's consumer
+  prices at their publication lag (bnm-56c.31); r6-at-fx was r6-at-8ul's
+  (the catalogues rebuilt after the gazetteer fix, lapsed sources kept,
+  bead bnm-8ul) on the series.tsv corrected for look-ahead (bnm-56c.23).
+  The first issue, and t48 and t49, read r6-at; 2026-Q4-r1 and t50
+  r6-at-8ul; t52 r6-at-fx."
+  "r7-at-fx")
 
 (defn command
   "The base's bnm.world-run arguments: t51b's command (the leak fixes,
   bnm-56c.23; PWT at 36 months, bnm-h8d; learning at the offset mixture,
-  bnm-56c.22) with its quarters pooled with `known`."
+  bnm-56c.22) with the flows standardized from a node's first resolved
+  outcome (:flow-std-from :resolved, bnm-56c.33) and its quarters pooled
+  with `known`."
   [out end]
   ["--out" out "--without-relations" "true" "--end" (str end) "--known" known
-   "--leak-fixes" "true" "--pwt-stale" "true" "--set" "{:learn-offsets :mixture}"])
+   "--leak-fixes" "true" "--pwt-stale" "true" "--set" "{:learn-offsets :mixture :flow-std-from :resolved}"])
 
 (defn command-line
   "The shell command a manifest records for bnm.world-run `args`; an
