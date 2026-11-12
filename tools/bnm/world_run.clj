@@ -19,7 +19,8 @@
 
   Recursive step 2's options (bead bnm-56c.19), each off by default:
   --world-gauges true (the world state at the year and half-decade,
-  bnm.world-gauges), --world-extra noise|planted|false [--seed s]
+  bnm.world-gauges), --world-once true (with it: the world gauges once per
+  origin as the countries' offset, only food and Brent, fix 3), --world-extra noise|planted|false [--seed s]
   [--strength s] (the acceptance harness's extra world column; without
   --world-gauges, a group of its own),
   --pwt-stale true (bnm-h8d), --catalogue-through true (Test 7),
@@ -27,7 +28,8 @@
   read n years later; banking's own table is not delayed), --leak-fixes
   true (bnm-56c.23: Maddison, NMC and banking's PWT read by their
   releases, resources/bnm/releases.tsv; urban growth in one unit), and
-  --set '{...}' merged into every spec (:state-from :reference,
+  --write-reference true (also data/runs/<out>-ref, the forecasts with the
+  reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
   :mixture).
 
@@ -267,11 +269,12 @@
 (defn with-step2
   "The specs with recursive step 2's options (`opts`, from the command
   line): :world-gauges, the world state at the year and half-decade
-  (bnm.world-gauges), with :world-extra (noise, planted or false: the
+  (bnm.world-gauges), :world-once with it, the world gauges entered once per
+  origin (fix 3, bnm.world-gauges/with-world-once), with :world-extra (noise, planted or false: the
   acceptance harness's extra world column, :seed, :strength; without
   :world-gauges the column alone, as the year's :world-gauges group);
   :set, an EDN map merged into every spec (a nil value removes its key)."
-  [specs {:keys [world-gauges world-extra seed strength] set-edn :set} end]
+  [specs {:keys [world-gauges world-once world-extra seed strength] set-edn :set} end]
   (let [state (when world-gauges
                 (let [db (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))
                       units (set (filter #(= 3 (count %)) (map first (keys db))))]
@@ -288,8 +291,10 @@
                            extra (wg/extra-column {:kind (some-> world-extra keyword) :seed (or (some-> seed parse-long) 1)
                                                    :strength (some-> strength parse-double)
                                                    :share (wg/onset-share sp countries) :year-origins year-origins})]
-                       (if world-gauges
-                         (wg/with-world sp state exposure {:extra extra})
+                       (cond
+                         (and world-gauges world-once) (wg/with-world-once sp state exposure {:extra extra})
+                         world-gauges (wg/with-world sp state exposure {:extra extra})
+                         :else
                          ;; without the world state (bnm-56c.23's t51b): the
                          ;; harness's column as a group of its own
                          (let [scales (set (filter #{:year :half-decade} (map :name (:scales sp))))]
@@ -297,6 +302,18 @@
                                   :world-gauges (fn [_scale _place t] {:x [(extra t)] :reads []})
                                   :world-width (into {} (for [s scales] [s 1]))))))
                      sp))]))))
+
+(defn reference-forecasts
+  "`r`'s forecasts with each p that has a state apart from it (under
+  bnm.lattice's :state-from) replaced by the state's p, the reference's
+  forecast: the information without the weighting (the step-2 diagnosis's
+  Q4)."
+  [r]
+  (update r :forecasts
+          (fn [fs] (mapv (fn [{:keys [scale place origin] :as f}]
+                           (let [e (get-in r [:book [scale place] origin])]
+                             (if (:issued e) (assoc f :p (:p e)) f)))
+                         fs))))
 
 (defn- write-kind [dir kind r]
   (io/make-parents (str dir "/x"))
@@ -377,7 +394,8 @@
                                                                :catalogue-through (= "true" catalogue-through)
                                                                :year-delay (some-> year-delay parse-long)
                                                                :leak-fixes (= "true" leak-fixes)})
-                   (with-step2 {:world-gauges (= "true" world-gauges) :world-extra (:world-extra opts)
+                   (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
+                                :world-extra (:world-extra opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)}
                                end))
         books (atom {})
@@ -428,6 +446,10 @@
         (System/exit (if (every? empty? (vals fails)) 0 1)))
       (do
         (doseq [[k r] finished] (write-kind (str dir "/" k) k r))
+        ;; --write-reference true: the reference's forecasts as a run of
+        ;; their own, <out>-ref
+        (when (= "true" (:write-reference opts))
+          (doseq [[k r] finished] (write-kind (str dir "-ref/" k) k (reference-forecasts r))))
         (with-open [wr (io/writer (str dir "/principal.tsv"))]
           (doseq [[k r] (sort-by key finished)
                   [[s p] byo] (:book r) :when (and (= s :year) (= 3 (count p)))

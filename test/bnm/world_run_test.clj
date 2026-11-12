@@ -205,3 +205,11 @@
     (is (number? (first x)))
     (is (= x (:x ((:world-gauges out) :year "world" 131))) "the same at every place")
     (is (nil? (:world-gauges (get (wr/with-step2 {"k" sp} {} 240) "k"))) "no harness, no group")))
+
+(deftest the-reference-forecasts
+  (let [r {:forecasts [{:scale :year :place "KEN" :origin 11 :p 0.2 :y true}
+                       {:scale :quarter-lead :place "KEN" :origin 11 :p 0.1 :y nil}]
+           :book {[:year "KEN"] (sorted-map 11 {:p 0.35 :s 0.0 :issued {:p 0.2}})
+                  [:quarter-lead "KEN"] (sorted-map 11 {:p 0.1 :s 0.0})}}]
+    (is (= [0.35 0.1] (map :p (:forecasts (wr/reference-forecasts r)))) "the state's p where it is kept apart")
+    (is (= [true nil] (map :y (:forecasts (wr/reference-forecasts r)))))))

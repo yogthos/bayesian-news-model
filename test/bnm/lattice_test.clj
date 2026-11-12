@@ -2,6 +2,7 @@
   (:require [augur.dynamic]
             [augur.math :as m]
             [bnm.lattice :as lt]
+            [bnm.world-term :as wt]
             [clojure.test :refer [deftest is testing]]))
 
 ;; A synthetic world: six countries in two regions over 40 years of months.
@@ -1109,15 +1110,30 @@
    :world-width {:year (if extra? 2 1)}
    :state-from :reference :evidence-at :issue})
 
+(defn- swing-term
+  "The planted momentum entered once per origin (bnm.world-term, fix 3),
+  with the extra column in the term when extra?: the countries' offset."
+  [w extra?]
+  (let [term (wt/term-fn {:gauges (fn [t] (cond-> [((:mom w) t)] extra? (conj (get-in w [:tnoise t 20]))))
+                          :origins (vec (range 11 months 12))
+                          :outcome (fn [t] (when (< (+ t 12) months)
+                                             {:share (/ (count (filter #(get-in w [:crisis % t]) wcountries)) (double (count wcountries)))
+                                              :n (count wcountries) :known-at (+ t 36)}))})]
+    {:world-offset (fn [_ place t] (when (= 2 (count place)) {:x (:x (term t)) :reads []}))}))
+
 (defn- swing-measures
   "Over origins from year 10, the countries' states: their mean distance
   from the planted log odds, the correlation of their mean with it, and the
-  mean change one extra column that carries nothing makes."
-  [extra seeds]
+  mean change one extra column that carries nothing makes, in the
+  all-inputs model's world group (:noise) and, with `term?`, in the world
+  term (:noise-term)."
+  [extra seeds & [term?]]
   (let [ms (for [seed seeds
                  :let [w (swing-world seed)
-                       a (lt/run (merge (swing-spec w false) extra))
-                       b (lt/run (merge (swing-spec w true) extra))
+                       with-term (fn [sp extra?] (cond-> sp term? (merge (swing-term w extra?))))
+                       a (lt/run (merge (with-term (swing-spec w false) false) extra))
+                       b (lt/run (merge (with-term (swing-spec w true) false) extra))
+                       c (when term? (lt/run (merge (with-term (swing-spec w false) true) extra)))
                        ts (range (+ 11 120) months 12)
                        st (fn [r t c] (get-in r [:book [:year c] t :s]))
                        truth (fn [t] (+ -2.5 (* 1.2 ((:mom w) t))))
@@ -1126,36 +1142,50 @@
                        n (count ts) ma (/ (reduce + mean-s) n) mt (/ (reduce + tr) n)
                        cov (reduce + (map #(* (- %1 ma) (- %2 mt)) mean-s tr))
                        sd (fn [xs mu] (Math/sqrt (reduce + (map #(let [d (- % mu)] (* d d)) xs))))
-                       diffs (for [t ts c wcountries] (Math/abs (- (st a t c) (st b t c))))]]
-             {:dist (/ (reduce + (for [t ts c wcountries] (Math/abs (- (st a t c) (truth t))))) (* n (count wcountries)))
-              :corr (/ cov (* (sd mean-s ma) (sd tr mt)))
-              :noise (/ (reduce + diffs) (count diffs))})]
-    (into {} (for [k [:dist :corr :noise]] [k (/ (reduce + (map k ms)) (count ms))]))))
+                       gap (fn [b] (let [ds (for [t ts c wcountries] (Math/abs (- (st a t c) (st b t c))))] (/ (reduce + ds) (count ds))))]]
+             (cond-> {:dist (/ (reduce + (for [t ts c wcountries] (Math/abs (- (st a t c) (truth t))))) (* n (count wcountries)))
+                      :corr (/ cov (* (sd mean-s ma) (sd tr mt)))
+                      :noise (gap b)}
+               c (assoc :noise-term (gap c))))]
+    (into {} (for [k (keys (first ms))] [k (/ (reduce + (map k ms)) (count ms))]))))
 
 (deftest fix-2-states-hold-under-many-inputs
+  ;; Chosen on this world and on the real food year node's states (no
+  ;; outcome read) before any rescoring run: the base model as the
+  ;; reference, with the world's term (fix 3) in its offset. Measured here
+  ;; over ten worlds: the all-inputs reference correlates 0.32 with the
+  ;; planted log odds, sits 1.08 from it and moves 0.15 for a column that
+  ;; carries nothing; its prior scaled per input (:shrink-per-input 0.5,
+  ;; the knee of 0.1 to 2) 0.35, 0.97, 0.06; the base with the term 0.94,
+  ;; 0.56 and exactly 0 (0.16 when the column enters the term itself). An
+  ;; equal pool of the models (0.17) and the all-inputs model shrunk toward
+  ;; the base by its own variance (0.24) track less; damping toward the
+  ;; parent was not tried: a parent's state is the chance of any onset
+  ;; among its children (0.94-0.999 at the world node for food), not a
+  ;; child's level.
   (let [seeds (range 11 21)
         wide (swing-measures {} seeds)
-        ;; 0.5 chosen on this world before any real run was scored: the
-        ;; knee of 0.1 / 0.25 / 0.5 / 1 / 2 (correlation 0.17, 0.30, 0.35,
-        ;; 0.36, 0.35; noise 0.022, 0.040, 0.058, 0.083, 0.120); the base model
-        ;; as the state holds exactly but tracks nothing (correlation -0.19),
-        ;; an equal pool of the models 0.17, the all-inputs model shrunk
-        ;; toward the base by its own variance 0.24
-        held (swing-measures {:shrink-per-input 0.5} seeds)]
+        scaled (swing-measures {:shrink-per-input 0.5} seeds)
+        held (swing-measures {:state-from :base} seeds true)]
     (testing "the all-inputs model at :shrink 0.1 swings (the failure)"
-      (is (> (:noise wide) 0.08) wide))
-    (testing "with the prior variance per input over their number, the state holds"
-      (is (< (:noise held) 0.07) held)
-      (is (< (:noise held) (* 0.5 (:noise wide))) [held wide])
-      (is (< (:dist held) (:dist wide)) [held wide]))
-    (testing "and still tracks the planted signal"
-      (is (> (:corr held) 0.3) held)
-      (is (>= (:corr held) (- (:corr wide) 0.02)) [held wide]))
+      (is (> (:noise wide) 0.08) wide)
+      (is (< (:corr wide) 0.5) wide))
+    (testing "the base with the world's term holds: a column outside the term moves no state"
+      (is (= 0.0 (:noise held)) held)
+      (is (< (:dist held) (* 0.7 (:dist wide))) [held wide])
+      (is (< (:noise-term held) 0.25) held))
+    (testing "and tracks the planted signal"
+      (is (> (:corr held) 0.85) held))
+    (testing "the per-input prior alone halves the swing but tracks no better"
+      (is (< (:noise scaled) (* 0.5 (:noise wide))) [scaled wide])
+      (is (< (:corr scaled) 0.5) scaled))
     (testing "C7: the states do not read the weights"
-      (let [a (loop-run {:state-from :reference :shrink-per-input 0.5})
-            b (loop-run (merge tempered {:state-from :reference :shrink-per-input 0.5}))]
-        (is (< (max-gap book-states a b) 1e-12))
-        (is (< (max-gap a b) 1e-12))))))
+      (doseq [extra [{:state-from :base :world-offset (fn [_ place t] (when (= 2 (count place)) {:x (Math/sin t) :reads []}))}
+                     {:state-from :reference :shrink-per-input 0.5}]]
+        (let [a (loop-run extra)
+              b (loop-run (merge tempered extra))]
+          (is (< (max-gap book-states a b) 1e-12))
+          (is (< (max-gap a b) 1e-12)))))))
 
 (deftest fix-2-the-shrinkage-is-by-the-node-s-width
   (let [w (swing-world 11)
