@@ -36,8 +36,9 @@
     its children, each known by t; unknown (nil) before any is.
   The node's own inputs (everything but the intercept and the spec's
   gauges, which the spec standardizes) are standardized by their running
-  mean and spread at the node's earlier origins since its first resolved
-  outcome (bnm-56c.33; 0 before it), capped at 5: strain, gaps
+  mean and spread at the node's earlier origins (with :flow-std-from
+  :resolved, only those since its first resolved outcome, 0 before it,
+  bnm-56c.33), capped at 5: strain, gaps
   and turns come in whatever units the states have, and a model reading
   them raw is wrecked by their scale.
 
@@ -650,6 +651,13 @@
    :clim-prior (fn [scale level]) -> [onsets rows], the counts climatology
    reads while the node has no resolved outcome (bnm-56c.26; an even rate,
    0.5, without),
+   :flow-std-from :resolved, the node's flows standardized over its
+   origins from its first resolved outcome on, nothing observed (its
+   flows 0) before it (bnm-56c.33: before it the states its flows read
+   are uninformed, climatology 0.5 or a prior, and counting them made the
+   first real moves read near the cap); the default, :all, every origin
+   since the start, is the standardizer before the fix, kept only so the
+   registered ledger issues, which ran on it, reproduce,
    :clim-learn :current, a row issued at climatology learned at the
    climatology current when it is learned (bnm-56c.27): otherwise the
    intercept learns the outcomes against the offset they were issued at,
@@ -739,8 +747,9 @@
    :evidence (:evidence st) :flow-std (:flow-std st)})
 
 (defn flows-informed?
-  "Whether node `k` has a resolved outcome, from which on its flows'
-  standardizer counts what it sees (bnm-56c.33)."
+  "Whether node `k` has a resolved outcome, from which on, under
+  :flow-std-from :resolved, its flows' standardizer counts what it sees
+  (bnm-56c.33)."
   [st k]
   (pos? (long (or (second (get-in st [:clim k])) 0))))
 
@@ -789,6 +798,8 @@
                        st (update-in st [:clim k] (fn [[n1 n]] [(+ (or n1 0) (count (filter :y ready))) (+ (or n 0) (count ready))]))
                        _ (when (and (:clim-learn spec) (not= :current (:clim-learn spec)))
                            (throw (ex-info "bnm.lattice: :clim-learn takes :current" {:clim-learn (:clim-learn spec)})))
+                       _ (when-not (#{:all :resolved} (:flow-std-from spec :all))
+                           (throw (ex-info "bnm.lattice: :flow-std-from takes :all or :resolved" {:flow-std-from (:flow-std-from spec)})))
                        ;; the offset, and whether it is climatology (:clim, its log odds):
                        ;; with an :offset that has nothing to say, the rate among the
                        ;; node's resolved outcomes (or the prior's, before any)
@@ -921,12 +932,14 @@
                                         (assoc-in [:tension [scale place]] tension)
                                         (cond-> resolved (update-in [:resets [scale place]] (fnil into []) resolved))))
                                   st made)
-                       ;; bnm-56c.33: the flows are standardized over the span the node's
-                       ;; inputs carry information, from its first resolved outcome on;
-                       ;; before it the states it reads are uninformed (climatology 0.5 or
-                       ;; a prior), and counting them made the first real moves read near
-                       ;; the cap. Until then nothing is observed, so its flows read 0
-                       st (if (flows-informed? st k)
+                       ;; bnm-56c.33, :flow-std-from :resolved: the flows are standardized
+                       ;; over the span the node's inputs carry information, from its first
+                       ;; resolved outcome on; before it the states it reads are uninformed
+                       ;; (climatology 0.5 or a prior), and counting them made the first real
+                       ;; moves read near the cap. Until then nothing is observed, so its
+                       ;; flows read 0. The default, :all, counts every origin (the
+                       ;; registered issues' code)
+                       st (if (or (not= :resolved (:flow-std-from spec)) (flows-informed? st k))
                             (assoc-in st [:flow-std k] (reduce (fn [sd {:keys [raw-flows]}] (observe sd raw-flows)) flow-std made))
                             st)
                        st (-> st

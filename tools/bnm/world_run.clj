@@ -39,7 +39,7 @@
   --write-reference true (also data/runs/<out>-ref, the forecasts with the
   reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
-  :mixture).
+  :mixture, :flow-std-from :resolved).
 
   --known names the bnm.onsets run whose named model the quarters pool
   with (r6-at when none is named; t50-world-norel reads r6-at-8ul, the

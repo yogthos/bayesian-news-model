@@ -1278,30 +1278,45 @@
 (defn- pre-information-world
   "Six countries whose one flow input (a relation) reads `pre` before month
   120, when their outcomes start, and a signal after; the first rows
-  resolve at 155."
-  [pre]
+  resolve at 155; `extra` merged into the spec."
+  [pre extra]
   (let [g (m/rng 5)
         sig (into {} (for [c countries t (range 400)] [[c t] (m/normal! g)]))
         ys (into {} (for [c countries t (range 400)] [[c t] (< (m/next-double! g) (m/expit (- (sig [c t]) 1.5)))]))]
-    (lt/run {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
-             :levels [[:country countries]]
-             :parent {} :start 0 :end 359 :forget 0.995
-             :target (fn [_ place t] (when (>= t 120) {:y (ys [place (+ t 12)]) :known-at (+ t 24)}))
-             :gauges (fn [_ _ _] [])
-             :gauge-width {:year 0}
-             :relations (fn [_ place t] {:x [(if (< t 120) (pre place t) (sig [place t]))] :reads []})
-             :relation-width {:year 1}
-             :trace :inputs})))
+    (lt/run (merge
+             {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
+              :levels [[:country countries]]
+              :parent {} :start 0 :end 359 :forget 0.995
+              :target (fn [_ place t] (when (>= t 120) {:y (ys [place (+ t 12)]) :known-at (+ t 24)}))
+              :gauges (fn [_ _ _] [])
+              :gauge-width {:year 0}
+              :relations (fn [_ place t] {:x [(if (< t 120) (pre place t) (sig [place t]))] :reads []})
+              :relation-width {:year 1}
+              :trace :inputs}
+             extra))))
 
 (deftest bnm-56c-33-flows-standardized-since-the-first-outcome
-  ;; two runs that differ only in what the node's flows read before it has
-  ;; any outcome (a flat 0 against an uninformed level near 50): from its
-  ;; first resolved outcome on, the standardized inputs are the same, the
-  ;; uninformed era not counted in their mean and spread
+  ;; with :flow-std-from :resolved, two runs that differ only in what the
+  ;; node's flows read before it has any outcome (a flat 0 against an
+  ;; uninformed level near 50): from its first resolved outcome on, the
+  ;; standardized inputs are the same, the uninformed era not counted in
+  ;; their mean and spread
   (let [after (fn [r] (vec (for [{:keys [origin x]} (:trace r) :when (>= origin 155)] x)))
-        a (pre-information-world (fn [_ _] 0.0))
-        b (pre-information-world (fn [_ t] (+ 50.0 (* 0.01 (mod t 7)))))]
+        fix {:flow-std-from :resolved}
+        a (pre-information-world (fn [_ _] 0.0) fix)
+        b (pre-information-world (fn [_ t] (+ 50.0 (* 0.01 (mod t 7)))) fix)]
     (is (= 108 (count (after a))))
     (is (= (after a) (after b)))
     (is (= (mapv :p (filter #(>= (:origin %) 155) (:forecasts a)))
            (mapv :p (filter #(>= (:origin %) 155) (:forecasts b)))))))
+
+(deftest bnm-56c-33-without-the-option-the-uninformed-era-is-counted
+  ;; the default, :flow-std-from :all, is the standardizer before the fix
+  ;; (registered issues ran on it and must reproduce): the era before the
+  ;; first outcome is counted, so the two runs read differently after it
+  (let [after (fn [r] (vec (for [{:keys [origin x]} (:trace r) :when (>= origin 155)] x)))
+        a0 (pre-information-world (fn [_ _] 0.0) {})
+        b0 (pre-information-world (fn [_ t] (+ 50.0 (* 0.01 (mod t 7)))) {})]
+    (is (not= (after a0) (after b0)))
+    (is (= (after a0) (after (pre-information-world (fn [_ _] 0.0) {:flow-std-from :all}))) ":all is the default")
+    (is (thrown? clojure.lang.ExceptionInfo (pre-information-world (fn [_ _] 0.0) {:flow-std-from :first})) "an unknown value is refused")))
