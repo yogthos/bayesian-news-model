@@ -232,6 +232,32 @@ class FredPartialMonthTest(unittest.TestCase):
         self.assertEqual(got[("economy/cpi", "2026-09")][0], "2026-10-31", "a monthly value, a month late")
 
 
+class DisasterPartialYearTest(unittest.TestCase):
+    """bnm-56c.23: EM-DAT downloaded in October holds the year to date; it is
+    not a year's count."""
+
+    def test_partial_year_dropped(self):
+        import time
+        header = ["Year", "ISO", "Disaster Group", "Total Events", "Total Affected", "Total Deaths"]
+        rows = [header, ["units"]] + [[y, "USA", "Natural", 10, 100, 5] for y in (2024, 2025, 2026)]
+        old = (sn.RAW, list(sn.ROWS), sn.xlsx)
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "disasters"))
+            path = os.path.join(d, "disasters", "emdat-country-profiles.xlsx")
+            open(path, "w").close()
+            t = time.mktime((2026, 10, 14, 12, 0, 0, 0, 0, -1))
+            os.utime(path, (t, t))
+            sn.RAW, sn.ROWS[:] = d, []
+            sn.xlsx = lambda _p: {"sheet": rows}
+            try:
+                sn.disasters()
+                got = {(r[1], r[3][:4]) for r in sn.ROWS}
+            finally:
+                sn.RAW, sn.ROWS[:], sn.xlsx = old
+        self.assertIn(("climate/disaster_events", "2025"), got)
+        self.assertNotIn(("climate/disaster_events", "2026"), got, "January to October 2026 is not 2026")
+
+
 class PwtReleaseTest(unittest.TestCase):
     """bnm-56c.23: a PWT year is known when the first release that covers it
     came out (resources/bnm/releases.tsv), not a fixed 24 months on; irr and

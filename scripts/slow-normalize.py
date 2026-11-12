@@ -13,7 +13,7 @@ Standard library only.
 
   python3 -I scripts/slow-normalize.py
 """
-import csv, io, json, math, os, re, sys, zipfile, calendar
+import csv, io, json, math, os, re, sys, time, zipfile, calendar
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 
@@ -1028,10 +1028,12 @@ def disasters():
     """EM-DAT natural disasters by country and year (2000-), from the country
     profiles OCHA publishes on HDX (data/raw/slow/disasters/emdat-country-profiles.xlsx):
     events, people affected and deaths summed over types, known three months
-    after the year."""
+    after the year. The year of the download (the file's modification time)
+    is the year to date, not a year's count, and is left out (bnm-56c.23)."""
     path = os.path.join(RAW, "disasters", "emdat-country-profiles.xlsx")
     if not os.path.exists(path):
         return
+    current = time.localtime(os.path.getmtime(path)).tm_year
     rows = next(iter(xlsx(path).values()))
     header = rows[0]
     col = {h: i for i, h in enumerate(header)}
@@ -1040,7 +1042,7 @@ def disasters():
         if not r or len(r) <= col["Total Deaths"] or r[col["Disaster Group"]] != "Natural":
             continue
         y, iso = num(r[col["Year"]]), r[col["ISO"]]
-        if y is None or iso not in ISO3:
+        if y is None or iso not in ISO3 or int(y) >= current:
             continue
         t = tot[(iso, int(y))]
         t[0] += num(r[col["Total Events"]]) or 0.0
