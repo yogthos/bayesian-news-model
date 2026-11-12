@@ -163,6 +163,28 @@ class PeriodEndTest(unittest.TestCase):
             sn.period_end("q", "2001-06")
 
 
+class WdiLagTest(unittest.TestCase):
+    """bnm-56c.23: UIS tertiary enrolment reaches WDI with UIS's September
+    release, one to two years after the reference year, not WDI's 9 months."""
+
+    def run_wb(self, files):
+        old = (sn.RAW, list(sn.ROWS))
+        with tempfile.TemporaryDirectory() as d:
+            for code, rows in files.items():
+                wb_file(d, code, rows)
+            sn.RAW, sn.ROWS[:] = d, []
+            try:
+                sn.worldbank()
+                return {(r[1], r[3][:4]): r[4] for r in sn.ROWS}
+            finally:
+                sn.RAW, sn.ROWS[:] = old[0], old[1]
+
+    def test_tertiary_enrolment_waits_for_uis(self):
+        got = self.run_wb({"SE.TER.ENRR": [("USA", 2014, 88.0)], "SP.DYN.IMRT.IN": [("USA", 2014, 6.0)]})
+        self.assertGreaterEqual(got[("people/tertiary_enrolment", "2014")], "2016-09-30")
+        self.assertEqual(got[("people/infant_mortality", "2014")], "2015-09-30", "the rest keep 9 months")
+
+
 class PwtReleaseTest(unittest.TestCase):
     """bnm-56c.23: a PWT year is known when the first release that covers it
     came out (resources/bnm/releases.tsv), not a fixed 24 months on; irr and

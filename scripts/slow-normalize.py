@@ -285,6 +285,11 @@ WB_ZERO_IS_GAP = {
 # Serbia and Montenegro; South Sudan's and Timor-Leste's before they
 # existed): zeros before the first nonzero value are gaps
 WB_LEADING_ZERO_IS_GAP = {"IP.JRN.ARTC.SC"}
+# months from the year's end to when WDI had it: 9 (the July update) but for
+# UIS tertiary enrolment, which UIS releases each September one to two years
+# after the reference year, so a year is out by September of the year after
+# next (bnm-56c.23)
+WB_LAG = {"SE.TER.ENRR": 21}
 
 
 def worldbank():
@@ -309,7 +314,7 @@ def worldbank():
             if v == 0 and (code in WB_ZERO_IS_GAP or
                            (code in WB_LEADING_ZERO_IS_GAP and int(r["date"][:4]) < first.get(iso, 10000))):
                 continue
-            emit(iso, name, "a", period_end("a", r["date"]), 9, v)
+            emit(iso, name, "a", period_end("a", r["date"]), WB_LAG.get(code, 9), v)
         var(name, tr, "a", "World Bank WDI " + code, desc)
 
 
