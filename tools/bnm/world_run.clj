@@ -21,7 +21,9 @@
   --world-gauges true (the world state at the year and half-decade,
   bnm.world-gauges), --world-extra noise|planted|false [--seed s]
   [--strength s] (the acceptance harness's extra world column),
-  --pwt-stale true (bnm-h8d), --catalogue-through true (Test 7), and
+  --pwt-stale true (bnm-h8d), --catalogue-through true (Test 7),
+  --year-delay n (bnm-pjg.6: the political and economic kinds' year rows
+  read n years later; banking's own table is not delayed), and
   --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
   :mixture).
@@ -345,7 +347,7 @@
                                 {})))))
 
 (defn -main [& args]
-  (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges] :as opts}
+  (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay] :as opts}
         (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         graph (:graph (model-choice opts))
         out (or out "world")
@@ -363,7 +365,8 @@
                  (states-of (read-string (slurp states)) (set (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats))))))
         _ (println "building" (count ks) "kinds")
         specs0 (-> (build-specs ks end cats (known-run opts) {:pwt-stale (= "true" pwt-stale)
-                                                               :catalogue-through (= "true" catalogue-through)})
+                                                               :catalogue-through (= "true" catalogue-through)
+                                                               :year-delay (some-> year-delay parse-long)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-extra (:world-extra opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)}
                                end))

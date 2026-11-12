@@ -4560,3 +4560,78 @@ in test/bnm/lattice_test.clj.
   - C's base quarters get worse, mostly in food price shocks (-0.035 against lp1).
   - The verdict is unchanged: no weighting passes.
 - The learning path still uses the mean offset (bnm-56c.22). Fixing it moves the base.
+
+## Registered, 11 November 2026: the world node and the world state at the year (bead bnm-56c.19, recursive step 2, loop audit Round 2)
+
+Development, origins 2003-2022. Written and committed before any run below
+was scored. The base of record stays t50-world-norel; adoption is the
+user's decision and, if taken, one dated L1 note covers the world node,
+bnm-h8d and bnm-56c.22 together.
+
+**What changed** (every option off by default; the golden snapshot and
+t50's forecasts are reproduced byte for byte without them):
+- `bnm.world-state` reads world series as of t with their publication lags
+  and refuses any value published after t (Test 3b). The world gauges are
+  world food prices over 12 and 24 months (the IMF food price index, FRED
+  PFOODINDEXM, the repository's stand-in for the FAO index, published a
+  month late), Brent over 12 months, the VIX, world credit (the mean
+  three-year change in BIS credit to GDP over the countries with data, as
+  known), the US policy rate over 12 months and the broad dollar over 12
+  months (from 2006); and food 12 and 24 times food imports, Brent times
+  net fuel imports, credit and the VIX times openness (bnm.fast-run's
+  exposure, read two years before the origin; above the countries their
+  mean). The world node's state is these series (issue 10), not the share
+  of states with any onset.
+- `bnm.lattice :world-gauges`: the group at the year and half-decade
+  nodes, in the all-inputs model, so the `:state-from :reference` state
+  carries it (Test 3a, planted on synthetic data).
+- `:downscale-learn`: the quarters' pool weight on the year's offset is a
+  learned coefficient (a core input), not a fixed 0.5 (Test 4).
+- `:learn-offsets :mixture` (bnm-56c.22): a quarter row issued over the
+  year's offset mixture is learned at each offset, weighted.
+- `--pwt-stale` (bnm-h8d): the lattice reads PWT at 36 months, so the
+  political-economy group no longer goes missing every September.
+- `--catalogue-through` (Test 7): own history, others' counts and the world
+  share are unknown past a catalogue's :through less its lag.
+- Round 4 also fixed `bnm.stocks` (Test 18; no series the lattice reads is
+  affected) and marked the IMF IL reserves :revised (Test 12; the hazard
+  only).
+
+**The candidate, t51-world-norel**, on the current data: t50's command
+plus the new options,
+
+    jolt -A:tools -M -m bnm.world-run --out t51-world-norel --without-relations true --known r6-at-8ul \
+      --world-gauges true --pwt-stale true --catalogue-through true \
+      --set '{:state-from :reference :evidence-at :issue :downscale-learn {:var 1.0} :learn-offsets :mixture}'
+
+with the posterior weighting (t50's; no weighting rule has passed).
+
+**The acceptance harness** (bnm-56c.19's notes: the planted signal and the
+noise go where the reference reads, the year's own world group; one extra
+column in that group, the same at every place). Runs, all thirteen kinds,
+t51's command plus:
+- `--world-extra noise --seed 1` and `--seed 2` (s2-noise1, s2-noise2): a
+  standard normal per origin;
+- `--world-extra planted --seed 1 --strength 1` (s2-planted): the seed-1
+  noise plus the z-score of the share of countries with an onset in the
+  year window (it reads the future);
+- `--world-extra false --seed 1` (s2-false): the seed-1 noise plus 3 at the
+  origins of 2013 and 2014, a world move that carries nothing.
+
+**Acceptance rules** (Brier, year nodes, origins 2003-2022, thirteen kinds
+weighed equally, bnm.links / bnm.paired as before; folds bnm.links/folds):
+1. Noise, pooled: the mean of the two draws' paired Brier against t51
+   within 0.0003 of zero (bnm.links --noise). Per fold: in each of the five
+   folds the mean of the two draws' paired Brier within 0.0003 of zero.
+2. Planted: s2-planted against t51 gains, with its 90% interval above zero.
+3. False move: s2-false against s2-noise1 (the same draws but the move) not
+   below -0.0003, pooled and in the 2013-2019 fold that holds the move.
+4. Against t50-world-norel by fold (bnm.links --folds): no fold lost (90%
+   interval below zero), 2020-2022 included. Reported beside it, not part
+   of the rule: pooled; food price shocks and market crashes in each fold;
+   the quarter-lead nodes; t51 against t48-world-norel (t48 is on its own
+   inputs, so input changes are mixed in).
+t51 passes only if all four hold. What the world group does alone is
+reported from one more run, t50's command with `:state-from :reference
+:evidence-at :issue` and nothing else (s2-ref), against which t51 differs
+only by the world state, the learned pool, the mixture, h8d and Test 7.

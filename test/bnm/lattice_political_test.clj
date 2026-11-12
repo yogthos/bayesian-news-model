@@ -15,3 +15,10 @@
         [_ fixed] (lp/political-economy-of db ["X"] [sep] {:pwt-stale true})]
     (is (nil? (first (base "X" sep))))
     (is (= 0.1 (first (fixed "X" sep))))))
+
+(deftest bnm-pjg-6-the-delay-test-reads-the-year-row-a-year-later
+  ;; the year gauges' annual rows are current revised downloads with an
+  ;; assumed one-year lag; the delay test reads them `delay` years later
+  (let [dec2010 (+ 11 (* 12 2010))]
+    (is (= 2009 (lp/year-row-year dec2010 0)) "the base: the year before the one ended")
+    (is (= 2008 (lp/year-row-year dec2010 1)))))
