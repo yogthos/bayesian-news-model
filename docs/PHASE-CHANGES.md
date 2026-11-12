@@ -4966,9 +4966,9 @@ Not adopted. No L1 note, no ledger base change, no forecast.
 ## The world term gated per kind by the lead test (12 November 2026, bnm-56c.28)
 
 Development, origins 2003-2022, under the rules registered at 84b9b3b
-(unchanged). The base of record stays t50-world-norel; t52-world-norel
-(byte for byte t51b's forecasts) is being adopted concurrently. Adoption is
-the user's call.
+(unchanged; rule 4 is against t50-world-norel as registered, and
+t52-world-norel, the base of record since this day and byte for byte
+t51b's forecasts, is reported beside it). Adoption is the user's call.
 
 **What was wrong.** Fix 3's brief said a world gauge is wired only after
 `bnm.lead-test` passes it. The wiring did not apply that per kind: food12
