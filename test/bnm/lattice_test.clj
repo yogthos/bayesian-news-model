@@ -1230,3 +1230,47 @@
     (is (= 31 k) "20 gauges, 10 flows and the world column")
     (testing "each non-core input's prior variance is 1/n (one period's discount on it)"
       (is (every? #(< (Math/abs (- (* n (diag %) 0.998) 1.0)) 1e-9) (range 1 k)) (mapv diag (range 1 k))))))
+
+(defn- level-world
+  "Six countries at a constant onset rate of 0.15 over 50 years, a year node
+  whose offset is climatology and whose rows resolve 42 months after the
+  origin (as food's year node does), the prior's counts `prior` before any
+  is resolved."
+  [prior extra]
+  (let [g (m/rng 21)
+        ys (into {} (for [c countries t (range 700)] [[c t] (< (m/next-double! g) 0.15)]))]
+    (lt/run (merge {:scales [{:name :year :per 12 :horizon 24 :discount 0.998}]
+                    :levels [[:country countries]]
+                    :parent {} :start 0 :end 599 :forget 0.995
+                    :offset (fn [_ _ _] nil)
+                    :clim-prior (fn [_ _] prior)
+                    :target (fn [_ place t] {:y (ys [place (+ t 24)]) :known-at (+ t 42)})
+                    :gauges (fn [_ _ _] [])
+                    :gauge-width {:year 0}}
+                   extra))))
+
+(deftest bnm-56c-27-a-change-of-climatology-decays
+  ;; two runs that differ only in the climatology the node issues at before
+  ;; its own outcomes resolve (the prior's 0.025 against 0.6, 4.1 in log
+  ;; odds): once its own rate takes over, the gap between them is what the
+  ;; initial condition still carries. Learned at the offset it was issued
+  ;; at, the intercept keeps the old level and adds it to the new one; the
+  ;; gain is the gap 10-30 years on over the initial one
+  (let [late (fn [r] (let [fs (filter #(< 120 (:origin %) 360) (:forecasts r))]
+                       (/ (reduce + (map #(lt/logit-of (:p %)) fs)) (count fs))))
+        lo [2 100] hi [60 100]
+        start-gap (- (lt/logit-of (/ 60.5 101)) (lt/logit-of (/ 2.5 101)))
+        gain (fn [extra] (/ (- (late (level-world hi extra)) (late (level-world lo extra))) start-gap))]
+    (testing "issue-time offsets (the base): the old level persists, and overshoots"
+      (is (< (gain {}) -0.2) (gain {})))
+    (testing ":clim-learn :current: the change decays, gain near 0"
+      (is (< (Math/abs (gain {:clim-learn :current})) 0.02) (gain {:clim-learn :current})))
+    (testing "and the level is the rate's"
+      (is (< (Math/abs (- (late (level-world hi {:clim-learn :current})) (lt/logit-of 0.15))) 0.6)))
+    (testing "an unknown value is refused"
+      (is (thrown? clojure.lang.ExceptionInfo (level-world lo {:clim-learn :issue}))))))
+
+(deftest bnm-56c-27-reanchor-moves-every-offset
+  (is (= {:o 1.5 :os [[0.5 1.0] [0.5 2.0]] :clim -2.0}
+         (lt/reanchor {:o 1.0 :os [[0.5 0.5] [0.5 1.5]] :clim -2.0} 0.5)))
+  (is (= {:o -1.0} (lt/reanchor {:o -1.5} 0.5))))

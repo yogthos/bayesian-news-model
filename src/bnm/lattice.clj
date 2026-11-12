@@ -606,6 +606,33 @@
                    [(dissoc r :os)]))
                rows)))
 
+(defn- clim-logit
+  "The log odds of node k's climatology once the `ready` rows are counted:
+  the rate among its resolved outcomes, or with none, the :clim-prior's
+  counts (bnm-56c.26), else an even rate; nil without an :offset."
+  [spec st k scale level ready]
+  (when (:offset spec)
+    (let [[n1 n] (get-in st [:clim k] [0 0])
+          n1 (+ (or n1 0) (count (filter :y ready)))
+          n (+ (or n 0) (count ready))
+          [n1 n] (or (when (zero? n)
+                       (when-let [cp (:clim-prior spec)]
+                         (let [[p1 p] (cp scale level)]
+                           (when (and p (pos? p)) [p1 p]))))
+                     [n1 n])]
+      (logit (/ (+ n1 0.5) (+ n 1.0))))))
+
+(defn reanchor
+  "A pending row with its offsets (:o, and each of :os) moved by `delta`:
+  under :clim-learn :current (bnm-56c.27), the climatology it was issued at
+  replaced by the one current when it is learned, so the intercept learns
+  the departure from the climatology the forecasts are issued at, not
+  from one the node has since left."
+  [row delta]
+  (let [delta (double delta)]
+    (cond-> (update row :o + delta)
+      (:os row) (update :os (fn [os] (mapv (fn [[w o]] [w (+ (double o) delta)]) os))))))
+
 (declare start step finish)
 
 (defn run
@@ -622,6 +649,12 @@
    :clim-prior (fn [scale level]) -> [onsets rows], the counts climatology
    reads while the node has no resolved outcome (bnm-56c.26; an even rate,
    0.5, without),
+   :clim-learn :current, a row issued at climatology learned at the
+   climatology current when it is learned (bnm-56c.27): otherwise the
+   intercept learns the outcomes against the offset they were issued at,
+   and when climatology moves (from the prior, or 0.5, to the node's own
+   rate) carries the old level into every later forecast on top of the new;
+   at its issue offset without,
    :shrink, the all-inputs model's prior variance on its non-core inputs,
    :shrink-per-input v, that variance as v over their number at each node
    (fix 2: the reference state's prior predictive variance about the base
@@ -728,7 +761,14 @@
                        {ready true waiting false} (group-by #(<= (:known-at %) t) (get-in st [:pending k]))
                        ;; each model's issue-time predictive, the averaging's evidence
                        ;; under :evidence-at :issue
-                       rows (learning-rows (map #(cond-> (select-keys % [:x :y :o :os]) (:lp %) (assoc :issued (:lp %))) ready)
+                       ;; climatology as it stands once this period's outcomes are
+                       ;; counted: what the node's forecasts at t are issued at
+                       clim-now (clim-logit spec st k scale level ready)
+                       rows (learning-rows (map #(cond-> (select-keys % [:x :y :o :os]) (:lp %) (assoc :issued (:lp %))
+                                                   ;; bnm-56c.27: :clim-learn :current, a row issued at
+                                                   ;; climatology is learned at the climatology current now
+                                                   (and (= :current (:clim-learn spec)) (:clim %)) (reanchor (- clim-now (:clim %))))
+                                                ready)
                                            (= :mixture (:learn-offsets spec)))
                        ;; traced: each model's evidence, the log score of the outcomes it
                        ;; learns from now, scored before it learns them
@@ -740,18 +780,16 @@
                        model (d/step model rows)
                        ;; climatology: the rate among this node's resolved outcomes
                        st (update-in st [:clim k] (fn [[n1 n]] [(+ (or n1 0) (count (filter :y ready))) (+ (or n 0) (count ready))]))
+                       _ (when (and (:clim-learn spec) (not= :current (:clim-learn spec)))
+                           (throw (ex-info "bnm.lattice: :clim-learn takes :current" {:clim-learn (:clim-learn spec)})))
+                       ;; the offset, and whether it is climatology (:clim, its log odds):
+                       ;; with an :offset that has nothing to say, the rate among the
+                       ;; node's resolved outcomes (or the prior's, before any)
                        offset-of (if-let [f (:offset spec)]
-                                   (let [[n1 n] (get-in st [:clim k] [0 0])
-                                         ;; bnm-56c.26: with nothing resolved, the prior's
-                                         ;; counts (:clim-prior), not an even rate
-                                         [n1 n] (or (when (zero? n)
-                                                      (when-let [cp (:clim-prior spec)]
-                                                        (let [[p1 p] (cp scale level)]
-                                                          (when (and p (pos? p)) [p1 p]))))
-                                                    [n1 n])
-                                         clim (logit (/ (+ n1 0.5) (+ n 1.0)))]
-                                     (fn [place t] (double (or (f scale place t) clim))))
-                                   (constantly 0.0))
+                                   (fn [place t] (if-let [o (f scale place t)]
+                                                   {:o (double o)}
+                                                   {:o clim-now :clim clim-now}))
+                                   (constantly {:o 0.0}))
                        ;; :downscale: the offset from a coarser node's latest forecast for the
                        ;; place, issued before t, scaled to this window under a constant
                        ;; hazard (docs/DOWNSCALE.md); pooled in log odds with what is known
@@ -777,7 +815,8 @@
                                             {:os os :read (first (sh/reads r)) :down down
                                              ;; :downscale-learn's input: the offset less what is known
                                              :pool (when known (- om known))})
-                                          {:os [[1.0 (offset-of place t)]] :down 0.0}))))
+                                          (let [{:keys [o clim]} (offset-of place t)]
+                                            {:os [[1.0 o]] :down 0.0 :clim clim})))))
                        st (reduce (fn [st {:keys [place y p known-at]}]
                                     (update-in st [:errors [scale place]] (fnil assoc (sorted-map)) known-at
                                                (- (if y 1.0 0.0) p)))
@@ -805,7 +844,7 @@
                                                     (rel/principal mx x groups cands))))))
                        seen (vec (for [place places
                                        :let [g ((:gauges spec) scale place t)
-                                             {:keys [os read down pool]} (offsets-of place t)
+                                             {:keys [os read down pool clim]} (offsets-of place t)
                                              ;; :world-offset (fix 3): the world's term, learned once
                                              ;; per origin at the world node, added to every offset
                                              wo (when-let [f (:world-offset spec)] (f scale place t))
@@ -815,7 +854,7 @@
                                              {:keys [x reads stated tension strain resolved]} (inputs spec st scale scale-spec level-ix place t g {:pool pool})
                                              raw-flows (subvec x (inc g-width))
                                              x (into (subvec x 0 (inc g-width)) (standardize flow-std raw-flows))]]
-                                   {:place place :x x :raw-flows raw-flows :os os :down down
+                                   {:place place :x x :raw-flows raw-flows :os os :down down :clim clim
                                     :reads (cond-> (into reads (:reads wo)) read (conj read))
                                     :stated stated :tension tension :strain strain :resolved resolved}))
                        ;; a group with no input anywhere at t (its source ended, a signal
@@ -882,10 +921,12 @@
                                                            ;; the error fed back is the state's (the reference's p
                                                            ;; under :state-from); :lp each model's predictive at issue;
                                                            ;; :regime-at-issue a slot for the regime layer
-                                                           (for [{:keys [place x o os p target ref issued]} made :when target]
+                                                           (for [{:keys [place x o os p target ref issued clim]} made :when target]
                                                              (cond-> {:place place :x x :o o :p (if ref (:p ref) p) :y (:y target) :known-at (:known-at target)
                                                                       :regime-at-issue nil}
                                                                issued (assoc :lp issued)
+                                                               ;; bnm-56c.27: the climatology it was issued at
+                                                               (and clim (:clim-learn spec)) (assoc :clim clim)
                                                                ;; bnm-56c.22: the offsets issued over, learned at
                                                                (and (= :mixture (:learn-offsets spec)) (< 1 (count os))) (assoc :os os))))))]
                    [st
