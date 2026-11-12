@@ -4683,3 +4683,21 @@ the planted and false-move rules. Not adopted; the base of record stays
 t50-world-norel and no L1 note is written. Every option stays off by
 default (t50 reproduces byte for byte on banking crises, food price
 shocks and market crashes from this branch).
+
+**Round 4's delay test (bnm-pjg.6, development).** The base's year and
+half-decade gauges read annual rows (current, revised downloads) with an
+assumed one-year lag. t50's command with the political and economic
+kinds' rows read one year later (`--year-delay 1`, s2-delay1; banking's
+own table is not delayed) and without the year and half-decade gauges at
+all (s2-nogauge); year nodes, 2003-2022, thirteen kinds, against
+s2-nogauge:
+- the gauges as in t50: Brier +0.0013 [-0.0016, +0.0043], log +0.0076
+  [+0.0006, +0.0147];
+- the gauges a year late: Brier -0.00003 [-0.0031, +0.0032], log +0.0044
+  [-0.0024, +0.0118].
+The gauges' gain does not survive the delay: about half of the log gain
+and all of the Brier gain go, most of it in market crashes (-0.002 to
+-0.017) and fiscal consolidation (+0.0014 to +0.0001); food price shocks
+and conflict keep theirs. Either the latest year carries real signal or
+the revised rows carry what no one had at the time; the test cannot tell
+which, but the base's year-gauge gain rests on the latest year's row.
