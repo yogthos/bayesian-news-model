@@ -1,0 +1,29 @@
+source	release	published	last_year	adds	note
+maddison	Monitoring the World Economy 1820-1992	1995-12	1992		OECD 1995; year only (dated December)
+maddison	The World Economy: A Millennial Perspective	2001-12	1998		OECD 2001; year only
+maddison	The World Economy: Historical Statistics	2003-12	2001		OECD 2003; year only. Website updates 2006-2009 left out: dates not verified, so the table errs stale
+maddison	Maddison Database 2010	2010-12	2008		rug.nl/ggdc/historicaldevelopment/maddison/releases; year only
+maddison	Maddison Project Database 2013	2013-12	2010		year only
+maddison	Maddison Project Database 2018	2018-12	2016		year only
+maddison	Maddison Project Database 2020	2020-12	2018		year only
+maddison	Maddison Project Database 2023	2024-12	2022		page dated 2024; taken as 2024 so the table errs stale
+nmc	1.0	1993-04	1985		ICPSR 9903 release 9 April 1993
+nmc	3.0	2005-05	2001		update concluded May 2005 (NMC v5.0 documentation)
+nmc	4.0	2010-06	2007		update concluded June 2010 (NMC v5.0 documentation)
+nmc	5.0	2017-02	2012		correlatesofwar.org news, 10 February 2017
+nmc	6.0	2021-07	2016		correlatesofwar.org news, 22 July 2021
+nmc	7.0	2026-06	2022		correlatesofwar.org news, 3 June 2026 (not in data/raw, which holds 6.0)
+pwt	5 (Mark 5)	1991-05	1988		Summers and Heston, QJE May 1991; month approximate
+pwt	5.6	1995-01	1992		month approximate
+pwt	6.1	2002-10	2000		devec.subwiki.org list of PWT versions
+pwt	6.2	2006-09	2004		GGDC / devec.subwiki.org
+pwt	6.3	2009-08	2007		GGDC / devec.subwiki.org
+pwt	7.0	2011-06	2009		devec.subwiki.org
+pwt	7.1	2012-11	2010		devec.subwiki.org
+pwt	8.0	2013-07	2011	labsh,rkna,rnna,rtfpna	ALFRED source 94; capital stocks, TFP and labour's share first published
+pwt	8.1	2015-04	2011		ALFRED
+pwt	9.0	2016-06	2014	irr	ALFRED; the internal rate of return first published
+pwt	9.1	2019-04	2017		ALFRED
+pwt	10.0	2021-01	2019		ALFRED
+pwt	10.01	2023-01	2019		ALFRED
+pwt	11.0	2025-10	2023		ALFRED

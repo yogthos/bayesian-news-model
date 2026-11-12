@@ -436,25 +436,76 @@ def irr():
             print("irr: unmatched names", unmatched, file=sys.stderr)
 
 
+RELEASES = os.path.join(ROOT, "resources", "bnm", "releases.tsv")
+
+
+def releases(source):
+    """[(published month end, last data year, {columns first published})] of
+    `source` in resources/bnm/releases.tsv, oldest first."""
+    out = []
+    with open(RELEASES, encoding="utf-8") as f:
+        for r in csv.DictReader(f, delimiter="\t"):
+            if r["source"] == source:
+                y, m = int(r["published"][:4]), int(r["published"][5:7])
+                adds = {c for c in r["adds"].split(",") if c}
+                out.append((month_end(y, m), int(r["last_year"]), adds))
+    return sorted(out)
+
+
+def release_available(rels, pend, fallback, columns=()):
+    """When a year's value was first published (bnm-56c.23): the first release
+    covering it, but not before the release that first published any of
+    `columns`. A year the first tabulated release covers whose `fallback`
+    months' lag runs out before that release is dated by the lag. None when
+    no release covers it yet."""
+    y = int(pend[:4])
+    first = rels[0]
+    if y <= first[1] and add_months(pend, fallback) < first[0]:
+        at = add_months(pend, fallback)
+    else:
+        at = next((d for d, last, _ in rels if last >= y), None)
+        if at is None:
+            return None
+    intro = [d for d, _, adds in rels if adds & set(columns)]
+    return max([at] + intro[:1])
+
+
+def emit_at(unit, name, freq, pend, available, value):
+    """emit, with the date it was available given instead of a lag."""
+    if available is None:
+        return
+    n = len(ROWS)
+    emit(unit, name, freq, pend, 0, value)
+    if len(ROWS) > n:
+        r = ROWS[-1]
+        ROWS[-1] = r[:4] + (available,) + r[5:]
+
+
 def pwt():
     """Penn World Table 11 (data/raw/slow/pwt/pwt110.csv, from the .dta): labour's
     share, the real internal rate of return on capital (a profit rate), the
-    investment share and capital per unit of output (docs/REGIMES.md). PWT
-    comes out years after the fact, so a year is taken as known two years on."""
+    investment share and capital per unit of output (docs/REGIMES.md). Each
+    year is dated by the first PWT release that covered it (13 to 58 months
+    late; resources/bnm/releases.tsv; 24 months before the first tabulated
+    release), and labour's share and the capital stock not before PWT 8.0
+    (July 2013), the internal rate of return not before 9.0 (June 2016),
+    which first published them (bnm-56c.23). The values are PWT 11's,
+    revised since: a vintage caveat no date can fix."""
     path = os.path.join(RAW, "pwt", "pwt110.csv")
     if not os.path.exists(path):
         return
+    rels = releases("pwt")
     for r in csv.DictReader(open(path)):
         iso = r["countrycode"]
         if iso not in ISO3:
             continue
         pend = period_end("a", r["year"].split(".")[0])
-        emit(iso, "economy/labor_share", "a", pend, 24, num(r["labsh"]))
-        emit(iso, "economy/profit_rate", "a", pend, 24, num(r["irr"]))
-        emit(iso, "economy/investment_share", "a", pend, 24, num(r["csh_i"]))
+        emit_at(iso, "economy/labor_share", "a", pend, release_available(rels, pend, 24, ["labsh"]), num(r["labsh"]))
+        emit_at(iso, "economy/profit_rate", "a", pend, release_available(rels, pend, 24, ["irr"]), num(r["irr"]))
+        emit_at(iso, "economy/investment_share", "a", pend, release_available(rels, pend, 24), num(r["csh_i"]))
         y, k = num(r["rgdpna"]), num(r["rnna"])
         if y and k:
-            emit(iso, "economy/capital_output", "a", pend, 24, k / y)
+            emit_at(iso, "economy/capital_output", "a", pend, release_available(rels, pend, 24, ["rnna"]), k / y)
     var("economy/labor_share", "id", "a", "Penn World Table 11.0 labsh", "Share of labour compensation in GDP")
     var("economy/profit_rate", "id", "a", "Penn World Table 11.0 irr", "Real internal rate of return on capital")
     var("economy/investment_share", "id", "a", "Penn World Table 11.0 csh_i", "Share of gross capital formation in GDP")

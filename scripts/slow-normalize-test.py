@@ -163,7 +163,48 @@ class PeriodEndTest(unittest.TestCase):
             sn.period_end("q", "2001-06")
 
 
-SERIES = os.path.join(os.path.dirname(HERE), "data", "slow", "series.tsv")
+class PwtReleaseTest(unittest.TestCase):
+    """bnm-56c.23: a PWT year is known when the first release that covers it
+    came out (resources/bnm/releases.tsv), not a fixed 24 months on; irr and
+    labsh do not exist before PWT 9.0 and 8.0."""
+
+    def run_pwt(self, rows):
+        old = (sn.RAW, list(sn.ROWS))
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "pwt"))
+            with open(os.path.join(d, "pwt", "pwt110.csv"), "w") as f:
+                f.write("countrycode,year,labsh,irr,csh_i,rgdpna,rnna\n")
+                for iso, y in rows:
+                    f.write("%s,%d,0.5,0.1,0.2,100,300\n" % (iso, y))
+            sn.RAW, sn.ROWS[:] = d, []
+            try:
+                sn.pwt()
+                return {(r[1], r[3][:4]): r[4] for r in sn.ROWS}
+            finally:
+                sn.RAW, sn.ROWS[:] = old[0], old[1]
+
+    def test_dated_by_first_release(self):
+        got = self.run_pwt([("USA", y) for y in (1960, 2003, 2004, 2005, 2009, 2012, 2017, 2018, 2023)])
+        inv = "economy/investment_share"
+        self.assertEqual(got[(inv, "2004")], "2006-09-30", "PWT 6.2, September 2006")
+        self.assertEqual(got[(inv, "2003")], "2006-09-30", "6.1 ended at 2000: 2003 waits for 6.2")
+        self.assertEqual(got[(inv, "2005")], "2009-08-31", "PWT 6.3")
+        self.assertEqual(got[(inv, "2012")], "2016-06-30", "8.0 and 8.1 ended at 2011: 9.0")
+        self.assertEqual(got[(inv, "2018")], "2021-01-31", "PWT 10.0")
+        self.assertEqual(got[(inv, "2023")], "2025-10-31", "PWT 11.0")
+        self.assertEqual(got[(inv, "1960")], "1962-12-31", "before the first tabulated release: 24 months")
+
+    def test_irr_and_labsh_absent_before_their_release(self):
+        got = self.run_pwt([("USA", 1960), ("USA", 2005), ("USA", 2012), ("USA", 2017)])
+        self.assertEqual(got[("economy/profit_rate", "1960")], "2016-06-30", "irr first published in 9.0")
+        self.assertEqual(got[("economy/profit_rate", "2005")], "2016-06-30")
+        self.assertEqual(got[("economy/labor_share", "2005")], "2013-07-31", "labsh first published in 8.0")
+        self.assertEqual(got[("economy/capital_output", "1960")], "2013-07-31", "capital stocks from 8.0")
+        self.assertEqual(got[("economy/labor_share", "2012")], "2016-06-30")
+        self.assertEqual(got[("economy/profit_rate", "2017")], "2019-04-30", "PWT 9.1")
+
+
+SERIES =os.path.join(os.path.dirname(HERE), "data", "slow", "series.tsv")
 
 
 @unittest.skipUnless(os.path.exists(SERIES), "data/slow/series.tsv not built")
