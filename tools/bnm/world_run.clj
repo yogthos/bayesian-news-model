@@ -17,6 +17,15 @@
     jolt -A:tools -M -m bnm.world-run --out world --graph path [--placebo true] [--ews path] [--states path]
                                       [--end m] [--kinds a,b] [--smoke true]
 
+  Recursive step 2's options (bead bnm-56c.19), each off by default:
+  --world-gauges true (the world state at the year and half-decade,
+  bnm.world-gauges), --world-extra noise|planted|false [--seed s]
+  [--strength s] (the acceptance harness's extra world column),
+  --pwt-stale true (bnm-h8d), --catalogue-through true (Test 7), and
+  --set '{...}' merged into every spec (:state-from :reference,
+  :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
+  :mixture).
+
   --known names the bnm.onsets run whose named model the quarters pool
   with (r6-at when none is named; the base of record, t50-world-norel,
   reads r6-at-8ul).
@@ -55,6 +64,7 @@
             [bnm.stocks :as sk]
             [bnm.relations :as rl]
             [bnm.world :as w]
+            [bnm.world-gauges :as wg]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -233,13 +243,49 @@
 
 (defn build-specs
   "{kind spec} for `ks` to month `end`, the quarters' offset pooled with
-  run `known`'s named model."
+  run `known`'s named model. opts (recursive step 2, each off by default):
+  :pwt-stale (bnm-h8d), :catalogue-through (Test 7; `cats` should carry
+  it too, `catalogues-through`)."
   ([ks end cats] (build-specs ks end cats "r6-at"))
-  ([ks end cats known]
+  ([ks end cats known] (build-specs ks end cats known {}))
+  ([ks end cats known opts]
    (into {} (pmap (fn [k]
-                    [k (merge (if (= k lb/kind) (lb/build end known) (lp/build k end known cats start))
+                    [k (merge (if (= k lb/kind) (lb/build end known opts) (lp/build k end known cats start opts))
                               quarter-design)])
                   ks))))
+
+(defn catalogues-through
+  "Every catalogue with its uncovered tail unknown (loop audit Test 7)."
+  [cats]
+  (update-vals cats #(assoc % :unknown-past-through true)))
+
+(defn with-step2
+  "The specs with recursive step 2's options (`opts`, from the command
+  line): :world-gauges, the world state at the year and half-decade
+  (bnm.world-gauges), with :world-extra (noise, planted or false: the
+  acceptance harness's extra world column, :seed, :strength); :set, an
+  EDN map merged into every spec (a nil value removes its key)."
+  [specs {:keys [world-gauges world-extra seed strength] set-edn :set} end]
+  (let [state (when world-gauges
+                (let [db (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))
+                      units (set (filter #(= 3 (count %)) (map first (keys db))))]
+                  (wg/load-state db units end)))
+        exposure (when world-gauges (wg/exposure-from))
+        merge-set (fn [sp] (if set-edn
+                             (reduce-kv (fn [sp k v] (if (nil? v) (dissoc sp k) (assoc sp k v))) sp (read-string set-edn))
+                             sp))]
+    (when (and world-extra (not world-gauges))
+      (throw (ex-info "bnm.world-run: --world-extra needs --world-gauges true" {})))
+    (into {} (for [[k sp] specs]
+               [k (merge-set
+                   (if world-gauges
+                     (let [countries (filter #(= 3 (count %)) (keys (:parent sp)))
+                           year-origins (filter #(zero? (mod (inc (- % (:start sp))) 12)) (range (:start sp) (inc end)))
+                           extra (wg/extra-column {:kind (some-> world-extra keyword) :seed (or (some-> seed parse-long) 1)
+                                                   :strength (some-> strength parse-double)
+                                                   :share (wg/onset-share sp countries) :year-origins year-origins})]
+                       (wg/with-world sp state exposure {:extra extra}))
+                     sp))]))))
 
 (defn- write-kind [dir kind r]
   (io/make-parents (str dir "/x"))
@@ -299,12 +345,13 @@
                                 {})))))
 
 (defn -main [& args]
-  (let [{:keys [out end kinds without-relations smoke graph placebo ews states] :as opts} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges] :as opts}
+        (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         graph (:graph (model-choice opts))
         out (or out "world")
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
-        cats (kinds/catalogues)
+        cats (cond-> (kinds/catalogues) (= "true" catalogue-through) catalogues-through)
         ks (if kinds (str/split kinds #",") (sort (keys kinds/tiers)))
         graph (if graph (read-graph graph) {})
         parents (parents-of graph ks)
@@ -315,7 +362,11 @@
         chosen (when states
                  (states-of (read-string (slurp states)) (set (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats))))))
         _ (println "building" (count ks) "kinds")
-        specs0 (build-specs ks end cats (known-run opts))
+        specs0 (-> (build-specs ks end cats (known-run opts) {:pwt-stale (= "true" pwt-stale)
+                                                               :catalogue-through (= "true" catalogue-through)})
+                   (with-step2 {:world-gauges (= "true" world-gauges) :world-extra (:world-extra opts)
+                                :seed (:seed opts) :strength (:strength opts) :set (:set opts)}
+                               end))
         books (atom {})
         specs (into {} (for [[k sp] specs0]
                          [k (cond-> (if (= "true" without-relations) sp

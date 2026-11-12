@@ -185,6 +185,15 @@
           n (count (filter #(some-> (count-known cat % t 36) pos?) us))]
       (when (seq us) (/ (double n) (count us))))))
 
+(defn political-economy-of
+  "bnm.named/political-economy for the lattice's quarters: with
+  :pwt-stale (bnm-h8d) the Penn World Table read at its publication lag
+  (bnm.named/publication-stale, 36 months), else the default 30 that the
+  bases to t50 read, under which the group went missing at every
+  September origin."
+  [db units months {:keys [pwt-stale]}]
+  (nm/political-economy db units months (if pwt-stale {:stale nm/publication-stale} {})))
+
 (defn ended
   "The last year ended by month t (a year-end origin's own year): data
   read as of its end are known at t."
@@ -192,7 +201,7 @@
   (quot (- t 11) 12))
 
 (defn spec
-  [{:keys [kind db cats annual wdi units end known start]}]
+  [{:keys [kind db cats annual wdi units end known start pwt-stale]}]
   (let [cat (cats kind)
         scales (scales-for kind (or (pg/long-from kind) (first-year cat)))
         ;; four other political kinds' recent onsets (the :others group)
@@ -200,7 +209,7 @@
         start (or start (* 12 (pg/long-from kind)))
         [_ pol] (nm/political db)
         months (range (+ start 2) (inc end) 3)
-        [_ pe] (nm/political-economy db units months)
+        [_ pe] (political-economy-of db units months {:pwt-stale pwt-stale})
         sub (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u s]))
         reg (into {} (for [s (set (vals sub))] [s (first (geo/parents s))]))
         parent (merge sub reg (zipmap (set (vals reg)) (repeat "world")))
@@ -302,12 +311,13 @@
   kind's catalogue, bnm.kinds) and `start` (a month) for the world run,
   where any kind with a catalogue may be built this way."
   ([kind end known-run] (build kind end known-run nil nil))
-  ([kind end known-run cats start]
+  ([kind end known-run cats start] (build kind end known-run cats start {}))
+  ([kind end known-run cats start {:keys [pwt-stale]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
         cats (or cats (catalogues))
         units (set (filter #(first (geo/parents %)) (keys (get-in cats [kind :onsets]))))]
-    (spec {:kind kind :db db :cats cats :units units :end end :start start
+    (spec {:kind kind :db db :cats cats :units units :end end :start start :pwt-stale pwt-stale
            :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
            :wdi (fn [iso v y] (some-> (db [iso v]) (sk/value (+ 11 (* 12 y)) {:stale 18})))
            :known (lb/read-known known-run kind)}))))

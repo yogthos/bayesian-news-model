@@ -25,6 +25,9 @@
             [bnm.lattice-test]
             [bnm.lattice-golden-test]
             [bnm.world-state-test]
+            [bnm.world-gauges-test]
+            [bnm.lattice-political-test]
+            [bnm.hazard-revised-test]
             [bnm.compose-test]
             [bnm.node-test]
             [bnm.coherence-report-test]
@@ -144,6 +147,9 @@
     bnm.lattice-test
     bnm.lattice-golden-test
     bnm.world-state-test
+    bnm.world-gauges-test
+    bnm.lattice-political-test
+    bnm.hazard-revised-test
     bnm.compose-test
     bnm.node-test
     bnm.coherence-report-test

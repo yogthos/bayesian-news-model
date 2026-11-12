@@ -47,6 +47,7 @@
             [bnm.named :as nm]
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
+            [bnm.world-gauges :as wg]
             [bnm.world-run :as wr]
             [clojure.string :as str]))
 
@@ -56,16 +57,10 @@
   "(fn [country t]) -> {:food :energy :fertiliser :open}: food imports, fuel
   imports less fuel exports (shares of merchandise trade), agriculture's
   share of output and trade over output, as fractions, read two years
-  before the origin (bnm.named/structure's rule: fixed before the shock,
-  past WDI's revisions); nil where unknown."
+  before the origin; nil where unknown (bnm.world-gauges/exposure-fn, which
+  the world state's exposure reads too)."
   [db]
-  (fn [c t]
-    (let [g (fn [v] (some-> (db [c v]) (sk/value (- t 24) {:stale 30}) (/ 100.0)))
-          imp (g "energy/fuel_imports_share") exp (g "energy/fuel_exports_share")]
-      {:food (g "food/imports_share")
-       :energy (when (and imp exp) (- imp exp))
-       :fertiliser (g "economy/agriculture_share")
-       :open (g "trade/openness")})))
+  (wg/exposure-fn db))
 
 (def group-of {:commodities :fast/commodities :fx :fast/fx :ports :fast/ports :noise :fast/noise :planted :fast/planted})
 

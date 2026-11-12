@@ -544,21 +544,23 @@
 
 (defn build
   "The banking lattice's spec to month `end`, from the data on disk, with
-  `known-run`'s named forecasts as what is known."
-  [end known-run]
+  `known-run`'s named forecasts as what is known. opts :catalogue-through,
+  the catalogue's uncovered tail unknown (loop audit Test 7)."
+  ([end known-run] (build end known-run {}))
+  ([end known-run {:keys [catalogue-through]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
         jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
         jst (into {} (for [r (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap))]
                        [[(:iso r) (:year r)] r]))
-        cat (catalogue jst-rows)
+        cat (cond-> (catalogue jst-rows) catalogue-through (assoc :unknown-past-through true))
         units (set (filter #(first (geo/parents %)) (keys (:onsets cat))))
         ;; the quarter nodes' origins: the last month of each quarter
         months (range (+ start 2) (inc end) 3)
         wc (nm/world-credit db units months)
         ext (extended-table jst-rows (read-pwt) db units (read-annual))]
     (spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
-           :known (read-known known-run) :quarterly (read-quarterly)})))
+           :known (read-known known-run) :quarterly (read-quarterly)}))))
 
 (defn -main [& args]
   (let [{:keys [out end without coupling known without-at downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
