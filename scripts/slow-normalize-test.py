@@ -185,6 +185,53 @@ class WdiLagTest(unittest.TestCase):
         self.assertEqual(got[("people/infant_mortality", "2014")], "2015-09-30", "the rest keep 9 months")
 
 
+class FredPartialMonthTest(unittest.TestCase):
+    """bnm-56c.23: a daily series' current month, downloaded part way through,
+    is not a month's mean; it waits until the month is complete."""
+
+    def run_fred(self, series):
+        old = (sn.RAW, list(sn.ROWS), dict(sn.FRED))
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "fred"))
+            for sid, days in series.items():
+                with open(os.path.join(d, "fred", sid + ".csv"), "w") as f:
+                    f.write("observation_date,%s\n" % sid)
+                    for day, v in days:
+                        f.write("%s,%s\n" % (day, v))
+            sn.RAW, sn.ROWS[:] = d, []
+            sn.FRED.clear()
+            sn.FRED.update({sid: old[2][sid] for sid in series})
+            try:
+                sn.fred()
+                return {(r[1], r[3][:7]): (r[4], r[5]) for r in sn.ROWS}
+            finally:
+                sn.RAW, sn.ROWS[:] = old[0], old[1]
+                sn.FRED.clear()
+                sn.FRED.update(old[2])
+
+    @staticmethod
+    def weekdays(y, m, last):
+        import datetime
+        return [datetime.date(y, m, d).isoformat() for d in range(1, last + 1)
+                if datetime.date(y, m, d).weekday() < 5]
+
+    def test_partial_month_excluded(self):
+        days = self.weekdays(2026, 9, 30) + self.weekdays(2026, 10, 15)
+        got = self.run_fred({"VIXCLS": [(d, 20.0) for d in days]})
+        self.assertIn(("finance/vix", "2026-09"), got)
+        self.assertEqual(got[("finance/vix", "2026-09")][0], "2026-09-30", "complete: known at its end")
+        self.assertNotIn(("finance/vix", "2026-10"), got, "1-15 October is not October's mean")
+
+    def test_month_complete_on_its_last_weekday_kept(self):
+        days = self.weekdays(2026, 9, 30)
+        got = self.run_fred({"VIXCLS": [(d, 20.0) for d in days]})
+        self.assertIn(("finance/vix", "2026-09"), got)
+
+    def test_monthly_series_keeps_its_last_month(self):
+        got = self.run_fred({"CPIAUCSL": [("2026-08-01", 320.0), ("2026-09-01", 321.0)]})
+        self.assertEqual(got[("economy/cpi", "2026-09")][0], "2026-10-31", "a monthly value, a month late")
+
+
 class PwtReleaseTest(unittest.TestCase):
     """bnm-56c.23: a PWT year is known when the first release that covers it
     came out (resources/bnm/releases.tsv), not a fixed 24 months on; irr and

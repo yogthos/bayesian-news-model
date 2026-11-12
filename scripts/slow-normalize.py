@@ -73,6 +73,15 @@ def month_end(y, m):
     return "%04d-%02d-%02d" % (y, m, calendar.monthrange(y, m)[1])
 
 
+def last_weekday(ym):
+    """The month's last Monday to Friday, YYYY-MM-DD."""
+    y, m = int(ym[:4]), int(ym[5:7])
+    d = calendar.monthrange(y, m)[1]
+    while calendar.weekday(y, m, d) > 4:
+        d -= 1
+    return "%04d-%02d-%02d" % (y, m, d)
+
+
 def add_months(date, k):
     y, m = int(date[:4]), int(date[5:7])
     m0 = y * 12 + m - 1 + k
@@ -201,13 +210,22 @@ def fred():
         if not os.path.exists(path):
             continue
         by_month = defaultdict(list)
+        last_day = ""
         for r in csv.reader(open(path)):
             if len(r) < 2 or not re.match(r"\d{4}-\d{2}-\d{2}", r[0]):
                 continue
             v = num(r[1])
             if v is not None:
                 by_month[r[0][:7]].append(v)
+                last_day = max(last_day, r[0])
         freq = "m"
+        # a daily (or weekly) series downloaded part way through a month
+        # holds that month's first days only: its mean is not the month's,
+        # and the full month's would replace it, so it waits until the month
+        # is complete (bnm-56c.23; the October 2026 VIX was 1-15 October)
+        counts = sorted(len(vs) for vs in by_month.values())
+        if counts and counts[len(counts) // 2] > 2 and last_day < last_weekday(last_day[:7]):
+            del by_month[last_day[:7]]
         for ym, vs in by_month.items():
             emit(unit, name, freq, period_end("m", ym), 0 if len(vs) > 2 else 1, sum(vs) / len(vs))
         var(name, tr, freq, "FRED " + sid, desc)
