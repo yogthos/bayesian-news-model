@@ -1,5 +1,34 @@
 # Handover
 
+## State as of 2026-11-12 (branch `structure`)
+
+**The base of record is t52-world-norel** (note to amendment L1 of 12
+November, docs/PHASE-CHANGES.md): `bnm.world-run --out t52-world-norel
+--without-relations true --known r6-at-fx --leak-fixes true --pwt-stale
+true --set '{:learn-offsets :mixture}'`. That is t51b's command (the
+look-ahead fixes, bnm-56c.23; PWT at 36 months, bnm-h8d; learning at the
+offset mixture, bnm-56c.22) with its quarters pooled with r6-at-fx,
+r6-at-8ul's onsets run on the corrected series.tsv. To December 2025 t52
+is byte for byte t51b (r6-at-fx's named rows differ only at 2026
+quarters): year Brier against t50 -0.0013 [-0.0026, +0.0002], no fold
+lost; quarter-lead -0.0006, the honest score. The noise rule fails, from
+the base's weighting (sequencing).
+- The ledger (bnm.ledger) builds 2027-Q1 on t52 (`command`, `base`,
+  `base-files`, `base-inputs`, `inputs` with data/runs/r6-at-fx/preds.tsv).
+  Commands with a quoted argument (`--set '{...}'`) are now written and
+  read back as one argument (`command-line`, `manifest-args`). 2026-Q4
+  and 2026-Q4-r1 still reproduce byte for byte from their archives with
+  their own commands. No forecast was issued.
+- Not adopted: bnm-56c.26 (a node with nothing resolved issues 0.5). The
+  opt-in `--clim-prior kinds` (bnm.lattice `:clim-prior`) made food price
+  shocks run away (year p 0.98 at 2012, t52a-climprior) and lost three
+  folds; the base is unstable to its early states through the year-quarter
+  loop, bead bnm-56c.27 (related to bnm-56c.9). 56c.26 stays open behind it.
+- Runs: r6-at-fx (kinds run separately and spliced, see its README.txt),
+  t52-world-norel (built as t52b-noclim and renamed), t52a-climprior.
+
+The sections below are the 11 November handover, kept as written.
+
 ## State as of 2026-11-11 (branch `structure`)
 
 **The base of record is t50-world-norel** (note to amendment L1,

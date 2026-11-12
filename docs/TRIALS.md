@@ -47,6 +47,18 @@ leak-corrected data with `--leak-fixes true --pwt-stale true` and
 alone (fx-leak): -0.0001 year, -0.0008 quarter-lead. Fails the noise rule
 (-0.0008; the base's weighting fails it too). docs/PHASE-CHANGES.md.
 
+Corrected base, 12 November 2026 (bnm-56c.23, bnm-h8d, bnm-56c.22; not
+a trial and not counted): the base of record is t52-world-norel,
+t51b's command with `--known r6-at-fx` (r6-at-8ul's onsets run on the
+corrected series.tsv, the same as r6-at-8ul to December 2025). t52 is
+byte for byte t51b on 2003-2022, so its scores are t51b's above: the
+lower quarter-lead score is the honest one, not a loss of the fix. The
+noise-rule failure is the base's weighting, inherited. No verdict below
+is rerun; trials from now on bench against t52-world-norel
+(docs/PHASE-CHANGES.md, note to amendment L1 of 12 November). Tried and
+not adopted: `--clim-prior kinds` for bnm-56c.26 (t52a-climprior, three
+folds lost, bnm-56c.27).
+
 | # | configuration | first scored | note |
 |---|---|---|---|
 | 1 | mix | 2026-10 | event-code mix |
