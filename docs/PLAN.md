@@ -160,6 +160,21 @@ trigger terms multiply it.
    The diagnosis is written down with numbers before the next step starts,
    and the acceptance rules are never loosened to make a step pass.
 
+   A worse score is a question, not an answer (added 12 November 2026 on
+   the user's direction). Whenever a change scores worse, find the root
+   cause before judging the change: trace the loss to the origins, nodes,
+   model weights and terms that carry it, and reproduce it in isolation.
+   So far every loss traced this way was a bug in the code or a dependency
+   on a later step, never an unsound change: the self-loop, scoring at
+   learn time, the leaks (PWT, Maddison, COW, UIS, FAOSTAT), the
+   climatology double count (bnm-56c.27), the gate's missing-key crash,
+   the food onset dating, the standardizer's 1870 window and its row gate
+   (bnm-56c.31 to .34), and the weight lock behind the market-crash swings
+   (LOOP-AUDIT 6 and 7). Rejecting those changes on their scores would have
+   kept the bugs and left a worse model. "Approach wrong" is a verdict
+   that has to be shown with evidence, as for VIX at market crashes, not
+   the default reading of a loss.
+
 ## 4. Phases
 
 Estimates are agent working days, one or two agents at a time.
