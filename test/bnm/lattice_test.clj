@@ -1320,3 +1320,50 @@
     (is (not= (after a0) (after b0)))
     (is (= (after a0) (after (pre-information-world (fn [_ _] 0.0) {:flow-std-from :all}))) ":all is the default")
     (is (thrown? clojure.lang.ExceptionInfo (pre-information-world (fn [_ _] 0.0) {:flow-std-from :first})) "an unknown value is refused")))
+
+(def ^:private many-places (mapv #(str "C" %) (range 20)))
+
+(defn- many-place-world
+  "Twenty places, one flow input (a relation) with a signal throughout;
+  outcomes from month 120, the first resolved at 155; `extra` merged in."
+  [extra]
+  (let [g (m/rng 7)
+        sig (into {} (for [c many-places t (range 400)] [[c t] (m/normal! g)]))
+        ys (into {} (for [c many-places t (range 400)] [[c t] (< (m/next-double! g) (m/expit (- (sig [c t]) 1.5)))]))]
+    (lt/run (merge
+             {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
+              :levels [[:country many-places]]
+              :parent {} :start 0 :end 359 :forget 0.995
+              :target (fn [_ place t] (when (>= t 120) {:y (ys [place (+ t 12)]) :known-at (+ t 24)}))
+              :gauges (fn [_ _ _] [])
+              :gauge-width {:year 0}
+              :relations (fn [_ place t] {:x [(sig [place t])] :reads []})
+              :relation-width {:year 1}
+              :trace :inputs
+              :flow-std-from :resolved}
+             extra))))
+
+(defn- live-origins
+  "The origins at which any place's flow reads other than 0."
+  [r]
+  (->> (:trace r)
+       (filter #(not= 0.0 (double (peek (:x %)))))
+       (map :origin) distinct sort vec))
+
+(deftest bnm-56c-34-flow-scale-from-origins-not-rows
+  ;; the standardizer's gate counted rows: a node of twenty places passed
+  ;; ten on its first informed origin, so its flows were scaled by one
+  ;; moment's spread across places (with 165 countries, a quarter of food's
+  ;; flows at the cap of 5 there). With :flow-std-min-origins 10 the flows
+  ;; read 0 until ten origins have been observed
+  (testing "the row gate (the default): live from the second informed origin"
+    (is (= 167 (first (live-origins (many-place-world {}))))))
+  (testing ":flow-std-min-origins 10: live from the eleventh"
+    (let [live (live-origins (many-place-world {:flow-std-min-origins 10}))]
+      (is (= (+ 155 (* 12 10)) (first live)) live)
+      (is (= (vec (range 275 360 12)) live) "and every origin after")))
+  (testing "it changes nothing before the gate opens in the forecasts' inputs, and the default is the row gate"
+    (is (= (:forecasts (many-place-world {})) (:forecasts (many-place-world {:flow-std-min-origins nil})))))
+  (testing "a value that is not a positive integer is refused"
+    (is (thrown? clojure.lang.ExceptionInfo (many-place-world {:flow-std-min-origins 0})))
+    (is (thrown? clojure.lang.ExceptionInfo (many-place-world {:flow-std-min-origins :ten})))))

@@ -658,6 +658,11 @@
    first real moves read near the cap); the default, :all, every origin
    since the start, is the standardizer before the fix, kept only so the
    registered ledger issues, which ran on it, reproduce,
+   :flow-std-min-origins n, the flows read 0 until the standardizer has
+   seen n origins (bnm-56c.34): its own gate counts rows, so a node of 165
+   countries passed it on one origin and its flows were scaled by one
+   moment's spread across places; without it, that row gate (the
+   registered issues'),
    :clim-learn :current, a row issued at climatology learned at the
    climatology current when it is learned (bnm-56c.27): otherwise the
    intercept learns the outcomes against the offset they were issued at,
@@ -800,6 +805,9 @@
                            (throw (ex-info "bnm.lattice: :clim-learn takes :current" {:clim-learn (:clim-learn spec)})))
                        _ (when-not (#{:all :resolved} (:flow-std-from spec :all))
                            (throw (ex-info "bnm.lattice: :flow-std-from takes :all or :resolved" {:flow-std-from (:flow-std-from spec)})))
+                       min-origins (:flow-std-min-origins spec)
+                       _ (when-not (or (nil? min-origins) (and (integer? min-origins) (pos? min-origins)))
+                           (throw (ex-info "bnm.lattice: :flow-std-min-origins takes a positive integer" {:flow-std-min-origins min-origins})))
                        ;; the offset, and whether it is climatology (:clim, its log odds):
                        ;; with an :offset that has nothing to say, the rate among the
                        ;; node's resolved outcomes (or the prior's, before any)
@@ -871,7 +879,12 @@
                                              os (if-let [x (:x wo)] (mapv (fn [[w o]] [w (+ o (double x))]) os) os)
                                              {:keys [x reads stated tension strain resolved]} (inputs spec st scale scale-spec level-ix place t g {:pool pool})
                                              raw-flows (subvec x (inc g-width))
-                                             x (into (subvec x 0 (inc g-width)) (standardize flow-std raw-flows))]]
+                                             ;; bnm-56c.34, :flow-std-min-origins n: 0 until the
+                                             ;; standardizer has seen n origins, not just ten rows
+                                             x (into (subvec x 0 (inc g-width))
+                                                     (if (and min-origins (< (long (:origins flow-std 0)) (long min-origins)))
+                                                       (mapv (constantly 0.0) raw-flows)
+                                                       (standardize flow-std raw-flows)))]]
                                    {:place place :x x :raw-flows raw-flows :os os :down down :clim clim
                                     :reads (cond-> (into reads (:reads wo)) read (conj read))
                                     :stated stated :tension tension :strain strain :resolved resolved}))
@@ -940,7 +953,10 @@
                        ;; flows read 0. The default, :all, counts every origin (the
                        ;; registered issues' code)
                        st (if (or (not= :resolved (:flow-std-from spec)) (flows-informed? st k))
-                            (assoc-in st [:flow-std k] (reduce (fn [sd {:keys [raw-flows]}] (observe sd raw-flows)) flow-std made))
+                            (assoc-in st [:flow-std k] (cond-> (reduce (fn [sd {:keys [raw-flows]}] (observe sd raw-flows)) flow-std made)
+                                                         ;; counted only under the option, so the state
+                                                         ;; without it is the registered issues'
+                                                         (and min-origins (seq made)) (assoc :origins (inc (long (:origins flow-std 0))))))
                             st)
                        st (-> st
                               (assoc-in [:models k] model)
