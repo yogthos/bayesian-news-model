@@ -22,7 +22,8 @@
   t), and a gauge whose history is a linear function of earlier ones (a
   collinear duplicate) is dropped before the fit, so it cannot change the
   term."
-  (:require [augur.dynamic :as d]))
+  (:require [augur.dynamic :as d]
+            [augur.ftest :as ft]))
 
 (defn independent-columns
   "The indices of `cols` (each a vector over the same rows, no nils) that
@@ -98,9 +99,10 @@
   :n-online :pass}. `gauge` (fn [t]) -> the gauge known at t or nil,
   `window-mean` (fn [t]) -> its mean over the window (or nil), `rate` (fn
   [t]) -> {:rate :known-at} or nil, over `origins`. Each origin's online
-  error is the fit on the rows known by it; passes when the online error is
-  at most `ratio` (0.9) of climatology's over at least `min-online` (1)
-  online errors."
+  error is the fit on the rows known by it, :errors the pairs [fit's
+  climatology's] in origin order; passes when the online error is at most
+  `ratio` (0.9) of climatology's over at least `min-online` (1) online
+  errors (a hindsight diagnostic; the gate is `gate`)."
   [{:keys [gauge window-mean rate origins ratio min-online] :or {ratio 0.9 min-online 1}}]
   (let [rows (vec (for [t origins :let [g (gauge t) r (rate t)] :when (and g r)]
                     {:t t :g (double g) :r (double (:rate r)) :known-at (:known-at r)
@@ -114,30 +116,59 @@
         mse (fn [k] (when (seq online) (/ (reduce + (map k online)) (count online))))
         cw (filter :w rows)]
     {:n (count rows)
+     :errors online
      :n-online (count online)
      :lead (corr (map :g rows) (map :r rows))
      :concurrent (corr (map :w cw) (map :r cw))
      :online (mse first) :clim (mse second)
      :pass (boolean (and (>= (count online) (max 1 min-online)) (<= (mse first) (* ratio (mse second)))))}))
 
+(def default-gate
+  "The gate's test (bnm-56c.29, registered before any score): familywise
+  `alpha` 0.10 per origin over the `family` of 26 cells (13 kinds x the year
+  and the half-decade), Bonferroni across cells and Holm over a cell's
+  gauges; `h` and `lags`, the horizon in origins and the Newey-West lags,
+  are the scale's (bnm.world-gauges sets them: year 2, half-decade 1)."
+  {:alpha 0.10 :family 26 :h 1 :lags 1})
+
 (defn gate
-  "The lead test as of origin t, with nothing that was not known by then:
-  gauge j over `origins` up to t, each origin's outcome only if known by t.
-  {:pass ...} as `lead-test`."
-  [{:keys [gauges outcome origins]} {:keys [ratio min-online] :or {ratio 0.9 min-online 5}} t j]
-  (lead-test {:gauge (fn [s] (nth (gauges s) j))
-              :rate (fn [s] (when-let [o (outcome s)]
-                              (when (<= (:known-at o) t) {:rate (:share o) :known-at (:known-at o)})))
-              :origins (filter #(<= % t) origins)
-              :ratio ratio :min-online min-online}))
+  "The lead test as of origin t, with nothing that was not known by then
+  (bnm-56c.29): gauge j over `origins` up to t, each origin's outcome only
+  if known by t. Each origin s with a known outcome and three rows known by
+  s gives an online error pair, the fit's and climatology's (`lead-test`);
+  their difference is tested one-sided, Diebold-Mariano with Newey-West
+  variance (`lags`) and Harvey-Leybourne-Newbold's correction (`h`), t(n -
+  1) (augur.ftest/diebold-mariano-hln). {:p :stat :n-online :online :clim
+  :pass}, :pass as a cell with this gauge alone (p <= alpha / family).
+  Keys missing from the gate's options are `default-gate`'s."
+  [{:keys [gauges outcome origins]} gate-opts t j]
+  (let [{:keys [alpha family h lags]} (merge default-gate gate-opts)
+        {:keys [errors online clim]}
+        (lead-test {:gauge (fn [s] (nth (gauges s) j))
+                    :rate (fn [s] (when-let [o (outcome s)]
+                                    (when (<= (:known-at o) t) {:rate (:share o) :known-at (:known-at o)})))
+                    :origins (filter #(<= % t) origins)})
+        {:keys [p stat]} (ft/diebold-mariano-hln (map first errors) (map second errors) {:h h :lags lags})]
+    {:p p :stat stat :n-online (count errors) :online online :clim clim
+     :pass (<= p (/ alpha family))}))
+
+(defn passing
+  "The indices of the gauges offered at t that the gate admits: each
+  gauge's `gate` p-value, Holm over the cell's gauges at alpha / family
+  (a fixed family, whichever kinds a run holds)."
+  [{:keys [gauges] :as opts} gate-opts t]
+  (let [{:keys [alpha family]} (merge default-gate gate-opts)
+        k (count (gauges t))
+        ps (mapv #(:p (gate opts gate-opts t %)) (range k))]
+    (vec (keep-indexed (fn [j ok] (when ok j)) (ft/holm ps (/ alpha family))))))
 
 (defn term-at
   "The world term at origin t: {:x the gauges' part of the world's log
   odds, :kept the gauges kept, :n the origins learned from}. `gauges` (fn
   [s]) -> [values] known at origin s (nil unknown), `outcome` (fn [s]) ->
   {:share :n :known-at} or nil (n the places scored), `origins` the node's
-  origins (ascending). With `gate` ({:ratio :min-online}, bnm-56c.28) a
-  gauge is kept only if it passes `gate` at t: the lead test on what is
+  origins (ascending). With `gate` (`default-gate`'s keys, bnm-56c.29) a
+  gauge is kept only if `passing` admits it at t: the lead test on what is
   known at t, re-decided at each origin."
   [{:keys [gauges outcome origins var] gate-opts :gate :as opts} t]
   (let [past (vec (filter #(<= % t) origins))
@@ -153,7 +184,8 @@
                            (when (> sd 1e-12) [mu sd]))))))
         ;; the gauges kept: with a spread, and not a linear function of
         ;; earlier ones over the origins where all are known
-        usable (filterv #(and (nth stats %) (or (nil? gate-opts) (:pass (gate opts gate-opts t %)))) (range k))
+        admitted (if gate-opts (set (passing opts gate-opts t)) (constantly true))
+        usable (filterv #(and (nth stats %) (admitted %)) (range k))
         full (filterv #(every? some? (map (fn [j] (nth % j)) usable)) hist)
         kept (if (seq full)
                (mapv usable (independent-columns (mapv (fn [j] (mapv #(nth % j) full)) usable)))

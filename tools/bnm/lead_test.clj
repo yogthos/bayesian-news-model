@@ -23,9 +23,11 @@
 
   prints a table for the world gauges of bnm.world-state at every kind
   named (all thirteen without): the test in hindsight over [from, to], and
-  the gate as bnm.world-gauges/with-world-once applies it (bnm-56c.28): at
-  each origin in [from, to] on the origins from 1950 whose rates were known
-  by then, how many it passes, the first, and the last."
+  the gate as bnm.world-gauges/with-world-once applies it at the year
+  (bnm-56c.29: the one-sided Diebold-Mariano test of the online loss
+  difference at 0.10/26, this gauge alone in its cell): at each origin in
+  [from, to] on the origins from 1950 whose rates were known by then, how
+  many it passes, the first, and the last."
   (:require [bnm.kinds :as kinds]
             [bnm.lattice-political :as lp]
             [bnm.lattice-banking :as lb]
@@ -76,12 +78,12 @@
                                                      (when (seq vs) (/ (reduce + vs) (count vs)))))
                               :rate rate :origins origins})
                   f (fn [x] (if x (format "%.3f" (double x)) "-"))
-                  ;; the gate as the term applies it (bnm.world-term/gate, bnm-56c.28):
+                  ;; the gate as the term applies it at the year (bnm.world-term/gate, bnm-56c.29):
                   ;; re-decided at each origin on what is known then, from 1950
                   gate-at (fn [t] (:pass (wt/gate {:gauges (fn [s] [(get (gauge-at s) g)])
                                                    :outcome (fn [s] (when-let [{r :rate ka :known-at} (rate s)] {:share r :known-at ka}))
                                                    :origins (for [y (range 1950 (inc to))] (+ 11 (* 12 y)))}
-                                                  wg/default-gate t 0)))
+                                                  (wg/scale-gate wg/default-gate {:per 12 :horizon 24}) t 0)))
                   passed (filter gate-at origins)]]
       (println (str/join "\t" [k (name g) n (f lead) (f concurrent) (f online) (f clim) pass
                                (str (count passed) "/" (count origins))

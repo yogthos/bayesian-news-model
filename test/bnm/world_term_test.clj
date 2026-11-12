@@ -114,23 +114,29 @@
 ;; kind's term only at origins where it has passed bnm.lead-test on the
 ;; origins whose outcomes are known by then, so the gate never looks ahead
 ;; and a gauge that carries nothing (the harness's noise) is dropped by the
-;; same evidence that admits food momentum
+;; same evidence that admits food momentum. Since bnm-56c.29 the test is
+;; statistical: on these twelve countries' 25 online errors the registered
+;; family (0.10 over 26 cells) admits neither gauge; one cell's test at 0.10
+;; (family 1) admits momentum at about half the late origins, and is used
+;; here for the term's mechanics
 (deftest test-gate-a-gauge-enters-the-term-only-once-it-leads
   (let [w (world 31)
-        gate {:ratio 0.9 :min-online 5}
+        gate (assoc wt/default-gate :h 1 :lags 1 :family 1)
         cols (fn [t] [((:mom w) t) ((:noise w) t)])
         both (wt/term-fn {:gauges cols :outcome (outcome w) :origins origins :gate gate})
+        registered (wt/term-fn {:gauges cols :outcome (outcome w) :origins origins :gate (assoc wt/default-gate :h 1 :lags 1)})
         alone (wt/term-fn {:gauges (fn [t] [((:mom w) t)]) :outcome (outcome w) :origins origins :gate gate})
         ungated (wt/term-fn {:gauges cols :outcome (outcome w) :origins origins})
         late (filter #(> % 240) origins)
-        share (fn [j] (/ (count (filter #(some #{j} (:kept (both %))) late)) (double (count late))))]
-    (testing "the planted momentum passes at the late origins, the noise at almost none"
-      (is (> (share 0) 0.9) (share 0))
-      (is (< (share 1) 0.1) (share 1)))
+        share (fn [f j] (/ (count (filter #(some #{j} (:kept (f %))) late)) (double (count late))))]
+    (testing "under the registered family nothing is admitted on 25 errors"
+      (is (= 0.0 (share registered 0) (share registered 1))))
+    (testing "one cell's test admits the planted momentum at the late origins"
+      (is (> (share both 0) 0.5) (share both 0)))
     (testing "where the noise fails it changes nothing: it is dropped, not shrunk"
       (doseq [t late :when (= [0] (:kept (both t)))]
         (is (= (:x (alone t)) (:x (both t))))))
-    (testing "before five online errors are known nothing passes and the term is 0"
+    (testing "on three online errors nothing passes and the term is 0"
       ;; at 107 six origins are known (11..71), so three online errors
       (is (= [] (:kept (both 107))))
       (is (= 0.0 (:x (both 107))))
@@ -140,3 +146,120 @@
             o (outcome w)
             flipped (fn [s] (let [r (o s)] (if (and r (> (:known-at r) t)) (assoc r :share (- 1.0 (:share r))) r)))]
         (is (= (both t) (wt/term-at {:gauges cols :outcome flipped :origins origins :gate gate} t)))))))
+;; bnm-56c.29: the gate as a statistical test. The paired loss difference
+;; (climatology's squared error less the fit's, each origin's fit on the rows
+;; known by it) over the online errors known at t: one-sided Diebold-Mariano
+;; with Newey-West variance and HLN's small-sample correction, t(n - 1), at
+;; familywise 0.10 per origin, alpha/26 per kind and scale, Holm over a
+;; cell's gauges. The old rule (online error at most 0.9 of climatology's on
+;; five) is `old-pass` below, for contrast.
+
+(defn- ar1 [g n phi sd]
+  (vec (reductions (fn [x _] (+ (* phi x) (* sd (Math/sqrt (- 1.0 (* phi phi))) (m/normal! g))))
+                   (* sd (m/normal! g)) (range (dec n)))))
+
+(def ^:private g-origins (vec (range 11 (* 12 60) 12)))
+
+(defn- gate-world
+  "Sixty yearly origins; the year share over (t, t + 24] known 42 months
+  later, persistent (AR 0.6) apart from what the gauges lead. :noise, two
+  persistent gauges (AR 0.8) that carry nothing; :planted, a gauge leading
+  the share; :burst, a gauge known from origin 30 that leads the share for
+  `burst` origins and nothing after."
+  [seed kind {:keys [burst] :or {burst 12}}]
+  (let [g (m/rng seed)
+        n (count g-origins)
+        e (ar1 g n 0.6 0.5)
+        a (ar1 g n 0.8 1.0) b (ar1 g n 0.8 1.0)
+        lead (ar1 g n 0.5 1.0)
+        gauge (mapv #(+ %1 (* 0.3 (m/normal! g))) lead)
+        idx (fn [t] (quot t 12))
+        latent (fn [i] (+ -1.5 (nth e i)
+                          (case kind
+                            :planted (* 0.8 (nth lead i))
+                            :burst (if (<= 30 i (+ 29 burst)) (* 0.8 (nth lead i)) 0.0)
+                            0.0)))]
+    {:origins g-origins
+     :outcome (fn [t] (let [i (idx t)] (when (< i (- n 2)) {:share (m/expit (latent i)) :n 150 :known-at (+ t 42)})))
+     :gauges (fn [t] (let [i (idx t)]
+                       (case kind
+                         :noise [(nth a i) (nth b i)]
+                         :planted [(nth gauge i)]
+                         :burst [(when (>= i 30) (nth gauge i))])))}))
+
+(def ^:private year-gate (assoc wt/default-gate :h 2 :lags 2))
+
+(defn- old-pass
+  "bnm-56c.28's gate: the lead test on what is known at t, passed at 0.9 of
+  climatology's online error on at least five online errors."
+  [{:keys [gauges outcome origins]} t j]
+  (:pass (wt/lead-test {:gauge (fn [s] (nth (gauges s) j))
+                        :rate (fn [s] (when-let [o (outcome s)] (when (<= (:known-at o) t) {:rate (:share o) :known-at (:known-at o)})))
+                        :origins (filter #(<= % t) origins) :ratio 0.9 :min-online 5})))
+
+(deftest test-gate-noise-is-admitted-at-most-at-the-level
+  ;; 26 cells (13 kinds x 2 scales), each with two noise gauges on a
+  ;; persistent share, over 40 draws: any admission in an origin's family
+  ;; at most 10% of the time, at origins late enough for 40-odd errors
+  (let [ts (map #(nth g-origins %) [40 48 56])
+        fam (for [seed (range 40) t ts]
+              (some #(seq (wt/passing (gate-world (+ 1000 (* 26 seed) %) :noise {}) year-gate t)) (range 26)))
+        rate (/ (count (filter identity fam)) (double (count fam)))]
+    (is (<= rate 0.10) rate)))
+
+(deftest test-gate-a-planted-lead-is-admitted
+  ;; the lead explains about 70% of the share's log-odds spread, as the
+  ;; harness's planted column does. Alone in a cell at 0.10 it is admitted
+  ;; almost always; under the family's 0.10/26 about half the time on 40-odd
+  ;; errors, more as errors accrue (measured: 0.33, 0.40, 0.48 at origins
+  ;; 44, 50, 56)
+  (let [rate (fn [gate i] (/ (count (filter true? (for [seed (range 2000 2040)]
+                                                     (= [0] (wt/passing (gate-world seed :planted {}) gate (nth g-origins i))))))
+                             40.0))]
+    (is (>= (rate (assoc year-gate :family 1) 50) 0.8) (rate (assoc year-gate :family 1) 50))
+    (is (>= (rate year-gate 56) 0.35) (rate year-gate 56))
+    (is (< (rate year-gate 44) (rate year-gate 56)) "power grows with the errors known")))
+
+(deftest test-gate-a-short-burst-of-lead-is-not-admitted
+  ;; food12 at market crashes: a gauge known from the 1990s whose first
+  ;; rows lead, admitted in 2005-08 by five online errors at 0.9 of
+  ;; climatology's. Just after the burst is known, and later
+  (let [seeds (range 40)
+        at (fn [i f] (/ (count (filter true? (for [s seeds] (boolean (f (gate-world (+ 3000 s) :burst {}) (nth g-origins i))))))
+                        (double (count seeds))))
+        new (fn [w t] (seq (wt/passing w year-gate t)))
+        old (fn [w t] (old-pass w t 0))]
+    (testing "the old rule lets it through on the burst's few errors"
+      (is (>= (at 46 old) 0.3) (at 46 old)))
+    (doseq [i [42 44 46 50 56]]
+      (is (<= (at i new) 0.05) [i (at i new) (at i old)]))))
+
+(deftest test-gate-reads-nothing-not-visible-at-t
+  (let [w (gate-world 4001 :planted {})
+        t (nth g-origins 50)
+        o (:outcome w) gs (:gauges w)
+        hidden (assoc w
+                      :outcome (fn [s] (let [r (o s)] (if (and r (> (:known-at r) t)) (assoc r :share 0.99) r)))
+                      :gauges (fn [s] (if (> s t) [1e6] (gs s))))]
+    (is (= (wt/gate w year-gate t 0) (wt/gate hidden year-gate t 0)))
+    (is (= (wt/passing w year-gate t) (wt/passing hidden year-gate t)))
+    (testing "a row known exactly at t is read; one known a month later is not"
+      (let [s (nth g-origins 45)
+            at-t (fn [ka] (assoc w :outcome (fn [u] (let [r (o u)] (if (= u s) (assoc r :known-at ka :share 0.99) r)))))]
+        (is (not= (:n-online (wt/gate w year-gate t 0)) nil))
+        (is (= (:n-online (wt/gate (at-t t) year-gate t 0)) (inc (:n-online (wt/gate (at-t (inc t)) year-gate t 0)))))))))
+
+(deftest test-gate-with-nothing-to-test-admits-nothing
+  ;; a kind with no resolved outcome, a gauge never known, a share that
+  ;; never moves, or gate options short of keys (bnm-56c.28's map): no error
+  (let [w {:origins (vec (range 11 720 12))
+           :outcome (fn [t] (when (< t 600) {:share 0.3 :n 10 :known-at (+ t 42)}))
+           :gauges (fn [t] [(Math/sin t) nil])}]
+    (is (= [] (wt/passing (assoc w :outcome (constantly nil)) year-gate 500)))
+    (is (= [] (wt/passing (assoc w :gauges (fn [_] [nil nil])) year-gate 500)))
+    (is (= [] (wt/passing w year-gate 500)))
+    (is (= 1.0 (:p (wt/gate w year-gate 500 1))))
+    (is (= 0 (:n-online (wt/gate w year-gate 11 0))))
+    (doseq [g [{} {:ratio 0.9 :min-online 5} (dissoc year-gate :h :lags)]]
+      (is (= [] (wt/passing w g 500)) g))
+    (is (= [] (:kept (wt/term-at (assoc w :gate {:ratio 0.9 :min-online 5}) 500))))))

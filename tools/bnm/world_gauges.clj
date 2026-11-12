@@ -145,9 +145,21 @@
   [:food12-x-food :brent12-x-energy])
 
 (def default-gate
-  "The lead test's gate on the world term (bnm-56c.28): online error at most
-  0.9 of climatology's (bnm.lead-test), over at least five online errors."
-  {:ratio 0.9 :min-online 5})
+  "The lead test's gate on the world term (bnm-56c.29, replacing
+  bnm-56c.28's five online errors at 0.9 of climatology's): the paired
+  online loss difference tested one-sided at familywise 0.10 per origin
+  across 13 kinds x 2 scales and the cell's gauges (bnm.world-term/gate,
+  `passing`), each scale's horizon and lags set by `scale-gate`."
+  wtm/default-gate)
+
+(defn scale-gate
+  "`gate` at a scale {:per :horizon}: h, the horizon in origins (ceil of
+  horizon over per; the year's 24 months at yearly origins overlap one
+  origin), and that many Newey-West lags. nil stays nil (no gate)."
+  [gate {:keys [per horizon]}]
+  (when gate
+    (let [h (max 1 (long (Math/ceil (/ (double (or horizon per)) per))))]
+      (assoc gate :h h :lags h))))
 
 (defn- once-read
   "{:g {:food12 :brent12} :reads}: the two world gauges kept (fix 3) at
@@ -170,10 +182,10 @@
   countries their mean exposure). opts :extra, the harness's column (fn
   [t]), enters the term as a third world gauge.
 
-  opts :gate (default {:ratio 0.9 :min-online 5}; nil for none, step 2's
-  rescore at 822fea8): the lead test per kind and scale (bnm-56c.28). A
-  gauge is read at origin t only if bnm.lead-test passes it at t on the
-  origins whose outcomes are known by t (bnm.world-term/gate, re-decided at
+  opts :gate (default `default-gate`; nil for none, step 2's rescore at
+  822fea8): the lead test per kind and scale (bnm-56c.28, a statistical test
+  since bnm-56c.29). A gauge is read at origin t only if the test admits it
+  at t on the origins whose outcomes are known by t (bnm.world-term/passing, re-decided at
   every origin, so it never looks ahead): a gauge that fails is in neither
   the term nor the product column (nil, unknown). The harness's column
   passes the same test as food and Brent. The offset's :passed names the
@@ -199,9 +211,9 @@
                           (cond-> [food12 brent12] extra (conj (extra t)))))
          gate (if (contains? opts :gate) (:gate opts) default-gate)
          gauge-names (cond-> [:food12 :brent12] extra (conj :extra))
-         term (into {} (for [{:keys [name per]} scales]
+         term (into {} (for [{:keys [name per] :as scale} scales]
                          [name (wtm/term-fn
-                                {:gauges gauges :gate gate
+                                {:gauges gauges :gate (scale-gate gate scale)
                                  :origins (vec (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end))))
                                  :outcome (memoize (fn [t] (let [ys (filter (comp some? :y) (keep #((:target sp) name % t) leaves))]
                                                     (when (seq ys)
