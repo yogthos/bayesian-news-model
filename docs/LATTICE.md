@@ -129,6 +129,21 @@ lattice's outputs and reads exactly, in full and with groups dropped.
   scores each row by the predictive each model issued for it, kept on the
   pending row as `:lp`, not by its state three or four years later. The
   node's read of its own state is recorded (`:self`). All opt-in.
+- **The world state** (recursive step 2, bead bnm-56c.19): with
+  `:world-gauges` (and `:world-width {scale n}`) a node reads the world's
+  state as known at t as one more group, `:world-gauges`, in the
+  all-inputs model, so a reference state carries it. bnm.world-gauges
+  enters it at the year and half-decade: world food prices over 12 and 24
+  months, Brent, the VIX, world credit, the US policy rate and the dollar
+  (bnm.world-state, every read refused if published after t), and their
+  moves times the place's exposure (food imports, net fuel imports,
+  openness). With `:downscale-learn {:var v}` a quarter's pool weight on
+  the year's offset is learned: the offset less what is known enters as a
+  core input. With `:learn-offsets :mixture` a quarter row issued over the
+  year's offset mixture is learned at each offset, weighted (bnm-56c.22).
+  `bnm.world-run --pwt-stale true` reads the Penn World Table at 36 months
+  (bnm-h8d) and `--catalogue-through true` leaves a catalogue's tail past
+  its :through unknown (loop audit Test 7). All opt-in.
 - **Pooling**: sibling nodes (the countries of a subregion at one scale)
   share a prior on their slopes, centred on their parent's; slopes, not
   levels, since trials 31-33 found that levels learned from a country's
