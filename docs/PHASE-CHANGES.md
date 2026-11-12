@@ -3846,6 +3846,56 @@ The next issue (2027-Q1) runs this command (bnm.ledger/command, with
 - *Reproduction.* With this code 2026-Q4 and 2026-Q4-r1 each come back
   byte for byte from their archived inputs with their own commands.
 
+**Second note to amendment L1, 12 November 2026** (beads bnm-56c.31,
+bnm-56c.32, bnm-56c.33; decided by the user the same day; written before
+any issue is made on it, L1 itself unchanged). The base of record is
+**t53-noclim**, not t52-world-norel: t52's command with `--known
+r7-at-fx` and bnm-56c.33's fix, `bnm.world-run --out t53-noclim
+--without-relations true --known r7-at-fx --leak-fixes true --pwt-stale
+true --set '{:learn-offsets :mixture :flow-std-from :resolved}'`, on the
+regenerated data/slow/series.tsv and data/derived/econ-events.csv.
+Wherever L1 or the earlier notes name t52 (or t50) as the base, read t53;
+the size check stays as recorded on t49. The next issue (2027-Q1) runs
+this command (bnm.ledger/command, with `--end`).
+
+- *What changed.* (1) FAOSTAT's consumer prices (food CPI, food
+  inflation, general CPI) read at their publication lag, nine months, not
+  three (bnm-56c.31, 1f3e2e9; series.tsv regenerated). (2) Quarterly food
+  price shock onsets dated at the quarter's last month, whose value shows
+  them, not its first (bnm-56c.32, 36dbe67; econ-events.csv regenerated,
+  every food onset two months later, other kinds unchanged). (3) A node's
+  flows standardized from its first resolved outcome, not over its
+  uninformed era since 1870 (bnm-56c.33, 6cf9674). (4) The onsets run the
+  quarters pool with is r7-at-fx, r6-at-fx's command on the new
+  series.tsv (same rows and outcomes; named-family mean |dp| about 0.001).
+- *An option, not the default.* 6cf9674 made (3) the lattice's only code
+  path, so this code no longer gave 2026-Q4-r1 on its archive and
+  bnm.ledger would have refused the next issue. Registered issues are not
+  edited and the ledger's rule stands, so (3) is now the lattice option
+  `:flow-std-from :resolved`, set by the base's command; the default,
+  `:all`, is the standardizer before the fix, kept only so the registered
+  issues reproduce. The golden snapshot tracks the default (restored to
+  its content before 6cf9674).
+- *Why.* Correctness: (1) and (2) remove reads of data before they were
+  published or shown; (3) stops uninformed states being counted as data.
+  None was chosen for its score.
+- *The honest score.* t53-noclim against t52 (year nodes, 2003-2022,
+  thirteen kinds weighed equally, Brier, + = t53 better): 2003-06
+  -0.0020, 2007-09 -0.0110, 2010-12 +0.0025, 2013-19 +0.0006, 2020-22
+  -0.0007, pooled -0.0009 [-0.0036, +0.0018], no fold lost; quarter-lead
+  -0.0001. The FAOSTAT lag alone (t52-fx31) is -0.0009 pooled; (2) and (3)
+  together -0.0001. Market crashes carry 2007-09 (-0.127): one origin,
+  December 2007, where the old run's inflated level happened to stand
+  before the crash (docs/LOOP-AUDIT.md 6; sequencing, step 5). Logs data/runs/logs/score-t53-noclim-vs-t52-world-norel.txt.
+- *Not in.* `:clim-learn :current` (bnm-56c.27, t53) was scored beside it
+  (+0.0003 pooled against t53-noclim, 2010-12 lost) and is not adopted.
+- *Reproduction.* bnm.ledger/command rerun to a fresh directory
+  (t53-noclim-repro) gives t53-noclim's forecasts.tsv byte for byte for
+  every kind, reading exactly `inputs`, at the hashes in `base-inputs`.
+  With this code 2026-Q4-r1 comes back byte for byte from its archive
+  with its own command (no option), as does t48's market crash and food
+  price shock (links-test).
+
 ## Registered, 11 November 2026: one pooled hazard over the buffer invariants, and the scanner (bead bnm-56c.6, PLAN 1.5-1.7)
 
 Written and committed before any model is fitted to break labels. The

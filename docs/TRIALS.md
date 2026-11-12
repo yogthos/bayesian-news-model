@@ -59,6 +59,14 @@ is rerun; trials from now on bench against t52-world-norel
 not adopted: `--clim-prior kinds` for bnm-56c.26 (t52a-climprior, three
 folds lost, bnm-56c.27).
 
+Corrected base, 12 November 2026, later (bnm-56c.31, .32, .33; not a
+trial and not counted): the base of record is t53-noclim, t52's command
+with `--known r7-at-fx` and `:flow-std-from :resolved` on the regenerated
+series.tsv and econ-events.csv. Against t52: year Brier -0.0009 [-0.0036
++0.0018] pooled, no fold lost; quarter-lead -0.0001. Trials from now on
+bench against t53-noclim (docs/PHASE-CHANGES.md, second note to amendment
+L1). Not adopted: `:clim-learn :current` (t53, bnm-56c.27).
+
 | # | configuration | first scored | note |
 |---|---|---|---|
 | 1 | mix | 2026-10 | event-code mix |

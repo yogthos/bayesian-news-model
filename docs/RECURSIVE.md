@@ -298,6 +298,8 @@ Every step uses the following protocol:
 
 The base stays t48 until a step is adopted.
 
+**Base of record (12 November 2026): t53-noclim** (second note to amendment L1, docs/PHASE-CHANGES.md): t52's command with `--known r7-at-fx` and `:flow-std-from :resolved` on the data of bnm-56c.31 and .32. Steps bench against it. Against t52 pooled −0.0009 [−0.0036, +0.0018], no fold lost; market crashes 2007–09 −0.127, one origin, a level shift (docs/LOOP-AUDIT.md 6).
+
 **Step 0: Round 1, under way. What it must respect now:**
 - `:state-from` has the signature `(fn [{:keys [scale level place t models x o]}] -> {:s double ...})`. It is pure in inputs and model states and independent of the weights. The default reference is the `all` model's predictive. Return a map so that `:z` and `:regime` can be added in steps 4 and 6 without changing the shape.
 - The book entry becomes an open map: the state and the issued p are kept apart, even if `:p` is still stored for now. The errors fed back (`:feedback`) use the reference `p`, not the combined one.

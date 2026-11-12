@@ -1,5 +1,24 @@
 # Handover
 
+## State as of 2026-11-12, later (branch `structure`)
+
+**The base of record is t53-noclim** (second note to amendment L1 of 12
+November, docs/PHASE-CHANGES.md): `bnm.world-run --out t53-noclim
+--without-relations true --known r7-at-fx --leak-fixes true --pwt-stale
+true --set '{:learn-offsets :mixture :flow-std-from :resolved}'`, on the
+series.tsv of bnm-56c.31 and the econ-events.csv of bnm-56c.32. Against
+t52 year Brier -0.0009 [-0.0036, +0.0018], no fold lost; market crashes
+2007-09 -0.127, one origin, a level shift, not a lost
+signal (docs/LOOP-AUDIT.md 6).
+- bnm-56c.33's fix is the lattice option `:flow-std-from :resolved`; the
+  default `:all` is the old standardizer, kept so registered issues
+  reproduce. The golden snapshot tracks the default.
+- The ledger builds 2027-Q1 on t53 (`base`, `known` r7-at-fx, `command`,
+  `base-files`, `base-inputs`). The command reproduces t53-noclim byte for
+  byte; 2026-Q4-r1 still reproduces from its archive. No forecast issued.
+
+The section below is the earlier 12 November handover, kept as written.
+
 ## State as of 2026-11-12 (branch `structure`)
 
 **The base of record is t52-world-norel** (note to amendment L1 of 12
