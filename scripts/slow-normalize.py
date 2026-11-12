@@ -682,6 +682,13 @@ def jodi():
         var(name, "log1p", "m", "JODI", desc)
 
 
+# FAOSTAT publishes its monthly consumer price indices quarterly, 6 to 9
+# months after the month (faostat_cp rows of resources/bnm/releases.tsv);
+# the same lag bnm.economic-events/food-publication-lag reads the food
+# outcomes at (bnm-56c.31; it was 3 months, read up to 6 months early)
+FAOSTAT_CP_LAG = 9
+
+
 def faostat():
     path = os.path.join(RAW, "faostat", "cpi.zip")
     if os.path.exists(path):
@@ -696,7 +703,7 @@ def faostat():
                 m = months.get(r["Months"])
                 if n and m:
                     iso = M49.get(int(r["Area Code (M49)"].strip("'") or 0))
-                    emit(iso, n[0], "m", month_end(int(r["Year"]), m), 3, r["Value"])
+                    emit(iso, n[0], "m", month_end(int(r["Year"]), m), FAOSTAT_CP_LAG, r["Value"])
         for n in names.values():
             var(n[0], n[1], "m", "FAOSTAT consumer prices", n[2])
     path = os.path.join(RAW, "faostat", "crops.zip")

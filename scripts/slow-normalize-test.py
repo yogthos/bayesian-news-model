@@ -4,6 +4,8 @@ Brazil's sector shares 1960-1980) is a gap, never a zero (bead bnm-as1).
 
   venv/bin/python -I scripts/slow-normalize-test.py
 """
+import calendar
+import csv
 import importlib.util
 import json
 import os
@@ -297,6 +299,60 @@ class PwtReleaseTest(unittest.TestCase):
         self.assertEqual(got[("economy/capital_output", "1960")], "2013-07-31", "capital stocks from 8.0")
         self.assertEqual(got[("economy/labor_share", "2012")], "2016-06-30")
         self.assertEqual(got[("economy/profit_rate", "2017")], "2019-04-30", "PWT 9.1")
+
+
+class FaostatReleaseTest(unittest.TestCase):
+    """bnm-56c.31: FAOSTAT publishes its monthly consumer price indices
+    quarterly, 6 to 9 months late (faostat_cp rows of resources/bnm/
+    releases.tsv). A month is not read before a release that carries it,
+    and at the lag bnm.economic-events/food-publication-lag reads the food
+    outcomes at, so the two paths agree."""
+
+    def run_faostat(self, months):
+        import zipfile
+        old = (sn.RAW, list(sn.ROWS))
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "faostat"))
+            with zipfile.ZipFile(os.path.join(d, "faostat", "cpi.zip"), "w") as z:
+                lines = ['"Area Code (M49)","Item Code","Year","Months","Value"']
+                for y, m in months:
+                    for item in ("23012", "23013", "23014"):
+                        lines.append("'840,%s,%d,%s,101.5" % (item, y, calendar.month_name[m]))
+                z.writestr("ConsumerPriceIndices_E_All_Data_(Normalized).csv", "\n".join(lines) + "\n")
+            sn.RAW, sn.ROWS[:] = d, []
+            try:
+                sn.faostat()
+                return {(r[1], r[3][:7]): r[4] for r in sn.ROWS}
+            finally:
+                sn.RAW, sn.ROWS[:] = old[0], old[1]
+
+    def test_same_lag_as_the_food_outcomes(self):
+        import re
+        src = open(os.path.join(os.path.dirname(HERE), "tools", "bnm", "economic_events.clj")).read()
+        lag = int(re.search(r"\(def food-publication-lag\s+\"(?:[^\"\\]|\\.)*\"\s+(\d+)\)", src).group(1))
+        got = self.run_faostat([(2023, 3), (2023, 4)])
+        for v in ("food/food_cpi", "food/food_inflation", "economy/cpi_general"):
+            self.assertEqual(got[(v, "2023-03")], sn.add_months("2023-03-31", lag), v)
+            self.assertEqual(got[(v, "2023-04")], sn.add_months("2023-04-30", lag), v)
+
+    def test_not_before_its_release(self):
+        rels = []
+        with open(sn.RELEASES, encoding="utf-8") as f:
+            for r in csv.DictReader(f, delimiter="\t"):
+                if r["source"] == "faostat_cp":
+                    rels.append((r["published"], r["last_month"]))
+        self.assertTrue(rels)
+        months = []
+        for _, last in rels:
+            y, m = int(last[:4]), int(last[5:7])
+            months += [(y, m), ((y * 12 + m) // 12, (y * 12 + m) % 12 + 1)]
+        got = self.run_faostat(months)
+        for published, last in rels:
+            pub_end = sn.month_end(int(published[:4]), int(published[5:7]))
+            y, m = int(last[:4]), int(last[5:7])
+            nxt = "%04d-%02d" % ((y * 12 + m) // 12, (y * 12 + m) % 12 + 1)
+            self.assertGreaterEqual(got[("food/food_cpi", last)], pub_end, "%s: not before the release" % last)
+            self.assertGreater(got[("food/food_cpi", nxt)], pub_end, "%s: not in the release of %s" % (nxt, published))
 
 
 SERIES =os.path.join(os.path.dirname(HERE), "data", "slow", "series.tsv")
