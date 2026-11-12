@@ -306,6 +306,39 @@
         (is (< (Math/abs (- first-p 0.5)) 0.01) "nothing resolved yet: an even prior")
         (is (< (Math/abs (- (:p (last (:forecasts clim))) rate)) 0.05))))))
 
+(deftest bnm-56c-26-a-node-with-nothing-resolved-reads-the-prior-rate
+  ;; with :clim-prior, a node with no resolved outcome takes its climatology
+  ;; from the prior's counts ([n1 n], the other kinds' at the node's scale
+  ;; and level in bnm.world-run), not an even 0.5; once its own outcomes
+  ;; resolve, its own rate as before
+  (let [g (m/rng 21)
+        ys (into {} (for [c countries t (range 400)] [[c t] (< (m/next-double! g) 0.3)]))
+        base {:scales [{:name :year :per 12 :horizon 24 :discount 0.99}]
+              :levels [[:country countries]]
+              :parent {} :start 0 :end 240 :forget 0.99
+              :offset (fn [_ _ _] nil)
+              :target (fn [_ place t] {:y (ys [place (+ t 24)]) :known-at (+ t 24)})
+              :gauges (fn [_ _ _] [])
+              :gauge-width {:year 0}}
+        early (fn [r] (filter #(< (:origin %) 24) (:forecasts r)))
+        late (fn [r] (filter #(> (:origin %) 200) (:forecasts r)))
+        mean-p (fn [fs] (/ (reduce + (map :p fs)) (count fs)))
+        seen (atom #{})
+        prior (lt/run (assoc base :clim-prior (fn [scale level] (swap! seen conj [scale level]) [10 100])))
+        high (lt/run (assoc base :clim-prior (fn [_ _] [90 100])))
+        none (lt/run base)
+        empty-prior (lt/run (assoc base :clim-prior (fn [_ _] [0 0])))
+        rate (/ (count (filter true? (vals ys))) (double (count ys)))]
+    (is (< (Math/abs (- (mean-p (early none)) 0.5)) 0.01) "without the option, the even rate as before")
+    ;; the issued p is the models' prior predictive about the offset (their
+    ;; intercepts uncertain), so it sits between the prior rate and 0.5
+    (is (< 0.104 (mean-p (early prior)) 0.25) (mean-p (early prior)))
+    (is (< 0.75 (mean-p (early high)) 0.9) (mean-p (early high)))
+    (is (= #{[:year :country]} @seen) "read at the node's scale and level")
+    (is (< (Math/abs (- (mean-p (early empty-prior)) 0.5)) 0.01) "an empty prior is no prior")
+    (doseq [r [prior high none]]
+      (is (< (Math/abs (- (mean-p (late r)) rate)) 0.1) "its own outcomes once they resolve"))))
+
 (deftest strain-is-directional
   ;; credit running ahead of wages strains the system; wages ahead of credit does not
   (is (= [0.0 2.0] (lt/strain [[0 1] [1 0]] [1.0 3.0])))

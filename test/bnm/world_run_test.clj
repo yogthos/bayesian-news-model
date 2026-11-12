@@ -213,3 +213,17 @@
                   [:quarter-lead "KEN"] (sorted-map 11 {:p 0.1 :s 0.0})}}]
     (is (= [0.35 0.1] (map :p (:forecasts (wr/reference-forecasts r)))) "the state's p where it is kept apart")
     (is (= [true nil] (map :y (:forecasts (wr/reference-forecasts r)))))))
+
+(deftest bnm-56c-26-the-prior-rate-is-the-other-kinds'
+  ;; a node with nothing resolved reads the onsets and rows the other kinds'
+  ;; nodes at its scale and level have resolved by then
+  (let [clims (atom {"food" {[:year :country] [0 0]}
+                     "coup" {[:year :country] [3 100] [:year :region] [5 10]}
+                     "war" {[:year :country] [7 200]}})
+        prior (wr/cross-kind-prior clims "food")]
+    (is (= [10 300] (prior :year :country)))
+    (is (= [5 10] (prior :year :region)))
+    (is (= [0 0] (prior :half-decade :country)) "nothing anywhere: no prior")
+    (is (= [7 200] ((wr/cross-kind-prior clims "coup") :year :country)) "never its own")
+    (swap! clims assoc-in ["war" [:year :country]] [8 300])
+    (is (= [11 400] (prior :year :country)) "as of the month it is read")))

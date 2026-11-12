@@ -27,15 +27,18 @@
   --year-delay n (bnm-pjg.6: the political and economic kinds' year rows
   read n years later; banking's own table is not delayed), --leak-fixes
   true (bnm-56c.23: Maddison, NMC and banking's PWT read by their
-  releases, resources/bnm/releases.tsv; urban growth in one unit), and
+  releases, resources/bnm/releases.tsv; urban growth in one unit),
+  --clim-prior kinds (bnm-56c.26: a node with no resolved outcome reads
+  the rate the other kinds' nodes at its scale and level have resolved,
+  not 0.5), and
   --write-reference true (also data/runs/<out>-ref, the forecasts with the
   reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
   :mixture).
 
   --known names the bnm.onsets run whose named model the quarters pool
-  with (r6-at when none is named; the base of record, t50-world-norel,
-  reads r6-at-8ul).
+  with (r6-at when none is named; t50-world-norel reads r6-at-8ul, the
+  base of record, t52-world-norel, r6-at-fx).
 
   A run names its model: --without-relations true is the world without
   relations, the base of record (t48-world-norel); --graph path turns on
@@ -261,6 +264,20 @@
                               quarter-design)])
                   ks))))
 
+(defn cross-kind-prior
+  "bnm-56c.26: (fn [scale level]) -> [onsets rows], the outcomes the other
+  kinds' nodes at that scale and level have resolved, read from `clims`
+  ({kind {[scale level] [onsets rows]}}, the runner's as of the month), for
+  bnm.lattice's :clim-prior: a node with nothing of its own resolved
+  issues the rate of onsets of the tracked kinds over its window and level,
+  not an even 0.5."
+  [clims kind]
+  (fn [scale level]
+    (reduce (fn [[a b] [k c]]
+              (if (= k kind) [a b]
+                  (let [[x y] (get c [scale level] [0 0])] [(+ a x) (+ b y)])))
+            [0 0] @clims)))
+
 (defn catalogues-through
   "Every catalogue with its uncovered tail unknown (loop audit Test 7)."
   [cats]
@@ -373,7 +390,7 @@
                                 {})))))
 
 (defn -main [& args]
-  (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay leak-fixes] :as opts}
+  (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay leak-fixes clim-prior] :as opts}
         (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         graph (:graph (model-choice opts))
         out (or out "world")
@@ -399,6 +416,13 @@
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)}
                                end))
         books (atom {})
+        ;; each kind's resolved counts by node, as of the month (--clim-prior kinds)
+        clims (atom {})
+        _ (when (and clim-prior (not= "kinds" clim-prior))
+            (throw (ex-info (str "bnm.world-run: --clim-prior takes kinds, not " clim-prior) {})))
+        specs0 (if (= "kinds" clim-prior)
+                 (into {} (for [[k sp] specs0] [k (assoc sp :clim-prior (cross-kind-prior clims k))]))
+                 specs0)
         specs (into {} (for [[k sp] specs0]
                          [k (cond-> (if (= "true" without-relations) sp
                                       (with-relations sp (parents k) books cats
@@ -428,6 +452,7 @@
                       (if (> t end)
                         states
                         (do (reset! books (into {} (for [[k s] states] [k (lt/book s)])))
+                            (reset! clims (into {} (for [[k s] states] [k (get-in s [:st :clim])])))
                             (recur (into {} (pmap (fn [[k s]] [k (lt/step (specs k) s)]) states))))))))
         finished (into {} (for [[k s] results] [k (lt/finish s)]))]
     (if (= "true" smoke)

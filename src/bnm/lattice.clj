@@ -619,6 +619,9 @@
    :offset (fn [scale place origin]) -> the log odds of what is known (a
    calibrated forecast from elsewhere), or nil for climatology, the rate
    among the node's resolved outcomes; the node learns departures from it,
+   :clim-prior (fn [scale level]) -> [onsets rows], the counts climatology
+   reads while the node has no resolved outcome (bnm-56c.26; an even rate,
+   0.5, without),
    :shrink, the all-inputs model's prior variance on its non-core inputs,
    :shrink-per-input v, that variance as v over their number at each node
    (fix 2: the reference state's prior predictive variance about the base
@@ -739,6 +742,13 @@
                        st (update-in st [:clim k] (fn [[n1 n]] [(+ (or n1 0) (count (filter :y ready))) (+ (or n 0) (count ready))]))
                        offset-of (if-let [f (:offset spec)]
                                    (let [[n1 n] (get-in st [:clim k] [0 0])
+                                         ;; bnm-56c.26: with nothing resolved, the prior's
+                                         ;; counts (:clim-prior), not an even rate
+                                         [n1 n] (or (when (zero? n)
+                                                      (when-let [cp (:clim-prior spec)]
+                                                        (let [[p1 p] (cp scale level)]
+                                                          (when (and p (pos? p)) [p1 p]))))
+                                                    [n1 n])
                                          clim (logit (/ (+ n1 0.5) (+ n 1.0)))]
                                      (fn [place t] (double (or (f scale place t) clim))))
                                    (constantly 0.0))
