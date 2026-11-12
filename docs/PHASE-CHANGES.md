@@ -3780,6 +3780,72 @@ corrected issue) read t50; the size check stays as recorded on t49.
   +0.00049], log -0.00098 [-0.00167 -0.00030]; hard top-10 recall 0.284
   against 0.273).
 
+**Note to amendment L1, 12 November 2026** (beads bnm-56c.23, bnm-h8d,
+bnm-56c.22; decided by the user the same day; written before any issue
+is made on it, L1 itself unchanged). The base of record is
+**t52-world-norel**, not t50-world-norel: t51b's command with `--known
+r6-at-fx`, `bnm.world-run --out t52-world-norel --without-relations true
+--known r6-at-fx --leak-fixes true --pwt-stale true --set
+'{:learn-offsets :mixture}'`. Wherever L1 or the note of 11 November
+names t50 as the base, read t52; the size check stays as recorded on t49.
+The next issue (2027-Q1) runs this command (bnm.ledger/command, with
+`--end`), and still reproduces 2026-Q4-r1 on its archive with
+2026-Q4-r1's own command.
+
+- *What changed.* (1) The look-ahead fixes (bnm-56c.23, "Look-ahead
+  fixes and the corrected candidate t51b-world-norel" above): in the data,
+  PWT rows dated by the release that first published them (irr from PWT
+  9.0, labour share and capital stock from 8.0), UIS tertiary enrolment at
+  21 months, a daily FRED series' incomplete last month and EM-DAT's year
+  to date left out; in the code, under `--leak-fixes`, Maddison, NMC and
+  banking's PWT read no later than their releases and urban growth in one
+  unit across 2016. (2) PWT read at 36 months by the lattice's political
+  economy gauges, which went missing at every September origin
+  (bnm-h8d, `--pwt-stale`). (3) Quarter nodes learn at the offsets they
+  issued over, not their mean (bnm-56c.22, `:learn-offsets :mixture`).
+  (4) The onsets run the quarters pool with is r6-at-fx, r6-at-8ul's
+  command on the corrected data/slow/series.tsv (r6-at-8ul was fit on the
+  leaky one). (5) bnm.ledger/manifest-args split a manifest's command at
+  every space, so a command with `--set '{...}'` could not have been rerun;
+  the command is now written with such arguments quoted and read back as
+  one (both registered commands read as before).
+- *r6-at-fx against r6-at-8ul.* The named model reads neither the PWT
+  inputs (those are the polecon models') nor tertiary enrolment, so only
+  the dropped partial FRED month and EM-DAT year reach it: no row added or
+  dropped, no outcome changed, development scores (2003-2022, lead and
+  w2, the six kinds) equal to the fifth decimal, the 2024q3, 2025q3 and
+  2026q1 steps the same; named rows move only at 2026 quarters (1908 rows
+  above 1e-4, largest 0.063, war lead MMR). Run kind by kind and spliced
+  (data/runs/r6-at-fx/README.txt). So t52 is byte for byte t51b on every
+  row to December 2025 (the run was made as t52b-noclim and renamed
+  t52-world-norel); the 2027-Q1 issue's 2026 quarters are where r6-at-fx
+  differs.
+- *Why.* Correctness: each change removes a read of something not yet
+  published or a mis-read of what was. None was chosen for its score.
+- *The honest score.* t52 against t50 (year nodes, 2003-2022, thirteen
+  kinds weighed equally, Brier, + = t52 better): 2003-06 -0.0014, 2007-09
+  +0.0008, 2010-12 +0.0014, 2013-19 -0.0026, 2020-22 -0.0019, pooled
+  -0.0013 [-0.0026, +0.0002], no fold lost (every 90% interval spans zero
+  but 2010-12's, a gain); log -0.0051 [-0.0094, -0.0001]; quarter-lead
+  -0.0006 [-0.0011, -0.0002]. The look-ahead fixes alone (fx-leak) are
+  -0.0001 at the year and -0.0008 at the quarter-lead: t50's quarter skill
+  was overstated by about that, and the lower score is the honest one.
+  Market crashes carry most of every move (year -0.012 pooled).
+- *Rules.* Planted (t51b's harness, which t52's equals to December 2025):
+  +0.0102 [+0.0071, +0.0135], met. Noise: -0.00083 against 0.0003, not
+  met; the same rule fails on fx-leak (-0.0019), without h8d or .22, so
+  the failure is the base's posterior weighting (a noise group flips the
+  year's selection, docs/LATTICE.md), inherited, not brought by these
+  fixes: sequencing under PLAN principle 9 (the weighting is step 5).
+- *Not in.* bnm-56c.26 (a node with no resolved outcome issues 0.5; food
+  price shocks at 2001-06 origins) was tried as `--clim-prior kinds`
+  (t52a-climprior): food's early p fell to 0.24 but its year node then ran
+  to 0.98 at 2012, and three folds were lost (pooled -0.0081 against
+  t51b). Not adopted; the option stays off, and the instability is bead
+  bnm-56c.27.
+- *Reproduction.* With this code 2026-Q4 and 2026-Q4-r1 each come back
+  byte for byte from their archived inputs with their own commands.
+
 ## Registered, 11 November 2026: one pooled hazard over the buffer invariants, and the scanner (bead bnm-56c.6, PLAN 1.5-1.7)
 
 Written and committed before any model is fitted to break labels. The
