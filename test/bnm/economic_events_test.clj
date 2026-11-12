@@ -58,6 +58,18 @@
 (deftest runs-start-a-crisis
   (is (= #{1982 1990} (ee/onsets-of-runs #{1982 1983 1984 1990}))))
 
+(deftest quarterly-food-onsets-not-before-their-data
+  ;; bnm-56c.32: the quarterly rule reads each quarter's last month with
+  ;; data, so the onset is dated at that month, never the quarter's first
+  (let [calm (into {} (for [m (range 24000 24060)] [m 3.0]))
+        shock (assoc calm 24060 3.0 24061 3.0 24062 20.0)]
+    (is (= #{24062} (ee/quarterly-food-onsets shock)) "the quarter 8020's value is March's: dated March")
+    (is (= #{24060} (ee/quarterly-food-onsets (assoc calm 24060 20.0))) "a quarter with one month: that month")
+    (is (every? (fn [o] (contains? shock o)) (ee/quarterly-food-onsets shock)))
+    (is (= (set (map #(+ 2 (* 3 %)) (ee/food-shocks (into {} (for [[m x] (sort shock)] [(quot m 3) x])))))
+           (ee/quarterly-food-onsets shock))
+        "the same quarters as the rule by quarter")))
+
 (deftest food-price-shocks-by-month
   ;; the quarterly rule by month (bnm-56c.30): twelve-month food inflation of
   ;; 15% or more and 10 points above the mean of the previous sixty months

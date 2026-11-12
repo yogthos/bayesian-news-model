@@ -95,6 +95,16 @@
                    :when (and (>= (count past) 12) (>= x 15.0) (>= (- x (/ (reduce + past) (count past))) 10.0))]
                q)))
 
+(defn quarterly-food-onsets
+  "Months of food price shocks by the quarterly rule (`food-shocks`) from
+  {month twelve-month food inflation}: each quarter reads its last month
+  with data, and its onset is dated at that month (bnm-56c.32: it was the
+  quarter's first month, up to two months before the data showing it)."
+  [by-month]
+  (let [last-month (reduce (fn [acc m] (assoc acc (quot m 3) m)) {} (sort (keys by-month)))
+        infl (update-vals last-month by-month)]
+    (set (map last-month (food-shocks infl)))))
+
 (defn food-shocks-monthly
   "Months of food price shocks from {month twelve-month food inflation}
   (bnm-56c.30): the quarterly rule by month, 15% or more and 10 points
@@ -191,11 +201,6 @@
             {} (range (count period)))
     {}))
 
-(defn- by-quarter [db u v]
-  (if-let [{:keys [period value]} (db [u v])]
-    (reduce (fn [acc i] (assoc acc (quot (long (nth period i)) 3) (double (nth value i)))) {} (range (count period)))
-    {}))
-
 (defn- read-rr-defaults
   "{iso #{years}} of sovereign default onsets and the years each country is
   covered, Reinhart & Rogoff (data/raw/slow/rr/onsets.csv)."
@@ -237,7 +242,7 @@
                      wdi-g)
             [rr rr-known] (read-rr-defaults)
             sov-lv (merge-with into (lv "sovereign") (lv "restructuring"))
-            food (by-quarter db u "food/food_inflation")
+            food (by-month db u "food/food_inflation")
             bal (get-in fiscal ["gov_bal_gdp" u] {})
             gexp (get-in fiscal ["gov_exp_gdp" u] {})
             gmd-sov (onsets-of-runs (keys (get-in fiscal ["gmd_sovereign" u] {})))]
@@ -252,8 +257,8 @@
         (let [ys (filter #(and (get bal %) (get bal (dec %)) (get gexp %) (get gexp (dec %))) (keys bal))]
           (add! "fiscal_consolidation" u (consolidations bal gexp) (span ys 0)))
         (when (seq food)
-          (let [qs (keys food)]
-            (add! "food_price_shock" u (map #(* 3 %) (food-shocks food)) [(* 3 (+ 12 (apply min qs))) (+ 2 (* 3 (apply max qs)))] true 3)))))
+          (let [qs (map #(quot % 3) (keys food))]
+            (add! "food_price_shock" u (quarterly-food-onsets food) [(* 3 (+ 12 (apply min qs))) (+ 2 (* 3 (apply max qs)))] true 3)))))
     (with-open [w (io/writer "data/derived/econ-events.csv")]
       (.write w "kind,iso,month,busy\n")
       (doseq [[k u o busy months] (sort @out)]
