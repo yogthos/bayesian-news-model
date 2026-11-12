@@ -21,7 +21,9 @@
 ;; into one (the world from every country); :series {role source}; any
 ;; bnm.buffers record field. :sector is read only by the forward question.
 {:sources
- {:reserves {:file "data/derived/buffers/reserves-monthly.csv" :key :iso :time :month :value :reserves_ex_gold_usd :lag 2}
+ {;; IMF IL reserves: the current download, revised since, read with an
+  ;; assumed two-month lag (loop audit issue 12, Test 12)
+  :reserves {:file "data/derived/buffers/reserves-monthly.csv" :key :iso :time :month :value :reserves_ex_gold_usd :lag 2 :revised true}
   :imports {:file "data/derived/buffers/external-annual.csv" :key :iso :time :year :value :imports_gs_usd :lag 12 :revised true}
   :ext-debt {:file "data/derived/buffers/external-annual.csv" :key :iso :time :year :value :external_debt_usd :lag 12 :revised true}
   :debt-service {:file "data/derived/buffers/external-annual.csv" :key :iso :time :year :value :external_debt_service_usd :lag 12 :revised true}

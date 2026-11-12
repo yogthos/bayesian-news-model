@@ -79,6 +79,12 @@
     (dissoc series :stock)
     series))
 
+(defn revised-roles
+  "The roles of record template `tmpl` that `series` fills from a source
+  marked :revised (a current revised vintage read with an assumed lag)."
+  [sources tmpl series]
+  (set (for [[role k] (:series tmpl) :when (and (:revised (sources k)) (contains? series role))] role)))
+
 (defn load-stocks
   "{:records [...] :series {id {role [obs]}}} for every record of the
   mapping. A record carries :families, :sector and :revised-roles (the
@@ -116,7 +122,7 @@
                                   series (:series tmpl))
                    series (drop-empty-stocks series)
                    id (str/replace (:id tmpl) "{place}" p)
-                   revised (set (for [[role k] (:series tmpl) :when (and (:revised (sources k)) (contains? series role))] role))]
+                   revised (revised-roles sources tmpl series)]
                (if (empty? series)
                  acc
                  (-> acc
