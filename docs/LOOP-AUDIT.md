@@ -249,3 +249,60 @@ Order: Round 1 first, because until the self-loop is cut and the evidence is iss
 - Weighting diagnostic: WEIGHTING-DIAGNOSTIC.md.
 - Sub-audits (engine, buffers, event model): summarised above.
 - Code: origin/structure e79d91a.
+
+## 5. Diagnosis of bnm-56c.27: the base unstable to its initial conditions (12 November 2026)
+
+Found under bnm-56c.26: t52a-climprior (t52's command with `--clim-prior kinds`) changes only the climatology offset of nodes with nothing resolved, yet food price shocks' year node ran to a mean p of 0.98 at 2012 and the year Brier lost three folds against t51b (pooled -0.0081 [-0.0165, -0.0014]). The suspect was L2, the year-quarter loop (the year's p down to the quarters as their offset, their states back up), with a gain at or above 1. Measured in the REPL on the food lattice alone, built as the world run builds it (t51b/t52 reproduced to 0.0 at every year row; t52a to 0.007, its cross-kind prior rebuilt from the other kinds' resolved rows).
+
+### Loop gain, year to quarter to year (t52, from the state at the end of 2008)
+
+| perturbation | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 |
+|---|---|---|---|---|---|---|---|---|
+| impulse +0.2 on every country's year state at 2008: year, mean dlogit | 0.000 | 0.000 | +0.002 | 0.000 | 0.000 | +0.001 | 0.000 | +0.009 |
+| the same, quarter-lead | +0.106 | 0.000 | 0.000 | -0.006 | -0.014 | -0.011 | -0.013 | -0.004 |
+| step +0.2 on the year's offset from 2009: year | +0.159 | +0.069 | +0.107 | +0.149 | +0.177 | +0.075 | +0.079 | +0.092 |
+| the same, quarter-lead | 0 | +0.183 | +0.080 | +0.144 | +0.170 | +0.186 | +0.078 | +0.026 |
+
+The impulse reaches the quarters at half its size (the 0.5 pool, as built) and does not come back: the year moves by at most 0.009 (rms 0.014) in the seven years after, so the loop's gain is below 0.05. It decays. The year's weights at the time sat on gauge groups that read no `:up`, and the all-inputs model's `:up` coefficients were -0.02 to -0.06. A step in the offset persists at 0.4 to 0.9 of its size for seven years without growing: the intercept is slow to take it back (rows resolve 42 months after the origin, discount 0.998 a year). The year-quarter loop is not the amplifier.
+
+### Where the runaway starts: the intercept against the offset (food year, country level)
+
+Mean issued offset o and each model's mean p over the year's country rows, t51b (= t52) against t52a:
+
+| year end | o t51b / t52a | base model p | all-inputs p | weights (t52a) | outcome rate |
+|---|---|---|---|---|---|
+| 2006 | 0.00 / -2.56 | 0.50 / 0.19 | 0.59 / 0.31 | equal | 0.42 |
+| 2007 | -1.78 / -1.78 | 0.03 / 0.27 | 0.57 / 0.45 | contradiction 0.12 | 0.33 |
+| 2010 | -1.32 / -1.32 | 0.07 / 0.50 | 0.25 / 0.46 | all 1.00 | 0.11 |
+| 2011 | -1.20 / -1.20 | 0.12 / 0.51 | 0.09 / 0.52 | all 0.995 | 0.05 |
+| 2012 | -1.36 / -1.36 | 0.10 / 0.41 | 0.03 / 0.13 | **down 1.00** (p 0.98) | 0.01 |
+| 2013 | -1.46 / -1.46 | 0.10 / 0.34 | 0.15 / 0.28 | contradiction 0.97 (p 0.89) | 0.05 |
+
+Intercepts (the base model's b0, the all-inputs model's b0), t51b / t52a: 2007 -1.76 / +0.79, -0.73 / +1.72; 2010 -1.23 / +1.33, -1.18 / +1.60; 2016 -0.94 / +0.23, -1.40 / +1.81.
+
+The food year node has nothing resolved until 2007 (the first rows resolve 42 months after their origin). Until then it issues at climatology 0.5 (o = 0, t51b) or at the other kinds' rate (o = -2.56, t52a). Each row is learned at the offset it was issued at, so the first rows (rate 0.14) teach the intercept "the rate against that offset": -1.8 against 0, +0.8 against -2.56. In 2007 the offset becomes the node's own rate, -1.78 in both runs, and the intercept, learned against the old offset, is added to the new one. The level is counted twice. In 2010 the two runs' base intercepts are 2.56 apart, exactly the gap between their offsets before 2007: three years on, the initial condition is carried one for one. t51b undershoots (base model p 0.03 to 0.07 against rates of 0.1 to 0.3); t52a overshoots (0.27 to 0.51 against 0.01 to 0.11). It decays only as the old rows' share falls, and is still 1.2 (base) and 3.2 (all-inputs) logits apart in 2016. The 0.98 of 2012 is the averaging's weight jumping to the `:down` model (p 0.98), which reads the food subregion, region and world year nodes' states. Those nodes carry the same inflated intercept, so the space loop (L4) passes it on; t51b's `:down` model is at 0.91 in 2011 too but has no weight.
+
+So the term that moves is the intercept: the downscale offset, the `:up` coefficients and the forgetting do not. The damping side that is missing is the opposition between the climatology and the intercept. Both estimate the node's level, and the climatology should absorb a change of level so the intercept keeps only the departure from it. Learned at issue-time offsets, they add instead of opposing.
+
+### Classification (PLAN principle 9)
+
+- **Implementation bug**: the offset and the intercept double-count a change of climatology. Every node whose offset is climatology carries its offset at the time of its first rows into later forecasts. This affects the base too: t52's food year undershoots in 2008-09, at offsets 0.5 against the rate. Fixed test first, behind an option because it moves the base: `:clim-learn :current` (bnm.lattice) learns each row issued at climatology at the climatology current when it is learned (`--set '{... :clim-learn :current}'` in bnm.world-run). On a synthetic year node (lattice_test `bnm-56c-27-a-change-of-climatology-decays`), the gap that two prior rates 4.1 logits apart leave 10 to 30 years on is -0.29 of the initial gap at issue-time offsets, with the sign reversed (an overshoot), and 0.000 with the option.
+- **Sequencing**: the posterior weights jumping to one model (`:down` at 2012, `:contradiction` at 2013) amplify whatever that model carries. This is the averaging's lock already recorded (noise rule, docs/LATTICE.md), and it belongs to step 5, the weighting.
+- **Not the approach**: the year-quarter loop's gain is below 0.05. `--clim-prior` itself is not wrong; it exposed the bug.
+
+### Rescore
+
+t52's command with `--set '{:learn-offsets :mixture :clim-learn :current}'` (t52c-climlearn) and the same with `--clim-prior kinds` (t52d-climlearn-prior), run at 879e1ba. Year Brier against t52-world-norel by fold (bnm.links, + = better, 90% intervals):
+
+| fold | t52c (fix) | t52d (fix + prior) | t52a (prior, no fix) |
+|---|---|---|---|
+| 2003-06 | -0.0006 [-0.0071, +0.0050] | +0.0054 [-0.0043, +0.0154] | +0.0059 |
+| 2007-09 | -0.0038 [-0.0060, -0.0001] LOSS | -0.0080 [-0.0117, -0.0004] LOSS | -0.0107 |
+| 2010-12 | +0.0024 [-0.0029, +0.0074] | -0.0105 [-0.0173, -0.0045] LOSS | -0.0307 |
+| 2013-19 | -0.0005 [-0.0033, +0.0025] | -0.0033 [-0.0068, +0.0007] | -0.0106 |
+| 2020-22 | +0.0001 [-0.0020, +0.0026] | +0.0011 [-0.0030, +0.0054] | +0.0045 |
+| pooled | -0.0004 [-0.0024, +0.0016] | -0.0024 [-0.0061, +0.0012] | -0.0081 (vs t51b = t52) |
+
+Food price shocks, year Brier against t52 by fold (2003-06, 07-09, 10-12, 13-19, 20-22): t52c 0.0000, -0.0077, -0.0225, +0.0053, +0.0033 (pooled -0.0022); t52d +0.0854, -0.0118, -0.1878, -0.0331, +0.0153 (pooled -0.0236); t52a +0.0854, -0.0262, -0.4181, -0.1070, +0.0690. With the option, food's year mean p in 2012 is 0.63 under the prior (0.98 without the fix) and 0.02 without it. t52d against t52c: -0.0020 [-0.0055, +0.0010] pooled, and 2007-09, 2010-12 and 2013-19 lost. So `--clim-prior` still does not help. The fix by itself is neutral on the base (pooled -0.0004, one fold lost by -0.0038 at the edge of its interval). The option is off by default, and with it off t52's food forecasts come back identical at every row.
+
+What is left, with the intercept fixed (food year node, t52d against t52c, in the REPL): the base and gauge models are now identical in the two runs (base model p 0.148 at 2007, 0.292 at 2010, in both). The models that still differ are those that read states: `:down`, `:exposure`, `:contradiction` and the all-inputs model. Their inputs are standardized by running moments accumulated since 1870, over the 137 years in which food's nodes knew nothing. Under 0.5 the states are flat (ancestors' `:down` sd 0.006 to 0.06), so the first real moves are standardized near the cap of 5. Under the prior they drift with the other kinds' rates (`:down` mean -0.93, sd 0.28). The same moves read differently, and at 2012 the posterior weight jumps to `:down` (p 0.63 under the prior, 0.22 without). This is the same fault, the uninformed period treated as data, one level further in (the flows' standardizer). It is filed as bnm-56c.33. The weight lock is sequencing (step 5).
