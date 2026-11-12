@@ -4665,9 +4665,14 @@ Reported beside the rules:
   (-0.007) and 2020-22 (-0.002, market crashes -0.025; food -0.0001).
 - **Why the world state does not lift food 2020-22.** The world group's
   model earned no posterior weight at the food year node after 2010
-  (0.056 in 2010, 0.000 from 2011 to 2022) nor at market crashes. The
-  issued forecast is the posterior combination, so it never read the
+  (0.056 in 2010, 0.000 from 2011 to 2022). The issued forecast is the
+  posterior combination, so at the food year node it never read the
   world state; the reference, which does, is only the state passed on.
+  (Corrected 12 November, step-2 diagnosis: this note first said the
+  same of market crashes. There the world-gauges model held 0.77-1.00 of
+  the year country node's weight from 2005 to 2008 and was the issued
+  forecast in 2006-2007, p 0.15 and 0.12 against rates of 0.96: most of
+  the -0.305 loss in 2007-09.)
   Its effect through the states was harmful: the food year node's mean p
   rose to 0.44, 0.36 and 0.38 in 2011-2013, when world food prices were
   high and the catalogue rate was 0.05, 0.01 and 0.05, and stayed at 0.06
