@@ -36,7 +36,8 @@
     its children, each known by t; unknown (nil) before any is.
   The node's own inputs (everything but the intercept and the spec's
   gauges, which the spec standardizes) are standardized by their running
-  mean and spread at the node's earlier origins, capped at 5: strain, gaps
+  mean and spread at the node's earlier origins since its first resolved
+  outcome (bnm-56c.33; 0 before it), capped at 5: strain, gaps
   and turns come in whatever units the states have, and a model reading
   them raw is wrecked by their scale.
 
@@ -737,6 +738,12 @@
    :book (:book st) :models (:models st) :resets (:resets st)
    :evidence (:evidence st) :flow-std (:flow-std st)})
 
+(defn flows-informed?
+  "Whether node `k` has a resolved outcome, from which on its flows'
+  standardizer counts what it sees (bnm-56c.33)."
+  [st k]
+  (pos? (long (or (second (get-in st [:clim k])) 0))))
+
 (defn book
   "The book of a lattice state: {[scale place] (sorted-map origin entry)}."
   [state]
@@ -914,7 +921,14 @@
                                         (assoc-in [:tension [scale place]] tension)
                                         (cond-> resolved (update-in [:resets [scale place]] (fnil into []) resolved))))
                                   st made)
-                       st (assoc-in st [:flow-std k] (reduce (fn [sd {:keys [raw-flows]}] (observe sd raw-flows)) flow-std made))
+                       ;; bnm-56c.33: the flows are standardized over the span the node's
+                       ;; inputs carry information, from its first resolved outcome on;
+                       ;; before it the states it reads are uninformed (climatology 0.5 or
+                       ;; a prior), and counting them made the first real moves read near
+                       ;; the cap. Until then nothing is observed, so its flows read 0
+                       st (if (flows-informed? st k)
+                            (assoc-in st [:flow-std k] (reduce (fn [sd {:keys [raw-flows]}] (observe sd raw-flows)) flow-std made))
+                            st)
                        st (-> st
                               (assoc-in [:models k] model)
                               (assoc-in [:pending k] (into (vec waiting)

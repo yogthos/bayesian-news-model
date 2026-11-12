@@ -1274,3 +1274,34 @@
   (is (= {:o 1.5 :os [[0.5 1.0] [0.5 2.0]] :clim -2.0}
          (lt/reanchor {:o 1.0 :os [[0.5 0.5] [0.5 1.5]] :clim -2.0} 0.5)))
   (is (= {:o -1.0} (lt/reanchor {:o -1.5} 0.5))))
+
+(defn- pre-information-world
+  "Six countries whose one flow input (a relation) reads `pre` before month
+  120, when their outcomes start, and a signal after; the first rows
+  resolve at 155."
+  [pre]
+  (let [g (m/rng 5)
+        sig (into {} (for [c countries t (range 400)] [[c t] (m/normal! g)]))
+        ys (into {} (for [c countries t (range 400)] [[c t] (< (m/next-double! g) (m/expit (- (sig [c t]) 1.5)))]))]
+    (lt/run {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
+             :levels [[:country countries]]
+             :parent {} :start 0 :end 359 :forget 0.995
+             :target (fn [_ place t] (when (>= t 120) {:y (ys [place (+ t 12)]) :known-at (+ t 24)}))
+             :gauges (fn [_ _ _] [])
+             :gauge-width {:year 0}
+             :relations (fn [_ place t] {:x [(if (< t 120) (pre place t) (sig [place t]))] :reads []})
+             :relation-width {:year 1}
+             :trace :inputs})))
+
+(deftest bnm-56c-33-flows-standardized-since-the-first-outcome
+  ;; two runs that differ only in what the node's flows read before it has
+  ;; any outcome (a flat 0 against an uninformed level near 50): from its
+  ;; first resolved outcome on, the standardized inputs are the same, the
+  ;; uninformed era not counted in their mean and spread
+  (let [after (fn [r] (vec (for [{:keys [origin x]} (:trace r) :when (>= origin 155)] x)))
+        a (pre-information-world (fn [_ _] 0.0))
+        b (pre-information-world (fn [_ t] (+ 50.0 (* 0.01 (mod t 7)))))]
+    (is (= 108 (count (after a))))
+    (is (= (after a) (after b)))
+    (is (= (mapv :p (filter #(>= (:origin %) 155) (:forecasts a)))
+           (mapv :p (filter #(>= (:origin %) 155) (:forecasts b)))))))

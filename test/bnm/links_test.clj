@@ -1,7 +1,7 @@
 (ns bnm.links-test
   "bnm-56c.2: the weighting candidates are opt-in. The default run still
   reproduces t48-world-norel byte for byte (market crashes and food price
-  shocks) on t48's own inputs, read from the
+  shocks) on t48's own inputs, but for bnm-56c.33's fix, undone here, read from the
   first ledger issue's archive (data/ledger-inputs/2026-Q4/): the data on
   disk were rebuilt after it (bnm-8ul)."
   (:require [bnm.fast-run :as fr]
@@ -30,8 +30,11 @@
     ;; most, and food price shocks, the 2020-2022 fold the candidates lose
     (doseq [kind ["market_crash" "food_price_shock"]]
       (let [end (+ (* 12 2025) 11)
-            [r] (lg/recording #(lt/run (get (wr/build-specs [kind] end (kinds/catalogues)) kind))
-                              (lg/redirect-to archive lg/inputs))
+            ;; bnm-56c.33 changed the base on purpose (flows standardized from a
+            ;; node's first resolved outcome); with it undone, nothing else moved
+            [r] (with-redefs [lt/flows-informed? (constantly true)]
+                  (lg/recording #(lt/run (get (wr/build-specs [kind] end (kinds/catalogues)) kind))
+                                (lg/redirect-to archive lg/inputs)))
             got (written kind r)]
         (doseq [[f text] got]
           (testing (str kind "/" f)
