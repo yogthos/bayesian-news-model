@@ -147,6 +147,18 @@ trigger terms multiply it.
    prices, breadth, dispersion, contagion, the common shock. One world node
    sits at the top and feeds down as lagged context. Nodes pass states,
    never forecasts. The spec and its coherence tests are in RECURSIVE.md.
+9. **A failed acceptance is diagnosed before it is a verdict.** Added 11
+   November 2026 on the user's direction. When a step fails its registered
+   rules, the base stays as it is, but the approach is not dropped until
+   each failing component is classified as one of three causes. An
+   **approach wrong** verdict, where the information or mechanism does not
+   hold in the data (for example, a signal that is only concurrent, not
+   leading), drops the approach. An **implementation bug** is fixed test
+   first, and the step is scored again under the same registered rules. A
+   **sequencing** verdict, where the step depends on a later one (weighting,
+   calibration, frailty), is recorded and rescored when that step lands.
+   The diagnosis is written down with numbers before the next step starts,
+   and the acceptance rules are never loosened to make a step pass.
 
 ## 4. Phases
 
