@@ -116,15 +116,30 @@
     (is (= lg/base-files (lg/check-base (str "data/runs/" lg/base) lg/base-files)) "the files on disk are the base's")))
 
 (deftest the-base's-inputs-are-the-ones-the-issue-reads
-  ;; t50 reads the onsets run r6-at-8ul, rebuilt on the fixed catalogues
-  ;; with the lapse fix (bead bnm-8ul); a command naming a run whose preds
+  ;; t52 reads the onsets run r6-at-fx, r6-at-8ul's command on the
+  ;; series.tsv corrected for look-ahead (bnm-56c.23); a command naming a run whose preds
   ;; are not an input would be refused as a stray read at issue time
   (is (= (set lg/inputs) (set (keys lg/base-inputs))))
   (let [args (lg/command "ledger-x" 24323)
         known (second (drop-while #(not= "--known" %) args))]
     (is (= lg/known known))
     (is (some #{(str "data/runs/" known "/preds.tsv")} lg/inputs))
-    (is (not-any? #{"data/runs/r6-at/preds.tsv"} lg/inputs) "r6-at was fit on the pre-fix catalogues")))
+    (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv"} lg/inputs)
+        "r6-at was fit on the pre-fix catalogues, r6-at-8ul on the leaky series.tsv")))
+
+(deftest the-base-of-record-is-t52-with-the-leak-fixes
+  ;; note to L1, 12 November 2026: t51b's command with --known r6-at-fx
+  (is (= "t52-world-norel" lg/base))
+  (is (= "r6-at-fx" lg/known))
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "true" (opt "--without-relations")))
+    (is (= "true" (opt "--leak-fixes")))
+    (is (= "true" (opt "--pwt-stale")))
+    (is (nil? (opt "--clim-prior")) "bnm-56c.26 not adopted")
+    (is (= {:learn-offsets :mixture} (read-string (opt "--set"))))
+    (testing "the command written to a manifest reads back as the same arguments"
+      (is (= (assoc args 1 "r") (lg/manifest-args (lg/command-line args) "r"))))))
 
 (deftest the-previous-issue-is-rerun-with-its-own-command
   ;; the first issue ran without --known (r6-at); the corrected issue names
@@ -135,6 +150,11 @@
   (is (= ["--out" "r" "--without-relations" "true" "--end" "24323" "--known" "r6-at-8ul"]
          (lg/manifest-args "jolt -A:tools -M -m bnm.world-run --out ledger-2026-Q4-r1 --without-relations true --end 24323 --known r6-at-8ul"
                            "r")))
+  (is (= ["--out" "r" "--set" "{:learn-offsets :mixture}" "--known" "r6-at-fx"]
+         (lg/manifest-args "jolt -A:tools -M -m bnm.world-run --out x --set '{:learn-offsets :mixture}' --known r6-at-fx" "r"))
+      "a quoted argument with spaces is one argument")
+  (is (thrown-with-msg? Exception #"refusing" (lg/manifest-args "jolt -A:tools -M -m bnm.world-run --out x --set '{:a 1}" "r"))
+      "an unclosed quote")
   (is (thrown-with-msg? Exception #"refusing" (lg/manifest-args "jolt -A:tools -M -m bnm.onsets --name x" "r"))
       "not a world run")
   (is (thrown-with-msg? Exception #"refusing" (lg/manifest-args "jolt -A:tools -M -m bnm.world-run --without-relations true" "r"))
