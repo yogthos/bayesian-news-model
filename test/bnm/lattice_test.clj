@@ -943,3 +943,134 @@
                  (catch clojure.lang.ExceptionInfo e e))]
       (is (some? e))
       (is (re-find #":all" (str (ex-message e)))))))
+
+;; -- recursive step 2: the world state at the year node (loop audit Round 2) --------
+
+(def ^:private wcountries (mapv #(str (if (< % 6) "a" "b") %) (range 12)))
+(def ^:private wparent (merge (into {} (for [c wcountries] [c (str (first c))])) {"a" "W" "b" "W"}))
+
+(defn- momentum-world
+  "World price momentum in blocks of 24 months at a random level; every
+  country's chance of an onset in the year after t rises with the
+  momentum known at t, plus a little country noise."
+  [seed]
+  (let [g (m/rng seed)
+        blocks (vec (repeatedly (inc (quot months 24)) #(- (* 3.0 (m/next-double! g)) 1.5)))
+        mom (mapv (fn [t] (+ (blocks (quot t 24)) (* 0.2 (m/normal! g)))) (range months))
+        crisis (into {} (for [c wcountries]
+                          [c (into {} (for [t (range 11 months 12)]
+                                        [t (< (m/next-double! g) (m/expit (+ -2.0 (* 1.8 (mom t)) (* 0.2 (m/normal! g)))))]))]))]
+    {:mom mom :crisis crisis :noise (fn [] (m/normal! g))}))
+
+(defn- world-gauge-spec [w]
+  {:scales [{:name :year :per 12 :horizon 12 :discount 0.995}]
+   :levels [[:country wcountries] [:region ["a" "b"]]]
+   :parent wparent :start 0 :end (dec months) :forget 0.99
+   :target (fn [_ place t]
+             (let [cs (if (> (count place) 1) [place] (filter #(= place (wparent %)) wcountries))
+                   ys (keep #(get-in w [:crisis % t]) cs)]
+               (when (and (seq ys) (< (+ t 12) months)) {:y (boolean (some true? ys)) :known-at (+ t 12)})))
+   :gauges (fn [_ _ _] [((:noise w))])
+   :gauge-width {:year 1}})
+
+(defn- with-world-group [sp w]
+  (assoc sp :world-gauges (fn [_ place t] {:x [((:mom w) t) (* (if (= \a (first place)) 1.0 0.5) ((:mom w) t))]
+                                           :reads [{:dir :world :series :mom :period t :known-at t}]})
+         :world-width {:year 2}))
+
+(defn- brier [fs] (let [fs (filter #(some? (:y %)) fs)] (/ (reduce + (map (fn [{:keys [p y]}] (let [d (- (if y 1.0 0.0) p)] (* d d))) fs)) (count fs))))
+
+(deftest test-3a-the-year-node-tracks-a-planted-world-state
+  ;; Without the world group the year node cannot track the world's level
+  ;; (its own gauges are noise); with it, entered in the all-inputs model
+  ;; (which the reference reads), it must, by a fixed margin
+  (let [w (momentum-world 21)
+        late (fn [r] (filter #(and (> (count (:place %)) 1) (> (:origin %) 240)) (:forecasts r)))]
+    (doseq [extra [{} {:state-from :reference :evidence-at :issue}]]
+      (let [sp (merge (world-gauge-spec w) extra)
+            without (lt/run sp)
+            with (lt/run (with-world-group sp w))]
+        (is (< (+ (brier (late with)) 0.01) (brier (late without))) [extra (brier (late with)) (brier (late without))])
+        (is (> (+ (get (lt/weights with :year :country) :world-gauges 0.0) (get (lt/weights with :year :country) :all 0.0)) 0.5)
+            (lt/weights with :year :country))))
+    (testing "the group is read by the all-inputs model, so a reference state carries it"
+      (let [lay (lt/layout-of (with-world-group (world-gauge-spec w) w) :year 0)]
+        (is (= 2 (count (get-in lay [:groups :world-gauges]))))
+        (is (every? (set (get-in lay [:groups :all])) (get-in lay [:groups :world-gauges])))))
+    (testing "its reads are the node's reads, none after the origin"
+      (let [r (lt/run (assoc (with-world-group (world-gauge-spec w) w) :trace true :end 120))
+            wr (for [{:keys [origin reads]} (:trace r) rd reads :when (= :world (:dir rd))] [origin rd])]
+        (is (seq wr))
+        (is (every? (fn [[o rd]] (<= (:known-at rd) o)) wr))))
+    (testing "off, the layout is the one without it"
+      (is (= (lt/layout-of (world-gauge-spec w) :year 0)
+             (lt/layout-of (assoc (world-gauge-spec w) :world-width {:year 0}) :year 0))))))
+
+;; -- Test 4: a quarter can depart from a stale year offset --------------------------
+
+(defn- stale-offset-world
+  "A world price that jumps to a new level every 60 months; each month's
+  onsets, in twelve countries, follow the price now. The year node sees
+  the price a year late, so after each jump its forecast, the months'
+  offset, is stale for a year."
+  [seed]
+  (let [g (m/rng seed)
+        blocks (vec (repeatedly (inc (quot months 60)) #(- (* 3.0 (m/next-double! g)) 1.5)))
+        price (mapv #(blocks (quot % 60)) (range months))
+        events (into {} (for [c wcountries]
+                          [c (mapv (fn [t] (< (m/next-double! g) (m/expit (+ -3.0 (* 1.5 (price t)))))) (range months))]))]
+    {:price price :events events}))
+
+(defn- stale-spec [w]
+  {:scales [{:name :month :per 1 :horizon 1 :discount 0.99}
+            {:name :year :per 12 :horizon 12 :discount 0.995}]
+   :levels [[:country wcountries]]
+   :parent {} :start 0 :end (dec months) :forget 0.99
+   :target (fn [scale place t]
+             (case scale
+               :month (when (< (inc t) months) {:y (get-in w [:events place (inc t)]) :known-at (inc t)})
+               :year (when (< (+ t 12) months)
+                       {:y (boolean (some #(get-in w [:events place %]) (range (inc t) (+ t 13)))) :known-at (+ t 12)})))
+   :gauges (fn [scale _ t] [(if (= scale :month) ((:price w) t) ((:price w) (max 0 (- t 12))))])
+   :gauge-width {:month 1 :year 1}
+   :offset (fn [scale _ _] (when (= scale :month) -3.0))
+   :downscale {:month {:from :year}} :downscale-pool 0.5 :downscale-uncertainty true})
+
+(deftest test-4-a-quarter-departs-from-a-stale-offset
+  ;; :downscale-learn: the pool weight on the year's offset is learned (a
+  ;; core input, read by every model) instead of fixed at 0.5, so after a
+  ;; jump that only the finer node's gauge sees it can leave the stale
+  ;; year. Measured, not large: over three worlds the months in the 15
+  ;; after each jump gain +0.0018 nats a row on average (one world -0.0002)
+  (let [after-shift (fn [r] (filter #(and (= :month (:scale %)) (> (:origin %) 240) (< (mod (:origin %) 60) 15)) (:forecasts r)))
+        runs (vec (for [seed [5 6 7]
+                        :let [w (stale-offset-world seed)]]
+                    [(lt/run (stale-spec w)) (lt/run (assoc (stale-spec w) :downscale-learn {:var 1.0}))]))
+        gains (for [[fixed learned] runs] (- (log-score (after-shift learned)) (log-score (after-shift fixed))))
+        [_ learned] (first runs)]
+    (is (> (/ (reduce + gains) 3.0) 0.001) (vec gains))
+    (testing "the pool input is core: every model reads it"
+      (let [pool (:pool (lt/layout-of (assoc (stale-spec (stale-offset-world 5)) :downscale-learn {:var 1.0}) :month 0))]
+        (is (= 1 (count pool)))
+        (is (every? (fn [g] (some #{(first pool)} (:inputs (lt/model learned :month :country g))))
+                    (keys (get-in learned [:models [:month :country] :models]))))))
+    (testing "only where a coarser node comes down"
+      (is (empty? (:pool (lt/layout-of (assoc (stale-spec (stale-offset-world 5)) :downscale-learn {:var 1.0}) :year 0)))))))
+
+;; -- bnm-56c.22: learning at the offsets issued, not their mean ----------------------
+
+(deftest learning-rows-over-the-offset-mixture
+  (testing "a row issued over several offsets is learned at each, weighted"
+    (is (= [{:x [1.0] :y true :o -1.0 :w 0.25 :issued {:a 1}} {:x [1.0] :y true :o 1.0 :w 0.75 :issued {:a 1}}]
+           (lt/learning-rows [{:x [1.0] :y true :o 0.3 :os [[0.25 -1.0] [0.75 1.0]] :issued {:a 1}}] true)))
+    (is (= [{:x [1.0] :y false :o 0.3}] (lt/learning-rows [{:x [1.0] :y false :o 0.3}] true)) "one offset: as it is")
+    (is (= [{:x [1.0] :y true :o 0.3 :issued {:a 1}}]
+           (lt/learning-rows [{:x [1.0] :y true :o 0.3 :os [[0.25 -1.0] [0.75 1.0]] :issued {:a 1}}] false))
+        "off: the mean offset, as the base learns"))
+  (let [w (world 1)
+        sp (assoc (spec w) :downscale {:month {:from :year}} :downscale-pool 0.5 :downscale-uncertainty true
+                  :offset (fn [scale _ _] (when (= scale :month) -3.0)) :end 200)
+        a (lt/run sp)
+        b (lt/run (assoc sp :learn-offsets :mixture))]
+    (is (not= (:forecasts a) (:forecasts b)) "the months learn other coefficients")
+    (is (= (filter #(= :year (:scale %)) (take 30 (:forecasts a))) (filter #(= :year (:scale %)) (take 30 (:forecasts b)))))))

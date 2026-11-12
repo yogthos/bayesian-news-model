@@ -221,7 +221,13 @@
                [:exposure (* ew (+ (count coarser) n-anc))]
                [:feedback (+ (count coarser) (if (pos? n-anc) 1 0) (if kids? 1 0))]
                ;; what other kinds pass in (bnm.world-run): their states, onsets
-               [:relations (if (:relations spec) (get-in spec [:relation-width scale] 0) 0)]]
+               [:relations (if (:relations spec) (get-in spec [:relation-width scale] 0) 0)]
+               ;; the world's state as known at t, directly and through the
+               ;; place's exposure (recursive step 2, bnm.world-state)
+               [:world-gauges (if (:world-gauges spec) (get-in spec [:world-width scale] 0) 0)]
+               ;; :downscale-learn: the year's offset less what is known, a core
+               ;; input whose coefficient is the learned pool weight (Test 4)
+               [:pool (if (and (:downscale-learn spec) (get-in spec [:downscale scale])) 1 0)]]
         ;; :without drops groups from the inputs altogether (ablations)
         sizes (map (fn [[g n]] [g (if (contains? (without spec scale) g) 0 n)]) sizes)
         spans (second (reduce (fn [[from acc] [g n]] [(+ from n) (assoc acc g (vec (range from (+ from n))))])
@@ -234,13 +240,13 @@
                      (if-let [named (get-in spec [:relation-groups scale])]
                        (into {} (for [[g ix] named] [g (mapv #(nth rs %) ix)]))
                        {:relations (vec rs)}))
-        flows (filter #(seq (spans %)) [:up :down :contradiction :turn :exposure :feedback])
+        flows (filter #(seq (spans %)) [:up :down :contradiction :turn :exposure :feedback :world-gauges])
         ;; :relation-nest: a link's model reads all the node reads and the
         ;; link, and the all-inputs model no link, so the averaging sets the
         ;; node with each link against the node without it
         nest? (:relation-nest spec)
-        own (vec (mapcat spans [:gauges :up :down :contradiction :turn :exposure :feedback]))
-        all (if nest? own (vec (mapcat spans [:gauges :up :down :contradiction :turn :exposure :feedback :relations])))]
+        own (vec (mapcat spans [:gauges :up :down :contradiction :turn :exposure :feedback :world-gauges]))
+        all (if nest? own (vec (concat own (spans :relations))))]
     {:width (+ 1 (reduce + (map second sizes))) :finer finer :coarser coarser
      ;; the contradiction summaries theory signs (more strain, more risk):
      ;; the mean and largest strain, the coarser scales' and the finer ones'
@@ -257,6 +263,8 @@
                     {:base [] :all all})
      ;; each relation group's own inputs, whatever its model reads
      :parts (or rel-groups {})
+     ;; the learned pool weight's input, read by every model (:downscale-learn)
+     :pool (vec (spans :pool))
      :nested (if nest? (set (keys rel-groups)) #{})}))
 
 (defn layout-of
@@ -290,8 +298,9 @@
   (let [prior (merge (when-let [[m v] (:contradiction-prior spec)]
                        (into {} (for [i (:strain-ix lay)] [i [m v]])))
                      (or (when-let [f (:prior spec)] (f scale level lay)) {}))
-        core (mapv #(inc (long %)) (get-in spec [:core scale]))
+        core (into (mapv #(inc (long %)) (get-in spec [:core scale])) (:pool lay))
         core? (set core)
+        prior (merge prior (into {} (for [i (:pool lay)] [i [0.0 (double (get-in spec [:downscale-learn :var] 0.25))]])))
         shrink (:shrink spec)]
     (as-> (into {} (for [g (if (:only spec) (filter (:only spec) order) order)
                                :let [ix (vec (distinct (concat [0] core (remove core? (groups g)))))]
@@ -379,7 +388,7 @@
   and its accumulated tensions after this period. Every read of another
   node goes through the sheaf's restrictions (bnm.sheaf), which record
   it."
-  [spec {:keys [book errors tension resolutions]} scale scale-spec level-ix place t gauges]
+  [spec {:keys [book errors tension resolutions]} scale scale-spec level-ix place t gauges & [{:keys [pool]}]]
   (let [{:keys [finer coarser width]} (layout spec scale level-ix)
         per (:per scale-spec)
         b (sh/base spec)
@@ -488,6 +497,18 @@
                   (throw (ex-info "bnm.lattice: :relations gave the wrong width" {:scale scale :width width :got (count x)})))
                 ;; an unknown input stays nil: standardized to the mean
                 (update r :x #(mapv (fn [v] (some-> v double)) %))))
+        ;; the world's state at t (recursive step 2): a function of the place
+        ;; and t, read as of t with its reads (bnm.world-state), unknown nil
+        world (when-let [f (when-not ((without spec scale) :world-gauges) (:world-gauges spec))]
+                (let [width (get-in spec [:world-width scale] 0)]
+                  (when (pos? width)
+                    (let [{:keys [x] :as r} (f scale place t)]
+                      (when (not= width (count x))
+                        (throw (ex-info "bnm.lattice: :world-gauges gave the wrong width" {:scale scale :width width :got (count x)})))
+                      (when-let [late (seq (filter #(> (or (:known-at %) (:origin %)) t) (:reads r)))]
+                        (throw (ex-info "bnm.lattice: a world read after the origin" {:scale scale :place place :t t :reads (vec late)})))
+                      (update r :x #(mapv (fn [v] (some-> v double)) %))))))
+        pool-x (when (and (:downscale-learn spec) (get-in spec [:downscale scale])) [(some-> pool double)])
         x (let [w (without spec scale)]
             (vec (concat [1.0] (when-not (w :gauges) gauges)
                          (when-not (w :up) (concat up-time up-space))
@@ -496,18 +517,22 @@
                          (when-not (w :turn) turn)
                          (when-not (w :exposure) exposure)
                          (when-not (w :feedback) feedback)
-                         (when-not (w :relations) (:x rel)))))]
+                         (when-not (w :relations) (:x rel))
+                         (:x world)
+                         pool-x)))]
     (when (not= (count x) width)
       (throw (ex-info "bnm.lattice: a node's inputs do not match its layout"
                       {:scale scale :level-ix level-ix :place place :width width :got (count x)})))
     {:x x
-     :reads (into (sh/reads r) (when-not ((without spec scale) :relations) (:reads rel)))
+     :reads (-> (sh/reads r)
+                (into (when-not ((without spec scale) :relations) (:reads rel)))
+                (into (:reads world)))
      :stated stated
      :resolved resolved
      :strain strain-total
      :tension {:rel rel' :fin fin' :tacc tacc :flows flows' :prev-mean smean :last-t t}}))
 
-(def ^:private flow-groups #{:base :up :down :contradiction :turn :exposure :feedback :all})
+(def ^:private flow-groups #{:base :up :down :contradiction :turn :exposure :feedback :world-gauges :all})
 
 (defn- couple-levels
   "Couples the gauge-group models of each pair of adjacent levels at one
@@ -557,6 +582,20 @@
     (if (pos? kept)
       (into {} (for [[g v] w] [g (if (contains? out g) 0.0 (/ v kept))]))
       w)))
+
+(defn learning-rows
+  "The rows a node's models learn from: each resolved row as it is, or,
+  with `mixture?` (:learn-offsets :mixture, bnm-56c.22), a row issued
+  over several offsets ([[w o] ...] under :downscale-uncertainty) as one
+  row per offset, its likelihood weighted w (augur's row :w), so the
+  models learn at the offsets the forecast was issued over rather than
+  at their mean."
+  [rows mixture?]
+  (vec (mapcat (fn [{:keys [os] :as r}]
+                 (if (and mixture? (< 1 (count os)))
+                   (for [[w o] os] (-> r (dissoc :os) (assoc :o o :w (* (double w) (double (or (:w r) 1.0))))))
+                   [(dissoc r :os)]))
+               rows)))
 
 (declare start step finish)
 
@@ -631,7 +670,7 @@
 (defn start
   "The lattice's state before its first month: what `step` advances."
   [spec]
-  (when-let [bad (seq (remove #{:gauges :up :down :contradiction :turn :exposure :feedback :relations}
+  (when-let [bad (seq (remove #{:gauges :up :down :contradiction :turn :exposure :feedback :relations :world-gauges}
                               (concat (:without spec) (mapcat val (:without-at spec)))))]
     (throw (ex-info (str "bnm.lattice/run: :without names no group " (vec bad)) {:without (:without spec) :without-at (:without-at spec)})))
   (let [resolutions (memoize (fn [place] (if-let [f (:resolutions spec)] (or (f place) (sorted-set)) (sorted-set))))]
@@ -670,7 +709,8 @@
                        {ready true waiting false} (group-by #(<= (:known-at %) t) (get-in st [:pending k]))
                        ;; each model's issue-time predictive, the averaging's evidence
                        ;; under :evidence-at :issue
-                       rows (map #(cond-> (select-keys % [:x :y :o]) (:lp %) (assoc :issued (:lp %))) ready)
+                       rows (learning-rows (map #(cond-> (select-keys % [:x :y :o :os]) (:lp %) (assoc :issued (:lp %))) ready)
+                                           (= :mixture (:learn-offsets spec)))
                        ;; traced: each model's evidence, the log score of the outcomes it
                        ;; learns from now, scored before it learns them
                        st (if (and (:trace spec) (seq rows))
@@ -708,7 +748,9 @@
                                                 ;; left a Jensen gap (review of step 1)
                                                 om (if (= 1 (count os)) (second (first os)) (logit (reduce + (for [[w o] os] (* w (m/expit o))))))
                                                 down (- om (if known (* pool known) 0.0))]
-                                            {:os os :read (first (sh/reads r)) :down down})
+                                            {:os os :read (first (sh/reads r)) :down down
+                                             ;; :downscale-learn's input: the offset less what is known
+                                             :pool (when known (- om known))})
                                           {:os [[1.0 (offset-of place t)]] :down 0.0}))))
                        st (reduce (fn [st {:keys [place y p known-at]}]
                                     (update-in st [:errors [scale place]] (fnil assoc (sorted-map)) known-at
@@ -737,10 +779,10 @@
                                                     (rel/principal mx x groups cands))))))
                        seen (vec (for [place places
                                        :let [g ((:gauges spec) scale place t)
-                                             {:keys [x reads stated tension strain resolved]} (inputs spec st scale scale-spec level-ix place t g)
+                                             {:keys [os read down pool]} (offsets-of place t)
+                                             {:keys [x reads stated tension strain resolved]} (inputs spec st scale scale-spec level-ix place t g {:pool pool})
                                              raw-flows (subvec x (inc g-width))
-                                             x (into (subvec x 0 (inc g-width)) (standardize flow-std raw-flows))
-                                             {:keys [os read down]} (offsets-of place t)]]
+                                             x (into (subvec x 0 (inc g-width)) (standardize flow-std raw-flows))]]
                                    {:place place :x x :raw-flows raw-flows :os os :down down :reads (cond-> reads read (conj read))
                                     :stated stated :tension tension :strain strain :resolved resolved}))
                        ;; a group with no input anywhere at t (its source ended, a signal
@@ -760,7 +802,7 @@
                                              p (if one? (d/predict live x o) (reduce + (for [[w o] os] (* w (d/predict live x o)))))
                                              {pf :f pq :q} (d/predictive live x o)
                                              target ((:target spec) scale place t)]]
-                                   (assoc (dissoc e :os) :o o :p p :target target :f pf :q pq :principal (when principal-of (principal-of x))
+                                   (assoc e :o o :p p :target target :f pf :q pq :principal (when principal-of (principal-of x))
                                           ;; :state-from: the node's state, and the errors it feeds back,
                                           ;; from a fixed reference rather than the combination, which is
                                           ;; only issued (loop audit issue 1)
@@ -807,10 +849,12 @@
                                                            ;; the error fed back is the state's (the reference's p
                                                            ;; under :state-from); :lp each model's predictive at issue;
                                                            ;; :regime-at-issue a slot for the regime layer
-                                                           (for [{:keys [place x o p target ref issued]} made :when target]
+                                                           (for [{:keys [place x o os p target ref issued]} made :when target]
                                                              (cond-> {:place place :x x :o o :p (if ref (:p ref) p) :y (:y target) :known-at (:known-at target)
                                                                       :regime-at-issue nil}
-                                                               issued (assoc :lp issued))))))]
+                                                               issued (assoc :lp issued)
+                                                               ;; bnm-56c.22: the offsets issued over, learned at
+                                                               (and (= :mixture (:learn-offsets spec)) (< 1 (count os))) (assoc :os os))))))]
                    [st
                     (into forecasts (for [{:keys [place p target]} made]
                                               {:scale scale :place place :origin t :p p :y (:y target)}))

@@ -24,6 +24,7 @@
             [bnm.paired-test]
             [bnm.lattice-test]
             [bnm.lattice-golden-test]
+            [bnm.world-state-test]
             [bnm.compose-test]
             [bnm.node-test]
             [bnm.coherence-report-test]
@@ -142,6 +143,7 @@
     bnm.paired-test
     bnm.lattice-test
     bnm.lattice-golden-test
+    bnm.world-state-test
     bnm.compose-test
     bnm.node-test
     bnm.coherence-report-test
