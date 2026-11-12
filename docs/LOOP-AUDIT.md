@@ -337,3 +337,49 @@ That level is not a crash signal. The old run sat higher from 2004 to 2007 (0.46
 - **Sequencing**: what moves is the all-inputs model's level, held at weight 0.96 to 1.00 (the weight lock, step 5), so a rescaling of inputs passes one for one into the country forecasts. That is recorded against step 5 (weighting and calibration). The fold loss is variance on one origin, and the bnm-56c.33 base stays as it is.
 
 Not checked here: the standardizer's gate counts rows (`n` >= 10), so a 47-place node passes it on its first informed origin. For a kind whose first outcome resolves late (food, 2007) the first years' moments come from very few origins. That is a candidate for food, not for market crashes.
+
+## 7. Diagnosis of the market-crash folds under bnm-56c.34's :flow-std-min-origins (12 November 2026)
+
+t54-cand (t53-noclim plus `:flow-std-min-origins 10`) against t53-noclim, year Brier on market crashes: +0.108 in 2007-09, -0.013 in 2013-19, -0.023 in 2020-22, and the 2020-22 fold is lost overall (-0.0018 [-0.0031, -0.0007]).
+
+### Which fix
+
+All of it is the option. Market crashes alone (`--kinds market_crash`, relations off) at a247338, without and with it (runs mc34-base, mc34-cand), reproduce t53-noclim's and t54-cand's market_crash forecasts.tsv, weights.tsv and preds.tsv byte for byte.
+
+### Where the option bites
+
+Only in 1964-1973. Every year node (country, subregion, region, world) has its first resolved outcome in 1964 and reaches ten origins in 1974. Without the option the row gate opens at once at the country (47 places) and subregion nodes and after two origins at the regions; the world node has one place, so rows are origins and nothing changes there. So the option zeroes ten years of country, subregion and region flows half a century before the folds, and nothing after 1974 reads differently. The standardizer's moments are the same function of the raw flows in both runs.
+
+That decade sets a different path that never closes:
+
+- Country, all-inputs model: the intercept is the same through 1968, then -1.09 against -0.85 in 1974 and -0.93 against -0.32 in 1976, when the flows switch on. The gap stays between +0.5 and +0.8 to 2022 (-0.67 against +0.10 at 2020).
+- Subregion: the base's averaging locks on the contradiction model by 1976 (1.00, still 0.995 in 2022); the candidate's goes to the all-inputs model by 1980 (0.89, 1.00 from 2019).
+- Country averaging: 2010-15 is on the world-gauge model in both, which reads no flows, so those forecasts are identical. 2019-22 is on the all-inputs model in both (0.999 to 1.000).
+
+### 2020-22 and 2013-19
+
+Country rows carry most of it: 2.93 of the 3.8 summed Brier in 2020-22 (subregions 0.63, regions 0.21). Of the country gap, 2020-22 is +0.045 in mean p (0.29 against 0.25, outcome rate 0.07). Both runs issue from the all-inputs model, so the gap is its linear predictor, +0.25 logits on average. The offset is the same (-1.10). Split into coefficient changes at the base's inputs and input changes at the candidate's coefficients, over the 141 country rows:
+
+| term | coefficients | values |
+|---|---|---|
+| intercept | +0.78 | |
+| down (subregion, region, world states) | -0.55 | 0.00 |
+| contradiction | -0.21 | -0.04 |
+| exposure | +0.18 | +0.04 |
+| up | +0.13 | -0.04 |
+| other flows and gauges | -0.05 | 0.00 |
+| total | +0.28 | -0.04 |
+
+So the subregion states that reach the country through :down are not the channel: their values account for nothing. What differs is the coefficient vector the country learned, mostly an intercept 0.78 higher offset by a more negative coefficient on the parent states (-1.06 against -0.75 on the subregion's). The parent states have a nonzero mean, so the data barely tells the intercept and these coefficients apart, and nothing pulls the split back after 1976. 2013-19 is the same: coefficients +0.36, values +0.06, intercept +0.72, down -0.51. The loss there comes from 2016-18 (+4.5 summed), when the candidate's all-inputs model read 0.36 against 0.20 at 2016 with outcome rate 0.00.
+
+### 2007-09
+
+The 2007-09 gain comes through the weights, not a level. At December 2006 and 2007 (outcome rates 0.96) the base is on its all-inputs model (0.75, 0.999: p 0.25, 0.28), while the candidate's averaging has moved to the world-gauge model (0.51, 0.92), which is identical in both runs and reads 0.42 and 0.41. Its all-inputs model reads 0.24 and 0.32.
+
+It is not the same level shift as in 2020-22. The candidate's all-inputs linear predictor less the base's, by origin, changes sign from year to year: -1.43 at 2002, +0.40 at 2005, -0.85 at 2009, +0.90 at 2016, +0.06 at 2021, +0.50 at 2022. The mean p gap is -0.013 over 1965-2002 and +0.020 over 2003-22. Country year Brier, candidate less base: 1965-2022 -0.0057 (candidate better), 2003-22 -0.0078. Without the 2006 and 2007 origins it is +0.0082 (2003-22) and +0.0022 (1965-2022), candidate worse. The gap correlates with the base's residual at 0.03 outside those two origins (2003-22; 0.09 for 1965-2022), against 0.32 with them and 0.56 in 2007-09 alone. Outside 2006-07 it is noise: a different coefficient path, not a signal.
+
+### Classification (PLAN principle 9)
+
+- **Not an implementation bug**: the option does what it says. It zeroes flows until a node's tenth informed origin, counts only informed origins, and leaves the moments alone. For market crashes it bites only in 1964-73, at the nodes the row gate had let through early.
+- **Not the approach**: no information after 1974 changes. Each fold's result is variance from a different 1970s learning path.
+- **Sequencing**: a ten-year difference fifty years back still moves 2020-22 forecasts by 0.25 logits, because the all-inputs model's intercept and flow coefficients are weakly identified and the node is locked on it (country 0.999 to 1.00, subregion locked on one model since the 1970s in each run). This is section 5's sensitivity to initial conditions, recorded against step 5 (weighting, calibration, forgetting). Market crashes are no evidence either way on the option, which was aimed at kinds informed late (food). It is retested when step 5 lands and is not adopted now. The minimum is not to be tuned against these folds.
