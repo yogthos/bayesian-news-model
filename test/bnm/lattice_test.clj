@@ -1074,3 +1074,96 @@
         b (lt/run (assoc sp :learn-offsets :mixture))]
     (is (not= (:forecasts a) (:forecasts b)) "the months learn other coefficients")
     (is (= (filter #(= :year (:scale %)) (take 30 (:forecasts a))) (filter #(= :year (:scale %)) (take 30 (:forecasts b)))))))
+
+;; -- fix 2: states that hold when the loop is cut ------------------------------------
+;; Under :state-from :reference a node passes on the all-inputs model's
+;; predictive. With many inputs learned from few origins that model's
+;; linear predictor is so uncertain that its predictive sits near 0.5 and
+;; swings as the uncertainty falls (the food year node in 2005-2010: a
+;; variance of 20-58 in log odds). The synthetic world: a planted world
+;; momentum the year node reads, twenty gauges that are the same at every
+;; place and carry nothing, rows learned three years late.
+
+(defn- swing-world [seed]
+  (let [g (m/rng seed)
+        blocks (vec (repeatedly (inc (quot months 24)) #(- (* 3.0 (m/next-double! g)) 1.5)))
+        mom (mapv (fn [t] (+ (blocks (quot t 24)) (* 0.2 (m/normal! g)))) (range months))
+        tnoise (vec (for [_ (range months)] (vec (repeatedly 21 #(m/normal! g)))))
+        crisis (into {} (for [c wcountries]
+                          [c (into {} (for [t (range 11 months 12)]
+                                        [t (< (m/next-double! g) (m/expit (+ -2.5 (* 1.2 (mom t)) (* 0.2 (m/normal! g)))))]))]))]
+    {:mom mom :crisis crisis :tnoise tnoise}))
+
+(defn- swing-spec [w extra?]
+  {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
+   :levels [[:country wcountries] [:region ["a" "b"]] [:world ["W"]]]
+   :parent wparent :start 0 :end (dec months) :forget 0.995 :shrink 0.1
+   :target (fn [_ place t]
+             (let [cs (cond (= place "W") wcountries (> (count place) 1) [place] :else (filter #(= place (wparent %)) wcountries))
+                   ys (keep #(get-in w [:crisis % t]) cs)]
+               (when (and (seq ys) (< (+ t 12) months)) {:y (boolean (some true? ys)) :known-at (+ t 36)})))
+   :gauges (fn [_ _ t] (subvec ((:tnoise w) t) 0 20))
+   :gauge-width {:year 20}
+   ;; the planted momentum, and with extra? one more column that carries nothing
+   :world-gauges (fn [_ _ t] {:x (cond-> [((:mom w) t)] extra? (conj (get-in w [:tnoise t 20]))) :reads []})
+   :world-width {:year (if extra? 2 1)}
+   :state-from :reference :evidence-at :issue})
+
+(defn- swing-measures
+  "Over origins from year 10, the countries' states: their mean distance
+  from the planted log odds, the correlation of their mean with it, and the
+  mean change one extra column that carries nothing makes."
+  [extra seeds]
+  (let [ms (for [seed seeds
+                 :let [w (swing-world seed)
+                       a (lt/run (merge (swing-spec w false) extra))
+                       b (lt/run (merge (swing-spec w true) extra))
+                       ts (range (+ 11 120) months 12)
+                       st (fn [r t c] (get-in r [:book [:year c] t :s]))
+                       truth (fn [t] (+ -2.5 (* 1.2 ((:mom w) t))))
+                       mean-s (map (fn [t] (/ (reduce + (map #(st a t %) wcountries)) (count wcountries))) ts)
+                       tr (map truth ts)
+                       n (count ts) ma (/ (reduce + mean-s) n) mt (/ (reduce + tr) n)
+                       cov (reduce + (map #(* (- %1 ma) (- %2 mt)) mean-s tr))
+                       sd (fn [xs mu] (Math/sqrt (reduce + (map #(let [d (- % mu)] (* d d)) xs))))
+                       diffs (for [t ts c wcountries] (Math/abs (- (st a t c) (st b t c))))]]
+             {:dist (/ (reduce + (for [t ts c wcountries] (Math/abs (- (st a t c) (truth t))))) (* n (count wcountries)))
+              :corr (/ cov (* (sd mean-s ma) (sd tr mt)))
+              :noise (/ (reduce + diffs) (count diffs))})]
+    (into {} (for [k [:dist :corr :noise]] [k (/ (reduce + (map k ms)) (count ms))]))))
+
+(deftest fix-2-states-hold-under-many-inputs
+  (let [seeds (range 11 21)
+        wide (swing-measures {} seeds)
+        ;; 0.5 chosen on this world before any real run was scored: the
+        ;; knee of 0.1 / 0.25 / 0.5 / 1 / 2 (correlation 0.17, 0.30, 0.35,
+        ;; 0.36, 0.35; noise 0.022, 0.040, 0.058, 0.083, 0.120); the base model
+        ;; as the state holds exactly but tracks nothing (correlation -0.19),
+        ;; an equal pool of the models 0.17, the all-inputs model shrunk
+        ;; toward the base by its own variance 0.24
+        held (swing-measures {:shrink-per-input 0.5} seeds)]
+    (testing "the all-inputs model at :shrink 0.1 swings (the failure)"
+      (is (> (:noise wide) 0.08) wide))
+    (testing "with the prior variance per input over their number, the state holds"
+      (is (< (:noise held) 0.07) held)
+      (is (< (:noise held) (* 0.5 (:noise wide))) [held wide])
+      (is (< (:dist held) (:dist wide)) [held wide]))
+    (testing "and still tracks the planted signal"
+      (is (> (:corr held) 0.3) held)
+      (is (>= (:corr held) (- (:corr wide) 0.02)) [held wide]))
+    (testing "C7: the states do not read the weights"
+      (let [a (loop-run {:state-from :reference :shrink-per-input 0.5})
+            b (loop-run (merge tempered {:state-from :reference :shrink-per-input 0.5}))]
+        (is (< (max-gap book-states a b) 1e-12))
+        (is (< (max-gap a b) 1e-12))))))
+
+(deftest fix-2-the-shrinkage-is-by-the-node-s-width
+  (let [w (swing-world 11)
+        r (lt/run (merge (swing-spec w false) {:shrink-per-input 1.0 :end 11}))
+        all (get-in r [:models [:year :country] :models :all])
+        k (:k all)
+        n (dec k)
+        diag (fn [i] (nth (:c all) (+ (* i k) i)))]
+    (is (= 31 k) "20 gauges, 10 flows and the world column")
+    (testing "each non-core input's prior variance is 1/n (one period's discount on it)"
+      (is (every? #(< (Math/abs (- (* n (diag %) 0.998) 1.0)) 1e-9) (range 1 k)) (mapv diag (range 1 k))))))

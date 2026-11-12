@@ -301,7 +301,16 @@
         core (into (mapv #(inc (long %)) (get-in spec [:core scale])) (:pool lay))
         core? (set core)
         prior (merge prior (into {} (for [i (:pool lay)] [i [0.0 (double (get-in spec [:downscale-learn :var] 0.25))]])))
-        shrink (:shrink spec)]
+        shrink (:shrink spec)
+        ;; :shrink-per-input v (fix 2): the all-inputs model's prior variance
+        ;; per non-core input is v over their number, so its prior predictive
+        ;; variance about the base stays near v however many inputs the node
+        ;; reads (at :shrink 0.1, about 80 inputs gave a variance of 20-58 in
+        ;; log odds at the food year node in 2005-2010, a state near 0.5)
+        shrink (if-let [v (:shrink-per-input spec)]
+                 (let [n (count (remove core? (groups :all)))]
+                   (if (pos? n) (/ (double v) n) shrink))
+                 shrink)]
     (as-> (into {} (for [g (if (:only spec) (filter (:only spec) order) order)
                                :let [ix (vec (distinct (concat [0] core (remove core? (groups g)))))]
                                :when (or (= g :base) (seq (groups g)))]
@@ -611,6 +620,9 @@
    calibrated forecast from elsewhere), or nil for climatology, the rate
    among the node's resolved outcomes; the node learns departures from it,
    :shrink, the all-inputs model's prior variance on its non-core inputs,
+   :shrink-per-input v, that variance as v over their number at each node
+   (fix 2: the reference state's prior predictive variance about the base
+   near v whatever the node's width; overrides :shrink),
    :state (fn [scale place origin gauges]) -> a node's state or nil,
    :tensions {scale [[i j] ...]}, each i's strain ahead of j, :tension-decay (0.7),
    :contradiction-prior [mean variance] for the strain summaries,
