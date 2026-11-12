@@ -144,6 +144,28 @@ lattice's outputs and reads exactly, in full and with groups dropped.
   `bnm.world-run --pwt-stale true` reads the Penn World Table at 36 months
   (bnm-h8d) and `--catalogue-through true` leaves a catalogue's tail past
   its :through unknown (loop audit Test 7). All opt-in.
+- **The world once per origin, and a stable reference** (fixes 2 and 3 of
+  the step-2 rescore, bnm-56c.24/.25): step 2 put gauges that vary only by
+  year on every country row, about 150 copies of one observation, and its
+  all-inputs reference swung (the food year node's state spanned 0.54
+  over 2007-2022). With `:world-offset (fn [scale place t])` the world's
+  term (bnm.world-term: a logistic of the onset share on the world gauges,
+  one row per origin weighted by its effective number of places,
+  collinear gauges dropped) is added to the node's offset, so every model,
+  the base included, reads it at a coefficient of 1.
+  `bnm.world-gauges/with-world-once` (`bnm.world-run --world-once true`)
+  puts the term on food and Brent over 12 months at the countries' year and
+  half-decade offsets and leaves only food12 x food imports and brent12 x
+  net fuel imports in the `:world-gauges` group. The VIX, credit, the
+  dollar and the policy rate are no longer wired: concurrent, not leading;
+  `bnm.lead-test` is the test a gauge passes first (online fit at most 0.9
+  of climatology's squared error). With the term in its offset the base
+  model carries the common level, and `:state-from :base` is the chosen
+  reference (the state moves 0.04 a year at the food year node, span
+  0.12). `:shrink-per-input v` (the all-inputs model's prior variance v/n
+  per input) is kept as an option; it halved the swing on synthetic data
+  but tracked no better. `bnm.world-run --write-reference true` writes the
+  reference's own forecasts as `<out>-ref`. All opt-in.
 - **Pooling**: sibling nodes (the countries of a subregion at one scale)
   share a prior on their slopes, centred on their parent's; slopes, not
   levels, since trials 31-33 found that levels learned from a country's

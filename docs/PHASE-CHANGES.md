@@ -4782,3 +4782,117 @@ fold between any two runs, the selection instability already measured
 (noise draws differ by up to 0.017 per fold there): not a defect of
 either fix found here. Adoption, and any L1 note, is the user's call; no
 base, ledger or forecast was changed.
+
+## Step 2 rescored after fixes 2 and 3 (12 November 2026, bnm-56c.24, bnm-56c.25)
+
+Development, origins 2003-2022, under the rules registered at 84b9b3b
+(unchanged). The base of record stays t50-world-norel; adoption is the
+user's call. Every option is off by default.
+
+**Fix 3: the world gauges once per origin** (bnm.world-term,
+`bnm.world-run --world-once true`). Step 2 put gauges that vary only by
+year on about 150 country rows each, and twelve collinear columns
+cancelled out. The world node now learns one term per kind and scale: a
+logistic of the share of countries with an onset in the window on world
+food prices and Brent over 12 months, one row per origin weighted by its
+effective number of places (n / (1 + (n - 1) rho), rho the shares'
+dispersion beyond the binomial), a gauge that is a linear function of
+earlier ones dropped. The term is added to the countries' offset at the
+year and half-decade, so every model reads it at a coefficient of 1. The
+year group keeps only food12 x food imports and brent12 x net fuel
+imports. The VIX, credit, the dollar and the policy rate are no longer
+wired. `bnm.lead-test` is the test a gauge must pass first: its online
+fit's squared error at most 0.9 of climatology's. On 2003-2022, run
+before the rescoring runs: food price shocks, food12 passes (lead r
++0.61, 0.023 against 0.029), food24 passes, brent12, the VIX, credit,
+policy and usd12 fail; market crashes, every gauge fails except usd12
+(0.046 against 0.056, n 16; not wired).
+
+**Fix 2: the reference.** The all-inputs reference swung: its linear
+predictor's variance at the food year node was 20-58 in 2005-2010, and
+its state moved 0.08 a year over a span of 0.54 (2007-2022); the down
+model read the parents' swinging states into an issued 0.87 in 2011.
+Compared before any rescoring run, on a synthetic world (twenty
+uninformative place-invariant gauges, a planted world momentum; test
+`fix-2-states-hold-under-many-inputs`) and on the real food states (no
+outcome read):
+
+| reference | synthetic: r with the planted log odds | distance | moved by a null column | food state: mean yearly move, span |
+|---|---|---|---|---|
+| all-inputs model (step 2) | 0.32 | 1.08 | 0.15 | 0.083, 0.54 |
+| all-inputs, prior v/n per input (`:shrink-per-input 0.5`) | 0.35 | 0.97 | 0.06 | 0.099, 0.47 |
+| equal pool of the models | 0.17 | | 0.05 | |
+| all-inputs shrunk toward the base by its variance | 0.24 | | 0.06 | |
+| **base model with the world term in its offset** | **0.94** | **0.56** | **0** (0.16 inside the term) | **0.038, 0.12** |
+
+Chosen: `:state-from :base` with fix 3's term. Damping toward the parent
+was not tried: a parent's state is the chance of any onset among its
+children (0.94-0.999 at the food world node), not a child's level. C7
+holds. `:shrink-per-input` stays as an option.
+
+**Found on the way** (bnm-56c.26, not fixed, needs a decision): a node
+with no resolved row uses a climatology of 0.5, so the food year node
+issues 0.50 at origins 2001-2006 in t50, t51b and every run here (rate
+0.10-0.42). Paired comparisons are unaffected.
+
+**Runs** (data/runs/fs-s2-*): fs-s2-cand is t51b's command (`--leak-fixes
+--pwt-stale`, `:learn-offsets :mixture`) plus step 2's
+(`--world-gauges --catalogue-through`, `:evidence-at :issue
+:downscale-learn {:var 1.0}`) plus `--world-once true` and `:state-from
+:base`; fs-s2-cand-ref its reference's forecasts (`--write-reference`);
+fs-s2-noise1/2, fs-s2-planted, fs-s2-false the harness's column, which
+now enters the world term.
+
+**Results** (Brier, year nodes, thirteen kinds weighed equally; + = the
+candidate better):
+
+| comparison | 2003-06 | 2007-09 | 2010-12 | 2013-19 | 2020-22 | pooled |
+|---|---|---|---|---|---|---|
+| cand vs t50 | -0.0065 | -0.0307 | +0.0054 | -0.0026 | **-0.0047 [-0.0094, -0.0004] lost** | -0.0051 [-0.0114, +0.0004] |
+| cand vs t51b | -0.0051 | **-0.0316 lost** | +0.0040 | -0.0000 | -0.0029 | -0.0038 |
+| cand vs fx-leak | -0.0065 | -0.0260 | +0.0009 | -0.0022 | -0.0032 | -0.0050 |
+| reference vs t50 | -0.0084 | -0.0327 | -0.0012 | +0.0009 | -0.0040 lost | -0.0050 |
+| food, cand vs t50 | +0.0002 | -0.0163 | -0.0043 | +0.0041 | +0.0019 | -0.0011 |
+| food, cand vs t51b | +0.0003 | -0.0166 | -0.0068 | +0.0066 | +0.0099 | +0.0005 |
+| market crashes, cand vs t50 | -0.075 | -0.361 | +0.061 | -0.035 | -0.065 | -0.061 |
+| twelve kinds (no market crashes) vs t50 | -0.0008 | -0.0032 | +0.0008 | +0.0001 | +0.0003 | -0.0004 |
+
+| rule | result | |
+|---|---|---|
+| 1. noise, pooled | -0.00026, -0.00063; mean -0.00044 | not met |
+| 1. noise, per fold (mean of two) | -0.00084, -0.00007, -0.00029, +0.00008, -0.00121 | not met (2003-06, 2020-22) |
+| 2. planted | +0.0125 [+0.0077, +0.0177] (market crashes +0.113, food +0.003) | met |
+| 3. false move | pooled -0.00023; 2013-19 -0.00067 (market crashes -0.010) | not met (2013-19) |
+| 4. vs t50 by fold | 2020-22 lost | not met |
+
+Quarter-lead against t50: -0.0021 [-0.0044, -0.0005] (market crashes
+-0.023). The step-2 diagnosis's all-inputs reference scored the same way
+(s2d-t51ref) was -0.0060 pooled and -0.014 at food 2020-22; the new
+reference is -0.0050 and +0.0019.
+
+**Reading, under principle 9.**
+- **Food price shocks: fixed, and the rest is sequencing.** 2020-22 moves
+  from -0.025 (t51) to +0.0019 against t50 and +0.0099 against t51b, in
+  the issued forecast and the reference alike: the term reaches what is
+  issued through the offset, without waiting for step 5. The term was
+  +0.34 and +0.99 at the 2020 and 2021 origins, and the issued mean p
+  0.07 and 0.13 against rates of 0.50 and 0.51: the diagnosis's 30-45%
+  foreseeable share, no more. The rest needs the frailty (step 3) or
+  faster rows. 2007-09 (-0.016) is 2007, issued 0.14 against 0.33 where
+  t50 still issued its cold-start 0.29-0.51.
+- **Market crashes: approach wrong**, as the diagnosis found, and now
+  forced in. Food and Brent momentum do not lead crashes (both fail the
+  lead test there, run before the rescoring); in the offset every model
+  reads them, so the issued p fell to 0.10 and 0.08 at the 2006-2007
+  origins against rates of 0.96 (t50 0.46, 0.45). Market crashes carry
+  rule 4's 2020-22 loss (without them +0.0003) and rule 3's 2013-19
+  failure. The wiring did not apply the lead test per kind; doing so
+  would leave the world term at food price shocks only. That is a change
+  made after scoring, so it is the user's decision whether to rescore it.
+- **Noise: implementation.** The harness column now enters the term, and
+  through the offset every model, so no weighting can set it aside; its
+  cost is the term's own estimation noise over a few origins (-0.0003
+  without market crashes). A tighter prior on the term's gauges, or the
+  term as a learned input rather than a fixed offset, is the fix to try.
+
+Not adopted. No L1 note, no ledger base change, no forecast.
