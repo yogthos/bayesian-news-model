@@ -75,12 +75,71 @@
                         [{:x x :y true :w (* w share)} {:x x :y false :w (* w (- 1.0 share))}]))
                     rows))))
 
+(defn- corr [xs ys]
+  (let [n (count xs)]
+    (when (> n 2)
+      (let [mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
+            c (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
+            vx (reduce + (map #(let [d (- % mx)] (* d d)) xs))
+            vy (reduce + (map #(let [d (- % my)] (* d d)) ys))]
+        (when (and (pos? vx) (pos? vy)) (/ c (Math/sqrt (* vx vy))))))))
+
+(defn- ols
+  "[a b] of y ~ a + b x."
+  [xs ys]
+  (let [n (count xs) mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
+        vx (reduce + (map #(let [d (- % mx)] (* d d)) xs))
+        b (if (pos? vx) (/ (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys)) vx) 0.0)]
+    [(- my (* b mx)) b]))
+
+(defn lead-test
+  "The lead test a world gauge must pass before it is wired (bnm.lead-test
+  has the doc and the table): {:lead :concurrent :online :clim :n
+  :n-online :pass}. `gauge` (fn [t]) -> the gauge known at t or nil,
+  `window-mean` (fn [t]) -> its mean over the window (or nil), `rate` (fn
+  [t]) -> {:rate :known-at} or nil, over `origins`. Each origin's online
+  error is the fit on the rows known by it; passes when the online error is
+  at most `ratio` (0.9) of climatology's over at least `min-online` (1)
+  online errors."
+  [{:keys [gauge window-mean rate origins ratio min-online] :or {ratio 0.9 min-online 1}}]
+  (let [rows (vec (for [t origins :let [g (gauge t) r (rate t)] :when (and g r)]
+                    {:t t :g (double g) :r (double (:rate r)) :known-at (:known-at r)
+                     :w (some-> (when window-mean (window-mean t)) double)}))
+        online (vec (for [{:keys [t g r]} rows
+                          :let [known (filter #(<= (:known-at %) t) rows)]
+                          :when (>= (count known) 3)
+                          :let [[a b] (ols (map :g known) (map :r known))
+                                clim (/ (reduce + (map :r known)) (count known))]]
+                      [(let [e (- r (+ a (* b g)))] (* e e)) (let [e (- r clim)] (* e e))]))
+        mse (fn [k] (when (seq online) (/ (reduce + (map k online)) (count online))))
+        cw (filter :w rows)]
+    {:n (count rows)
+     :n-online (count online)
+     :lead (corr (map :g rows) (map :r rows))
+     :concurrent (corr (map :w cw) (map :r cw))
+     :online (mse first) :clim (mse second)
+     :pass (boolean (and (>= (count online) (max 1 min-online)) (<= (mse first) (* ratio (mse second)))))}))
+
+(defn gate
+  "The lead test as of origin t, with nothing that was not known by then:
+  gauge j over `origins` up to t, each origin's outcome only if known by t.
+  {:pass ...} as `lead-test`."
+  [{:keys [gauges outcome origins]} {:keys [ratio min-online] :or {ratio 0.9 min-online 5}} t j]
+  (lead-test {:gauge (fn [s] (nth (gauges s) j))
+              :rate (fn [s] (when-let [o (outcome s)]
+                              (when (<= (:known-at o) t) {:rate (:share o) :known-at (:known-at o)})))
+              :origins (filter #(<= % t) origins)
+              :ratio ratio :min-online min-online}))
+
 (defn term-at
   "The world term at origin t: {:x the gauges' part of the world's log
   odds, :kept the gauges kept, :n the origins learned from}. `gauges` (fn
   [s]) -> [values] known at origin s (nil unknown), `outcome` (fn [s]) ->
-  {:share :n :known-at} or nil (n the places scored), `origins` the node's origins (ascending)."
-  [{:keys [gauges outcome origins var]} t]
+  {:share :n :known-at} or nil (n the places scored), `origins` the node's
+  origins (ascending). With `gate` ({:ratio :min-online}, bnm-56c.28) a
+  gauge is kept only if it passes `gate` at t: the lead test on what is
+  known at t, re-decided at each origin."
+  [{:keys [gauges outcome origins var] gate-opts :gate :as opts} t]
   (let [past (vec (filter #(<= % t) origins))
         hist (mapv gauges past)
         k (count (gauges t))
@@ -94,7 +153,7 @@
                            (when (> sd 1e-12) [mu sd]))))))
         ;; the gauges kept: with a spread, and not a linear function of
         ;; earlier ones over the origins where all are known
-        usable (filterv #(nth stats %) (range k))
+        usable (filterv #(and (nth stats %) (or (nil? gate-opts) (:pass (gate opts gate-opts t %)))) (range k))
         full (filterv #(every? some? (map (fn [j] (nth % j)) usable)) hist)
         kept (if (seq full)
                (mapv usable (independent-columns (mapv (fn [j] (mapv #(nth % j) full)) usable)))

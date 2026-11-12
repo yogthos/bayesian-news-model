@@ -144,6 +144,11 @@
   world inputs left as columns on a place's row: they differ by place."
   [:food12-x-food :brent12-x-energy])
 
+(def default-gate
+  "The lead test's gate on the world term (bnm-56c.28): online error at most
+  0.9 of climatology's (bnm.lead-test), over at least five online errors."
+  {:ratio 0.9 :min-online 5})
+
 (defn- once-read
   "{:g {:food12 :brent12} :reads}: the two world gauges kept (fix 3) at
   origin t, read through bnm.world-state; the VIX, credit, the dollar and
@@ -163,9 +168,18 @@
   (:world-offset); the :world-gauges group holds only food12 times the
   place's food imports and brent12 times its net fuel imports (above the
   countries their mean exposure). opts :extra, the harness's column (fn
-  [t]), enters the term as a third world gauge."
+  [t]), enters the term as a third world gauge.
+
+  opts :gate (default {:ratio 0.9 :min-online 5}; nil for none, step 2's
+  rescore at 822fea8): the lead test per kind and scale (bnm-56c.28). A
+  gauge is read at origin t only if bnm.lead-test passes it at t on the
+  origins whose outcomes are known by t (bnm.world-term/gate, re-decided at
+  every origin, so it never looks ahead): a gauge that fails is in neither
+  the term nor the product column (nil, unknown). The harness's column
+  passes the same test as food and Brent. The offset's :passed names the
+  gauges in the term."
   ([sp state exposure] (with-world-once sp state exposure {}))
-  ([sp state exposure {:keys [extra]}]
+  ([sp state exposure {:keys [extra] :as opts}]
    (let [par (:parent sp)
          leaves (vec (remove (set (vals par)) (keys par)))
          leaf? (set leaves)
@@ -183,9 +197,11 @@
          end (long (or (:end sp) (+ 11 (* 12 2030))))
          gauges (fn [t] (let [{:keys [food12 brent12]} (:g (read t))]
                           (cond-> [food12 brent12] extra (conj (extra t)))))
+         gate (if (contains? opts :gate) (:gate opts) default-gate)
+         gauge-names (cond-> [:food12 :brent12] extra (conj :extra))
          term (into {} (for [{:keys [name per]} scales]
                          [name (wtm/term-fn
-                                {:gauges gauges
+                                {:gauges gauges :gate gate
                                  :origins (vec (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end))))
                                  :outcome (memoize (fn [t] (let [ys (filter (comp some? :y) (keep #((:target sp) name % t) leaves))]
                                                     (when (seq ys)
@@ -196,11 +212,17 @@
      (assoc sp
             :world-offset (fn [scale place t]
                             (when-let [f (and (leaf? place) (term scale))]
-                              {:x (:x (f t)) :reads (:reads (read t))}))
-            :world-gauges (fn [_scale place t]
+                              (let [{:keys [x kept]} (f t)]
+                                {:x x :reads (:reads (read t)) :passed (mapv gauge-names kept)})))
+            :world-gauges (fn [scale place t]
                             (let [{:keys [g reads]} (read t)
-                                  {:keys [food energy]} (place-exposure place t)]
-                              {:x [(x* (:food12 g) food) (x* (:brent12 g) energy)]
+                                  {:keys [food energy]} (place-exposure place t)
+                                  ;; under the gate, a gauge the kind's test has not passed
+                                  ;; at t is not read (bnm-56c.28)
+                                  on? (if (and gate (term scale))
+                                        (set (:kept ((term scale) t)))
+                                        (constantly true))]
+                              {:x [(when (on? 0) (x* (:food12 g) food)) (when (on? 1) (x* (:brent12 g) energy))]
                                :names once-products :reads reads}))
             :world-width (into {} (for [{:keys [name]} scales] [name 2]))))))
 

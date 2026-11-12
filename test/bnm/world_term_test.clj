@@ -109,3 +109,34 @@
       (let [c (lt/run (replicated sp (fn [t] [((:mom w) t)]) 1))
             d (lt/run (replicated sp (fn [t] [((:mom w) t) (+ 1.0 (* 2.0 ((:mom w) t)))]) 2))]
         (is (not= (map :p (:forecasts c)) (map :p (:forecasts d))))))))
+
+;; The lead test as the term's gate (bnm-56c.28): a world gauge enters a
+;; kind's term only at origins where it has passed bnm.lead-test on the
+;; origins whose outcomes are known by then, so the gate never looks ahead
+;; and a gauge that carries nothing (the harness's noise) is dropped by the
+;; same evidence that admits food momentum
+(deftest test-gate-a-gauge-enters-the-term-only-once-it-leads
+  (let [w (world 31)
+        gate {:ratio 0.9 :min-online 5}
+        cols (fn [t] [((:mom w) t) ((:noise w) t)])
+        both (wt/term-fn {:gauges cols :outcome (outcome w) :origins origins :gate gate})
+        alone (wt/term-fn {:gauges (fn [t] [((:mom w) t)]) :outcome (outcome w) :origins origins :gate gate})
+        ungated (wt/term-fn {:gauges cols :outcome (outcome w) :origins origins})
+        late (filter #(> % 240) origins)
+        share (fn [j] (/ (count (filter #(some #{j} (:kept (both %))) late)) (double (count late))))]
+    (testing "the planted momentum passes at the late origins, the noise at almost none"
+      (is (> (share 0) 0.9) (share 0))
+      (is (< (share 1) 0.1) (share 1)))
+    (testing "where the noise fails it changes nothing: it is dropped, not shrunk"
+      (doseq [t late :when (= [0] (:kept (both t)))]
+        (is (= (:x (alone t)) (:x (both t))))))
+    (testing "before five online errors are known nothing passes and the term is 0"
+      ;; at 107 six origins are known (11..71), so three online errors
+      (is (= [] (:kept (both 107))))
+      (is (= 0.0 (:x (both 107))))
+      (is (= [0 1] (:kept (ungated 107))) "ungated, both enter"))
+    (testing "the gate reads only the outcomes known at t"
+      (let [t 300
+            o (outcome w)
+            flipped (fn [s] (let [r (o s)] (if (and r (> (:known-at r) t)) (assoc r :share (- 1.0 (:share r))) r)))]
+        (is (= (both t) (wt/term-at {:gauges cols :outcome flipped :origins origins :gate gate} t)))))))

@@ -1,5 +1,6 @@
 (ns bnm.world-gauges-test
-  (:require [bnm.world-gauges :as wg]
+  (:require [augur.math]
+            [bnm.world-gauges :as wg]
             [bnm.world-state :as ws]
             [clojure.test :refer [deftest is testing]]))
 
@@ -66,7 +67,7 @@
                                    {:y (odd? (+ (quot t 12) (count c))) :known-at (+ t 30)}))))
 
 (deftest the-world-once-per-origin
-  (let [s (wg/with-world-once sp3 state3 exposure)
+  (let [s (wg/with-world-once sp3 state3 exposure {:gate nil})
         t (+ t0 107)
         x (fn [place] (:x ((:world-gauges s) :year place t)))]
     (testing "the group holds only the products with the place's exposure: food and energy"
@@ -85,6 +86,51 @@
       (is (= #{:food :brent} (set (map :series (:reads ((:world-gauges s) :year "KEN" t))))))
       (is (= #{:food :brent} (set (map :series (:reads ((:world-offset s) :year "KEN" t)))))))
     (testing "the harness column enters the term, not the group"
-      (let [s2 (wg/with-world-once sp3 state3 exposure {:extra (fn [t] (Math/sin t))})]
+      (let [s2 (wg/with-world-once sp3 state3 exposure {:gate nil :extra (fn [t] (Math/sin t))})]
         (is (= {:year 2 :half-decade 2} (:world-width s2)))
         (is (not= (:x ((:world-offset s) :year "KEN" t)) (:x ((:world-offset s2) :year "KEN" t))))))))
+
+;; bnm-56c.28: the lead test gates the term per kind. Thirty years in which
+;; every country's year onset follows world food momentum at the origin and
+;; Brent carries nothing: food passes, Brent and the harness's noise do not,
+;; and a gauge that fails is read nowhere for the kind, neither in the term
+;; nor in its product with the place's exposure
+(def ^:private t1 (* 12 1980))
+
+(def ^:private state4
+  (let [g (augur.math/rng 7)]
+    (ws/world-state {:food {:entries (for [p (range t1 (+ t1 360))] [p (inc p) (Math/log (+ 100.0 (* 10 (Math/sin (/ p 7.0)))))]) :lag 1}
+                     :brent {:entries (for [p (range t1 (+ t1 360))] [p p (Math/log (+ 50.0 (* 5 (augur.math/normal! g))))]) :lag 0}})))
+
+(def ^:private sp4
+  (assoc sp :start (* 12 1870) :end (+ t1 359)
+         :scales [{:name :quarter-lead :per 3} {:name :year :per 12} {:name :half-decade :per 60}]
+         :target (fn [scale c t]
+                   (when (and (= scale :year) (#{"KEN" "TZA"} c) (< (* 12 1981) t (+ t1 330)))
+                     (let [f (ws/change (ws/reader state4 t) :food 12)]
+                       {:y (> (+ f (if (= c "KEN") 0.02 -0.02)) 0.0) :known-at (+ t 30)})))))
+
+(deftest the-lead-test-gates-the-term-per-kind
+  (let [s (wg/with-world-once sp4 state4 exposure)
+        t (+ t1 323)
+        o ((:world-offset s) :year "KEN" t)]
+    (testing "food momentum leads the onsets and passes; Brent fails and is not wired"
+      (is (= [:food12] (:passed o)))
+      (let [[food brent] (:x ((:world-gauges s) :year "KEN" t))]
+        (is (number? food))
+        (is (nil? brent) "Brent's product column reads unknown")))
+    (testing "the term is food's alone: the same as with Brent never offered"
+      (let [food-only (wg/with-world-once sp4 (dissoc state4 :brent) exposure)
+            ungated (wg/with-world-once sp4 state4 exposure {:gate nil})]
+        (is (= (:x o) (:x ((:world-offset food-only) :year "KEN" t))))
+        (is (not= (:x o) (:x ((:world-offset ungated) :year "KEN" t))) "ungated, Brent moves it")))
+    (testing "the harness's noise enters as an ordinary gauge and is dropped by the same test"
+      (let [noisy (wg/with-world-once sp4 state4 exposure {:extra (wg/extra-column {:kind :noise :seed 1})})
+            on ((:world-offset noisy) :year "KEN" t)]
+        (is (= [:food12] (:passed on)))
+        (is (= (:x o) (:x on)))))
+    (testing "early, before the test has five online errors, nothing is wired"
+      (let [early (+ t1 71)]
+        (is (= [] (:passed ((:world-offset s) :year "KEN" early))))
+        (is (= 0.0 (:x ((:world-offset s) :year "KEN" early))))
+        (is (= [nil nil] (:x ((:world-gauges s) :year "KEN" early))))))))

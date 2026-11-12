@@ -227,3 +227,8 @@
     (is (= [7 200] ((wr/cross-kind-prior clims "coup") :year :country)) "never its own")
     (swap! clims assoc-in ["war" [:year :country]] [8 300])
     (is (= [11 400] (prior :year :country)) "as of the month it is read")))
+
+(deftest bnm-56c-28-the-world-term-is-gated-unless-told-not-to
+  (let [extra (fn [_] 0.0)]
+    (is (= {:extra extra} (wr/once-opts {} extra)) "the gate by default: bnm.world-gauges' own")
+    (is (= {:extra extra :gate nil} (wr/once-opts {:world-gate "false"} extra)) "--world-gate false, 822fea8's ungated term")))

@@ -22,7 +22,10 @@
     jolt -A:tools -M -m bnm.lead-test [--kinds food_price_shock,market_crash] [--from 2003] [--to 2022]
 
   prints a table for the world gauges of bnm.world-state at every kind
-  named (all thirteen without)."
+  named (all thirteen without): the test in hindsight over [from, to], and
+  the gate as bnm.world-gauges/with-world-once applies it (bnm-56c.28): at
+  each origin in [from, to] on the origins from 1950 whose rates were known
+  by then, how many it passes, the first, and the last."
   (:require [bnm.kinds :as kinds]
             [bnm.lattice-political :as lp]
             [bnm.lattice-banking :as lb]
@@ -30,46 +33,12 @@
             [bnm.slow-train :as st]
             [bnm.world-gauges :as wg]
             [bnm.world-state :as ws]
+            [bnm.world-term :as wt]
             [clojure.string :as str]))
 
-(defn- corr [xs ys]
-  (let [n (count xs)]
-    (when (> n 2)
-      (let [mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
-            c (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
-            vx (reduce + (map #(let [d (- % mx)] (* d d)) xs))
-            vy (reduce + (map #(let [d (- % my)] (* d d)) ys))]
-        (when (and (pos? vx) (pos? vy)) (/ c (Math/sqrt (* vx vy))))))))
-
-(defn- ols
-  "[a b] of y ~ a + b x."
-  [xs ys]
-  (let [n (count xs) mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
-        vx (reduce + (map #(let [d (- % mx)] (* d d)) xs))
-        b (if (pos? vx) (/ (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys)) vx) 0.0)]
-    [(- my (* b mx)) b]))
-
-(defn lead-test
-  "{:lead :concurrent :online :clim :n :pass}: `gauge` (fn [t]) -> the
-  gauge known at t or nil, `window-mean` (fn [t]) -> its mean over the
-  window (or nil), `rate` (fn [t]) -> {:rate :known-at} or nil, over
-  `origins`."
-  [{:keys [gauge window-mean rate origins]}]
-  (let [rows (vec (for [t origins :let [g (gauge t) r (rate t)] :when (and g r)]
-                    {:t t :g (double g) :r (double (:rate r)) :known-at (:known-at r) :w (some-> (window-mean t) double)}))
-        online (vec (for [{:keys [t g r]} rows
-                          :let [known (filter #(<= (:known-at %) t) rows)]
-                          :when (>= (count known) 3)
-                          :let [[a b] (ols (map :g known) (map :r known))
-                                clim (/ (reduce + (map :r known)) (count known))]]
-                      [(let [e (- r (+ a (* b g)))] (* e e)) (let [e (- r clim)] (* e e))]))
-        mse (fn [k] (when (seq online) (/ (reduce + (map k online)) (count online))))
-        cw (filter :w rows)]
-    {:n (count rows)
-     :lead (corr (map :g rows) (map :r rows))
-     :concurrent (corr (map :w cw) (map :r cw))
-     :online (mse first) :clim (mse second)
-     :pass (boolean (and (seq online) (<= (mse first) (* 0.9 (mse second)))))}))
+(def lead-test
+  "{:lead :concurrent :online :clim :n :n-online :pass}: bnm.world-term/lead-test."
+  wt/lead-test)
 
 (defn year-rate
   "(fn [t]) -> {:rate :known-at} of spec `sp`'s year node over its
@@ -96,7 +65,7 @@
         state (wg/load-state db units end)
         gauge-at (memoize (fn [t] (zipmap ws/gauge-names (:x (ws/gauges state t nil)))))
         origins (for [y (range from (inc to))] (+ 11 (* 12 y)))]
-    (println "kind\tgauge\tn\tlead\tconcurrent\tonline\tclim\tpass")
+    (println "kind\tgauge\tn\tlead\tconcurrent\tonline\tclim\tpass\tgate-origins\tfirst-gate\tgate-at-to")
     (doseq [k ks
             :let [sp (if (= k lb/kind) (lb/build end "r6-at-8ul" {}) (lp/build k end "r6-at-8ul" cats (* 12 1870) {}))
                   rate (year-rate sp)]
@@ -106,5 +75,15 @@
                               :window-mean (fn [t] (let [vs (keep #(get (gauge-at %) g) (range (inc t) (+ t 25)))]
                                                      (when (seq vs) (/ (reduce + vs) (count vs)))))
                               :rate rate :origins origins})
-                  f (fn [x] (if x (format "%.3f" (double x)) "-"))]]
-      (println (str/join "\t" [k (name g) n (f lead) (f concurrent) (f online) (f clim) pass])))))
+                  f (fn [x] (if x (format "%.3f" (double x)) "-"))
+                  ;; the gate as the term applies it (bnm.world-term/gate, bnm-56c.28):
+                  ;; re-decided at each origin on what is known then, from 1950
+                  gate-at (fn [t] (:pass (wt/gate {:gauges (fn [s] [(get (gauge-at s) g)])
+                                                   :outcome (fn [s] (when-let [{r :rate ka :known-at} (rate s)] {:share r :known-at ka}))
+                                                   :origins (for [y (range 1950 (inc to))] (+ 11 (* 12 y)))}
+                                                  wg/default-gate t 0)))
+                  passed (filter gate-at origins)]]
+      (println (str/join "\t" [k (name g) n (f lead) (f concurrent) (f online) (f clim) pass
+                               (str (count passed) "/" (count origins))
+                               (if (seq passed) (quot (first passed) 12) "-")
+                               (boolean (gate-at (last origins)))])))))

@@ -20,7 +20,9 @@
   Recursive step 2's options (bead bnm-56c.19), each off by default:
   --world-gauges true (the world state at the year and half-decade,
   bnm.world-gauges), --world-once true (with it: the world gauges once per
-  origin as the countries' offset, only food and Brent, fix 3), --world-extra noise|planted|false [--seed s]
+  origin as the countries' offset, only food and Brent, fix 3; each gauge
+  only at the origins where the kind's lead test passes it, bnm-56c.28,
+  --world-gate false for none), --world-extra noise|planted|false [--seed s]
   [--strength s] (the acceptance harness's extra world column; without
   --world-gauges, a group of its own),
   --pwt-stale true (bnm-h8d), --catalogue-through true (Test 7),
@@ -283,6 +285,12 @@
   [cats]
   (update-vals cats #(assoc % :unknown-past-through true)))
 
+(defn once-opts
+  "bnm.world-gauges/with-world-once's options: the harness's column, and no
+  gate under --world-gate false (822fea8's term, every gauge in it)."
+  [{:keys [world-gate]} extra]
+  (cond-> {:extra extra} (= "false" world-gate) (assoc :gate nil)))
+
 (defn with-step2
   "The specs with recursive step 2's options (`opts`, from the command
   line): :world-gauges, the world state at the year and half-decade
@@ -291,7 +299,7 @@
   acceptance harness's extra world column, :seed, :strength; without
   :world-gauges the column alone, as the year's :world-gauges group);
   :set, an EDN map merged into every spec (a nil value removes its key)."
-  [specs {:keys [world-gauges world-once world-extra seed strength] set-edn :set} end]
+  [specs {:keys [world-gauges world-once world-extra seed strength] set-edn :set :as opts} end]
   (let [state (when world-gauges
                 (let [db (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))
                       units (set (filter #(= 3 (count %)) (map first (keys db))))]
@@ -309,7 +317,7 @@
                                                    :strength (some-> strength parse-double)
                                                    :share (wg/onset-share sp countries) :year-origins year-origins})]
                        (cond
-                         (and world-gauges world-once) (wg/with-world-once sp state exposure {:extra extra})
+                         (and world-gauges world-once) (wg/with-world-once sp state exposure (once-opts opts extra))
                          world-gauges (wg/with-world sp state exposure {:extra extra})
                          :else
                          ;; without the world state (bnm-56c.23's t51b): the
@@ -412,7 +420,7 @@
                                                                :year-delay (some-> year-delay parse-long)
                                                                :leak-fixes (= "true" leak-fixes)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
-                                :world-extra (:world-extra opts)
+                                :world-extra (:world-extra opts) :world-gate (:world-gate opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)}
                                end))
         books (atom {})
