@@ -193,3 +193,15 @@
   (is (= "r6-at-8ul" (wr/known-run {:known "r6-at-8ul"})))
   (is (= {:relations? false :graph nil} (wr/model-choice {:without-relations "true" :known "r6-at-8ul"}))
       "the base takes it: it is not a link option"))
+
+(deftest bnm-56c-23-the-harness-column-without-the-world-state
+  ;; a base without the world group (t51b) takes the acceptance harness's
+  ;; extra column as a group of its own at the year and half-decade
+  (let [sp {:start 0 :parent {"AAA" "world"} :scales [{:name :year} {:name :quarter-lead}]}
+        out (get (wr/with-step2 {"k" sp} {:world-extra "noise" :seed "1"} 240) "k")
+        x (:x ((:world-gauges out) :year "AAA" 131))]
+    (is (= {:year 1} (:world-width out)))
+    (is (= 1 (count x)))
+    (is (number? (first x)))
+    (is (= x (:x ((:world-gauges out) :year "world" 131))) "the same at every place")
+    (is (nil? (:world-gauges (get (wr/with-step2 {"k" sp} {} 240) "k"))) "no harness, no group")))

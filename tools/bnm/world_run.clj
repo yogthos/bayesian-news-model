@@ -20,7 +20,8 @@
   Recursive step 2's options (bead bnm-56c.19), each off by default:
   --world-gauges true (the world state at the year and half-decade,
   bnm.world-gauges), --world-extra noise|planted|false [--seed s]
-  [--strength s] (the acceptance harness's extra world column),
+  [--strength s] (the acceptance harness's extra world column; without
+  --world-gauges, a group of its own),
   --pwt-stale true (bnm-h8d), --catalogue-through true (Test 7),
   --year-delay n (bnm-pjg.6: the political and economic kinds' year rows
   read n years later; banking's own table is not delayed), --leak-fixes
@@ -267,8 +268,9 @@
   "The specs with recursive step 2's options (`opts`, from the command
   line): :world-gauges, the world state at the year and half-decade
   (bnm.world-gauges), with :world-extra (noise, planted or false: the
-  acceptance harness's extra world column, :seed, :strength); :set, an
-  EDN map merged into every spec (a nil value removes its key)."
+  acceptance harness's extra world column, :seed, :strength; without
+  :world-gauges the column alone, as the year's :world-gauges group);
+  :set, an EDN map merged into every spec (a nil value removes its key)."
   [specs {:keys [world-gauges world-extra seed strength] set-edn :set} end]
   (let [state (when world-gauges
                 (let [db (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))
@@ -278,17 +280,22 @@
         merge-set (fn [sp] (if set-edn
                              (reduce-kv (fn [sp k v] (if (nil? v) (dissoc sp k) (assoc sp k v))) sp (read-string set-edn))
                              sp))]
-    (when (and world-extra (not world-gauges))
-      (throw (ex-info "bnm.world-run: --world-extra needs --world-gauges true" {})))
     (into {} (for [[k sp] specs]
                [k (merge-set
-                   (if world-gauges
+                   (if (or world-gauges world-extra)
                      (let [countries (filter #(= 3 (count %)) (keys (:parent sp)))
                            year-origins (filter #(zero? (mod (inc (- % (:start sp))) 12)) (range (:start sp) (inc end)))
                            extra (wg/extra-column {:kind (some-> world-extra keyword) :seed (or (some-> seed parse-long) 1)
                                                    :strength (some-> strength parse-double)
                                                    :share (wg/onset-share sp countries) :year-origins year-origins})]
-                       (wg/with-world sp state exposure {:extra extra}))
+                       (if world-gauges
+                         (wg/with-world sp state exposure {:extra extra})
+                         ;; without the world state (bnm-56c.23's t51b): the
+                         ;; harness's column as a group of its own
+                         (let [scales (set (filter #{:year :half-decade} (map :name (:scales sp))))]
+                           (assoc sp
+                                  :world-gauges (fn [_scale _place t] {:x [(extra t)] :reads []})
+                                  :world-width (into {} (for [s scales] [s 1]))))))
                      sp))]))))
 
 (defn- write-kind [dir kind r]
