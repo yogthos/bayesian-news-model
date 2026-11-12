@@ -45,8 +45,13 @@ docs/PHASE-CHANGES.md)
   - `bnm.node` holds the node contract, built from lattice book entries (`split-book` keeps the issued forecasts in their own book) and from bnm.buffers records;
   - `bnm.compose` holds the identities up both trees;
   - the tests are compose_test (C3–C5), node_test (C6, C11) and coherence_report_test;
-  - `tools/bnm/coherence_report.clj` produced docs/COHERENCE.md on t50 and t48. Parents sit below the independent composition of their children (subregion year −0.10), and the year sits above its quarters' rates at the country (log ratio +0.28).
-- Next is step 2, the world node (bnm-56c.19). Its acceptance harness must plant the signal where the reference reads it (see that bead's notes).
+  - `tools/bnm/coherence_report.clj` produced docs/COHERENCE.md on t50 and t48. Parents sit below the independent composition of their children (subregion year −0.086 after the review's corrections), mostly because country p runs above observed rates (banking 0.062 against 0.032), not dependence; the year sits above its quarters' rates at the country (log ratio +0.28).
+  - The review of step 1 found seven issues, all fixed test-first on recursive-2: the report composed unscored children and had no calibration column; `node/hazard-p` used 1 − exp(−λw E[e^z]); five Hermite points were inaccurate at parent scale; `cumhaz-split` edge cases; the downscale's Jensen gap under `:up-net-of-downscale`; C6/C11 tests that could not fail (now `node/state-reader` refuses issued forecasts, and `read-graph` keys reads by kind).
+- Step 2 (bnm-56c.19, with bnm-h8d and bnm-56c.22) is built and scored, **not adopted** (docs/PHASE-CHANGES.md, "the world node and the world state at the year"):
+  - `bnm.world-state` and `bnm.world-gauges`: world food (IMF index), Brent, VIX, world credit, US policy rate, dollar, read as of t with publication lags, at the year and half-decade nodes directly and × exposure; the world node's state is these series.
+  - `bnm.world-run` options, all off by default: `--world-gauges`, `--world-extra noise|planted|false` (the harness), `--pwt-stale` (h8d), `--catalogue-through` (Test 7), `--year-delay n` (pjg.6), `--set` (`:state-from`, `:evidence-at`, `:downscale-learn`, `:learn-offsets :mixture`). Without them t50 reproduces byte for byte.
+  - t51-world-norel against t50: pooled −0.0046, 2020–22 lost (food price shocks −0.025, market crashes −0.027). Planted and false-move rules pass; the per-fold noise rule fails. The cut loop alone carries the food 2020–22 loss; the world group got no posterior weight at the food year node after 2010.
+- Next: step 3 (frailty states), or a way for the reference's world group to reach the issued forecast; the user decides on adoption.
 
 ## State as of 2026-11-10 (branch `structure`)
 

@@ -322,6 +322,10 @@ The base stays t48 until a step is adopted.
 - Quarters get a learned pool weight on the offset, or read world gauges outside its pull (Test 4).
 - Registered acceptance: food price shocks 2020–22 by fold, market crashes (the VIX state), the noise rule, and a planted false world move.
 - **Round 4 hygiene runs alongside:** the stocks.clj ordering (Test 18), catalogue `:through` (Test 7), the `:revised` reserves flag and the bnm-pjg.6 delay test (Test 12).
+- **Status (12 November 2026): built, scored, not adopted** (bnm-56c.19, with bnm-h8d and bnm-56c.22).
+  - Built, all opt-in: `bnm.world-state` (Test 3b), the lattice's `:world-gauges` group (Test 3a), `:downscale-learn` (Test 4, a small gain on synthetic data), `:learn-offsets :mixture` (56c.22), `bnm.world-gauges` and `bnm.world-run --world-gauges/--pwt-stale/--catalogue-through/--set`. Round 4: Test 18 fixed, Test 7 opt-in, Test 12 marked, the delay test run (docs/PHASE-CHANGES.md).
+  - The candidate t51-world-norel passes the planted and false-move rules and the pooled noise rule, and fails the per-fold noise rule and the folds against t50 (pooled −0.0046, 2020–22 −0.0044 lost; food price shocks −0.025 there, market crashes −0.027). The cut loop alone (s2-ref) carries the whole food 2020–22 loss; the world group earned no posterior weight at the food year node after 2010, so the issued forecast never read it.
+  - Next: the world state is in the reference but not in what is issued. Step 3's frailty, or a weighting that lets the reference's world group reach the forecast, is where the 2020–22 level would have to come from.
 
 **Step 3: frailty states (new; makes the place tree recursive).**
 - Augur: `hier/states-step` (an online filter step for one period, with the variances fixed from the last prequential grid fit, re-gridded each year).

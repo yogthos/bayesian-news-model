@@ -4635,3 +4635,51 @@ t51 passes only if all four hold. What the world group does alone is
 reported from one more run, t50's command with `:state-from :reference
 :evidence-at :issue` and nothing else (s2-ref), against which t51 differs
 only by the world state, the learned pool, the mixture, h8d and Test 7.
+
+**Results** (scored after the registration above was committed at
+84b9b3b; Brier, year nodes, 2003-2022, thirteen kinds; bnm.links; run
+directories data/runs/t51-world-norel and data/runs/s2-*):
+
+| check | result | rule |
+|---|---|---|
+| 1. noise, pooled (s2-noise1, s2-noise2 vs t51) | +0.00012, +0.00029; mean +0.00020 (fresh draw [-0.00071, +0.00112]) | met |
+| 1. noise, per fold (mean of the two draws) | 2003-06 -0.00035, 2007-09 -0.00040, 2010-12 +0.00222, 2013-19 +0.00035, 2020-22 -0.00063 | not met (all five outside 0.0003) |
+| 2. planted (s2-planted vs t51) | +0.00530 [+0.00206, +0.00887]; market crashes +0.065, food price shocks +0.006 | met |
+| 3. false move (s2-false vs s2-noise1) | pooled -0.00010 [-0.00027, +0.00006]; 2013-19 -0.00024 [-0.00064, +0.00006] | met |
+| 4. t51 vs t50 by fold | 2003-06 -0.0042 [-0.0182, +0.0069]; 2007-09 -0.0234 [-0.0328, +0.0013]; 2010-12 -0.0016 [-0.0087, +0.0047]; 2013-19 -0.0020 [-0.0061, +0.0015]; **2020-22 -0.0044 [-0.0071, -0.0023], lost** | not met |
+
+Reported beside the rules:
+- t51 against t50, pooled -0.0046 [-0.0089, -0.0001] (a loss); food price
+  shocks -0.023 pooled (by fold +0.003, -0.002, -0.097, -0.014, 2020-22
+  -0.025), market crashes -0.037 (by fold -0.048, -0.305, +0.060, -0.015,
+  2020-22 -0.027). Quarter-lead nodes -0.0015 [-0.0038, +0.0001].
+- t51 against t48: pooled -0.0049 [-0.0097, -0.0006], 2020-22 -0.0038
+  [-0.0058, -0.0019] (food -0.023, market crashes -0.026).
+- **Decomposition.** s2-ref (t50 with `:state-from :reference
+  :evidence-at :issue` only) against t50: pooled -0.0012 [-0.0036,
+  +0.0014], 2020-22 -0.0023 [-0.0037, -0.0007] lost, food price shocks
+  2020-22 -0.025: the cut loop alone accounts for all of the food
+  2020-22 loss, as Round 1 found on t48's inputs. t51 against s2-ref (the
+  world state, the learned pool, the offset mixture, h8d and Test 7):
+  pooled -0.0034 [-0.0069, +0.0000], losing 2007-09 (-0.021), 2010-12
+  (-0.007) and 2020-22 (-0.002, market crashes -0.025; food -0.0001).
+- **Why the world state does not lift food 2020-22.** The world group's
+  model earned no posterior weight at the food year node after 2010
+  (0.056 in 2010, 0.000 from 2011 to 2022) nor at market crashes. The
+  issued forecast is the posterior combination, so it never read the
+  world state; the reference, which does, is only the state passed on.
+  Its effect through the states was harmful: the food year node's mean p
+  rose to 0.44, 0.36 and 0.38 in 2011-2013, when world food prices were
+  high and the catalogue rate was 0.05, 0.01 and 0.05, and stayed at 0.06
+  in 2020-2021 against rates of 0.50 and 0.51. Market crashes' mean p
+  fell to 0.15 and 0.12 in 2006-2007 against rates of 0.96. Over the
+  years the year node learned from, world food momentum did not track
+  the food catalogue's rate (2011 is the counterexample), so the r = 0.65
+  of the weighting diagnostic (origins 2005-2022, in hindsight) was not
+  available to an online learner by 2020.
+
+**Verdict.** t51-world-norel fails rule 1 per fold and rule 4; it passes
+the planted and false-move rules. Not adopted; the base of record stays
+t50-world-norel and no L1 note is written. Every option stays off by
+default (t50 reproduces byte for byte on banking crises, food price
+shocks and market crashes from this branch).
