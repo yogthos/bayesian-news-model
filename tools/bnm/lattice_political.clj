@@ -213,9 +213,10 @@
 (defn year-row-opts
   "bnm.political-gauges/year-row's options at origin t: with `leak-fixes`
   (bnm-56c.23) the release table and the origin's year, so Maddison and NMC
-  are read no later than published; off, none (the base's reading)."
+  are read no later than published, and urban growth in one unit across
+  2016; off, none (the base's reading)."
   [leak-fixes t _year-delay]
-  (if leak-fixes {:releases @release-table :origin-year (ended t)} {}))
+  (if leak-fixes {:releases @release-table :origin-year (ended t) :urban-log true} {}))
 
 (defn spec
   [{:keys [kind db cats annual wdi units end known start pwt-stale year-delay leak-fixes]}]

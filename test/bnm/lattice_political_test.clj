@@ -33,3 +33,7 @@
       (is (= 2014 (:origin-year o)))
       (is (= 2010 (bnm.releases/published (:releases o) "maddison" dec2014))))
     (is (= 2014 (:origin-year (lp/year-row-opts true dec2014 1))) "the delay test's origin is still the origin")))
+
+(deftest bnm-56c-23-leak-fixes-carry-urban-growth-in-one-unit
+  (is (true? (:urban-log (lp/year-row-opts true (+ 11 (* 12 2014)) nil))))
+  (is (nil? (:urban-log (lp/year-row-opts nil (+ 11 (* 12 2014)) nil)))))

@@ -104,9 +104,11 @@
   opts :releases (bnm.releases/read-releases; bnm-56c.23): Maddison and
   NMC no later than the latest year published by the origin (December of
   :origin-year, by default y + 1), not the fixed offset, which ran up to
-  five years ahead of their releases. Without it, the base's reading."
+  five years ahead of their releases. :urban-log: urban growth after 2016
+  (WDI's share) as the five-year log change, NMC's unit before it, not
+  the change in share points over 100. Without them, the base's reading."
   ([annual wdi iso y] (year-row annual wdi iso y {}))
-  ([annual wdi iso y {:keys [releases origin-year]}]
+  ([annual wdi iso y {:keys [releases origin-year urban-log]}]
   (let [v (fn [k] (get-in annual [k iso y]))
         vy (fn [k] (by-year annual k iso))
         p (dec y)
@@ -138,7 +140,11 @@
      ;; (NMC where the offset's year has it, read at its release's year)
      (if (some? (change urban p 5))
        (change urban pn 5)
-       (some-> (wchange "people/urban_share" q 5) (/ 100.0)))
+       (if urban-log
+         (when-let [a (w "people/urban_share" q)]
+           (when-let [b (w "people/urban_share" (- q 5))]
+             (when (and (pos? a) (pos? b)) (Math/log (/ a b)))))
+         (some-> (wchange "people/urban_share" q 5) (/ 100.0))))
      soldiers (change per-soldier pn 3)
      (w "people/infant_mortality" q) (w "people/working_age_share" q) (wchange "people/tertiary_enrolment" q 5)
      (slog (w "economy/inflation" q)) (slog (w "food/food_inflation" q))

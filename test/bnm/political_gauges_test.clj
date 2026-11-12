@@ -85,3 +85,17 @@
     (is (< (Math/abs (- (nth fixed (ix :growth3)) (- 1.0 0.49))) 1e-12) "2010 against 2007")
     (is (= (nth base (ix :log-gdppc)) (nth (pg/year-row annual (fn [_ _ _] nil) "AAA" 2013 {}) (ix :log-gdppc)))
         "without :releases, the base's reading")))
+
+(deftest bnm-56c-23-urban-growth-in-one-unit-across-2016
+  ;; NMC's urban growth to 2016 is the five-year log change of the urban
+  ;; share; WDI's after it was the change in share points over 100. With
+  ;; :urban-log both are the log change
+  (let [wdi (fn [_ v y] (when (= v "people/urban_share") ({2014 50.0 2019 55.0} y)))
+        ix (zipmap pg/year-names (range))
+        base (pg/year-row {} wdi "AAA" 2018)
+        fixed (pg/year-row {} wdi "AAA" 2018 {:urban-log true})
+        nmc (pg/year-row {"nmc_tpop" {"AAA" {2011 100.0 2016 100.0}} "nmc_upop" {"AAA" {2011 50.0 2016 55.0}}}
+                         (fn [_ _ _] nil) "AAA" 2017 {:urban-log true})]
+    (is (< (Math/abs (- (nth base (ix :urban-growth5)) 0.05)) 1e-12) "the base: points over 100")
+    (is (< (Math/abs (- (nth fixed (ix :urban-growth5)) (Math/log 1.1))) 1e-12) "WDI as a log change")
+    (is (< (Math/abs (- (nth nmc (ix :urban-growth5)) (Math/log 1.1))) 1e-12) "NMC's, the same unit")))
