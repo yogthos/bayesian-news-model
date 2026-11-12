@@ -12,8 +12,8 @@
 (defn- month-of [s] (+ (* 12 (parse-long (subs s 0 4))) (dec (parse-long (subs s 5 7)))))
 
 (defn read-releases
-  "{source [{:release :published (month) :last-year :adds #{columns}}]},
-  oldest first."
+  "{source [{:release :published (month) :last-year :last-month (month,
+  for a monthly source; nil otherwise) :adds #{columns}}]}, oldest first."
   ([] (read-releases (io/resource "bnm/releases.tsv")))
   ([src]
    (with-open [r (io/reader src)]
@@ -21,9 +21,10 @@
            ks (map keyword (str/split header #"\t"))]
        (->> rows
             (map #(zipmap ks (str/split % #"\t" -1)))
-            (map (fn [{:keys [source release published last_year adds]}]
+            (map (fn [{:keys [source release published last_year adds last_month]}]
                    {:source source :release release :published (month-of published)
                     :last-year (parse-long last_year)
+                    :last-month (when-not (str/blank? last_month) (month-of last_month))
                     :adds (set (remove str/blank? (str/split (or adds "") #",")))}))
             (group-by :source)
             (into {} (map (fn [[s rs]] [s (vec (sort-by :published rs))]))))))))

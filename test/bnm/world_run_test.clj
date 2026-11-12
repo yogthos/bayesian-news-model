@@ -232,3 +232,14 @@
   (let [extra (fn [_] 0.0)]
     (is (= {:extra extra} (wr/once-opts {} extra)) "the gate by default: bnm.world-gauges' own")
     (is (= {:extra extra :gate nil} (wr/once-opts {:world-gate "false"} extra)) "--world-gate false, 822fea8's ungated term")))
+
+(deftest food-outcomes-option
+  ;; --food-outcomes monthly swaps in the monthly food catalogue at its
+  ;; publication lag (bnm-56c.30); without it the base's catalogue stands;
+  ;; any other value is refused
+  (let [db {["AAA" "food/food_inflation"] {:period (vec (range 24000 24100)) :value (vec (repeat 100 3.0))}}
+        cats {"food_price_shock" {:known-lag 18} "coup" {:known-lag 12}}]
+    (is (= cats (wr/food-outcomes cats db nil)))
+    (is (= 9 (get-in (wr/food-outcomes cats db "monthly") ["food_price_shock" :known-lag])))
+    (is (= {:known-lag 12} ((wr/food-outcomes cats db "monthly") "coup")))
+    (is (thrown? Exception (wr/food-outcomes cats db "quarterly")))))

@@ -30,6 +30,9 @@
   read n years later; banking's own table is not delayed), --leak-fixes
   true (bnm-56c.23: Maddison, NMC and banking's PWT read by their
   releases, resources/bnm/releases.tsv; urban growth in one unit),
+  --food-outcomes monthly (bnm-56c.30: food price shocks by month from
+  FAOSTAT's monthly food inflation, known at its publication lag, nine
+  months, not the annual catalogues' eighteen),
   --clim-prior kinds (bnm-56c.26: a node with no resolved outcome reads
   the rate the other kinds' nodes at its scale and level have resolved,
   not 0.5), and
@@ -63,7 +66,8 @@
   year end from 2003, for each edge and country, the simulated chances of
   each onset and of both within three years, from what the world had
   learned by then)."
-  (:require [bnm.ews :as ews]
+  (:require [bnm.economic-events :as ee]
+            [bnm.ews :as ews]
             [bnm.states :as states]
             [bnm.factors :as fac]
             [bnm.kinds :as kinds]
@@ -280,6 +284,16 @@
                   (let [[x y] (get c [scale level] [0 0])] [(+ a x) (+ b y)])))
             [0 0] @clims)))
 
+(defn food-outcomes
+  "`cats` under --food-outcomes: monthly, food price shocks by month at the
+  food CPI's publication lag (bnm.economic-events/with-monthly-food,
+  bnm-56c.30); nil, the base's catalogue."
+  [cats db choice]
+  (case choice
+    nil cats
+    "monthly" (ee/with-monthly-food cats db)
+    (throw (ex-info (str "bnm.world-run: --food-outcomes takes monthly, not " choice) {}))))
+
 (defn catalogues-through
   "Every catalogue with its uncovered tail unknown (loop audit Test 7)."
   [cats]
@@ -404,7 +418,10 @@
         out (or out "world")
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
-        cats (cond-> (kinds/catalogues) (= "true" catalogue-through) catalogues-through)
+        cats (cond-> (food-outcomes (kinds/catalogues)
+                                    (when (:food-outcomes opts) (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")))
+                                    (:food-outcomes opts))
+               (= "true" catalogue-through) catalogues-through)
         ks (if kinds (str/split kinds #",") (sort (keys kinds/tiers)))
         graph (if graph (read-graph graph) {})
         parents (parents-of graph ks)

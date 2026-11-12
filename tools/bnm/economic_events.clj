@@ -95,6 +95,61 @@
                    :when (and (>= (count past) 12) (>= x 15.0) (>= (- x (/ (reduce + past) (count past))) 10.0))]
                q)))
 
+(defn food-shocks-monthly
+  "Months of food price shocks from {month twelve-month food inflation}
+  (bnm-56c.30): the quarterly rule by month, 15% or more and 10 points
+  above the mean of the previous sixty months (at least thirty-six of
+  them), once in twelve months, dated at the month the rule first fires.
+  It reads only that month and the ones before it."
+  [infl]
+  (once-in 12 (for [[m x] infl
+                    :let [past (keep #(get infl %) (range (- m 60) m))]
+                    :when (and (>= (count past) 36) (>= x 15.0) (>= (- x (/ (reduce + past) (count past))) 10.0))]
+                m)))
+
+(def food-publication-lag
+  "Months after its month before a country's food CPI is published
+  (bnm-56c.30). FAOSTAT publishes its monthly consumer price indices
+  quarterly (resources/bnm/releases.tsv): the first month of a quarter
+  waits two months for the quarter, then three to four months for the
+  release (March 2023's in July, March 2025's in June), and the release
+  of March 2026 came late (FAO's calendar: delayed; April 2026 was still
+  out 6.5 months on). Nine months covers all three with a little to
+  spare; vintages are not archived (bnm-09d)."
+  9)
+
+(defn food-known-at
+  "The month a food CPI month `m` is read from: no earlier than published."
+  [m]
+  (+ m food-publication-lag))
+
+(defn monthly-food-catalogue
+  "The lattice's catalogue of food price shocks by month from {iso {month
+  twelve-month food inflation}}: onsets at their month, busy three months,
+  covered from the first month the rule can judge (36 months of past) to
+  the last with data, known at the food CPI's publication lag."
+  [by-iso]
+  (let [by-iso (into {} (filter (comp seq val) by-iso))]
+    {:onsets (into {} (for [[u infl] by-iso] [u (into (sorted-set) (food-shocks-monthly infl))]))
+     :busy (into {} (for [[u infl] by-iso] [u (into (sorted-set) (mapcat #(range % (+ % 3)) (food-shocks-monthly infl)))]))
+     :from (into {} (for [[u infl] by-iso] [u (+ 36 (apply min (keys infl)))]))
+     :through (into {} (for [[u infl] by-iso] [u (apply max (keys infl))]))
+     :known-lag food-publication-lag}))
+
+(defn- by-month [db u v]
+  (if-let [{:keys [period value]} (db [u v])]
+    (reduce (fn [acc i] (assoc acc (long (nth period i)) (double (nth value i)))) {} (range (count period)))
+    {}))
+
+(defn with-monthly-food
+  "`cats` with food price shocks by month from the db's monthly food
+  inflation (FAOSTAT, food/food_inflation), at its publication lag
+  (world-run --food-outcomes monthly); every other kind as it was."
+  [cats db]
+  (let [units (sort (set (keep (fn [[u v]] (when (= v "food/food_inflation") u)) (keys db))))]
+    (assoc cats "food_price_shock"
+           (monthly-food-catalogue (into {} (for [u units] [u (by-month db u "food/food_inflation")]))))))
+
 (defn catalogue
   "The lattice's catalogue form for annual onsets, {iso {:onsets #{years}
   :from year :through year}}: onsets at the year's first month, busy for
