@@ -39,6 +39,14 @@ top-10 recall 0.284 against 0.273). No verdict below is rerun; trials
 from now on bench against t50-world-norel (docs/PHASE-CHANGES.md, note
 to amendment L1).
 
+Corrected candidate, 12 November 2026 (bnm-56c.23, not a trial and not
+counted; not adopted): t51b-world-norel, t50's command on the
+leak-corrected data with `--leak-fixes true --pwt-stale true` and
+`:learn-offsets :mixture`. Against t50: year Brier -0.0013 [-0.0026
++0.0002] pooled, no fold lost; quarter-lead -0.0006. The leak fixes
+alone (fx-leak): -0.0001 year, -0.0008 quarter-lead. Fails the noise rule
+(-0.0008; the base's weighting fails it too). docs/PHASE-CHANGES.md.
+
 | # | configuration | first scored | note |
 |---|---|---|---|
 | 1 | mix | 2026-10 | event-code mix |

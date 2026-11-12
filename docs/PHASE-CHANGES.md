@@ -4706,3 +4706,79 @@ and all of the Brier gain go, most of it in market crashes (-0.002 to
 and conflict keep theirs. Either the latest year carries real signal or
 the revised rows carry what no one had at the time; the test cannot tell
 which, but the base's year-gauge gain rests on the latest year's row.
+
+## Look-ahead fixes and the corrected candidate t51b-world-norel (12 November 2026, bnm-56c.23)
+
+The leak audit (bnm-pjg.6's notes) found inputs read before they were
+published. Fixed test-first, one commit each (branch fix-leaks):
+- PWT rows in data/slow/series.tsv dated by the first release covering
+  them (resources/bnm/releases.tsv; 13-58 months, not 24), irr not before
+  PWT 9.0 (June 2016), labsh and the capital stock not before 8.0 (July
+  2013). Under these dates the profit rate is absent at every quarter
+  origin before mid-2016.
+- Maddison and NMC read no later than their releases (bnm.releases; Dec
+  2014 now reads Maddison 2010 and NMC 2007, not 2012), banking's direct
+  PWT read the same way, urban growth as a log change on both sides of
+  2016 (it was share points over 100 after): opt-in, `bnm.world-run
+  --leak-fixes true`.
+- UIS tertiary enrolment at 21 months; a daily FRED series' incomplete
+  last month left out (excluded rather than dated by its last
+  observation: a partial mean is replaced once the month is out); EM-DAT's
+  year to date left out.
+- Not fixable by a lag: every input is today's revised vintage (V-Dem
+  before 2016, WID before 2017, PWT, Maddison, NMC, WDI, GMD, JST and the
+  research datasets). Bead bnm-09d. The quarters' offset still pools with
+  r6-at-8ul, fit on the old series.tsv.
+
+**Runs** (data/runs; all on the corrected data/slow):
+- t51b-world-norel: t50's command plus `--leak-fixes true --pwt-stale
+  true --set '{:learn-offsets :mixture}'` (h8d and 56c.22; no
+  `:state-from`, no world gauges).
+- fx-leak: t50's command plus `--leak-fixes true` only, to split the leak
+  fixes (data and code) from h8d and .22.
+- fx-noise1, fx-noise2, fx-planted: t51b's command plus `--world-extra
+  noise --seed 1|2` and `planted --seed 1 --strength 1`, the harness
+  column as a group of its own at the year and half-decade (no world
+  state to sit in); fx-leak-noise1, fx-leak's command with noise seed 1.
+
+**Results** (Brier, year nodes unless named, 2003-2022, thirteen kinds
+weighed equally, bnm.links; + = better than the bench):
+
+| comparison | 2003-06 | 2007-09 | 2010-12 | 2013-19 | 2020-22 | pooled | quarter-lead |
+|---|---|---|---|---|---|---|---|
+| t51b vs t50 | -0.0014 | +0.0008 | +0.0014 | -0.0026 | -0.0019 | -0.0013 [-0.0026, +0.0002] | -0.0006 [-0.0011, -0.0002] |
+| fx-leak vs t50 (leak fixes) | +0.0000 | -0.0047 | +0.0045 | -0.0003 | -0.0015 | -0.0001 [-0.0015, +0.0014] | -0.0008 [-0.0015, -0.0001] |
+| t51b vs fx-leak (h8d, .22) | -0.0014 | +0.0056 | **-0.0031 lost** | -0.0022 | -0.0003 | -0.0012 [-0.0027, +0.0002] | +0.0002 [-0.0002, +0.0006] |
+
+- No fold of t51b against t50 is lost (every 90% interval spans zero:
+  2003-06 [-0.0034, +0.0005], 2013-19 [-0.0056, +0.0004], 2020-22
+  [-0.0051, +0.0010]); the log score is lost pooled (-0.0051 [-0.0094,
+  -0.0001]).
+- Market crashes carry most of every move (year: t51b vs t50 -0.012
+  pooled, by fold -0.010, +0.009, +0.019, -0.027, -0.015; leak fixes
+  alone +0.004, with -0.058 in 2007-09 and +0.059 in 2010-12), the global
+  coin the audit described. Food price shocks: t51b vs t50 -0.0016 pooled,
+  2020-22 -0.008 (leak fixes alone -0.009 there). Quarter-lead market
+  crashes: leak fixes -0.008, mostly 2007-09.
+- Noise (fx-noise1, fx-noise2 vs t51b): pooled -0.00089 and -0.00078,
+  mean -0.00083: **not within 0.0003**. Per fold (mean of the two):
+  -0.0012, -0.0062, +0.0037, -0.0013, -0.0002; only 2020-22 within.
+  fx-leak-noise1 vs fx-leak (no h8d or .22): -0.0019 pooled, so the noise
+  cost is the base's posterior weighting (docs/LATTICE.md: a noise group
+  flips the year's selection), present without h8d and .22.
+- Planted (fx-planted vs t51b): +0.0102 [+0.0071, +0.0135]; quarter-lead
+  +0.0014 [+0.0004, +0.0027]: met.
+
+**Reading.** The leak fixes are correctness fixes: fx-leak against t50 is
+the honest score of t50's model, not a loss caused by the fix. It is
+level pooled at the year (-0.0001) and loses 0.0008 [-0.0015, -0.0001]
+at the quarter-lead (market crashes -0.008): the skill t50 reports on the
+quarters is overstated by about that much.
+h8d and .22 add -0.0012 pooled and lose 2010-12 (-0.0031, market crashes
+-0.040). Under principle 9: the noise failure is sequencing (the
+weighting, step 5; it fails on fx-leak too, by more); the 2010-12 loss
+of h8d/.22 is in market crashes, whose year node moves by ±0.04-0.07 per
+fold between any two runs, the selection instability already measured
+(noise draws differ by up to 0.017 per fold there): not a defect of
+either fix found here. Adoption, and any L1 note, is the user's call; no
+base, ledger or forecast was changed.
