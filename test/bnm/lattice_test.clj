@@ -707,6 +707,26 @@
                   (for [[[sc place] byo] (:book net) :when (= :month sc) [t e] byo :when (<= t 11)] [place t e]))))
     (is (not= (:forecasts plain) (:forecasts net)) "the year reads other states, so the forecasts move")))
 
+(deftest what-came-down-is-measured-at-the-offset-the-state-is-read-at
+  ;; review of step 1, finding 6: under :downscale-uncertainty the node's
+  ;; mean offset is logit(Σ w expit(o_i)), not Σ w o_i; the part that came
+  ;; down is that mean offset less the known part's share, so the state
+  ;; passed up (the combined forecast's, or the reference's) is net of
+  ;; exactly what came down, with no Jensen gap
+  (doseq [extra [{} {:state-from :reference}]]
+    (let [w (world 1)
+          r (lt/run (merge (spec w) {:trace :inputs :downscale {:month {:from :year}} :downscale-pool 0.5
+                                     :downscale-uncertainty true :up-net-of-downscale true
+                                     :offset (fn [scale _ _] (when (= scale :month) -3.0))}
+                           extra))
+          rows (filter #(and (= :month (:scale %)) (> (:origin %) 24)) (:trace r))]
+      (is (seq rows))
+      (is (every? (fn [{:keys [place origin o]}]
+                    (let [{:keys [s p]} (get-in r [:book [:month place] origin])]
+                      (< (Math/abs (- s (- (lt/logit-of p) (- o (* 0.5 -3.0))))) 1e-9)))
+                  rows)
+          extra))))
+
 (deftest the-finer-states-can-be-read-a-period-late
   ;; :up-lag (bnm-56c.2's loop): a node reads its finer scales' states over
   ;; the period before its last, not its last, so the quarters a year's own

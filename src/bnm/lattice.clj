@@ -700,10 +700,14 @@
                                         (if-let [[_ {:keys [p f q]}] (when ds (sh/latest-before r :downscale [(:from ds) place] t))]
                                           (let [os (if (:downscale-uncertainty spec) (offsets-under f q ratio) [[1.0 (window-log-odds p ratio)]])
                                                 known (when (and pool (:offset spec)) ((:offset spec) scale place t))
-                                                ;; the part of the offset that came down: the scaled
-                                                ;; coarser forecast's mean, times its share in the pool
-                                                down (* (if known (- 1.0 pool) 1.0) (reduce + (for [[w o] os] (* w o))))
-                                                os (if known (mapv (fn [[w o]] [w (+ (* pool known) (* (- 1.0 pool) o))]) os) os)]
+                                                os (if known (mapv (fn [[w o]] [w (+ (* pool known) (* (- 1.0 pool) o))]) os) os)
+                                                ;; the part of the offset that came down: the mean
+                                                ;; offset the node is read at (the one whose p is the
+                                                ;; offsets' average, as `made` takes it) less the known
+                                                ;; part's share; over several offsets not Σ w o, which
+                                                ;; left a Jensen gap (review of step 1)
+                                                om (if (= 1 (count os)) (second (first os)) (logit (reduce + (for [[w o] os] (* w (m/expit o))))))
+                                                down (- om (if known (* pool known) 0.0))]
                                             {:os os :read (first (sh/reads r)) :down down})
                                           {:os [[1.0 (offset-of place t)]] :down 0.0}))))
                        st (reduce (fn [st {:keys [place y p known-at]}]
