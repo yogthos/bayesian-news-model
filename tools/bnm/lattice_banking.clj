@@ -35,6 +35,7 @@
             [bnm.macrohistory :as mh]
             [bnm.named :as nm]
             [bnm.onsets :as on]
+            [bnm.releases :as rel]
             [bnm.slow-train :as st]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -312,9 +313,19 @@
    :currency-crises3 :currency-crises10])
 
 (defn extended-table
-  "{[iso year] [values in extended-names order]} for every country-year."
-  [jst-rows pwt db units annual]
-  (let [div (fn [a b] (when (and a b (not (zero? (double b)))) (/ (double a) (double b))))
+  "{[iso year] [values in extended-names order]} for every country-year.
+  Row y is read at December of y + 1. opts :releases (bnm.releases;
+  bnm-56c.23, --leak-fixes): the Penn World Table no later than the latest
+  year published by then, and labour's share, the capital stock and TFP
+  unknown before PWT 8.0 first published them; without it, PWT at y - 1."
+  ([jst-rows pwt db units annual] (extended-table jst-rows pwt db units annual {}))
+  ([jst-rows pwt db units annual {:keys [releases]}]
+  (let [origin (fn [y] (+ 11 (* 12 (inc y))))
+        ;; PWT's read year for row y, and whether a column was out by then
+        py (fn [y] (if releases (rel/read-year releases "pwt" (origin y) (dec y)) (dec y)))
+        out? (fn [col y] (or (nil? releases)
+                             (some-> (rel/introduced releases "pwt" col) (<= (origin y)))))
+        div (fn [a b] (when (and a b (not (zero? (double b)))) (/ (double a) (double b))))
         lg (fn [x] (when (and x (pos? x)) (Math/log x)))
         jst (fn [f] (by-country-year jst-rows :iso :year f))
         hh (jst #(div (:thh %) (:gdp %)))
@@ -346,8 +357,10 @@
                        (stretch-at (rent u) y) (stretch-at (dp u) y) (stretch-at (fiscal u) y)
                        ;; the national accounts' and distribution sources a further year
                        ;; back: they are published one to three years late
-                       (change (tfp u) (dec y) 3) (change (ko u) (dec y) 3)
-                       (stretch-at (get-in pwt ["labsh" u]) (dec y)) (stretch-at (get-in pwt ["csh_i" u]) (dec y))
+                       (when (out? "rtfpna" y) (change (tfp u) (py y) 3))
+                       (when (out? "rkna" y) (change (ko u) (py y) 3))
+                       (when (out? "labsh" y) (stretch-at (get-in pwt ["labsh" u]) (py y)))
+                       (stretch-at (get-in pwt ["csh_i" u]) (py y))
                        (stretch-at (credit u) y)
                        (sum3 (get-in annual ["bvx_bank_ret" u]) y) (sum3 (get-in annual ["bvx_nonfin_ret" u]) y)
                        (count10 (get-in annual ["bvx_bank_crash" u]) y)
@@ -359,7 +372,7 @@
                        (stretch-at (get-in annual ["gdd_government" u]) (dec y))
                        (get-in annual ["romer_distress" u y]) (change (get-in annual ["romer_distress" u]) y 3)
                        (when-let [{:keys [crises covered]} (fx u)] (crises-in crises covered y 3))
-                       (when-let [{:keys [crises covered]} (fx u)] (crises-in crises covered y 10))]]))))
+                       (when-let [{:keys [crises covered]} (fx u)] (crises-in crises covered y 10))]])))))
 
 (def half-groups {:long-stretch [0 1 2 3] :long-displacement [4 5] :memory [6 7 8 9 10]})
 
@@ -545,9 +558,10 @@
 (defn build
   "The banking lattice's spec to month `end`, from the data on disk, with
   `known-run`'s named forecasts as what is known. opts :catalogue-through,
-  the catalogue's uncovered tail unknown (loop audit Test 7)."
+  the catalogue's uncovered tail unknown (loop audit Test 7); :leak-fixes,
+  PWT read by its releases (bnm-56c.23, extended-table)."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through]}]
+  ([end known-run {:keys [catalogue-through leak-fixes]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
         jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
@@ -558,7 +572,8 @@
         ;; the quarter nodes' origins: the last month of each quarter
         months (range (+ start 2) (inc end) 3)
         wc (nm/world-credit db units months)
-        ext (extended-table jst-rows (read-pwt) db units (read-annual))]
+        ext (extended-table jst-rows (read-pwt) db units (read-annual)
+                            (if leak-fixes {:releases (rel/read-releases)} {}))]
     (spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
            :known (read-known known-run) :quarterly (read-quarterly)}))))
 

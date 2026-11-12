@@ -1,5 +1,6 @@
 (ns bnm.lattice-banking-test
   (:require [bnm.lattice-banking :as lb]
+            [bnm.releases]
             [clojure.test :refer [deftest is]]))
 
 (deftest one-crisis-dated-twice-counts-once
@@ -30,3 +31,25 @@
     (is (= #{2002 2008} (lb/currency-crises fx)) "2003 (+40%) is not 10 points above 2002 (+43%); 2008 is six years on"))
   (is (= #{2003} (lb/currency-crises {2001 1.0 2002 1.25 2003 1.7})) "+36%, 11 points above +25%")
   (is (= #{} (lb/currency-crises {2001 1.0 2003 2.0})) "no year before: unknown, not a crisis"))
+
+(deftest bnm-56c-23-banking-reads-the-penn-world-table-by-its-releases
+  ;; row y is read at December of y + 1 and read PWT at y - 1; the latest
+  ;; published at Dec 2015 was 2011 (PWT 8.0/8.1), and labour's share, the
+  ;; capital stock and TFP did not exist before 8.0 (July 2013)
+  (let [rs (bnm.releases/read-releases)
+        ys (into {} (for [y (range 1990 2020)] [y (+ 0.5 (* 0.001 (- y 1990) (- y 1990)))]))
+        pwt {"labsh" {"AAA" ys} "csh_i" {"AAA" ys} "rtfpna" {"AAA" ys} "rkna" {"AAA" ys} "rgdpna" {"AAA" ys}}
+        ix (zipmap lb/extended-names (range))
+        base (lb/extended-table [] pwt {} #{"AAA"} {})
+        fixed (lb/extended-table [] pwt {} #{"AAA"} {} {:releases rs})
+        at (fn [tb y k] (nth (tb ["AAA" y]) (ix k)))
+        late (lb/extended-table [] (update-vals pwt (fn [m] (update-vals m (fn [ys] (into {} (for [[y x] ys] [(+ y 2) x])))))) {} #{"AAA"} {})]
+    (is (some? (at base 2014 :labour-share)))
+    (is (= (at late 2014 :labour-share) (at fixed 2014 :labour-share)) "2011's value, two years staler")
+    (is (= (at late 2014 :investment-share) (at fixed 2014 :investment-share)))
+    (is (= (at late 2014 :tfp3) (at fixed 2014 :tfp3)))
+    (is (some? (at base 2010 :labour-share)))
+    (is (nil? (at fixed 2010 :labour-share)) "Dec 2011: no labour share published yet")
+    (is (nil? (at fixed 2010 :tfp3)))
+    (is (some? (at fixed 2010 :investment-share)) "the investment share was")
+    (is (= (at base 2014 :credit-wide) (at fixed 2014 :credit-wide)) "other columns untouched")))

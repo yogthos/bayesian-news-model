@@ -24,8 +24,8 @@
   --pwt-stale true (bnm-h8d), --catalogue-through true (Test 7),
   --year-delay n (bnm-pjg.6: the political and economic kinds' year rows
   read n years later; banking's own table is not delayed), --leak-fixes
-  true (bnm-56c.23: Maddison and NMC read by their releases,
-  resources/bnm/releases.tsv), and
+  true (bnm-56c.23: Maddison, NMC and banking's PWT read by their
+  releases, resources/bnm/releases.tsv), and
   --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
   :mixture).
