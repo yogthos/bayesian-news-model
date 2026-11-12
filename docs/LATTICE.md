@@ -166,6 +166,18 @@ lattice's outputs and reads exactly, in full and with groups dropped.
   per input) is kept as an option; it halved the swing on synthetic data
   but tracked no better. `bnm.world-run --write-reference true` writes the
   reference's own forecasts as `<out>-ref`. All opt-in.
+- **The world term gated per kind** (bnm-56c.28): under
+  `with-world-once` a gauge is read at origin t, in the term and in its
+  product column, only if `bnm.world-term/gate` passes it for that kind and
+  scale: `bnm.lead-test` on the origins from 1950 whose outcomes are known
+  by t (online error at most 0.9 of climatology's over at least five
+  online errors), re-decided at every origin, so the gate never looks
+  ahead. The harness's noise, planted and false columns go through the
+  same test. On by default with `--world-once`; `--world-gate false` gives
+  the ungated term of 822fea8. On the real data the gate never admits
+  food12 at food price shocks (their rows are known 3.5 years late) and
+  admits it at market crashes in 2005-08 on 1990s rows
+  (docs/PHASE-CHANGES.md).
 - **Pooling**: sibling nodes (the countries of a subregion at one scale)
   share a prior on their slopes, centred on their parent's; slopes, not
   levels, since trials 31-33 found that levels learned from a country's

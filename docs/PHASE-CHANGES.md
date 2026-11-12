@@ -4962,3 +4962,123 @@ reference is -0.0050 and +0.0019.
   term as a learned input rather than a fixed offset, is the fix to try.
 
 Not adopted. No L1 note, no ledger base change, no forecast.
+
+## The world term gated per kind by the lead test (12 November 2026, bnm-56c.28)
+
+Development, origins 2003-2022, under the rules registered at 84b9b3b
+(unchanged). The base of record stays t50-world-norel; t52-world-norel
+(byte for byte t51b's forecasts) is being adopted concurrently. Adoption is
+the user's call.
+
+**What was wrong.** Fix 3's brief said a world gauge is wired only after
+`bnm.lead-test` passes it. The wiring did not apply that per kind: food12
+and brent12 entered every kind's term, and through the offset every model,
+though both fail the test at market crashes and Brent fails it at every
+kind. The harness's noise column entered the same term with no test, so
+no evidence could drop it. Under principle 9 both are implementation bugs.
+
+**The fix** (90eab71, test first; `bnm.world-term/gate`,
+`bnm.world-gauges/with-world-once`, opt-out `bnm.world-run --world-gate
+false`). At each origin t and for each kind and scale, a gauge enters the
+term, and its product column with the place's exposure, only if the lead
+test passes it on the origins from 1950 whose outcomes are known by t
+(online error at most 0.9 of climatology's, over at least five online
+errors). A gauge that fails is not read (term without it, product column
+unknown). The harness's column passes the same test as food and Brent.
+Chosen before any run: the expanding window, re-decided each origin,
+rather than a gate fixed on pre-2003 data, because a kind's rate is known
+only years after its origin (food price shocks: 3.5 years, and no food
+rate before the 2003 origin at all), so a pre-2003 gate has nothing to
+decide food on, and a fixed gate cannot drop a gauge that stops leading.
+Checked before scoring: run with `--world-gate false`, market crashes
+reproduce fs-s2-cand byte for byte.
+
+**The lead test, all thirteen kinds** (`jolt -A:tools -M -m
+bnm.lead-test`; hindsight = the test over 2003-2022 as fix 3 ran it; gate
+= origins of 2003-2022 at which the expanding test passes):
+
+| kind | food12 hindsight (lead r, online/clim) | food12 gate | brent12 hindsight | brent12 gate |
+|---|---|---|---|---|
+| banking crisis | +0.18, fail | 0/20 | +0.02, fail | 0/20 |
+| conflict onset | -0.17, fail | 0/20 | -0.35, fail | 0/20 |
+| coup | +0.31, fail | 0/20 | +0.10, fail | 0/20 |
+| currency crisis | -0.12, fail | 0/20 | -0.46, fail | 5/20 (from 2003) |
+| fiscal consolidation | +0.07, fail | 0/20 | -0.09, fail | 1/20 (2003) |
+| food price shock | +0.61, 0.023/0.029 pass | **0/20** | +0.20, fail | 1/20 (2019) |
+| growth collapse | -0.18, fail | 0/20 | -0.16, fail | 0/20 |
+| inflation crisis | +0.02, fail | 0/20 | -0.15, fail | 0/20 |
+| market crash | +0.36, 0.072/0.049 fail | **4/20 (2005-08)** | +0.05, fail | 0/20 |
+| protest surge | +0.18, fail | 6/20 (from 2005) | +0.39, fail | 0/20 |
+| sovereign default | +0.08, fail | 0/20 | +0.11, fail | 0/20 |
+| violence surge | +0.29, fail | 0/20 | +0.14, fail | 1/20 (2003) |
+| war onset | -0.06, fail | 3/20 (from 2010) | +0.02, fail | 0/20 |
+
+The expected wiring (food12 at food price shocks only) does not come out
+of a gate that does not look ahead. Food's rows are known 3.5 years late;
+by the 2020 origin only 2003-2016 are known, and on them food12's online
+error is 1.00-1.04 of climatology's (2013-2022). Its hindsight pass rests
+on the 2020 and 2021 rows (rates 0.50, 0.51), known from mid-2024. At
+market crashes food12 passes on 5-8 online errors from the 1990s at
+2005-2008, so the term entered there: -1.38 and -1.45 at the 2006 and
+2007 origins (checked in the REPL on the spec without
+`--catalogue-through`).
+
+**Runs** (data/runs/gw-*; fs-s2-cand's command plus the gate, the
+default): gw-cand; gw-noise1, gw-noise2, gw-planted, gw-false with
+`--world-extra noise --seed 1|2`, `planted --seed 1 --strength 1`,
+`false --seed 1`.
+
+    jolt -A:tools -M -m bnm.world-run --out gw-cand --without-relations true --known r6-at-8ul \
+      --leak-fixes true --pwt-stale true --world-gauges true --catalogue-through true --world-once true \
+      --set '{:learn-offsets :mixture :evidence-at :issue :downscale-learn {:var 1.0} :state-from :base}'
+
+**Results** (Brier, year nodes, thirteen kinds weighed equally; + = gw-cand
+better):
+
+| comparison | 2003-06 | 2007-09 | 2010-12 | 2013-19 | 2020-22 | pooled |
+|---|---|---|---|---|---|---|
+| gw-cand vs t50 | -0.0086 | +0.0112 | +0.0075 | +0.0054 | **-0.0031 [-0.0045, -0.0016] lost** | +0.0016 [-0.0039, +0.0061] |
+| gw-cand vs t52 | -0.0072 | +0.0103 | +0.0061 | +0.0079 | -0.0013 [-0.0040, +0.0024] | +0.0029 [-0.0028, +0.0073] |
+| gw-cand vs fs-s2-cand | -0.0021 lost | +0.0419 | +0.0021 | +0.0079 | +0.0016 | +0.0067 [+0.0016, +0.0140] |
+| food, vs t50 | -0.0000 | -0.0101 | -0.0036 | +0.0038 | -0.0222 | -0.0035 |
+| food, vs t52 | +0.0001 | -0.0104 | -0.0061 | +0.0064 | -0.0142 | -0.0019 |
+| market crashes, vs t50 | -0.110 | +0.174 | +0.085 | +0.064 | -0.014 | +0.025 |
+| market crashes, vs t52 | -0.100 | +0.165 | +0.066 | +0.091 | +0.001 | +0.037 |
+| twelve kinds (no market crashes), vs t50 | -0.0002 | -0.0024 | +0.0011 | +0.0005 | -0.0022 | -0.0003 |
+| twelve kinds, vs t52 | +0.0005 | -0.0025 | +0.0012 | +0.0010 | -0.0015 | +0.0001 |
+
+| rule | result | |
+|---|---|---|
+| 1. noise, pooled | +0.00000, +0.00000 (each under 0.000005) | met |
+| 1. noise, per fold (each draw) | every fold at most 0.00001 from zero | met |
+| 2. planted | +0.0050 [+0.0010, +0.0091] (market crashes +0.013, food +0.006) | met |
+| 3. false move | 0 pooled and in 2013-19 (gw-false is gw-noise1 byte for byte) | met |
+| 4. vs t50 by fold | 2020-22 -0.0031 lost | not met |
+
+Quarter-lead against t50: -0.0022 [-0.0043, -0.0006] (market crashes
+-0.025). The noise column passed the gate at a few origins of conflict
+onsets, coups, market crashes and war onsets (seed 1) and of four other
+kinds (seed 2), at a cost below 0.00002 a fold; the false move never
+passed in 2013-2019.
+
+**Reading, under principle 9.**
+- **Noise and the false move: fixed** (implementation). Both now enter as
+  an ordinary world gauge does and are dropped by the lead test.
+- **Rule 4, 2020-22 against t50 (-0.0031): sequencing, and the leak
+  fixes.** Food price shocks -0.022 there: the gate never admits food12
+  (above), so food is back to the cut loop's cost (s2-ref -0.025, the
+  step-5 weighting). Food12's lead can be shown online only once the
+  2020-21 rows are known (2024-25). Market crashes -0.014 there is t51b's
+  own difference from t50 (vs t52 +0.001): the leak fixes, the honest
+  score. Against t52 no fold is lost.
+- **Market crashes 2003-06 (-0.110 vs t50): implementation of the gate,
+  not fixed here.** Five online errors let food12 through on 1990s rows at
+  2005-2008, and the term took the 2006 issue to 0.07 against a rate of
+  0.96 (t50 0.46). A stricter minimum, or a test of the lead's sign
+  against climatology's spread, would close it; that is a change made
+  after scoring, so it is the user's decision.
+- The gate's opposite problem is food: requiring rows known before the
+  origin, it cannot admit a lead it has not yet seen. Wiring food12 at
+  food price shocks on the hindsight test would read the future.
+
+Not adopted. No L1 note, no ledger change, no forecast.
