@@ -1,5 +1,6 @@
 (ns bnm.political-gauges-test
   (:require [bnm.political-gauges :as pg]
+            [bnm.releases]
             [clojure.test :refer [deftest is]]))
 
 (def sets
@@ -66,3 +67,21 @@
     (is (= 1.0 (nth row (ix :infant-mortality))))
     (is (contains? @asked ["people/infant_mortality" 2001]))
     (is (not-any? (fn [[_ y]] (> y 2001)) @asked) "nothing past the origin")))
+
+(deftest bnm-56c-23-maddison-and-nmc-read-by-their-releases
+  ;; at December 2014 (data year 2013) the fixed offset read Maddison and
+  ;; NMC at 2012; the latest published were 2010 (MPD 2013) and 2007 (NMC
+  ;; 4.0). With :releases each is read no later than published
+  (let [rs (bnm.releases/read-releases)
+        gdp (into {} (for [y (range 2000 2016)] [y (Math/exp (* 0.01 (- y 2000) (- y 2000)))]))
+        annual {"mad_gdppc" {"AAA" gdp}
+                "nmc_milper" {"AAA" {2007 7.0 2012 12.0}} "nmc_tpop" {"AAA" {2007 1000.0 2012 1000.0}}}
+        ix (zipmap pg/year-names (range))
+        base (pg/year-row annual (fn [_ _ _] nil) "AAA" 2013)
+        fixed (pg/year-row annual (fn [_ _ _] nil) "AAA" 2013 {:releases rs})]
+    (is (= 0.012 (nth base (ix :soldiers-per-capita))) "the base reads 2012")
+    (is (= 0.007 (nth fixed (ix :soldiers-per-capita))) "NMC 4.0's 2007")
+    (is (< (Math/abs (- (nth fixed (ix :log-gdppc)) 1.0)) 1e-12) "MPD 2013's 2010")
+    (is (< (Math/abs (- (nth fixed (ix :growth3)) (- 1.0 0.49))) 1e-12) "2010 against 2007")
+    (is (= (nth base (ix :log-gdppc)) (nth (pg/year-row annual (fn [_ _ _] nil) "AAA" 2013 {}) (ix :log-gdppc)))
+        "without :releases, the base's reading")))

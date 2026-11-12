@@ -23,7 +23,9 @@
   [--strength s] (the acceptance harness's extra world column),
   --pwt-stale true (bnm-h8d), --catalogue-through true (Test 7),
   --year-delay n (bnm-pjg.6: the political and economic kinds' year rows
-  read n years later; banking's own table is not delayed), and
+  read n years later; banking's own table is not delayed), --leak-fixes
+  true (bnm-56c.23: Maddison and NMC read by their releases,
+  resources/bnm/releases.tsv), and
   --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
   :mixture).
@@ -247,7 +249,7 @@
   "{kind spec} for `ks` to month `end`, the quarters' offset pooled with
   run `known`'s named model. opts (recursive step 2, each off by default):
   :pwt-stale (bnm-h8d), :catalogue-through (Test 7; `cats` should carry
-  it too, `catalogues-through`)."
+  it too, `catalogues-through`), :leak-fixes (bnm-56c.23)."
   ([ks end cats] (build-specs ks end cats "r6-at"))
   ([ks end cats known] (build-specs ks end cats known {}))
   ([ks end cats known opts]
@@ -347,7 +349,7 @@
                                 {})))))
 
 (defn -main [& args]
-  (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay] :as opts}
+  (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay leak-fixes] :as opts}
         (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         graph (:graph (model-choice opts))
         out (or out "world")
@@ -366,7 +368,8 @@
         _ (println "building" (count ks) "kinds")
         specs0 (-> (build-specs ks end cats (known-run opts) {:pwt-stale (= "true" pwt-stale)
                                                                :catalogue-through (= "true" catalogue-through)
-                                                               :year-delay (some-> year-delay parse-long)})
+                                                               :year-delay (some-> year-delay parse-long)
+                                                               :leak-fixes (= "true" leak-fixes)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-extra (:world-extra opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)}
                                end))

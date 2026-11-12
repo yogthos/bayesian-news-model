@@ -1,5 +1,6 @@
 (ns bnm.lattice-political-test
   (:require [bnm.lattice-political :as lp]
+            [bnm.releases]
             [bnm.stocks :as sk]
             [clojure.test :refer [deftest is]]))
 
@@ -22,3 +23,13 @@
   (let [dec2010 (+ 11 (* 12 2010))]
     (is (= 2009 (lp/year-row-year dec2010 0)) "the base: the year before the one ended")
     (is (= 2008 (lp/year-row-year dec2010 1)))))
+
+(deftest bnm-56c-23-leak-fixes-read-the-year-row-by-release
+  ;; --leak-fixes passes the release table and the origin's year to the
+  ;; year row; off, the base's reading (no options)
+  (let [dec2014 (+ 11 (* 12 2014))]
+    (is (= {} (lp/year-row-opts nil dec2014 nil)))
+    (let [o (lp/year-row-opts true dec2014 nil)]
+      (is (= 2014 (:origin-year o)))
+      (is (= 2010 (bnm.releases/published (:releases o) "maddison" dec2014))))
+    (is (= 2014 (:origin-year (lp/year-row-opts true dec2014 1))) "the delay test's origin is still the origin")))

@@ -17,7 +17,8 @@
   (urban growth, the working-age share, infant mortality), elite
   overproduction (tertiary enrolment against growth, Turchin 2003) and
   polarization (the top's income share against the bottom half's)."
-  (:require [clojure.java.io :as io]
+  (:require [bnm.releases :as rel]
+            [clojure.java.io :as io]
             [clojure.string :as str]))
 
 (defn read-long
@@ -98,18 +99,28 @@
   national accounts and material capabilities a year further back
   (published late), WDI's through `wdi` ((wdi iso var year), the value
   known at that year's end, each value's publication applied) as known at
-  the origin, data year + 1."
-  [annual wdi iso y]
+  the origin, data year + 1.
+
+  opts :releases (bnm.releases/read-releases; bnm-56c.23): Maddison and
+  NMC no later than the latest year published by the origin (December of
+  :origin-year, by default y + 1), not the fixed offset, which ran up to
+  five years ahead of their releases. Without it, the base's reading."
+  ([annual wdi iso y] (year-row annual wdi iso y {}))
+  ([annual wdi iso y {:keys [releases origin-year]}]
   (let [v (fn [k] (get-in annual [k iso y]))
         vy (fn [k] (by-year annual k iso))
         p (dec y)
+        origin (+ 11 (* 12 (or origin-year (inc y))))
+        ;; Maddison's and NMC's read year: the offset's, or the latest published
+        pm (if releases (rel/read-year releases "maddison" origin p) p)
+        pn (if releases (rel/read-year releases "nmc" origin p) p)
         gdppc (update-vals (vy "mad_gdppc") lg)
         pop (update-vals (vy "mad_pop") lg)
         tpop (vy "nmc_tpop") upop (vy "nmc_upop")
         urban (into {} (for [[yr t] tpop :let [u (get upop yr)] :when (and u (pos? t) (pos? u))] [yr (Math/log (/ u t))]))
         per-soldier (into {} (for [[yr m] (vy "nmc_milex") :let [s (get (vy "nmc_milper") yr)] :when (and s (pos? s) (pos? m))]
                                [yr (Math/log (/ m s))]))
-        soldiers (let [s (get (vy "nmc_milper") p) t (get tpop p)] (when (and s t (pos? t)) (/ s t)))
+        soldiers (let [s (get (vy "nmc_milper") pn) t (get tpop pn)] (when (and s t (pos? t)) (/ s t)))
         neg (fn [x] (when x (- x)))
         ;; WDI as known at the origin, the data year's end + 1: wdi applies
         ;; each value's publication, so the year before's figures are there
@@ -122,12 +133,15 @@
      (neg (v "vdem_csreprss")) (neg (change (vy "vdem_csreprss") y 3))
      (v "vdem_cspart") (v "vdem_ex_military") (v "vdem_neopat") (v "vdem_xpe_exlsocgr") (v "vdem_xpe_exlecon")
      (v "vdem_rule") (v "vdem_caassemb")
-     (get gdppc p) (change gdppc p 3) (change pop p 3)
+     (get gdppc pm) (change gdppc pm 3) (change pop pm 3)
      ;; urbanization: material capabilities to 2016, WDI's urban share after
-     (or (change urban p 5) (some-> (wchange "people/urban_share" q 5) (/ 100.0)))
-     soldiers (change per-soldier p 3)
+     ;; (NMC where the offset's year has it, read at its release's year)
+     (if (some? (change urban p 5))
+       (change urban pn 5)
+       (some-> (wchange "people/urban_share" q 5) (/ 100.0)))
+     soldiers (change per-soldier pn 3)
      (w "people/infant_mortality" q) (w "people/working_age_share" q) (wchange "people/tertiary_enrolment" q 5)
      (slog (w "economy/inflation" q)) (slog (w "food/food_inflation" q))
      (get-in annual ["wid_top10" iso p]) (get-in annual ["wid_bottom50" iso p])
      (some-> (change (update-vals (vy "gov_exp_real") lg) p 1))
-     (change (vy "gov_bal_gdp") p 1)]))
+     (change (vy "gov_bal_gdp") p 1)])))

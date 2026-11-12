@@ -28,6 +28,7 @@
   (:require [bnm.geo :as geo]
             [bnm.lattice :as lt]
             [bnm.lattice-banking :as lb]
+            [bnm.releases :as rel]
             [bnm.macrohistory :as mh]
             [bnm.named :as nm]
             [bnm.onsets :as on]
@@ -207,8 +208,17 @@
   [t delay]
   (- (ended t) 1 (long (or delay 0))))
 
+(def ^:private release-table (delay (rel/read-releases)))
+
+(defn year-row-opts
+  "bnm.political-gauges/year-row's options at origin t: with `leak-fixes`
+  (bnm-56c.23) the release table and the origin's year, so Maddison and NMC
+  are read no later than published; off, none (the base's reading)."
+  [leak-fixes t _year-delay]
+  (if leak-fixes {:releases @release-table :origin-year (ended t)} {}))
+
 (defn spec
-  [{:keys [kind db cats annual wdi units end known start pwt-stale year-delay]}]
+  [{:keys [kind db cats annual wdi units end known start pwt-stale year-delay leak-fixes]}]
   (let [cat (cats kind)
         scales (scales-for kind (or (pg/long-from kind) (first-year cat)))
         ;; four other political kinds' recent onsets (the :others group)
@@ -227,16 +237,16 @@
         ;; the world's share of states in the system with an onset known in the last three years
         world3 (memoize (fn [t] (world-share cat countries in-system t)))
         hist (fn [u t] (or (#'lb/history cat u t) [nil nil nil]))
-        row (memoize (fn [u y] (pg/year-row annual wdi u y)))
+        row (memoize (fn [u t] (pg/year-row annual wdi u (year-row-year t year-delay) (year-row-opts leak-fixes t year-delay))))
         year-raw (fn [u t]
                    (when (in-system u t)
-                     (vec (concat (row u (year-row-year t year-delay))
+                     (vec (concat (row u t)
                                   (hist u t)
                                   (map #(count-known (cats %) u t 120) others)
                                   [(world3 t)]))))
         half-raw (fn [u t]
                    (when (in-system u t)
-                     (let [r (row u (year-row-year t year-delay))
+                     (let [r (row u t)
                            ix (zipmap pg/year-names (range))]
                        (vec (concat (map #(nth r (ix %)) (take 6 half-names)) (hist u t) [(world3 t)])))))
         fin (when (financial-kinds kind) (second (nm/financial db (nm/world-credit db units months))))
@@ -319,12 +329,12 @@
   where any kind with a catalogue may be built this way."
   ([kind end known-run] (build kind end known-run nil nil))
   ([kind end known-run cats start] (build kind end known-run cats start {}))
-  ([kind end known-run cats start {:keys [pwt-stale year-delay]}]
+  ([kind end known-run cats start {:keys [pwt-stale year-delay leak-fixes]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
         cats (or cats (catalogues))
         units (set (filter #(first (geo/parents %)) (keys (get-in cats [kind :onsets]))))]
-    (spec {:kind kind :db db :cats cats :units units :end end :start start :pwt-stale pwt-stale :year-delay year-delay
+    (spec {:kind kind :db db :cats cats :units units :end end :start start :pwt-stale pwt-stale :year-delay year-delay :leak-fixes leak-fixes
            :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
            :wdi (fn [iso v y] (some-> (db [iso v]) (sk/value (+ 11 (* 12 y)) {:stale 18})))
            :known (lb/read-known known-run kind)}))))
