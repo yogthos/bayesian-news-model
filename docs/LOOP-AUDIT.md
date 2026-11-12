@@ -306,3 +306,34 @@ t52's command with `--set '{:learn-offsets :mixture :clim-learn :current}'` (t52
 Food price shocks, year Brier against t52 by fold (2003-06, 07-09, 10-12, 13-19, 20-22): t52c 0.0000, -0.0077, -0.0225, +0.0053, +0.0033 (pooled -0.0022); t52d +0.0854, -0.0118, -0.1878, -0.0331, +0.0153 (pooled -0.0236); t52a +0.0854, -0.0262, -0.4181, -0.1070, +0.0690. With the option, food's year mean p in 2012 is 0.63 under the prior (0.98 without the fix) and 0.02 without it. t52d against t52c: -0.0020 [-0.0055, +0.0010] pooled, and 2007-09, 2010-12 and 2013-19 lost. So `--clim-prior` still does not help. The fix by itself is neutral on the base (pooled -0.0004, one fold lost by -0.0038 at the edge of its interval). The option is off by default, and with it off t52's food forecasts come back identical at every row.
 
 What is left, with the intercept fixed (food year node, t52d against t52c, in the REPL): the base and gauge models are now identical in the two runs (base model p 0.148 at 2007, 0.292 at 2010, in both). The models that still differ are those that read states: `:down`, `:exposure`, `:contradiction` and the all-inputs model. Their inputs are standardized by running moments accumulated since 1870, over the 137 years in which food's nodes knew nothing. Under 0.5 the states are flat (ancestors' `:down` sd 0.006 to 0.06), so the first real moves are standardized near the cap of 5. Under the prior they drift with the other kinds' rates (`:down` mean -0.93, sd 0.28). The same moves read differently, and at 2012 the posterior weight jumps to `:down` (p 0.63 under the prior, 0.22 without). This is the same fault, the uninformed period treated as data, one level further in (the flows' standardizer). It is filed as bnm-56c.33. The weight lock is sequencing (step 5).
+
+## 6. Diagnosis of the market-crash 2007-09 loss under bnm-56c.33 (12 November 2026)
+
+t53-noclim against t52-fx31 loses -0.154 year Brier on market crashes in 2007-09; the other folds are -0.014, +0.023, +0.025, +0.016.
+
+### Which fix
+
+All of it is bnm-56c.33. Market crashes alone (`--kinds market_crash`, relations off, so the kinds do not touch), at 6cf9674 with the current econ-events.csv, reproduce t53-noclim's forecasts.tsv and weights.tsv byte for byte; the same run with `flows-informed?` redefined to true reproduces t52-fx31's byte for byte. bnm-56c.32 (food onsets) does not reach market crashes.
+
+### Where
+
+One origin. Of the fold's 64 country rows, the December 2007 origin's 47 (outcome rate 0.96) carry -0.155; 2008 and 2009 carry +0.001 and 0.000. Mean country p at that origin: 0.47 (t52-fx31) against 0.29 (t53-noclim), every country lower (USA 0.38 against 0.18). The subregion, region and world nodes barely move (world 0.905 in both). The country node's averaging is locked on the all-inputs model in both runs (0.955, 0.999), so the gap is that model's linear predictor: -0.09 against -1.01 logits, offset -1.03 in both. Of the 0.92:
+
+| term | t52-fx31 | t53-noclim | gap |
+|---|---|---|---|
+| intercept | -0.24 | -0.66 | 0.42 |
+| one gauge (x = -1.51, coefficient -0.45 / -0.21) | +0.69 | +0.32 | 0.37 |
+| 21 flows (x . b) | +0.20 | +0.04 | 0.16 |
+| other 36 gauges | | | -0.03 |
+
+So the flows' values at the origin explain 0.16 logits. The rest is the level the model learned over 1961-2007 from differently scaled flows. The short-window failure (huge z-scores when the crash data arrives) is not what happens. The country node's first outcome resolves in the early 1960s, so at 2007 its standardizer has 2021 rows over 43 years (world node 43, subregions 559), and the capped values fall from 8 to 1 of 47 x 21. Before the fix, 90 years of uninformed states set the moments: the first flow's mean is -1.26 (sd 1.29) against -2.69 (sd 1.27) over the informed span, so the flows read +2.7 and +3.0 on average at the last inputs and shifted the level the intercept would otherwise carry.
+
+That level is not a crash signal. The old run sat higher from 2004 to 2007 (0.46, 0.46, 0.41, 0.47 against 0.42, 0.35, 0.28, 0.29) whatever followed: it lost on the 2004-05 origins (rates 0.04 and 0.02), won on 2006-07 (0.96), and was high again at 2016, 2019 and 2020 (rates 0.00 to 0.18). Country year Brier, t53-noclim less t52-fx31: 1965-2022 -0.0066 (t53 better), 1965-2002 -0.0133, 2003-2022 -0.0002. Without the 2006 and 2007 origins it is -0.0253 for 2003-2022 and -0.0191 for 1965-2022. The gap between the runs correlates with t53's residual at 0.03 outside those two origins (0.13 with them).
+
+### Classification (PLAN principle 9)
+
+- **Not an implementation bug**: bnm-56c.33 does what it says, the window is long, and the caps fall. No minimum window or spread prior is called for by this case. It would be tuning to make 2007 come back.
+- **Not the approach**: standardizing over the informed span improves market crashes everywhere but the one origin, where the old run's inflated level happened to stand before the 2008 crash.
+- **Sequencing**: what moves is the all-inputs model's level, held at weight 0.96 to 1.00 (the weight lock, step 5), so a rescaling of inputs passes one for one into the country forecasts. That is recorded against step 5 (weighting and calibration). The fold loss is variance on one origin, and the bnm-56c.33 base stays as it is.
+
+Not checked here: the standardizer's gate counts rows (`n` >= 10), so a 47-place node passes it on its first informed origin. For a kind whose first outcome resolves late (food, 2007) the first years' moments come from very few origins. That is a candidate for food, not for market crashes.
