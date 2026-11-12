@@ -52,3 +52,39 @@
       (let [s (wg/with-world sp state exposure {:extra noise})]
         (is (= 13 (count (:x ((:world-gauges s) :year "KEN" (+ t0 40))))))
         (is (= {:year 13 :half-decade 13} (:world-width s)))))))
+
+;; fix 3: the world gauges once per origin
+(def ^:private state3
+  (ws/world-state {:food {:entries (for [p (range t0 (+ t0 120))] [p (inc p) (Math/log (+ 100.0 (* 10 (Math/sin (/ p 7.0)))))]) :lag 1}
+                   :brent {:entries (for [p (range t0 (+ t0 120))] [p p (Math/log (+ 50.0 (* 5 (Math/cos (/ p 5.0)))))]) :lag 0}
+                   :vix {:entries (for [p (range t0 (+ t0 120))] [p p 3.0]) :lag 0}}))
+
+(def ^:private sp3
+  (assoc sp :start (* 12 1870) :end (+ t0 119)
+         :scales [{:name :quarter-lead :per 3} {:name :year :per 12} {:name :half-decade :per 60}]
+         :target (fn [scale c t] (when (and (= scale :year) (#{"KEN" "TZA"} c) (< t (+ t0 96)))
+                                   {:y (odd? (+ (quot t 12) (count c))) :known-at (+ t 30)}))))
+
+(deftest the-world-once-per-origin
+  (let [s (wg/with-world-once sp3 state3 exposure)
+        t (+ t0 107)
+        x (fn [place] (:x ((:world-gauges s) :year place t)))]
+    (testing "the group holds only the products with the place's exposure: food and energy"
+      (is (= {:year 2 :half-decade 2} (:world-width s)))
+      (is (= wg/once-products (:names ((:world-gauges s) :year "KEN" t))))
+      (let [g (zipmap ws/gauge-names (:x (ws/gauges state3 t {:food 0.2 :energy 0.1 :open 0.4})))]
+        (is (= [(:food12-x-food g) (:brent12-x-energy g)] (x "KEN")))))
+    (testing "the world term is an offset at the countries only, the same at each"
+      (let [o (fn [place] ((:world-offset s) :year place t))]
+        (is (number? (:x (o "KEN"))))
+        (is (= (:x (o "KEN")) (:x (o "TZA"))))
+        (is (nil? (o "s/eastern-africa")))
+        (is (nil? ((:world-offset s) :quarter-lead "KEN" t)) "not at the quarters")
+        (is (every? #(<= (:known-at %) t) (:reads (o "KEN"))))))
+    (testing "the VIX, credit, the dollar and the policy rate are not read"
+      (is (= #{:food :brent} (set (map :series (:reads ((:world-gauges s) :year "KEN" t))))))
+      (is (= #{:food :brent} (set (map :series (:reads ((:world-offset s) :year "KEN" t)))))))
+    (testing "the harness column enters the term, not the group"
+      (let [s2 (wg/with-world-once sp3 state3 exposure {:extra (fn [t] (Math/sin t))})]
+        (is (= {:year 2 :half-decade 2} (:world-width s2)))
+        (is (not= (:x ((:world-offset s) :year "KEN" t)) (:x ((:world-offset s2) :year "KEN" t))))))))

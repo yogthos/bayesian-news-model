@@ -37,6 +37,7 @@
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
             [bnm.world-state :as ws]
+            [bnm.world-term :as wtm]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -137,6 +138,71 @@
                             (let [{:keys [x reads]} (ws/gauges state t (place-exposure place t))]
                               {:x (cond-> x extra (conj (extra t))) :reads reads}))
             :world-width (into {} (for [s scales] [s width]))))))
+
+(def once-products
+  "fix 3: the world gauges a node reads with its own exposure, the only
+  world inputs left as columns on a place's row: they differ by place."
+  [:food12-x-food :brent12-x-energy])
+
+(defn- once-read
+  "{:g {:food12 :brent12} :reads}: the two world gauges kept (fix 3) at
+  origin t, read through bnm.world-state; the VIX, credit, the dollar and
+  the policy rate are not read (concurrent, not leading: the step-2
+  diagnosis; a gauge comes back only after bnm.lead-test passes it)."
+  [state t]
+  (let [r (ws/reader state t)
+        g {:food12 (ws/change r :food 12) :brent12 (ws/change r :brent 12)}]
+    {:g g :reads (ws/reads r)}))
+
+(defn with-world-once
+  "`sp` with the world gauges entered once per origin (fix 3 of the step-2
+  rescore, docs/RECURSIVE.md §3): the world node's term (bnm.world-term),
+  learned from one row per origin, the share of countries with an onset in
+  the node's window on world food prices and Brent over 12 months, is
+  added to each country node's offset at the year and half-decade
+  (:world-offset); the :world-gauges group holds only food12 times the
+  place's food imports and brent12 times its net fuel imports (above the
+  countries their mean exposure). opts :extra, the harness's column (fn
+  [t]), enters the term as a third world gauge."
+  ([sp state exposure] (with-world-once sp state exposure {}))
+  ([sp state exposure {:keys [extra]}]
+   (let [par (:parent sp)
+         leaves (vec (remove (set (vals par)) (keys par)))
+         leaf? (set leaves)
+         below (reduce (fn [m c] (reduce #(update %1 %2 (fnil conj []) c) m (take-while some? (iterate par c))))
+                       {} leaves)
+         members (fn [place] (get below place [place]))
+         ex (memoize (fn [c t] (exposure c t)))
+         place-exposure (memoize (fn [place t]
+                                   (let [es (map #(ex % t) (members place))
+                                         avg (fn [k] (let [vs (keep k es)] (when (seq vs) (/ (reduce + vs) (double (count vs))))))]
+                                     {:food (avg :food) :energy (avg :energy)})))
+         read (memoize (fn [t] (once-read state t)))
+         scales (filter #(#{:year :half-decade} (:name %)) (:scales sp))
+         start (long (or (:start sp) 0))
+         end (long (or (:end sp) (+ 11 (* 12 2030))))
+         gauges (fn [t] (let [{:keys [food12 brent12]} (:g (read t))]
+                          (cond-> [food12 brent12] extra (conj (extra t)))))
+         term (into {} (for [{:keys [name per]} scales]
+                         [name (wtm/term-fn
+                                {:gauges gauges
+                                 :origins (vec (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end))))
+                                 :outcome (memoize (fn [t] (let [ys (filter (comp some? :y) (keep #((:target sp) name % t) leaves))]
+                                                    (when (seq ys)
+                                                      {:share (/ (count (filter :y ys)) (double (count ys)))
+                                                       :n (count ys)
+                                                       :known-at (reduce max (map :known-at ys))}))))})]))
+         x* (fn [a b] (when (and a b) (* (double a) (double b))))]
+     (assoc sp
+            :world-offset (fn [scale place t]
+                            (when-let [f (and (leaf? place) (term scale))]
+                              {:x (:x (f t)) :reads (:reads (read t))}))
+            :world-gauges (fn [_scale place t]
+                            (let [{:keys [g reads]} (read t)
+                                  {:keys [food energy]} (place-exposure place t)]
+                              {:x [(x* (:food12 g) food) (x* (:brent12 g) energy)]
+                               :names once-products :reads reads}))
+            :world-width (into {} (for [{:keys [name]} scales] [name 2]))))))
 
 (defn exposure-fn
   "(fn [country t]) -> {:food :energy :fertiliser :open}: food imports, fuel

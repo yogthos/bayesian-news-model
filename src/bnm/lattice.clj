@@ -667,6 +667,10 @@
    :up-net-of-downscale, a node with :downscale passes up its log odds
    less the part of its offset that came down (bnm-56c.2: otherwise the
    coarser node reads its own forecast back through the finer states),
+   :world-offset (fn [scale place t]) -> {:x log odds :reads} or nil, the
+   world's term (bnm.world-term, learned once per origin) added to the
+   node's offsets, so every model reads it at a fixed coefficient of 1
+   (fix 3); none without,
    :without, groups dropped from the inputs altogether, :without-at
    {scale #{groups}} the same at one scale,
    :trace, to record what each node read and learned from (:inputs, also
@@ -792,10 +796,17 @@
                        seen (vec (for [place places
                                        :let [g ((:gauges spec) scale place t)
                                              {:keys [os read down pool]} (offsets-of place t)
+                                             ;; :world-offset (fix 3): the world's term, learned once
+                                             ;; per origin at the world node, added to every offset
+                                             wo (when-let [f (:world-offset spec)] (f scale place t))
+                                             _ (when-let [late (seq (filter #(> (or (:known-at %) (:origin %)) t) (:reads wo)))]
+                                                 (throw (ex-info "bnm.lattice: a world offset read after the origin" {:scale scale :place place :t t :reads (vec late)})))
+                                             os (if-let [x (:x wo)] (mapv (fn [[w o]] [w (+ o (double x))]) os) os)
                                              {:keys [x reads stated tension strain resolved]} (inputs spec st scale scale-spec level-ix place t g {:pool pool})
                                              raw-flows (subvec x (inc g-width))
                                              x (into (subvec x 0 (inc g-width)) (standardize flow-std raw-flows))]]
-                                   {:place place :x x :raw-flows raw-flows :os os :down down :reads (cond-> reads read (conj read))
+                                   {:place place :x x :raw-flows raw-flows :os os :down down
+                                    :reads (cond-> (into reads (:reads wo)) read (conj read))
                                     :stated stated :tension tension :strain strain :resolved resolved}))
                        ;; a group with no input anywhere at t (its source ended, a signal
                        ;; gone stale, errors not yet known) reads the unknown's mean, 0, at

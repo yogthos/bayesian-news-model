@@ -26,6 +26,8 @@
             [bnm.lattice-golden-test]
             [bnm.world-state-test]
             [bnm.world-gauges-test]
+            [bnm.world-term-test]
+            [bnm.lead-test-test]
             [bnm.lattice-political-test]
             [bnm.releases-test]
             [bnm.hazard-revised-test]
@@ -149,6 +151,8 @@
     bnm.lattice-golden-test
     bnm.world-state-test
     bnm.world-gauges-test
+    bnm.world-term-test
+    bnm.lead-test-test
     bnm.lattice-political-test
     bnm.releases-test
     bnm.hazard-revised-test
