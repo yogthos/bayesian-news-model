@@ -1935,3 +1935,47 @@
     (is (thrown? clojure.lang.ExceptionInfo (fresh-world 3 true {:end 30 :frailty bad})) (pr-str bad)))
   (testing "a frailty-only scale needs the frailty"
     (is (thrown? clojure.lang.ExceptionInfo (fresh-world 3 true {:end 30})))))
+
+(deftest bnm-9fg-a-constant-input-is-not-put-on-the-cap
+  ;; one-pass sqrt(ss/n - m^2) leaves a constant input's spread at rounding
+  ;; noise (1.5e-8 for 0.2 over 153 rows), above the 1e-9 guard, so the next
+  ;; value lands at the cap (docs/LEADING.md 4.3). :stable keeps Welford's
+  ;; mean and sum of squared deviations and guards the spread relative to
+  ;; the level; off, the registered issues' standardizer
+  (let [seen (fn [sd xs] (reduce lt/observe sd xs))
+        const (repeat 153 [0.2])]
+    (is (= [5.0] (lt/standardize (seen (lt/standardizer) const) [0.3])) "the bug, kept off")
+    (is (= [0.0] (lt/standardize (seen (lt/standardizer :stable) const) [0.3])))
+    (testing "a spread of one ulp at the level is no spread"
+      (is (= [0.0] (lt/standardize (seen (lt/standardizer :stable) (concat (repeat 80 [0.2]) (repeat 80 [(Math/nextUp 0.2)]))) [0.3]))))
+    (testing "otherwise the same z as before, unknowns left out"
+      (let [xs (concat (repeat 12 [1.0 nil]) (repeat 12 [3.0 10.0]) [[nil 20.0]] (map (fn [x] [x 4.0]) [1.0 2.0 3.0 4.0]))]
+        (doseq [x [[3.0 0.0] [0.0 15.0] [nil 7.0] [1e6 -1e6]]]
+          (is (every? #(< (Math/abs (double %)) 1e-9)
+                      (map - (lt/standardize (seen (lt/standardizer) xs) x) (lt/standardize (seen (lt/standardizer :stable) xs) x)))
+              (pr-str x)))))
+    (testing "the lattice takes it as :flow-std :stable, nothing else"
+      (let [r (lt/run (assoc (spec (world 1)) :end 60 :flow-std :stable))]
+        (is (:stable (get-in r [:flow-std [:year :country]]))))
+      (is (thrown? clojure.lang.ExceptionInfo (lt/run (assoc (spec (world 1)) :end 30 :flow-std :fast)))))))
+
+(deftest bnm-jnw-no-discount-before-a-node-s-first-data
+  ;; augur's step discounts the coefficients' covariance every period, rows
+  ;; or none, and the lattice steps every node from its start, so a node
+  ;; whose outcomes begin late met its first data with its prior variance
+  ;; times 1/discount^n (docs/LEADING.md 4.2). :discount-from :data steps a
+  ;; node only once it has rows to learn; off, the registered issues'
+  (let [w (world 5)
+        late (fn [sp] (assoc sp :target (let [t0 (:target sp)] (fn [scale place origin] (when (>= origin 240) (t0 scale place origin))))))
+        sp (late (assoc (spec w) :end 239))
+        diag (fn [r] (let [^doubles c (:c (lt/model r :month :country :all)) k (long (Math/round (Math/sqrt (alength c))))]
+                       (mapv #(aget c (+ (* % k) %)) (range k))))
+        before (diag (lt/run sp))
+        fixed (diag (lt/run (assoc sp :discount-from :data)))]
+    (is (> (second before) 10.0) (str "0.99^-240: " before))
+    (is (= (into [4.0] (repeat (dec (count fixed)) 1.0)) fixed) "the declared prior, untouched")
+    (testing "from its first data it learns as before"
+      (let [b (lt/run (late (assoc (spec w) :end 300 :discount-from :data)))]
+        (is (< (second (diag b)) 1.0))
+        (is (not= 0.0 (second (augur.dynamic/means (lt/model b :month :country :all)))))))
+    (is (thrown? clojure.lang.ExceptionInfo (lt/run (assoc (spec w) :end 30 :discount-from :rows))))))

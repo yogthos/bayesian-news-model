@@ -167,36 +167,62 @@
 
 (defn standardizer
   "An empty running standardizer: counts, sums and sums of squares per
-  input."
-  []
-  {:n 0 :s nil :ss nil})
+  input. (standardizer :stable) also keeps each input's running mean and
+  sum of squared deviations (Welford), and `standardize` reads those
+  (bnm-9fg): the one-pass spread sqrt(ss/n - m^2) of an input constant
+  over everything seen is rounding noise, about 1e-8 times its level,
+  which the 1e-9 guard let through, so the next value landed on the cap."
+  ([] {:n 0 :s nil :ss nil})
+  ([mode]
+   (case mode
+     nil (standardizer)
+     :stable {:n 0 :s nil :ss nil :stable true}
+     (throw (ex-info "bnm.lattice: :flow-std takes :stable" {:flow-std mode})))))
 
 (defn observe
   "The standardizer after seeing the vector xs; an unknown input (nil)
   does not count toward its mean and spread."
-  [{:keys [n s ss ns]} xs]
+  [{:keys [n s ss ns stable mean m2]} xs]
   (let [k (count xs)
-        z (fn [v] (or v (vec (repeat k 0.0))))]
-    {:n (inc n)
-     :ns (mapv (fn [c x] (if (nil? x) c (inc c))) (or ns (vec (repeat k (long n)))) xs)
-     :s (mapv (fn [a x] (if (nil? x) a (+ a x))) (z s) xs)
-     :ss (mapv (fn [a x] (if (nil? x) a (+ a (* x x)))) (z ss) xs)}))
+        z (fn [v] (or v (vec (repeat k 0.0))))
+        ns' (mapv (fn [c x] (if (nil? x) c (inc c))) (or ns (vec (repeat k (long n)))) xs)]
+    (cond-> {:n (inc n)
+             :ns ns'
+             :s (mapv (fn [a x] (if (nil? x) a (+ a x))) (z s) xs)
+             :ss (mapv (fn [a x] (if (nil? x) a (+ a (* x x)))) (z ss) xs)}
+      stable (assoc :stable true
+                    :mean (mapv (fn [m x c] (if (nil? x) m (+ m (/ (- x m) (double c))))) (z mean) xs ns')
+                    :m2 (mapv (fn [q m x c] (if (nil? x) q (let [m' (+ m (/ (- x m) (double c)))] (+ q (* (- x m) (- x m')))))) (z m2) (z mean) xs ns')))))
+
+(defn spread
+  "Input i's mean and spread in standardizer `sd` (ni values seen), or nil
+  while it has none: under :stable from Welford's sums, with a spread
+  under 1e-9 or under 1e-8 of the level counted as none."
+  [{:keys [s ss stable mean m2]} i ni]
+  (let [ni (double ni)]
+    (if stable
+      (let [m (nth mean i)
+            sd (Math/sqrt (Math/max 0.0 (/ (nth m2 i) ni)))]
+        (when (> sd (Math/max 1e-9 (* 1e-8 (Math/abs (double m))))) [m sd]))
+      (let [m (/ (nth s i) ni)
+            sd (Math/sqrt (Math/max 0.0 (- (/ (nth ss i) ni) (* m m))))]
+        (when (> sd 1e-9) [m sd])))))
 
 (defn standardize
   "xs against the mean and spread of everything observed before, capped at
   5; 0 until ten of an input have been seen (its scale is not known yet),
   and 0 for an unknown input (nil): the mean."
-  [{:keys [n s ss ns]} xs]
+  [{:keys [n ns] :as sd} xs]
   (if (< n 10)
     (mapv (constantly 0.0) xs)
-    (mapv (fn [x si ssi ni]
-            (let [ni (double ni)]
-              (if (or (nil? x) (< ni 10))
-                0.0
-                (let [m (/ si ni)
-                      sd (Math/sqrt (Math/max 0.0 (- (/ ssi ni) (* m m))))]
-                  (if (> sd 1e-9) (Math/max -5.0 (Math/min 5.0 (/ (- x m) sd))) 0.0)))))
-          xs s ss (or ns (repeat n)))))
+    (vec (map-indexed (fn [i x]
+                        (let [ni (if ns (nth ns i) n)]
+                          (if (or (nil? x) (< ni 10))
+                            0.0
+                            (if-let [[m d] (spread sd i ni)]
+                              (Math/max -5.0 (Math/min 5.0 (/ (- x m) d)))
+                              0.0))))
+                      xs))))
 
 (defn- without
   "The groups dropped at `scale`: the spec's :without everywhere, and its
@@ -1296,7 +1322,15 @@
                        model (if (per-place? (get-in spec [:weighting-at scale] (:weighting spec)))
                                (assoc-in model [:weighting :power] (per-place-power ready))
                                model)
-                       model (d/step model rows)
+                       ;; bnm-jnw, :discount-from :data: a node with no rows yet, now or
+                       ;; before, is not stepped, so its coefficients meet their first
+                       ;; data at the declared prior, not discounted since the start
+                       _ (when-not (contains? #{nil :data} (:discount-from spec))
+                           (throw (ex-info "bnm.lattice: :discount-from takes :data" {:discount-from (:discount-from spec)})))
+                       model (if (and (= :data (:discount-from spec)) (empty? rows)
+                                      (zero? (long (or (second (get-in st [:clim k])) 0))))
+                               model
+                               (d/step model rows))
                        ;; the frailty filtered from the origins now known, then its prior at t:
                        ;; the node's own run forward, or (:prior :parent) the coarser level's,
                        ;; filtered at an earlier period
@@ -1369,7 +1403,7 @@
                        ;; the node's own inputs (everything past the intercept and the
                        ;; gauges, which the spec standardizes) against their past
                        g-width (if (contains? (without spec scale) :gauges) 0 (get-in spec [:gauge-width scale] 0))
-                       flow-std (get-in st [:flow-std k] (standardizer))
+                       flow-std (get-in st [:flow-std k] (standardizer (:flow-std spec)))
                        ;; :principal, a set of groups (or :auto, every contradiction, turn
                        ;; and relation group): the one contributing most at each place under
                        ;; the all-inputs model's coefficients, recorded in the book
@@ -1561,11 +1595,13 @@
         rel-ix (vec (sort (mapcat val (:parts lay))))
         g-width (if (contains? (without spec scale) :gauges) 0 (get-in spec [:gauge-width scale] 0))
         avg (get-in state [:st :models k])
-        {:keys [n s ss ns]} (get-in state [:st :flow-std k])
+        {:keys [n s ss ns stable m2]} (get-in state [:st :flow-std k])
         sd (fn [i] (let [j (- i (inc g-width))
                          nj (double (max 1 (if ns (nth ns j) n)))
                          m (/ (nth s j) nj)]
-                     (Math/sqrt (Math/max 1e-12 (- (/ (nth ss j) nj) (* m m))))))]
+                     (if stable
+                       (Math/sqrt (Math/max 1e-12 (/ (nth m2 j) nj)))
+                       (Math/sqrt (Math/max 1e-12 (- (/ (nth ss j) nj) (* m m)))))))]
     (vec (for [i rel-ix]
            (/ (reduce + 0.0 (for [[g mdl] (:models avg)
                                   :let [ins (:inputs mdl) pos (.indexOf ^java.util.List (vec ins) i)]

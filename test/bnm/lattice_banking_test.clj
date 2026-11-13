@@ -53,3 +53,20 @@
     (is (nil? (at fixed 2010 :tfp3)))
     (is (some? (at fixed 2010 :investment-share)) "the investment share was")
     (is (= (at base 2014 :credit-wide) (at fixed 2014 :credit-wide)) "other columns untouched")))
+
+(deftest bnm-9fg-a-gauge-flat-until-now-is-not-put-on-the-cap
+  ;; world3 (the share of countries with an onset known in three years) is
+  ;; 0 at every origin before a kind's first known onset; its spread is
+  ;; then the 1e-12 variance floor, sd 1e-6, and its first move lands on
+  ;; the cap at every country (food +5.00 at Dec 2007, docs/LEADING.md 4.3).
+  ;; :stable (Welford's sums, a spread under 1e-9 or 1e-8 of the level
+  ;; counted as none) reads it at the mean; off, the registered issues'
+  (let [samples (concat (for [t (range 30) u (range 5)] [t [0.0 (double (+ u t))]])
+                        (for [u (range 5)] [30 [0.2 (double u)]])
+                        (for [u (range 5)] [31 [0.1 (double u)]]))
+        base (#'lb/standardizer samples)
+        fixed (#'lb/standardizer samples :stable)]
+    (is (= 5.0 (first (base 30 [0.2 3.0]))) "the bug, kept off")
+    (is (= 0.0 (first (fixed 30 [0.2 3.0]))))
+    (is (< (Math/abs (- (second (base 30 [0.2 3.0])) (second (fixed 30 [0.2 3.0])))) 1e-9) "a varying gauge as before")
+    (is (< 0.0 (first (fixed 31 [0.1 3.0])) 5.0) "once it has moved, its spread is real")))
