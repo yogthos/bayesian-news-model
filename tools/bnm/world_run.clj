@@ -427,7 +427,9 @@
                        (when lsd (str "\t" lsd "\t" (:level e) "\t" (:level-v e)))
                        (when usd (str "\t" usd "\t" (str/join "," (:u e)) "\t" (str/join "," (:u-v e))))
                        ;; under :regional-sds, the regional sd and each group=state
-                       (when rsd (str "\t" rsd "\t" (str/join "," (map #(str %1 "=" %2) (:r-groups e) (or (:rs e) (repeat 0.0))))))
+                       (when rsd (str "\t" rsd "\t" (str/join "," (map #(str %1 "=" %2) (:r-groups e) (or (:rs e) (repeat 0.0))))
+                                      ;; with their own persistence, the regional rho
+                                      (when-let [q (:rrho e)] (str "\t" q))))
                        ;; under :prior :finer, the chosen kappa (0: the node's own prior)
                        (when cross (str "\t" cross))
                        "\n"))))))

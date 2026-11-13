@@ -13,12 +13,22 @@
   input group (relations, `width` columns) is noise constant within a
   region at an origin, as the region's and subregion's states that `:down`
   reads are. Only the base and that model are averaged. 40 years, outcomes
-  known 24 months on; `extra` merged in. [spec planted]"
-  [nr k sr extra & [{:keys [seed width] :or {seed 41 width 3}}]]
+  known 24 months on; `extra` merged in. Options: :z-rho and :z-innov,
+  z's persistence and innovation sd (0.6, 0.4); :r-rho, the regional
+  shocks' persistence (0: independent), their stationary sd staying `sr`;
+  :lag, the months after the origin an outcome is known (24).
+  [spec planted]"
+  [nr k sr extra & [{:keys [seed width z-rho z-innov r-rho lag] :or {seed 41 width 3 z-rho 0.6 z-innov 0.4 r-rho 0.0 lag 24}}]]
   (let [g (m/rng seed)
         yrs 40
-        z (vec (take yrs (iterate #(+ (* 0.6 %) (* 0.4 (m/normal! g))) 0.0)))
-        r (into {} (for [gi (range nr) y (range yrs)] [[gi y] (* sr (m/normal! g))]))
+        z (vec (take yrs (iterate #(+ (* z-rho %) (* z-innov (m/normal! g))) 0.0)))
+        e (into {} (for [gi (range nr) y (range yrs)] [[gi y] (* sr (m/normal! g))]))
+        ;; each region's shock AR(1) at r-rho, stationary sd sr (independent at 0)
+        r (into {} (for [gi (range nr)
+                         [y v] (map-indexed vector
+                                            (reductions (fn [prev y] (+ (* r-rho prev) (* (Math/sqrt (- 1.0 (* r-rho r-rho))) (e [gi y]))))
+                                                        (e [gi 0]) (range 1 yrs)))]
+                     [[gi y] v]))
         x (into {} (for [gi (range nr) y (range yrs)] [[gi y] (vec (repeatedly width #(m/normal! g)))]))
         regions (mapv #(str "G" %) (range nr))
         places (vec (for [i (range k) gi (range nr)] (str "P" gi "-" i)))
@@ -30,7 +40,7 @@
              :levels [[:country places] [:region regions] [:world ["W"]]]
              :parent (merge (into {} (for [p places] [p (regions (reg-of p))])) (zipmap regions (repeat "W")))
              :start 0 :end (dec (* 12 (dec yrs))) :forget 0.995
-             :target (fn [_ place t] (when (reg-of place) {:y (ys [place (yr t)]) :known-at (+ t 24)}))
+             :target (fn [_ place t] (when (reg-of place) {:y (ys [place (yr t)]) :known-at (+ t lag)}))
              :gauges (fn [_ _ _] [])
              :gauge-width {:year 0}
              ;; the base starts at the rate's level, as climatology does in the
@@ -208,3 +218,97 @@
                {:regional-sds [0.0 0.5] :regional-levels []} {:regional-sds [0.0 0.5] :regional-levels [:continent]}
                {:regional-sds [0.0 0.5] :regional-levels :region} {:regional-sds [0.0 0.5] :regional-levels ["region"]}]]
     (is (thrown? clojure.lang.ExceptionInfo (region-world 2 1 1.0 {:frailty bad})) (pr-str bad))))
+
+(defn- chosen-persistences
+  "The [rho rrho] the country node chose at most of its filtered origins
+  from the second half of the run on (the grid's choice once it has data)."
+  [r]
+  (let [fl (vals (get-in r [:frailty [:year :country]]))
+        late (drop (quot (count fl) 2) fl)]
+    (key (apply max-key val (frequencies (map (juxt :rho :rrho) late))))))
+
+(deftest bnm-56c-20-3-the-regional-states-have-their-own-persistence
+  ;; t61: rho shared by z and the r's pushed growth collapses' rho to 0.8
+  ;; and carried calm into 2007-08. With :regional-rhos the grid chooses the
+  ;; regional persistence apart from z's: rho_r is the planted one, and z's
+  ;; rho is what the frailty alone chooses. (A persistent z is largely taken
+  ;; by the base's own learning at a two-year lag, so the frailty alone
+  ;; chooses rho 0 in both worlds; what is tested is that the regional
+  ;; states no longer move it.)
+  (let [grid {:frailty {:rhos [0.0 0.9] :sds [0.0 0.5 1.0] :regional-sds [0.0 0.5 1.0] :regional-rhos [0.0 0.9]}}
+        alone (update grid :frailty dissoc :regional-sds :regional-rhos)
+        tied (assoc-in grid [:frailty :regional-rhos] :tied)
+        rho-of (fn [r] (first (chosen-persistences r)))]
+    (doseq [[what o rr] [["z transient, the regional tilts persistent" {:seed 41 :z-rho 0.0 :z-innov 1.0 :r-rho 0.9} 0.9]
+                         ["z persistent, the regional tilts transient" {:seed 41 :z-rho 0.9 :z-innov (Math/sqrt 0.19) :r-rho 0.0} 0.0]]]
+      (testing what
+        (let [own (region-world 5 40 1.0 grid o)
+              z-rho (rho-of (region-world 5 40 1.0 alone o))]
+          (is (= [z-rho rr] (chosen-persistences own))))))
+    (testing "tied (t61), the persistent tilts carry z's rho up with them"
+      (let [o {:seed 41 :z-rho 0.0 :z-innov 1.0 :r-rho 0.9}]
+        (is (= 0.0 (rho-of (region-world 5 40 1.0 alone o))))
+        (is (= 0.9 (rho-of (region-world 5 40 1.0 tied o))))))
+    (testing "every regional candidate carries its own persistence; sd_r 0 none"
+      (let [c (lt/frailty-config (first (region-spec 5 4 1.0 grid)))]
+        (is (= #{0.0 0.9} (set (keep :rrho (:grid c)))))
+        (is (every? #(= (boolean (:rsd %)) (contains? % :rrho)) (:grid c)))
+        (is (= (* 2 3 (+ 1 (* 2 2))) (count (:grid c))))))
+    (testing ":regional-rhos :tied is t61's rule, the regional states at z's persistence"
+      (let [c (lt/frailty-config (first (region-spec 5 4 1.0 (assoc-in grid [:frailty :regional-rhos] :tied))))]
+        (is (not-any? :rrho (:grid c)))
+        (is (= (* 2 3 3) (count (:grid c))))))
+    (testing "bad persistences are refused"
+      (doseq [bad [[1.0] [-0.1] [] :x ["0.5"]]]
+        (is (thrown? clojure.lang.ExceptionInfo (region-world 2 1 1.0 (assoc-in grid [:frailty :regional-rhos] bad))) (pr-str bad))))))
+
+(deftest bnm-56c-20-3-regional-states-in-place-before-a-lock-forms
+  ;; t61: chosen at a 2-nat price, the regional states arrived after the
+  ;; averaging had counted the regional shock in a model reading
+  ;; region-constant inputs (the :down lock). The step 3e rule, set before
+  ;; the t64 runs: where a node has regional groups the states are present
+  ;; from its first issue (no sd_r 0 in the grid, sd_r and rho_r learned),
+  ;; and before anything is filtered the node issues at the grid's prior
+  ;; predictive (:start :prior-predictive), not at the tie-break's sd 0.
+  ;; Under the joint issued evidence the region-noise model then never
+  ;; builds a lead; under t61's rule it leads by 10 nats or more
+  (let [ij {:evidence-at :issue-joint}
+        base {:frailty {:rhos [0.0 0.6] :sds [0.0 0.5 1.0]}}
+        t61 (update base :frailty assoc :regional-sds [0.0 0.5 1.0] :regional-rhos :tied)
+        rule (update base :frailty assoc :regional-sds [0.5 1.0] :regional-rhos [0.0 0.6] :start :prior-predictive)
+        lead (fn [cfg seed] (vec (take 10 (reductions + (increments 5 40 1.0 (merge cfg ij) seed)))))]
+    (doseq [seed [41 42 43]]
+      (let [old (lead t61 seed) new (lead rule seed)]
+        (testing (str "seed " seed ": t61's rule lets the lead form")
+          (is (> (apply max old) 10.0) old))
+        (testing (str "seed " seed ": the rule keeps it under 2 nats, and it ends behind")
+          (is (< (apply max new) 2.0) new)
+          (is (neg? (peek new)) new))))))
+
+(deftest bnm-93n-the-start-at-the-grid-s-prior-predictive
+  (let [spec (first (region-spec 5 4 1.0 {:frailty {:rhos [0.0 0.5] :sds [0.0 1.0] :start :prior-predictive}}))
+        cfg (lt/frailty-config spec)
+        fresh (#'lt/frailty-fresh cfg)
+        zp (lt/frailty-prior cfg fresh nil 35 12)
+        ;; weights exp(-price): sd 0 at price 0, sd 1 at 2 nats, two rhos each
+        w1 (/ (Math/exp -2.0) (+ 1.0 (Math/exp -2.0)))]
+    (testing "scalar: the mean-one shift of the weighted variance"
+      (is (< (Math/abs (- (:v zp) w1)) 1e-12) zp)
+      (is (< (Math/abs (- (:m zp) (* -0.5 w1))) 1e-12) zp))
+    (testing "the candidates' own priors (:zc), scored and filtered, are the tie's"
+      (let [tie (lt/frailty-prior (assoc cfg :start :tie) fresh nil 35 12)]
+        (is (= 0.0 (:v tie)))
+        (is (= (dissoc tie :m :v :sd) (dissoc zp :m :v :sd))))))
+  (testing "vector: regional states present, each component's variance the weighted mean"
+    (let [spec (first (region-spec 5 4 1.0 {:frailty {:rhos [0.0] :sds [0.0 1.0] :regional-sds [0.5 1.0] :start :prior-predictive}}))
+          cfg (lt/frailty-node (lt/frailty-config spec) spec 0 (second (first (:levels spec))))
+          zp (lt/frailty-prior cfg (#'lt/frailty-fresh cfg) nil 35 12)
+          w1 (/ (Math/exp -2.0) (+ 1.0 (Math/exp -2.0)))]
+      (is (= 6 (count (:mu zp))))
+      (is (every? zero? (:mu zp)))
+      (is (< (Math/abs (- (get-in zp [:P 0 0]) w1)) 1e-12))
+      (is (< (Math/abs (- (get-in zp [:P 1 1]) (/ (+ 0.25 1.0) 2.0))) 1e-12))
+      (is (= 5 (get-in zp [:cand :nr])))))
+  (testing "it goes with :prior :own, and takes :tie or :prior-predictive"
+    (doseq [bad [{:start :x} {:start :prior-predictive :prior :parent}]]
+      (is (thrown? clojure.lang.ExceptionInfo (lt/frailty-config (first (region-spec 2 1 1.0 {:frailty bad})))) (pr-str bad)))))

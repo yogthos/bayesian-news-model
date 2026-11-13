@@ -716,7 +716,8 @@
   "The frailty's grid and reference when the spec's :frailty leaves them out."
   {:rhos [0.0 0.5 0.8 0.95] :sds [0.0 0.25 0.5 1.0] :from :base :prior :own :penalty 2.0
    :level-sds [0.0] :level-penalty 2.0 :exposure-sds [0.0] :exposure-penalty 2.0
-   :regional-sds [0.0] :regional-penalty 2.0 :regional-levels [:region]
+   :regional-sds [0.0] :regional-penalty 2.0 :regional-levels [:region] :regional-rhos nil
+   :start :tie
    :cross [0.0 0.5 1.0 1.5]})
 
 (defn frailty-config
@@ -741,10 +742,19 @@
   :regional-sds (bnm-56c.20.3) adds a shock per region inside the node:
   one state r_g per group of its places at each of :regional-levels (the
   spec's coarser levels, [:region] by default, membership up :parent),
-  AR(1) at the transient's persistence, its stationary sd chosen from the
-  grid, a non-zero one paying :regional-penalty nats (2.0). The place's
-  shock is then z (+ u.e) + the r_g of its groups, filtered jointly once
-  per origin. The default, [0.0], is none.
+  AR(1) at a persistence of their own (:regional-rhos, persistences in
+  [0, 1), the frailty's :rhos when left out; :tied, z's own, as t61 ran),
+  their stationary sd chosen from the grid with it, a non-zero one paying
+  :regional-penalty nats (2.0). The place's shock is then z (+ u.e) + the
+  r_g of its groups, filtered jointly once per origin. The default, [0.0],
+  is none.
+  :start (bnm-93n) is what the node issues with before its frailty has
+  filtered an origin, when every candidate's score is 0: :tie (the
+  default), the grid's first candidate, sd 0, so the first origins are
+  issued and learned with no shared state; :prior-predictive, the grid's
+  prior predictive, its candidates weighted by exp(-price) and matched in
+  mean and variance (each state's variance the weighted mean of theirs).
+  It goes with :prior :own.
   :prior :finer with :source, a scale of the spec (bnm-56c.35, recursive
   step 4): every node at a scale coarser than the source issues with kappa
   times the source scale's state at its level (filtered before the node
@@ -757,10 +767,10 @@
     (when-not (map? f)
       (throw (ex-info "bnm.lattice: :frailty takes a map of :rhos :sds :from :prior" {:frailty f})))
     (when-let [bad (seq (remove #{:rhos :sds :from :prior :penalty :level-sds :level-penalty :exposure-sds :exposure-penalty
-                                        :regional-sds :regional-penalty :regional-levels :source :cross} (keys f)))]
+                                        :regional-sds :regional-penalty :regional-levels :regional-rhos :start :source :cross} (keys f)))]
       (throw (ex-info (str "bnm.lattice: :frailty names no option " (vec bad)) {:frailty f})))
     (let [{:keys [rhos sds from prior penalty level-sds level-penalty exposure-sds exposure-penalty
-                  regional-sds regional-penalty regional-levels source cross] :as c} (merge frailty-defaults f)
+                  regional-sds regional-penalty regional-levels regional-rhos start source cross] :as c} (merge frailty-defaults f)
           nums? (fn [xs ok?] (and (sequential? xs) (seq xs) (every? #(and (number? %) (ok? (double %))) xs)))]
       (when-not (nums? rhos #(and (<= 0.0 %) (< % 1.0)))
         (throw (ex-info "bnm.lattice: :frailty :rhos takes persistences in [0, 1)" {:rhos rhos})))
@@ -797,8 +807,17 @@
         (throw (ex-info "bnm.lattice: :frailty :regional-sds takes sds of at least 0" {:regional-sds regional-sds})))
       (when-not (and (number? regional-penalty) (<= 0.0 (double regional-penalty)))
         (throw (ex-info "bnm.lattice: :frailty :regional-penalty takes nats of at least 0" {:regional-penalty regional-penalty})))
+      (when-not (#{:tie :prior-predictive} start)
+        (throw (ex-info "bnm.lattice: :frailty :start takes :tie or :prior-predictive" {:start start})))
+      (when (and (= :prior-predictive start) (not= :own prior))
+        (throw (ex-info "bnm.lattice: :frailty :start :prior-predictive goes with :prior :own" {:prior prior})))
+      (when-not (or (nil? regional-rhos) (= :tied regional-rhos) (nums? regional-rhos #(and (<= 0.0 %) (< % 1.0))))
+        (throw (ex-info "bnm.lattice: :frailty :regional-rhos takes persistences in [0, 1) or :tied" {:regional-rhos regional-rhos})))
       (let [exposure? (boolean (some pos? (map double exposure-sds)))
-            regional? (boolean (some pos? (map double regional-sds)))]
+            regional? (boolean (some pos? (map double regional-sds)))
+            ;; the regional states' own persistences (bnm-56c.20.3): z's grid
+            ;; when left out; :tied, none of their own (z's, as t61 ran)
+            rrhos (when-not (= :tied regional-rhos) (sort (distinct (map double (or regional-rhos rhos)))))]
         (when (and regional? (not (and (sequential? regional-levels) (seq regional-levels)
                                        (every? (set (map first (:levels spec))) regional-levels))))
           (throw (ex-info "bnm.lattice: :frailty :regional-levels names levels of the spec's :levels" {:regional-levels regional-levels})))
@@ -813,13 +832,16 @@
                :width (when exposure? (long (:exposure-width spec)))
                :grid (vec (concat
                            (for [rr (sort (distinct (map double regional-sds)))
+                                 ;; a regional candidate at each of its own persistences
+                                 rq (if (and (pos? rr) rrhos) rrhos [nil])
                                  u (sort (distinct (map double exposure-sds)))
                                  l (sort (distinct (map double level-sds)))
                                  s (sort (distinct (map double sds))) r (sort (distinct (map double rhos)))]
                              (cond-> {:rho r :sd s :price (if (pos? s) (double penalty) 0.0)}
                                (pos? l) (-> (assoc :lsd l) (update :price + (double level-penalty)))
                                (pos? u) (-> (assoc :usd u) (update :price + (double exposure-penalty)))
-                               (pos? rr) (-> (assoc :rsd rr) (update :price + (double regional-penalty)))))
+                               (pos? rr) (-> (assoc :rsd rr) (update :price + (double regional-penalty)))
+                               rq (assoc :rrho rq)))
                            ;; :prior :finer: the source's state times kappa, after the
                            ;; node's own candidates (kappa 0) so a tie keeps its own;
                            ;; its own persistence unused, rho 0
@@ -873,7 +895,7 @@
         ;; each regional candidate as its sd_r = 0 twin (already in the grid
         ;; unless :regional-sds has no 0), in the grid's order
         (update fcfg :grid (fn [g] (vec (distinct (map #(if (:rsd %)
-                                                          (-> (dissoc % :rsd) (update :price - (double (:regional-penalty fcfg))))
+                                                          (-> (dissoc % :rsd :rrho) (update :price - (double (:regional-penalty fcfg))))
                                                           %)
                                                        g)))))
         (assoc fcfg :r-groups groups :ng (count groups) :member member)))))
@@ -987,15 +1009,15 @@
 (defn- slope-diag
   "A slope candidate's per-dimension [factor noise] over h periods: z,
   each u_j and each regional r_g AR(1) at the candidate's rho (their
-  stationary sds :sd, :usd and :rsd), the level, when there is one, a
-  random walk."
-  [{:keys [rho sd lsd usd rsd nu nr]} h]
-  (let [rh (Math/pow (double rho) (double h))
-        ar (fn [s] [rh (* (double s) (double s) (- 1.0 (* rh rh)))])]
-    (vec (concat [(ar sd)]
+  stationary sds :sd, :usd and :rsd; the r_g at :rrho when the candidate
+  has its own), the level, when there is one, a random walk."
+  [{:keys [rho rrho sd lsd usd rsd nu nr]} h]
+  (let [ar (fn [r s] (let [rh (Math/pow (double r) (double h))]
+                       [rh (* (double s) (double s) (- 1.0 (* rh rh)))]))]
+    (vec (concat [(ar rho sd)]
                  (when lsd [[1.0 (* (double lsd) (double lsd) (double h))]])
-                 (when usd (repeat (long (or nu 0)) (ar usd)))
-                 (when rsd (repeat (long (or nr 0)) (ar rsd)))))))
+                 (when usd (repeat (long (or nu 0)) (ar rho usd)))
+                 (when rsd (repeat (long (or nr 0)) (ar (or rrho rho) rsd)))))))
 
 (defn- slope-fresh
   "A slope candidate's joint state before anything is known: z, each u_j
@@ -1135,8 +1157,38 @@
                                                          exposure? (assoc :usd (double (:usd pick 0.0))
                                                                           :u (:u pick) :u-v (:u-v pick))
                                                          regional? (assoc :rsd (double (:rsd pick 0.0)) :r-groups r-groups
+                                                                          :rrho (some-> (:rrho pick) double)
                                                                           :rs (:rs pick) :rs-v (:rs-v pick)))))))
           fr (sort-by key (group-by :origin (filter :informed ready)))))
+
+(defn- start-mixture
+  "A node's frailty before it has filtered an origin, under :start
+  :prior-predictive (bnm-93n): the grid's prior predictive, each fresh
+  candidate weighted by exp(-price), matched in mean and variance. Every
+  fresh state is centred at 0 with a diagonal variance, so the match is a
+  state of the same form, each component's variance the weighted mean of
+  the candidates' (0 for a candidate without it), and the shift's half
+  variance the weighted mean of theirs. With a vector candidate among
+  them the state is the joint one, of the widest candidate's dimensions."
+  [cands zc]
+  (let [e (mapv #(Math/exp (- (double (:price % 0.0)))) cands)
+        tot (reduce + 0.0 e)
+        ws (mapv #(/ (double %) tot) e)
+        msq (fn [f] (reduce + 0.0 (map (fn [w c] (let [x (double (or (f c) 0.0))] (* w x x))) ws cands)))
+        sd2 (msq :sd)
+        pick (first cands)]
+    (if-not (some vec-cand? cands)
+      {:m (- (* 0.5 sd2)) :v sd2 :rho (:rho pick) :sd (Math/sqrt sd2) :zc zc}
+      (let [dims (map with-dims (filter vec-cand? cands))
+            nu (long (apply max (map :nu dims)))
+            nr (long (apply max (map :nr dims)))
+            lsd (some :lsd cands)
+            c (cond-> {:rho (:rho pick) :sd (Math/sqrt sd2) :nu nu :nr nr}
+                lsd (assoc :lsd lsd)
+                (pos? nu) (assoc :usd (Math/sqrt (msq :usd)))
+                (pos? nr) (assoc :rsd (Math/sqrt (msq :rsd))))
+            {:keys [mu P]} (slope-fresh c)]
+        {:mu mu :P P :cand c :rho (:rho c) :sd (:sd c) :zc zc}))))
 
 (defn frailty-prior
   "The frailty a node issues with at origin t: {:m :v :rho :sd} from the
@@ -1153,7 +1205,7 @@
   source's plus a part of its own); a candidate without kappa issues with
   the node's own."
   ([cfg fr parent-fr t per] (frailty-prior cfg fr parent-fr t per nil))
-  ([{:keys [prior]} fr parent-fr t per {:keys [src src-per] :as finer}]
+  ([{:keys [prior start]} fr parent-fr t per {:keys [src src-per] :as finer}]
   (let [{:keys [cands]} fr
         ;; the source's chosen state at t, run forward at its own period
         ;; (not the node's: a quarter's state runs four periods to a year's one)
@@ -1204,12 +1256,17 @@
                  cands)
         ci (chosen cands)
         pick (nth cands ci)]
-    (if (vec-cand? pick)
+    (cond
+      ;; :start :prior-predictive: nothing filtered yet, the grid's prior predictive
+      (and (= :prior-predictive start) (every? #(nil? (:t %)) cands))
+      (start-mixture cands zc)
+      (vec-cand? pick)
       ;; with a slope or regional states the node's prior is the joint state;
       ;; each place's shock is read from it with the place's exposures and
       ;; groups (`frailty-at`)
       (let [[mu P] (nth zc ci)]
-        {:mu mu :P P :cand (select-keys (with-dims pick) [:rho :sd :lsd :usd :rsd :nu :nr]) :rho (:rho pick) :sd (:sd pick) :zc zc})
+        {:mu mu :P P :cand (select-keys (with-dims pick) [:rho :rrho :sd :lsd :usd :rsd :nu :nr]) :rho (:rho pick) :sd (:sd pick) :zc zc})
+      :else
       (let [[m v] (nth zc ci)]
         (cond-> {:m m :v v :rho (:rho pick) :sd (:sd pick) :zc zc}
           (= :finer prior) (assoc :cross (double (:cross pick 0.0)))))))))
