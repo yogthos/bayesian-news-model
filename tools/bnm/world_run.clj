@@ -67,6 +67,11 @@
   --frailty-gauges true (bnm-v1y: the year node's world gauges set its
   frailty's mean instead of entering its models; needs --leading-priors
   true and --set's :frailty),
+  --next-quarter true (bnm-56c.38, recursive step 4b: the issuing
+  next-quarter scale, window three months from the origin, a leaf no other
+  node reads, at every kind whose catalogue for it is sub-annual; food by
+  month, growth by quarter, the rest on the run's catalogues; with
+  --frailty-gauges its world gauges set its frailty's mean),
   --write-reference true (also data/runs/<out>-ref, the forecasts with the
   reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
@@ -288,6 +293,17 @@
   [{:keys [known]}]
   (or known "r6-at"))
 
+(defn design-for
+  "Trial 41's quarter design for spec `sp`, and with the next-quarter scale
+  the same for it: every flow left out, the offset the year's forecast
+  carried down, pooled with what is known."
+  [sp]
+  (if (some #(= :quarter-next (:name %)) (:scales sp))
+    (-> quarter-design
+        (assoc-in [:without-at :quarter-next] (get-in quarter-design [:without-at :quarter-lead]))
+        (assoc-in [:downscale :quarter-next] {:from :year}))
+    quarter-design))
+
 (defn build-specs
   "{kind spec} for `ks` to month `end`, the quarters' offset pooled with
   run `known`'s named model. opts (recursive step 2, each off by default):
@@ -298,11 +314,14 @@
   ([ks end cats known] (build-specs ks end cats known {}))
   ([ks end cats known opts]
    (into {} (pmap (fn [k]
-                    (let [opts (assoc opts :fresh-frailty (contains? (set (:fresh-frailty opts)) k))]
+                    (let [opts (assoc opts :fresh-frailty (contains? (set (:fresh-frailty opts)) k)
+                                      :next-quarter (contains? (set (:next-quarter opts)) k))]
                       (when (and (= k lb/kind) (:fresh-frailty opts))
                         (throw (ex-info "bnm.world-run: banking crises take no fresh frailty scale" {})))
-                      [k (merge (if (= k lb/kind) (lb/build end known opts) (lp/build k end known cats start opts))
-                                quarter-design)]))
+                      (when (and (= k lb/kind) (:next-quarter opts))
+                        (throw (ex-info "bnm.world-run: banking crises take no next-quarter scale" {})))
+                      (let [sp (if (= k lb/kind) (lb/build end known opts) (lp/build k end known cats start opts))]
+                        [k (merge sp (design-for sp))])))
                   ks))))
 
 (defn sub-annual?
@@ -362,12 +381,14 @@
 (defn at-risk
   "`cats` under --at-risk: catalogue, each kind's rows at risk only where
   its catalogue's rule could date an onset (bnm.kinds/with-catalogue-at-risk,
-  bnm-96j; `food` is --food-outcomes); nil, the base's busy months alone."
-  [cats db food choice]
-  (case choice
-    nil cats
-    "catalogue" (kinds/with-catalogue-at-risk cats db food)
-    (throw (ex-info (str "bnm.world-run: --at-risk takes catalogue, not " choice) {}))))
+  bnm-96j; `food` is --food-outcomes, `growth` --growth-outcomes); nil, the
+  base's busy months alone."
+  ([cats db food choice] (at-risk cats db food choice nil))
+  ([cats db food choice growth]
+   (case choice
+     nil cats
+     "catalogue" (kinds/with-catalogue-at-risk cats db food growth)
+     (throw (ex-info (str "bnm.world-run: --at-risk takes catalogue, not " choice) {})))))
 
 (defn growth-outcomes
   "`cats` under --growth-outcomes: quarterly, growth collapses by quarter
@@ -572,11 +593,18 @@
   (if-not on?
     specs
     (into {} (for [[k sp] specs]
-               [k (if-let [ns (seq (filter lp/world-leading (get-in sp [:gauge-names :year])))]
-                    (do (when-not (map? (:frailty sp))
-                          (throw (ex-info "bnm.world-run: --frailty-gauges true needs --set's :frailty" {:kind k})))
-                        (assoc-in sp [:frailty :gauges :year] (vec ns)))
-                    sp)]))))
+               [k (let [sp (if-let [ns (seq (filter lp/world-leading (get-in sp [:gauge-names :year])))]
+                             (do (when-not (map? (:frailty sp))
+                                   (throw (ex-info "bnm.world-run: --frailty-gauges true needs --set's :frailty" {:kind k})))
+                                 (assoc-in sp [:frailty :gauges :year] (vec ns)))
+                             sp)]
+                    ;; bnm-56c.38: the next quarter's world gauges that carry a theory prior
+                    (if-let [ns (seq (filter #(and (lp/world-leading %) (get-in sp [:named-prior :quarter-next %]))
+                                             (get-in sp [:gauge-names :quarter-next])))]
+                      (do (when-not (map? (:frailty sp))
+                            (throw (ex-info "bnm.world-run: --frailty-gauges true needs --set's :frailty" {:kind k})))
+                          (assoc-in sp [:frailty :gauges :quarter-next] (vec ns)))
+                      sp))]))))
 
 (defn real-lags-choice
   "--real-lags true (bnm-a1e): every slow series read at its true
@@ -597,11 +625,45 @@
   --at-risk and --catalogue-through applied to bnm.kinds/catalogues. The
   forward ledger scores an issue on its own command's."
   [opts]
-  (let [cat-db (when (or (:food-outcomes opts) (:at-risk opts))
+  (let [cat-db (when (or (:food-outcomes opts) (:at-risk opts) (:growth-outcomes opts))
                  (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv") {:real-lags (real-lags-choice opts)}))]
     (cond-> (-> (food-outcomes (kinds/catalogues) cat-db (:food-outcomes opts))
-                (at-risk cat-db (:food-outcomes opts) (:at-risk opts)))
+                ;; bnm-56c.38: the merge of growth-q left this out of run-catalogues
+                (growth-outcomes (:growth-outcomes opts) #(ee/quarterly-growth % cat-db))
+                (at-risk cat-db (:food-outcomes opts) (:at-risk opts) (:growth-outcomes opts)))
       (= "true" (:catalogue-through opts)) catalogues-through)))
+
+(defn next-quarter-choice
+  "--next-quarter true (bnm-56c.38, recursive step 4b): the issuing
+  next-quarter scale, bnm.lattice-political/quarter-next, at every kind
+  whose catalogue for it is sub-annual (`nq-kinds`). It replaces the
+  frailty-only quarter-now, so --fresh-frailty is refused beside it. Off
+  by default."
+  [{:keys [next-quarter fresh-frailty]}]
+  (when (and next-quarter (not (#{"true" "false"} next-quarter)))
+    (throw (ex-info (str "bnm.world-run: --next-quarter takes true or false, not " next-quarter) {})))
+  (when (and (= "true" next-quarter) fresh-frailty)
+    (throw (ex-info "bnm.world-run: --next-quarter true replaces --fresh-frailty's quarter-now" {})))
+  (= "true" next-quarter))
+
+(defn nq-catalogues
+  "The next-quarter scale's catalogues (recursive step 4b): the run's
+  `cats`, food price shocks by month (`food`, a fn of the catalogues, unless
+  the run's already are, --food-outcomes monthly) and growth collapses by
+  quarter (`growth`, unless --growth-outcomes quarterly), each with its
+  at-risk rule under --at-risk catalogue (`db` for inflation's)."
+  [cats {:keys [food growth at-risk db] fo :food-outcomes go :growth-outcomes}]
+  (let [cs (cond-> cats
+             (and (not= "monthly" fo) (cats "food_price_shock")) (assoc "food_price_shock" (food cats))
+             (and (not= "quarterly" go) (cats "growth_collapse")) (assoc "growth_collapse" (growth cats)))]
+    (bnm.world-run/at-risk cs db "monthly" at-risk "quarterly")))
+
+(defn nq-kinds
+  "The kinds among `ks` given the next-quarter scale: those whose catalogue
+  for it (`nq`) dates onsets within the year (`sub-annual?`), never banking
+  (its lattice is built apart)."
+  [nq ks]
+  (set (filter #(and (not= % lb/kind) (some-> (nq %) sub-annual?)) ks)))
 
 (defn -main [& args]
   (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay leak-fixes clim-prior] :as opts}
@@ -621,6 +683,15 @@
         chosen (when states
                  (states-of (read-string (slurp states)) (set (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats))))))
         fresh (fresh-kinds (:fresh-frailty opts) ks cats)
+        ;; --next-quarter true (bnm-56c.38): the scale's catalogues and kinds
+        nq-cats (when (next-quarter-choice opts)
+                  (let [db (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv") {:real-lags (real-lags-choice opts)})]
+                    (nq-catalogues cats {:food #(get (ee/with-monthly-food % db) "food_price_shock")
+                                         :growth #(ee/quarterly-growth % db)
+                                         :at-risk (:at-risk opts) :db db
+                                         :food-outcomes (:food-outcomes opts) :growth-outcomes (:growth-outcomes opts)})))
+        nq (if nq-cats (nq-kinds nq-cats ks) #{})
+        _ (when (seq nq) (println "  the next-quarter scale at" (str/join "," (sort nq))))
         _ (println "building" (count ks) "kinds" (if (seq fresh) (str "; the fresh frailty scale at " (str/join "," (sort fresh))) ""))
         specs0 (-> (build-specs ks end cats (known-run opts) {:pwt-stale (= "true" pwt-stale)
                                                                :lag-stale (= "true" (:lag-stale opts))
@@ -629,6 +700,7 @@
                                                                :year-delay (some-> year-delay parse-long)
                                                                :leak-fixes (= "true" leak-fixes)
                                                                :fresh-frailty fresh
+                                                               :next-quarter nq :nq-cats nq-cats
                                                                :leading (leading-choice opts)
                                                                :leading-priors (= "true" (:leading-priors opts))
                                                                :real-lags (real-lags-choice opts)

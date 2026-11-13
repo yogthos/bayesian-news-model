@@ -505,14 +505,15 @@
 
 (defn read-known
   "What is known, as a forecast: bnm.onsets' named model for each window
-  (`run`'s preds, refit each year on the years before it, so out of sample
-  at every origin), {[window unit q] p}."
+  (lead and w2 for the quarters, w1 for the next quarter; `run`'s preds,
+  refit each year on the years before it, so out of sample at every
+  origin), {[window unit q] p}."
   ([run] (read-known run kind))
   ([run kind]
    (with-open [r (io/reader (str "data/runs/" run "/preds.tsv"))]
     (reduce (fn [acc line]
               (let [[k w m q u p] (str/split line #"\t")]
-                (if (and (= k kind) (= m "named") (#{"lead" "w2"} w))
+                (if (and (= k kind) (= m "named") (#{"lead" "w2" "w1"} w))
                   (assoc acc [w u (parse-long q)] (parse-double p))
                   acc)))
             {} (line-seq r)))))

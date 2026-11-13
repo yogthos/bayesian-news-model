@@ -322,14 +322,64 @@
   coarser node's :frailty :prior :finer reads."
   {:name :quarter-now :per 3 :offset 0 :horizon 3 :discount 0.995 :frailty-only true})
 
+(def quarter-next
+  "The issuing next-quarter scale (bnm.lattice :leaf, recursive step 4b,
+  bnm-56c.38): window (t, t+3], issued every quarter end, known 3 months
+  after it plus its catalogue's lag. A leaf: it issues as the quarter-lead
+  does and no other node reads it. It replaces quarter-now."
+  {:name :quarter-next :per 3 :offset 0 :horizon 3 :discount 0.995 :leaf true})
+
+(defn scales-of
+  "The kind's scales, finest first: `scales-for`'s, with :fresh-frailty the
+  frailty-only quarter-now before them, with :next-quarter the issuing
+  quarter-next; the two are refused together (the second replaces the
+  first)."
+  [kind first-year {:keys [fresh-frailty next-quarter]}]
+  (when (and fresh-frailty next-quarter)
+    (throw (ex-info "bnm.lattice-political: the next-quarter scale replaces the frailty-only quarter-now" {:kind kind})))
+  (cond->> (scales-for kind first-year)
+    fresh-frailty (into [quarter-now])
+    next-quarter (into [quarter-next])))
+
+(def ^:private known-window
+  "The named model's window each quarter scale's offset reads, and the
+  share of it the scale's window is (a constant hazard carries it there)."
+  {:quarter-lead ["lead" 1.0] :quarter-w2 ["w2" 1.0] :quarter-next ["w1" 0.25]})
+
+(defn known-log-odds
+  "What is known for `scale` at origin t over the places `members`: the log
+  odds that any has an onset, from bnm.onsets' named model (`known`, {[window
+  unit q] p}); the next quarter reads w1, (t, t+12], carried to (t, t+3]
+  under a constant hazard. nil at other scales or with none known."
+  [known scale members t]
+  (when-let [[w share] (known-window scale)]
+    (let [ps (keep #(get known [w % (quot (- t 2) 3)]) members)
+          ps (if (= 1.0 share) ps (map #(- 1.0 (Math/pow (- 1.0 (double %)) share)) ps))]
+      (when (seq ps)
+        (let [p (- 1.0 (reduce * (map #(- 1.0 %) ps)))]
+          (Math/log (/ (max 1e-6 p) (max 1e-6 (- 1.0 p)))))))))
+
+(defn target-fn
+  "The lattice's :target over `scales`: an onset of `cat` at any of the
+  place's `members` in the scale's window, known at its end plus the
+  catalogue's lag; the next quarter reads its own catalogue `nq-cat`
+  (recursive step 4b: food by month, growth by quarter)."
+  [scales cat nq-cat members]
+  (fn [scale place t]
+    (let [{:keys [offset horizon]} (first (filter #(= scale (:name %)) scales))
+          c (if (= :quarter-next scale) (or nq-cat cat) cat)
+          lo (+ t offset) hi (+ t offset horizon)
+          ys (keep #(#'lb/onset-in? c % t lo hi) (members place))]
+      (when (seq ys) {:y (boolean (some true? ys)) :known-at (+ hi (:known-lag c))}))))
+
 (defn spec
   [{:keys [kind db cats annual wdi units end known start pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty
-           leading leading-priors leading-food2 lead-std]}]
+           leading leading-priors leading-food2 lead-std next-quarter nq-cat]}]
   (let [cat (cats kind)
         ;; :fresh-frailty: the frailty-only quarter scale first, so it runs
-        ;; before every coarser node at a month they share
-        scales (cond->> (scales-for kind (or (pg/long-from kind) (first-year cat)))
-                 fresh-frailty (into [quarter-now]))
+        ;; before every coarser node at a month they share; :next-quarter the
+        ;; issuing next quarter (step 4b), a leaf
+        scales (scales-of kind (or (pg/long-from kind) (first-year cat)) {:fresh-frailty fresh-frailty :next-quarter next-quarter})
         issuing (vec (remove :frailty-only scales))
         ;; four other political kinds' recent onsets (the :others group)
         others (take 4 (remove #{kind} kinds))
@@ -365,6 +415,8 @@
                 (fn [u t] (when (in-system u t) (into (vec (pol u t)) (pe u t)))))
         ;; --leading (bnm-56c.36): the kind's leading gauges after a scale's own
         lead (when leading (get (leading-sets-for leading-food2) kind))
+        ;; the next quarter reads the quarter-lead's leading gauges
+        lead (if (and lead next-quarter (:quarter-lead lead)) (assoc lead :quarter-next (:quarter-lead lead)) lead)
         lead-f (when lead (second (nm/leading db)))
         lead-ix (zipmap nm/leading-names (range))
         with-lead (fn [scale f]
@@ -372,15 +424,16 @@
                       (fn [u t] (when-let [v (f u t)]
                                   (let [l (lead-f u t)] (into v (map #(nth l (lead-ix %)) ns)))))
                       f))
-        raw {:quarter-lead (with-lead :quarter-lead q-raw)
+        raw {:quarter-next (with-lead :quarter-next q-raw)
+             :quarter-lead (with-lead :quarter-lead q-raw)
              :quarter-w2 q-raw
              :year (with-lead :year year-raw)
              :half-decade half-raw}
         qw (if fin 18 24)
         own-names {:quarter-lead (if fin (first (nm/financial nil nil)) (into (first (nm/political nil)) nm/political-economy-names))
                    :year year-names}
-        own-names (assoc own-names :quarter-w2 (:quarter-lead own-names))
-        widths (select-keys (merge-with + {:quarter-lead qw :quarter-w2 qw :year (count year-names) :half-decade (count half-names)}
+        own-names (assoc own-names :quarter-w2 (:quarter-lead own-names) :quarter-next (:quarter-lead own-names))
+        widths (select-keys (merge-with + {:quarter-next qw :quarter-lead qw :quarter-w2 qw :year (count year-names) :half-decade (count half-names)}
                                         (update-vals lead count))
                             (map :name issuing))
         table (into {} (for [{:keys [name] :as s} issuing]
@@ -397,19 +450,13 @@
                                    (fn [t v] (into (own t (subvec v 0 n0)) (h t (subvec v n0)))))
                                  f)]))
               std)
-        known-at (fn [scale place t]
-                   (let [w ({:quarter-lead "lead" :quarter-w2 "w2"} scale)
-                         ps (when w (keep #(get known [w % (quot (- t 2) 3)]) (members place)))]
-                     (when (seq ps)
-                       (let [p (- 1.0 (reduce * (map #(- 1.0 %) ps)))]
-                         (Math/log (/ (max 1e-6 p) (max 1e-6 (- 1.0 p))))))))
+        known-at (fn [scale place t] (known-log-odds known scale (members place) t))
         gauges (fn [scale place t]
                  (let [f (std scale)
                        vs (keep #(some->> (get-in table [scale [% t]]) (f t)) (members place))]
                    (if (seq vs)
                      (apply mapv (fn [& xs] (/ (reduce + xs) (count xs))) vs)
-                     (vec (repeat (widths scale) 0.0)))))
-        known-lag (:known-lag cat)]
+                     (vec (repeat (widths scale) 0.0)))))]
     (cond->
     {:scales scales
      :levels [[:country countries]
@@ -420,11 +467,7 @@
      :parent parent
      :start start :end end
      :forget 0.995
-     :target (fn [scale place t]
-               (let [{:keys [offset horizon]} (first (filter #(= scale (:name %)) scales))
-                     lo (+ t offset) hi (+ t offset horizon)
-                     ys (keep #(#'lb/onset-in? cat % t lo hi) (members place))]
-                 (when (seq ys) {:y (boolean (some true? ys)) :known-at (+ hi known-lag)})))
+     :target (target-fn scales cat nq-cat members)
      :gauges gauges
      :gauge-width widths
      :gauge-groups (let [qg (if fin financial-quarter-groups quarter-groups)
@@ -433,7 +476,8 @@
                                               (let [n0 (count (own-names scale))]
                                                 (assoc gs :leading (vec (range n0 (+ n0 (count ns))))))
                                               gs))]
-                     {:quarter-lead (add :quarter-lead qg) :quarter-w2 qg :year (add :year year-groups) :half-decade half-groups})
+                     (cond-> {:quarter-lead (add :quarter-lead qg) :quarter-w2 qg :year (add :year year-groups) :half-decade half-groups}
+                       next-quarter (assoc :quarter-next (add :quarter-next qg))))
      :shrink 0.1
      :contradiction-prior [(* 0.3 (contradiction-sign kind 1)) 0.25]
      :tensions (tensions kind)
@@ -453,10 +497,10 @@
               (into {} (for [[g ixs] (get-in priors [kind scale]) [i mv] ixs] [(nth (groups g) i) mv])))}
       ;; --leading: every gauge named, so --leading-priors can set the
       ;; leading gauges' priors by name (bnm.lattice :named-prior)
-      lead (assoc :gauge-names (into {} (for [s [:quarter-lead :quarter-w2 :year] :when (widths s)]
+      lead (assoc :gauge-names (into {} (for [s [:quarter-next :quarter-lead :quarter-w2 :year] :when (widths s)]
                                           [s (into (vec (own-names s)) (get lead s))])))
       (and lead leading-priors)
-      (assoc :named-prior (into {} (for [s [:quarter-lead :year] :when (widths s)
+      (assoc :named-prior (into {} (for [s [:quarter-next :quarter-lead :year] :when (widths s)
                                          :let [np (named-prior-at kind (into (vec (own-names s)) (get lead s)) leading-food2)]
                                          :when np]
                                      [s np]))))))
@@ -479,7 +523,7 @@
   ([kind end known-run] (build kind end known-run nil nil))
   ([kind end known-run cats start] (build kind end known-run cats start {}))
   ([kind end known-run cats start {:keys [pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty leading leading-priors
-                                         real-lags leading-food2 lead-std]}]
+                                         real-lags leading-food2 lead-std next-quarter nq-cats]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (cond-> (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
              leading-food2 (merge (nm/load-food2)))
@@ -488,6 +532,7 @@
     (spec {:kind kind :db db :cats cats :units units :end end :start start :pwt-stale pwt-stale :lag-stale lag-stale :gauge-std gauge-std
            :year-delay year-delay :leak-fixes leak-fixes
            :fresh-frailty fresh-frailty
+           :next-quarter next-quarter :nq-cat (get nq-cats kind)
            :leading leading :leading-priors leading-priors :leading-food2 leading-food2 :lead-std lead-std
            :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
            :wdi (wdi-reader db {:lag-stale lag-stale})

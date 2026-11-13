@@ -155,3 +155,25 @@
     (is (= [0.0] (hist (m 1985 12) [2.0])) "12 quarter ends of history: none read yet")
     (is (< 1.5 (first (hist (m 1988 12) [2.0])) 2.5) "from 1983, 23 quarter ends by 1988")))
 
+
+(deftest bnm-56c-38-the-next-quarter-scale
+  (is (= {:name :quarter-next :per 3 :offset 0 :horizon 3 :discount 0.995 :leaf true} lp/quarter-next))
+  (testing "first, before the quarter-lead; refused beside the frailty-only quarter"
+    (is (= [:quarter-next :quarter-lead :quarter-w2 :year] (mapv :name (lp/scales-of "x" 1960 {:next-quarter true}))))
+    (is (= [:quarter-lead :quarter-w2 :year] (mapv :name (lp/scales-of "x" 1960 {}))))
+    (is (thrown? Exception (lp/scales-of "x" 1960 {:next-quarter true :fresh-frailty true}))))
+  (testing "what is known for it: named's w1 (t, t+12] carried to (t, t+3] under a constant hazard, any member"
+    (let [known {["w1" "AAA" 10] 0.2 ["w1" "BBB" 10] 0.1 ["lead" "AAA" 10] 0.5}
+          q (fn [p] (- 1.0 (Math/pow (- 1.0 p) 0.25)))
+          lo (fn [p] (Math/log (/ p (- 1.0 p))))]
+      (is (< (Math/abs (- (lo (q 0.2)) (lp/known-log-odds known :quarter-next ["AAA"] 32))) 1e-9))
+      (is (< (Math/abs (- (lo (- 1.0 (* (- 1.0 (q 0.2)) (- 1.0 (q 0.1))))) (lp/known-log-odds known :quarter-next ["AAA" "BBB"] 32))) 1e-9))
+      (is (< (Math/abs (- (lo 0.5) (lp/known-log-odds known :quarter-lead ["AAA"] 32))) 1e-9) "the quarter-lead as before")
+      (is (nil? (lp/known-log-odds known :year ["AAA"] 32)))))
+  (testing "its target from its own catalogue, known at the window's end plus that catalogue's lag"
+    (let [cat {:onsets {"AAA" (sorted-set 105)} :busy {} :from {"AAA" 0} :through {"AAA" 1000} :known-lag 18}
+          nq {:onsets {"AAA" (sorted-set 102)} :busy {} :from {"AAA" 0} :through {"AAA" 1000} :known-lag 9}
+          target (lp/target-fn (lp/scales-of "x" 1960 {:next-quarter true}) cat nq (fn [p] [p]))]
+      (is (= {:y true :known-at 112} (target :quarter-next "AAA" 100)))
+      (is (= {:y false :known-at 117} (target :quarter-next "AAA" 105)) "the run's catalogue's 105 is not the scale's")
+      (is (= {:y true :known-at (+ 112 18)} (target :quarter-lead "AAA" 100))))))

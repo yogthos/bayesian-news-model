@@ -69,14 +69,18 @@
 (defn with-catalogue-at-risk
   "`cats` with each kind's rule (`at-risk-rules`) for world-run --at-risk
   catalogue: inflation's barred months from the db's inflation, the food
-  catalogue's grid by month under --food-outcomes monthly (`food`)."
-  [cats db food]
+  catalogue's grid by month under --food-outcomes monthly (`food`), the
+  growth catalogue's at quarter ends, once in twenty quarters, under
+  --growth-outcomes quarterly (`growth`, bnm-56c.38)."
+  ([cats db food] (with-catalogue-at-risk cats db food nil))
+  ([cats db food growth]
   (into {} (for [[k cat] cats]
              [k (cond-> (merge cat (at-risk-rules k))
                   (and (= k "food_price_shock") (= "monthly" food)) (assoc :grid [1 0])
+                  (and (= k "growth_collapse") (= "quarterly" growth)) (assoc :grid [3 2] :refractory 60)
                   (= k "inflation_crisis")
                   (assoc :barred (into {} (for [u (keys (:onsets cat))]
-                                            [u (ee/inflation-barred (ee/by-year-inflation db u))]))))])))
+                                            [u (ee/inflation-barred (ee/by-year-inflation db u))]))))]))))
 
 (defn annual
   "A catalogue by year: {:onsets {u #{years}} :cover {u [from to]}}."

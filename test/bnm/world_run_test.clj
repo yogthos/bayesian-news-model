@@ -333,3 +333,68 @@
         (is (= {:onsets {"AAA" #{24000}} :busy {"AAA" #{24000}} :from {"AAA" 0} :through {"AAA" 24200} :known-lag 18}
                (out "growth_collapse")))
         (is (= {:known-lag 12} (out "coup")))))))
+
+(deftest bnm-56c-38-at-risk-knows-the-quarterly-growth-catalogue
+  ;; the quarterly growth catalogue dates onsets at quarter ends, once in
+  ;; twenty quarters; the annual one in Januaries, once in five years
+  (let [cats {"growth_collapse" {:known-lag 5} "food_price_shock" {:known-lag 9}}]
+    (is (= {:known-lag 5 :grid [3 2] :refractory 60} ((wr/at-risk cats {} "monthly" "catalogue" "quarterly") "growth_collapse")))
+    (is (= {:known-lag 9 :grid [1 0] :refractory 12} ((wr/at-risk cats {} "monthly" "catalogue" "quarterly") "food_price_shock")))
+    (is (= [12 0] (get-in (wr/at-risk cats {} nil "catalogue" nil) ["growth_collapse" :grid])))
+    (is (= [12 0] (get-in (wr/at-risk cats {} nil "catalogue") ["growth_collapse" :grid])) "the four-argument form as before")))
+
+(deftest bnm-56c-38-run-catalogues-reads-growth-outcomes
+  ;; the merge of growth-q left --growth-outcomes out of run-catalogues: the
+  ;; option must swap the catalogue (and the at-risk rule must follow it)
+  (when (.exists (java.io.File. "data/derived/gdp-quarterly.csv"))
+    (let [cats (wr/run-catalogues {:growth-outcomes "quarterly" :at-risk "catalogue"})]
+      (is (= 5 (get-in cats ["growth_collapse" :known-lag])))
+      (is (= [3 2] (get-in cats ["growth_collapse" :grid]))))))
+
+(deftest bnm-56c-38-next-quarter-option
+  (is (false? (wr/next-quarter-choice {})))
+  (is (false? (wr/next-quarter-choice {:next-quarter "false"})))
+  (is (true? (wr/next-quarter-choice {:next-quarter "true"})))
+  (is (thrown? Exception (wr/next-quarter-choice {:next-quarter "yes"})))
+  (is (thrown? Exception (wr/next-quarter-choice {:next-quarter "true" :fresh-frailty "quarter-now"}))
+      "the next-quarter scale replaces the frailty-only one"))
+
+(deftest bnm-56c-38-the-scale-s-own-catalogues
+  ;; food by month, growth by quarter, the rest as the run's; each with its
+  ;; at-risk rule under --at-risk catalogue; the kinds whose catalogue for the
+  ;; scale is sub-annual get it, never banking
+  (let [annual {:onsets {"AAA" (sorted-set 1200 1212)} :known-lag 18}
+        sub {:onsets {"AAA" (sorted-set 1203 1209 1214 1220)} :known-lag 3}
+        cats {"growth_collapse" annual "food_price_shock" (assoc sub :known-lag 18) "market_crash" sub
+              "sovereign_default" annual "banking_crisis" sub}
+        food (fn [_] (assoc sub :known-lag 9 :monthly true))
+        growth (fn [_] (assoc sub :known-lag 5 :quarterly true))
+        nq (wr/nq-catalogues cats {:food food :growth growth :at-risk nil})]
+    (is (:monthly (nq "food_price_shock")))
+    (is (:quarterly (nq "growth_collapse")))
+    (is (= sub (nq "market_crash")))
+    (is (= annual (nq "sovereign_default")))
+    (is (= #{"food_price_shock" "growth_collapse" "market_crash"} (wr/nq-kinds nq (keys cats))))
+    (let [nq (wr/nq-catalogues cats {:food food :growth growth :at-risk "catalogue"})]
+      (is (= [1 0] (get-in nq ["food_price_shock" :grid])))
+      (is (= [3 2] (get-in nq ["growth_collapse" :grid])))
+      (is (= [3 0] (get-in nq ["market_crash" :grid]))))
+    (testing "a run already on the monthly food catalogue keeps it"
+      (is (= :kept (get-in (wr/nq-catalogues (assoc cats "food_price_shock" {:known-lag 9 :x :kept}) {:food food :growth growth :food-outcomes "monthly"})
+                           ["food_price_shock" :x]))))))
+
+(deftest bnm-56c-38-the-scale-s-design-and-frailty-gauges
+  ;; the quarter design for the next quarter only where the spec has it;
+  ;; its frailty takes the world gauges it reads that carry a theory prior
+  (is (= wr/quarter-design (wr/design-for {:scales [{:name :quarter-lead} {:name :year}]})))
+  (let [d (wr/design-for {:scales [{:name :quarter-next :leaf true} {:name :quarter-lead} {:name :year}]})]
+    (is (= (get-in d [:without-at :quarter-lead]) (get-in d [:without-at :quarter-next])))
+    (is (= {:from :year} (get-in d [:downscale :quarter-next]))))
+  (let [specs {"market_crash" {:frailty {} :gauge-names {:year [:a :baa12 :us-curve :vix12] :quarter-next [:credit :us-curve :baa12 :vix12]}
+                               :named-prior {:year {:baa12 [0.5 0.1]} :quarter-next {:us-curve [-0.4 0.1] :baa12 [0.5 0.1] :vix12 [0.25 0.1]}}}
+               "growth_collapse" {:frailty {} :gauge-names {:year [:baa12] :quarter-next [:world-food12 :baa12 :us-curve :vix12]}
+                                  :named-prior {:quarter-next {:baa12 [0.4 0.1] :us-curve [-0.3 0.1] :vix12 [0.3 0.1]}}}}
+        out (wr/with-frailty-gauges specs true)]
+    (is (= {:year [:baa12 :us-curve :vix12] :quarter-next [:us-curve :baa12 :vix12]} (get-in out ["market_crash" :frailty :gauges])))
+    (is (= {:year [:baa12] :quarter-next [:baa12 :us-curve :vix12]} (get-in out ["growth_collapse" :frailty :gauges]))
+        "world food12 has no prior at growth collapses")))
