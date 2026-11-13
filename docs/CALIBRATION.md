@@ -948,3 +948,117 @@ What the tables say:
 - **Inflation crises lose against t53-noclim** (-0.0125 LOSS): 1.3% of rows alert against a rate of 1.2%. This is the regional lock of 12 (loss 2) seen through the alert layer.
 - **Market crashes:** t65-gauges is cheaper than t53-noclim by 0.107 per row (not significant at 90%). The saving is in misses: it alerts at 91.5% of onsets against 74.6%, with false alarms about the same (80.8% against 79.1%). Both runs cost more than "always alert" (0.712).
 - None of this changes acceptance, which stays on proper scores and the fold rule. The alert table is reported beside them.
+
+## 15. The lookahead fix, the food node and the second food set: t66-fix, t66-food (bnm-a1e, bnm-11y, bnm-5rn)
+
+Three changes, each behind an option that is off by default. The base of record (t65-gauges) and 2026-Q4-r1 are untouched: with every option off, food, market crashes and growth collapses come back byte for byte from t65-gauges' command at 7c3d4c1 and at 8513f61 (data/runs/logs/repro-t66-default.txt, repro-t66-default2.txt; the other kinds do not reach the changed code). The suite is green (1382 tests, data/runs/logs/suite-t66.log).
+
+1. **The lookahead (bnm-a1e, `--real-lags true`).** slow-normalize dates every monthly FRED series at +1 month. ALFRED's vintages (data/raw/alfred) show that the IMF commodity prices, among them t65's food gauge, reach FRED at +2 in about one release in six, and four US series later still. The audit table is in docs/LEADING.md, "Lookahead audit". bnm.named/real-lags holds the real lags, and the GSCPI, OECD CLI, STLFSI and NFCI are refused without a named vintage. TDSP's dating was fixed in slow-normalize.
+2. **The food year node (bnm-11y, `--lead-std history`).** Traced below. The node's standardizer counts rows, not origins, so a world gauge was standardized against two or three Decembers.
+3. **The second food set (bnm-5rn, `--leading-food2 true`).** Fertilizer 12m, and FAO food, cereals and oils 6m. **They were chosen after inspecting 2020-21, so their 2020-22 scores are in-sample for that choice.** Their priors (+0.1 to +0.15, sd 0.25) come from the pass-through literature and were committed before the code (docs/LEADING.md, "The second food set", 50fff6c).
+
+Runs (data/runs/t66-*/README.txt):
+- **t66-fix** = t65-gauges + `--real-lags true`. It measures what the leak was worth.
+- **t66-food** = t66-fix + `--lead-std history --leading-food2 true`, at 448322e.
+- **t66-food-v1** is superseded: its first history standardizer began at 1990 and counted rows (loss 2 below).
+
+### Tests
+
+- bnm-a1e-imf-prices-are-not-read-before-their-publication: the leading food gauge does not read January's jump at February under real lags, and does at March. The base reads it at February.
+- bnm-a1e-every-monthly-fred-series-has-an-audited-lag, bnm-a1e-the-world-food-gauge-at-its-true-publication, bnm-a1e-revised-series-are-not-read-without-a-vintage, bnm-a1e-real-lags-option.
+- bnm-11y-leading-gauges-standardized-against-their-own-history, bnm-11y-the-history-counts-quarter-ends-not-rows-and-starts-with-the-data, bnm-11y-lead-std-option.
+- bnm-5rn-food2-series-are-read-a-month-after-their-month, bnm-5rn-the-second-food-set-and-its-priors, bnm-5rn-leading-food2-option.
+
+### Scores
+
+Year nodes, Brier, 2003-22 (+ = better, 90% intervals; data/runs/logs/score-t66-*.txt):
+
+| fold | t66-fix vs t65-gauges | t66-fix vs t53-noclim | t66-food vs t65-gauges | t66-food vs t66-fix | t66-food vs t53-noclim |
+|---|---|---|---|---|---|
+| 2003-06 | -0.0003 [-0.0011, +0.0003] | +0.0035 [+0.0012, +0.0061] | -0.0003 [-0.0024, +0.0026] | +0.0001 [-0.0024, +0.0026] | +0.0036 [-0.0012, +0.0083] |
+| 2007-09 | +0.0001 [-0.0001, +0.0002] | +0.0032 [-0.0041, +0.0075] | -0.0070 [-0.0098, +0.0012] | -0.0071 [-0.0100, +0.0012] | -0.0040 [-0.0061, -0.0014] LOSS |
+| 2010-12 | +0.0002 [-0.0000, +0.0003] | +0.0010 [-0.0015, +0.0033] | -0.0007 [-0.0015, +0.0000] | -0.0008 [-0.0016, -0.0001] LOSS | +0.0002 [-0.0028, +0.0028] |
+| 2013-19 | -0.0002 [-0.0005, +0.0000] | +0.0067 [+0.0017, +0.0111] | -0.0006 [-0.0010, -0.0003] LOSS | -0.0004 [-0.0008, +0.0000] | +0.0063 [+0.0011, +0.0108] |
+| 2020-22 | +0.0011 [+0.0005, +0.0016] GAIN | +0.0026 [-0.0026, +0.0070] | +0.0002 [-0.0011, +0.0013] | -0.0009 [-0.0026, +0.0004] | +0.0017 [-0.0030, +0.0056] |
+| pooled | +0.00003 [-0.0002, +0.0003] | +0.0040 [+0.0019, +0.0063] GAIN | -0.0010 [-0.0021, +0.0001] | -0.0010 [-0.0021, +0.0001] | +0.0030 [+0.0004, +0.0059] GAIN |
+
+By kind (bnm.world-score):
+- t66-fix against t65-gauges: food +0.0002 [-0.0032, +0.0039], inflation crises +0.0002 GAIN. Every other kind is within ±0.00001, and banking, currency, fiscal and market crashes are identical.
+- t66-food against t66-fix: food +0.0024 [-0.0036, +0.0088], market crashes -0.0152 [-0.0288, -0.0048], growth +0.00001.
+
+**t66-fix loses no fold against either bench and gains 2020-22 against t65-gauges.** The leak was worth nothing to the score. Read on time, the food gauge does slightly better in 2020-22. **t66-food fails the fold rule:** it loses 2013-19 against t65-gauges, 2010-12 against t66-fix and 2007-09 against t53-noclim. All of it is market crashes (loss 2). Food gains, but not significantly.
+
+Calibration, country year, mean p / Brier (t53-noclim → t65-gauges → t66-fix → t66-food):
+
+| kind | span | rate | mean p | Brier |
+|---|---|---|---|---|
+| food | 2003-22 | 0.154 | 0.183 → 0.237 → 0.238 → 0.242 | 0.1560 → 0.1521 → 0.1519 → **0.1495** |
+| food | 2010-12 | 0.060 | 0.206 → 0.214 → 0.209 → 0.217 | 0.0844 → 0.0868 → 0.0850 → 0.0881 |
+| food | 2020-22 | 0.415 | 0.060 → 0.142 → 0.162 → 0.145 | 0.3716 → 0.3275 → **0.3135** → 0.3223 |
+| market crashes | 2003-22 | 0.178 | 0.326 → 0.277 → 0.277 → 0.278 | 0.1996 → 0.1520 → 0.1520 → 0.1668 |
+| market crashes | 2006-07 | 0.957 | 0.285 → 0.318 → 0.318 → 0.247 | 0.5060 → 0.4505 → 0.4505 → 0.5453 |
+| growth collapses | 2003-22 | 0.106 | 0.087 → 0.084 → 0.084 → 0.084 | 0.0990 → 0.0965 → 0.0965 → 0.0965 |
+
+The outliers (mean p at the December origin, rate in brackets; caught at p ≥ 0.2):
+
+| episode | origin (rate) | t53-noclim | t65-gauges | t66-fix | t66-food |
+|---|---|---|---|---|---|
+| food 2006 | 2006 (0.418) | 0.500 | 0.550 | 0.530 | 0.524 |
+| food 2007 | 2007 (0.313) | 0.102 | 0.236 | 0.243 | 0.268 |
+| food 2010 | 2010 (0.114) | 0.229 | 0.210 | 0.210 | 0.210 |
+| food 2020 | 2020 (0.493) | 0.053 | 0.121 | 0.143 | 0.161 |
+| food 2021 | 2021 (0.500) | 0.057 | 0.154 | **0.189** | 0.126 |
+| market crashes 2006 | 2006 (0.957) | 0.281 | 0.287 | 0.287 | 0.250 |
+| market crashes 2007 | 2007 (0.957) | 0.289 | 0.348 | 0.348 | 0.251 |
+| growth 2007 | 2007 (0.235) | 0.051 | 0.073 | 0.073 | 0.074 |
+| growth 2008 | 2008 (0.202) | 0.061 | 0.073 | 0.073 | 0.073 |
+| growth 2019 | 2019 (0.554) | 0.068 | 0.078 | 0.078 | 0.078 |
+
+Alerts at 4:1 (`bnm.alerts`, data/runs/logs/alerts-t66-*.txt). Cost per row, Δ = bench − run:
+
+| kind | t65-gauges | t66-fix | t66-food | t66-fix vs t65 | t66-food vs t65 |
+|---|---|---|---|---|---|
+| food | 0.653 | 0.632 | 0.647 | +0.021 [-0.004, +0.054] | +0.006 [-0.025, +0.039] |
+| market crashes | 0.724 | 0.724 | 0.769 | 0 | -0.045 [-0.127, +0.000] |
+| pooled | 0.304 | 0.302 | 0.307 | +0.0016 [-0.0003, +0.0043] | -0.0031 [-0.0100, +0.0019] |
+
+Episodes caught: 6 of 22 in every run. Food 2020 and 2021 stay missed in all three: t66-fix issues 0.143 and 0.189 (0.011 short of the threshold at Dec 2021), t66-food 0.161 and 0.126. Growth 2007, 2018 and 2019 are missed in all runs.
+
+Food weights at the year country node (Decembers, score-t66-weights.txt): the same in all three runs. The models are even to 2008, `economy` holds 0.54-1.00 in 2010-13, and the all-inputs model holds 0.99-1.00 from 2015. `:leading` is 0.000 from 2010 in every run. At the food quarter-lead of t66-food, the second set's `:leading` group is under 0.03 from 2007, while all-inputs (which reads it) holds 0.64-1.00 to 2016, then fragility takes over.
+
+### Why: the losses traced (PLAN principle 9)
+
+Traced by replaying the food year node with each model's evidence, weight, issued p and coefficient means at every December (scratchpad t66/foodtrace.clj). Logs: foodtrace-t65.log, foodtrace-t66food2.log, and the market-crash node under both standardizers (mctrace-node.log, mctrace-hist.log).
+
+1. **Food year node: why the gauges' model had zero weight (bnm-11y). A bug, then a mechanism.**
+   - *The bug.* bnm.lattice-banking's standardizer reads a column once more than 20 rows are in. A world gauge is one value per origin, repeated at about 165 countries, so it was read from the second origin on, against the spread of two or three Decembers. At Dec 2006, world food12 stood at z +4.91 and food12 × imports at +4.33 against 2003-05 alone. Against its own quarter ends since 1990 the same reading is +1.09. The leading model issued 0.857 against a rate of 0.418 (all-inputs 0.824, the rest 0.5). When that origin resolved (June 2010) the leading model scored -110.0 nats against economy's -97.5, a 12-nat loss in one origin, and its weight went from 0.09 to 0.000. Fixed behind `--lead-std history`, test first: every leading gauge is standardized against its own values at every quarter end from the node's start, read once 20 quarter ends are in.
+   - *The mechanism, which the fix does not change.* With the fix the leading model issues 0.68 at Dec 2006 and still loses 9 nats to economy at that origin, and 3-9 nats at most later ones (2014: -70.6 against -58.1; 2021: -43.0 against -34.1). The gauges are world-level, so the model reading them can move the level of every country but cannot rank countries. The all-inputs model reads the same gauges plus domestic inflation, history and the rest, and wins nearly every ordinary origin by ranking. Under `:evidence-at :issue-joint` one origin is one observation, and there are three common-shock origins on record (2006-08). Averaging picks a model, it does not combine the level of one with the ranking of another, so the gauges reach the forecast only through the all-inputs model's coefficients. Those learn from one episode. World food12 falls from the prior's +0.30 to +0.13-0.23. Food12 × imports goes to about 0: 2008 is the counterexample, imports-weighted z -0.7 at a rate of 0.01 after +1.2 at 0.31. LEADING.md's refitted ceiling (0.26-0.28 at Dec 2021) is a static logistic with its own intercept fitted on every row. The node is anchored instead at the current climatology (`:clim-learn :current`, about 0.08 in 2015-19), from which a +1.6 sd gauge at +0.13 cannot reach 0.2. So the ceiling is not reachable by fixing a bug in this node. Verdict: **sequencing**. It needs a weighting that can pool a level model with a ranking model (a log pool or stacking, bnm-56c.2's `:evidence` rule) or a world-level node that learns the common shock's level. Recorded, not done.
+2. **Market crashes in t66-food (-0.0152 [-0.0288, -0.0048]; 2007-09 -93 ×1000 per row against t66-fix). The fix exposed a fragility in t65.** `--lead-std` changes market crashes, not just food, because t65's market-crash gains rested on the same standardizer defect.
+   - Under the node standardizer the US curve was read from 1983, against the spread of two to four Decembers, and BAA12 from 1989. With those z values the leading model scored 1.6 nats better than in the history run at the origin resolved in 1987, and 1.1 better at 1988's. By 1989 its weight was 0.45, against 0.03 with the history standardizer. Over 1990-2005 the two runs score the leading model within a nat of each other at every origin. But by 2005 the cumulative gap to `down` is 2.0 nats in t65 and 4.6 with the history standardizer. After the forgetting, that leaves the leading model at 0.096 against 0.011 entering 2006.
+   - From that difference alone, t65 gives the leading model 0.40-0.57 at 2006-08 and issues 0.348 at Dec 2007; the history run gives it 0.06-0.10 and issues 0.251.
+   - The gauges' z values at 2006-08 are the same under both standardizers to ±0.3 (BAA12 Dec 2007 +2.12 against +1.72, VIX12 +2.50 against +2.84).
+   - So the 2007-08 forecast turns on about 2.6 nats of evidence earned in 1983-88 from z values standardized against 2-4 Decembers. This is the averaging's weight lock (LOOP-AUDIT 6-7, §12): a weight earned or lost by a few nats decades earlier decides an episode.
+   - Verdict: the standardizer fix is right (an implementation bug, fixed test first). The market-crash loss is **sequencing**: the weight lock that makes the 2006-08 catch depend on 1980s noise. It belongs to the weighting step, not to this one.
+   - t66-food-v1, whose standardizer began at 1990 and counted rows, lost more (2007-09 -101 ×1000). It also dropped the curve's 1982-89 history, the second bug, fixed in 448322e.
+3. **Food Dec 2021 lower in t66-food (0.126 against t66-fix's 0.189). The second set's fertilizer gauge learned the wrong sign from one episode.**
+   - Fertilizer prices peaked in 2008, after food: fertilizer z +1.7 at Dec 2008, where the food rate was 0.01. They fell with food in 2009-10.
+   - The all-inputs model's fert12 coefficient moved from the prior's +0.10 to -0.12 by 2011 and -0.20 by 2021 (sd 0.16). At Dec 2021, fertilizer z +3.42 therefore lowers the forecast by about 0.7 in log odds.
+   - Dec 2020 rises to 0.161 (t66-fix 0.143) through vegetable oils (z +2.64) and the FAO 6-month change (+1.54). That is the in-sample signal the set was chosen for, and it still does not reach 0.2.
+   - Verdict: **approach wrong for fertilizer at the year node in this sample.** The one episode on record has fertilizer lagging food, so a 12-month fertilizer change is concurrent-to-lagging there, not leading, and its learned slope is negative. The momentum gauges move 2020 in the right direction but not to the threshold. 2010 is unchanged (0.210), so the feared Dec 2010 false alarm did not happen.
+4. **t66-fix's small 2003-06 and 2013-19 differences against t65 (-0.0003, -0.0002, neither significant)** come from the IMF gauge read a month later at the political kinds' quarter and the food year. Nothing to fix: this is the cost of reading on time.
+
+Bugs found and fixed:
+- (a) the IMF and US series' availability (bnm-a1e);
+- (b) USA finance/dsr_households held two sources, the Fed's dated 4-5 months early (slow-normalize, bnm-a1e);
+- (c) the standardizer reading a world gauge from two origins (bnm-11y);
+- (d) the first history standardizer's 1990 start and row count (448322e).
+
+Not fixed:
+- The IMF index's 30-month staleness. It never binds on disk; LEADING.md "Lookahead audit".
+- The IMF index's revisions: first-release 12-month changes differ by up to 0.05.
+
+Verdict:
+- **The lookahead fix costs nothing and helps 2020-22.** t66-fix loses no fold, against t65-gauges or t53-noclim, and its alert cost is lower at food (0.632 against 0.653). It is ready for the user's adoption decision. As a correction of a leak it is the honest base; `--real-lags true` is off until adopted.
+- **The food-node standardizer fix is correct, but it cannot be adopted alone.** It removes t65's market-crash catch at 2006-08, because that catch rests on 1980s noise through the weight lock. Adopting it needs the weighting step first.
+- **The second food set does not pay.** Food +0.0024 is not significant. Fertilizer learned against its prior, and Dec 2020 rises to 0.161 without reaching 0.2. Its 2020-22 numbers are in-sample for the choice of gauges in any case.
+- Food 2020-21 and growth 2007-08 and 2019 remain missed in every run.
