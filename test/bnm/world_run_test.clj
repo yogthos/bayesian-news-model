@@ -263,6 +263,12 @@
   (is (true? (wr/fresh-inputs-choice {:fresh-inputs "true"})))
   (is (thrown? Exception (wr/fresh-inputs-choice {:fresh-inputs "yes"}))))
 
+(deftest wdi-editions-option
+  (is (false? (wr/wdi-editions-choice {})))
+  (is (false? (wr/wdi-editions-choice {:wdi-editions "false"})))
+  (is (true? (wr/wdi-editions-choice {:wdi-editions "true"})))
+  (is (thrown? Exception (wr/wdi-editions-choice {:wdi-editions "1"}))))
+
 (deftest bnm-5rn-leading-food2-option
   (is (false? (wr/leading-food2-choice {:leading "true"})))
   (is (true? (wr/leading-food2-choice {:leading "true" :leading-food2 "true"})))

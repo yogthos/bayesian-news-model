@@ -598,11 +598,13 @@
   the catalogue's uncovered tail unknown (loop audit Test 7); :leak-fixes,
   PWT read by its releases (bnm-56c.23, extended-table); :gauge-std
   :stable, the gauges' standardizer without its flat-history cap (bnm-9fg);
-  :real-lags, each slow series read at its true publication (bnm-a1e)."
+  :real-lags, each slow series read at its true publication (bnm-a1e);
+  :wdi-editions, WDI's annual series by their archived editions."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags wdi-editions]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
-        db (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
+        db (nm/load-series "data/slow/series.tsv" variables
+                           (cond-> {:real-lags real-lags} wdi-editions (assoc :wdi-editions (nm/read-wdi-editions))))
         jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
         jst (into {} (for [r (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap))]
                        [[(:iso r) (:year r)] r]))

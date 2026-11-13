@@ -194,3 +194,28 @@
     (is (= (map vec (sk/known (base ["AAA" "economy/gdp_per_capita"]) (* 12 2030)))
            (map vec (sk/known (late ["AAA" "economy/gdp_per_capita"]) (* 12 2030))))
         "the values are the same; only when they are read changes")))
+
+;; --wdi-editions: every WDI annual series (variables.tsv's source "World
+;; Bank WDI ...") read no earlier than the first archived edition that held
+;; its year (data/derived/wdi-editions.tsv): before 2005 a year came out in
+;; the April edition sixteen months on, not nine. Other sources unchanged.
+
+(deftest wdi-editions-no-wdi-year-before-its-edition
+  (let [rows (concat (for [y [2001 2002 2003]] ["AAA" "economy/inflation" (str y "-12-31") (str (inc y) "-09-30") (double y)])
+                     (for [y [2001 2002 2003]] ["AAA" "other/annual" (str y "-12-31") (str (inc y) "-09-30") (double y)]))
+        f (java.io.File/createTempFile "bnm-series" ".tsv")
+        _ (spit f (apply str (for [[u v pe av x] rows] (str u "\t" v "\ta\t" pe "\t" av "\t" x "\n"))))
+        vars [{:name "economy/inflation" :transform "id" :freq "a" :source "World Bank WDI FP.CPI.TOTL.ZG"}
+              {:name "other/annual" :transform "id" :freq "a" :source "Someone else"}]
+        eds {2002 (+ 3 (* 12 2004)) 2003 (+ 3 (* 12 2005))}
+        o {:vars #{"economy/inflation" "other/annual"}}
+        base (nm/load-series (.getPath f) vars o)
+        fixed (nm/load-series (.getPath f) vars (assoc o :wdi-editions eds))
+        at (fn [db v t] (some-> (db ["AAA" v]) (sk/value t)))
+        dec03 (+ 11 (* 12 2003)) dec04 (+ 11 (* 12 2004))]
+    (is (= 2002.0 (at base "economy/inflation" dec03)) "the base: 2002 at September 2003")
+    (is (= 2001.0 (at fixed "economy/inflation" dec03)) "2002 not before April 2004")
+    (is (= 2002.0 (at fixed "economy/inflation" dec04)) "2003 not before April 2005")
+    (is (= 2003.0 (at fixed "economy/inflation" (+ 3 (* 12 2005)))))
+    (is (= 2002.0 (at fixed "other/annual" dec03)) "not WDI: unchanged")
+    (is (= (nm/read-wdi-editions "test/bnm/wdi-editions-sample.tsv") {2002 (+ 3 (* 12 2004)) 2003 (+ 3 (* 12 2005))}))))

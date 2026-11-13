@@ -575,6 +575,16 @@
     (throw (ex-info (str "bnm.world-run: --fresh-inputs takes true or false, not " fresh-inputs) {})))
   (= "true" fresh-inputs))
 
+(defn wdi-editions-choice
+  "--wdi-editions true: every WDI annual series read no earlier than the
+  first WDI Database Archives edition holding its year (bnm.named/
+  load-series :wdi-editions): series.tsv's nine months ran a year ahead
+  of publication at the Dec 2003-04 origins. Off by default."
+  [{:keys [wdi-editions]}]
+  (when (and wdi-editions (not (#{"true" "false"} wdi-editions)))
+    (throw (ex-info (str "bnm.world-run: --wdi-editions takes true or false, not " wdi-editions) {})))
+  (= "true" wdi-editions))
+
 (defn -main [& args]
   (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay leak-fixes clim-prior] :as opts}
         (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
@@ -610,7 +620,8 @@
                                                                :real-lags (real-lags-choice opts)
                                                                :leading-food2 (leading-food2-choice opts)
                                                                :lead-std (lead-std-choice opts)
-                                                               :fresh-inputs (fresh-inputs-choice opts)})
+                                                               :fresh-inputs (fresh-inputs-choice opts)
+                                                               :wdi-editions (wdi-editions-choice opts)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)

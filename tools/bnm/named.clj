@@ -119,6 +119,24 @@
                  (assoc-in acc [[iso v] (+ 11 (* 12 (parse-long y)))] (st/month-of (str m "-01")))))
              {} (rest (line-seq r))))))
 
+(def wdi-editions-path
+  "--wdi-editions: the month of the first archived WDI edition holding
+  each data year (scripts/wdi-first-published.py)."
+  "data/derived/wdi-editions.tsv")
+
+(defn read-wdi-editions
+  "{year month} from `wdi-editions-path`'s table (year, YYYY-MM)."
+  ([] (read-wdi-editions wdi-editions-path))
+  ([path]
+   (with-open [r (io/reader path)]
+     (into {} (for [l (rest (line-seq r)) :let [[y m] (str/split l #"\t")]]
+                [(parse-long y) (st/month-of (str m "-01"))])))))
+
+(defn- wdi-annual?
+  "A WDI annual series, by data/slow/variables.tsv's source and frequency."
+  [{:keys [source freq]}]
+  (and (= "a" freq) (some? source) (str/starts-with? source "World Bank WDI")))
+
 (defn load-series
   "{[unit var] series} for `vars`, values transformed as data/slow/variables.tsv says.
   opts: :real-lags true, each series available no earlier than its true
@@ -126,13 +144,16 @@
   :first-published {[unit var] {period month}}, each value listed there
   available no earlier than that month (`read-first-published`, the WDI
   Database Archives; --fresh-inputs), the others as series.tsv dates them;
-  :vars, the variables to read in place of `vars`, none of them
-  `not-real-time` unless :vintage names its vintage."
+  :wdi-editions {year month}, every WDI annual series' year available no
+  earlier than the first archived WDI edition holding it (`read-wdi-editions`,
+  --wdi-editions); :vars, the variables to read in place of `vars`, none
+  of them `not-real-time` unless :vintage names its vintage."
   ([series-path variables] (load-series series-path variables {}))
-  ([series-path variables {:keys [real-lags vintage first-published] :as opts}]
+  ([series-path variables {:keys [real-lags vintage first-published wdi-editions] :as opts}]
   (let [want (or (:vars opts) vars)
         _ (check-real-time want vintage)
         tr (into {} (for [v variables] [(:name v) (:transform v)]))
+        wdi (if wdi-editions (set (map :name (filter wdi-annual? variables))) #{})
         acc (java.util.HashMap.)]
     (with-open [r (io/reader series-path)]
       (doseq [line (line-seq r)
@@ -144,7 +165,8 @@
               p (st/month-of pend)
               a (st/month-of avail)
               a (if-let [l (and real-lags (real-lag k))] (max a (+ p (long l))) a)
-              a (if-let [f (and first-published (get-in first-published [k p]))] (max a (long f)) a)]
+              a (if-let [f (and first-published (get-in first-published [k p]))] (max a (long f)) a)
+              a (if-let [e (and (wdi v) (get wdi-editions (quot p 12)))] (max a (long e)) a)]
           (.put acc k (conj (or (.get acc k) []) [p a z])))))
     (into {} (for [[k es] acc] [k (sk/series es)])))))
 

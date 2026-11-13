@@ -485,9 +485,10 @@
   ([kind end known-run] (build kind end known-run nil nil))
   ([kind end known-run cats start] (build kind end known-run cats start {}))
   ([kind end known-run cats start {:keys [pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty leading leading-priors
-                                         real-lags leading-food2 lead-std fresh-inputs]}]
+                                         real-lags leading-food2 lead-std fresh-inputs wdi-editions]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
-        db (cond-> (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
+        db (cond-> (nm/load-series "data/slow/series.tsv" variables
+                                   (cond-> {:real-lags real-lags} wdi-editions (assoc :wdi-editions (nm/read-wdi-editions))))
              leading-food2 (merge (nm/load-food2)))
         cats (or cats (catalogues))
         units (set (filter #(first (geo/parents %)) (keys (get-in cats [kind :onsets]))))]
