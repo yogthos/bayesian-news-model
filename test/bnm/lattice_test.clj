@@ -1568,3 +1568,83 @@
     (is (< (Math/abs (- m -0.5)) 1e-12))
     (is (= [[m v]] zc))
     (is (< (Math/abs (- 1.0 (/ rate (Math/exp o)))) 0.01) rate)))
+
+;; --- the frailty's persistent level (bnm-56c.20.1): a local level beside the transient ---
+
+(defn- persistent-world
+  "shock-world's 20 places with a persistent level: from year 20 every
+  place's log odds is moved by `shift` for good, on top of a transient
+  common shock (AR(1), persistence 0.6, stationary sd about 0.5) around a
+  base of -1. 60 years; `extra` merged in."
+  [shift extra]
+  (let [g (m/rng 23)
+        n 20 years 60
+        z (vec (take years (iterate #(+ (* 0.6 %) (* 0.4 (m/normal! g))) 0.0)))
+        lvl (fn [y] (if (>= y 20) shift 0.0))
+        gauge (vec (repeatedly years #(m/normal! g)))
+        places (mapv #(str "P" %) (range n))
+        yr (fn [t] (quot (inc t) 12))
+        ys (into {} (for [c places y (range years)] [[c y] (< (m/next-double! g) (m/expit (+ -1.0 (z y) (lvl y))))]))]
+    (assoc (lt/run (merge {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
+                           :levels [[:country places]]
+                           :parent {} :start 0 :end (dec (* 12 (dec years))) :forget 0.995
+                           :target (fn [_ place t] {:y (ys [place (yr t)]) :known-at (+ t 24)})
+                           :gauges (fn [_ _ _] [])
+                           :gauge-width {:year 0}
+                           :relations (fn [_ _ t] {:x [(gauge (yr t))] :reads []})
+                           :relation-width {:year 1}
+                           :flow-std-from :resolved}
+                          extra))
+           :ys ys :yr yr :places places)))
+
+(def ^:private with-level (assoc-in frail [:frailty :level-sds] [0.0 0.1 0.2]))
+
+(defn- late-gap
+  "Over the origins issued 12 years or more after the shift, the mean p
+  less the rate the places had in the windows issued: how far the
+  forecasts stand from the new level."
+  [r]
+  (let [fs (filter #(>= ((:yr r) (:origin %)) 32) (:forecasts r))
+        mp (/ (reduce + (map :p fs)) (count fs))
+        rate (/ (count (filter #((:ys r) [(:place %) ((:yr r) (:origin %))]) fs)) (double (count fs)))]
+    (- mp rate)))
+
+(deftest bnm-56c-20-1-a-persistent-level-is-carried
+  (let [off (persistent-world -1.2 frail)
+        on (persistent-world -1.2 with-level)
+        fl (get-in on [:frailty [:year :country]])]
+    (testing "the level's sd is chosen above 0 and its state carries the shift"
+      (is (pos? (:lsd (val (last fl)))))
+      (is (< (:level (val (last fl))) -0.5) (:level (val (last fl)))))
+    (testing "with the level the forecasts recover the new rate; without it the transient mean-reverts and they stay above it"
+      (is (> (late-gap off) 0.03) (late-gap off))
+      (is (< (Math/abs (late-gap on)) (* 0.5 (late-gap off))) [(late-gap on) (late-gap off)]))))
+
+(deftest bnm-56c-20-1-no-level-shift-no-level
+  ;; a world with no persistent shift keeps the level at sd 0 at every
+  ;; origin, and issues exactly what the transient alone does
+  (let [off (persistent-world 0.0 frail)
+        on (persistent-world 0.0 with-level)]
+    (is (every? zero? (map (comp :lsd val) (get-in on [:frailty [:year :country]]))))
+    (is (= (:forecasts off) (:forecasts on)))
+    (is (= (:book off) (:book on)))))
+
+(deftest bnm-56c-20-1-a-level-grid-of-0-changes-nothing
+  (let [a (shock-world 20 1.0 frail)
+        b (shock-world 20 1.0 (assoc-in frail [:frailty :level-sds] [0.0]))]
+    (is (= (:forecasts a) (:forecasts b)))
+    (is (= (:frailty a) (:frailty b)))))
+
+(deftest bnm-56c-20-1-the-level-in-the-prior
+  ;; the level is a random walk: its variance grows by lsd^2 a period and
+  ;; it is added as it is (no stationary variance to take half of); the
+  ;; transient part keeps its mean-one shift
+  (let [fr {:cands [{:rho 0.0 :sd 1.0 :lsd 0.1 :m 0.0 :v 1.0 :lm -0.8 :lv 0.04 :c 0.0 :t 11 :score 0.0 :price 0.0}]}
+        {:keys [m v]} (lt/frailty-prior {:prior :own} fr nil 35 12)]
+    (is (< (Math/abs (- m (+ -0.8 -0.5))) 1e-12) m)
+    (is (< (Math/abs (- v (+ 0.04 0.02 1.0))) 1e-12) v)))
+
+(deftest bnm-56c-20-1-bad-level-options-are-refused
+  (doseq [bad [{:level-sds [-0.1]} {:level-sds []} {:level-sds :x} {:level-sds ["0.1"]}
+               {:level-penalty -1.0} {:level-penalty :big}]]
+    (is (thrown? clojure.lang.ExceptionInfo (shock-world 3 1.0 {:frailty bad})) (pr-str bad))))

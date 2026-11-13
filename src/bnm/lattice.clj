@@ -662,7 +662,8 @@
 
 (def frailty-defaults
   "The frailty's grid and reference when the spec's :frailty leaves them out."
-  {:rhos [0.0 0.5 0.8 0.95] :sds [0.0 0.25 0.5 1.0] :from :base :prior :own :penalty 2.0})
+  {:rhos [0.0 0.5 0.8 0.95] :sds [0.0 0.25 0.5 1.0] :from :base :prior :own :penalty 2.0
+   :level-sds [0.0] :level-penalty 2.0})
 
 (defn frailty-config
   "The spec's :frailty with its defaults, checked; nil without one. A map
@@ -671,14 +672,19 @@
   against, the base by default) and :prior (:own, the node's filter run
   forward, or :parent, rho times the coarser level's state) and :penalty,
   the nats a state of non-zero size must earn before it is chosen (2.0,
-  Akaike's price of its two parameters, as augur.hier/states)."
+  Akaike's price of its two parameters, as augur.hier/states).
+  :level-sds (bnm-56c.20.1) adds a persistent level beside the transient
+  state: a random walk whose sd a period is chosen from the grid with the
+  rest, a non-zero one paying :level-penalty nats (2.0, a second state's
+  price: at 1.0 a walk alone took the base's early learning for a level).
+  The default, [0.0], is the transient alone."
   [spec]
   (when-let [f (:frailty spec)]
     (when-not (map? f)
       (throw (ex-info "bnm.lattice: :frailty takes a map of :rhos :sds :from :prior" {:frailty f})))
-    (when-let [bad (seq (remove #{:rhos :sds :from :prior :penalty} (keys f)))]
+    (when-let [bad (seq (remove #{:rhos :sds :from :prior :penalty :level-sds :level-penalty} (keys f)))]
       (throw (ex-info (str "bnm.lattice: :frailty names no option " (vec bad)) {:frailty f})))
-    (let [{:keys [rhos sds from prior penalty] :as c} (merge frailty-defaults f)
+    (let [{:keys [rhos sds from prior penalty level-sds level-penalty] :as c} (merge frailty-defaults f)
           nums? (fn [xs ok?] (and (sequential? xs) (seq xs) (every? #(and (number? %) (ok? (double %))) xs)))]
       (when-not (nums? rhos #(and (<= 0.0 %) (< % 1.0)))
         (throw (ex-info "bnm.lattice: :frailty :rhos takes persistences in [0, 1)" {:rhos rhos})))
@@ -690,9 +696,18 @@
         (throw (ex-info "bnm.lattice: :frailty :penalty takes nats of at least 0" {:penalty penalty})))
       (when-not (#{:own :parent} prior)
         (throw (ex-info "bnm.lattice: :frailty :prior takes :own or :parent" {:prior prior})))
-      ;; the grid, smallest sd first, so a tie keeps the smaller state
-      (assoc c :grid (vec (for [s (sort (distinct (map double sds))) r (sort (distinct (map double rhos)))]
-                            {:rho r :sd s :price (if (pos? s) (double penalty) 0.0)}))))))
+      (when-not (nums? level-sds #(<= 0.0 %))
+        (throw (ex-info "bnm.lattice: :frailty :level-sds takes sds of at least 0" {:level-sds level-sds})))
+      (when-not (and (number? level-penalty) (<= 0.0 (double level-penalty)))
+        (throw (ex-info "bnm.lattice: :frailty :level-penalty takes nats of at least 0" {:level-penalty level-penalty})))
+      ;; the grid, no level and smallest sd first, so a tie keeps the smaller
+      ;; state; a candidate with no level carries no :lsd and is the transient
+      ;; alone, computed as before the level existed
+      (assoc c :level? (boolean (some pos? (map double level-sds)))
+             :grid (vec (for [l (sort (distinct (map double level-sds)))
+                              s (sort (distinct (map double sds))) r (sort (distinct (map double rhos)))]
+                          (cond-> {:rho r :sd s :price (if (pos? s) (double penalty) 0.0)}
+                            (pos? l) (-> (assoc :lsd l) (update :price + (double level-penalty))))))))))
 
 (defn with-frailty
   "Offsets [[w o] ...] with a shared state z ~ N(m, v) added, by the
@@ -709,7 +724,11 @@
   "A node's frailty before its first resolved origin: one filter per
   grid point at its stationary prior, scored 0."
   [{:keys [grid]}]
-  {:cands (mapv (fn [{:keys [sd] :as g}] (assoc g :m 0.0 :v (* sd sd) :t nil :score 0.0)) grid)
+  {:cands (mapv (fn [{:keys [sd lsd] :as g}]
+                  (cond-> (assoc g :m 0.0 :v (* sd sd) :t nil :score 0.0)
+                    ;; the level starts at 0, known: the base's level is the start
+                    lsd (assoc :lm 0.0 :lv 0.0 :c 0.0)))
+                grid)
    :filtered (sorted-map)})
 
 (defn- chosen
@@ -733,6 +752,45 @@
     {:m 0.0 :v (* (:sd c) (:sd c))}
     (hier/states-predict {:m m :v v} c (Math/max 0.0 (/ (double (- to t)) per)))))
 
+(defn- level-ahead
+  "A level candidate's joint state (transient :m :v, level :lm :lv, their
+  covariance :c) run forward to origin t: the transient as `cand-ahead`,
+  the level a random walk (its variance up lsd^2 a period), the covariance
+  decaying with the transient."
+  [{:keys [t lsd] :as c} to per]
+  (let [zt (cand-ahead c to per)]
+    (if (nil? t)
+      (assoc zt :lm 0.0 :lv 0.0 :c 0.0)
+      (let [h (Math/max 0.0 (/ (double (- to t)) per))]
+        (assoc zt :lm (double (:lm c))
+               :lv (+ (double (:lv c)) (* (double lsd) (double lsd) h))
+               :c (* (Math/pow (double (:rho c)) h) (double (:c c))))))))
+
+(defn- level-applied
+  "The shift a level candidate's joint state applies, [m v]: the level as
+  it is plus the transient less half its stationary variance."
+  [c {:keys [m v lm lv] cv :c}]
+  [(+ (double lm) (- (double m) (half-var c))) (+ (double lv) (double v) (* 2.0 (double cv)))])
+
+(defn- level-step
+  "A level candidate's joint state updated by one origin's rows: the sum
+  the rows see is updated by Laplace (augur.hier/states-step), and the
+  level and transient each take their share of the move by their
+  covariance with the sum (the Gaussian projection)."
+  [c prior obs]
+  (let [[mu vu] (level-applied c prior)]
+    (if (zero? vu)
+      prior
+      (let [{u :m vu' :v} (hier/states-step {:m mu :v vu} obs {:kind :logistic})
+            {:keys [m v lm lv] cv :c} prior
+            kl (/ (+ (double lv) (double cv)) vu)
+            kz (/ (+ (double v) (double cv)) vu)
+            d (- (double u) mu)
+            shrink (- vu (double vu'))]
+        {:m (+ (double m) (* kz d)) :v (- (double v) (* kz kz shrink))
+         :lm (+ (double lm) (* kl d)) :lv (- (double lv) (* kl kl shrink))
+         :c (- (double cv) (* kl kz shrink))}))))
+
 (defn frailty-learn
   "A node's frailty after the `ready` rows (each with its :origin, its
   :zc, the prior each candidate issued it with, and its :lp, the models'
@@ -744,7 +802,7 @@
   passed update the current state. Rows issued before the node had a
   resolved outcome are neither scored nor filtered: the base's miss there
   is its uninformed start (bnm-56c.26), not a common shock."
-  [{:keys [from]} fr ready per]
+  [{:keys [from level?]} fr ready per]
   (reduce (fn [{:keys [cands] :as fr} [s rows]]
             (let [obs (mapv (fn [r] (let [{:keys [f q]} (or (get-in r [:lp from])
                                                             (throw (ex-info "bnm.lattice: :frailty :from names a model the node does not average" {:from from})))]
@@ -754,17 +812,24 @@
                               (fn [i {:keys [t] :as c}]
                                 (let [[zm zv] (nth (:zc (first rows)) i)
                                       ll (:ll (hier/shared-marginal :logistic obs zm zv))
-                                      prior (if (and t (<= s t)) {:m (:m c) :v (:v c)} (cand-ahead c s per))
-                                      ;; the rows see the state less its half variance
-                                      h (half-var c)
-                                      post (hier/states-step (update prior :m - h) obs {:kind :logistic})]
-                                  (assoc c :score (+ (double (:score c)) ll) :m (+ (:m post) h) :v (:v post)
-                                         :t (if t (max t s) s))))
+                                      c (assoc c :score (+ (double (:score c)) ll) :t (if t (max t s) s))]
+                                  (if (:lsd c)
+                                    ;; the transient and the persistent level, filtered jointly
+                                    (merge c (level-step c (if (and t (<= s t)) (select-keys c [:m :v :lm :lv :c]) (level-ahead (assoc c :t t) s per)) obs))
+                                    (let [prior (if (and t (<= s t)) {:m (:m c) :v (:v c)} (cand-ahead (assoc c :t t) s per))
+                                          ;; the rows see the state less its half variance
+                                          h (half-var c)
+                                          post (hier/states-step (update prior :m - h) obs {:kind :logistic})]
+                                      (assoc c :m (+ (:m post) h) :v (:v post))))))
                               cands))
-                  ci (chosen cands)]
+                  ci (chosen cands)
+                  pick (nth cands ci)]
               (assoc fr :cands cands
-                     :filtered (assoc (:filtered fr) s (assoc (select-keys (nth cands ci) [:m :v :rho :sd])
-                                                         :scores (mapv :score cands))))))
+                     :filtered (assoc (:filtered fr) s (cond-> (assoc (select-keys pick [:m :v :rho :sd])
+                                                                 :scores (mapv :score cands))
+                                                         level? (assoc :lsd (double (:lsd pick 0.0))
+                                                                       :level (double (:lm pick 0.0))
+                                                                       :level-v (double (:lv pick 0.0))))))))
           fr (sort-by key (group-by :origin (filter :informed ready)))))
 
 (defn frailty-prior
@@ -783,8 +848,15 @@
                      r (double (:rho c)) s2 (* (double (:sd c)) (double (:sd c)))]
                  {:m (* r pm) :v (+ (* r r pv) (* s2 (- 1.0 (* r r))))})
                (cand-ahead c t per)))
-        ;; the shift applied: the state less half its stationary variance
-        zc (mapv (fn [c] (let [{:keys [m v]} (of c)] [(- m (half-var c)) v])) cands)
+        ;; the shift applied: the state less half its stationary variance,
+        ;; plus a level candidate's own level as it is (under :parent the
+        ;; transient is the parent's, the level the node's own)
+        zc (mapv (fn [c]
+                   (if (:lsd c)
+                     (let [j (level-ahead c t per)]
+                       (level-applied c (if (and (= :parent prior) parent-fr) (assoc (merge j (of c)) :c 0.0) j)))
+                     (let [{:keys [m v]} (of c)] [(- m (half-var c)) v])))
+                 cands)
         ci (chosen cands)
         [m v] (nth zc ci)]
     {:m m :v v :rho (:rho (nth cands ci)) :sd (:sd (nth cands ci)) :zc zc}))
@@ -894,7 +966,10 @@
    a shock common to n places teaches the coefficients and the averaging's
    weights about what one observation does, not n. :prior :parent takes
    the prior as rho times the coarser level's state (lagged) instead of
-   the node's own; none without,
+   the node's own. :level-sds [0.0 ...] (bnm-56c.20.1) adds a persistent
+   level beside z, a random walk filtered jointly with it, its sd a period
+   chosen from the same grid at a price of :level-penalty nats; [0.0], the
+   default, is z alone; none without,
    :without, groups dropped from the inputs altogether, :without-at
    {scale #{groups}} the same at one scale,
    :trace, to record what each node read and learned from (:inputs, also
