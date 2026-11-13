@@ -2182,19 +2182,21 @@
   place) moves every place's log odds by b g_y, and a common shock e_y
   (sd 0.4) the gauge does not see moves them too: the level. Each place
   has a fixed input r_i (sd 1) that ranks the places, coefficient 1.2, and
-  six noise inputs. The gauge is quiet (sd 0.3) but for a few episodes
+  k noise inputs (20: the all-inputs model is as wide as a real node's,
+  so a narrower ranker can hold the weight, as `:down` does at market
+  crashes). The gauge is quiet (sd 0.3) but for a few episodes
   (+2.5 in years 12, 22 and 32, -2 in 17). Groups :world (g), :place (r)
   and :noise; with `models` (default every one and the all-inputs model).
   The theory prior on g is 0.6, sd 0.25 (the planted b 0.8). The frailty
   on, evidence the joint issued predictive. `extra` merged in."
-  [{:keys [n seed b models] :or {seed 11 b 0.8 models #{:base :world :place :noise :all}}} extra]
+  [{:keys [n seed b models k] :or {seed 11 b 0.8 k 20 models #{:base :world :place :noise :all}}} extra]
   (let [rg (m/rng seed)
         yrs 41
         gw (vec (for [y (range yrs)] (case y (12 22 32) 2.5 17 -2.0 (* 0.3 (m/normal! rg)))))
         e (vec (repeatedly yrs #(* 0.4 (m/normal! rg))))
         places (mapv #(str "P" %) (range n))
         r (zipmap places (repeatedly n #(m/normal! rg)))
-        noise (into {} (for [c places y (range yrs)] [[c y] (vec (repeatedly 6 #(m/normal! rg)))]))
+        noise (into {} (for [c places y (range yrs)] [[c y] (vec (repeatedly k #(m/normal! rg)))]))
         yr (fn [t] (quot (inc t) 12))
         ys (into {} (for [c places y (range yrs)]
                       [[c y] (< (m/next-double! rg) (m/expit (+ -1.5 (* b (gw y)) (e y) (* 1.2 (r c)))))]))]
@@ -2203,9 +2205,9 @@
                     :parent {} :start 0 :end 479 :forget 0.995
                     :target (fn [_ place t] {:y (ys [place (yr t)]) :known-at (+ t 24)})
                     :gauges (fn [_ place t] (into [(gw (yr t)) (r place)] (noise [place (yr t)])))
-                    :gauge-width {:year 8}
-                    :gauge-groups {:year {:world [0] :place [1] :noise [2 3 4 5 6 7]}}
-                    :gauge-names {:year [:g :r :n1 :n2 :n3 :n4 :n5 :n6]}
+                    :gauge-width {:year (+ 2 k)}
+                    :gauge-groups {:year {:world [0] :place [1] :noise (vec (range 2 (+ 2 k)))}}
+                    :gauge-names {:year (into [:g :r] (map #(keyword (str "n" %)) (range k)))}
                     :named-prior {:year {:g [0.6 0.0625]}}
                     :only models
                     :shrink 0.1
@@ -2221,19 +2223,40 @@
   [r]
   (log-score (filter #(>= (:origin %) 95) (:forecasts r))))
 
+(defn- episode-p
+  "Mean issued p and realized rate at the origin of year y."
+  [r y]
+  (let [fs (filter #(= (:origin %) (dec (* 12 y))) (:forecasts r))]
+    [(/ (reduce + (map :p fs)) (count fs)) (/ (count (filter :y fs)) (double (count fs)))]))
+
 (deftest bnm-v1y-level-from-the-gauge-ranking-from-the-places
-  ;; the averaging picks one model; the place model ranks but cannot see
-  ;; the gauge, the world model sees the gauge but cannot rank. With the
-  ;; gauges in the shock's mean, every model issues the level and the
-  ;; averaging picks among rankers
-  (let [w {:n 150}
-        off (late-log (pool-world w {}))
-        on (late-log (pool-world w pooled))
-        single (into {} (for [g [:world :place :all]]
+  ;; docs/CALIBRATION.md 15: the averaging picks one model. The place model
+  ;; ranks but cannot see the gauge, the world model sees the gauge but
+  ;; cannot rank, so the averaging holds the place model and issues no
+  ;; level. With the gauges in the shock's mean every model issues the
+  ;; level, and the averaging picks among the rankers
+  (let [w {:n 150 :models #{:base :world :place}}
+        on-cfg (assoc-in pooled [:frailty :gauges-from] :place)
+        off-r (pool-world w {})
+        on-r (pool-world w on-cfg)
+        [off on] (map late-log [off-r on-r])
+        single (into {} (for [g [:world :place]]
                           [g (late-log (pool-world (assoc w :models #{g}) {:frailty {:rhos [0.0 0.5] :sds [0.0 0.25 0.5 1.0] :from g}}))]))]
     (is (> on (+ off 0.01)) [on off])
     (doseq [[g s] single]
-      (is (> on (+ s 0.01)) [g on s]))))
+      (is (> on (+ s 0.01)) [g on s]))
+    (testing "the episodes after the first are reached: within 0.1 of their rate, where the averaging stays at the calm"
+      (doseq [y [22 32]]
+        (let [[p rate] (episode-p on-r y) [p0 _] (episode-p off-r y)]
+          (is (< (Math/abs (- p rate)) 0.1) [y p rate])
+          (is (< p0 (- rate 0.2)) [y p0 rate])))))
+  (testing "with an all-inputs model, which reads both and is the right model here, the combination does as well"
+    (let [w {:n 150}
+          on (late-log (pool-world w pooled))
+          off (late-log (pool-world w {}))
+          all (late-log (pool-world (assoc w :models #{:all}) {:frailty {:rhos [0.0 0.5] :sds [0.0 0.25 0.5 1.0] :from :all}}))]
+      (is (> on off) [on off])
+      (is (> on (- all 0.002)) [on all]))))
 
 (defn- beta-v
   "The chosen candidate's beta variance at the last filtered origin."
@@ -2263,5 +2286,5 @@
     (testing "the gauges leave the models: the world model drops out"
       (is (= 0.0 (get (lt/weights (pool-world w pooled) :year :country) :world))))
     (doseq [f [{:gauges {:year [:nope]}} {:gauges {:year []}} {:gauges [:g]} {:gauges {:year [:g]} :sds [0.0]}
-               {:gauges {:year [:g]} :prior :parent} {:gauges {:year [:r]}}]]
+               {:gauges {:year [:g]} :prior :parent} {:gauges {:year [:r]}} {:gauges {:year [:g]} :gauges-from "all"}]]
       (is (thrown? clojure.lang.ExceptionInfo (pool-world w {:frailty (merge {:rhos [0.0 0.5] :sds [0.0 0.5]} f)})) f))))
