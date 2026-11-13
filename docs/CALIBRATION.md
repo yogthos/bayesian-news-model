@@ -370,3 +370,124 @@ Verdict:
 - The structural next steps:
   - a regional shared state inside the country node, which the sequential evidence needs before it can be used;
   - a longer food history at the year scale, so the slope can price in before 2007.
+
+## 10. The frailty from a fresh quarter scale: t60-fresh (bnm-56c.35)
+
+The design is in docs/RECURSIVE.md step 4a. A frailty-only scale, `quarter-now`, has a window of (t, t+3] and is known 3 months plus the lag after it. Coarser nodes take their prior as κ times its state, κ chosen in the prequential grid from [0 0.5 1 1.5] (κ = 0 is the node's own prior). Runs at 63d9bda with augur v0.23.0; both ran in about 2 h 40 min:
+- t60-fresh: t57-frailty's command plus `--food-outcomes monthly --fresh-frailty quarter-now` and `:frailty {:prior :finer :source :quarter-now}`;
+- t60-monthly: t57-frailty's command plus `--food-outcomes monthly` alone, to isolate the scale.
+
+The rule gave the scale to coups, food, market crashes, protest surges and violence surges. The other eight kinds keep their own prior and score exactly as t57-frailty. With the option off, 2026-Q4-r1 reproduces byte for byte (data/runs/logs/repro-r1-fresh.log). Logs:
+- data/runs/logs/score-t60-*-vs-*.txt: the year folds over 13 kinds and over 12 without food, quarter-lead, and per kind with intervals;
+- score-t60-*-world-vs-*.txt (bnm.world-score);
+- score-t60-calibration.txt and score-t60-outliers.txt.
+
+Food under monthly outcomes is a different target from the base's quarterly-rule catalogue. Paired against t53-noclim or t57-frailty, it scores their forecasts of the old target on the new outcomes. So the clean test of the scale is t60-fresh against t60-monthly, and the 12-kind pool leaves food out.
+
+Year nodes, Brier (+ = better, 90% intervals):
+
+| fold | t60-fresh vs t60-monthly | vs t57-frailty | vs t53-noclim | vs t53-noclim, no food |
+|---|---|---|---|---|
+| 2003-06 | +0.0000 [-0.0001, +0.0002] | -0.0007 [-0.0021, +0.0001] | +0.0017 [-0.0017, +0.0047] | +0.0027 [+0.0000, +0.0051] |
+| 2007-09 | +0.0002 [+0.0000, +0.0003] | +0.0001 [-0.0006, +0.0008] | -0.0028 [-0.0049, -0.0001] LOSS | -0.0033 [-0.0055, -0.0004] LOSS |
+| 2010-12 | +0.0007 [+0.0002, +0.0011] | +0.0030 [+0.0006, +0.0058] | +0.0010 [-0.0007, +0.0025] | +0.0003 [-0.0021, +0.0027] |
+| 2013-19 | +0.0002 [-0.0001, +0.0005] | -0.0000 [-0.0003, +0.0002] | +0.0044 [+0.0019, +0.0070] | +0.0049 [+0.0022, +0.0077] |
+| 2020-22 | -0.0014 [-0.0023, -0.0005] LOSS | -0.0016 [-0.0027, -0.0007] LOSS | +0.0024 [-0.0012, +0.0062] | +0.0014 [-0.0008, +0.0045] |
+| pooled | +0.0000 [-0.0003, +0.0003] | +0.0001 [-0.0006, +0.0009] | +0.0024 [+0.0008, +0.0041] GAIN | +0.0025 [+0.0008, +0.0043] GAIN |
+
+- Log score pooled: -0.0009 [-0.0029, +0.0009] against t60-monthly, and +0.0066 [+0.0019, +0.0116] against t53-noclim.
+- Without food, against t60-monthly: -0.0001 [-0.0001, +0.0000], with 2013-19 -0.0002 [-0.0003, -0.0000].
+- Quarter-lead, 2003-22: +0.0003 [+0.0001, +0.0006] against t60-monthly and +0.0006 [-0.0001, +0.0016] against t57-frailty.
+- Per kind against t60-monthly, all within their intervals: food +0.0008 [-0.0038, +0.0044] (log -0.010), market crashes -0.0010 [-0.0021, +0.0000], coups +0.0002, violence +0.0002, protest -0.0000.
+- t60-monthly against t57-frailty: +0.0001 [-0.0006, +0.0009]. Only food moves: 2010-12 +0.0024 GAIN, 2003-06 -0.0007.
+
+Where κ was chosen (origins since 2000, country nodes):
+- food: year κ = 1.5 at 12 of 17 origins (from 2012), quarter-lead never;
+- market crashes: year never (once, in 1984), quarter-lead κ = 1.5 at 83 of 99;
+- protest surges: year κ = 0.5 throughout;
+- violence surges: year κ = 0.5 at 9 of 23;
+- coups: never.
+
+Calibration, country year, mean p (rate) and Brier, t53-noclim → t57-frailty → t60-monthly → t60-fresh. Food is under its own target: the base's catalogue for the first two runs, the monthly one for the last two.
+
+| kind | span | mean p | rate | Brier |
+|---|---|---|---|---|
+| market crashes | 2003-22 | 0.326 → 0.286 → 0.286 → 0.288 | 0.178 | 0.1996 → 0.1701 → 0.1701 → 0.1711 |
+| market crashes | 2007-09 | 0.253 → 0.257 → 0.257 → 0.258 | 0.750 | 0.4051 → 0.4428 → 0.4428 → 0.4409 |
+| food | 2003-22 | 0.183 → 0.247 / 0.224 → 0.207 | 0.154 / 0.151 | 0.1560 → 0.1580 / 0.1521 → 0.1514 |
+| food | 2010-12 | 0.206 → 0.296 / 0.218 → 0.191 | 0.060 / 0.058 | 0.0844 → 0.1158 / 0.0788 → 0.0701 |
+| food | 2020-22 | 0.060 → 0.114 / 0.100 → 0.110 | 0.415 / 0.384 | 0.3716 → 0.3369 / 0.3160 → 0.3342 |
+| coups | 2003-22 | 0.055 → 0.056 → 0.056 → 0.052 | 0.045 | 0.0427 → 0.0426 → 0.0426 → 0.0424 |
+| protest | 2003-22 | 0.040 → 0.050 → 0.050 → 0.048 | 0.030 | 0.0276 → 0.0277 → 0.0277 → 0.0278 |
+| violence | 2003-22 | 0.119 → 0.107 → 0.107 → 0.109 | 0.080 | 0.0709 → 0.0710 → 0.0710 → 0.0708 |
+
+Growth collapses, banking crises, sovereign defaults and inflation crises are t57-frailty's to four decimals (score-t60-calibration.txt).
+
+**The outlier episodes.** These are year country nodes. The year is the origin's (December), and its window is the next 24 months. Each cell is the mean p issued, with the realized rate in brackets. Food is under the base catalogue for t53-noclim and t57-frailty, and the monthly one for the t60 runs.
+
+| episode | origin | t53-noclim | t57-frailty | t60-monthly | t60-fresh |
+|---|---|---|---|---|---|
+| food 2007-08 | 2006 | 0.500 (0.418) | 0.500 (0.418) | 0.233 (0.432) | 0.233 (0.432) |
+| | 2007 | 0.102 (0.313) | 0.238 (0.313) | 0.242 (0.341) | 0.242 (0.341) |
+| | 2008 | 0.109 (0.010) | 0.230 (0.010) | 0.200 (0.008) | 0.200 (0.008) |
+| food 2020-22 | 2019 | 0.053 (0.087) | 0.112 (0.087) | 0.108 (0.107) | 0.070 (0.107) |
+| | 2020 | 0.053 (0.493) | 0.109 (0.493) | 0.099 (0.458) | 0.092 (0.458) |
+| | 2021 | 0.057 (0.500) | 0.109 (0.500) | 0.100 (0.475) | 0.066 (0.475) |
+| | 2022 | 0.078 (0.131) | 0.132 (0.131) | 0.100 (0.118) | 0.210 (0.118) |
+| market crashes 2008 | 2006 | 0.281 (0.957) | 0.269 (0.957) | 0.269 (0.957) | 0.271 (0.957) |
+| | 2007 | 0.289 (0.957) | 0.252 (0.957) | 0.252 (0.957) | 0.253 (0.957) |
+| | 2008 | 0.212 (0.333, n 3) | 0.254 (0.333) | 0.254 (0.333) | 0.255 (0.333) |
+| | 2009 | 0.143 (0.143, n 14) | 0.277 (0.143) | 0.277 (0.143) | 0.276 (0.143) |
+| growth collapses | 2007 | 0.051 (0.235) | 0.071 (0.235) | 0.071 (0.235) | 0.071 (0.235) |
+| | 2008 | 0.061 (0.202) | 0.068 (0.202) | 0.068 (0.202) | 0.068 (0.202) |
+| | 2009 | 0.127 (0.036) | 0.031 (0.036) | 0.031 (0.036) | 0.031 (0.036) |
+| | 2019 | 0.068 (0.554) | 0.078 (0.554) | 0.078 (0.554) | 0.078 (0.554) |
+| | 2020 | 0.071 (0.063) | 0.077 (0.063) | 0.077 (0.063) | 0.077 (0.063) |
+
+No run forecasts an outlier episode. The fresh scale changes none of them for the better, and it moves food 2020-22 the wrong way.
+
+Losses and non-gains traced:
+- **Food 2020-22 (-0.0182 Brier against t60-monthly): the episode starts after the freshest information the year has.** Under the monthly rule the episode is 2022: onsets ran 3-9 a quarter through 2019-21, then 16, 31, 21 and 19 in 2022's four quarters. A food quarter is known 12 months after its origin (a 3-month window plus the 9-month publication lag), so the quarters each year origin had seen were these:
+
+  | year origin | quarters seen through | source z | κ | issued vs t60-monthly | rate |
+  |---|---|---|---|---|---|
+  | Dec 2020 | Jan-Mar 2020 | +0.2 to +0.6 | 1.0 | 0.092 vs 0.099 | 0.458 |
+  | Dec 2021 | Jan-Mar 2021 | -0.74 | 1.5 | 0.066 vs 0.100 | 0.475 |
+  | Dec 2022 | Jan-Mar 2022 | +2.7 | 1.5 | 0.210 vs 0.100 | 0.118 |
+
+  - At Dec 2021 the source still read the 2016-19 calm (z -0.5 to -1.1). Run forward and scaled by κ = 1.5, it moved the issue below the year's own prior.
+  - At Dec 2022 the episode had been seen, but the next window (2023-24) is calmer, and many places are busy and out of risk.
+  - κ = 1.5 was earned on 2012-19, when the source's calm and the year's calm went together (the 2010-12 gain, +0.0088 for food).
+  - The source, the lag and the choice behave as specified, and no read is after t. A shock that begins and peaks within 12 months of publication lag cannot reach a year window that opens at the origin. Not a bug: an information limit.
+- **Food 2007-08: no change.** Food's year node had no history in which κ could earn its price. Its first filtered origin is December 2006 (monthly outcomes, one more than the base catalogue's 2007; RECURSIVE step 4a traces why the history starts there). κ stays 0, tied with the node's own candidates, until 2012. The fresh scale cannot act on an episode at the start of the node's history.
+- **Market crashes (-0.0010 [-0.0021, +0.0000]; 2013-19 -0.0031): through the quarters, not the year's prior.**
+  - The year node never chose κ > 0 after 1984, so its prior is t57-frailty's own.
+  - The year's forecasts still moved: +0.006 to +0.009 in mean p at 2013-17, where the rate was 0 to 0.04. It reads the quarter-lead's states (`:up`), and the quarter-lead took κ = 1.5 at 83 of 99 origins.
+  - One origin in 1984 at κ = 1.5 also issued its rows a different `:shared` shock, which the base learned from; the year's own filtered z differs slightly from then on.
+  - The averaging leaned on the world model a little more (0.88 against 0.85 in 2014).
+  - The mechanism is the up read carrying a changed quarter state. It was read from the forecasts and weights, not tested in a planted world. Not a bug.
+- **Market crashes 2008: the source sees the crash after most countries have crashed.** Quarter-lead country nodes:
+
+  | quarter-lead origin | quarters seen through | source z | at risk | rate | issued (t60-monthly) |
+  |---|---|---|---|---|---|
+  | Dec 2007 | Jul-Sep 2007 | -0.92 | 41 | 0.93 | 0.171 |
+  | Mar 2008 | Jul-Sep 2007 | -0.92 | 35 | 0.94 | 0.121 |
+  | Jun 2008 | Jan-Mar 2008 | 1.28 | 20 | 0.90 | 0.168 (0.191) |
+  | Sep 2008 | Jul-Sep 2008 | 4.25 | 3 | 0.33 | |
+
+  - A quarter is known 6 months after its origin. The crash shows only in the source's Jan-Mar 2008 window (z 1.28; 2.98 by Jul-Sep).
+  - At the source's ρ = 0.5, z = 1.28 run forward two periods and taken at κ = 1.5 is +0.48, less half the stationary variance 2.25 (1.125). That is below the node's calm prior, so the issue barely moves.
+  - By September 2008 three countries were still at risk.
+  - The year at Dec 2007 (rate 0.957) issues 0.253, as t57-frailty does.
+  - The source does what it is built to do. The episode's at-risk mass is gone within the 6-month lag. Not a bug.
+- **Growth collapses: unchanged by construction.** The catalogue is annual (every onset in January), so the rule gives it no fresh scale. A monthly growth-collapse catalogue (industrial production) is the prerequisite, a follow-up.
+- **2007-09 against t53-noclim (-0.0028).** This is t57-frailty's fold loss, carried over unchanged (§7: the market crash lock path and banking's persistence). The fresh scale adds +0.0002 to it.
+
+Bugs: none found in the runs. Building the option avoided the one the scoping named, the source run forward at the node's period rather than its own; a test pins that.
+
+Verdict: the fresh scale works in the planted world. There the year's z at the first origin six months into an episode is 1.10, against -0.125 with its own prior. On the world it changes nothing pooled: +0.0000 [-0.0003, +0.0003] against t60-monthly and +0.0024 [+0.0008, +0.0041] against t53-noclim, the same as t57-frailty's +0.0022. It fails the fold rule against t60-monthly in 2020-22 (food) and, as t57-frailty does, against t53-noclim in 2007-09. It does not reach the outlier episodes:
+- food's 2022 shock starts inside the CPI's publication lag;
+- the 2008 crashes ran their course inside the market lag;
+- growth collapses have no sub-annual catalogue.
+
+Fresher frailty cannot reach them, because an episode's onset precedes every outcome that reveals it. What is left is information that leads onsets, not the outcomes themselves: prices, spreads and indices read at t, which the quarter gauges and the world gauges already carry, or a regime state that switches on them (step 5). Monthly food outcomes alone (t60-monthly) are neutral pooled (+0.0001 [-0.0006, +0.0009] against t57-frailty) and help food 2010-12 (Brier 0.0788 against t57-frailty's 0.1158 on the old target). Not adopted (adoption is the user's decision). The option stays in the code, off by default.
