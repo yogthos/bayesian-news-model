@@ -2088,3 +2088,15 @@
     (is (= :issue-joint (get-in r [:models [:year :country] :evidence-at])))
     (is (= (take 6 (:forecasts off)) (take 6 (:forecasts r))) "the same until a row is learned")
     (is (not= (lt/weights off :year :country) (lt/weights r :year :country)))))
+
+(deftest bnm-e1y-forgetting-by-a-half-life-in-years
+  ;; :forget is per period, so 0.995 is a half-life of 138 years at a year
+  ;; node and 35 at a quarter node; :forget-half-life h sets each node's
+  ;; forgetting to 0.5^(per / 12h), the same memory in calendar time
+  (let [r (late-run {:forget-half-life 10.0})
+        off (late-run {})]
+    (is (< (Math/abs (- (get-in r [:models [:year :country] :forget]) (Math/pow 0.5 (/ 1.0 10.0)))) 1e-12))
+    (is (< (Math/abs (- (get-in r [:models [:month :country] :forget]) (Math/pow 0.5 (/ 1.0 120.0)))) 1e-12))
+    (is (= (:forget (spec (world 3))) (get-in off [:models [:year :country] :forget])) "without it, the spec's :forget")
+    (is (not= (lt/weights off :year :country) (lt/weights r :year :country)))
+    (is (thrown? clojure.lang.ExceptionInfo (late-run {:forget-half-life 0.0})))))

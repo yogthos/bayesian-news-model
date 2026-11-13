@@ -352,7 +352,7 @@
   with variance 1 (4 for the intercept), the all-inputs model's non-core
   ones at the spec's :shrink, unless the spec's :prior gives {input-index
   [mean variance]} for the node."
-  [spec scale level {:keys [discount]} {:keys [groups order nested] :as lay}]
+  [spec scale level {:keys [discount per]} {:keys [groups order nested] :as lay}]
   (let [prior (merge (when-let [[m v] (:contradiction-prior spec)]
                        (into {} (for [i (:strain-ix lay)] [i [m v]])))
                      (or (when-let [f (:prior spec)] (f scale level lay)) {}))
@@ -402,7 +402,14 @@
                              (merge {:base :base :parents (zipmap (filter models nested) (repeat :all))} wt)
                              wt)
                         pr (not-empty (select-keys (:weight-prior spec) (keys models)))]
-                    (cond-> {:forget (:forget spec)} wt (assoc :weighting wt) pr (assoc :prior pr)
+                    (cond-> {:forget (if-let [h (:forget-half-life spec)]
+                                       ;; bnm-e1y: the averaging's memory in calendar time,
+                                       ;; a half-life of h years whatever the node's period
+                                       (do (when-not (and (number? h) (pos? (double h)))
+                                             (throw (ex-info "bnm.lattice: :forget-half-life takes a positive number of years" {:forget-half-life h})))
+                                           (Math/pow 0.5 (/ (double per) (* 12.0 (double h)))))
+                                       (:forget spec))}
+                      wt (assoc :weighting wt) pr (assoc :prior pr)
                       ;; :evidence-at :issue (loop audit issue 2): each row scored by
                       ;; the predictive each model issued for it, not at learn time
                       (:evidence-at spec) (assoc :evidence-at (:evidence-at spec))))))))
@@ -1149,7 +1156,9 @@
    onset at the place became known (none without),
    :exposure (fn [scale place origin]) -> [exposures], :exposure-width n,
    :coupling, the strength levels share what they learn (none without),
-   :forget, the model averaging's forgetting, :only, a subset of groups,
+   :forget, the model averaging's forgetting, per period, :forget-half-life
+   h, instead each node's forgetting 0.5^(per / 12h), a half-life of h
+   years at every scale (bnm-e1y), :only, a subset of groups,
    :weighting, how the averaging sets its weights (augur.dynamic/averaged's
    :weighting: tempered posterior or stacked; posterior weights without),
    :weighting {:rule :temper :power :per-place} tempers each period's
