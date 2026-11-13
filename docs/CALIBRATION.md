@@ -915,3 +915,177 @@ Verdict:
   - augur's line search (bnm-2sf);
   - a separate persistence for the regional states;
   - a way to have them in place before the lock forms: subregions at a smaller price, or σ_r chosen from evidence across kinds rather than from one node's history. Forcing σ_r is not a candidate rule, because it was chosen after seeing the result.
+
+### Second round: own persistence, in place from the first issue (t64, bnm-56c.20.3.1)
+
+Design and rule, written before the runs: docs/RECURSIVE.md step 3e, second round. In short:
+- `:regional-rhos` gives the regional states their own persistence ρ_r, crossed with z's ρ in the grid. The default is the frailty's `:rhos`; `:tied` is t61's rule.
+- The states are present from a node's first issue: where a node has regional groups, the grid has no σ_r = 0. σ_r ∈ {0.25, 0.5, 1.0} and ρ_r ∈ {0, 0.5, 0.8, 0.95}, z's own grids.
+- `:start :prior-predictive` (bnm-93n): before the frailty has filtered an origin, the node issues at the grid's prior predictive, not at the σ = 0 tie-break.
+- Levels: `[:region]` only. Subregions were dropped for cost before any score was seen: a 19-dimensional state cost 17 minutes for market crashes' 1970s alone.
+
+Built at d2cae50 on augur v0.24.0, after merging structure (f4e163f; suite green, 1368 tests). The planted tests (lattice_regional_test):
+- **Persistence.** With z transient and the tilts persistent (0.9), the grid takes ρ_r = 0.9 and leaves z at the frailty-alone ρ (0); tied, it moves z to 0.9. With z persistent and the tilts transient, it takes ρ_r = 0.
+- **Lock.** With 5 regions of 40 under `:issue-joint`, t61's rule lets the region-noise model's lead over the base reach 11.7-20.2 nats in the first ten learned origins. Under this rule the lead never exceeds 1.6 nats, and the model ends behind in every world.
+
+With the options off, 2026-Q4-r1 reproduces byte for byte (data/runs/logs/repro-r1-regional-t64.log, forecasts sha bdb361c8…).
+
+Runs: both on t62-fixes' command with `:frailty {:regional-sds [0.25 0.5 1.0] :regional-rhos [0.0 0.5 0.8 0.95] :regional-levels [:region] :start :prior-predictive}` (data/runs/t64-*/README.txt):
+- t64-regional adds `:evidence-at :issue-joint`;
+- t64-regional-noij keeps t62-fixes' evidence.
+
+Cost:
+- Each run took 9 h 48 min, at a load average of 80-200 (t63: 46 min).
+- The vector marginal is all of that cost. 5283037 moves it onto arrays: the same numbers to the last bit, about 2× faster (bnm-2oc). The runs started before it.
+
+Logs: data/runs/logs/score-t64-*.txt (folds, world, kind-folds, calibration, alerts). The traces below come from replays at the year country node of market crashes, food, inflation, growth and currency (per-model issued p, the frailty's shift by region, evidence); the scripts are in the session scratchpad.
+
+Year nodes, Brier (+ = better, 90% intervals). t64-regional (`:issue-joint`):
+
+| fold | vs t53-noclim | vs t62-fixes | vs t63-issue | vs t65-gauges |
+|---|---|---|---|---|
+| 2003-06 | +0.0026 [-0.0013, +0.0059] | -0.0005 [-0.0017, +0.0008] | +0.0002 [-0.0009, +0.0012] | -0.0013 [-0.0027, +0.0003] |
+| 2007-09 | -0.0042 [-0.0063, -0.0009] LOSS | -0.0032 [-0.0054, +0.0014] | +0.0024 [-0.0004, +0.0037] | -0.0073 [-0.0103, +0.0019] |
+| 2010-12 | -0.0001 [-0.0015, +0.0013] | +0.0014 [-0.0018, +0.0048] | +0.0008 [-0.0005, +0.0023] | -0.0010 [-0.0034, +0.0017] |
+| 2013-19 | +0.0053 [+0.0018, +0.0088] | -0.0007 [-0.0017, +0.0002] | -0.0001 [-0.0009, +0.0008] | -0.0016 [-0.0032, +0.0008] |
+| 2020-22 | +0.0033 [+0.0009, +0.0060] | +0.0004 [-0.0008, +0.0021] | -0.0008 [-0.0022, +0.0004] | +0.0018 [-0.0011, +0.0051] |
+| pooled | +0.0027 [+0.0009, +0.0049] GAIN | -0.0004 [-0.0013, +0.0005] | +0.0002 [-0.0004, +0.0009] | -0.0013 [-0.0030, +0.0001] |
+| log pooled | +0.0047 [-0.0007, +0.0100] | -0.0046 [-0.0079, -0.0014] | -0.0010 [-0.0037, +0.0014] | -0.0048 [-0.0095, -0.0013] |
+
+t64-regional-noij (t62-fixes' evidence):
+
+| fold | vs t53-noclim | vs t62-fixes | vs t63-issue | vs t65-gauges |
+|---|---|---|---|---|
+| 2003-06 | +0.0030 [+0.0000, +0.0058] | -0.0001 [-0.0009, +0.0007] | +0.0007 [-0.0013, +0.0024] | -0.0009 [-0.0023, +0.0006] |
+| 2007-09 | -0.0033 [-0.0067, -0.0010] LOSS | -0.0023 [-0.0033, -0.0007] LOSS | +0.0032 [-0.0022, +0.0056] | -0.0064 [-0.0094, +0.0003] |
+| 2010-12 | -0.0035 [-0.0065, -0.0007] LOSS | -0.0021 [-0.0046, +0.0007] | -0.0027 [-0.0070, +0.0018] | -0.0044 [-0.0060, -0.0028] LOSS |
+| 2013-19 | +0.0061 [+0.0030, +0.0093] | +0.0001 [-0.0011, +0.0016] | +0.0008 [-0.0003, +0.0017] | -0.0007 [-0.0028, +0.0017] |
+| 2020-22 | +0.0015 [-0.0000, +0.0028] | -0.0015 [-0.0038, +0.0001] | -0.0027 [-0.0064, +0.0002] | -0.0001 [-0.0042, +0.0043] |
+| pooled | +0.0023 [+0.0004, +0.0046] | -0.0007 [-0.0016, +0.0001] | -0.0001 [-0.0014, +0.0012] | -0.0016 [-0.0032, -0.0000] LOSS |
+| log pooled | +0.0045 [-0.0013, +0.0102] | -0.0048 [-0.0082, -0.0014] | -0.0013 [-0.0052, +0.0026] | -0.0051 [-0.0094, -0.0009] |
+
+- **Quarter-lead pooled.**
+  - t64-regional: +0.0001 [-0.0001, +0.0003] against t63-issue and -0.0003 [-0.0006, -0.0000] against t65-gauges.
+  - t64-regional-noij: -0.0000 [-0.0003, +0.0003] against t62-fixes.
+- **Per kind, against the run with the same evidence rule (bnm.world-score).**
+  - t64-regional against t63-issue: food +0.0080 [+0.0014, +0.0151] GAIN, inflation +0.0023 [+0.0003, +0.0058] GAIN, growth collapses -0.0017 [-0.0037, -0.0002] (a loss), market crashes -0.0040 [-0.0109, +0.0029]. No other kind's interval excludes 0.
+  - t64-regional-noij against t62-fixes: losses on growth -0.0017 [-0.0036, -0.0003], currency -0.0015 [-0.0028, -0.0004] and inflation -0.0008 [-0.0016, -0.0001]; market crashes -0.0073 [-0.0143, +0.0016].
+- **Against t65-gauges (the base of record).** t64-regional equals t63-issue on the 10 kinds without leading gauges. It loses market crashes -0.016 [-0.037, +0.003] and growth -0.0018 [-0.0037, -0.0003], and gains inflation +0.0023. The leading gauges reach the 2006-07 crashes (0.29 and 0.35); the regional states do not.
+
+Calibration, country year: mean p and Brier in the order t62-fixes → t63-issue → t65-gauges → t64-regional-noij → t64-regional (score-t64-calibration.txt):
+
+| kind | span | rate | mean p | Brier |
+|---|---|---|---|---|
+| market crashes | 2003-22 | 0.178 | 0.259 → 0.266 → 0.277 → 0.272 → 0.279 | 0.1561 → 0.1638 → 0.1520 → 0.1634 → 0.1678 |
+| market crashes | 1980-2002 | 0.312 | 0.226 → 0.217 → 0.256 → 0.242 → 0.238 | 0.2309 → 0.2358 → 0.2335 → 0.2289 → 0.2256 |
+| market crashes | 2006-07 | 0.957 | 0.280 → 0.233 → 0.318 → 0.272 → 0.250 | 0.5063 → 0.5655 → 0.4505 → 0.5133 → 0.5409 |
+| food | 2003-22 | 0.154 | 0.250 → 0.256 → 0.237 → 0.236 → 0.228 | 0.1592 → 0.1599 → 0.1521 → 0.1579 → 0.1519 |
+| food | 2010-12 | 0.060 | 0.323 → 0.238 → 0.214 → 0.302 → 0.218 | 0.1238 → 0.1001 → 0.0868 → 0.1247 → 0.0896 |
+| food | 2020-22 | 0.415 | 0.119 → 0.128 → 0.142 → 0.100 → 0.116 | 0.3365 → 0.3302 → 0.3275 → 0.3468 → 0.3411 |
+| inflation | 2003-22 | 0.012 | 0.019 → 0.030 → 0.030 → 0.031 → 0.030 | 0.0123 → 0.0161 → 0.0161 → 0.0132 → 0.0137 |
+| inflation | 2006-08 | 0.004 | 0.023 → 0.078 → 0.078 → 0.051 → 0.065 | 0.0053 → 0.0236 → 0.0236 → 0.0074 → 0.0106 |
+| growth | 2003-22 | 0.106 | 0.083 → 0.084 → 0.084 → 0.087 → 0.087 | 0.0966 → 0.0966 → 0.0965 → 0.0983 → 0.0983 |
+| growth | 1980-2002 | 0.063 | 0.090 → 0.090 → 0.102 → 0.092 → 0.091 | 0.0611 → 0.0611 → 0.0617 → 0.0616 → 0.0615 |
+
+The other kinds are within 0.006 of t63-issue in mean p (sovereign 0.048 → 0.054, protest 0.040 → 0.044).
+
+Weights at the year country node, Decembers 2000-08 (≥ 0.15):
+
+| kind | run | 2000-02 | 2003-05 | 2006-08 |
+|---|---|---|---|---|
+| market crashes | t63-issue | `:down` 0.73-0.82 | `:down` 0.77-0.82 | `:down` 0.62-0.75, fiscal 0.18-0.28 |
+| market crashes | t64-regional | fiscal 0.19-0.36, `:down` 0.25-0.36, economy 0.16-0.23 | `:down` 0.56-0.73, fiscal 0.26-0.35 | fiscal 0.48-0.65, `:down` 0.24-0.41 |
+| market crashes | t64-regional-noij | regime 0.94-0.98 | regime 0.59-0.97 | regime 0.47, then all-inputs 0.56-0.74 |
+| inflation | t63-issue | exposure 0.98-1.00 | exposure 0.99-1.00 | exposure 0.99-1.00 |
+| inflation | both t64 runs | exposure 1.00 | exposure 1.00 | exposure 1.00 |
+
+The outlier episodes (mean p at the December origin; the realized rate is in brackets):
+
+| episode | origin (rate) | t62-fixes | t63-issue | t65-gauges | t64-regional-noij | t64-regional |
+|---|---|---|---|---|---|---|
+| food 2007-08 | 2006 (0.418) | 0.500 | 0.500 | 0.550 | 0.470 | 0.470 |
+| | 2007 (0.313) | 0.213 | 0.213 | 0.236 | 0.214 | 0.214 |
+| food 2020-22 | 2020 (0.493) | 0.109 | 0.122 | 0.121 | 0.095 | 0.094 |
+| | 2021 (0.500) | 0.109 | 0.131 | 0.154 | 0.094 | 0.122 |
+| market crashes 2008 | 2006 (0.957) | 0.269 | 0.240 | 0.287 | 0.274 | 0.250 |
+| | 2007 (0.957) | 0.291 | 0.225 | 0.348 | 0.271 | 0.251 |
+| growth collapses | 2007 (0.235) | 0.070 | 0.072 | 0.073 | 0.047 | 0.047 |
+| | 2008 (0.202) | 0.067 | 0.069 | 0.073 | 0.041 | 0.041 |
+| | 2019 (0.554) | 0.078 | 0.078 | 0.078 | 0.085 | 0.085 |
+
+What the grid chose at the year country nodes (frailty.tsv, the most frequent choices):
+- ρ_r: 0.95 at almost every kind (banking, coups, conflict, fiscal, sovereign, war, protest, violence); 0.8 at growth and currency; 0-0.5 at market crashes.
+- σ_r: 1.0 at banking, coups, currency, growth, protest, sovereign and war; 0.5 at conflict, fiscal, inflation and violence; 0.25-0.5 at market crashes.
+
+Wherever there is a record the regional tilts are persistent, which is why ρ_r needed to be its own.
+
+**Alerts at 4:1** (bnm.alerts from structure: alert at p ≥ 0.2, against t65-gauges; score-t64-*-alerts-vs-t65-gauges.txt). Pooled country cost, bench minus run:
+- t64-regional: -0.0098 [-0.0224, +0.0030]. Inflation gains +0.0050 [+0.0009, +0.0105].
+- t64-regional-noij: -0.0106 [-0.0249, +0.0030]. Inflation gains +0.0088 and war +0.0091; it loses food -0.068 [-0.123, -0.025] and sovereign defaults -0.024 [-0.040, -0.010].
+- Both catch 6 of the 22 episodes, as t65-gauges does: fiscal 2019-20, food 2006-07 and crashes 2006-07.
+- Neither catches growth 2007, 2018 or 2019, or food 2020-21.
+
+What it does:
+- **The `:down` lock at market crashes is gone, as built.**
+  - Under t63-issue, `:down`'s cumulative evidence over the base was +3.8 nats in 1976 and +5.3 to +6.9 in 1980-87, at weights of 0.97-1.00.
+  - Under t64-regional it is at -2.2 in 1980 and stays below the base until 1999; its weight is ≤ 0.36 until 2002.
+  - With the regional states in from the first issue, 1976's wave is the frailty's.
+- **But the 2008 crashes are not reached, because no model predicts them.**
+  - The weight went to fiscal (0.48-0.65 in 2006-08, issuing 0.35), and the node issues 0.25 at 2006-07 (t63-issue: 0.24 and 0.23).
+  - `:down` earned back +4.5 nats on the 2000-02 wave, inside the regional states' range (σ_r 0.5 from 1999).
+  - Only the leading gauges (t65-gauges: 0.29 and 0.35) have moved 2006-07.
+- **Inflation's exposure lock stays and grows.**
+  - Exposure (`:down` times openness) holds 1.00 from 1995 in both runs. Its evidence over the base reaches +21 nats in 2002, 14 ahead of the next model (t63-issue: +12, level with contradiction and military).
+  - Its pattern is a regional shock times each country's openness, which varies within a region, so region states cannot absorb it. That needs the slope on exposure inside the regional state.
+  - The inflation gain (+0.0023 against t63-issue) is the frailty's, not the weights'. The calm regional tilts (Europe -0.8 to -1.3, Oceania -1.0 to -1.4 in 2003-08) lower the 2006-08 issues from 0.078 to 0.065: Brier 0.0236 → 0.0106.
+- **Food 2010-12 gains** (+0.0104 against t63-issue in that fold; Brier 0.1001 → 0.0896). From 2012 economy, not all-inputs, took the weight (0.99), issuing 0.20 at 2012 against all-inputs' 0.275.
+
+Losses traced (PLAN principle 9):
+- **Growth collapses 2007-12 (-6.2 and -6.3 ×1000 against t63-issue; the same in both runs).**
+  - From 1993 to 2011 the grid chose z at ρ = 0.8, with σ_r = 1 and ρ_r = 0.8. t63-issue chose ρ = 0.5, except in 2005-06 and 2009-10.
+  - That carried the 2003-05 calm: z -1.8 to -2.2, and every region at -1.0 to -1.9 by 2006-08.
+  - The 2007-08 issues had shifts of -1.60 and -1.71 (t63-issue: -0.62 and -0.63), at a predictive variance of 1.6 against 1.0. They issued 0.047 and 0.041 against 0.072 and 0.069, at rates of 0.235 and 0.202.
+  - With ρ_r its own, the planted test keeps z's ρ where the frailty alone puts it. On the world, once σ_r = 1 was in, the joint grid still preferred ρ = 0.8 for z.
+  - This is section 7's carried persistence, now from the joint choice rather than from tying ρ_r to ρ. The grid's scores at that node were not dumped, so which origins tipped the choice is not traced. Not a code bug.
+- **Food 2020-22 (-11.0 ×1000 against t63-issue).**
+  - In 2016-19 the node chose σ_r = 1.0 at ρ_r = 0.95. It carried calm tilts into the 2020-21 issues: Europe and Oceania -1.5 to -1.9, the Americas and Asia -0.9 to -1.2, Africa 0.
+  - The 2020-21 shock hit regardless of region. The node issued 0.094 and 0.122 (t63-issue: 0.122 and 0.131).
+  - The weight moved from all-inputs (t63-issue: 1.00, issuing 0.134) to economy (0.98, issuing 0.108).
+  - This is t61's carried-tilt mechanism, now at a persistence the record chose. Not a code bug.
+- **Market crashes 2003-06 (-14.7 ×1000) and 2013-19 (-12.6).** These are calm-year over-issues: the rate was 0.02-0.04 in 2003-05 and 0.04-0.09 in 2013-15.
+  - In 2003-04 `:down` issued 0.47 and 0.42, at weights of 0.73 and 0.66 (t63-issue's `:down`: 0.36 and 0.32).
+    - At Dec 2003, its coefficients on the region and subregion states are -0.43 and +0.52 (t63-issue: -0.36 and +0.35). Its mean log odds are -0.14 against -0.59.
+    - The cause: the subregion nodes, whose states `:down` reads, carry region states themselves in t64. So `:down`'s inputs differ, and so does its learned response to them.
+    - The base's intercept is +0.11 higher (0.341 against 0.231). That is its compensation for the larger half variance subtracted while learning (½σ_r²|c|² on top of ½σ²).
+  - In 2013-15 the world model, issuing 0.50-0.57, holds 0.23-0.40 of the weight (t63-issue: 0.19-0.22), because `:down`'s weight went to it and to fiscal.
+  - The averaging follows the issued evidence among models that all over-issue in the calm. The frailty at that node takes ρ = 0 and contributes only its mean-one shift. Not a code bug.
+- **Currency 2003-06 (-4.2 ×1000 in t64-regional, -6.8 in t64-regional-noij).**
+  - The node chose σ_r = 1.0 at ρ_r = 0.8, so the shift's predictive variance at the two-year horizon is 0.88 against 0.38.
+  - The models' intercepts rose to compensate the larger half variance (base p 0.116 against 0.088), while the mean shift barely moved (-0.69 against -0.65).
+  - In the 2003-05 calm (rate 0.000-0.012) the node issued 0.09-0.10 against 0.064.
+  - This is the cost of a large regional variance at a long lag in a calm record. Not a code bug.
+- **Inflation under t64-regional-noij (-0.0008 against t62-fixes).**
+  - Under t62-fixes' evidence, exposure took the weight from history and regime in 1993-94 (0.96, then 1.00). t62-fixes went to all-inputs (0.77-1.00 from 1997).
+  - Exposure then issued 0.089-0.104 before the frailty at 2007-08 (all-inputs: 0.027-0.029).
+  - The traced learn-time evidence ranks exposure first in neither run. The switch therefore comes from the averaging's tempered per-origin weights, not from the raw trace. Which origins moved it is not traced further.
+
+Bugs found on the way:
+- **The vector marginal's cost (bnm-2oc).** Fixed for the lattice in 5283037: bnm.marginal, bit-identical to augur's on 81 random cases and a planted regional run (test/bnm/marginal_test.clj). augur's own copy is unchanged.
+- **The first origins issued with no shared state (bnm-93n).** Fixed under `:start :prior-predictive`. It is not the default, because it changes every frailty run.
+- No bug was found in the runs.
+
+Verdict:
+- **The design does what it was built for.** With the regional states present from the first issue, a model reading region-constant inputs no longer takes the regional shock's evidence. That holds in the planted world and at market crashes, where `:down`'s 1976-99 lock is gone.
+- **On the world it is not better.**
+  - t64-regional ties t63-issue pooled (+0.0002 [-0.0004, +0.0009]; log -0.0010). It gains food and inflation, loses growth, and fails the fold rule against t53-noclim in 2007-09.
+  - Against t65-gauges, the base of record, it is -0.0013 [-0.0030, +0.0001] (log -0.0048 [-0.0095, -0.0013]).
+  - t64-regional-noij fails the fold rule against t62-fixes (2007-09) and against t65-gauges (2010-12).
+- **Why the gains are small.**
+  - The 2006-07 crashes needed a model that predicted them, and only the leading gauges do.
+  - Inflation's lock is a regional shock times openness, which region states cannot absorb.
+  - The regional states' persistence (ρ_r 0.8-0.95, σ_r up to 1) carries calm tilts into growth 2007-08 and food 2020-21.
+- Not adopted (adoption is the user's decision). The options stay in the code, off by default.
+- **Next:**
+  - the regional states stacked on t65-gauges, so the leading gauges meet a lock-free `:down`;
+  - a slope on exposure inside the regional state, for inflation;
+  - the grid's scores at growth's node, to see which origins carry z's ρ to 0.8.
