@@ -116,7 +116,7 @@
     (is (= lg/base-files (lg/check-base (str "data/runs/" lg/base) lg/base-files)) "the files on disk are the base's")))
 
 (deftest the-base's-inputs-are-the-ones-the-issue-reads
-  ;; t65 (as t53) reads the onsets run r7-at-fx, r6-at-fx's command on the
+  ;; t71 (as t53 and t65) reads the onsets run r7-at-fx, r6-at-fx's command on the
   ;; series.tsv with FAOSTAT's prices at their publication lag (bnm-56c.31);
   ;; a command naming a run whose preds are not an input would be refused
   ;; as a stray read at issue time
@@ -128,12 +128,13 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t65-with-the-leading-gauges
-  ;; note to L1, 13 November 2026: t53's command with the publication lags
-  ;; (bnm-x6o), the stable standardizer (bnm-9fg), the joint issued evidence
-  ;; (bnm-e1y) and the leading gauges with their priors from theory
-  ;; (bnm-56c.36); docs/CALIBRATION.md 13
-  (is (= "t65-gauges" lg/base))
+(deftest the-base-of-record-is-t71-with-the-stack
+  ;; note to L1, 13 November 2026 (fourth): t65's command with the series
+  ;; at their true publication (bnm-a1e), rows at risk by the catalogue's
+  ;; rule (bnm-96j), the leading gauges standardized on their history
+  ;; (bnm-11y) and the year node's gauges moving frailty (bnm-v1y);
+  ;; docs/CALIBRATION.md 15-17
+  (is (= "t71-stack" lg/base))
   (is (= "r7-at-fx" lg/known))
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
@@ -144,11 +145,15 @@
     (is (= "stable" (opt "--gauge-std")))
     (is (= "true" (opt "--leading")))
     (is (= "true" (opt "--leading-priors")))
+    (is (= "true" (opt "--real-lags")))
+    (is (= "catalogue" (opt "--at-risk")))
+    (is (= "history" (opt "--lead-std")))
+    (is (= "true" (opt "--frailty-gauges")))
     (is (nil? (opt "--clim-prior")) "bnm-56c.26 not adopted")
     (is (= {:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {}
             :discount-from :data :flow-std :stable :evidence-at :issue-joint}
            (read-string (opt "--set")))
-        "t65-gauges's options; the lattice's default is the registered issues' code")
+        "t71-stack's options, t65-gauges's; the lattice's default is the registered issues' code")
     (testing "the command written to a manifest reads back as the same arguments"
       (is (= (assoc args 1 "r") (lg/manifest-args (lg/command-line args) "r"))))))
 
@@ -222,6 +227,22 @@
       (is (close? 0.0 (get-in s [:recall :hard :wclim])) "climatology lists CCC")
       (is (close? 1.0 (get-in s [:recall :hard :pers])))
       (is (close? (/ 1.0 3) (get-in s [:recall :hard :last12])) "three tied for one slot"))))
+
+(deftest an-issue-is-scored-on-the-rows-its-command-holds-at-risk
+  ;; t71-stack's --at-risk catalogue (bnm-96j): the base is scored only where
+  ;; the catalogue's rule could date an onset, so an issue is scored with the
+  ;; catalogues its own command built, and an earlier issue with its own
+  (is (= "catalogue" (:at-risk (lg/issue-options (lg/command-line (lg/command "r" 24323))))))
+  (is (nil? (:at-risk (lg/issue-options "jolt -A:tools -M -m bnm.world-run --out ledger-2026-Q4 --without-relations true --end 24323"))))
+  (is (= "24323" (:end (lg/issue-options "jolt -A:tools -M -m bnm.world-run --out x --end 24323"))))
+  (let [cat {:onsets {"AAA" (sorted-set 24300) "BBB" (sorted-set)} :busy {}
+             :from {"AAA" 20000 "BBB" 20000} :through {"AAA" 24400 "BBB" 24400}}
+        rows [{:place "AAA" :origin 24323 :lo 24323 :hi 24335} {:place "BBB" :origin 24323 :lo 24323 :hi 24335}]]
+    (is (= ["AAA" "BBB"] (map :place (lg/score-rows cat rows))) "no rule: both rows at risk")
+    (is (= ["BBB"] (map :place (lg/score-rows (assoc cat :grid [12 0] :refractory 60) rows)))
+        "AAA's onset 23 months before: the rule cannot date another within 60")
+    (is (every? #(false? (:y %)) (lg/score-rows cat rows)))
+    (is (= [false true] (map :hard (lg/score-rows cat rows))) "AAA had an onset in the ten years to the origin")))
 
 ;; --- amendment L1: reproduction on the previous issue's archived inputs ----------------
 

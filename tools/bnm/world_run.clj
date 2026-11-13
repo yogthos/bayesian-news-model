@@ -563,18 +563,30 @@
     (throw (ex-info (str "bnm.world-run: --real-lags takes true or false, not " real-lags) {})))
   (= "true" real-lags))
 
+(defn options
+  "The options of bnm.world-run `args`: {:out \"x\" ...}, values as given."
+  [args]
+  (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v])))
+
+(defn run-catalogues
+  "The catalogues a run with `opts` fits and scores on: --food-outcomes,
+  --at-risk and --catalogue-through applied to bnm.kinds/catalogues. The
+  forward ledger scores an issue on its own command's."
+  [opts]
+  (let [cat-db (when (or (:food-outcomes opts) (:at-risk opts))
+                 (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv") {:real-lags (real-lags-choice opts)}))]
+    (cond-> (-> (food-outcomes (kinds/catalogues) cat-db (:food-outcomes opts))
+                (at-risk cat-db (:food-outcomes opts) (:at-risk opts)))
+      (= "true" (:catalogue-through opts)) catalogues-through)))
+
 (defn -main [& args]
   (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay leak-fixes clim-prior] :as opts}
-        (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+        (options args)
         graph (:graph (model-choice opts))
         out (or out "world")
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
-        cat-db (when (or (:food-outcomes opts) (:at-risk opts))
-                 (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv") {:real-lags (real-lags-choice opts)}))
-        cats (cond-> (-> (food-outcomes (kinds/catalogues) cat-db (:food-outcomes opts))
-                         (at-risk cat-db (:food-outcomes opts) (:at-risk opts)))
-               (= "true" catalogue-through) catalogues-through)
+        cats (run-catalogues opts)
         ks (if kinds (str/split kinds #",") (sort (keys kinds/tiers)))
         graph (if graph (read-graph graph) {})
         parents (parents-of graph ks)

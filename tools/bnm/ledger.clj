@@ -2,7 +2,7 @@
   "The forward ledger (docs/PLAN.md 0.1; the registration in
   docs/PHASE-CHANGES.md, 11 November 2026, and its amendment L1). Each
   quarter the frozen base (the world without relations; the base of record
-  is t65-gauges, note to L1 of 13 November 2026) issues every kind, place and window at the quarter's
+  is t71-stack, the fourth note to L1 of 13 November 2026) issues every kind, place and window at the quarter's
   last month, from the data on disk at the issue date, to
   registered/ledger/<issue>/, with its hashes; nothing is refit between
   issue and outcome, and an issue is never edited. Later, when a window's
@@ -36,7 +36,8 @@
   kind and scale already scored (registered in `scored`, on disk, or ever
   committed); refuses a window whose outcomes are not published
   (`published?`); scores the issue's country rows that are at risk and
-  covered (bnm.lattice-banking/onset-in?, as the base is scored): Brier
+  covered (bnm.lattice-banking/onset-in?, as the base is scored, on the
+  catalogues of the issue's own command, `issue-catalogues`): Brier
   and log loss and skill against the frozen benchmarks, and the watch-list
   measure (top-10 recall on hard onsets, bnm.watchlist) for the base,
   persistence, climatology and the last 12 months. Writes
@@ -59,14 +60,16 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t65-gauges")
+(def base "t71-stack")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
 
 (def inputs
   "Every file the base reads (recorded by running it, 11, 12 and 13
-  November 2026)."
+  November 2026; t71-stack's --real-lags are code, bnm.named/real-lags,
+  and its --at-risk rules bnm.kinds/at-risk-rules and data/slow/
+  series.tsv's inflation)."
   ["data/derived/econ-coverage.csv" "data/derived/econ-events.csv" "data/derived/fiscal.csv"
    "data/derived/jst-credit-gap.csv" "data/derived/lattice-annual.csv" "data/derived/lattice-quarterly.csv"
    "data/derived/political-annual.csv" "data/derived/political-long.csv" "data/derived/political-states.csv"
@@ -75,28 +78,30 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t65-gauges/<kind>/
-  forecasts.tsv (13 November 2026: t53-noclim's command with the
-  publication lags, the stable standardizer, the joint issued evidence and
-  the leading gauges with their priors from theory, at 7dc9281, on
-  t53-noclim's inputs; note to L1), by SHA-256."
+  "The base of record's forecasts, data/runs/t71-stack/<kind>/
+  forecasts.tsv (13 November 2026: t65-gauges's command with the series
+  at their true publication, rows at risk by the catalogue's rule, the
+  leading gauges standardized on their history and the year node's gauges
+  moving frailty, at 5f7dd70, on t53-noclim's inputs; the fourth note to
+  L1), by SHA-256."
   {"banking_crisis" "ec1ae91721d82989600e7625237e1b25c3e311509212cf5a4af7afd317488702"
-   "conflict_onset" "b45b90160b256f643fbe5c3f6bce294cf317d6322476bbeae3fb63481722364d"
-   "coup" "6b86784fe0c98e3a0602d40b7d1bd8e40be427646530d40cf4fa5101bc8aaad1"
-   "currency_crisis" "3313460d1baf381f1497b1ea8b4f50c306fa965bd5f62a29b3ec2a1a6c18ce49"
-   "fiscal_consolidation" "e73471ccd1832c2d79080a41b1e1f78e97430640d7110a22c5005103abd79f9d"
-   "food_price_shock" "31b4b9843e7dc7653606872db896558802749e34ca68fd75b41605b33575db7d"
-   "growth_collapse" "22ce3e966ae8eecc7807797e90fb0847437da46c1e5bf0783532200d626a9456"
-   "inflation_crisis" "0492c49ec92f724d2075bbe28cc4188e40b840fa1ec28d37986ae93901193c98"
-   "market_crash" "c0c527b8034a84488551e38cdef388554d123f8cf72beac872080f06f15d3a14"
-   "protest_surge" "359475ccb9da3e216da545378a4e6505eb760008e0e787593a1b7cf93569ba69"
-   "sovereign_default" "50682a4d751d05cafc5cfc4024f620c960dfc511d9bd4bcd96a83a3229a06aca"
-   "violence_surge" "e9c9976a71f307b2702f9e834fb67f95a2b50e1cb7988d1c15e809219d8c84fd"
-   "war_onset" "13ffbe11e67cbbc1a780f211906071ec2889fa9e0d9513c5ad40fbb469fa7c64"})
+   "conflict_onset" "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442"
+   "coup" "7d9e32befa2d67f7ab67b08bae3d08b8b3938db257439337815065cc357a292d"
+   "currency_crisis" "854a4842451c809bf7f7f2978cc91a7187acc77613649f5aba907b011a9ae8bd"
+   "fiscal_consolidation" "778d9b2be42d12002307bf15111224b26ab7ec078c3b4c68c88f18a764d71620"
+   "food_price_shock" "32a8c9c7a058a94c792bde3e94b8f6dc645ee33c833ec009dd4b6d12c7bc2fc3"
+   "growth_collapse" "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c"
+   "inflation_crisis" "28d25338c8848c9507f6d86a4bec8ffa8af854648ee37da4fa62ebb3872be3c5"
+   "market_crash" "404f381fdb47e404bdb364044d554fd64b93d159e6a66552841348d5b1c2b1af"
+   "protest_surge" "98f6a3d14855b3ba0f5eda59b4975de2a13e55b19d8963c36191e496a1dcd373"
+   "sovereign_default" "e6175b0a0cfa9ba6bc90f78c9efaf5f53a41d9776533c89c58ecdec8453e5d30"
+   "violence_surge" "ea2c590835d306a47e3891ae0de3dfdd16b916f53391182079c075f7d2cc3e86"
+   "war_onset" "25fafb6577491beb364e3809352ea2fb38bec4cc416b71596abba0f77e9c70b1"})
 
 (def base-inputs
-  "The SHA-256 of every input t65-gauges was built on (t53-noclim's: the
-  leading gauges are series of data/slow/series.tsv): a run on these must
+  "The SHA-256 of every input t71-stack was built on (t53-noclim's and
+  t65-gauges's: the leading gauges are series of data/slow/series.tsv, the
+  publication lags and at-risk rules are code): a run on these must
   reproduce it."
   {"data/derived/econ-coverage.csv" "863b42e001b45e7eb43569b3f48eb92035d62821f3a3ea9cd543d38c1c2a4c7f"
    "data/derived/econ-events.csv" "4070fd4d07cfb6134781a40aabb36e00b6b2e07293f8987041e58be5065e2f0f"
@@ -407,11 +412,11 @@
   (the catalogues rebuilt after the gazetteer fix, lapsed sources kept,
   bead bnm-8ul) on the series.tsv corrected for look-ahead (bnm-56c.23).
   The first issue, and t48 and t49, read r6-at; 2026-Q4-r1 and t50
-  r6-at-8ul; t52 r6-at-fx; t53 and t65 r7-at-fx."
+  r6-at-8ul; t52 r6-at-fx; t53, t65 and t71 r7-at-fx."
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t65-gauges's: t51b's command (the
+  "The base's bnm.world-run arguments, t71-stack's: t51b's command (the
   leak fixes, bnm-56c.23; PWT at 36 months, bnm-h8d; learning at the
   offset mixture, bnm-56c.22) with the flows standardized from a node's
   first resolved outcome (:flow-std-from :resolved, bnm-56c.33), t57's
@@ -421,11 +426,17 @@
   and :flow-std :stable, bnm-9fg), the evidence as the joint predictive
   issued per origin (:evidence-at :issue-joint, bnm-e1y), and the leading
   gauges with their priors from theory (--leading, --leading-priors,
-  bnm-56c.36); its quarters pooled with `known`."
+  bnm-56c.36), every slow series at its true publication (--real-lags,
+  bnm-a1e), rows at risk only where the kind's catalogue rule could date
+  an onset (--at-risk catalogue, bnm-96j), the leading gauges standardized
+  on their own history (--lead-std history, bnm-11y) and the year node's
+  world gauges moving frailty (--frailty-gauges, bnm-v1y); its quarters
+  pooled with `known`."
   [out end]
   ["--out" out "--without-relations" "true" "--end" (str end) "--known" known
    "--leak-fixes" "true" "--pwt-stale" "true" "--lag-stale" "true" "--gauge-std" "stable"
-   "--leading" "true" "--leading-priors" "true"
+   "--leading" "true" "--leading-priors" "true" "--real-lags" "true" "--at-risk" "catalogue"
+   "--lead-std" "history" "--frailty-gauges" "true"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"])
 
 (defn command-line
@@ -724,6 +735,31 @@ To check by hand:
                {:hard (into {} (for [s sources] [s (recall hard s)]))
                 :all (into {} (for [s sources] [s (recall rows s)]))})}))
 
+(defn issue-options
+  "The bnm.world-run options of an issue's manifest :command."
+  [command]
+  (wr/options (manifest-args command "x")))
+
+(defn issue-catalogues
+  "The catalogues issue `command` was run on (bnm.world-run/
+  run-catalogues): under --at-risk catalogue (t71-stack, bnm-96j) each
+  kind's rule for when it can date an onset, so the issue is scored on the
+  rows its base is scored on."
+  [command]
+  (wr/run-catalogues (issue-options command)))
+
+(defn score-rows
+  "The rows of one kind (`rows`, {:place :origin :lo :hi}) its catalogue
+  `cat` scores: at risk and covered (bnm.lattice-banking/onset-in?, as the
+  base is scored), with :y and :hard (no onset in the ten years to the
+  origin)."
+  [cat rows]
+  (vec (keep (fn [{:keys [place origin lo hi] :as r}]
+               (let [y (#'lb/onset-in? cat place origin lo hi)]
+                 (when (some? y)
+                   (assoc r :y y :hard (wl/hard? (get-in cat [:onsets place] (sorted-set)) origin)))))
+             rows)))
+
 (defn- today-month []
   (date-month (str/trim (:out (sh/sh "date" "+%Y-%m-%d")))))
 
@@ -750,7 +786,7 @@ To check by hand:
         ks (check-kinds (some-> kinds (str/split #",")) all-ks)
         rel (fn [kd] (str dir "/scores/" (name scale) "/" kd ".edn"))
         _ (check-unscored {:scored scored :issue id :scale scale :kinds ks :path-of rel :repo "."})
-        cats (kinds/catalogues)
+        cats (issue-catalogues (:command (read-manifest id)))
         now (today-month)
         by-kind (group-by :kind rows)
         unpublished (remove #(published? (cats %) (by-kind %) now) ks)]
@@ -758,11 +794,7 @@ To check by hand:
       (throw (ex-info (str "bnm.ledger: outcomes not yet published for " (vec unpublished) "; refusing") {:kinds unpublished})))
     (doseq [kd ks
             :let [cat (cats kd)
-                  scored-rows (vec (keep (fn [{:keys [place origin lo hi] :as r}]
-                                           (let [y (#'lb/onset-in? cat place origin lo hi)]
-                                             (when (some? y)
-                                               (assoc r :y y :hard (wl/hard? (get-in cat [:onsets place] (sorted-set)) origin)))))
-                                         (by-kind kd)))
+                  scored-rows (score-rows cat (by-kind kd))
                   res (assoc (score-cell scored-rows {:k k}) :kind kd :scale scale :issue id :scored-month now :k k
                              :unscored (- (count (by-kind kd)) (count scored-rows))
                              :rows (mapv #(select-keys % row-keys) scored-rows))]]
