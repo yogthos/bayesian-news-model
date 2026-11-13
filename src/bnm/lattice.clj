@@ -1192,6 +1192,12 @@
    integrates a model's coefficients on its own, so a model unsure of an
    input that varies across the places (an exposure input at its first
    reading) is paid or rewarded for it once per place,
+   :evidence-at :issue-joint (bnm-e1y), the joint predictive each model
+   issued for an origin's rows: its coefficients as they stood at the
+   origin and the origin's shock as issued, integrated over the rows
+   together (augur's joint-score), so the evidence is the issued
+   forecast's prequential score, with no hindsight and one count per
+   origin; each pending row keeps the models' state at issue (:ist),
    :up-net-of-downscale, a node with :downscale passes up its log odds
    less the part of its offset that came down (bnm-56c.2: otherwise the
    coarser node reads its own forecast back through the finer states),
@@ -1298,6 +1304,9 @@
                        ;; :frailty (recursive step 3b): the node's common shock, one per origin
                        fcfg (frailty-config spec)
                        rows (learning-rows (map #(cond-> (select-keys % [:x :y :o :os]) (:lp %) (assoc :issued (:lp %))
+                                                   ;; bnm-e1y, :evidence-at :issue-joint: the models as they
+                                                   ;; issued the row, one value for the origin's rows
+                                                   (:ist %) (assoc :issue-state (:ist %))
                                                    ;; the origin's shared shock, as issued: the rows of one
                                                    ;; origin are learned jointly with it (augur's :shared)
                                                    (:shared %) (assoc :shared (:shared %))
@@ -1533,10 +1542,14 @@
                                                            ;; the error fed back is the state's (the reference's p
                                                            ;; under :state-from); :lp each model's predictive at issue;
                                                            ;; :regime-at-issue a slot for the regime layer
-                                                           (for [{:keys [place x o os p target ref issued clim frailty ez]} made :when target]
+                                                           (for [{:keys [place x o os p target ref issued clim frailty ez]} made :when target
+                                                                 :let [ist (d/issue-state model)]]
                                                              (cond-> {:place place :origin t :x x :o o :p (if ref (:p ref) p) :y (:y target) :known-at (:known-at target)
                                                                       :regime-at-issue nil}
                                                                issued (assoc :lp issued)
+                                                               ;; bnm-e1y: the models' state at issue, for the
+                                                               ;; origin's joint issued predictive
+                                                               (= :issue-joint (:evidence-at spec)) (assoc :ist ist)
                                                                ;; bnm-56c.27: the climatology it was issued at
                                                                (and clim (:clim-learn spec)) (assoc :clim clim)
                                                                ;; bnm-56c.22: the offsets issued over, learned at

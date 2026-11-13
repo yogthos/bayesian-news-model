@@ -1979,3 +1979,112 @@
         (is (< (second (diag b)) 1.0))
         (is (not= 0.0 (second (augur.dynamic/means (lt/model b :month :country :all)))))))
     (is (thrown? clojure.lang.ExceptionInfo (lt/run (assoc (spec w) :end 30 :discount-from :rows))))))
+
+;; --- bnm-e1y: the averaging's evidence as the joint predictive each model issued ---
+
+(defn- lead-world
+  "`n` places, year origins from month 11, outcomes known `lag` months
+  after. Each year a common shock z_y (sd 1, iid) moves every place's log
+  odds about -1.5, and, with `hind` > 0, a time-common h_y = ±1 times hind
+  times a sign that flips every `era` years. Two relation inputs: a
+  leading gauge z_y + noise (sd 0.3), known at the origin (the :lead
+  model), and h_y (the :hind model, whose sign it can only have learned
+  from the era before the one it forecasts, unless it is scored once later
+  rows have taught it the current era's). With `lead?` false the shock is
+  left out. The :lead coefficient starts unsure (variance 16, as a late
+  node's after bnm-jnw's discount). Models base, lead and hind; the
+  frailty on. `extra` merged in."
+  [{:keys [n lead? hind era lag disc] :or {lag 36 era 3 disc 0.998}} extra]
+  (let [g (m/rng 41)
+        yrs 41
+        z (vec (repeatedly yrs #(m/normal! g)))
+        gauge (mapv #(+ % (* 0.3 (m/normal! g))) z)
+        h (vec (repeatedly yrs #(if (< (m/next-double! g) 0.5) -1.0 1.0)))
+        sign (fn [y] (if (even? (quot y era)) 1.0 -1.0))
+        places (mapv #(str "P" %) (range n))
+        yr (fn [t] (quot (inc t) 12))
+        ys (into {} (for [c places y (range yrs)]
+                      [[c y] (< (m/next-double! g) (m/expit (+ -1.5 (if lead? (z y) 0.0) (* hind (sign y) (h y)))))]))]
+    (lt/run (merge {:scales [{:name :year :per 12 :horizon 12 :discount disc}]
+                    :levels [[:country places]]
+                    :parent {} :start 0 :end 479 :forget 0.995
+                    :target (fn [_ place t] {:y (ys [place (yr t)]) :known-at (+ t lag)})
+                    :gauges (fn [_ _ _] [])
+                    :gauge-width {:year 0}
+                    :relations (fn [_ _ t] {:x [(gauge (yr t)) (h (yr t))] :reads []})
+                    :relation-width {:year 2}
+                    :relation-groups {:year {:lead [0] :hind [1]}}
+                    :only #{:base :lead :hind}
+                    ;; the lead input is the node's fifth (after the intercept and three contradiction summaries)
+                    :prior (fn [_ _ _] {4 [0.0 16.0]})
+                    :flow-std-from :resolved
+                    :frailty {:rhos [0.0 0.6] :sds [0.0 0.5 1.0]}}
+                   extra))))
+
+(defn- weight-of
+  "Model g's weight at each origin from the first whose weights were moved
+  by learned rows (outcomes known 36 months on; before, the weights are
+  even)."
+  [r g]
+  (vec (drop 7 (map #(double (get (second %) g 0.0)) (get-in r [:weights [:year :country]])))))
+
+(deftest bnm-e1y-the-best-issued-forecaster-gains-the-weight
+  ;; the §11 pattern (docs/CALIBRATION.md 11, loss 2): a model with a real
+  ;; leading input but an unsure coefficient is the best forecaster as
+  ;; issued, and the current rules keep it out. Scored at learn time
+  ;; (default) or per row as issued (:issue) its unsure coefficient is paid
+  ;; once per place at its first origins; at learn time each period's rows
+  ;; given the ones before (:sequential), the hindsight model, which has
+  ;; meanwhile learned the current era's sign, takes the weight. Scored by
+  ;; the joint predictive each model issued for an origin, the leading
+  ;; model gains it
+  (let [w {:n 150 :lead? true :hind 1.2}
+        lead (fn [ev] (weight-of (lead-world w {:evidence-at ev}) :lead))
+        late (fn [ws] (let [h (drop (quot (count ws) 2) ws)] (/ (reduce + h) (count h))))]
+    (doseq [ev [nil :issue :sequential]]
+      (is (< (apply max (lead ev)) 0.1) [ev (apply max (lead ev))]))
+    (let [j (lead :issue-joint)]
+      (is (> (late j) 0.6) (late j))
+      (is (> (last j) 0.5) (last j)))
+    (testing "the hindsight model holds it under :sequential"
+      (is (> (late (weight-of (lead-world w {:evidence-at :sequential}) :hind)) 0.5)))))
+
+(deftest bnm-e1y-a-model-that-fits-only-in-hindsight-gains-no-weight
+  ;; no shock and no leading input; the node discounts fast (0.95), so the
+  ;; hind model's coefficient follows the era: as issued it reads the
+  ;; previous era's sign and has no skill, while at learn time, once it has
+  ;; learned two thirds of the current era, it looks skilful. (Its first
+  ;; informed origins, while its coefficient is still unsure, it is a
+  ;; common shock's extra variance and scores as one: the first few origins
+  ;; are left out.)
+  (let [w {:n 60 :lead? false :hind 1.2 :disc 0.95}
+        hind (fn [ev] (weight-of (lead-world w {:evidence-at ev}) :hind))
+        after (fn [ws] (drop 5 ws))]
+    (is (> (apply min (after (hind :sequential))) 0.9) (hind :sequential))
+    (is (< (apply max (after (hind :issue-joint))) 0.05) (hind :issue-joint))))
+
+(deftest bnm-e1y-joint-evidence-is-bounded-per-origin
+  ;; exposure-spec's world with the base and the exposure model alone (see
+  ;; bnm-56c-20-2-the-averaging-counts-the-loaded-shock-once): scored per row
+  ;; the loaded shock's pattern is evidence once per place; scored jointly as
+  ;; issued, with the loading shared, an origin moves the averaging about
+  ;; as much at 150 places as at 30
+  (let [only {:only #{:base :exposure}}
+        jt {:evidence-at :issue-joint}
+        gaps (fn [n cfg] (evidence-gaps n 0.5 1.0 (merge cfg only)))
+        weight (fn [n cfg] (apply max (map (comp :exposure second) (get-in (exposure-world n 0.5 1.0 (merge cfg only)) [:weights [:year :country]]))))
+        on30 (gaps 30 (merge with-exposure jt)) on150 (gaps 150 (merge with-exposure jt))
+        off150 (gaps 150 frail)]
+    (is (< (mean-abs on150) (* 0.2 (mean-abs off150))) [(mean-abs on150) (mean-abs off150)])
+    (is (<= (mean-abs on150) (* 1.5 (mean-abs on30))) [(mean-abs on30) (mean-abs on150)])
+    (is (< (apply max (map #(Math/abs (double %)) on150)) 5.0))
+    (testing "and no lock: the frailty alone locks above 0.99"
+      (is (> (weight 150 frail) 0.99))
+      (is (< (weight 150 (merge with-exposure jt)) 0.99)))))
+
+(deftest bnm-e1y-pending-rows-keep-the-state-they-were-issued-from
+  (let [r (late-run {:evidence-at :issue-joint})
+        off (late-run {})]
+    (is (= :issue-joint (get-in r [:models [:year :country] :evidence-at])))
+    (is (= (take 6 (:forecasts off)) (take 6 (:forecasts r))) "the same until a row is learned")
+    (is (not= (lt/weights off :year :country) (lt/weights r :year :country)))))
