@@ -135,11 +135,21 @@
 (defn- standardizer
   "A function of [t raw-vector] giving the vector standardized by the
   means and spreads of the values at origins before t, capped at 5;
-  `samples` are [t vector] pairs over all units. nil entries are 0."
-  [samples]
+  `samples` are [t vector] pairs over all units. nil entries are 0.
+  mode :stable (bnm-9fg, :gauge-std) keeps Welford's running mean and sum
+  of squared deviations and reads a spread under 1e-9, or under 1e-8 of
+  the level, as none (z 0): without it a gauge flat until t (world3 at 0
+  before a kind's first known onset) has the 1e-12 variance floor for its
+  spread and its first move lands on the cap at every place."
+  ([samples] (standardizer samples nil))
+  ([samples mode]
+  (when-not (contains? #{nil :stable} mode)
+    (throw (ex-info "bnm.lattice-banking: :gauge-std takes :stable" {:gauge-std mode})))
   (let [by-t (into (sorted-map) (group-by first samples))
         width (count (second (first samples)))
-        ;; running sums through each origin
+        stable (= :stable mode)
+        ;; running sums through each origin (under :stable s holds the
+        ;; means and ss the sums of squared deviations)
         stats (loop [[[t xs] & more] (seq by-t) n (double-array width) s (double-array width) ss (double-array width) acc (sorted-map)]
                 (if-not t
                   acc
@@ -147,7 +157,11 @@
                     (doseq [[_ v] xs]
                       (dotimes [j width]
                         (when-let [x (nth v j)]
-                          (aset n j (inc (aget n j))) (aset s j (+ (aget s j) x)) (aset ss j (+ (aget ss j) (* x x))))))
+                          (aset n j (inc (aget n j)))
+                          (if stable
+                            (let [m (aget s j) m' (+ m (/ (- x m) (aget n j)))]
+                              (aset s j m') (aset ss j (+ (aget ss j) (* (- x m) (- x m')))))
+                            (do (aset s j (+ (aget s j) x)) (aset ss j (+ (aget ss j) (* x x))))))))
                     (recur more n s ss acc))))]
     (fn [t v]
       (let [[^doubles n ^doubles s ^doubles ss] (or (some-> (rsubseq stats <= t) first val)
@@ -156,10 +170,16 @@
                    :let [x (nth v j)
                          k (aget n j)]]
                (if (and x (> k 20))
-                 (let [mu (/ (aget s j) k)
-                       sd (Math/sqrt (Math/max 1e-12 (- (/ (aget ss j) k) (* mu mu))))]
-                   (Math/max -5.0 (Math/min 5.0 (/ (- x mu) sd))))
-                 0.0)))))))
+                 (if stable
+                   (let [mu (aget s j)
+                         sd (Math/sqrt (/ (aget ss j) k))]
+                     (if (> sd (Math/max 1e-9 (* 1e-8 (Math/abs mu))))
+                       (Math/max -5.0 (Math/min 5.0 (/ (- x mu) sd)))
+                       0.0))
+                   (let [mu (/ (aget s j) k)
+                         sd (Math/sqrt (Math/max 1e-12 (- (/ (aget ss j) k) (* mu mu))))]
+                     (Math/max -5.0 (Math/min 5.0 (/ (- x mu) sd)))))
+                 0.0))))))))
 
 (def quarter-groups
   "The financial inputs of bnm.named in groups (indices among them), and
@@ -482,7 +502,7 @@
 
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst ext cat units end regimes known quarterly]}]
+  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std]}]
   (let [[_ fin] (nm/financial db wc)
         sub (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u s]))
         reg (into {} (for [s (set (vals sub))] [s (first (geo/parents s))]))
@@ -501,7 +521,7 @@
         ;; each scale's country gauges at its origins, then standardized by the past
         table (into {} (for [{:keys [name] :as s} scales]
                          [name (into {} (for [t (origins s) u countries] [[u t] ((raw name) u t)]))]))
-        std (into {} (for [[name tb] table] [name (standardizer (for [[[_ t] v] tb] [t v]))]))
+        std (into {} (for [[name tb] table] [name (standardizer (for [[[_ t] v] tb] [t v]) gauge-std)]))
         ;; what is known: named's forecast for the window, as log odds (from
         ;; 2000); an aggregate's, the chance any member has a crisis. nil
         ;; elsewhere, where the node starts from climatology
@@ -559,9 +579,10 @@
   "The banking lattice's spec to month `end`, from the data on disk, with
   `known-run`'s named forecasts as what is known. opts :catalogue-through,
   the catalogue's uncovered tail unknown (loop audit Test 7); :leak-fixes,
-  PWT read by its releases (bnm-56c.23, extended-table)."
+  PWT read by its releases (bnm-56c.23, extended-table); :gauge-std
+  :stable, the gauges' standardizer without its flat-history cap (bnm-9fg)."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
         jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
@@ -575,7 +596,7 @@
         ext (extended-table jst-rows (read-pwt) db units (read-annual)
                             (if leak-fixes {:releases (rel/read-releases)} {}))]
     (spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
-           :known (read-known known-run) :quarterly (read-quarterly)}))))
+           :known (read-known known-run) :quarterly (read-quarterly) :gauge-std gauge-std}))))
 
 (defn -main [& args]
   (let [{:keys [out end without coupling known without-at downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))

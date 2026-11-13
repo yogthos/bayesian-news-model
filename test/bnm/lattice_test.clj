@@ -1721,14 +1721,49 @@
 
 (def ^:private with-exposure (assoc-in frail [:frailty :exposure-sds] [0.0 0.5 1.0]))
 
+(defn- e-var
+  "The variance of exposure-spec's exposures across `n` places."
+  ^double [n]
+  (let [es (map #(* 2.0 (/ (double %) (dec n))) (range n))
+        mu (/ (reduce + es) n)]
+    (/ (reduce + (map #(* (- % mu) (- % mu)) es)) n)))
+
+(defn- slope-info
+  "One origin's information on the exposure coefficient (per unit of the
+  input's scale) from `n` places in exposure-spec's world, Gaussian
+  reference: the rows' log odds seen with noise 1/(p(1-p)) at the base
+  rate, the slope state's sd `usd` (0: none) per standardized exposure
+  and z taking the mean, so only the exposures' spread informs it:
+  n var(e) / (noise + n usd^2)."
+  ^double [n usd]
+  (let [p (m/expit -1.5)
+        noise (/ 1.0 (* p (- 1.0 p)))]
+    (/ (* n (e-var n)) (+ noise (* n usd usd)))))
+
 (deftest bnm-56c-20-2-a-shock-loading-on-exposure-is-learned-once
+  ;; the exposure coefficient's variance, 30 places against 150, against
+  ;; slope-info's reference ratio: per place without the loading (4.7),
+  ;; once per origin with it (1.5 at the planted slope's sd). Measured
+  ;; at a fixed slope sd: with the grid the first origins choose no slope
+  ;; (nothing yet pays its price) and teach the coefficient per place.
   (let [off30 (exposure-world 30 0.5 1.0 frail) off150 (exposure-world 150 0.5 1.0 frail)
-        on30 (exposure-world 30 0.5 1.0 with-exposure) on150 (exposure-world 150 0.5 1.0 with-exposure)]
+        fixed (assoc-in frail [:frailty :exposure-sds] [0.5])
+        fix30 (exposure-world 30 0.5 1.0 fixed) fix150 (exposure-world 150 0.5 1.0 fixed)
+        on150 (exposure-world 150 0.5 1.0 with-exposure)
+        near (fn [x ref] (< (Math/abs (- (/ x ref) 1.0)) 0.1))]
     (testing "the scalar frailty alone: the exposure coefficient taught once per place"
-      (is (> (/ (exposure-var off30) (exposure-var off150)) 3.0) [(exposure-var off30) (exposure-var off150)]))
-    (testing "with the loading, once per origin: the variance saturates whatever the places"
-      (is (< (/ (exposure-var on30) (exposure-var on150)) 1.5) [(exposure-var on30) (exposure-var on150)])
-      (is (> (exposure-var on150) (* 5.0 (exposure-var off150)))))
+      (is (> (/ (exposure-var off30) (exposure-var off150)) 3.0) [(exposure-var off30) (exposure-var off150)])
+      (is (near (/ (exposure-var off30) (exposure-var off150)) (/ (slope-info 150 0.0) (slope-info 30 0.0)))))
+    (testing "with the loading, once per origin: the variance follows the reference, far from per place"
+      (is (near (/ (exposure-var fix30) (exposure-var fix150)) (/ (slope-info 150 0.5) (slope-info 30 0.5)))
+          [(exposure-var fix30) (exposure-var fix150) (/ (slope-info 150 0.5) (slope-info 30 0.5))])
+      (is (> (exposure-var fix150) (* 5.0 (exposure-var off150)))))
+    (testing "the slope's sd chosen is the grid's nearest to the planted one (u's sd 1 per unit exposure, 0.58 per sd of it)"
+      (let [planted (Math/sqrt (e-var 150))
+            nearest (apply min-key #(Math/abs (- % planted)) [0.5 1.0])
+            usds (keep (comp :usd val) (get-in on150 [:frailty [:year :country]]))]
+        (is (> (count (filter pos? usds)) 20) (vec usds))
+        (is (every? #(= nearest %) (filter pos? usds)) (vec usds))))
     (testing "the filtered slope tracks the planted one, its sd chosen above 0"
       (let [fl (get-in on150 [:frailty [:year :country]])
             pairs (for [[s {:keys [u]}] fl :when u] [(first u) ((:u on150) ((:yr on150) s))])]
@@ -1749,20 +1784,29 @@
   (let [only {:only #{:base :exposure}}
         sq {:evidence-at :sequential}
         gaps (fn [n cfg] (evidence-gaps n 0.5 1.0 (merge cfg only)))
-        weight (fn [n cfg] (apply max (map (comp :exposure second) (get-in (exposure-world n 0.5 1.0 (merge cfg only)) [:weights [:year :country]]))))
+        weights (fn [n cfg] (map (comp :exposure second) (get-in (exposure-world n 0.5 1.0 (merge cfg only)) [:weights [:year :country]])))
+        weight (fn [n cfg] (apply max (weights n cfg)))
+        ;; the largest move of the weight's log odds from one period to the next
+        jump (fn [n cfg] (let [ls (map #(let [p (min (max % 1e-12) (- 1.0 1e-12))] (Math/log (/ p (- 1.0 p))))
+                                       (drop-while #(< % 1e-9) (weights n cfg)))]
+                           (apply max (map #(Math/abs (- %2 %1)) ls (rest ls)))))
+        first-read (fn [gs] (apply max (map #(Math/abs (double %)) (take 3 gs))))
         off30 (gaps 30 frail) off150 (gaps 150 frail)
-        slope150 (gaps 150 with-exposure)
+        slope30 (gaps 30 with-exposure) slope150 (gaps 150 with-exposure)
         on30 (gaps 30 (merge with-exposure sq)) on150 (gaps 150 (merge with-exposure sq))]
     (testing "the scalar frailty alone: the loaded shock's pattern is evidence once per place, growing with the places, and the weights lock"
       (is (> (mean-abs off150) (* 2.0 (mean-abs off30))) [(mean-abs off30) (mean-abs off150)])
       (is (> (weight 150 frail) 0.99)))
-    (testing "the loading alone: the coefficient's uncertainty at its first reading is still paid once per row (each row integrates it on its own)"
-      (is (> (apply max (map #(Math/abs (double %)) slope150)) 10.0)))
-    (testing "the loading with each row given the ones before it (:evidence-at :sequential): bounded per origin, not growing with the places, and no lock"
+    (testing "the loading, rows scored independently: the coefficient's uncertainty at its first reading is paid once per row (each row integrates it on its own), at least in proportion to the rows"
+      (is (> (first-read slope150) (* 5.0 (first-read slope30))) [(first-read slope30) (first-read slope150)]))
+    (testing "the loading with each row given the ones before it (:evidence-at :sequential): bounded per origin, not growing with the places, and no origin locks the weights"
       (is (< (mean-abs on150) (* 0.2 (mean-abs off150))) [(mean-abs on150) (mean-abs off150)])
       (is (<= (mean-abs on150) (mean-abs on30)) [(mean-abs on30) (mean-abs on150)])
       (is (< (apply max (map #(Math/abs (double %)) on150)) 5.0))
-      (is (< (weight 150 (merge with-exposure sq)) 0.95)))))
+      ;; the weight moves by what each origin's bounded evidence says; per
+      ;; place it jumps by ten nats an origin
+      (is (< (jump 150 (merge with-exposure sq)) 5.0))
+      (is (> (jump 150 frail) 5.0)))))
 
 (deftest bnm-56c-20-2-no-loading-no-slope
   ;; a world whose shock does not load on exposure keeps the slope's sd at
@@ -1816,3 +1860,287 @@
     (is (= (z own "W") (z par "W")) "the top level issues with its own")
     (is (not= (z own "P0") (z par "P0")))
     (is (every? number? (z par "P29")))))
+
+;; --- recursive step 4 (bnm-56c.35): the frailty from a fresh quarter scale ---
+
+(def ^:private fresh-onsets
+  "The planted episodes' first months: four of eight quarters each."
+  [99 219 339 459])
+
+(defn- fresh-world
+  "`n` places with events by month and no signal of their own: each
+  month's chance moved by +2 log odds through eight quarters from each of
+  `fresh-onsets`, around expit(-5) a month. A year node (window t..t+12,
+  rows known at t+24, after the window has closed and a year more) and,
+  under `quarter-now?`, a frailty-only quarter scale (window t..t+3, rows
+  known at t+6) before it. The year reads one relation, noise the same at
+  every place. 50 years; `perturb` (a month) redraws every event after it
+  from another seed; `extra` merged in."
+  [n quarter-now? extra & [{:keys [perturb]}]]
+  (let [months 600
+        shock (fn [m] (if (some #(and (<= % m) (< m (+ % 24))) fresh-onsets) 2.0 0.0))
+        draw (fn [seed] (let [g (m/rng seed)]
+                          (into {} (for [c (range n) mo (range (+ months 24))]
+                                     [[c mo] (< (m/next-double! g) (m/expit (+ -5.0 (shock mo))))]))))
+        a (draw 41)
+        ev (if perturb (let [b (draw 43)] (fn [k] (if (> (second k) perturb) (b k) (a k)))) a)
+        places (mapv #(str "P" %) (range n))
+        ix (zipmap places (range))
+        gauge (let [g (m/rng 47)] (vec (repeatedly 60 #(m/normal! g))))
+        any? (fn [place lo hi] (boolean (some #(ev [(ix place) %]) (range (inc lo) (inc hi)))))]
+    (lt/run (merge {:scales (vec (concat (when quarter-now? [{:name :quarter-now :per 3 :horizon 3 :discount 0.995 :frailty-only true}])
+                                         [{:name :year :per 12 :horizon 12 :discount 0.998}]))
+                    :levels [[:country places]]
+                    :parent {} :start 0 :end (dec months) :forget 0.995
+                    :target (fn [scale place t]
+                              (if (= :year scale)
+                                {:y (any? place t (+ t 12)) :known-at (+ t 24)}
+                                {:y (any? place t (+ t 3)) :known-at (+ t 6)}))
+                    :gauges (fn [_ _ _] [])
+                    :gauge-width {:year 0}
+                    :relations (fn [_ _ t] {:x [(gauge (quot (inc t) 12))] :reads []})
+                    :relation-width {:year 1}
+                    :flow-std-from :resolved}
+                   extra))))
+
+(def ^:private fresh-grid {:rhos [0.0 0.6 0.9] :sds [0.0 0.5 1.0]})
+(def ^:private finer (merge fresh-grid {:prior :finer :source :quarter-now}))
+
+(defn- year-z
+  "The shock the year node issued at origin t with, at P0."
+  [r t]
+  (:z (get-in r [:book [:year "P0"] t])))
+
+(deftest bnm-56c-35-the-year-takes-the-fresh-quarter-s-shock
+  ;; the last episode starts at 459; the first year origin six months on
+  ;; is 467. The year's own rows from it are known at 491, the quarter's
+  ;; at 464 and 467
+  (let [own (fresh-world 120 true {:frailty fresh-grid})
+        fresh (fresh-world 120 true {:frailty finer})
+        fl (get-in fresh [:frailty [:year :country]])]
+    (testing "with the quarter's prior the year issues the shock six months in; with its own it cannot"
+      (is (> (year-z fresh 467) 1.0) (year-z fresh 467))
+      (is (< (year-z own 467) 0.3) (year-z own 467)))
+    (testing "the cross coefficient chosen at 467 (after origin 443 resolved) is above 0, and recorded"
+      (is (pos? (:cross (get fl 443))) (get fl 443)))
+    (testing "the frailty-only scale issues nothing: no forecast, book or weights, only its filtered state"
+      (is (not-any? #(= :quarter-now (:scale %)) (:forecasts fresh)))
+      (is (not-any? #(= :quarter-now (first %)) (keys (:book fresh))))
+      (is (not (contains? (:weights fresh) [:quarter-now :country])))
+      (is (seq (get-in fresh [:frailty [:quarter-now :country]]))))))
+
+(deftest bnm-56c-35-a-frailty-only-scale-changes-nothing-else
+  ;; the scale and a cross grid of 0 leave every year forecast and entry
+  ;; as they were
+  (let [without (fresh-world 20 false {:frailty fresh-grid})
+        with (fresh-world 20 true {:frailty fresh-grid})
+        zero (fresh-world 20 true {:frailty (assoc finer :cross [0.0])})]
+    (is (= (:forecasts without) (:forecasts with)))
+    (is (= (:book without) (:book with)))
+    (is (= (:forecasts without) (:forecasts zero)))
+    (is (= (:book without) (:book zero)))))
+
+(deftest bnm-56c-35-a-grid-of-sd-0-changes-nothing
+  (let [off (fresh-world 20 false {})
+        zero (fresh-world 20 true {:frailty (assoc finer :sds [0.0])})]
+    (is (= (mapv :p (:forecasts off)) (mapv :p (:forecasts zero))))))
+
+(deftest bnm-56c-35-no-lookahead
+  ;; every event after month 470 redrawn: nothing issued at or before 470
+  ;; changes, at either scale's filter
+  (let [cut 470
+        a (fresh-world 20 true {:frailty finer})
+        b (fresh-world 20 true {:frailty finer} {:perturb cut})
+        ;; the forecasts issued, not the outcomes (those after the cut are redrawn)
+        upto (fn [r] (map (juxt :scale :place :origin :p) (filter #(<= (:origin %) cut) (:forecasts r))))]
+    (is (= (upto a) (upto b)))
+    (is (not= (map :p (:forecasts a)) (map :p (:forecasts b))) "the redraw is seen after the cut")
+    (is (= (into {} (for [[k byo] (:book a)] [k (subseq byo <= cut)]))
+           (into {} (for [[k byo] (:book b)] [k (subseq byo <= cut)]))))))
+
+(deftest bnm-56c-35-the-source-runs-forward-at-its-own-pace
+  ;; the source's state, filtered at 29, runs to 35 at its own three
+  ;; months a period (two periods at rho 0.5), not the year's twelve; the
+  ;; year's shift is kappa times it less half its stationary variance
+  ;; max(sd^2, kappa^2 sd_src^2), its variance kappa^2 v_src plus the rest
+  (let [fr {:cands [{:rho 0.0 :sd 1.5 :cross 1.0 :m 0.0 :v 2.25 :t nil :score 0.0 :price 2.0}]}
+        src {:cands [{:rho 0.5 :sd 1.0 :m 2.0 :v 0.1 :t 29 :score 0.0 :price 2.0}]}
+        {:keys [m v cross]} (lt/frailty-prior {:prior :finer} fr nil 35 12 {:src src :src-per 3})
+        vs (+ (* 0.0625 0.1) (* 1.0 (- 1.0 0.0625)))]
+    (is (< (Math/abs (- m (- 0.5 1.125))) 1e-12) m)
+    (is (< (Math/abs (- v (+ vs 1.25))) 1e-12) v)
+    (is (= 1.0 cross))))
+
+(deftest bnm-56c-35-bad-options-are-refused
+  (doseq [bad [{:prior :finer} {:prior :finer :source :nope} {:prior :finer :source :year}
+               {:source :quarter-now} {:prior :finer :source :quarter-now :cross [-0.5]}
+               {:prior :finer :source :quarter-now :cross []} {:prior :finer :source :quarter-now :cross :x}
+               {:prior :finer :source :quarter-now :level-sds [0.0 0.1]}]]
+    (is (thrown? clojure.lang.ExceptionInfo (fresh-world 3 true {:end 30 :frailty bad})) (pr-str bad)))
+  (testing "a frailty-only scale needs the frailty"
+    (is (thrown? clojure.lang.ExceptionInfo (fresh-world 3 true {:end 30})))))
+
+(deftest bnm-9fg-a-constant-input-is-not-put-on-the-cap
+  ;; one-pass sqrt(ss/n - m^2) leaves a constant input's spread at rounding
+  ;; noise (1.5e-8 for 0.2 over 153 rows), above the 1e-9 guard, so the next
+  ;; value lands at the cap (docs/LEADING.md 4.3). :stable keeps Welford's
+  ;; mean and sum of squared deviations and guards the spread relative to
+  ;; the level; off, the registered issues' standardizer
+  (let [seen (fn [sd xs] (reduce lt/observe sd xs))
+        const (repeat 153 [0.2])]
+    (is (= [5.0] (lt/standardize (seen (lt/standardizer) const) [0.3])) "the bug, kept off")
+    (is (= [0.0] (lt/standardize (seen (lt/standardizer :stable) const) [0.3])))
+    (testing "a spread of one ulp at the level is no spread"
+      (is (= [0.0] (lt/standardize (seen (lt/standardizer :stable) (concat (repeat 80 [0.2]) (repeat 80 [(Math/nextUp 0.2)]))) [0.3]))))
+    (testing "otherwise the same z as before, unknowns left out"
+      (let [xs (concat (repeat 12 [1.0 nil]) (repeat 12 [3.0 10.0]) [[nil 20.0]] (map (fn [x] [x 4.0]) [1.0 2.0 3.0 4.0]))]
+        (doseq [x [[3.0 0.0] [0.0 15.0] [nil 7.0] [1e6 -1e6]]]
+          (is (every? #(< (Math/abs (double %)) 1e-9)
+                      (map - (lt/standardize (seen (lt/standardizer) xs) x) (lt/standardize (seen (lt/standardizer :stable) xs) x)))
+              (pr-str x)))))
+    (testing "the lattice takes it as :flow-std :stable, nothing else"
+      (let [r (lt/run (assoc (spec (world 1)) :end 60 :flow-std :stable))]
+        (is (:stable (get-in r [:flow-std [:year :country]]))))
+      (is (thrown? clojure.lang.ExceptionInfo (lt/run (assoc (spec (world 1)) :end 30 :flow-std :fast)))))))
+
+(deftest bnm-jnw-no-discount-before-a-node-s-first-data
+  ;; augur's step discounts the coefficients' covariance every period, rows
+  ;; or none, and the lattice steps every node from its start, so a node
+  ;; whose outcomes begin late met its first data with its prior variance
+  ;; times 1/discount^n (docs/LEADING.md 4.2). :discount-from :data steps a
+  ;; node only once it has rows to learn; off, the registered issues'
+  (let [w (world 5)
+        late (fn [sp] (assoc sp :target (let [t0 (:target sp)] (fn [scale place origin] (when (>= origin 240) (t0 scale place origin))))))
+        sp (late (assoc (spec w) :end 239))
+        diag (fn [r] (let [^doubles c (:c (lt/model r :month :country :all)) k (long (Math/round (Math/sqrt (alength c))))]
+                       (mapv #(aget c (+ (* % k) %)) (range k))))
+        before (diag (lt/run sp))
+        fixed (diag (lt/run (assoc sp :discount-from :data)))]
+    (is (> (second before) 10.0) (str "0.99^-240: " before))
+    (is (= (into [4.0] (repeat (dec (count fixed)) 1.0)) fixed) "the declared prior, untouched")
+    (testing "from its first data it learns as before"
+      (let [b (lt/run (late (assoc (spec w) :end 300 :discount-from :data)))]
+        (is (< (second (diag b)) 1.0))
+        (is (not= 0.0 (second (augur.dynamic/means (lt/model b :month :country :all)))))))
+    (is (thrown? clojure.lang.ExceptionInfo (lt/run (assoc (spec w) :end 30 :discount-from :rows))))))
+
+;; --- bnm-e1y: the averaging's evidence as the joint predictive each model issued ---
+
+(defn- lead-world
+  "`n` places, year origins from month 11, outcomes known `lag` months
+  after. Each year a common shock z_y (sd 1, iid) moves every place's log
+  odds about -1.5, and, with `hind` > 0, a time-common h_y = ±1 times hind
+  times a sign that flips every `era` years. Two relation inputs: a
+  leading gauge z_y + noise (sd 0.3), known at the origin (the :lead
+  model), and h_y (the :hind model, whose sign it can only have learned
+  from the era before the one it forecasts, unless it is scored once later
+  rows have taught it the current era's). With `lead?` false the shock is
+  left out. The :lead coefficient starts unsure (variance 16, as a late
+  node's after bnm-jnw's discount). Models base, lead and hind; the
+  frailty on. `extra` merged in."
+  [{:keys [n lead? hind era lag disc] :or {lag 36 era 3 disc 0.998}} extra]
+  (let [g (m/rng 41)
+        yrs 41
+        z (vec (repeatedly yrs #(m/normal! g)))
+        gauge (mapv #(+ % (* 0.3 (m/normal! g))) z)
+        h (vec (repeatedly yrs #(if (< (m/next-double! g) 0.5) -1.0 1.0)))
+        sign (fn [y] (if (even? (quot y era)) 1.0 -1.0))
+        places (mapv #(str "P" %) (range n))
+        yr (fn [t] (quot (inc t) 12))
+        ys (into {} (for [c places y (range yrs)]
+                      [[c y] (< (m/next-double! g) (m/expit (+ -1.5 (if lead? (z y) 0.0) (* hind (sign y) (h y)))))]))]
+    (lt/run (merge {:scales [{:name :year :per 12 :horizon 12 :discount disc}]
+                    :levels [[:country places]]
+                    :parent {} :start 0 :end 479 :forget 0.995
+                    :target (fn [_ place t] {:y (ys [place (yr t)]) :known-at (+ t lag)})
+                    :gauges (fn [_ _ _] [])
+                    :gauge-width {:year 0}
+                    :relations (fn [_ _ t] {:x [(gauge (yr t)) (h (yr t))] :reads []})
+                    :relation-width {:year 2}
+                    :relation-groups {:year {:lead [0] :hind [1]}}
+                    :only #{:base :lead :hind}
+                    ;; the lead input is the node's fifth (after the intercept and three contradiction summaries)
+                    :prior (fn [_ _ _] {4 [0.0 16.0]})
+                    :flow-std-from :resolved
+                    :frailty {:rhos [0.0 0.6] :sds [0.0 0.5 1.0]}}
+                   extra))))
+
+(defn- weight-of
+  "Model g's weight at each origin from the first whose weights were moved
+  by learned rows (outcomes known 36 months on; before, the weights are
+  even)."
+  [r g]
+  (vec (drop 7 (map #(double (get (second %) g 0.0)) (get-in r [:weights [:year :country]])))))
+
+(deftest bnm-e1y-the-best-issued-forecaster-gains-the-weight
+  ;; the §11 pattern (docs/CALIBRATION.md 11, loss 2): a model with a real
+  ;; leading input but an unsure coefficient is the best forecaster as
+  ;; issued, and the current rules keep it out. Scored at learn time
+  ;; (default) or per row as issued (:issue) its unsure coefficient is paid
+  ;; once per place at its first origins; at learn time each period's rows
+  ;; given the ones before (:sequential), the hindsight model, which has
+  ;; meanwhile learned the current era's sign, takes the weight. Scored by
+  ;; the joint predictive each model issued for an origin, the leading
+  ;; model gains it
+  (let [w {:n 150 :lead? true :hind 1.2}
+        lead (fn [ev] (weight-of (lead-world w {:evidence-at ev}) :lead))
+        late (fn [ws] (let [h (drop (quot (count ws) 2) ws)] (/ (reduce + h) (count h))))]
+    (doseq [ev [nil :issue :sequential]]
+      (is (< (apply max (lead ev)) 0.1) [ev (apply max (lead ev))]))
+    (let [j (lead :issue-joint)]
+      (is (> (late j) 0.6) (late j))
+      (is (> (last j) 0.5) (last j)))
+    (testing "the hindsight model holds it under :sequential"
+      (is (> (late (weight-of (lead-world w {:evidence-at :sequential}) :hind)) 0.5)))))
+
+(deftest bnm-e1y-a-model-that-fits-only-in-hindsight-gains-no-weight
+  ;; no shock and no leading input; the node discounts fast (0.95), so the
+  ;; hind model's coefficient follows the era: as issued it reads the
+  ;; previous era's sign and has no skill, while at learn time, once it has
+  ;; learned two thirds of the current era, it looks skilful. (Its first
+  ;; informed origins, while its coefficient is still unsure, it is a
+  ;; common shock's extra variance and scores as one: the first few origins
+  ;; are left out.)
+  (let [w {:n 60 :lead? false :hind 1.2 :disc 0.95}
+        hind (fn [ev] (weight-of (lead-world w {:evidence-at ev}) :hind))
+        after (fn [ws] (drop 5 ws))]
+    (is (> (apply min (after (hind :sequential))) 0.9) (hind :sequential))
+    (is (< (apply max (after (hind :issue-joint))) 0.05) (hind :issue-joint))))
+
+(deftest bnm-e1y-joint-evidence-is-bounded-per-origin
+  ;; exposure-spec's world with the base and the exposure model alone (see
+  ;; bnm-56c-20-2-the-averaging-counts-the-loaded-shock-once): scored per row
+  ;; the loaded shock's pattern is evidence once per place; scored jointly as
+  ;; issued, with the loading shared, an origin moves the averaging about
+  ;; as much at 150 places as at 30
+  (let [only {:only #{:base :exposure}}
+        jt {:evidence-at :issue-joint}
+        gaps (fn [n cfg] (evidence-gaps n 0.5 1.0 (merge cfg only)))
+        weight (fn [n cfg] (apply max (map (comp :exposure second) (get-in (exposure-world n 0.5 1.0 (merge cfg only)) [:weights [:year :country]]))))
+        on30 (gaps 30 (merge with-exposure jt)) on150 (gaps 150 (merge with-exposure jt))
+        off150 (gaps 150 frail)]
+    (is (< (mean-abs on150) (* 0.2 (mean-abs off150))) [(mean-abs on150) (mean-abs off150)])
+    (is (<= (mean-abs on150) (* 1.5 (mean-abs on30))) [(mean-abs on30) (mean-abs on150)])
+    (is (< (apply max (map #(Math/abs (double %)) on150)) 5.0))
+    (testing "and no lock: the frailty alone locks above 0.99"
+      (is (> (weight 150 frail) 0.99))
+      (is (< (weight 150 (merge with-exposure jt)) 0.99)))))
+
+(deftest bnm-e1y-pending-rows-keep-the-state-they-were-issued-from
+  (let [r (late-run {:evidence-at :issue-joint})
+        off (late-run {})]
+    (is (= :issue-joint (get-in r [:models [:year :country] :evidence-at])))
+    (is (= (take 6 (:forecasts off)) (take 6 (:forecasts r))) "the same until a row is learned")
+    (is (not= (lt/weights off :year :country) (lt/weights r :year :country)))))
+
+(deftest bnm-e1y-forgetting-by-a-half-life-in-years
+  ;; :forget is per period, so 0.995 is a half-life of 138 years at a year
+  ;; node and 35 at a quarter node; :forget-half-life h sets each node's
+  ;; forgetting to 0.5^(per / 12h), the same memory in calendar time
+  (let [r (late-run {:forget-half-life 10.0})
+        off (late-run {})]
+    (is (< (Math/abs (- (get-in r [:models [:year :country] :forget]) (Math/pow 0.5 (/ 1.0 10.0)))) 1e-12))
+    (is (< (Math/abs (- (get-in r [:models [:month :country] :forget]) (Math/pow 0.5 (/ 1.0 120.0)))) 1e-12))
+    (is (= (:forget (spec (world 3))) (get-in off [:models [:year :country] :forget])) "without it, the spec's :forget")
+    (is (not= (lt/weights off :year :country) (lt/weights r :year :country)))
+    (is (thrown? clojure.lang.ExceptionInfo (late-run {:forget-half-life 0.0})))))

@@ -21,9 +21,11 @@
   what each node read, and when, is recorded in one shape.")
 
 (defn base
-  "The base poset of a lattice `spec` ({:scales :levels :parent})."
+  "The base poset of a lattice `spec` ({:scales :levels :parent}). A
+  :frailty-only scale (bnm.lattice, recursive step 4) keeps no sections,
+  so it is not in it."
   [{:keys [scales levels parent]}]
-  {:scales (mapv :name scales) :levels levels :parent parent})
+  {:scales (mapv :name (remove :frailty-only scales)) :levels levels :parent parent})
 
 (defn finer
   "The scales finer than `scale`, finest first."
