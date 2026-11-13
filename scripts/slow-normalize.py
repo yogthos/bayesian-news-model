@@ -181,7 +181,9 @@ FRED = {
     "DTWEXBGS": ("world", "finance/usd_broad", "log", "broad trade-weighted dollar"),
     "MORTGAGE30US": ("USA", "finance/mortgage_rate", "id", "30-year mortgage rate"),
     "CSUSHPINSA": ("USA", "finance/house_prices", "log", "Case-Shiller home prices"),
-    "TDSP": ("USA", "finance/dsr_households", "id", "household debt service, % income"),
+    # the Fed's own series, kept apart from BIS's finance/dsr_households
+    # (bnm-a1e: both wrote USA's rows of one variable)
+    "TDSP": ("USA", "finance/dsr_households_fed", "id", "household debt service, % income (Federal Reserve)"),
     "NFCI": ("USA", "finance/conditions", "id", "Chicago Fed financial conditions"),
     "STLFSI4": ("USA", "finance/stress", "id", "St. Louis Fed financial stress"),
     "DRTSCILM": ("USA", "finance/lending_standards", "id", "net banks tightening C&I standards"),
@@ -202,6 +204,12 @@ FRED = {
     "IQ": ("USA", "trade/export_prices", "log", "export price index"),
     "BOPGSTB": ("USA", "trade/goods_services_balance", "id", "trade balance"),
 }
+
+
+# quarterly FRED series, dated at the quarter's first month: the quarter
+# and the months after its end until it is published (ALFRED: TDSP's
+# quarter appears five to six months after its first month)
+FRED_QUARTERLY = {"TDSP": 4}
 
 
 def fred():
@@ -232,6 +240,12 @@ def fred():
         # lags are bnm.named/real-lags, applied by the reader under
         # --real-lags true; this table is left as it is so the base of
         # record reproduces.
+        if sid in FRED_QUARTERLY:
+            for ym, vs in by_month.items():
+                q = (int(ym[5:7]) - 1) // 3 + 1
+                emit(unit, name, "q", period_end("q", "%s-Q%d" % (ym[:4], q)), FRED_QUARTERLY[sid], sum(vs) / len(vs))
+            var(name, tr, "q", "FRED " + sid, desc)
+            continue
         for ym, vs in by_month.items():
             emit(unit, name, freq, period_end("m", ym), 0 if len(vs) > 2 else 1, sum(vs) / len(vs))
         var(name, tr, freq, "FRED " + sid, desc)
