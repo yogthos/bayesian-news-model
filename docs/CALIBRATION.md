@@ -232,3 +232,44 @@ Verdict: the frailty does what bnm-3be asked, with three caveats:
 - It fails the fold rule against t53-noclim in 2007-09, on market crashes' weight-lock path variance and banking crises' carried persistence.
 - It leaves a persistent-level gap on sovereign defaults, and an exposure-weighted common shock on food.
 Not adopted (adoption is the user's decision). The two structural follow-ups are a persistent level component and the exposure loading.
+
+## 8. The persistent level: t58-level (bnm-56c.20.1, bnm-3be)
+
+t57-frailty's command plus `:frailty {:level-sds [0.0 0.1 0.2]}`: a random-walk level per node beside the AR(1) transient, filtered jointly once per origin, σ_L chosen by the same prequential grid at a price of 2 nats (design: docs/RECURSIVE.md step 3c, which also derives why option (b), the intercept's discount reset for per-origin counting, is a no-op: the discount's memory does not depend on the count). At 8143b5d with augur v0.22.0 (data/runs/t58-level/README.txt). With the option off, 2026-Q4-r1 reproduces byte for byte (data/runs/logs/repro-r1-level.log). Logs: data/runs/logs/score-t58-level-*.txt; the traces below are in score-t58-level-trace.txt.
+
+Year nodes, Brier (+ = better, 90% intervals):
+
+| fold | t58-level vs t53-noclim | vs t57-frailty |
+|---|---|---|
+| 2003-06 | +0.0022 [+0.0000, +0.0044] | -0.0002 [-0.0010, +0.0005] |
+| 2007-09 | -0.0029 [-0.0050, -0.0003] LOSS | +0.0003 [-0.0001, +0.0006] |
+| 2010-12 | -0.0021 [-0.0045, +0.0003] | +0.0000 [-0.0003, +0.0004] |
+| 2013-19 | +0.0044 [+0.0017, +0.0071] | -0.0000 [-0.0002, +0.0003] |
+| 2020-22 | +0.0040 [-0.0000, +0.0083] | +0.0001 [-0.0009, +0.0009] |
+| pooled | +0.0022 [+0.0006, +0.0042] GAIN | +0.0000 [-0.0002, +0.0002] |
+
+- Log score pooled: +0.0066 [+0.0012, +0.0129] against t53-noclim, -0.0006 [-0.0015, +0.0004] against t57-frailty.
+- Quarter-lead pooled: -0.00005 [-0.0009, +0.0008] against t53-noclim, -0.00002 [-0.0004, +0.0005] against t57-frailty.
+- Per kind against t57-frailty: sovereign defaults -0.0005 [-0.0010, -0.0002] (log -0.0029 [-0.0057, -0.0007]); banking crises -0.0008 [-0.0017, +0.0002] (log -0.0079 [-0.0153, -0.0001]); violence surges +0.0004 [+0.0000, +0.0008]; every other kind within its interval of 0. Against t53-noclim: sovereign defaults -0.0022 [-0.0035, -0.0012] and banking -0.0014 [-0.0025, -0.0003], both worse than t57-frailty's -0.0017 and -0.0006.
+
+Calibration, country year, mean p (rate) and Brier, t53-noclim → t57-frailty → t58-level:
+
+| kind | 2003-22 rate | mean p | Brier |
+|---|---|---|---|
+| market crashes | 0.178 | 0.326 → 0.286 → 0.286 | 0.1996 → 0.1701 → 0.1702 |
+| food price shocks | 0.154 | 0.183 → 0.247 → 0.247 | 0.1560 → 0.1580 → 0.1580 |
+| growth collapses | 0.106 | 0.087 → 0.083 → 0.083 | 0.0990 → 0.0966 → 0.0966 |
+| banking crises | 0.032 | 0.053 → 0.045 → 0.058 | 0.0317 → 0.0322 → 0.0330 |
+| sovereign defaults | 0.031 | 0.035 → 0.049 → 0.050 | 0.0307 → 0.0324 → 0.0329 |
+| inflation crises | 0.012 | 0.015 → 0.021 → 0.019 | 0.0120 → 0.0122 → 0.0122 |
+
+1980-2002: banking 0.0820 → 0.0800 → 0.0834 (mean p 0.070 → 0.075 → 0.112, rate 0.085), sovereign 0.0680 → 0.0646 → 0.0646, inflation 0.0384 → 0.0373 → 0.0378; the others unchanged.
+
+Where the level was chosen: almost everywhere at the quarter scales (the quarter country nodes at nearly every origin since 2003 for most kinds). At the year country nodes, where the table is scored, it was chosen for banking crises (68 of 150 origins, 17 since 2003), coups (70, none since 2003) and a few others; for sovereign defaults never. The planted test's mechanism works (a level carried, σ_L = 0 when none), but the real calm is not that world.
+
+Losses traced:
+- **Banking crises.** From about 1960 the year country node chose σ_L = 0.2 with the transient at ρ = 0 (all persistence moved to the level). The level followed the Bretton Woods calm down to -2.5 (1968) and the 1980s-90s wave up to +1.4 (1993-96). At a three-period information lag (24-month windows, known 12 months after) and a gain of a fraction of each origin's departure, it was at its highest when the wave ended: the issues of 1997-2004 ran from 0.18 down to 0.08 (t57-frailty: 0.10 down to 0.04) against rates of 0.06 down to 0. That is the 1980-2002 Brier 0.0800 → 0.0834 and 2003-06 -0.0035 against t57-frailty. In 2011-18, with ρ = 0, the transient no longer carries the calm (t57-frailty's ρ = 0.8 did), and the level, at -0.2 to -0.45, carries less of it: 0.08 down to 0.05 issued against t57-frailty's 0.06 down to 0.03. The filter, the lag and the choice behave as specified. This is the risk RECURSIVE step 3c named: a random walk carries a wave into the calm after it for longer than ρ = 0.8 did. Not a bug.
+- **Sovereign defaults.** The year country node's filter is identical to t57-frailty's at every origin (σ_L = 0 throughout: the level never earned its 2 nats in the cumulative score from 1870). The change comes from the region level, which chose σ_L = 0.1 and carried the 1980s debt-crisis wave at +1.2 to +1.4 from 1995 to 2003, still +0.5 in 2008. The countries' forecasts read the region's through the downscaled offset (`:learn-offsets :mixture`), and issue 0.002-0.006 higher in 2000-12. Same mechanism as banking, one level up. Not a bug.
+- **Why the level does not take the 2003-15 calm.** The calm followed the 1980-2002 wave. A random walk has to unwind the wave's level before it can go negative, and with the lag and its gain it reaches the calm's level only after the calm has mostly passed. Its cumulative prequential score since 1870 pays for every such lag, so at the year country node σ_L = 0 wins. The persistent component that would help moves faster than the lag (the fresher quarter scale, step 4) or is a regime state that switches (step 5), not a slow level.
+
+Verdict: the level does nothing for what it was built for. The year nodes score the same as t57-frailty pooled (+0.00001 [-0.0002, +0.0002]) and fail the fold rule against t53-noclim in 2007-09 as t57-frailty does. Sovereign defaults (-0.0005) and banking crises (log -0.008) lose against t57-frailty through a lagged level carrying the 1980s-90s waves into the calm. No bug was found. Option (b) was not run, since as derived it changes nothing (0.998 is already the per-origin equivalent) unless it forgets every coefficient. Not adopted (adoption is the user's decision). The option stays in the code, off by default; `:level-sds` with a price is the harness if a faster level source (step 4's quarters) is fed to it.
