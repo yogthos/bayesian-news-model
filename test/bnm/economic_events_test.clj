@@ -9,6 +9,14 @@
   (is (= #{1990 1999} (ee/inflation-crises {1988 10.0 1989 25.0 1990 45.0 1991 300.0 1992 60.0 1993 12.0 1999 41.0})))
   (is (= #{} (ee/inflation-crises {2000 39.9}))))
 
+(deftest bnm-96j-inflation-barred-months
+  ;; a run's later years and the year after it cannot start a run: their
+  ;; Januaries are barred, every year after one of 40% or more
+  (let [infl {1988 10.0 1989 25.0 1990 45.0 1991 300.0 1992 60.0 1993 12.0 1994 41.0}]
+    (is (= #{(* 12 1991) (* 12 1992) (* 12 1993) (* 12 1995)} (ee/inflation-barred infl)))
+    (is (empty? (filter (ee/inflation-barred infl) (map #(* 12 %) (ee/inflation-crises infl))))
+        "no onset of the rule falls on a barred month")))
+
 (deftest growth-collapses
   ;; growth of output per head more than two standard deviations below the
   ;; country's own previous twenty years (at least fifteen of them), and

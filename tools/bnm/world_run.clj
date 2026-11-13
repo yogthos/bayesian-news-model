@@ -54,6 +54,10 @@
   bnm.lattice-political/food2-sets), --real-lags true (bnm-a1e: every slow
   series at its true publication, bnm.named/real-lags), --lead-std history
   (bnm-11y: the leading gauges standardized against their own history),
+  --at-risk catalogue (bnm-96j: a row is at risk only where its kind's
+  catalogue rule could date an onset in the window, bnm.kinds/at-risk-rules:
+  not within a once-in-n rule's years, not off an annual catalogue's
+  Januaries, not after a year of inflation's run),
   --write-reference true (also data/runs/<out>-ref, the forecasts with the
   reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
@@ -346,6 +350,16 @@
     "monthly" (ee/with-monthly-food cats db)
     (throw (ex-info (str "bnm.world-run: --food-outcomes takes monthly, not " choice) {}))))
 
+(defn at-risk
+  "`cats` under --at-risk: catalogue, each kind's rows at risk only where
+  its catalogue's rule could date an onset (bnm.kinds/with-catalogue-at-risk,
+  bnm-96j; `food` is --food-outcomes); nil, the base's busy months alone."
+  [cats db food choice]
+  (case choice
+    nil cats
+    "catalogue" (kinds/with-catalogue-at-risk cats db food)
+    (throw (ex-info (str "bnm.world-run: --at-risk takes catalogue, not " choice) {}))))
+
 (defn catalogues-through
   "Every catalogue with its uncovered tail unknown (loop audit Test 7)."
   [cats]
@@ -526,9 +540,10 @@
         out (or out "world")
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
-        cats (cond-> (food-outcomes (kinds/catalogues)
-                                    (when (:food-outcomes opts) (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv") {:real-lags (real-lags-choice opts)}))
-                                    (:food-outcomes opts))
+        cat-db (when (or (:food-outcomes opts) (:at-risk opts))
+                 (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv") {:real-lags (real-lags-choice opts)}))
+        cats (cond-> (-> (food-outcomes (kinds/catalogues) cat-db (:food-outcomes opts))
+                         (at-risk cat-db (:food-outcomes opts) (:at-risk opts)))
                (= "true" catalogue-through) catalogues-through)
         ks (if kinds (str/split kinds #",") (sort (keys kinds/tiers)))
         graph (if graph (read-graph graph) {})

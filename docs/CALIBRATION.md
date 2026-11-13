@@ -1062,3 +1062,143 @@ Verdict:
 - **The food-node standardizer fix is correct, but it cannot be adopted alone.** It removes t65's market-crash catch at 2006-08, because that catch rests on 1980s noise through the weight lock. Adopting it needs the weighting step first.
 - **The second food set does not pay.** Food +0.0024 is not significant. Fertilizer learned against its prior, and Dec 2020 rises to 0.161 without reaching 0.2. Its 2020-22 numbers are in-sample for the choice of gauges in any case.
 - Food 2020-21 and growth 2007-08 and 2019 remain missed in every run.
+
+## 16. At-risk sets and growth discrimination (bnm-96j)
+
+### The bug
+
+A row (kind, place, origin t, window (lo, hi]) is at risk when bnm.lattice-banking/onset-in? returns a value. It left out only rows with a busy month in [t-11, lo]. The catalogues have rules that make more rows impossible:
+
+- once in n years: growth collapses and currency crises once in five, fiscal consolidations once in three (tools/bnm/economic_events.clj, bnm.lattice-banking/currency-crises). The year after an onset is busy, the next ones are not, so a year row whose whole 24-month window falls within five years of the last onset was forecast, trained on and scored though it cannot be positive.
+- annual dating: the economic catalogues (growth, currency, inflation, fiscal, sovereign) date every onset in January. The quarter-lead window from a December origin is April to December of the next year, with no January in it, so every December quarter-lead row of these kinds is a certain 0.
+- inflation's run rule: an onset is the first year of a run of 40% or more, so a run's later years, and the year after it, cannot start one. The catalogue marks only the onset year busy.
+
+The quarterly food catalogue (once in four quarters, busy three months) and the mechanical catalogues (market crashes, protest and violence surges: 12 months' cool-off, busy the onset's quarter) have rules too, but no window at any scale fits inside them past the busy months. Banking, conflict, coups, wars and sovereign defaults have no rule beyond their busy months: two onsets may come a quarter apart (war onsets are per conflict).
+
+Audit, country rows at December origins (year) and quarter ends (quarter scales), 2003-2022 (all origins 1870-2022 in brackets). No left-out row is positive at any kind or scale, which checks the rules against the catalogues:
+
+| kind | catalogue rule | busy (at-risk exclusion) | year rows left out | quarter-lead | quarter-w2 | half-decade |
+|---|---|---|---|---|---|---|
+| growth collapses | annual, once in 5 years | 12 months | 341 of 3205 (1027) | 3801 of 12152 | 854 of 11633 | 0 |
+| currency crises | annual, once in 5 years | 12 months | 113 of 3262 (499) | 3548 of 12850 | 281 of 12646 | 0 |
+| fiscal consolidations | annual, once in 3 years | 12 months | 0 | 2538 of 10127 | 0 | 0 |
+| inflation crises | annual, first year of a run of 40%+ | 12 months (not the run) | 15 of 3197 (226) | 3220 of 12710 | 36 of 12667 | 0 (102) |
+| sovereign defaults | annual, none | 12 months | 0 | 3327 of 13314 | 0 | 0 |
+| food price shocks | quarter ends, once in 4 quarters | 3 months | 0 | 0 | 0 | 0 |
+| market crashes, protest and violence surges | quarter starts, 12 months' cool-off | the onset's quarter | 0 | 0 | 0 | 0 |
+| banking, conflict, coups, wars | none | spans | 0 | 0 | 0 | 0 |
+
+The quarter-lead counts are mostly the December rows (annual dating); the rest is the refractory.
+
+### The fix
+
+`--at-risk catalogue` (bnm.world-run/at-risk, off by default) gives each catalogue its rule (bnm.kinds/at-risk-rules): the :grid of months it dates onsets on, the :refractory months after an onset, and for inflation the :barred Januaries after every year of 40% or more (bnm.economic-events/inflation-barred, from the same series the catalogue was built from). onset-in? then also leaves out a row unless some month of its window is on the grid, at least the refractory after the last onset at or before lo, and not barred (bnm.lattice-banking/possible-onset?). The at-risk set then is the set of rows the catalogue could make positive. Fixing the catalogues instead (dropping once-in-n) would change what the kinds are: the rules are the sources' (Laeven and Valencia's five-year window) or declustering chosen in advance, and a second collapse within five years is the same episode.
+
+Tests:
+- bnm-96j-the-at-risk-set-follows-the-catalogue-s-rule (bnm.lattice-banking-test): without the keys the rows stay as before (the bug, kept); with them the five-year rule, the grid and a barred month each leave out the rows they should and keep the rest.
+- bnm-96j-inflation-barred-months: the barred months, and no onset of the rule on one.
+- bnm-96j-at-risk-option: nil leaves the catalogues as they were, catalogue adds the rules (the grid by month under --food-outcomes monthly), anything else is refused.
+- bnm-96j-every-catalogue-keeps-its-declared-rule (on the data): no onset off its grid, inside its refractory or on a barred month.
+
+### Why the growth-collapse year node does not discriminate (t65-gauges)
+
+Country year rows, December origins 2003-2022 (session scratchpad gdiag.clj, lag.clj, replay.clj):
+
+| p bin | rows | mean p | rate | of them refractory |
+|---|---|---|---|---|
+| < 0.05 | 180 | 0.034 | 0.050 | 9 |
+| 0.05-0.10 | 2389 | 0.078 | 0.131 | 221 |
+| 0.10-0.20 | 633 | 0.120 | 0.025 | 111 |
+| 0.20-0.30 | 3 | 0.208 | 0.000 | 0 |
+
+Without the 341 refractory rows the 0.10-0.20 bin still realizes 0.031 (522 rows) against 0.145 below it. The refractory rows are a small part of the inversion.
+
+1. **The refractory rows.** By years since the last onset at the origin: 1 year, p 0.078, rate 0 (170 rows); 2 years, p 0.103, rate 0 (171); 10 or more, p 0.082, rate 0.122. The node raises p right after an episode, where the five-year rule forbids an onset. The `history` group (log years since the last onset, counts in 10 and 30 years), which could carry this, holds weight 0.000 from 2003.
+2. **No discrimination within an origin.** The mean within-origin AUC is 0.524 over the 17 origins with both outcomes (0.542 without the refractory rows); pooled it is 0.464. The spread of p within an origin is 0.005-0.034 (sd). The 2007-08 and 2018-19 waves are global: 33 of the 2009 onsets and 90 of 2020's.
+3. **The level lags the waves.** The mean p per origin correlates with the realized rate at the same origin at -0.19, one and two origins back at -0.35 and -0.38, and four origins back at +0.46. A year row resolves 42 months after its origin (a 24-month window, known 18 months after), so the node learns a wave's level about four years late and issues it in the calm years after: 0.10 at Dec 2003-05, 0.09-0.10 at Dec 2011-12 and 0.107 at Dec 2022, against 0.073-0.081 in the four wave years. Currency crises do the same (+0.85 at four origins back, -0.48 at one); food price shocks lag too (+0.64 at five back).
+4. **Which model holds the weight.** `economy` holds 0.43-1.00 of the year country node from 2003 (1.00 from 2011); `leading` holds at most 0.04. A replay of the kind alone with t65-gauges' options (scratchpad replay.clj; its year forecasts equal the run's at all 3205 rows, max |dp| 0) dumps the models' posterior means at each December (standardized gauges, sd in brackets):
+   - `economy`: log GDP per head +0.10 (0.04) in 2003, +0.14-0.18 from 2012; growth3 +0.14-0.18 (0.04) throughout; inflation +0.02-0.07 (0.06); food inflation -0.30 to +0.16 (0.11-1.1). Richer countries and faster past growth raise p a little, and the slopes hardly move over twenty years. growth3 and log GDP per head come from Maddison read at its release (--leak-fixes): at Dec 2003-09 the latest published year is 2001, at Dec 2010-12 it is 2008, at Dec 2013-17 2010, at Dec 2018-19 2016 and at Dec 2020-22 2018. The national accounts the node reads are two to eight years old, so they cannot date a collapse; with slopes near 0.15 on a standardized input they spread p within an origin by about ±0.01.
+   - `leading`: BAA12 +0.09 to +0.22 (0.11-0.15), curve -0.12 to -0.20, VIX12 +0.02 to +0.16: theory's signs, but the model's weight stays at 0.00-0.04, so the 2007-08 gauges (BAA12 +2.1 and VIX12 +2.5 sd at Dec 2007, §13) do not reach the forecast. This is §12's lock: one origin is one draw, and the leading model has had only the 1990s episodes to earn weight with.
+   - `history`: log years since the last onset -0.25 to -0.13 (0.07), onsets in ten years -0.11 to -0.08. The model reads a recent onset as more risk, the opposite of the five-year rule; it holds no weight.
+
+**Verdict.** The growth year node is a lagged climatology. Its level follows the realized rate about four years back, and nothing within an origin separates countries. The refractory rows add to the inverted calibration but do not make it: the inversion is between origins. No bug was found in the node beyond the at-risk set. What would help is a current input, such as WDI's growth per head read at its own publication (the catalogue already chains it after Maddison) or the leading gauges taking weight. Either is a change to the model, recorded here and not made, since it would be chosen after seeing these scores. There is therefore no t68-growth.
+
+### Run: t68-atrisk
+
+t65-gauges' command plus `--at-risk catalogue`, at 2d05fe8 (data/runs/t68-atrisk/README.txt). The suite is green with the change (1387 tests, data/runs/logs/suite-t68-atrisk.log). With the option off, 2026-Q4-r1 reproduces byte for byte (data/runs/logs/repro-r1-atrisk.log, sha bdb361c8…), and so does t65-gauges' own command (t65-gauges-repro-atrisk, every run file identical; run-t65-gauges-repro-atrisk.log). In t68-atrisk, the eight kinds whose rules never bind past their busy months (banking, conflict, coups, food, market crashes, protest and violence surges, wars) are byte-identical to t65-gauges. Only the five annual economic kinds change.
+
+**Comparability.** The fix changes the scored set: 341 growth, 113 currency and 15 inflation year rows leave it (none of them positive), and so do the December quarter-lead rows of the annual kinds. The paired scores below are on the rows both runs issued, which are t68-atrisk's. On its full set, t65-gauges' year Brier is lower than on the shared rows wherever rows were dropped (growth 0.0965 against 0.1069, currency 0.0352 against 0.0362), because it is credited for forecasting certain zeros. Full-set figures are therefore not comparable across the two runs. Logs: data/runs/logs/score-t68-*.txt and alerts-t68-atrisk-vs-t65-gauges.txt.
+
+Year nodes, Brier (+ = t68-atrisk better, 90% intervals resampling countries and years):
+
+| fold | vs t65-gauges | vs t53-noclim |
+|---|---|---|
+| 2003-06 | +0.0002 [-0.0001, +0.0005] | +0.0040 [+0.0013, +0.0065] |
+| 2007-09 | +0.0009 [+0.0001, +0.0019] | +0.0040 [-0.0031, +0.0079] |
+| 2010-12 | +0.0000 [-0.0001, +0.0001] | +0.0008 [-0.0015, +0.0030] |
+| 2013-19 | +0.0002 [-0.0001, +0.0005] | +0.0071 [+0.0022, +0.0115] |
+| 2020-22 | +0.0007 [+0.0002, +0.0013] | +0.0022 [-0.0028, +0.0064] |
+| pooled | **+0.0003 [+0.0001, +0.0006] GAIN** | +0.0043 [+0.0022, +0.0067] GAIN |
+
+Log pooled: +0.0012 [-0.0001, +0.0026] against t65-gauges and +0.0109 [+0.0049, +0.0166] against t53-noclim. **No fold loses against either bench.** Quarter nodes against t65-gauges: quarter-lead -0.00005 [-0.0003, +0.0002], quarter-w2 -0.00002 [-0.0001, +0.0000].
+
+Per kind against t65-gauges (bnm.world-score):
+- inflation crises +0.0034 [+0.0007, +0.0080] GAIN (log +0.015 GAIN);
+- currency crises +0.0011 [-0.0002, +0.0028] (log +0.007 GAIN);
+- fiscal consolidations +0.0003 [+0.0000, +0.0006] GAIN;
+- growth collapses -0.0003 [-0.0024, +0.0015];
+- sovereign defaults -0.0001 [-0.0002, +0.0000] (log -0.0008 [-0.0017, -0.0001], a loss).
+
+By fold (×1000, score-t68-kind-folds.txt):
+
+| kind | 2003-06 | 2007-09 | 2010-12 | 2013-19 | 2020-22 |
+|---|---|---|---|---|---|
+| currency crises | -1.36 | +0.01 | -0.08 | +0.62 | +8.02 |
+| fiscal consolidations | +0.20 | +0.80 | +0.04 | +0.07 | +0.60 |
+| growth collapses | +2.62 | **-8.32** | -0.45 | +1.32 | -0.62 |
+| inflation crises | +1.00 | **+19.63** | +0.54 | +0.07 | +0.83 |
+| sovereign defaults | -0.34 | -0.04 | -0.02 | +0.01 | -0.00 |
+
+Inflation's 2007-09 gain undoes most of the -20.7 against t53-noclim that §12 and §13 carried (the regional lock). Its mean p over 2003-22 falls from 0.030 to 0.022, against a rate of 0.012.
+
+Calibration, country year nodes (each run on its own rows), t65-gauges → t68-atrisk:
+
+| kind | span | rate | mean p | Brier |
+|---|---|---|---|---|
+| growth collapses | 2003-22 | 0.106 → 0.118 | 0.084 → 0.079 | 0.0965 → 0.1073 |
+| growth collapses | 2007-08 | 0.219 | 0.073 → 0.040 | 0.1914 → 0.2030 |
+| growth collapses | 2018-19 | 0.557 → 0.580 | 0.080 → 0.087 | 0.4718 → 0.4838 |
+| currency crises | 2003-22 | 0.036 → 0.037 | 0.049 → 0.051 | 0.0352 → 0.0351 |
+| inflation crises | 2003-22 | 0.012 | 0.030 → 0.022 | 0.0161 → 0.0127 |
+| fiscal consolidations | 2003-22 | 0.272 | 0.252 → 0.253 | 0.1974 → 0.1972 |
+
+Market crashes and food are unchanged at every span.
+
+Growth year node in t68-atrisk: pooled AUC 0.464 → 0.493, within-origin AUC 0.524 → 0.549 (17 origins). Mean p correlates with the rate at the same origin at -0.11 and four and five origins back at +0.52 and +0.53 (score-t68-growth-diag.txt). It still does not discriminate.
+
+**Alerts** (p ≥ 0.2, a miss costing 4; against t65-gauges on the shared rows): pooled dcost +0.0008 [-0.0007, +0.0026].
+- Inflation crises: +0.0101 [+0.0006, +0.0245] GAIN. Hits 2.6% of onsets against 0%, false alarms 0.4% against 1.3%.
+- Currency crises: +0.0060 [-0.0061, +0.0205]. Hits 8.5% against 0%.
+- Fiscal consolidations: -0.0048 [-0.0145, +0.0075].
+- Growth collapses: -0.0003 [-0.0028, +0.0014], still with no hits.
+
+Episodes: 6 of 21 caught, the same six as t65-gauges.
+
+**The fixed outliers** (mean p at the December origin, rate in brackets), t65-gauges → t68-atrisk:
+- Growth: 2007 (0.235) 0.073 → 0.041; 2008 (0.202) 0.073 → 0.038; 2019 (0.571) 0.078 → 0.085. All missed.
+- Food, unchanged: 2020 (0.493) 0.121 and 2021 (0.500) 0.154, both missed.
+- Market crashes, unchanged: 2006 (0.957) 0.287 and 2007 0.348, both caught.
+
+### Losses traced (PLAN principle 9)
+
+1. **Growth collapses 2007-09, -8.3 ×1000: the lagged frailty, made more persistent.** The issued p at Dec 2006-08 falls from 0.073-0.080 to 0.038-0.052. The year country node's frailty chooses ρ = 0.8 from Dec 2000 in t68-atrisk; t65-gauges kept 0.5 until 2005 (frailty.tsv). So the filtered shocks of the calm origins 2002-05 (-1.4 to -2.3) carry further into the 2007-08 forecasts. A shock is issued only once it is known, 42 months after its origin, so a more persistent ρ carries the calm of 2003-05 into the eve of the 2008 wave. With the refractory rows gone, the calm origins' evidence is no longer diluted by certain zeros, and the persistence that fits the rest of the record wins. This is the lag found in the diagnosis above, not a bug in the fix: every dropped row was a negative the rule forbids. The economy model's weight also falls (0.58 → 0.30 at Dec 2007), to base and world.
+2. **Sovereign defaults, log -0.0008.** No year row of the kind leaves the set. The year country node's `down` group (the coarser scale and the region and world ancestors) held 0.08-0.13 of the weight at Dec 2003 and 2013 in t65-gauges and holds 0 in t68-atrisk. The kind's December quarter-lead rows (3327 from 2003) left training and scoring, and they feed the aggregates that group reads. This was not replayed. Its size is a tenth of the gains elsewhere.
+
+Bugs found: the at-risk set (this section). None in the growth node beyond it, and none in the runs.
+
+### Verdict
+
+- **The at-risk set now matches the catalogues.** No row the catalogue could make positive is lost (no positive is left out at any kind or scale, 1870-2022), and the kinds whose rules never bind are byte-identical.
+- **On the world, against the base of record:** +0.0003 [+0.0001, +0.0006] GAIN pooled on the shared rows, with no fold loss against t65-gauges or t53-noclim. Inflation and fiscal consolidations gain, and currency crises gain on log. Growth 2007-09 loses (loss 1), and sovereign defaults lose slightly on log.
+- **Growth discrimination is not fixed by it,** and was not expected to be. The node's level lags the waves by about four years, and its inputs are years old. The refractory rows were a small part of the inverted calibration.
+- **Adoption** is the user's decision. The option is off by default, and the base and the ledger are unchanged.

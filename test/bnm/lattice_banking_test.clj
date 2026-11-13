@@ -1,7 +1,7 @@
 (ns bnm.lattice-banking-test
   (:require [bnm.lattice-banking :as lb]
             [bnm.releases]
-            [clojure.test :refer [deftest is]]))
+            [clojure.test :refer [deftest is testing]]))
 
 (deftest one-crisis-dated-twice-counts-once
   ;; Reinhart-Rogoff and the Macrohistory panel date some crises a year apart
@@ -70,3 +70,32 @@
     (is (= 0.0 (first (fixed 30 [0.2 3.0]))))
     (is (< (Math/abs (- (second (base 30 [0.2 3.0])) (second (fixed 30 [0.2 3.0])))) 1e-9) "a varying gauge as before")
     (is (< 0.0 (first (fixed 31 [0.1 3.0])) 5.0) "once it has moved, its spread is real")))
+
+(deftest bnm-96j-the-at-risk-set-follows-the-catalogue-s-rule
+  ;; growth collapses: annual onsets (each January), once in five years.
+  ;; Onsets January 2000 and 2005 (months 24000, 24060), each busy its year.
+  (let [base {:onsets {"AAA" (sorted-set 24000 24060)}
+              :busy {"AAA" (into (sorted-set) (concat (range 24000 24012) (range 24060 24072)))}
+              :from {"AAA" 0} :through {"AAA" 30000}}
+        rule (assoc base :grid [12 0] :refractory 60)
+        year (fn [cat y] (let [t (+ (* 12 y) 11)] (#'lb/onset-in? cat "AAA" t t (+ t 24))))
+        lead (fn [cat t] (#'lb/onset-in? cat "AAA" t (+ t 3) (+ t 12)))]
+    (testing "without the rule's keys, as before: only busy months are left out"
+      (is (nil? (year base 2000)) "busy")
+      (is (false? (year base 2001)) "the bug: 2002-03 cannot hold an onset, yet the row is at risk")
+      (is (false? (lead base (+ (* 12 2002) 11))) "the bug: no January in April-December 2003"))
+    (testing "with them, rows the rule cannot make positive are not at risk"
+      (is (nil? (year rule 2000)) "busy, as before")
+      (is (nil? (year rule 2001)) "2002-03: within five years of 2000")
+      (is (nil? (year rule 2002)) "2003-04")
+      (is (true? (year rule 2003)) "2004-05: 2005 may, and does, hold one")
+      (is (nil? (lead rule (+ (* 12 2002) 8))) "the window's January 2003 is within the five years")
+      (is (nil? (lead rule (+ (* 12 2003) 8))) "and January 2004")
+      (is (true? (lead rule (+ (* 12 2004) 8))) "January 2005 is not")))
+  (let [rule {:onsets {"AAA" (sorted-set)} :busy {"AAA" (sorted-set)} :from {"AAA" 0} :through {"AAA" 30000} :grid [12 0]}
+        lead (fn [cat t] (#'lb/onset-in? cat "AAA" t (+ t 3) (+ t 12)))]
+    (is (nil? (lead rule (+ (* 12 2003) 11))) "an annual catalogue cannot date an onset in April-December")
+    (is (false? (lead rule (+ (* 12 2003) 8))) "October to June holds a January")
+    (is (false? (lead (assoc rule :grid [3 2]) (+ (* 12 2003) 11))) "a quarter-end catalogue can")
+    (is (nil? (lead (assoc rule :barred {"AAA" #{(* 12 2004)}}) (+ (* 12 2003) 8)))
+        "January 2004 barred (inflation: 2003 was in a run), the window's only January")))
