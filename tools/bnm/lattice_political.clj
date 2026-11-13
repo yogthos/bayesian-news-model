@@ -246,6 +246,12 @@
    "growth_collapse" {:baa12 [0.4 0.0625] :us-curve [-0.3 0.0625] :vix12 [0.3 0.0625]}
    "food_price_shock" {:food12-x-imports [0.5 0.0625] :world-food12 [0.3 0.0625]}})
 
+(def world-leading
+  "The leading gauges that are one value for the world, read the same at
+  every country (bnm-v1y): they can move the level, not rank. Food12 x
+  imports varies by country and is not among them."
+  #{:baa12 :us-curve :vix12 :world-food12})
+
 (def food2-sets
   "--leading-food2 (bnm-5rn, docs/LEADING.md \"The second food set\"): the
   fertilizer index's 12-month change and the FAO food, cereals and oils

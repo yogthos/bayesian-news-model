@@ -296,3 +296,19 @@
   (is (= :history (wr/lead-std-choice {:leading "true" :lead-std "history"})))
   (is (thrown? Exception (wr/lead-std-choice {:lead-std "history"})))
   (is (thrown? Exception (wr/lead-std-choice {:leading "true" :lead-std "node"}))))
+
+(deftest bnm-v1y-frailty-gauges-option
+  (is (false? (wr/frailty-gauges-choice {:leading "true" :leading-priors "true"})))
+  (is (true? (wr/frailty-gauges-choice {:leading "true" :leading-priors "true" :frailty-gauges "true"})))
+  (is (thrown? Exception (wr/frailty-gauges-choice {:leading "true" :frailty-gauges "true"})) "needs the theory priors")
+  (is (thrown? Exception (wr/frailty-gauges-choice {:leading "true" :leading-priors "true" :frailty-gauges "yes"})))
+  (testing "the world gauges of the year node go to its frailty; a country-varying gauge stays a model input"
+    (let [specs {"market_crash" {:frailty {} :gauge-names {:year [:a :baa12 :us-curve :vix12] :quarter-lead [:baa12 :vix12]}}
+                 "food_price_shock" {:frailty {:rhos [0.0]} :gauge-names {:year [:a :world-food12 :food12-x-imports]}}
+                 "coup" {:frailty {}}}
+          out (wr/with-frailty-gauges specs true)]
+      (is (= {:gauges {:year [:baa12 :us-curve :vix12]}} (get-in out ["market_crash" :frailty])))
+      (is (= {:rhos [0.0] :gauges {:year [:world-food12]}} (get-in out ["food_price_shock" :frailty])))
+      (is (= {:frailty {}} (out "coup")))
+      (is (= specs (wr/with-frailty-gauges specs false)))
+      (is (thrown? Exception (wr/with-frailty-gauges {"market_crash" {:gauge-names {:year [:baa12]}}} true)) "needs the frailty"))))

@@ -58,6 +58,9 @@
   catalogue rule could date an onset in the window, bnm.kinds/at-risk-rules:
   not within a once-in-n rule's years, not off an annual catalogue's
   Januaries, not after a year of inflation's run),
+  --frailty-gauges true (bnm-v1y: the year node's world gauges set its
+  frailty's mean instead of entering its models; needs --leading-priors
+  true and --set's :frailty),
   --write-reference true (also data/runs/<out>-ref, the forecasts with the
   reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
@@ -450,6 +453,8 @@
                        (when usd (str "\t" usd "\t" (str/join "," (:u e)) "\t" (str/join "," (:u-v e))))
                        ;; under :prior :finer, the chosen kappa (0: the node's own prior)
                        (when cross (str "\t" cross))
+                       ;; under :gauges (bnm-v1y), beta, its variance and the origin's gauges
+                       (when-let [b (:beta e)] (str "\t" (str/join "," b) "\t" (str/join "," (:beta-v e)) "\t" (str/join "," (:g e))))
                        "\n"))))))
 
 (defn world-of
@@ -524,6 +529,31 @@
                   (throw (ex-info "bnm.world-run: --lead-std history standardizes --leading true's gauges" {})))
     (throw (ex-info (str "bnm.world-run: --lead-std takes history, not " lead-std) {}))))
 
+(defn frailty-gauges-choice
+  "--frailty-gauges true (bnm-v1y, recursive step 5a): the year node's
+  world gauges set its frailty's mean, beta from their theory priors.
+  Needs --leading true --leading-priors true; off by default."
+  [{:keys [leading leading-priors frailty-gauges]}]
+  (when (and frailty-gauges (not (#{"true" "false"} frailty-gauges)))
+    (throw (ex-info (str "bnm.world-run: --frailty-gauges takes true or false, not " frailty-gauges) {})))
+  (when (and (= "true" frailty-gauges) (not (and (= "true" leading) (= "true" leading-priors))))
+    (throw (ex-info "bnm.world-run: --frailty-gauges true moves --leading true's gauges, with --leading-priors true's priors" {})))
+  (= "true" frailty-gauges))
+
+(defn with-frailty-gauges
+  "Each spec whose year node reads world gauges (bnm.lattice-political/
+  world-leading) with :frailty {:gauges {:year [those]}}, when `on?`. A
+  spec with such gauges and no :frailty is refused."
+  [specs on?]
+  (if-not on?
+    specs
+    (into {} (for [[k sp] specs]
+               [k (if-let [ns (seq (filter lp/world-leading (get-in sp [:gauge-names :year])))]
+                    (do (when-not (map? (:frailty sp))
+                          (throw (ex-info "bnm.world-run: --frailty-gauges true needs --set's :frailty" {:kind k})))
+                        (assoc-in sp [:frailty :gauges :year] (vec ns)))
+                    sp)]))))
+
 (defn real-lags-choice
   "--real-lags true (bnm-a1e): every slow series read at its true
   publication date (bnm.named/real-lags), the IMF commodity prices two
@@ -573,7 +603,8 @@
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)
                                 :real-lags (real-lags-choice opts)}
                                end)
-                   finer-where-fresh)
+                   finer-where-fresh
+                   (with-frailty-gauges (frailty-gauges-choice opts)))
         books (atom {})
         ;; each kind's resolved counts by node, as of the month (--clim-prior kinds)
         clims (atom {})

@@ -2173,3 +2173,118 @@
       (is (thrown? clojure.lang.ExceptionInfo (lt/run (assoc sp :named-prior {:month {:h [0.5 0.0625]}}))))
       (is (thrown? clojure.lang.ExceptionInfo (lt/run (assoc sp :gauge-names {:month [:g :h]} :named-prior {:month {:g [0.5 0.0625]}}))))
       (is (thrown? clojure.lang.ExceptionInfo (lt/run (assoc sp :named-prior {:month {:g [0.5 0.0]}})))))))
+
+;; --- bnm-v1y: the level from world gauges, the ranking from places ---
+
+(defn- pool-world
+  "`n` places, year origins from month 11, outcomes known 24 months after.
+  Each year a world gauge g_y (known at the origin, the same at every
+  place) moves every place's log odds by b g_y, and a common shock e_y
+  (sd 0.4) the gauge does not see moves them too: the level. Each place
+  has a fixed input r_i (sd 1) that ranks the places, coefficient 1.2, and
+  k noise inputs (20: the all-inputs model is as wide as a real node's,
+  so a narrower ranker can hold the weight, as `:down` does at market
+  crashes). The gauge is quiet (sd 0.3) but for a few episodes
+  (+2.5 in years 12, 22 and 32, -2 in 17). Groups :world (g), :place (r)
+  and :noise; with `models` (default every one and the all-inputs model).
+  The theory prior on g is 0.6, sd 0.25 (the planted b 0.8). The frailty
+  on, evidence the joint issued predictive. `extra` merged in."
+  [{:keys [n seed b models k] :or {seed 11 b 0.8 k 20 models #{:base :world :place :noise :all}}} extra]
+  (let [rg (m/rng seed)
+        yrs 41
+        gw (vec (for [y (range yrs)] (case y (12 22 32) 2.5 17 -2.0 (* 0.3 (m/normal! rg)))))
+        e (vec (repeatedly yrs #(* 0.4 (m/normal! rg))))
+        places (mapv #(str "P" %) (range n))
+        r (zipmap places (repeatedly n #(m/normal! rg)))
+        noise (into {} (for [c places y (range yrs)] [[c y] (vec (repeatedly k #(m/normal! rg)))]))
+        yr (fn [t] (quot (inc t) 12))
+        ys (into {} (for [c places y (range yrs)]
+                      [[c y] (< (m/next-double! rg) (m/expit (+ -1.5 (* b (gw y)) (e y) (* 1.2 (r c)))))]))]
+    (lt/run (merge {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
+                    :levels [[:country places]]
+                    :parent {} :start 0 :end 479 :forget 0.995
+                    :target (fn [_ place t] {:y (ys [place (yr t)]) :known-at (+ t 24)})
+                    :gauges (fn [_ place t] (into [(gw (yr t)) (r place)] (noise [place (yr t)])))
+                    :gauge-width {:year (+ 2 k)}
+                    :gauge-groups {:year {:world [0] :place [1] :noise (vec (range 2 (+ 2 k)))}}
+                    :gauge-names {:year (into [:g :r] (map #(keyword (str "n" %)) (range k)))}
+                    :named-prior {:year {:g [0.6 0.0625]}}
+                    :only models
+                    :shrink 0.1
+                    :flow-std-from :resolved :discount-from :data :clim-learn :current
+                    :evidence-at :issue-joint
+                    :frailty {:rhos [0.0 0.5] :sds [0.0 0.25 0.5 1.0]}}
+                   extra))))
+
+(def ^:private pooled {:frailty {:rhos [0.0 0.5] :sds [0.0 0.25 0.5 1.0] :gauges {:year [:g]}}})
+
+(defn- late-log
+  "Mean log score per row of the year forecasts issued from year 8 on."
+  [r]
+  (log-score (filter #(>= (:origin %) 95) (:forecasts r))))
+
+(defn- episode-p
+  "Mean issued p and realized rate at the origin of year y."
+  [r y]
+  (let [fs (filter #(= (:origin %) (dec (* 12 y))) (:forecasts r))]
+    [(/ (reduce + (map :p fs)) (count fs)) (/ (count (filter :y fs)) (double (count fs)))]))
+
+(deftest bnm-v1y-level-from-the-gauge-ranking-from-the-places
+  ;; docs/CALIBRATION.md 15: the averaging picks one model. The place model
+  ;; ranks but cannot see the gauge, the world model sees the gauge but
+  ;; cannot rank, so the averaging holds the place model and issues no
+  ;; level. With the gauges in the shock's mean every model issues the
+  ;; level, and the averaging picks among the rankers
+  (let [w {:n 150 :models #{:base :world :place}}
+        on-cfg (assoc-in pooled [:frailty :gauges-from] :place)
+        off-r (pool-world w {})
+        on-r (pool-world w on-cfg)
+        [off on] (map late-log [off-r on-r])
+        single (into {} (for [g [:world :place]]
+                          [g (late-log (pool-world (assoc w :models #{g}) {:frailty {:rhos [0.0 0.5] :sds [0.0 0.25 0.5 1.0] :from g}}))]))]
+    (is (> on (+ off 0.01)) [on off])
+    (doseq [[g s] single]
+      (is (> on (+ s 0.01)) [g on s]))
+    (testing "the episodes after the first are reached: within 0.1 of their rate, where the averaging stays at the calm"
+      (doseq [y [22 32]]
+        (let [[p rate] (episode-p on-r y) [p0 _] (episode-p off-r y)]
+          (is (< (Math/abs (- p rate)) 0.1) [y p rate])
+          (is (< p0 (- rate 0.2)) [y p0 rate])))))
+  (testing "with an all-inputs model, which reads both and is the right model here, the combination does as well"
+    (let [w {:n 150}
+          on (late-log (pool-world w pooled))
+          off (late-log (pool-world w {}))
+          all (late-log (pool-world (assoc w :models #{:all}) {:frailty {:rhos [0.0 0.5] :sds [0.0 0.25 0.5 1.0] :from :all}}))]
+      (is (> on off) [on off])
+      (is (> on (- all 0.002)) [on all]))))
+
+(defn- beta-v
+  "The chosen candidate's beta variance at the last filtered origin."
+  [r]
+  (first (:beta-v (val (last (get-in r [:frailty [:year :country]]))))))
+
+(deftest bnm-v1y-the-gauge-is-learned-once-per-origin
+  ;; beta is a common state: an origin's rows inform it about as much at
+  ;; 150 places as at 30, not five times as much
+  (let [v30 (beta-v (pool-world {:n 30} pooled))
+        v150 (beta-v (pool-world {:n 150} pooled))]
+    (is (< v30 0.0625) "it learns")
+    (is (< (/ v30 v150) 1.5) [v30 v150])))
+
+(deftest bnm-v1y-the-theory-prior-holds-at-the-first-data
+  ;; before any origin is learned, the shock issued is the prior's beta
+  ;; times the gauge, less the transient's half variance
+  (let [r (pool-world {:n 30} pooled)
+        e (get-in r [:book [:year "P0"] 11])
+        g (:zg e)]
+    (is (some? g))
+    (is (< (Math/abs (- (+ (:z e) (* 0.5 0.25 0.25)) (* 0.6 (first g)))) 1e-9) [e g])))
+
+(deftest bnm-v1y-off-is-unchanged-and-bad-values-refused
+  (let [w {:n 30}]
+    (is (= (:forecasts (pool-world w {})) (:forecasts (pool-world w {:frailty {:rhos [0.0 0.5] :sds [0.0 0.25 0.5 1.0] :gauges {}}}))))
+    (testing "the gauges leave the models: the world model drops out"
+      (is (= 0.0 (get (lt/weights (pool-world w pooled) :year :country) :world))))
+    (doseq [f [{:gauges {:year [:nope]}} {:gauges {:year []}} {:gauges [:g]} {:gauges {:year [:g]} :sds [0.0]}
+               {:gauges {:year [:g]} :prior :parent} {:gauges {:year [:r]}} {:gauges {:year [:g]} :gauges-from "all"}]]
+      (is (thrown? clojure.lang.ExceptionInfo (pool-world w {:frailty (merge {:rhos [0.0 0.5] :sds [0.0 0.5]} f)})) f))))

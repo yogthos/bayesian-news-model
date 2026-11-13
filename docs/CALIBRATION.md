@@ -1202,3 +1202,247 @@ Bugs found: the at-risk set (this section). None in the growth node beyond it, a
 - **On the world, against the base of record:** +0.0003 [+0.0001, +0.0006] GAIN pooled on the shared rows, with no fold loss against t65-gauges or t53-noclim. Inflation and fiscal consolidations gain, and currency crises gain on log. Growth 2007-09 loses (loss 1), and sovereign defaults lose slightly on log.
 - **Growth discrimination is not fixed by it,** and was not expected to be. The node's level lags the waves by about four years, and its inputs are years old. The refractory rows were a small part of the inverted calibration.
 - **Adoption** is the user's decision. The option is off by default, and the base and the ledger are unchanged.
+
+## 17. Level from world gauges, ranking from places: t69-pool, t69-pool-nolead (bnm-v1y)
+
+§15 loss 1 found that a world gauge can move every country's level but cannot rank countries. The averaging picks a model; it does not combine one model's level with another's ranking. So the gauges reached the forecast only through the coefficients of whichever model held the weight, and that model was chosen for its ranking. §15 loss 2 found that t65's market-crash catch at 2006-08 rested on about 2.6 nats earned in 1983-88 under the defective node standardizer. The correct standardizer (`--lead-std history`) lost the catch to the weight lock.
+
+### Design
+
+docs/RECURSIVE.md step 5a has the design and the comparison, committed in 8737b0f before the code and before any world run. In short:
+- **(A), chosen.** The world gauges set the mean of the common shock: the rows of origin t see z_t + β·g_t. β is a static state with the theory priors of LEADING.md "Priors". It is filtered jointly with z once per origin (3d's vector state, augur's `:shared` and `:load`, scored under `:issue-joint`). The gauges leave every model, so every model issues the same level and the averaging chooses among rankers.
+- **(B), rejected:** a log pool of a level model and a ranking model.
+  - Its pool weight is learned from the same few episodes, so the lock moves from the models to the pool.
+  - It counts the level twice, once in each model's intercept.
+  - It needs a new pooled predictive in augur.
+
+Two guards came from the design:
+- **No σ = 0 candidate where the gauges are.** Without a shock of its own, β·g would be all an origin's rows share, and β would learn once per place (§12's bug).
+- **The state is filtered against the all-inputs model's predictive (`:gauges-from :all`), not the base's.** This was found in the planted test, before any real run.
+  - The base omits what ranks the places. Against it, a common shift is attenuated on the average log odds (the logistic's omitted-heterogeneity bias).
+  - In the planted world β then learned 0.56, against a truth of 0.8 and a prior of 0.6. Against the ranking model it learned 0.69-0.70, and the late log score improved by 0.002.
+  - The all-inputs model reads no weight, so C7 holds.
+
+Code: bnm.lattice `:frailty {:gauges {scale [names]} :gauges-from g}`. `bnm.world-run --frailty-gauges true` moves the year node's world gauges into the frailty:
+- market crashes and growth collapses: `[:baa12 :us-curve :vix12]`;
+- food: `[:world-food12]`.
+
+`:food12-x-imports` varies by country, so it stays a model input. The quarter-lead keeps its gauges as model inputs. Commits 40e872a, 32a9867 and 819ef67.
+
+### Tests (lattice_test bnm-v1y-*, world_run_test bnm-v1y-*)
+
+The planted world:
+- 150 places over 41 years;
+- a quiet world gauge (sd 0.3) with four episodes (+2.5 three times, -2 once) that moves the level by 0.8 g;
+- a transient the gauge does not see (sd 0.4);
+- a place input that ranks the places (1.2 per sd), and 20 noise inputs;
+- the theory prior on the gauge: 0.6, sd 0.25.
+
+What the tests show:
+- **The combination against the averaging.** With models base, world and place, the averaging must choose between level and ranking. Late log score per row:
+
+  | forecast | log score |
+  |---|---|
+  | the combination | -0.479 |
+  | the averaging (place model at 1.00, no level) | -0.506 |
+  | the world model alone | -0.568 |
+  | the place model alone | -0.508 |
+
+  At the episodes of years 22 and 32, the combination issues 0.468 and 0.477 against rates of 0.52 and 0.61. The averaging stays at 0.25.
+- **With an all-inputs model** (it reads both, and is the right model in this world): the combination does as well (-0.479 against -0.479) and beats the averaging (-0.488).
+- **Once per origin.** β's variance at the end is 0.00986 at 30 places and 0.00979 at 150 (ratio 1.007).
+- **The theory prior holds at the first data.** The shock issued at the first origin is 0.6 g less the transient's half variance, to 1e-9.
+- **Off is unchanged.** `:gauges {}` issues the same forecasts as no option. With the option on, the gauges leave the models: the world group's weight is 0.
+- **Bad values are refused:** an unknown name, a gauge without a theory prior, σ = 0 only, `:prior :parent`, an empty list, a non-keyword `:gauges-from`.
+- **The world-run option** needs `--leading-priors true` and `:frailty`, and moves only the world gauges.
+
+### Runs
+
+Both were run for the three kinds the gauges reach. Under `--without-relations true` the kinds are independent and these options reach no other kind, so the other ten kinds are t66-fix's, copied (data/runs/t69-*/README.txt).
+- **t69-pool** = t65-gauges + `--real-lags true --lead-std history --frailty-gauges true`, at 819ef67.
+- **t69-pool-nolead** = the same without `--lead-std history`. It shows whether the old standardizer is still needed.
+
+Logs: data/runs/logs/score-t69-*.txt and alerts-t69-*.txt. The scores cover folds, world, calibration and outliers. The paths file has the weights, z, β and the per-kind folds.
+
+Year nodes, Brier (+ = better, 90% intervals):
+
+| fold | t69-pool vs t65-gauges | vs t66-fix | vs t53-noclim | nolead vs t65-gauges | nolead vs t66-fix | nolead vs t53-noclim |
+|---|---|---|---|---|---|---|
+| 2003-06 | +0.0034 [+0.0002, +0.0069] | +0.0037 [+0.0011, +0.0067] | +0.0073 [+0.0046, +0.0097] | +0.0036 [-0.0003, +0.0074] | +0.0039 [+0.0006, +0.0071] | +0.0074 [+0.0032, +0.0111] |
+| 2007-09 | +0.0119 [-0.0023, +0.0176] | +0.0118 [-0.0023, +0.0175] | +0.0150 [-0.0062, +0.0241] | +0.0076 [-0.0016, +0.0113] | +0.0075 [-0.0016, +0.0111] | +0.0107 [-0.0053, +0.0179] |
+| 2010-12 | -0.0003 [-0.0017, +0.0010] | -0.0004 [-0.0017, +0.0007] | +0.0006 [-0.0030, +0.0039] | +0.0011 [-0.0004, +0.0026] | +0.0009 [-0.0006, +0.0025] | +0.0019 [-0.0007, +0.0044] |
+| 2013-19 | +0.0002 [-0.0007, +0.0014] | +0.0004 [-0.0005, +0.0016] | +0.0071 [+0.0027, +0.0112] | +0.0010 [-0.0003, +0.0028] | +0.0012 [-0.0001, +0.0030] | +0.0079 [+0.0036, +0.0118] |
+| 2020-22 | +0.0002 [-0.0021, +0.0024] | -0.0009 [-0.0027, +0.0008] | +0.0018 [-0.0043, +0.0070] | +0.0007 [-0.0022, +0.0033] | -0.0004 [-0.0028, +0.0019] | +0.0023 [-0.0050, +0.0082] |
+| pooled | +0.0018 [-0.0000, +0.0039] | +0.0017 [+0.0001, +0.0038] GAIN | +0.0057 [+0.0028, +0.0090] GAIN | +0.0020 [+0.0005, +0.0036] GAIN | +0.0020 [+0.0005, +0.0034] GAIN | +0.0060 [+0.0033, +0.0086] GAIN |
+
+- **Neither run loses a fold against any bench.**
+- **Log pooled, all GAIN:**
+
+  | run | vs t65-gauges | vs t66-fix | vs t53-noclim |
+  |---|---|---|---|
+  | t69-pool | +0.0058 [+0.0012, +0.0108] | +0.0050 [+0.0006, +0.0102] | +0.0154 [+0.0075, +0.0227] |
+  | t69-pool-nolead | +0.0069 [+0.0024, +0.0114] | +0.0061 [+0.0018, +0.0101] | +0.0164 [+0.0089, +0.0234] |
+
+- **Per kind against t66-fix (bnm.world-score).** The other ten kinds are identical.
+
+  | kind | t69-pool | t69-pool-nolead |
+  |---|---|---|
+  | food | +0.0070 [+0.0020, +0.0132] GAIN (log +0.022 GAIN) | +0.0051 [-0.0002, +0.0103] (log GAIN) |
+  | market crashes | +0.0105 [-0.0114, +0.0363] | +0.0188 [+0.0004, +0.0384] GAIN |
+  | growth collapses | +0.0051 [-0.0031, +0.0173] | +0.0023 [-0.0055, +0.0124] |
+
+Calibration, country year, mean p / Brier (t53-noclim → t65-gauges → t66-fix → t69-pool → t69-pool-nolead; score-t69-calibration.txt):
+
+| kind | span | rate | mean p | Brier |
+|---|---|---|---|---|
+| market crashes | 2003-22 | 0.178 | 0.326 → 0.277 → 0.277 → 0.304 → 0.278 | 0.1996 → 0.1520 → 0.1520 → 0.1415 → **0.1332** |
+| market crashes | 1980-2002 | 0.312 | 0.259 → 0.256 → 0.256 → 0.286 → 0.320 | 0.2395 → 0.2335 → 0.2335 → 0.2264 → 0.2265 |
+| market crashes | 2006-07 | 0.957 | 0.285 → 0.318 → 0.318 → 0.463 → 0.431 | 0.5060 → 0.4505 → 0.4505 → 0.2917 → 0.3203 |
+| market crashes | 2010-12 | 0.080 | 0.244 → 0.245 → 0.245 → 0.237 → 0.227 | 0.1234 → 0.1128 → 0.1128 → 0.1125 → 0.1054 |
+| market crashes | 2018-22 | 0.123 | 0.252 → 0.325 → 0.325 → 0.346 → 0.330 | 0.1296 → 0.1552 → 0.1552 → 0.1741 → 0.1588 |
+| food | 2003-22 | 0.154 | 0.183 → 0.237 → 0.238 → 0.229 → 0.224 | 0.1560 → 0.1521 → 0.1519 → **0.1449** → 0.1468 |
+| food | 2010-12 | 0.060 | 0.206 → 0.214 → 0.209 → 0.224 → 0.194 | 0.0844 → 0.0868 → 0.0850 → 0.0903 → 0.0793 |
+| food | 2020-22 | 0.415 | 0.060 → 0.142 → 0.162 → 0.174 → 0.183 | 0.3716 → 0.3275 → 0.3135 → 0.3040 → 0.3014 |
+| growth collapses | 2003-22 | 0.106 | 0.087 → 0.084 → 0.084 → 0.091 → 0.094 | 0.0990 → 0.0965 → 0.0965 → **0.0914** → 0.0942 |
+| growth collapses | 2007-08 | 0.219 | 0.056 → 0.073 → 0.073 → 0.118 → 0.070 | 0.1978 → 0.1914 → 0.1914 → 0.1790 → 0.1914 |
+
+Market crashes over 2003-22 now reach LEADING.md 2's stress ceiling (0.1416-0.1456, from a revised series): t69-pool is at it (0.1415) and t69-pool-nolead below it (0.1332). Both are below t62-fixes-seq (0.1363), the best before.
+
+**The outliers** (mean p at the December origin, rate in brackets; caught at p ≥ 0.2; score-t69-outliers.txt):
+
+| episode | origin (rate) | t53-noclim | t65-gauges | t66-fix | t69-pool | t69-pool-nolead |
+|---|---|---|---|---|---|---|
+| food 2006 | 2006 (0.418) | 0.500 | 0.550 | 0.530 | 0.547 | 0.615 |
+| food 2007 | 2007 (0.313) | 0.102 | 0.236 | 0.243 | **0.310** | 0.332 |
+| food 2010 | 2010 (0.114) | 0.229 | 0.210 | 0.210 | 0.264 | 0.253 |
+| food 2020 | 2020 (0.493) | 0.053 | 0.121 | 0.143 | 0.153 | 0.133 |
+| food 2021 | 2021 (0.500) | 0.057 | 0.154 | 0.189 | **0.227 caught** | **0.258 caught** |
+| market crashes 2006 | 2006 (0.957) | 0.281 | 0.287 | 0.287 | 0.382 | 0.395 |
+| market crashes 2007 | 2007 (0.957) | 0.289 | 0.348 | 0.348 | **0.542** | 0.465 |
+| growth 2007 | 2007 (0.235) | 0.051 | 0.073 | 0.073 | 0.108 | 0.079 |
+| growth 2008 | 2008 (0.202) | 0.061 | 0.073 | 0.073 | 0.128 | 0.060 |
+| growth 2019 | 2019 (0.554) | 0.068 | 0.078 | 0.078 | 0.055 | 0.064 |
+
+**The weights at the year country node** (Decembers; score-t69-paths.txt). The `:leading` group is dormant (weight 0) wherever all its gauges moved to the frailty: market crashes and growth. The rankers hold the node, as before:
+- market crashes: `:down` 0.57-0.84 (2000-06), then fiscal 0.64-0.86 (2007-22);
+- food: even weights to 2008, economy 0.99 (2010), then all-inputs 0.64-1.00 (2015-22);
+- growth: economy 0.83-1.00.
+
+What has changed is that every one of them now issues the level.
+
+**β and the level** at the year country node, filtered at each origin, t69-pool (score-t69-paths.txt):
+
+- **Market crashes.** β learned:
+
+  | gauge | prior | learned |
+  |---|---|---|
+  | `:baa12` | 0.5 | 0.06-0.17 |
+  | `:us-curve` | -0.4 | -0.33 to -0.47 |
+  | `:vix12` | 0.25 | 0.37-0.59 |
+
+  β·g at the origin:
+
+  | origin | β·g | reading |
+  |---|---|---|
+  | 2006 | +0.85 | curve -1.9 |
+  | 2007 | +2.07 | BAA +2.1, VIX +2.5 |
+  | 2008 | +1.76 | |
+  | 2018 | +1.71 | VIX +2.7 |
+  | 2020 | +0.81 | |
+  | 2022 | +0.79 | curve -2.2 |
+
+- **Food.** β started at its prior of 0.3. It was 0.18 after 2007, 0.50 after 2008 and 0.33 after 2010, and 0.58-0.71 by 2017-21. β·g: +0.34 (2007), +0.51 (2010) and +1.14 (2021, food12 +1.6 sd).
+- **Growth.** β learned: `:baa12` 0.0-0.16, `:us-curve` -0.11 to -0.25, `:vix12` 0.23-0.52. β·g: +1.43 (2007), +1.71 (2008) and +1.60 (2018).
+- **σ.** The chosen σ is 1.0 almost everywhere. That is the edge of the grid, as in t66-fix at the same nodes (loss 4).
+
+### Alerts at 4:1 (`bnm.alerts`, alerts-t69-*.txt)
+
+Cost per row; Δ = t66-fix's cost − the run's (+ = run cheaper):
+
+| kind | t66-fix | t69-pool | Δ | t69-pool-nolead | Δ |
+|---|---|---|---|---|---|
+| food | 0.632 | 0.598 | +0.034 [+0.001, +0.067] GAIN | 0.579 | +0.052 [+0.013, +0.098] GAIN |
+| growth collapses | 0.424 | 0.377 | +0.047 [-0.079, +0.214] | 0.407 | +0.017 [-0.089, +0.144] |
+| market crashes | 0.724 | 0.752 | -0.028 [-0.120, +0.042] | 0.649 | +0.075 [-0.021, +0.169] |
+| pooled | 0.302 | 0.298 | +0.004 [-0.009, +0.019] | 0.291 | +0.011 [-0.001, +0.024] |
+
+- **Against t65-gauges, pooled:** t69-pool +0.0057 [-0.0071, +0.0201]; t69-pool-nolead +0.0127 [+0.0007, +0.0256] GAIN.
+- **Episodes caught.** t69-pool catches 8 of 22 (11 of them with a rate of at least 0.2), against 6 for t65-gauges and t66-fix. The new catches are food 2021 and growth collapses 2018. t69-pool-nolead catches 7 (food 2021).
+- **Still missed:** food 2020 (0.153), growth 2007 (0.108) and growth 2019 (0.055).
+- **Growth collapses** now alert at 8.0% of rows, against 0.1% before: 23.9% of onsets, at a 6.1% false-alarm rate.
+- **The world node's growth alert cost rises** from 0.150 to 0.350 (three false alarms). These come from the same post-crash and curve readings as loss 1.
+
+### Why: the losses traced (PLAN principle 9)
+
+Per kind and fold against t66-fix, ×1000 Brier per row (score-t69-paths.txt):
+
+| run | market crashes 2013-19 | food 2003-06 | food 2010-12 | growth 2020-22 |
+|---|---|---|---|---|
+| t69-pool | -15.7 | | -5.3 | -16.8 |
+| t69-pool-nolead | | -3.9 | | -20.0 |
+
+None is significant at the fold level.
+
+1. **Market crashes 2013-19 and growth 2020-22: the gauges' known post-crash and 2022 readings, now reaching every model.**
+
+   | node, origin | reading | β·g | issued (t66-fix) | rate |
+   |---|---|---|---|---|
+   | market crashes, Dec 2018 | VIX12 +2.7 sd, after the Q4 2018 fall | +1.7 | 0.597 (0.490) | 0.213 |
+   | growth, Dec 2022 | curve -2.2 sd, the deepest inversion since 1982, then no recession | | 0.226 (0.107) | 0.006 |
+   | growth, Dec 2020 | VIX12 +1.3 sd, after the COVID crash | | 0.130 | 0.063 |
+
+   This is §13 loss 1's mechanism. Before, it reached the forecast only through the model that held the weight; now it reaches every model. The sign of every term is theory's. VIX12's β rose from its prior on 2007-08: 0.25 → 0.4-0.6 at market crashes.
+
+   Verdict: **approach, partly.**
+   - VIX12 read after a crash is the crash already counted; LEADING.md's prior already called it partly concurrent.
+   - The 2022 curve is that gauge's known out-of-sample failure.
+
+   The fix theory suggests was named in §13: VIX12 controlled by the crash's own state, or read only before a crash. It would be chosen after seeing these scores, so it is recorded, not made.
+
+   The same readings give growth collapses 2018 its catch (0.218 against a rate of 0.560). But that window covers 2019-20, the COVID collapses, which no Dec 2018 gauge foresaw. **The catch is a coincidence, not skill**, and it is not counted as evidence for the design.
+2. **Food 2010-12 in t69-pool (-5.3).**
+   - At Dec 2010, world food12 read +1.5 sd (the 2010-11 spike). β·g was +0.5, and the node issued 0.264 against a rate of 0.114 (t66-fix 0.210). The world spike passed through to few countries' food inflation, as 2008's did after 2007 (§15 loss 1's counterexample).
+   - β had moved from 0.50 to 0.33 by the end of 2010 on that origin. It returned to 0.58-0.71 by 2017-21, as 2011 and 2020-21 resolved.
+   - Verdict: **approach.** A world food gauge's pass-through differs by episode, and one β per node cannot know which episode will pass through. The country-varying part (food12 × imports) stays with the rankers.
+   - Under the node standardizer (nolead) food 2010-12 gains instead (+5.7). Its Dec 2010 gauge reads +1.8 sd at a smaller β (0.38), and it issues lower at Dec 2011 (0.182 against 0.238).
+3. **Food 2003-06 in t69-pool-nolead (-3.9).** This is Dec 2006 alone: 0.615 against a rate of 0.418. The node had no resolved outcome, so it issued the uninformed 0.5 lifted by the prior's β·g. The node standardizer reads food12 higher than the history standardizer does (+2.25 against +1.90 at Dec 2007; Dec 2006 is not filtered, so it is not in frailty.tsv). The prior acted as designed, as in §13 loss 3. The 0.5 is the uninformed start (bnm-56c.26).
+4. **The frailty's σ at the edge of its grid (not a loss of this step).** The year nodes of all three kinds choose σ = 1.0, the largest value in `:sds`, in t66-fix as here. A wider grid might choose more, and it would move every frailty run since t57, the base of record included. It is recorded, not changed here (bead bnm-02u).
+
+**Is the old standardizer still needed?** No. Under the history standardizer (t69-pool) the 2006-08 market-crash catch no longer depends on the weight lock:
+- Dec 2007 issues 0.542, against 0.251 in t66-food and 0.348 in t65-gauges.
+- The level comes from β·g whichever model holds the weight (fiscal, 0.73).
+
+t69-pool-nolead scores slightly better pooled (+0.0003 Brier, not significant), with more weight on the curve and less on VIX12. But the node standardizer is the defect §15 fixed, and its scores are no reason to keep it. **t69-pool is the honest candidate.**
+
+Bugs found and fixed in this step:
+- (a) Jolt evaluates the argument of `(repeat 0 (f nil))`, so a vector candidate without a slope failed in `slope-diag`. The first test found it, and it is guarded.
+- (b) β attenuated under the base reference: a design defect, fixed by `:gauges-from :all` before any real run.
+
+The runs showed no bugs.
+
+### Reproduction
+
+With every option off, the code at 819ef67 reproduces both records:
+- **2026-Q4-r1** byte for byte through `bnm.ledger/reproduce-issue!` (data/runs/logs/repro-r1-pool.log, forecasts sha bdb361c8…).
+- **The base of record, t65-gauges.** Its command, run for food, market crashes and growth collapses (t65-repro-pool), gives forecasts, weights, preds and frailty identical to t65-gauges' (data/runs/logs/repro-t69-default.txt). The other kinds do not reach the changed code.
+
+The ledger and golden tests pass, and the whole suite is green: 1388 tests, 0 failures (data/runs/logs/suite-t69.log).
+
+### Verdict
+
+- **The combination does what §15 asked.**
+  - The level from the world gauges reaches every model, learned once per origin from the theory priors.
+  - The averaging chooses among rankers.
+  - In the planted world it beats the averaging and each single model by 0.027 nats a row or more.
+- **On the world.**
+  - t69-pool loses no fold against t65-gauges, t66-fix or t53-noclim.
+  - It gains pooled against t66-fix (Brier +0.0017 [+0.0001, +0.0038]; log +0.0050 GAIN) and against t53-noclim (+0.0057).
+  - Against t65-gauges it gains on the log score (+0.0058 GAIN), with Brier +0.0018 [-0.0000, +0.0039].
+  - It gains food (+0.0070 GAIN).
+- **The episodes.**
+  - It reaches market crashes 2006-07 under the correct standardizer: 0.382 and 0.542, Brier 0.4505 → 0.2917.
+  - It catches food 2021 (0.227), and issues 0.310 for food 2007 at a rate of 0.313.
+  - It moves growth 2007-08 from 0.073 to 0.108 and 0.128, short of 0.2.
+- **The cost.** False alarms from VIX12 after crashes and from the 2022 curve (loss 1). These are §13's known approach limits, now reaching every model.
+- **`--lead-std history` can now be adopted with it:** the weight lock no longer decides the 2008 crash.
+- **Adoption** is the user's decision. Every option stays off by default.
