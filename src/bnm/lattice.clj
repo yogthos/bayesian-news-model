@@ -1136,7 +1136,8 @@
                                                                        :level-v (double (:lv pick 0.0)))
                                                          exposure? (assoc :usd (double (:usd pick 0.0))
                                                                           :u (:u pick) :u-v (:u-v pick))
-                                                         (:b0 pick) (assoc :beta (:beta pick) :beta-v (:beta-v pick)))))))
+                                                         ;; the gauges' loadings and the origin's gauges
+                                                         (:b0 pick) (assoc :beta (:beta pick) :beta-v (:beta-v pick) :g (:g (first rows))))))))
           fr (sort-by key (group-by :origin (filter :informed ready)))))
 
 (defn frailty-prior

@@ -439,6 +439,8 @@
                        (when usd (str "\t" usd "\t" (str/join "," (:u e)) "\t" (str/join "," (:u-v e))))
                        ;; under :prior :finer, the chosen kappa (0: the node's own prior)
                        (when cross (str "\t" cross))
+                       ;; under :gauges (bnm-v1y), beta, its variance and the origin's gauges
+                       (when-let [b (:beta e)] (str "\t" (str/join "," b) "\t" (str/join "," (:beta-v e)) "\t" (str/join "," (:g e))))
                        "\n"))))))
 
 (defn world-of
