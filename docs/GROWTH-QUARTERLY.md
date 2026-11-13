@@ -156,7 +156,8 @@ Built 13 November 2026 on branch growth-q.
     - more than 70% of 2019-21 onsets in 2020Q2 (59 of 77);
     - no lookahead: onsets fall on a quarter's last month; the catalogue built from data cut at each quarter of 2008-09 has the full catalogue's onsets up to that quarter; `count-known` sees an onset at quarter end + 5 and not at + 4.
 - bnm.world-run-test: the option's nil, quarterly, annual-covered and refused values.
-- The full suite is green: 1370 tests.
+- The full suite is green at 4b6e439 (1370 tests). bnm.world-run-test, which covers the annual-covered option added after it, was rerun green.
+- With the option off, 2026-Q4-r1 reproduces byte for byte: data/runs/logs/repro-r1-growthq.log, sha bdb361c8…. The t65-gauges command, rerun as t65-gauges-repro-gq, is identical to t65-gauges in every file (data/runs/logs/run-t65-gauges-repro-gq.log).
 
 The catalogue matches the feasibility study exactly: 196 onsets (177 since 1980), 2008-10 dated 2008Q3 4, Q4 9, 2009Q1 17, Q2 5, and 2019-21 dated 2019Q1 1, 2019Q4 2, 2020Q1 11, 2020Q2 59, Q3 2, Q4 2. The unmatched annual onsets are BHS, BWA, ECU, IRL, LKA, NAM, UGA 2020; DNK, MDV 2009; BLR 2022; DEU 1982, 1990; ESP 1981; FRA 1993; ISL 1992; NOR 2013; PAK 2019; ROU 2019; TUR 1999.
 
