@@ -36,7 +36,7 @@
 (def vars
   #{"finance/credit_gdp" "finance/household_credit_gdp" "finance/credit_gap" "finance/dsr_private"
     "finance/real_house_prices" "markets/share_prices" "finance/yield_long" "finance/rate_3m"
-    "finance/vix" "finance/curve_10y3m" "trade/openness" "finance/private_credit_gdp"
+    "finance/vix" "finance/curve_10y3m" "finance/spread_baa" "trade/openness" "finance/private_credit_gdp"
     "food/food_inflation" "food/price_index" "food/imports_share" "people/infant_mortality"
     "energy/oil_brent" "energy/fuel_imports_share" "energy/fuel_exports_share"
     "economy/gdp_growth" "economy/inflation" "people/youth_unemployment" "people/population"
@@ -155,6 +155,33 @@
           (g "people/population" t) (g "climate/temperature_anomaly" t) (g "climate/precipitation_anomaly" t)
           (g "politics/protest" t 3) (g "politics/protest" t 12) (g "politics/violence" t 3)
           (g "politics/violence" t 12) (g "politics/coercion" t 12)]))]))
+
+(def leading-names [:baa12 :us-curve :vix12 :world-food12 :food12-x-imports])
+
+(def ^:private quote-stale
+  "Market quotes (spreads, the curve, the VIX) are published the day they
+  are made: a monthly value more than a quarter old is a series that
+  stopped, not a late one."
+  {"finance/spread_baa" 3 "finance/curve_10y3m" 3 "finance/vix" 3})
+
+(defn leading
+  "[names f]: the leading gauges of docs/LEADING.md \"Priors\" (bnm-56c.36),
+  each read point in time at its availability date: the 12-month change in
+  the US Baa-Treasury spread (FRED BAA10Y), the US curve 10y-3m, the
+  12-month change in the log VIX, world food prices over 12 months, alone
+  and times the country's food imports share (as the political quarter
+  reads them). Only market series that are not revised; the stress indexes
+  are left out (estimated, revised every week)."
+  [db]
+  [leading-names
+   (fn [unit t]
+     (let [us (getter db "USA" quote-stale)
+           wq (getter db "world" quote-stale)
+           w (getter db "world")
+           g (getter db unit)
+           food12 (w "food/price_index" t 12)]
+       [(us "finance/spread_baa" t 12) (us "finance/curve_10y3m" t) (wq "finance/vix" t 12)
+        food12 (x* food12 (g "food/imports_share" t))]))])
 
 (def core
   "The old industrial centres, whose capital's profitability the theory of

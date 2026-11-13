@@ -46,6 +46,10 @@
   months plus the lag after it; with --set's :frailty {:prior :finer
   :source :quarter-now} its coarser nodes take their prior from it, the
   other kinds their own), and
+  --leading true (bnm-56c.36: the leading financial and food gauges,
+  bnm.lattice-political/leading-sets, read at their availability date),
+  --leading-priors true (with it: their coefficient priors from theory,
+  bnm.lattice-political/leading-priors, docs/LEADING.md \"Priors\"),
   --write-reference true (also data/runs/<out>-ref, the forecasts with the
   reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
@@ -469,6 +473,16 @@
                                      "t48-world-norel) or --graph path (links; trial 43's is " graph-t43 ")")
                                 {})))))
 
+(defn leading-choice
+  "--leading true (bnm-56c.36): the leading gauges of bnm.lattice-political/
+  leading-sets; --leading-priors true needs it."
+  [{:keys [leading leading-priors]}]
+  (when (and (= "true" leading-priors) (not= "true" leading))
+    (throw (ex-info "bnm.world-run: --leading-priors true sets the priors of --leading true's gauges" {})))
+  (when (and leading (not (#{"true" "false"} leading)))
+    (throw (ex-info (str "bnm.world-run: --leading takes true or false, not " leading) {})))
+  (= "true" leading))
+
 (defn -main [& args]
   (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay leak-fixes clim-prior] :as opts}
         (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
@@ -497,7 +511,9 @@
                                                                :catalogue-through (= "true" catalogue-through)
                                                                :year-delay (some-> year-delay parse-long)
                                                                :leak-fixes (= "true" leak-fixes)
-                                                               :fresh-frailty fresh})
+                                                               :fresh-frailty fresh
+                                                               :leading (leading-choice opts)
+                                                               :leading-priors (= "true" (:leading-priors opts))})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)}

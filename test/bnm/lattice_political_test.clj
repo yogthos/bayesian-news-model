@@ -1,5 +1,6 @@
 (ns bnm.lattice-political-test
   (:require [bnm.lattice-political :as lp]
+            [bnm.named :as nm]
             [bnm.releases]
             [bnm.stocks :as sk]
             [clojure.test :refer [deftest is testing]]))
@@ -63,3 +64,43 @@
           [_ fixed] (lp/political-economy-of db ["X"] [dec24] {:pwt-stale true :lag-stale true})]
       (is (nil? (first (pwt36 "X" dec24))))
       (is (= 0.1 (first (fixed "X" dec24)))))))
+
+(deftest bnm-56c-36-leading-gauges-are-read-at-their-availability-date
+  ;; the leading gauges (docs/LEADING.md "Priors") read each value only once
+  ;; it is published: a December value out in January is not read at the
+  ;; December origin, which reads November's against the November before
+  (let [m (fn [y mo] (+ (dec mo) (* 12 y)))
+        monthly (fn [lag f] (sk/series (for [y (range 2000 2010) mo (range 1 13)] [(m y mo) (+ (m y mo) lag) (f y mo)])))
+        db {["USA" "finance/spread_baa"] (monthly 1 (fn [y mo] (+ y (/ mo 100.0))))
+            ["USA" "finance/curve_10y3m"] (monthly 0 (fn [y mo] (- mo)))
+            ["world" "finance/vix"] (monthly 0 (fn [y _] (* 0.1 y)))
+            ["world" "food/price_index"] (monthly 1 (fn [y _] (* 0.2 y)))
+            ["X" "food/imports_share"] (sk/series [[(m 2005 12) (m 2006 9) 10.0]])}
+        [names f] (nm/leading db)
+        dec07 (m 2007 12)
+        v (zipmap names (f "X" dec07))]
+    (is (< (Math/abs (- 1.0 (:baa12 v))) 1e-9) "Nov 2007 less Nov 2006, not December's")
+    (is (= -12.0 (:us-curve v)) "December's curve, published that month")
+    (is (< (Math/abs (- 0.1 (:vix12 v))) 1e-9))
+    (is (< (Math/abs (- 0.2 (:world-food12 v))) 1e-9))
+    (is (< (Math/abs (- 2.0 (:food12-x-imports v))) 1e-9))
+    (testing "nothing published after the origin, and a stopped quote series goes stale"
+      (is (nil? (:baa12 (zipmap names (f "X" (m 2000 6))))) "no year of history yet")
+      (is (nil? (:us-curve (zipmap names (f "X" (m 2010 6)))))))))
+
+(deftest bnm-56c-36-leading-gauges-and-priors-by-kind
+  ;; which kind reads which gauge where, and the priors fixed from theory
+  ;; before any run (docs/LEADING.md "Priors")
+  (is (= {:quarter-lead [:baa12 :vix12] :year [:baa12 :us-curve :vix12]} (lp/leading-sets "market_crash")))
+  (is (= [:baa12 :us-curve :vix12] (get-in lp/leading-sets ["growth_collapse" :quarter-lead])))
+  (is (= [:world-food12 :food12-x-imports] (get-in lp/leading-sets ["food_price_shock" :year])))
+  (is (nil? (lp/leading-sets "coup")))
+  (is (= {:baa12 [0.5 0.0625] :us-curve [-0.4 0.0625] :vix12 [0.25 0.0625]} (lp/leading-priors "market_crash")))
+  (is (= {:baa12 [0.4 0.0625] :us-curve [-0.3 0.0625] :vix12 [0.3 0.0625]} (lp/leading-priors "growth_collapse")))
+  (is (= {:food12-x-imports [0.5 0.0625] :world-food12 [0.3 0.0625]} (lp/leading-priors "food_price_shock")))
+  (testing "the priors at a scale: those of the names it reads"
+    (is (= {:us-curve [-0.4 0.0625] :baa12 [0.5 0.0625] :vix12 [0.25 0.0625]}
+           (lp/named-prior-at "market_crash" [:credit3 :us-curve :baa12 :vix12])))
+    (is (= {:world-food12 [0.3 0.0625] :food12-x-imports [0.5 0.0625]}
+           (lp/named-prior-at "food_price_shock" [:food-inflation :world-food12 :food12-x-imports])))
+    (is (nil? (lp/named-prior-at "coup" [:world-food12])))))

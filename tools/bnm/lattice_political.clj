@@ -229,6 +229,28 @@
   [leak-fixes t _year-delay]
   (if leak-fixes {:releases @release-table :origin-year (ended t) :urban-log true} {}))
 
+(def leading-sets
+  "--leading (bnm-56c.36, docs/LEADING.md \"Priors\"): per kind, the leading
+  gauges (bnm.named/leading) each scale reads as one more gauge group,
+  :leading. Market crashes' quarters already read the US curve; food's
+  quarters both food gauges (their :food group), so neither is read twice."
+  {"market_crash" {:quarter-lead [:baa12 :vix12] :year [:baa12 :us-curve :vix12]}
+   "growth_collapse" {:quarter-lead [:baa12 :us-curve :vix12] :year [:baa12 :us-curve :vix12]}
+   "food_price_shock" {:year [:world-food12 :food12-x-imports]}})
+
+(def leading-priors
+  "--leading-priors: each leading gauge's coefficient prior [mean variance]
+  on its standardized value, fixed from theory before any run (docs/
+  LEADING.md \"Priors\", where the sources are), wherever a node reads it."
+  {"market_crash" {:baa12 [0.5 0.0625] :us-curve [-0.4 0.0625] :vix12 [0.25 0.0625]}
+   "growth_collapse" {:baa12 [0.4 0.0625] :us-curve [-0.3 0.0625] :vix12 [0.3 0.0625]}
+   "food_price_shock" {:food12-x-imports [0.5 0.0625] :world-food12 [0.3 0.0625]}})
+
+(defn named-prior-at
+  "The kind's leading priors among the gauge `names` a scale reads, or nil."
+  [kind names]
+  (not-empty (select-keys (leading-priors kind) names)))
+
 (def quarter-now
   "The frailty-only quarter scale (bnm.lattice :frailty-only, recursive step
   4, bnm-56c.35): window (t, t+3], known 3 months after it plus the
@@ -237,7 +259,8 @@
   {:name :quarter-now :per 3 :offset 0 :horizon 3 :discount 0.995 :frailty-only true})
 
 (defn spec
-  [{:keys [kind db cats annual wdi units end known start pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty]}]
+  [{:keys [kind db cats annual wdi units end known start pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty
+           leading leading-priors]}]
   (let [cat (cats kind)
         ;; :fresh-frailty: the frailty-only quarter scale first, so it runs
         ;; before every coarser node at a month they share
@@ -276,12 +299,25 @@
         q-raw (if fin
                 (fn [u t] (when (in-system u t) (vec (fin u t))))
                 (fn [u t] (when (in-system u t) (into (vec (pol u t)) (pe u t)))))
-        raw {:quarter-lead q-raw
+        ;; --leading (bnm-56c.36): the kind's leading gauges after a scale's own
+        lead (when leading (leading-sets kind))
+        lead-f (when lead (second (nm/leading db)))
+        lead-ix (zipmap nm/leading-names (range))
+        with-lead (fn [scale f]
+                    (if-let [ns (seq (get lead scale))]
+                      (fn [u t] (when-let [v (f u t)]
+                                  (let [l (lead-f u t)] (into v (map #(nth l (lead-ix %)) ns)))))
+                      f))
+        raw {:quarter-lead (with-lead :quarter-lead q-raw)
              :quarter-w2 q-raw
-             :year year-raw
+             :year (with-lead :year year-raw)
              :half-decade half-raw}
         qw (if fin 18 24)
-        widths (select-keys {:quarter-lead qw :quarter-w2 qw :year (count year-names) :half-decade (count half-names)}
+        own-names {:quarter-lead (if fin (first (nm/financial nil nil)) (into (first (nm/political nil)) nm/political-economy-names))
+                   :year year-names}
+        own-names (assoc own-names :quarter-w2 (:quarter-lead own-names))
+        widths (select-keys (merge-with + {:quarter-lead qw :quarter-w2 qw :year (count year-names) :half-decade (count half-names)}
+                                        (update-vals lead count))
                             (map :name issuing))
         table (into {} (for [{:keys [name] :as s} issuing]
                          [name (into {} (for [t (origins s) u countries :let [v ((raw name) u t)] :when v] [[u t] v]))]))
@@ -299,6 +335,7 @@
                      (apply mapv (fn [& xs] (/ (reduce + xs) (count xs))) vs)
                      (vec (repeat (widths scale) 0.0)))))
         known-lag (:known-lag cat)]
+    (cond->
     {:scales scales
      :levels [[:country countries]
               [:subregion (sort (set (vals sub)))]
@@ -315,8 +352,13 @@
                  (when (seq ys) {:y (boolean (some true? ys)) :known-at (+ hi known-lag)})))
      :gauges gauges
      :gauge-width widths
-     :gauge-groups (let [qg (if fin financial-quarter-groups quarter-groups)]
-                     {:quarter-lead qg :quarter-w2 qg :year year-groups :half-decade half-groups})
+     :gauge-groups (let [qg (if fin financial-quarter-groups quarter-groups)
+                         ;; the leading gauges, one group after the scale's own
+                         add (fn [scale gs] (if-let [ns (seq (get lead scale))]
+                                              (let [n0 (count (own-names scale))]
+                                                (assoc gs :leading (vec (range n0 (+ n0 (count ns))))))
+                                              gs))]
+                     {:quarter-lead (add :quarter-lead qg) :quarter-w2 qg :year (add :year year-groups) :half-decade half-groups})
      :shrink 0.1
      :contradiction-prior [(* 0.3 (contradiction-sign kind 1)) 0.25]
      :tensions (tensions kind)
@@ -333,7 +375,16 @@
      :exposure-width 2
      :coupling 0.1
      :prior (fn [scale _level {:keys [groups]}]
-              (into {} (for [[g ixs] (get-in priors [kind scale]) [i mv] ixs] [(nth (groups g) i) mv])))}))
+              (into {} (for [[g ixs] (get-in priors [kind scale]) [i mv] ixs] [(nth (groups g) i) mv])))}
+      ;; --leading: every gauge named, so --leading-priors can set the
+      ;; leading gauges' priors by name (bnm.lattice :named-prior)
+      lead (assoc :gauge-names (into {} (for [s [:quarter-lead :quarter-w2 :year] :when (widths s)]
+                                          [s (into (vec (own-names s)) (get lead s))])))
+      (and lead leading-priors)
+      (assoc :named-prior (into {} (for [s [:quarter-lead :year] :when (widths s)
+                                         :let [np (named-prior-at kind (into (vec (own-names s)) (get lead s)))]
+                                         :when np]
+                                     [s np]))))))
 
 (defn catalogues
   "{kind catalogue} for every political kind."
@@ -352,7 +403,7 @@
   where any kind with a catalogue may be built this way."
   ([kind end known-run] (build kind end known-run nil nil))
   ([kind end known-run cats start] (build kind end known-run cats start {}))
-  ([kind end known-run cats start {:keys [pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty]}]
+  ([kind end known-run cats start {:keys [pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty leading leading-priors]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
         cats (or cats (catalogues))
@@ -360,6 +411,7 @@
     (spec {:kind kind :db db :cats cats :units units :end end :start start :pwt-stale pwt-stale :lag-stale lag-stale :gauge-std gauge-std
            :year-delay year-delay :leak-fixes leak-fixes
            :fresh-frailty fresh-frailty
+           :leading leading :leading-priors leading-priors
            :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
            :wdi (wdi-reader db {:lag-stale lag-stale})
            :known (lb/read-known known-run kind)}))))

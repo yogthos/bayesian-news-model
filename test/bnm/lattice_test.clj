@@ -2144,3 +2144,32 @@
     (is (= (:forget (spec (world 3))) (get-in off [:models [:year :country] :forget])) "without it, the spec's :forget")
     (is (not= (lt/weights off :year :country) (lt/weights r :year :country)))
     (is (thrown? clojure.lang.ExceptionInfo (late-run {:forget-half-life 0.0})))))
+
+;; --- bnm-56c.36: a coefficient's prior set by the input's name ---
+
+(deftest bnm-56c-36-a-named-prior-holds-at-the-first-data
+  ;; :named-prior {scale {name [mean var]}} sets the prior of the gauge
+  ;; named in :gauge-names (docs/LEADING.md "Priors"), in every model that
+  ;; reads it. Under :discount-from :data it is what the node meets its
+  ;; first rows with; off (no :named-prior) the node is as before
+  (let [w (world 5)
+        late (fn [sp] (assoc sp :target (let [t0 (:target sp)] (fn [scale place origin] (when (>= origin 240) (t0 scale place origin))))))
+        sp (late (assoc (spec w) :end 239 :discount-from :data :gauge-names {:month [:g] :year [:g]}))
+        diag (fn [mdl] (let [^doubles c (:c mdl) k (long (Math/round (Math/sqrt (alength c))))]
+                         (mapv #(aget c (+ (* % k) %)) (range k))))
+        r (lt/run (assoc sp :named-prior {:month {:g [0.5 0.0625]}}))]
+    (doseq [g [:all :gauges]]
+      (let [mdl (lt/model r :month :country g)]
+        (is (= 0.5 (second (augur.dynamic/means mdl))) g)
+        (is (= 0.0625 (second (diag mdl))) g)))
+    (testing "only the scale named"
+      (is (= 0.0 (second (augur.dynamic/means (lt/model r :year :country :all))))))
+    (testing "off: the same forecasts as without the names"
+;; each world draws its noise gauges as it runs: one world per run
+      (let [base (lt/run (assoc (spec (world 7)) :end 300))
+            named (lt/run (assoc (spec (world 7)) :end 300 :gauge-names {:month [:g] :year [:g]}))]
+        (is (= (:forecasts base) (:forecasts named)))))
+    (testing "an unknown name, or names that do not match the gauges, are refused"
+      (is (thrown? clojure.lang.ExceptionInfo (lt/run (assoc sp :named-prior {:month {:h [0.5 0.0625]}}))))
+      (is (thrown? clojure.lang.ExceptionInfo (lt/run (assoc sp :gauge-names {:month [:g :h]} :named-prior {:month {:g [0.5 0.0625]}}))))
+      (is (thrown? clojure.lang.ExceptionInfo (lt/run (assoc sp :named-prior {:month {:g [0.5 0.0]}})))))))

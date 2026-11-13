@@ -345,6 +345,32 @@
     (/ (double (count (distinct (map :origin ready)))) (count ready))
     1.0))
 
+(defn named-prior
+  "{input-index [mean variance]} of the spec's :named-prior at `scale`
+  (bnm-56c.36): {scale {name [mean variance]}}, each name one of the
+  scale's :gauge-names ({scale [name ...]}, one per gauge column), so a
+  gauge's coefficient prior is set by what it is, not where it sits. Every
+  model reading the input starts there (the all-inputs model's too, in
+  place of :shrink). nil without one or with the gauges dropped; an
+  unknown name, names that do not match the gauges' width, or a variance
+  that is not positive are refused."
+  [spec scale]
+  (when-let [np (not-empty (get-in spec [:named-prior scale]))]
+    (let [names (get-in spec [:gauge-names scale])
+          width (get-in spec [:gauge-width scale] 0)]
+      (when (not= (count names) width)
+        (throw (ex-info "bnm.lattice: :gauge-names must name every gauge" {:scale scale :names names :width width})))
+      (when-not (contains? (without spec scale) :gauges)
+        (let [pos (zipmap names (range))]
+          (into {} (for [[n [m v :as mv]] np]
+                     (let [i (pos n)]
+                       (when-not i
+                         (throw (ex-info "bnm.lattice: :named-prior names no gauge" {:scale scale :name n :names names})))
+                       (when-not (and (number? m) (number? v) (pos? (double v)))
+                         (throw (ex-info "bnm.lattice: :named-prior takes [mean variance], the variance positive" {:scale scale :name n :prior mv})))
+                       ;; the gauges sit after the intercept
+                       [(inc (long i)) [(double m) (double v)]]))))))))
+
 (defn- node-model
   "A node's model average: one dynamic logistic per group of its inputs and
   one over all of them, each reading the intercept and the spec's :core
@@ -355,7 +381,8 @@
   [spec scale level {:keys [discount per]} {:keys [groups order nested] :as lay}]
   (let [prior (merge (when-let [[m v] (:contradiction-prior spec)]
                        (into {} (for [i (:strain-ix lay)] [i [m v]])))
-                     (or (when-let [f (:prior spec)] (f scale level lay)) {}))
+                     (or (when-let [f (:prior spec)] (f scale level lay)) {})
+                     (named-prior spec scale))
         core (into (mapv #(inc (long %)) (get-in spec [:core scale])) (:pool lay))
         core? (set core)
         prior (merge prior (into {} (for [i (:pool lay)] [i [0.0 (double (get-in spec [:downscale-learn :var] 0.25))]])))
