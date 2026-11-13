@@ -139,3 +139,57 @@ The frailty is the right place for most of the miscalibration rather than a risk
 - the averaging's evidence counted once per origin (per-node tempering 1/places, or the frailty's marginal likelihood), otherwise the frailty's own gains will be locked in or out by single episodes;
 - the frailty's variance estimated with the climatology and intercept not double counting (`:clim-learn :current`), since its common shock and a drifting intercept are otherwise the same quantity.
 The level left after that (a since-1870 climatology above the calm 2003-22) is not a calibration error a causal model can remove.
+
+## 7. The frailty: t57-frailty (bnm-56c.20, bnm-3be)
+
+t53-noclim's ledger command plus `:clim-learn :current` and `:frailty {}` (the default grid: ρ in {0, 0.5, 0.8, 0.95}, σ in {0, 0.25, 0.5, 1}, a 2-nat price on σ > 0), at 4aca271 with augur v0.22.0 (data/runs/t57-frailty/README.txt; design in docs/RECURSIVE.md step 3). A first run, t57-frailty-v1, issued rare kinds too high. Integrating over a shock of sd 1 around 0 raised the expected rate by about e^{1/2} before anything was known: food 2013-18 issued 0.16-0.24 against rates of 0.05-0.09. That was an implementation bug, fixed in 4aca271 with a test: the shift applied is the state less half its stationary variance, as in augur.hier/states. Scores below are for the fixed run. Logs: data/runs/logs/score-t57-frailty-*.txt (and -v1-).
+
+Year nodes, Brier against t53-noclim (+ = better, 90% intervals):
+
+| fold | t57-frailty vs t53-noclim | vs t56-cand |
+|---|---|---|
+| 2003-06 | +0.0025 [-0.0001, +0.0049] | +0.0002 [-0.0026, +0.0028] |
+| 2007-09 | -0.0032 [-0.0052, -0.0005] LOSS | -0.0033 [-0.0051, +0.0015] |
+| 2010-12 | -0.0021 [-0.0044, +0.0003] | +0.0025 [-0.0002, +0.0054] |
+| 2013-19 | +0.0044 [+0.0019, +0.0071] | +0.0012 [+0.0004, +0.0021] |
+| 2020-22 | +0.0040 [+0.0007, +0.0074] | +0.0016 [+0.0003, +0.0028] |
+| pooled | +0.0022 [+0.0006, +0.0040] GAIN | +0.0008 [-0.0003, +0.0018] |
+
+- Log score pooled: +0.0072 [+0.0019, +0.0133] against t53-noclim and +0.0063 [+0.0029, +0.0097] against t56-cand.
+- Quarter-lead pooled: -0.00003 [-0.0009, +0.0007] against t53-noclim and -0.0007 [-0.0014, -0.0001] against t56-cand. The quarter loss is banking -0.0032 and coups -0.0020 (not traced here).
+- Per kind against t53-noclim, gains: market crashes +0.030 [+0.011, +0.052], growth collapses +0.0024 [+0.0004, +0.0043], conflict onsets +0.0010 and currency crises +0.0010 (log gains). Food is -0.0019 [-0.0098, +0.0069].
+- Per kind against t53-noclim, losses: sovereign defaults -0.0017 [-0.0028, -0.0009] and inflation crises -0.0002 [-0.0005, -0.0000]. Banking -0.0006 is not significant.
+- The 2007-09 loss: market crashes -0.038, fiscal -0.005, sovereign defaults -0.004, banking -0.003. In 2010-12, food is -0.031.
+
+Calibration, country year 2003-22, mean p (rate) and Brier, t53-noclim → t56-cand → t57-frailty:
+
+| kind | t53-noclim | t56-cand | t57-frailty |
+|---|---|---|---|
+| market crashes | 0.326 (0.178), 0.1996 | 0.322, 0.1748 | 0.286, 0.1701 |
+| food price shocks | 0.183 (0.154), 0.1560 | 0.252, 0.1592 | 0.247, 0.1580 |
+| growth collapses | 0.087 (0.106), 0.0990 | 0.076, 0.0960 | 0.083, 0.0966 |
+| banking crises | 0.053 (0.032), 0.0317 | 0.056, 0.0316 | 0.045, 0.0322 |
+| sovereign defaults | 0.035 (0.031), 0.0307 | 0.046, 0.0308 | 0.049, 0.0324 |
+
+- Market crashes 1980-2002: 0.2395 → 0.2305.
+- Food 2020-22 (rate 0.415): 0.3716 → 0.3359 (t56) → 0.3369, mean p 0.060 → 0.114. The frailty filtered z = +2.0 for 2020-21, but only once those rows resolved, in 2022-23: from year rows it cannot reach the year itself (RECURSIVE step 3's planted 2020 test needs the fresher quarter scale, step 4).
+
+What it does:
+- **Weights.** The weights no longer lock on market crashes: the world model's weight is at most 0.85 (2014), where t53-noclim held 1.00 from 2009 to 2015.
+- **The common shock.** The filtered common shock is the episode: market crashes z = +3.3 for the 2006-07 windows, growth collapses +1.5 (2007-08) and +2.9 (2018-19), food +2.0 (2020-21).
+- **Grid choices.** The grid chose σ = 1 at most year country nodes. It chose ρ = 0 at market crashes and food, so their forecasts carry no shock forward; ρ = 0.8 at banking crises and sovereign defaults; ρ = 0.5 at protest (σ 0.5).
+
+Losses traced:
+- **Market crashes, 2007-09 (-0.038).** t53-noclim issued 0.29 in 2007 (a year at rate 0.96) because its averaging sat on the all-inputs model at 1.00 in 2007-08: the lock of LOOP-AUDIT 6 and 7, here on the right side. t57-frailty blends (regime and violence groups, at most 0.65) and issues 0.25. This is the lock's path variance, not lost skill: across 2003-22 market crashes gain +0.030. Not a bug.
+- **Banking crises, 2007-12 (2007-09 -0.003, 2010-12 -0.002).** The frailty's persistence (ρ = 0.8, chosen by the prequential grid on banking's 1870-2002 waves) carried the calm of 2003-04 (z = -1.6) into the 2006-07 issues (0.025 against rates of 0.17 and 0.15). It then carried the 2006-07 crisis (z = +1.6) into 2009-10 (0.10 against 0.02 and 0.016). The filter, the lag and the choice all behave as specified (the prior at origin t reads only the origins resolved 24 months before). The persistence learned before 2003 did not hold through 2007-10. Not a bug: this is what a carried state costs when the waves change length.
+- **Sovereign defaults (-0.0017 pooled) and inflation crises (-0.0002).** These kinds run above their rate: sovereign defaults issue 0.06-0.08 in 2003-09 against 0.01-0.02. The filtered z stays negative for twelve years straight (-0.4 to -1.3, 2003-15); banking's does the same in 2016-22 and market crashes' in 2011-17. So the 2003-22 calm is a persistent level, and neither state now carries it:
+  - z is AR(1) around 0, and at a two-period lag ρ = 0.5-0.8 carries a quarter to two thirds of it;
+  - the intercept, with the shock counted once per origin, now learns the level from about one observation per origin, with the year discount (0.998) set when it learned from one observation per country.
+  t56-cand counts the coefficients' evidence per country, and it has none of this excess on sovereign defaults (0.0308). This is a structural gap of the scalar transient frailty, not a code bug. The fix is a persistent level component: a second state near a random walk with a small σ, or the year intercept's discount set for per-origin counting. Both are open (bnm-56c.20 notes).
+- **Food 2010-12 (-0.031).** The all-inputs model still locks: 0.96 in 2011, then the patronage model 0.90-0.98 in 2012-13. The 2007-08 shock hit places in proportion to their exposure to world prices. A scalar z takes the shock's level once, but its exposure-weighted pattern is a place-varying input, so it is still counted once per place, in both the coefficients and the evidence. The fix would be a loading of the frailty on exposure (a shared random slope). Traced, not fixed: the same mechanism as above, one level further in.
+
+Verdict: the frailty does what bnm-3be asked, with three caveats:
+- It fixes the pooled score (+0.0022, a significant gain against t53-noclim, +0.0008 against t56-cand) and market crash calibration (0.1701, below the temper's 0.1707 in isolation).
+- It fails the fold rule against t53-noclim in 2007-09, on market crashes' weight-lock path variance and banking crises' carried persistence.
+- It leaves a persistent-level gap on sovereign defaults, and an exposure-weighted common shock on food.
+Not adopted (adoption is the user's decision). The two structural follow-ups are a persistent level component and the exposure loading.
