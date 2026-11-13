@@ -399,6 +399,11 @@ The base stays t48 until a step is adopted.
 - **Two gaps found on the way, not fixed here (beads filed):**
   - The first informed origin's rows were issued before the frailty had filtered anything, so with the tie-break's σ = 0: learned and weighed with no shared state, their shocks counted once per place (9-15 nats in the planted world, the same with and without the option). At food's year country node that origin is the 2007-08 shock.
   - augur v0.23.0's vector Laplace (`hier/shared-marginal-n`) takes undamped Newton steps and, from a prior far from the mode, cycles without converging (planted world: log posterior -181 returned against -64.8 at the mode). The averaging's evidence for rows with a vector shared state goes through it too. A backtracking line search converges; it needs an augur release.
+- **Status (13 November 2026): built, scored, not adopted** (bb9417a, ac2d212; docs/CALIBRATION.md, "Regional shared states").
+  - With region and subregion states forced on from the start (diagnostic t61-mc-p0), the `:down` lock goes: market crashes score 0.1511 for 2003-22 (t57-frailty 0.1701), +0.019 [+0.005, +0.034].
+  - Chosen by the grid at 2 nats, the states arrive after the lock has formed (σ_r > 0 from 1996 with subregions, 2000 with regions; the lock formed in 1994-99). t61-regional scores as t59-seq.
+  - Alone (t61-regional-indep) they cost growth collapses -0.0047 through the persistence they share with z.
+  - Next: augur's line search, a persistence of their own, and a way to have them before the lock.
 
 **Step 4: time-tree coherence (audit Round 3, issues 9, 13).**
 - `compose/survival-chain` and `cumhaz-split` replace `tools/bnm/reconcile.clj`. Reconciling against the quarters' own part, net of the downscale, gives the year weight w exactly (9a). Time-varying hazard alignment (9b).

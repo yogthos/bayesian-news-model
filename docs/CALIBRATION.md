@@ -370,3 +370,138 @@ Verdict:
 - The structural next steps:
   - a regional shared state inside the country node, which the sequential evidence needs before it can be used;
   - a longer food history at the year scale, so the slope can price in before 2007.
+
+## Regional shared states: t61-regional (bnm-56c.20.3, bnm-3be)
+
+Design: docs/RECURSIVE.md step 3e. The option is `:frailty {:regional-sds [0.0 0.25 0.5]}`, which adds one state per region inside each node (the groups of its places at `:regional-levels`, `[:region]` by default). Each place loads on them by its membership centred across the node's places. The states are AR(1) at z's persistence, and σ_r is chosen by the prequential grid at a price of 2 nats. With the option off, 2026-Q4-r1 reproduces byte for byte (data/runs/logs/repro-r1-regional.log).
+
+Before anything was built, a planted test confirmed section 9's inference. Under a regional shock that the node does not model, a model reading three region-constant noise columns gains against the base under `:evidence-at :sequential`:
+- -4.1 nats over 34 origins at one country per region;
+- +0.1 at 16 countries per region;
+- +10.1 at 40, where its mean weight rises from 0.10 to 0.54.
+
+Scored independently, it loses more as countries are added (-2.9 → -83.8 nats). With regional states, from the second informed origin on, its evidence moves 0.55 nats an origin at 40 countries per region (0.22 at one country per region, 1.68 with the frailty alone), and it loses in every world.
+
+Runs, at bb9417a with augur v0.23.0 (data/runs/t61-*/README.txt):
+- t61-regional: t57-frailty's command plus the regional states and `:evidence-at :sequential`;
+- t61-regional-indep: the regional states alone;
+- two market-crash-only diagnostics, both with `:regional-levels [:region :subregion]`. t61-mc-sub chooses σ_r by the grid. t61-mc-p0 forces σ_r = 0.5 at every country node; it ran at ac2d212, which fixes a crash when the grid has no σ_r = 0.
+
+Logs: data/runs/logs/score-t61-*.txt. Calibration and outliers are in score-t61-calibration.txt.
+
+Year nodes, Brier (+ = better, 90% intervals):
+
+| fold | t61-regional vs t53-noclim | vs t57-frailty | vs t59-seq | t61-regional-indep vs t53-noclim | vs t57-frailty |
+|---|---|---|---|---|---|
+| 2003-06 | -0.0029 [-0.0097, +0.0029] | -0.0053 [-0.0097, -0.0016] LOSS | +0.0000 [-0.0005, +0.0007] | +0.0023 [-0.0001, +0.0047] | -0.0002 [-0.0006, +0.0003] |
+| 2007-09 | -0.0117 [-0.0155, -0.0018] LOSS | -0.0085 [-0.0118, +0.0006] | -0.0001 [-0.0006, +0.0005] | -0.0034 [-0.0055, -0.0006] LOSS | -0.0002 [-0.0008, +0.0004] |
+| 2010-12 | -0.0025 [-0.0044, -0.0003] LOSS | -0.0003 [-0.0036, +0.0031] | -0.0003 [-0.0009, +0.0002] | -0.0026 [-0.0050, -0.0001] LOSS | -0.0004 [-0.0009, -0.0000] LOSS |
+| 2013-19 | +0.0060 [+0.0028, +0.0092] | +0.0016 [-0.0001, +0.0030] | +0.0003 [-0.0003, +0.0008] | +0.0047 [+0.0017, +0.0080] | +0.0004 [-0.0002, +0.0010] |
+| 2020-22 | +0.0038 [+0.0002, +0.0072] | -0.0001 [-0.0021, +0.0018] | -0.0018 [-0.0029, -0.0005] LOSS | +0.0021 [-0.0013, +0.0057] | -0.0019 [-0.0029, -0.0007] LOSS |
+| pooled | +0.0010 [-0.0021, +0.0037] | -0.0013 [-0.0032, +0.0005] | -0.0002 [-0.0006, +0.0002] | +0.0020 [+0.0002, +0.0040] GAIN | -0.0002 [-0.0007, +0.0002] |
+
+- Log score pooled:
+  - t61-regional: -0.0058 [-0.0120, -0.0002] against t57-frailty and -0.0023 [-0.0044, -0.0003] against t59-seq;
+  - t61-regional-indep: -0.0026 [-0.0049, -0.0004] against t57-frailty.
+- Quarter-lead pooled: both runs are within ±0.0003 of every bench, and no interval excludes 0.
+- Per kind against t57-frailty:
+  - growth collapses lose in both runs: -0.0047 [-0.0084, -0.0019] in t61-regional and -0.0045 [-0.0076, -0.0017] in t61-regional-indep;
+  - sovereign defaults gain +0.0007 [+0.0003, +0.0013] in t61-regional;
+  - market crashes gain +0.0022 [+0.0012, +0.0035] in t61-regional-indep, and lose -0.0107 [-0.0377, +0.0127] in t61-regional;
+  - food: -0.0011 [-0.0024, +0.0000] in t61-regional-indep, +0.0002 in t61-regional.
+
+Market crashes in the two diagnostics (Brier):
+
+| run | vs t57-frailty 2003-22 | 2003-06 | 2007-09 | vs t53-noclim 2003-22 |
+|---|---|---|---|---|
+| t61-mc-sub | -0.0127 [-0.0431, +0.0117] | -0.066 LOSS | -0.121 | +0.0169 [-0.0210, +0.0547] |
+| t61-mc-p0 | +0.0190 [+0.0055, +0.0338] | +0.003 | +0.029 | +0.0485 [+0.0215, +0.0812] |
+
+Calibration, country year: mean p (rate) and Brier, in the order t53-noclim → t57-frailty → t59-seq → t61-regional-indep → t61-regional:
+
+| kind | span | rate | mean p | Brier |
+|---|---|---|---|---|
+| market crashes | 2003-22 | 0.178 | 0.326 → 0.286 → 0.247 → 0.281 → 0.243 | 0.1996 → 0.1701 → 0.1827 → 0.1679 → 0.1808 |
+| market crashes | 1980-2002 | 0.312 | 0.259 → 0.234 → 0.237 → 0.234 → 0.236 | 0.2395 → 0.2305 → 0.2238 → 0.2305 → 0.2242 |
+| food price shocks | 2003-22 | 0.154 | 0.183 → 0.247 → 0.247 → 0.244 → 0.246 | 0.1560 → 0.1580 → 0.1572 → 0.1590 → 0.1578 |
+| food | 2010-12 | 0.060 | 0.206 → 0.296 → 0.241 → 0.296 → 0.241 | 0.0844 → 0.1158 → 0.1005 → 0.1158 → 0.1006 |
+| food | 2020-22 | 0.415 | 0.060 → 0.114 → 0.144 → 0.104 → 0.138 | 0.3716 → 0.3369 → 0.3190 → 0.3454 → 0.3249 |
+| growth collapses | 2003-22 | 0.106 | 0.087 → 0.083 → 0.085 → 0.087 → 0.088 | 0.0990 → 0.0966 → 0.0966 → 0.1011 → 0.1013 |
+| growth collapses | 1980-2002 | 0.063 | 0.103 → 0.090 → 0.098 → 0.086 → 0.087 | 0.0632 → 0.0611 → 0.0644 → 0.0613 → 0.0616 |
+| banking crises | 2003-22 | 0.032 | 0.053 → 0.045 → 0.045 → 0.046 → 0.045 | 0.0317 → 0.0322 → 0.0322 → 0.0318 → 0.0318 |
+| sovereign defaults | 2003-22 | 0.031 | 0.035 → 0.049 → 0.051 → 0.047 → 0.045 | 0.0307 → 0.0324 → 0.0322 → 0.0323 → 0.0317 |
+| inflation crises | 2003-22 | 0.012 | 0.015 → 0.021 → 0.023 → 0.020 → 0.021 | 0.0120 → 0.0122 → 0.0124 → 0.0122 → 0.0122 |
+
+For market crashes in the diagnostics, 2003-22 mean p and Brier are 0.240 and 0.1828 (t61-mc-sub) and 0.240 and 0.1511 (t61-mc-p0). For 1980-2002 the Brier scores are 0.2255 and 0.2264.
+
+Issued p against the realized rate, country year, by origin year (issued in the order t53-noclim, t57-frailty, t59-seq, t61-regional-indep, t61-regional):
+
+| kind | year | rate | issued |
+|---|---|---|---|
+| food | 2007 | 0.313 | 0.102, 0.238, 0.238, 0.238, 0.238 |
+| food | 2008 | 0.010 | 0.109, 0.230, 0.227, 0.230, 0.227 |
+| food | 2020 | 0.493 | 0.053, 0.109, 0.140, 0.094, 0.126 |
+| food | 2021 | 0.500 | 0.057, 0.109, 0.159, 0.102, 0.159 |
+| food | 2022 | 0.131 | 0.078, 0.132, 0.124, 0.127, 0.125 |
+| market crashes | 2007 | 0.957 | 0.289, 0.252, 0.159, 0.252, 0.158 |
+| market crashes | 2008 | 0.333 | 0.212, 0.254, 0.201, 0.254, 0.198 |
+| market crashes | 2009 | 0.143 | 0.143, 0.277, 0.331, 0.276, 0.328 |
+| growth collapses | 2008 | 0.202 | 0.061, 0.068, 0.069, 0.036, 0.036 |
+| growth collapses | 2009 | 0.036 | 0.127, 0.031, 0.032, 0.034, 0.034 |
+| growth collapses | 2020 | 0.063 | 0.071, 0.077, 0.076, 0.066, 0.066 |
+
+For market crashes in 2007 (rate 0.957), t61-mc-sub issued 0.159 and t61-mc-p0 issued 0.285.
+
+Market crashes' averaging weights at the year country node (weights of at least 0.15):
+
+| run | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 |
+|---|---|---|---|---|---|---|
+| t57-frailty | regime 0.94 | regime 0.55, violence 0.18 | regime 0.43, violence 0.21 | regime 0.36, violence 0.23 | regime 0.16, violence 0.48 | violence 0.65 |
+| t59-seq | down 0.90 | down 0.98 | down 0.99 | down 0.98 | all 0.15, down 0.84 | all 0.36, down 0.63 |
+| t61-regional-indep | regime 0.94 | regime 0.55, violence 0.18 | regime 0.43, violence 0.21 | regime 0.35, violence 0.23 | regime 0.16, violence 0.47 | violence 0.65 |
+| t61-regional | down 0.91 | down 0.98 | down 0.99 | down 0.98 | all 0.16, down 0.84 | all 0.37, down 0.62 |
+| t61-mc-sub | down 0.89 | down 0.98 | down 0.99 | down 0.98 | down 0.85 | all 0.34, down 0.65 |
+| t61-mc-p0 | all 0.20, regime 0.71 | all 0.31, regime 0.38 | all 0.32, regime 0.28 | all 0.74 | all 0.98 | all 0.99 |
+
+What it does:
+- **The mechanism holds on the world.** In t61-mc-p0, region and subregion states are forced on from the start, and the sequential evidence no longer locks on `:down`. Market crashes issue 0.26 and 0.29 in 2006-07 (t59-seq: 0.15 and 0.16). Their 2003-22 Brier is 0.1511, below every run so far (t57-frailty 0.1701, t53-noclim 0.1996). Against t57-frailty that is +0.019 [+0.005, +0.034], and no fold is lost.
+- **The grid does not turn it on in time.** At market crashes' year country node, t61-regional chose region states at 16 of 59 origins: in 2000 and 2002, then from 2009. t61-mc-sub, with subregions, chose them from 1996. The lock had formed by then: `:down` held 0.69-0.97 from 1996 to 1999, on rows issued while σ_r was still 0. So t61-regional's weights are t59-seq's to two decimals, and t61-mc-sub's are nearly so.
+- **Where it was chosen.**
+  - growth collapses' year country node: 122 of 148 origins, from 1896;
+  - food's year country node: from 2013, 9 of its 15 origins;
+  - many quarter country and subregion nodes (market crashes: 108 of 248 quarter-lead country origins).
+
+Losses traced:
+- **Market crashes in t61-regional and t61-mc-sub (against t57-frailty: 2003-06 -0.066, 2007-09 -0.11 to -0.12).** This is t59-seq's lock, unchanged. The sequence:
+  - The regional states must earn 2 nats in the cumulative prequential score from the node's first origin.
+  - Until they do, rows are issued, learned and weighed with σ_r = 0. `:down` learns each period's regional pattern once per country, and the sequential evidence rewards it once per country.
+  - That evidence was taken in 1994-99, before σ_r > 0 was chosen, and the averaging carried it into 2003-07 (forget 0.995).
+  - Forced on from the start, the regional states remove it (t61-mc-p0).
+
+  This is the same mechanism as the slope on food in section 9: a state that must earn its price before the episode cannot remove that episode's count per place. Seeing it needed subregion states: t61-mc-sub chose them four origins earlier than t61-regional's region states (1996 against 2000), but still after the lock. Not a code bug.
+- **Growth collapses (-0.0047 against t57-frailty in both runs).** The regional states change the grid's choice of persistence. ρ is shared by z and the r's, and the regional tilts persist (Europe +1.0 in 2007-08 and +0.4 in 2020-21). From 1995 the node chose ρ = 0.8, where t57-frailty had 0.5, so z carries more of each episode:
+  - The 2003-05 calm (z -1.8 to -2.2) was carried into the 2007-08 issues: 0.042 and 0.036 against t57-frailty's 0.071 and 0.068, at rates of 0.235 and 0.202.
+  - The 2008-09 shock was carried into 2011-12: 0.133 and 0.148 against 0.090 and 0.102, at rates of 0.05 and 0.03.
+  - The 2018-20 shocks were carried into 2022: 0.212 against 0.107, at a rate of 0.006.
+
+  The filter, the lag and the choice behave as specified. This is the carried-persistence mechanism of banking in section 7, here caused by tying ρ_r to ρ. A separate persistence for the regional states is the obvious variant. Not a code bug.
+- **Food 2020-22 (Brier 0.3369 → 0.3454 for independent scoring, 0.3190 → 0.3249 for sequential).** From 2013 the node chose σ_r = 0.5 at ρ = 0.8. It carried a calm Europe (-0.7 to -0.8 in 2017-19) and a high Asia (+0.6 to +0.7) into the 2020-21 issues. The 2020-21 shock hit regardless of region (the filtered r's are near 0 after it). The issues fell to 0.094-0.102, against t57-frailty's 0.109. This is the carried-tilt mechanism of the slope in section 9. Not a code bug.
+- **2020-22 against t59-seq (-0.0018).** This is growth collapses 2022, above. No other kind moves by more than 0.002 in that fold.
+
+Bugs found on the way:
+- **augur v0.23.0's vector Laplace does not converge from a distant prior (bnm-2sf, open).**
+  - What it does: `hier/shared-marginal-n` takes undamped Newton steps, clamped per component at 5. In the planted region world (one origin, a 6-d state) it cycled for 100 iterations. The returned point had a log posterior of -181, against -64.8 at the mode, and z = 5.09 against 2.30.
+  - The effect: its log marginal then misprices grid candidates. A world with no regional shock chose σ_r = 1 for 12 origins. The averaging's evidence for rows with a vector shared state goes through the same function, so t59-slope, t59-exposure and t61 depend on it wherever an origin's miss is large. How often that happens on the world has not been measured.
+  - The fix: backtracking on the log posterior converges in 4 steps, and with it that world keeps σ_r = 0. It belongs in augur (a release and a deps bump), which this branch cannot make.
+- **The first informed origins are learned with no shared state (bnm-93n, open).** Rows issued before the node's frailty has filtered anything carry the tie-break's σ = 0. In the planted world that first origin moved the averaging by 9-15 nats, the same with and without the option. At food's year country node, that origin is the 2007-08 shock.
+- **A grid without σ_r = 0 crashed (fixed in ac2d212).** At a node with no regional group, the regional candidates were dropped, the grid was left empty and the run threw. They now fall back to their σ_r = 0 twins. t61-regional and t61-regional-indep list 0.0, so their grids were unaffected.
+
+Verdict:
+- The inference of section 9 is confirmed, in a planted world and on the world (t61-mc-p0). Under sequential evidence, a regional shock that the node does not model is rewarded once per country through a region-constant input. Region and subregion states remove that reward, and market crashes then score 0.1511 for 2003-22, +0.019 [+0.005, +0.034] against t57-frailty.
+- As built, with σ_r chosen by the prequential grid at 2 nats, the states arrive after the lock has formed. t61-regional scores as t59-seq (pooled -0.0002 [-0.0006, +0.0002]). It fails the fold rule against t57-frailty (2003-06) and against t53-noclim (2007-09, 2010-12).
+- Without the sequential rule (t61-regional-indep), the regional states score -0.0002 [-0.0007, +0.0002] against t57-frailty. They lose 2010-12 and 2020-22, on growth collapses and food, through the persistence they share with z.
+- Not adopted (adoption is the user's decision). The option stays in the code, off by default.
+- Next steps, in order:
+  - augur's line search (bnm-2sf);
+  - a separate persistence for the regional states;
+  - a way to have them in place before the lock forms: subregions at a smaller price, or σ_r chosen from evidence across kinds rather than from one node's history. Forcing σ_r is not a candidate rule, because it was chosen after seeing the result.
