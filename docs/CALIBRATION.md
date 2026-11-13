@@ -273,3 +273,100 @@ Losses traced:
 - **Why the level does not take the 2003-15 calm.** The calm followed the 1980-2002 wave. A random walk has to unwind the wave's level before it can go negative, and with the lag and its gain it reaches the calm's level only after the calm has mostly passed. Its cumulative prequential score since 1870 pays for every such lag, so at the year country node σ_L = 0 wins. The persistent component that would help moves faster than the lag (the fresher quarter scale, step 4) or is a regime state that switches (step 5), not a slow level.
 
 Verdict: the level does nothing for what it was built for. The year nodes score the same as t57-frailty pooled (+0.00001 [-0.0002, +0.0002]) and fail the fold rule against t53-noclim in 2007-09 as t57-frailty does. Sovereign defaults (-0.0005) and banking crises (log -0.008) lose against t57-frailty through a lagged level carrying the 1980s-90s waves into the calm. No bug was found. Option (b) was not run, since as derived it changes nothing (0.998 is already the per-origin equivalent) unless it forgets every coefficient. Not adopted (adoption is the user's decision). The option stays in the code, off by default; `:level-sds` with a price is the harness if a faster level source (step 4's quarters) is fed to it.
+
+## 9. The loading on exposure: t59-exposure (bnm-56c.20.2, bnm-3be)
+
+Design: docs/RECURSIVE.md step 3d. The option is `:frailty {:exposure-sds [0.0 0.25 0.5]}`: a loading u_j per exposure column (at the political year nodes, trade openness and capital openness), each column standardized across the node's places at the origin. The place's shock is then z + u.e, filtered jointly once per origin and learned with the rows as augur's vector `:shared`; σ_u is chosen by the same prequential grid at 2 nats.
+
+Building it surfaced a second count per place. At an input's first reading, augur's evidence integrated a model's coefficient uncertainty separately in every row, so a model unsure of a place-varying input was paid or rewarded for it once per place. In the planted world that was 3 to 26 nats in one origin. The fix is `:evidence-at :sequential`: each row is scored given the period's rows before it. Both options are off by default, and 2026-Q4-r1 reproduces byte for byte with them off (data/runs/logs/repro-r1-exposure.log).
+
+Runs, at 9b81890 with augur v0.23.0 (data/runs/t59-*/README.txt):
+- t59-exposure: t57-frailty's command plus both options (the candidate);
+- t59-slope: the slope alone;
+- t59-seq: the sequential evidence alone.
+
+Logs: data/runs/logs/score-t59-*.txt; calibration in score-t59-calibration.txt.
+
+Year nodes, Brier (+ = better, 90% intervals):
+
+| fold | t59-exposure vs t53-noclim | vs t57-frailty | t59-slope vs t57-frailty | t59-seq vs t57-frailty |
+|---|---|---|---|---|
+| 2003-06 | -0.0027 [-0.0110, +0.0040] | -0.0051 [-0.0112, -0.0004] LOSS | -0.0007 [-0.0026, +0.0010] | -0.0054 [-0.0101, -0.0015] LOSS |
+| 2007-09 | -0.0138 [-0.0185, -0.0011] LOSS | -0.0106 [-0.0149, +0.0011] | -0.0034 [-0.0049, +0.0005] | -0.0084 [-0.0116, +0.0005] |
+| 2010-12 | -0.0010 [-0.0028, +0.0008] | +0.0011 [-0.0021, +0.0045] | +0.0006 [+0.0002, +0.0009] | -0.0000 [-0.0030, +0.0032] |
+| 2013-19 | +0.0052 [+0.0024, +0.0080] | +0.0009 [-0.0007, +0.0021] | -0.0004 [-0.0008, -0.0001] LOSS | +0.0013 [-0.0001, +0.0025] |
+| 2020-22 | +0.0058 [+0.0031, +0.0083] | +0.0018 [-0.0004, +0.0037] | -0.0007 [-0.0017, +0.0003] | +0.0016 [+0.0001, +0.0031] |
+| pooled | +0.0010 [-0.0021, +0.0039] | -0.0012 [-0.0033, +0.0007] | -0.0006 [-0.0013, +0.0001] | -0.0011 [-0.0030, +0.0006] |
+
+- Log pooled. t59-exposure: +0.0035 [-0.0058, +0.0125] against t53-noclim and -0.0037 [-0.0105, +0.0021] against t57-frailty. t59-slope: +0.0055 [+0.0002, +0.0111] against t53-noclim and -0.0017 [-0.0039, +0.0006] against t57-frailty. t59-seq: -0.0035 [-0.0093, +0.0016] against t57-frailty.
+- Against t53-noclim, t59-slope pools +0.0016 [-0.0002, +0.0038] (t57-frailty: +0.0022) and loses 2007-09.
+- Quarter-lead pooled: every run within ±0.0004 of both benches, no interval excluding 0.
+- Per kind, t59-exposure against t57-frailty:
+  - gains: sovereign defaults +0.0006 [+0.0002, +0.0011], banking +0.0011 [+0.0000, +0.0023], inflation log +0.0037;
+  - losses: market crashes -0.016 [-0.047, +0.010] (2003-06 -0.064, 2007-09 -0.140), violence surges -0.0012 [-0.0022, -0.0002], protest -0.0014 [-0.0027, -0.0002];
+  - food +0.0021 [-0.0064, +0.0123].
+- Per kind, t59-slope against t57-frailty:
+  - gains: growth +0.0010 [+0.0001, +0.0020], sovereign +0.0005 [+0.0001, +0.0009], inflation log +0.0035;
+  - losses: market crashes -0.0066 [-0.0160, +0.0002] (2007-09 -0.046), violence log -0.0043;
+  - food -0.0009 [-0.0028, +0.0007].
+
+Calibration, country year, mean p (rate) and Brier, in the order t53-noclim → t57-frailty → t59-slope → t59-seq → t59-exposure:
+
+| kind | span | rate | mean p | Brier |
+|---|---|---|---|---|
+| market crashes | 2003-22 | 0.178 | 0.326 → 0.286 → 0.276 → 0.247 → 0.241 | 0.1996 → 0.1701 → 0.1768 → 0.1827 → 0.1864 |
+| market crashes | 1980-2002 | 0.312 | 0.259 → 0.234 → 0.233 → 0.237 → 0.236 | 0.2395 → 0.2305 → 0.2309 → 0.2238 → 0.2244 |
+| food price shocks | 2003-22 | 0.154 | 0.183 → 0.247 → 0.239 → 0.247 → 0.245 | 0.1560 → 0.1580 → 0.1589 → 0.1572 → 0.1559 |
+| food | 2010-12 | 0.060 | 0.206 → 0.296 → 0.291 → 0.241 → 0.236 | 0.0844 → 0.1158 → 0.1141 → 0.1005 → 0.0979 |
+| food | 2020-22 | 0.415 | 0.060 → 0.114 → 0.095 → 0.144 → 0.151 | 0.3716 → 0.3369 → 0.3490 → 0.3190 → 0.3185 |
+| growth collapses | 2003-22 | 0.106 | 0.087 → 0.083 → 0.080 → 0.085 → 0.086 | 0.0990 → 0.0966 → 0.0956 → 0.0966 → 0.0963 |
+| growth collapses | 1980-2002 | 0.063 | 0.103 → 0.090 → 0.083 → 0.098 → 0.084 | 0.0632 → 0.0611 → 0.0604 → 0.0644 → 0.0606 |
+| banking crises | 2003-22 | 0.032 | 0.053 → 0.045 → 0.058 → 0.045 → 0.050 | 0.0317 → 0.0322 → 0.0318 → 0.0322 → 0.0312 |
+| banking crises | 1980-2002 | 0.085 | 0.070 → 0.075 → 0.058 → 0.075 → 0.060 | 0.0820 → 0.0800 → 0.0812 → 0.0801 → 0.0812 |
+| sovereign defaults | 2003-22 | 0.031 | 0.035 → 0.049 → 0.046 → 0.051 → 0.048 | 0.0307 → 0.0324 → 0.0319 → 0.0322 → 0.0318 |
+| inflation crises | 2003-22 | 0.012 | 0.015 → 0.021 → 0.017 → 0.023 → 0.013 | 0.0120 → 0.0122 → 0.0121 → 0.0124 → 0.0120 |
+
+Food's averaging weights at the year country node, 2009-13 (top weights over 0.1):
+
+| run | 2009 | 2010 | 2011 | 2012 | 2013 |
+|---|---|---|---|---|---|
+| t53-noclim | military 0.37 | all 0.97 | all 1.00 | world 0.97 | history 0.75 |
+| t57-frailty | military 0.32 | economy 0.49, all 0.40 | all 0.96 | patronage 0.90 | patronage 0.98 |
+| t59-slope | military 0.32 | economy 0.49, all 0.40 | all 0.96 | patronage 0.90 | patronage 0.98 |
+| t59-seq | economy 0.31 | economy 1.00 | economy 0.94 | all 1.00 | all 1.00 |
+| t59-exposure | economy 0.31 | economy 1.00 | economy 0.94 | all 1.00 | all 1.00 |
+
+Where the slope was chosen (σ_u > 0 at the year country node, origins since 2003 out of 20):
+- banking 20, conflict 19, coups 20, currency 19, growth 19, inflation 19, market crashes 20, sovereign 19, violence 20;
+- food 13 of its 15 origins (its year history starts in 2007);
+- fiscal 2;
+- most quarter country nodes, never the world node.
+
+The loadings are modest: |u| up to 0.9 log odds per sd of trade openness at food in 2016-19.
+
+What it does and does not do:
+- **The slope does not take food's 2007-08 shock.** Food's year country node has 15 filtered origins, the first of them the 2007-08 shock itself, filtered at σ_u = 0: the slope had earned nothing yet. Its 2008 loadings are 0.04 and 0.07. So the rows that taught the 2010-11 lock carried the scalar shock only, and t59-slope's food weights in 2009-13 are t57-frailty's to two decimals (all 0.96 in 2011). Food 2010-12 moves from 0.1158 to 0.1141. A loading that must earn its 2-nat price before the episode cannot remove that episode's count per place. That needs a longer food history (the 1870- annual catalogue at the year scale) or the price paid from a sibling kind's evidence. Not a bug.
+- **The sequential evidence moves food 2010-12 (0.1158 → 0.1005) but does not stop the lock.** It moves it from all-inputs (0.96 in 2011) to the economy model (1.00 in 2010), then all-inputs again at 1.00 in 2012-13. Food 2020-22 improves (0.3369 → 0.3190; mean p 0.114 → 0.144).
+
+Losses traced:
+- **Market crashes under t59-seq and t59-exposure: 2003-06 -0.068 and -0.064, 2007-09 -0.105 and -0.140.** The year country node's weights lock on the `:down` model: 0.90-0.99 from 2003 to 2007, where t57-frailty spread them over regime and violence. It then issues 0.15 and 0.13 in 2006-07 (rate 0.96), against t57-frailty's 0.27 and 0.25. The only change is the evidence rule.
+  - `:down` reads the region's and subregion's states, which are the same within a region at an origin and differ between regions.
+  - Scored independently, a model's fixed coefficients cannot follow a shock that is regional rather than global.
+  - Scored sequentially within the period, its uncertain coefficient on region-common inputs learns the period's regional pattern from the first rows of each region and predicts the rest. That is a regional random effect the frailty (one z per node) does not model, so it is rewarded once per country in the region: the same count per place, at the region level.
+  - This is the mechanism; it was read from the weights and the inputs, not tested in a planted world.
+  - The sequential rule is the correct marginal when the rows are exchangeable given the shared state. Here they are not, because a regional shock is left out. Not a code bug: the evidence is computed as specified. The fix that keeps the rule is a shared state per region inside the country node (z + z_region + u.e), or, in the slope's terms, a loading on region membership.
+- **Market crashes under t59-slope: 2007-09 -0.046.** The slope candidates changed the grid's choice at the year country node. In 2001-05 it kept ρ = 0.5 with σ_u = 0.5 (filtered z -1.2 to -1.7, capital-openness loading -0.49), where t57-frailty moved to ρ = 0 from 2003. So the 2003-05 calm, tilted against open economies, was carried into the 2006-07 issues: 0.23 and 0.21 against t57-frailty's 0.27 and 0.25. This is the same mechanism as banking's carried persistence in section 7. Not a bug.
+- **Food 2020-22 under t59-slope (-0.012).** In 2016-19 the node chose ρ = 0.8 and loadings of -0.7 to -0.9 on trade openness (open economies calmer). The calm and its tilt were carried, so 2019-21 issued 0.090-0.097 against t57-frailty's 0.109-0.112 at rates of 0.09-0.50. The 2020-21 shock hit regardless of openness (u near 0 once filtered). The same carried-calm mechanism; the filter and the lag behave as specified. Not a bug.
+- **Violence surges and protest (-0.001).** t59-exposure loses violence -0.0012 and protest -0.0014; t59-slope loses violence log -0.0043 (Brier within its interval). Most of violence's 2003-06 -0.003 comes with the slope, chosen at all 20 year-country origins (σ_u 0.25, ρ 0.8 then 0.95). Not traced further. These kinds' shocks are not plausibly exposure-loaded, so 2 nats is too cheap a price where the slope fits noise in two correlated columns. The price is scored on the same cumulative criterion as the transient's. A higher price (or one column) is the obvious variant.
+
+Verdict:
+- The slope does what it was built for in the planted world: the exposure coefficient's information saturates with places, and the filtered loading tracks the planted one.
+- On the world it does not fix food 2010-12. Food's year history starts with the very episode, so the slope never priced in before it.
+- It scores slightly below t57-frailty pooled (-0.0006 [-0.0013, +0.0001]), with small calibration gains on growth, sovereign defaults and inflation.
+- The sequential evidence fixes a real per-row count of coefficient uncertainty. It helps food (2010-12 0.1158 → 0.1005, 2020-22 0.3369 → 0.3190), but on the world it exposes a regional common shock, counted per country through `:down`, and locks market crashes in 2003-07.
+- t59-exposure (both) fails the fold rule against t53-noclim (2007-09) and against t57-frailty (2003-06).
+- No code bug was found in either option.
+- Not adopted (adoption is the user's decision). Both options stay in the code, off by default.
+- The structural next steps:
+  - a regional shared state inside the country node, which the sequential evidence needs before it can be used;
+  - a longer food history at the year scale, so the slope can price in before 2007.

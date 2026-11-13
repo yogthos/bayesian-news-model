@@ -386,7 +386,7 @@ The base stays t48 until a step is adopted.
   - The parent prior runs.
   - Bad values are refused, and a slope without the spec's `:exposure` is refused.
   - augur: the d = 1 vector state is the scalar one to 1e-9; the 2-d Laplace marginal matches a quadrature; a dimension of variance 0 stays at its mean; a planted (z, u) is filtered; a time-common slope on an exposure input saturates with rows; sequential evidence of one row is the log score, counts a coefficient's uncertainty once, and stops one period of 200 rows locking the weights.
-- **Status:** built, scored as t59 (docs/CALIBRATION.md 9).
+- **Status (13 November 2026): built, scored, not adopted** (9b81890, augur v0.23.0; docs/CALIBRATION.md 9). The slope alone (t59-slope) scores -0.0006 [-0.0013, +0.0001] against t57-frailty pooled. It leaves food 2010-12 as it was: food's year history starts with the 2007-08 shock, filtered at σ_u = 0 before the slope had earned its price. With `:evidence-at :sequential` (t59-exposure) food 2010-12 improves (0.1158 → 0.0979), but market crashes lock on `:down` in 2003-07 (-0.064, -0.140). The sequential rule rewards in-period learning of a regional shock the node does not model, so a regional shared state comes first.
 
 **Step 4: time-tree coherence (audit Round 3, issues 9, 13).**
 - `compose/survival-chain` and `cumhaz-split` replace `tools/bnm/reconcile.clj`. Reconciling against the quarters' own part, net of the downscale, gives the year weight w exactly (9a). Time-varying hazard alignment (9b).
