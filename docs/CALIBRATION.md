@@ -611,6 +611,20 @@ Traced on replays of food and market crashes with each run's exact options (the 
 
 Bugs found and fixed: the gauge-standardizer cap (part of bnm-9fg above). Items 1-3 are known defects with options, or design: the first is fixed by an existing option, and the second needs a new evidence rule in augur (issue time, joint per origin), too large to fold in here. It goes to the user as a decision.
 
+### augur v0.23.1 (bnm-2sf, the Newton fix in hier/shared-marginal)
+
+Rerun on the working tree's augur v0.23.1 (2de08aa; deps.edn not committed, the exposure-slope tests' fallout is on branch fix-2sf-fallout). Commands in data/runs/t57-v231/README.txt and data/runs/t62-fixes-v231/README.txt.
+
+- **t57-v231 against t57-frailty:** pooled Brier +0.00000 [-0.00000, +0.00001]; every kind within ±0.00002.
+  - Forecasts move materially only where Newton had not converged: food at the 2024-25 origins (|Δp| up to 0.35; unscored, but these are current forecasts), fiscal consolidation 2022-25 (quarter-lead up to 0.21), market crashes' quarter-w2 2008-09 (up to 0.09).
+  - Elsewhere the moves are 1e-14 to 1e-4.
+- **t62-fixes-v231:**
+  - against t57-v231: pooled +0.0009 [-0.0001, +0.0016], folds +0.0007, +0.0022, +0.0006, +0.0016 [+0.0007, +0.0025], -0.0010 [-0.0032, +0.0007]; market crashes +0.0139 [+0.0049, +0.0230] GAIN, food -0.0012 [-0.0048, +0.0010], sovereign defaults -0.0001 [-0.0003, -0.0000];
+  - against t53-noclim: +0.0031 [+0.0013, +0.0051] GAIN, no fold loss (2007-09 -0.0010 [-0.0050, +0.0012]);
+  - against t62-fixes: -0.00001 [-0.00001, +0.00000].
+
+The Newton fix changes none of §11's conclusions; every number above holds to the fourth decimal on either version.
+
 Verdict:
 - The three fixes are correct and tested. t62-fixes gains pooled against t53-noclim (+0.0031 [+0.0013, +0.0051]) and fails no fold against either bench, while t57-frailty fails 2007-09 against t53-noclim.
 - It ties t57-frailty pooled (+0.0009 [-0.0001, +0.0016]) and gains market crashes (+0.014 [+0.005, +0.023]).
