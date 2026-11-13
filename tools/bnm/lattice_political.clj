@@ -246,10 +246,31 @@
    "growth_collapse" {:baa12 [0.4 0.0625] :us-curve [-0.3 0.0625] :vix12 [0.3 0.0625]}
    "food_price_shock" {:food12-x-imports [0.5 0.0625] :world-food12 [0.3 0.0625]}})
 
+(def food2-sets
+  "--leading-food2 (bnm-5rn, docs/LEADING.md \"The second food set\"): the
+  fertilizer index's 12-month change and the FAO food, cereals and oils
+  indices' 6-month changes, at the food year node beside t65's two gauges
+  and at the food quarter-lead as a group of their own."
+  {"food_price_shock" {:year [:fert12 :fpi6 :cereals6 :oils6] :quarter-lead [:fert12 :fpi6 :cereals6 :oils6]}})
+
+(def food2-priors
+  "Their coefficient priors, from the pass-through literature and the
+  gauges' own sds, fixed before any run (docs/LEADING.md)."
+  {:fert12 [0.1 0.0625] :fpi6 [0.15 0.0625] :cereals6 [0.15 0.0625] :oils6 [0.1 0.0625]})
+
+(defn leading-sets-for
+  "`leading-sets`, with the second food set when `food2`."
+  [food2]
+  (if food2 (merge-with #(merge-with into %1 %2) leading-sets food2-sets) leading-sets))
+
 (defn named-prior-at
-  "The kind's leading priors among the gauge `names` a scale reads, or nil."
-  [kind names]
-  (not-empty (select-keys (leading-priors kind) names)))
+  "The kind's leading priors among the gauge `names` a scale reads, or nil;
+  with `food2`, the second food set's at food price shocks too."
+  ([kind names] (named-prior-at kind names false))
+  ([kind names food2]
+   (not-empty (select-keys (cond-> (leading-priors kind)
+                             (and food2 (contains? food2-sets kind)) (merge food2-priors))
+                           names))))
 
 (def quarter-now
   "The frailty-only quarter scale (bnm.lattice :frailty-only, recursive step
@@ -260,7 +281,7 @@
 
 (defn spec
   [{:keys [kind db cats annual wdi units end known start pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty
-           leading leading-priors]}]
+           leading leading-priors leading-food2]}]
   (let [cat (cats kind)
         ;; :fresh-frailty: the frailty-only quarter scale first, so it runs
         ;; before every coarser node at a month they share
@@ -300,7 +321,7 @@
                 (fn [u t] (when (in-system u t) (vec (fin u t))))
                 (fn [u t] (when (in-system u t) (into (vec (pol u t)) (pe u t)))))
         ;; --leading (bnm-56c.36): the kind's leading gauges after a scale's own
-        lead (when leading (leading-sets kind))
+        lead (when leading (get (leading-sets-for leading-food2) kind))
         lead-f (when lead (second (nm/leading db)))
         lead-ix (zipmap nm/leading-names (range))
         with-lead (fn [scale f]
@@ -382,7 +403,7 @@
                                           [s (into (vec (own-names s)) (get lead s))])))
       (and lead leading-priors)
       (assoc :named-prior (into {} (for [s [:quarter-lead :year] :when (widths s)
-                                         :let [np (named-prior-at kind (into (vec (own-names s)) (get lead s)))]
+                                         :let [np (named-prior-at kind (into (vec (own-names s)) (get lead s)) leading-food2)]
                                          :when np]
                                      [s np]))))))
 
@@ -404,15 +425,16 @@
   ([kind end known-run] (build kind end known-run nil nil))
   ([kind end known-run cats start] (build kind end known-run cats start {}))
   ([kind end known-run cats start {:keys [pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty leading leading-priors
-                                         real-lags]}]
+                                         real-lags leading-food2]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
-        db (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
+        db (cond-> (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
+             leading-food2 (merge (nm/load-food2)))
         cats (or cats (catalogues))
         units (set (filter #(first (geo/parents %)) (keys (get-in cats [kind :onsets]))))]
     (spec {:kind kind :db db :cats cats :units units :end end :start start :pwt-stale pwt-stale :lag-stale lag-stale :gauge-std gauge-std
            :year-delay year-delay :leak-fixes leak-fixes
            :fresh-frailty fresh-frailty
-           :leading leading :leading-priors leading-priors
+           :leading leading :leading-priors leading-priors :leading-food2 leading-food2
            :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
            :wdi (wdi-reader db {:lag-stale lag-stale})
            :known (lb/read-known known-run kind)}))))

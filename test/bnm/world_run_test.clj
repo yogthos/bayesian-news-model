@@ -251,3 +251,9 @@
   (is (false? (wr/real-lags-choice {:real-lags "false"})))
   (is (true? (wr/real-lags-choice {:real-lags "true"})))
   (is (thrown? Exception (wr/real-lags-choice {:real-lags "yes"}))))
+
+(deftest bnm-5rn-leading-food2-option
+  (is (false? (wr/leading-food2-choice {:leading "true"})))
+  (is (true? (wr/leading-food2-choice {:leading "true" :leading-food2 "true"})))
+  (is (thrown? Exception (wr/leading-food2-choice {:leading-food2 "true"})) "needs --leading true")
+  (is (thrown? Exception (wr/leading-food2-choice {:leading "true" :leading-food2 "1"}))))

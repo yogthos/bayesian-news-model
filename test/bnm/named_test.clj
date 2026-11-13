@@ -136,3 +136,36 @@
     (let [path (tsv-file [["world" v "2020-01-31" "2020-02-29" 1.0]])]
       (is (thrown-with-msg? Exception #"not real time" (nm/load-series path [{:name v :transform "id"}] {:vars #{v}})) v)
       (is (some? (nm/load-series path [{:name v :transform "id"}] {:vars #{v} :vintage {v "2026-10-16 fetch, backcast before 2022"}})) v))))
+
+;; bnm-5rn: the second food set (docs/LEADING.md "The second food set"):
+;; the FAO indices and the Pink Sheet fertilizer index, each read a month
+;; after its month
+
+(deftest bnm-5rn-food2-series-are-read-a-month-after-their-month
+  (let [fao (java.io.File/createTempFile "bnm-fao" ".csv")
+        fast (java.io.File/createTempFile "bnm-fast" ".tsv")
+        months (range (* 12 2018) (+ 6 (* 12 2020)))
+        lvl (fn [t] (if (< t (* 12 2020)) 100.0 200.0))]
+    (spit fao (apply str "﻿FAO Food Price Index,,,\n2014-2016=100,,,\nDate,Food Price Index,Meat,Dairy,Cereals,Oils,Sugar,,\n,,,,,,,\n"
+                     (for [t months] (format "%04d-%02d,%.1f,1,1,%.1f,%.2f,1,,\n" (quot t 12) (inc (rem t 12)) (lvl t) (* 2 (lvl t)) (* 3 (lvl t))))))
+    (spit fast (apply str (for [t months]
+                            (str "world\tfast/fertiliser\tm\t" (ym t) "\t" (ym (inc t)) "\t" (Math/log (lvl t)) "\n"
+                                 "world\tfast/food\tm\t" (ym t) "\t" (ym (inc t)) "\t9\n"))))
+    (let [db (nm/load-food2 (.getPath fao) (.getPath fast))
+          jan (* 12 2020) feb (inc jan)
+          [names f] (nm/leading db)
+          at (fn [t] (zipmap names (f "XXX" t)))]
+      (is (= #{["world" "fao/food"] ["world" "fao/cereals"] ["world" "fao/oils"] ["world" "pinksheet/fertiliser"]} (set (keys db))))
+      (is (= (Math/log 400.0) (sk/value (db ["world" "fao/cereals"]) feb)) "January's, read at February")
+      (is (= (Math/log 200.0) (sk/value (db ["world" "fao/cereals"]) jan)) "December's at January")
+      (testing "the gauges"
+        (is (= 0.0 (:fpi6 (at jan))) "December over June: no jump yet")
+        (is (< (Math/abs (- (Math/log 2.0) (:fpi6 (at feb)))) 1e-9))
+        (is (< (Math/abs (- (Math/log 2.0) (:cereals6 (at feb)))) 1e-9))
+        (is (< (Math/abs (- (Math/log 2.0) (:oils6 (at feb)))) 1e-6))
+        (is (= 0.0 (:fert12 (at jan))))
+        (is (< (Math/abs (- (Math/log 2.0) (:fert12 (at feb)))) 1e-9)))
+      (testing "without the set loaded, the gauges are nil and t65's unchanged"
+        (let [[n0 f0] (nm/leading {})]
+          (is (= names n0))
+          (is (every? nil? (f0 "XXX" feb))))))))

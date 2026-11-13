@@ -104,3 +104,18 @@
     (is (= {:world-food12 [0.3 0.0625] :food12-x-imports [0.5 0.0625]}
            (lp/named-prior-at "food_price_shock" [:food-inflation :world-food12 :food12-x-imports])))
     (is (nil? (lp/named-prior-at "coup" [:world-food12])))))
+
+(deftest bnm-5rn-the-second-food-set-and-its-priors
+  ;; behind --leading-food2 (docs/LEADING.md "The second food set"): the
+  ;; food year node reads it beside t65's two gauges, the quarter-lead as a
+  ;; group of its own; every other kind, and every kind without it, as t65
+  (let [s2 (lp/leading-sets-for true)]
+    (is (= lp/leading-sets (lp/leading-sets-for false)))
+    (is (= [:world-food12 :food12-x-imports :fert12 :fpi6 :cereals6 :oils6] (get-in s2 ["food_price_shock" :year])))
+    (is (= [:fert12 :fpi6 :cereals6 :oils6] (get-in s2 ["food_price_shock" :quarter-lead])))
+    (is (= (lp/leading-sets "market_crash") (s2 "market_crash")))
+    (is (= {:fert12 [0.1 0.0625] :fpi6 [0.15 0.0625] :cereals6 [0.15 0.0625] :oils6 [0.1 0.0625]} lp/food2-priors))
+    (is (= {:world-food12 [0.3 0.0625] :fert12 [0.1 0.0625] :oils6 [0.1 0.0625]}
+           (lp/named-prior-at "food_price_shock" [:food-inflation :world-food12 :fert12 :oils6] true)))
+    (is (= {:world-food12 [0.3 0.0625]} (lp/named-prior-at "food_price_shock" [:world-food12 :fert12] false)))
+    (is (nil? (lp/named-prior-at "coup" [:fert12] true)))))

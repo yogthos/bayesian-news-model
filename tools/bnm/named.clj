@@ -211,13 +211,45 @@
           (g "politics/protest" t 3) (g "politics/protest" t 12) (g "politics/violence" t 3)
           (g "politics/violence" t 12) (g "politics/coercion" t 12)]))]))
 
-(def leading-names [:baa12 :us-curve :vix12 :world-food12 :food12-x-imports])
+(def leading-names
+  "t65's leading gauges, then the second food set (bnm-5rn, read only
+  where bnm.lattice-political/leading-sets-for selects it)."
+  [:baa12 :us-curve :vix12 :world-food12 :food12-x-imports :fert12 :fpi6 :cereals6 :oils6])
+
+(def food2-paths
+  "The second food set's sources (docs/LEADING.md \"The second food set\")."
+  {:fao "data/raw/fao-fpi/food_price_indices_data.csv" :fast "data/fast/series.tsv"})
+
+(defn load-food2
+  "{[unit var] series} of the second food set (bnm-5rn): the FAO food,
+  cereals and vegetable oils price indices (world fao/food, fao/cereals,
+  fao/oils) and the Pink Sheet fertilizer index (world
+  pinksheet/fertiliser), logs, each available a month after its month
+  (FAO's first Friday, the Pink Sheet's second business day)."
+  ([] (load-food2 (:fao food2-paths) (:fast food2-paths)))
+  ([fao-path fast-path]
+   (let [fao (with-open [r (io/reader fao-path)]
+               (vec (for [line (line-seq r)
+                          :let [[d food _ _ cereals oils] (str/split line #"," -1)]
+                          :when (and d (re-matches #"\d{4}-\d{2}" d) (seq food))]
+                      [(st/month-of (str d "-01")) (parse-double food) (parse-double cereals) (parse-double oils)])))
+         col (fn [i] (sk/series (for [r fao :let [x (nth r i)] :when x] [(first r) (inc (long (first r))) (Math/log x)])))
+         fert (with-open [r (io/reader fast-path)]
+                (vec (for [line (line-seq r)
+                           :when (str/starts-with? line "world\tfast/fertiliser\t")
+                           :let [[_ _ _ pend avail value] (str/split line #"\t" -1)]]
+                       [(st/month-of pend) (st/month-of avail) (parse-double value)])))]
+     {["world" "fao/food"] (col 1) ["world" "fao/cereals"] (col 2) ["world" "fao/oils"] (col 3)
+      ["world" "pinksheet/fertiliser"] (sk/series fert)})))
 
 (def ^:private quote-stale
   "Market quotes (spreads, the curve, the VIX) are published the day they
   are made: a monthly value more than a quarter old is a series that
   stopped, not a late one."
-  {"finance/spread_baa" 3 "finance/curve_10y3m" 3 "finance/vix" 3})
+  {"finance/spread_baa" 3 "finance/curve_10y3m" 3 "finance/vix" 3
+   ;; the second food set: monthly indices out a month later; four months
+   ;; old is a series that stopped
+   "fao/food" 4 "fao/cereals" 4 "fao/oils" 4 "pinksheet/fertiliser" 4})
 
 (defn leading
   "[names f]: the leading gauges of docs/LEADING.md \"Priors\" (bnm-56c.36),
@@ -226,7 +258,9 @@
   12-month change in the log VIX, world food prices over 12 months, alone
   and times the country's food imports share (as the political quarter
   reads them). Only market series that are not revised; the stress indexes
-  are left out (estimated, revised every week)."
+  are left out (estimated, revised every week). Then the second food set
+  (bnm-5rn): the Pink Sheet fertilizer index over 12 months, the FAO food,
+  cereals and vegetable oils indices over 6 (`load-food2`)."
   [db]
   [leading-names
    (fn [unit t]
@@ -236,7 +270,9 @@
            g (getter db unit)
            food12 (w "food/price_index" t 12)]
        [(us "finance/spread_baa" t 12) (us "finance/curve_10y3m" t) (wq "finance/vix" t 12)
-        food12 (x* food12 (g "food/imports_share" t))]))])
+        food12 (x* food12 (g "food/imports_share" t))
+        ;; the second food set (bnm-5rn), nil unless load-food2's series are in db
+        (wq "pinksheet/fertiliser" t 12) (wq "fao/food" t 6) (wq "fao/cereals" t 6) (wq "fao/oils" t 6)]))])
 
 (def core
   "The old industrial centres, whose capital's profitability the theory of
