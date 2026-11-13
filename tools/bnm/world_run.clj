@@ -41,7 +41,8 @@
   quarterly GDP per head, data/derived/gdp-quarterly.csv, against the
   annual rule's line, known five months after the quarter; only the 103
   units the quarterly data cover are forecast for the kind, docs/
-  GROWTH-QUARTERLY.md),
+  GROWTH-QUARTERLY.md; annual-covered, the annual catalogue at those
+  units, its comparison),
   --clim-prior kinds (bnm-56c.26: a node with no resolved outcome reads
   the rate the other kinds' nodes at its scale and level have resolved,
   not 0.5),
@@ -352,12 +353,17 @@
   (bnm.economic-events/quarterly-growth, bnm-56c.37), dated at the quarter's
   last month and known five months on, at the units the quarterly data
   cover only (the kind's lattice is built over its catalogue's units, so
-  the other units drop out of it); nil, the base's catalogue. `read` gives
-  the quarterly catalogue from `cats`."
+  the other units drop out of it); annual-covered, the annual catalogue at
+  those units, the base the quarterly one is compared with on the same
+  units; nil, the base's catalogue. `read` gives the quarterly catalogue
+  from `cats`."
   [cats choice read]
   (case choice
     nil cats
     "quarterly" (ee/with-quarterly-growth cats (read cats))
+    "annual-covered" (let [us (keys (:from (read cats)))]
+                       (update cats "growth_collapse"
+                               (fn [c] (reduce (fn [c' k] (update c' k select-keys us)) c [:onsets :busy :from :through]))))
     (throw (ex-info (str "bnm.world-run: --growth-outcomes takes quarterly, not " choice) {}))))
 
 (defn catalogues-through

@@ -256,4 +256,11 @@
     (is (= q (get (wr/growth-outcomes cats "quarterly" read) "growth_collapse")))
     (is (= ["AAA"] (keys (get-in (wr/growth-outcomes cats "quarterly" read) ["growth_collapse" :from]))) "the covered units only")
     (is (= {:known-lag 12} ((wr/growth-outcomes cats "quarterly" read) "coup")))
-    (is (thrown? Exception (wr/growth-outcomes cats "monthly" read)))))
+    (is (thrown? Exception (wr/growth-outcomes cats "monthly" read)))
+    (testing "annual-covered: the annual catalogue at the quarterly catalogue's units, the comparison's base"
+      (let [cats (assoc cats "growth_collapse" {:onsets {"AAA" #{24000} "BBB" #{24012}} :busy {"AAA" #{24000} "BBB" #{24012}}
+                                                :from {"AAA" 0 "BBB" 0} :through {"AAA" 24200 "BBB" 24200} :known-lag 18})
+            out (wr/growth-outcomes cats "annual-covered" (fn [_] q))]
+        (is (= {:onsets {"AAA" #{24000}} :busy {"AAA" #{24000}} :from {"AAA" 0} :through {"AAA" 24200} :known-lag 18}
+               (out "growth_collapse")))
+        (is (= {:known-lag 12} (out "coup")))))))
