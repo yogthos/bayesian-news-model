@@ -102,14 +102,34 @@
     (throw (ex-info (str "bnm.named: " v " is not real time (" (not-real-time v) "); name its vintage to read it")
                     {:var v}))))
 
+(def first-published-path
+  "--fresh-inputs: when each country's year of WDI's growth per head and
+  population was first published, from the WDI Database Archives
+  (scripts/wdi-first-published.py)."
+  "data/derived/wdi-first-published.tsv")
+
+(defn read-first-published
+  "{[iso var] {period month}} from `first-published-path`'s table (iso,
+  var, year, YYYY-MM): an annual value's period is its year's December."
+  ([] (read-first-published first-published-path))
+  ([path]
+   (with-open [r (io/reader path)]
+     (reduce (fn [acc l]
+               (let [[iso v y m] (str/split l #"\t")]
+                 (assoc-in acc [[iso v] (+ 11 (* 12 (parse-long y)))] (st/month-of (str m "-01")))))
+             {} (rest (line-seq r))))))
+
 (defn load-series
   "{[unit var] series} for `vars`, values transformed as data/slow/variables.tsv says.
   opts: :real-lags true, each series available no earlier than its true
-  publication (`real-lags`, bnm-a1e; off, as series.tsv dates it); :vars,
-  the variables to read in place of `vars`, none of them `not-real-time`
-  unless :vintage names its vintage."
+  publication (`real-lags`, bnm-a1e; off, as series.tsv dates it);
+  :first-published {[unit var] {period month}}, each value listed there
+  available no earlier than that month (`read-first-published`, the WDI
+  Database Archives; --fresh-inputs), the others as series.tsv dates them;
+  :vars, the variables to read in place of `vars`, none of them
+  `not-real-time` unless :vintage names its vintage."
   ([series-path variables] (load-series series-path variables {}))
-  ([series-path variables {:keys [real-lags vintage] :as opts}]
+  ([series-path variables {:keys [real-lags vintage first-published] :as opts}]
   (let [want (or (:vars opts) vars)
         _ (check-real-time want vintage)
         tr (into {} (for [v variables] [(:name v) (:transform v)]))
@@ -123,7 +143,8 @@
               k [unit v]
               p (st/month-of pend)
               a (st/month-of avail)
-              a (if-let [l (and real-lags (real-lag k))] (max a (+ p (long l))) a)]
+              a (if-let [l (and real-lags (real-lag k))] (max a (+ p (long l))) a)
+              a (if-let [f (and first-published (get-in first-published [k p]))] (max a (long f)) a)]
           (.put acc k (conj (or (.get acc k) []) [p a z])))))
     (into {} (for [[k es] acc] [k (sk/series es)])))))
 

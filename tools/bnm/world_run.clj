@@ -563,6 +563,18 @@
     (throw (ex-info (str "bnm.world-run: --real-lags takes true or false, not " real-lags) {})))
   (= "true" real-lags))
 
+(defn fresh-inputs-choice
+  "--fresh-inputs true: the political and economic kinds' year row reads
+  log GDP per head, growth3 and population growth carried past
+  Maddison's release by WDI's growth per head and population growth, each
+  WDI year at its first edition in the WDI Database Archives
+  (bnm.political-gauges/splice, docs/CALIBRATION.md \"Fresh inputs\").
+  Off by default."
+  [{:keys [fresh-inputs]}]
+  (when (and fresh-inputs (not (#{"true" "false"} fresh-inputs)))
+    (throw (ex-info (str "bnm.world-run: --fresh-inputs takes true or false, not " fresh-inputs) {})))
+  (= "true" fresh-inputs))
+
 (defn -main [& args]
   (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay leak-fixes clim-prior] :as opts}
         (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
@@ -597,7 +609,8 @@
                                                                :leading-priors (= "true" (:leading-priors opts))
                                                                :real-lags (real-lags-choice opts)
                                                                :leading-food2 (leading-food2-choice opts)
-                                                               :lead-std (lead-std-choice opts)})
+                                                               :lead-std (lead-std-choice opts)
+                                                               :fresh-inputs (fresh-inputs-choice opts)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)

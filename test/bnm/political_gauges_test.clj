@@ -1,7 +1,7 @@
 (ns bnm.political-gauges-test
   (:require [bnm.political-gauges :as pg]
             [bnm.releases]
-            [clojure.test :refer [deftest is]]))
+            [clojure.test :refer [deftest is testing]]))
 
 (def sets
   {:onsets {"coup" {"AAA" (sorted-set (* 4 1960) (* 4 1990))}}
@@ -99,3 +99,44 @@
     (is (< (Math/abs (- (nth base (ix :urban-growth5)) 0.05)) 1e-12) "the base: points over 100")
     (is (< (Math/abs (- (nth fixed (ix :urban-growth5)) (Math/log 1.1))) 1e-12) "WDI as a log change")
     (is (< (Math/abs (- (nth nmc (ix :urban-growth5)) (Math/log 1.1))) 1e-12) "NMC's, the same unit")))
+
+(deftest fresh-inputs-carry-maddison-on-with-wdi-growth
+  ;; --fresh-inputs: Maddison read at its release (2010 at December 2014)
+  ;; carried on by WDI's growth per head and population growth, each WDI
+  ;; year as known at the origin; growth rates spliced, never WDI's level
+  ;; (constant USD, not Maddison's PPP dollars)
+  (let [rs (bnm.releases/read-releases)
+        mad (into {} (for [y (range 2000 2014)] [y (Math/exp (* 0.02 (- y 2000)))]))
+        mpop (into {} (for [y (range 2000 2014)] [y (Math/exp (+ 10.0 (* 0.01 (- y 2000))))]))
+        annual {"mad_gdppc" {"AAA" mad} "mad_pop" {"AAA" mpop}}
+        ;; WDI's logs: another level, growth -0.05 a year from 2010
+        wdi-gdp (into {} (for [y (range 2005 2014)] [y (+ 7.0 (* -0.05 (- y 2010)))]))
+        wdi-pop (into {} (for [y (range 2005 2014)] [y (+ 3.0 (* 0.03 (- y 2010)))]))
+        fresh (fn [through] (fn [iso v] (when (= iso "AAA")
+                                          (into {} (filter #(<= (key %) through))
+                                                (case v "economy/gdp_per_capita" wdi-gdp "people/population" wdi-pop nil)))))
+        ix (zipmap pg/year-names (range))
+        row (fn [o] (pg/year-row annual (fn [_ _ _] nil) "AAA" 2013 o))
+        near (fn [a b] (< (Math/abs (- a b)) 1e-12))
+        base (row {:releases rs})
+        f13 (row {:releases rs :fresh (fresh 2013)})
+        f12 (row {:releases rs :fresh (fresh 2012)})]
+    (testing "without :fresh, Maddison's 2010 as before"
+      (is (near 0.2 (nth base (ix :log-gdppc))))
+      (is (near 0.06 (nth base (ix :growth3)))))
+    (testing "WDI known through 2013: Maddison's 2010 level, WDI's growth after it"
+      (is (near (- 0.2 0.15) (nth f13 (ix :log-gdppc))))
+      (is (near -0.15 (nth f13 (ix :growth3))) "2010 to 2013, all WDI")
+      (is (near 0.09 (nth f13 (ix :population-growth3)))))
+    (testing "WDI known through 2012: the three years span the splice"
+      (is (near (- 0.2 0.1) (nth f12 (ix :log-gdppc))))
+      (is (near (+ 0.02 -0.1) (nth f12 (ix :growth3))) "2009-10 Maddison's, 2010-12 WDI's"))
+    (testing "nothing newer in WDI, or no Maddison anchor: the base's reading"
+      (is (= base (row {:releases rs :fresh (fresh 2010)})))
+      (is (= base (row {:releases rs :fresh (fn [_ _] nil)})))
+      (let [no-mad (pg/year-row {} (fn [_ _ _] nil) "AAA" 2013 {:releases rs :fresh (fresh 2013)})]
+        (is (nil? (nth no-mad (ix :log-gdppc))))
+        (is (nil? (nth no-mad (ix :growth3))))))
+    (testing "only the three columns change"
+      (is (= (map-indexed vector base)
+             (map-indexed (fn [i x] [i (if (#{(ix :log-gdppc) (ix :growth3) (ix :population-growth3)} i) (nth base i) x)]) f13))))))

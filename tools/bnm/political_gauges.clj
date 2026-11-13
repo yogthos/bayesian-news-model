@@ -93,6 +93,22 @@
 (defn- slog [x] (when x (* (Math/signum (double x)) (Math/log1p (Math/abs (double x))))))
 (defn- by-year [annual v iso] (get-in annual [v iso] {}))
 
+(defn splice
+  "--fresh-inputs: the log series `mad` ({year log-level}) as read through
+  year `pm`, carried on past pm by the year-on-year log changes of
+  `fresh` ({year log-level}, the years known at the origin): growth rates
+  spliced, the level always Maddison's. Returns [read-year {year
+  log-level}]: [pm mad] itself when mad has no value at pm or fresh has
+  nothing after it."
+  [mad pm fresh]
+  (if-not (and (get mad pm) (seq fresh))
+    [pm mad]
+    (loop [k (inc pm) acc (into {} (filter #(<= (key %) pm)) mad)]
+      (let [a (get fresh k) b (get fresh (dec k))]
+        (if (and a b)
+          (recur (inc k) (assoc acc k (+ (get acc (dec k)) (- a b))))
+          (if (= k (inc pm)) [pm mad] [(dec k) acc]))))))
+
 (defn year-row
   "The year gauges for a country in data year `y`, in year-names' order (nil
   where unknown): V-Dem's year (published by the next origin), the
@@ -106,9 +122,13 @@
   :origin-year, by default y + 1), not the fixed offset, which ran up to
   five years ahead of their releases. :urban-log: urban growth after 2016
   (WDI's share) as the five-year log change, NMC's unit before it, not
-  the change in share points over 100. Without them, the base's reading."
+  the change in share points over 100. :fresh ((fresh iso var) -> {year
+  log-level} known at the origin; --fresh-inputs): log GDP per head,
+  growth3 and population growth carried past Maddison's read year by
+  WDI's growth per head and population growth (`splice`). Without them,
+  the base's reading."
   ([annual wdi iso y] (year-row annual wdi iso y {}))
-  ([annual wdi iso y {:keys [releases origin-year urban-log]}]
+  ([annual wdi iso y {:keys [releases origin-year urban-log fresh]}]
   (let [v (fn [k] (get-in annual [k iso y]))
         vy (fn [k] (by-year annual k iso))
         p (dec y)
@@ -118,6 +138,9 @@
         pn (if releases (rel/read-year releases "nmc" origin p) p)
         gdppc (update-vals (vy "mad_gdppc") lg)
         pop (update-vals (vy "mad_pop") lg)
+        ;; --fresh-inputs: each carried on by WDI past Maddison's read year
+        [pg gdppc] (if fresh (splice gdppc pm (fresh iso "economy/gdp_per_capita")) [pm gdppc])
+        [pp pop] (if fresh (splice pop pm (fresh iso "people/population")) [pm pop])
         tpop (vy "nmc_tpop") upop (vy "nmc_upop")
         urban (into {} (for [[yr t] tpop :let [u (get upop yr)] :when (and u (pos? t) (pos? u))] [yr (Math/log (/ u t))]))
         per-soldier (into {} (for [[yr m] (vy "nmc_milex") :let [s (get (vy "nmc_milper") yr)] :when (and s (pos? s) (pos? m))]
@@ -135,7 +158,7 @@
      (neg (v "vdem_csreprss")) (neg (change (vy "vdem_csreprss") y 3))
      (v "vdem_cspart") (v "vdem_ex_military") (v "vdem_neopat") (v "vdem_xpe_exlsocgr") (v "vdem_xpe_exlecon")
      (v "vdem_rule") (v "vdem_caassemb")
-     (get gdppc pm) (change gdppc pm 3) (change pop pm 3)
+     (get gdppc pg) (change gdppc pg 3) (change pop pp 3)
      ;; urbanization: material capabilities to 2016, WDI's urban share after
      ;; (NMC where the offset's year has it, read at its release's year)
      (if (some? (change urban p 5))

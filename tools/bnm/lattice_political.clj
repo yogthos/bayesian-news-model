@@ -225,9 +225,15 @@
   "bnm.political-gauges/year-row's options at origin t: with `leak-fixes`
   (bnm-56c.23) the release table and the origin's year, so Maddison and NMC
   are read no later than published, and urban growth in one unit across
-  2016; off, none (the base's reading)."
-  [leak-fixes t _year-delay]
-  (if leak-fixes {:releases @release-table :origin-year (ended t) :urban-log true} {}))
+  2016; off, none (the base's reading). With `fresh-db` (--fresh-inputs,
+  `build`), :fresh."
+  ([leak-fixes t year-delay] (year-row-opts leak-fixes t year-delay nil))
+  ([leak-fixes t _year-delay fresh-db]
+   (cond-> (if leak-fixes {:releases @release-table :origin-year (ended t) :urban-log true} {})
+     ;; --fresh-inputs: WDI's growth per head and population by data year,
+     ;; each value as first published, known at t (bnm.political-gauges/splice)
+     fresh-db (assoc :fresh (fn [iso v]
+                              (into {} (for [[p x] (some-> (fresh-db [iso v]) (sk/known t))] [(quot (long p) 12) x])))))))
 
 (def leading-sets
   "--leading (bnm-56c.36, docs/LEADING.md \"Priors\"): per kind, the leading
@@ -324,7 +330,7 @@
 
 (defn spec
   [{:keys [kind db cats annual wdi units end known start pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty
-           leading leading-priors leading-food2 lead-std]}]
+           leading leading-priors leading-food2 lead-std fresh-db]}]
   (let [cat (cats kind)
         ;; :fresh-frailty: the frailty-only quarter scale first, so it runs
         ;; before every coarser node at a month they share
@@ -347,7 +353,7 @@
         ;; the world's share of states in the system with an onset known in the last three years
         world3 (memoize (fn [t] (world-share cat countries in-system t)))
         hist (fn [u t] (or (#'lb/history cat u t) [nil nil nil]))
-        row (memoize (fn [u t] (pg/year-row annual wdi u (year-row-year t year-delay) (year-row-opts leak-fixes t year-delay))))
+        row (memoize (fn [u t] (pg/year-row annual wdi u (year-row-year t year-delay) (year-row-opts leak-fixes t year-delay fresh-db))))
         year-raw (fn [u t]
                    (when (in-system u t)
                      (vec (concat (row u t)
@@ -479,7 +485,7 @@
   ([kind end known-run] (build kind end known-run nil nil))
   ([kind end known-run cats start] (build kind end known-run cats start {}))
   ([kind end known-run cats start {:keys [pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty leading leading-priors
-                                         real-lags leading-food2 lead-std]}]
+                                         real-lags leading-food2 lead-std fresh-inputs]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (cond-> (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
              leading-food2 (merge (nm/load-food2)))
@@ -489,6 +495,12 @@
            :year-delay year-delay :leak-fixes leak-fixes
            :fresh-frailty fresh-frailty
            :leading leading :leading-priors leading-priors :leading-food2 leading-food2 :lead-std lead-std
+           ;; --fresh-inputs: WDI's growth per head and population, each year
+           ;; available at its first edition in the WDI Database Archives
+           :fresh-db (when fresh-inputs
+                       (nm/load-series "data/slow/series.tsv" variables
+                                       {:vars #{"economy/gdp_per_capita" "people/population"}
+                                        :first-published (nm/read-first-published)}))
            :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
            :wdi (wdi-reader db {:lag-stale lag-stale})
            :known (lb/read-known known-run kind)}))))

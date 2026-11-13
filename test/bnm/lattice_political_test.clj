@@ -35,6 +35,23 @@
       (is (= 2010 (bnm.releases/published (:releases o) "maddison" dec2014))))
     (is (= 2014 (:origin-year (lp/year-row-opts true dec2014 1))) "the delay test's origin is still the origin")))
 
+(deftest fresh-inputs-the-year-row-reads-wdi-as-published-at-the-origin
+  ;; --fresh-inputs: the year row's WDI growth per head and population, by
+  ;; data year, as known at the origin (each value at its first edition);
+  ;; off, no :fresh and the base's reading
+  (let [dec2008 (+ 11 (* 12 2008))
+        s (sk/series (for [y (range 2000 2009)]
+                       ;; 2007 first in April 2009's edition, the rest at nine months
+                       [(+ 11 (* 12 y)) (if (= y 2007) (+ 3 (* 12 2009)) (+ 8 (* 12 (inc y)))) (double y)]))
+        fdb {["AAA" "economy/gdp_per_capita"] s}
+        fresh (:fresh (lp/year-row-opts true dec2008 nil fdb))]
+    (is (nil? (:fresh (lp/year-row-opts true dec2008 nil nil))))
+    (is (= (lp/year-row-opts true dec2008 nil) (lp/year-row-opts true dec2008 nil nil)))
+    (is (= (into {} (for [y (range 2000 2007)] [y (double y)])) (fresh "AAA" "economy/gdp_per_capita"))
+        "2007 not yet published at December 2008, nor 2008")
+    (is (= 2007.0 (get ((:fresh (lp/year-row-opts true (+ 3 (* 12 2009)) nil fdb)) "AAA" "economy/gdp_per_capita") 2007)))
+    (is (empty? (fresh "BBB" "economy/gdp_per_capita")))))
+
 (deftest bnm-56c-23-leak-fixes-carry-urban-growth-in-one-unit
   (is (true? (:urban-log (lp/year-row-opts true (+ 11 (* 12 2014)) nil))))
   (is (nil? (:urban-log (lp/year-row-opts nil (+ 11 (* 12 2014)) nil)))))

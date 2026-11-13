@@ -255,6 +255,14 @@
   (is (true? (wr/real-lags-choice {:real-lags "true"})))
   (is (thrown? Exception (wr/real-lags-choice {:real-lags "yes"}))))
 
+(deftest fresh-inputs-option
+  ;; --fresh-inputs true: the year row's Maddison growth carried on by WDI
+  ;; as first published; absent or false, the base's reading
+  (is (false? (wr/fresh-inputs-choice {})))
+  (is (false? (wr/fresh-inputs-choice {:fresh-inputs "false"})))
+  (is (true? (wr/fresh-inputs-choice {:fresh-inputs "true"})))
+  (is (thrown? Exception (wr/fresh-inputs-choice {:fresh-inputs "yes"}))))
+
 (deftest bnm-5rn-leading-food2-option
   (is (false? (wr/leading-food2-choice {:leading "true"})))
   (is (true? (wr/leading-food2-choice {:leading "true" :leading-food2 "true"})))
