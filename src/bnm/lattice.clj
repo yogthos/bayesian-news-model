@@ -698,6 +698,12 @@
     (first (reduce (fn [[bi bs] [i c]] (if (> (net c) (double bs)) [i (net c)] [bi bs]))
                    [0 (net (first cands))] (map-indexed vector cands)))))
 
+(defn- half-var
+  "Half a candidate's stationary variance: what the shift applied is less
+  than its state, so the expected rate multiplier is one (augur.hier/states)."
+  ^double [c]
+  (* 0.5 (double (:sd c)) (double (:sd c))))
+
 (defn- cand-ahead
   "A candidate's state run forward to origin t, `per` months a period."
   [{:keys [m v t] :as c} to per]
@@ -727,8 +733,10 @@
                                 (let [[zm zv] (nth (:zc (first rows)) i)
                                       ll (:ll (hier/shared-marginal :logistic obs zm zv))
                                       prior (if (and t (<= s t)) {:m (:m c) :v (:v c)} (cand-ahead c s per))
-                                      post (hier/states-step prior obs {:kind :logistic})]
-                                  (assoc c :score (+ (double (:score c)) ll) :m (:m post) :v (:v post)
+                                      ;; the rows see the state less its half variance
+                                      h (half-var c)
+                                      post (hier/states-step (update prior :m - h) obs {:kind :logistic})]
+                                  (assoc c :score (+ (double (:score c)) ll) :m (+ (:m post) h) :v (:v post)
                                          :t (if t (max t s) s))))
                               cands))
                   ci (chosen cands)]
@@ -739,7 +747,9 @@
 
 (defn frailty-prior
   "The frailty a node issues with at origin t: {:m :v :rho :sd} from the
-  chosen candidate, and :zc, each candidate's [m v]. Under :prior :parent,
+  chosen candidate, and :zc, each candidate's [m v]: the shift applied,
+  its state less half its stationary variance (mean one in the rate, as
+  augur.hier/states), and its variance. Under :prior :parent,
   rho times the coarser level's state at this scale (filtered before the
   node issues), else the node's own run forward."
   [{:keys [prior]} fr parent-fr t per]
@@ -751,7 +761,8 @@
                      r (double (:rho c)) s2 (* (double (:sd c)) (double (:sd c)))]
                  {:m (* r pm) :v (+ (* r r pv) (* s2 (- 1.0 (* r r))))})
                (cand-ahead c t per)))
-        zc (mapv (fn [c] (let [{:keys [m v]} (of c)] [m v])) cands)
+        ;; the shift applied: the state less half its stationary variance
+        zc (mapv (fn [c] (let [{:keys [m v]} (of c)] [(- m (half-var c)) v])) cands)
         ci (chosen cands)
         [m v] (nth zc ci)]
     {:m m :v v :rho (:rho (nth cands ci)) :sd (:sd (nth cands ci)) :zc zc}))

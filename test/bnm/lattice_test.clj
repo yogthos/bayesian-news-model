@@ -1497,3 +1497,16 @@
   (doseq [bad [true {:rhos [1.0]} {:rhos [-0.1]} {:rhos []} {:sds [-1.0]} {:sds :all} {:from "base"}
                {:prior :up} {:bogus 1} {:from :no-such-model}]]
     (is (thrown? clojure.lang.ExceptionInfo (shock-world 3 1.0 {:frailty bad})) (pr-str bad))))
+
+(deftest bnm-56c-20-the-shock-has-mean-one-in-the-rate
+  ;; as augur.hier/states, the shift applied is the state less half its
+  ;; stationary variance, so with nothing known (the state at 0) the
+  ;; expected rate is the base's: a node does not run high just because
+  ;; its shocks have a size (t57-frailty: rare kinds issued above the base)
+  (let [fr {:cands [{:rho 0.0 :sd 1.0 :m 0.0 :v 1.0 :t 11 :score 0.0 :price 0.0}]}
+        {:keys [m v zc]} (lt/frailty-prior {:prior :own} fr nil 35 12)
+        o -4.0
+        rate (reduce + (for [[w o'] (lt/with-frailty [[1.0 o]] {:m m :v v})] (* w (Math/exp o'))))]
+    (is (< (Math/abs (- m -0.5)) 1e-12))
+    (is (= [[m v]] zc))
+    (is (< (Math/abs (- 1.0 (/ rate (Math/exp o)))) 0.01) rate)))
