@@ -1,6 +1,9 @@
 (ns bnm.world-run-test
   (:require [bnm.factors]
+            [bnm.kinds]
             [bnm.lattice-political]
+            [bnm.named]
+            [bnm.slow-train]
             [bnm.world-run :as wr]
             [clojure.test :refer [deftest is testing]]))
 
@@ -257,6 +260,36 @@
   (is (true? (wr/leading-food2-choice {:leading "true" :leading-food2 "true"})))
   (is (thrown? Exception (wr/leading-food2-choice {:leading-food2 "true"})) "needs --leading true")
   (is (thrown? Exception (wr/leading-food2-choice {:leading "true" :leading-food2 "1"}))))
+
+(deftest bnm-96j-at-risk-option
+  ;; --at-risk catalogue: each catalogue carries its rule's grid, refractory
+  ;; and barred months (bnm.kinds/at-risk-rules); without it, the base's
+  (let [db {["AAA" "economy/inflation"] {:period [(+ (* 12 1990) 11) (+ (* 12 1991) 11) (+ (* 12 1992) 11)]
+                                         :value [10.0 50.0 20.0]}}
+        cats {"growth_collapse" {:known-lag 18} "inflation_crisis" {:onsets {"AAA" (sorted-set (* 12 1991))} :known-lag 18}
+              "coup" {:known-lag 12} "food_price_shock" {:known-lag 18}}
+        out (wr/at-risk cats db nil "catalogue")]
+    (is (= cats (wr/at-risk cats db nil nil)))
+    (is (= {:known-lag 18 :grid [12 0] :refractory 60} (out "growth_collapse")))
+    (is (= #{(* 12 1992)} (set (get-in out ["inflation_crisis" :barred "AAA"]))))
+    (is (= {:known-lag 12} (out "coup")) "no rule beyond the busy months")
+    (is (= [3 2] (get-in out ["food_price_shock" :grid])) "the quarterly catalogue's onsets at quarter ends")
+    (is (= [1 0] (get-in (wr/at-risk cats db "monthly" "catalogue") ["food_price_shock" :grid])) "--food-outcomes monthly")
+    (is (thrown? Exception (wr/at-risk cats db nil "busy")))))
+
+(deftest bnm-96j-every-catalogue-keeps-its-declared-rule
+  ;; on the data: no onset off its grid, within its refractory of the one
+  ;; before, or on a barred month (the rules describe the catalogues)
+  (when (.exists (java.io.File. "data/derived/econ-events.csv"))
+    (let [db (bnm.named/load-series "data/slow/series.tsv" (bnm.slow-train/read-variables "data/slow/variables.tsv"))
+          cats (wr/at-risk (bnm.kinds/catalogues) db nil "catalogue")]
+      (doseq [[k {:keys [onsets grid refractory barred]}] cats :when grid
+              [u os] onsets]
+        (let [[g ph] grid]
+          (is (every? #(= ph (mod % g)) os) (str k " " u " off its grid"))
+          (when refractory
+            (is (every? (fn [[a b]] (>= (- b a) refractory)) (partition 2 1 os)) (str k " " u " within its refractory")))
+          (is (not-any? (get barred u #{}) os) (str k " " u " on a barred month")))))))
 
 (deftest bnm-11y-lead-std-option
   (is (nil? (wr/lead-std-choice {:leading "true"})))

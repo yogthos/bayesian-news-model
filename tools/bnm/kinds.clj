@@ -45,6 +45,39 @@
            (lp/catalogues)
            (ee/read-catalogues))))
 
+(def at-risk-rules
+  "Each catalogue's rule for when it can date an onset (bnm-96j), beyond
+  the busy months bnm.lattice-banking/onset-in? already leaves out: the
+  :grid of months it dates onsets on ([step phase]) and the :refractory
+  months after an onset before the next (its once-in-n rule). Annual
+  catalogues date in January; the quarterly food catalogue at each
+  quarter's last month (once in four quarters); the mechanical ones
+  (data/slow/events.tsv: 12 months' cool-off) at the quarter's first.
+  Banking, conflict, war onsets, coups and sovereign defaults have no rule
+  beyond their busy months: two onsets may come close together."
+  {"growth_collapse" {:grid [12 0] :refractory 60}
+   "currency_crisis" {:grid [12 0] :refractory 60}
+   "fiscal_consolidation" {:grid [12 0] :refractory 36}
+   ;; and a run's later years and the year after it: :barred, from the data
+   "inflation_crisis" {:grid [12 0] :refractory 24}
+   "sovereign_default" {:grid [12 0]}
+   "food_price_shock" {:grid [3 2] :refractory 12}
+   "market_crash" {:grid [3 0] :refractory 12}
+   "protest_surge" {:grid [3 0] :refractory 12}
+   "violence_surge" {:grid [3 0] :refractory 12}})
+
+(defn with-catalogue-at-risk
+  "`cats` with each kind's rule (`at-risk-rules`) for world-run --at-risk
+  catalogue: inflation's barred months from the db's inflation, the food
+  catalogue's grid by month under --food-outcomes monthly (`food`)."
+  [cats db food]
+  (into {} (for [[k cat] cats]
+             [k (cond-> (merge cat (at-risk-rules k))
+                  (and (= k "food_price_shock") (= "monthly" food)) (assoc :grid [1 0])
+                  (= k "inflation_crisis")
+                  (assoc :barred (into {} (for [u (keys (:onsets cat))]
+                                            [u (ee/inflation-barred (ee/by-year-inflation db u))]))))])))
+
 (defn annual
   "A catalogue by year: {:onsets {u #{years}} :cover {u [from to]}}."
   [{:keys [onsets from through]}]

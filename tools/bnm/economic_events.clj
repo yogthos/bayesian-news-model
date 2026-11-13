@@ -47,6 +47,13 @@
   [infl]
   (runs-start (set (keep (fn [[y x]] (when (>= x 40.0) y)) infl))))
 
+(defn inflation-barred
+  "The months at which `inflation-crises` cannot date an onset, from {year
+  percent}: the January after every year of 40% or more (a run's later
+  years, and the year after it, start no run; bnm-96j)."
+  [infl]
+  (set (keep (fn [[y x]] (when (>= x 40.0) (* 12 (inc y)))) infl)))
+
 (defn- once-in [n years]
   (loop [[y & ys] (sort years) last-y nil out #{}]
     (if-not y out
@@ -200,6 +207,12 @@
     (reduce (fn [acc i] (assoc acc (quot (long (nth period i)) 12) (let [x (double (nth value i))] (if logged? (Math/exp x) x))))
             {} (range (count period)))
     {}))
+
+(defn by-year-inflation
+  "{year percent} of a unit's consumer price inflation in the db, as -main
+  reads it for the catalogue."
+  [db u]
+  (by-year db u "economy/inflation" false))
 
 (defn- read-rr-defaults
   "{iso #{years}} of sovereign default onsets and the years each country is

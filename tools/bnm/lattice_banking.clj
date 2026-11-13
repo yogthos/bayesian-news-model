@@ -104,14 +104,31 @@
      :from (into {} (for [u units] [u (cond (rr-units u) (* 12 1800) (jst-units u) (* 12 1870) :else modern)]))
      :through (into {} (for [u units] [u (max (* 3 (inc cov-q)) (if (rr-units u) (* 12 2017) 0) (if (jst-units u) (* 12 2021) 0))]))}))
 
+(defn possible-onset?
+  "Whether the catalogue's rule could date an onset of `unit` in months
+  (lo, hi] (bnm-96j, world-run --at-risk catalogue): a month on its :grid
+  ([step phase]: annual catalogues date onsets in January, [12 0]) at
+  least :refractory months after its last onset at or before lo (once in
+  n years), and not :barred ({unit #{months}}: inflation's run rule)."
+  [{:keys [onsets grid refractory barred]} unit lo hi]
+  (let [[g ph] (or grid [1 0])
+        last-o (first (rsubseq (get onsets unit (sorted-set)) <= lo))
+        from (max (inc lo) (if (and refractory last-o) (+ last-o refractory) (inc lo)))
+        first-m (+ from (mod (- ph from) g))
+        bar (get barred unit #{})]
+    (boolean (some #(not (contains? bar %)) (range first-m (inc hi) g)))))
+
 (defn- onset-in?
   "Whether `unit` has an onset in months (lo, hi] as seen from origin t, or
   nil when its catalogue does not cover them or it is not at risk: a crisis
   under way in the year up to the origin, or before the window opens, is
-  not a new one (bnm.onset/at-risk?)."
-  [{:keys [onsets busy from through]} unit t lo hi]
+  not a new one (bnm.onset/at-risk?); under a catalogue's rule (:grid,
+  bnm-96j), nor is a window the rule cannot date an onset in
+  (`possible-onset?`)."
+  [{:keys [onsets busy from through grid] :as cat} unit t lo hi]
   (when (and (from unit) (<= (from unit) (inc lo)) (<= hi (through unit))
-             (empty? (subseq (get busy unit (sorted-set)) >= (- t 11) <= lo)))
+             (empty? (subseq (get busy unit (sorted-set)) >= (- t 11) <= lo))
+             (or (nil? grid) (possible-onset? cat unit lo hi)))
     (boolean (seq (subseq (onsets unit) > lo <= hi)))))
 
 (defn- history
