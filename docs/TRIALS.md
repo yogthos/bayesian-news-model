@@ -67,6 +67,16 @@ series.tsv and econ-events.csv. Against t52: year Brier -0.0009 [-0.0036
 bench against t53-noclim (docs/PHASE-CHANGES.md, second note to amendment
 L1). Not adopted: `:clim-learn :current` (t53, bnm-56c.27).
 
+Corrected base, 13 November 2026 (bnm-x6o, bnm-jnw, bnm-9fg, bnm-e1y,
+bnm-56c.27, bnm-56c.36; not a trial and not counted): the base of record
+is t65-gauges, t63-issue's command with `--leading true --leading-priors
+true` at 7dc9281. Against t53-noclim: year Brier +0.0040 [+0.0018,
++0.0065] pooled, no fold lost against t53-noclim, t62-fixes or t63-issue
+(docs/CALIBRATION.md 13). Trials from now on bench against t65-gauges
+(docs/PHASE-CHANGES.md, third note to amendment L1). Known open issue:
+market-crash false alarms 2018-22 from the 2022 curve inversion and vix12,
+an approach limit not tuned post hoc.
+
 | # | configuration | first scored | note |
 |---|---|---|---|
 | 1 | mix | 2026-10 | event-code mix |

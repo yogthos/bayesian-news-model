@@ -3896,6 +3896,55 @@ this command (bnm.ledger/command, with `--end`).
   with its own command (no option), as does t48's market crash and food
   price shock (links-test).
 
+**Third note to amendment L1, 13 November 2026** (beads bnm-x6o, bnm-jnw,
+bnm-9fg, bnm-e1y, bnm-56c.27, bnm-56c.36; decided by the user the same
+day; written before any issue is made on it, L1 itself unchanged). The
+base of record is **t65-gauges**, not t53-noclim: `bnm.world-run --out
+t65-gauges --without-relations true --known r7-at-fx --leak-fixes true
+--pwt-stale true --lag-stale true --gauge-std stable --leading true
+--leading-priors true --set '{:learn-offsets :mixture :flow-std-from
+:resolved :clim-learn :current :frailty {} :discount-from :data :flow-std
+:stable :evidence-at :issue-joint}'`, at 7dc9281 with augur v0.24.0, on
+t53-noclim's inputs. Wherever L1 or the earlier notes name t53 (or t52,
+t50) as the base, read t65; the size check stays as recorded on t49. The
+next issue (2027-Q1) runs this command (bnm.ledger/command, with `--end`).
+
+- *What changed.* On t53-noclim: the climatology no longer counted twice
+  (`:clim-learn :current`, bnm-56c.27) and the frailty at its default grid
+  (`:frailty {}`, t57); the three fixes of docs/LEADING.md 4 (slow series
+  at their publication lag, bnm-x6o; no discount before a node's first
+  rows, bnm-jnw; no standardizer cap from a flat history, bnm-9fg); each
+  model's evidence the joint predictive it issued per origin
+  (`:evidence-at :issue-joint`, bnm-e1y); and the leading gauges (Baa
+  spread, US curve 10y-3m, VIX at market crashes and growth collapses,
+  world food times imports at food) with coefficient priors fixed from
+  theory before any run (bnm-56c.36, docs/LEADING.md "Priors").
+- *Options, not defaults.* Every one is an option set by the base's
+  command; the defaults are unchanged, so the registered issues
+  reproduce with their own commands.
+- *The honest score* (docs/CALIBRATION.md 13; year nodes, 2003-2022,
+  thirteen kinds weighed equally, Brier, + = t65 better). Against
+  t53-noclim: 2003-06 +0.0039, 2007-09 +0.0031, 2010-12 +0.0009, 2013-19
+  +0.0069, 2020-22 +0.0016, pooled +0.0040 [+0.0018, +0.0065]; log pooled
+  +0.0096 [+0.0034, +0.0157]. No fold lost against t53-noclim, t62-fixes
+  or t63-issue. The priors, not the gauges alone, make the gain (against
+  the same gauges at flat priors +0.0015 [+0.0004, +0.0029]).
+- *Known open issue.* Market-crash false alarms 2018-22: the year node
+  sits on the leading model from 2010 and issues 0.49 at Dec 2018 (rate
+  0.21), 0.34 at Dec 2020 (0.08) and 0.36 at Dec 2022 (0.05), from vix12
+  after a crash and the 2022 curve inversion (CALIBRATION 13 loss 1; the
+  2020-22 log score loses against t62-fixes and t63-issue). It is a limit
+  of the approach, the curve's known 2022-24 miss and a partly concurrent
+  VIX; changing the gauges now would be chosen after seeing the scores,
+  so it is deliberately not tuned post hoc.
+- *Reproduction.* bnm.ledger/command rerun to a fresh directory
+  (t65-gauges-repro) gives t65-gauges's forecasts.tsv byte for byte for
+  every kind, reading exactly `inputs`, at the hashes in `base-inputs`
+  (t53-noclim's: the leading gauges are rows of data/slow/series.tsv;
+  data/raw/fred-vintages is a comparison download nothing reads). With
+  this code 2026-Q4-r1 comes back byte for byte from its archive with
+  its own command.
+
 ## Registered, 11 November 2026: one pooled hazard over the buffer invariants, and the scanner (bead bnm-56c.6, PLAN 1.5-1.7)
 
 Written and committed before any model is fitted to break labels. The

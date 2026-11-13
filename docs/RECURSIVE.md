@@ -298,7 +298,9 @@ Every step uses the following protocol:
 
 The base stays t48 until a step is adopted.
 
-**Base of record (12 November 2026): t53-noclim** (second note to amendment L1, docs/PHASE-CHANGES.md): t52's command with `--known r7-at-fx` and `:flow-std-from :resolved` on the data of bnm-56c.31 and .32. Steps bench against it. Against t52 pooled −0.0009 [−0.0036, +0.0018], no fold lost; market crashes 2007–09 −0.127, one origin, a level shift (docs/LOOP-AUDIT.md 6).
+**Base of record (13 November 2026): t65-gauges** (third note to amendment L1, docs/PHASE-CHANGES.md): t63-issue's command (t53 plus the fixes of LEADING.md 4 and `:evidence-at :issue-joint`) with the leading gauges and their priors from theory (`--leading true --leading-priors true`, bnm-56c.36). Steps bench against it. Against t53-noclim pooled +0.0040 [+0.0018, +0.0065], no fold lost against t53, t62 or t63 (docs/CALIBRATION.md 13). Open: market-crash false alarms 2018-22 from the 2022 curve inversion and vix12, an approach limit, not tuned post hoc.
+
+Earlier: **Base of record (12 November 2026): t53-noclim** (second note to amendment L1, docs/PHASE-CHANGES.md): t52's command with `--known r7-at-fx` and `:flow-std-from :resolved` on the data of bnm-56c.31 and .32. Steps bench against it. Against t52 pooled −0.0009 [−0.0036, +0.0018], no fold lost; market crashes 2007–09 −0.127, one origin, a level shift (docs/LOOP-AUDIT.md 6).
 
 **Step 0: Round 1, under way. What it must respect now:**
 - `:state-from` has the signature `(fn [{:keys [scale level place t models x o]}] -> {:s double ...})`. It is pure in inputs and model states and independent of the weights. The default reference is the `all` model's predictive. Return a map so that `:z` and `:regime` can be added in steps 4 and 6 without changing the shape.

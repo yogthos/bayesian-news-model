@@ -1,5 +1,24 @@
 # Handover
 
+## State as of 2026-11-13 (branch `structure`)
+
+**The base of record is t65-gauges** (third note to amendment L1, 13
+November, docs/PHASE-CHANGES.md): `bnm.world-run --out t65-gauges
+--without-relations true --known r7-at-fx --leak-fixes true --pwt-stale true --lag-stale true --gauge-std stable --leading true --leading-priors true --set '{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}'`, at 7dc9281 with augur v0.24.0, on t53-noclim's inputs.
+Against t53-noclim year Brier +0.0040 [+0.0018, +0.0065] pooled, no fold
+lost against t53-noclim, t62-fixes or t63-issue (docs/CALIBRATION.md 13).
+- Known open issue, not fixed: market-crash false alarms 2018-22 (Dec 2018
+  0.49, Dec 2020 0.34, Dec 2022 0.36 against rates 0.05-0.21), from the
+  2022 curve inversion and vix12. An approach limit (CALIBRATION 13 loss
+  1), deliberately not tuned after seeing the scores.
+- The ledger builds 2027-Q1 on t65 (`base`, `command`, `base-files`;
+  `known` r7-at-fx and `inputs`/`base-inputs` unchanged: the leading
+  gauges are series.tsv rows). The command reproduces t65-gauges byte for
+  byte (t65-gauges-repro); 2026-Q4-r1 still reproduces from its archive.
+  No forecast issued.
+
+The section below is the earlier 12 November handover, kept as written.
+
 ## State as of 2026-11-12, later (branch `structure`)
 
 **The base of record is t53-noclim** (second note to amendment L1 of 12
