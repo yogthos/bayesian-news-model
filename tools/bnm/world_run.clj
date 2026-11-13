@@ -369,7 +369,13 @@
             [t ws] hist
             :when (zero? (mod (- t 11) 12))
             [g wt] (sort-by key ws)]
-      (.write w (str (name scale) "\t" (name level) "\t" (quot t 12) "\t" (if (namespace g) (str (namespace g) "/" (name g)) (name g)) "\t" wt "\n")))))
+      (.write w (str (name scale) "\t" (name level) "\t" (quot t 12) "\t" (if (namespace g) (str (namespace g) "/" (name g)) (name g)) "\t" wt "\n"))))
+  ;; under bnm.lattice's :frailty: each node's common shock, filtered per origin
+  (when-let [fr (:frailty r)]
+    (with-open [w (io/writer (str dir "/frailty.tsv"))]
+      (doseq [[[scale level] hist] (sort-by key fr)
+              [s {:keys [m v rho sd]}] hist]
+        (.write w (str (name scale) "\t" (name level) "\t" s "\t" m "\t" v "\t" rho "\t" sd "\n"))))))
 
 (defn world-of
   "The world for bnm.world from the final states: each kind's year-node
