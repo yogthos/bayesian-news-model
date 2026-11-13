@@ -491,3 +491,131 @@ Verdict: the fresh scale works in the planted world. There the year's z at the f
 - growth collapses have no sub-annual catalogue.
 
 Fresher frailty cannot reach them, because an episode's onset precedes every outcome that reveals it. What is left is information that leads onsets, not the outcomes themselves: prices, spreads and indices read at t, which the quarter gauges and the world gauges already carry, or a regime state that switches on them (step 5). Monthly food outcomes alone (t60-monthly) are neutral pooled (+0.0001 [-0.0006, +0.0009] against t57-frailty) and help food 2010-12 (Brier 0.0788 against t57-frailty's 0.1158 on the old target). Not adopted (adoption is the user's decision). The option stays in the code, off by default.
+
+## 11. The three bugs of LEADING.md 4 fixed: t62-fixes (bnm-x6o, bnm-jnw, bnm-9fg)
+
+docs/LEADING.md section 4 found three bugs that kept the `:up` model out of the year averaging (market crashes: weight under 0.005 since 1968; food: 0.00 in 2019-21 while it was the best-scoring model). Each is fixed behind an option, off by default, with its own test; 2026-Q4-r1 reproduces byte for byte with them off (data/runs/logs/repro-r1-fixes.log). Code at 39a8a6f, augur v0.23.0.
+
+1. **Dead gauge (bnm-x6o), `--lag-stale true`.** The year row read WDI at `{:stale 18}`, and tertiary enrolment is published 21 months after its year, so `:tertiary5` (and protest's and violence's `[:tertiary5 :growth3]` tensions) were nil at every country and origin. With the option each slow series is read at its own lag (bnm.named/lag-stale): tertiary 33 months, the Penn World Table 60. Test: bnm-x6o-each-slow-series-is-read-at-its-own-publication-lag.
+2. **Discounting before any data (bnm-jnw), `:discount-from :data`.** augur's step discounts the covariance on periods with no rows, and the lattice steps every node from 1870, so a late node met its first data at its prior times 1/δ^n (food quarter ~15x). With the option a node is not stepped until it has rows. Test: bnm-jnw-no-discount-before-a-node-s-first-data (variance 11.2 → the declared 1.0).
+3. **The standardizers' cap on a constant input (bnm-9fg), `:flow-std :stable` and `--gauge-std stable`.** Two places, not one:
+   - the flow standardizer's one-pass spread (rounding noise above the 1e-9 guard);
+   - the gauges' standardizer (bnm.lattice-banking), where world3 is 0 at every origin before a kind's first known onset. Its spread is then the 1e-12 variance floor (sd 1e-6), so its first move lands on the cap. This, not the flow standardizer, is what put food's world3 at +5.00 at every country at Dec 2007 (LEADING.md 4.3 named the flow one).
+
+   Both now keep Welford sums and read a spread under max(1e-9, 1e-8 |mean|) as none. Tests: bnm-9fg-a-constant-input-is-not-put-on-the-cap, bnm-9fg-a-gauge-flat-until-now-is-not-put-on-the-cap. In the replay, world3 at food Dec 2007 reads 0.00 (was +5.00).
+
+### The stale audit
+
+Every slow series the lattice reads, against its publication lag in data/slow/series.tsv. "Refused" is the share of country-origins in 2000-22 with a published value that the staleness refuses.
+
+| read | stale | lag (median) | refused |
+|---|---|---|---|
+| year row WDI: tertiary enrolment | 18 | 21 | **100% (dead)** |
+| year row WDI: urban share, infant mortality, working age, inflation, food inflation | 18 | 9 | 0-1.6% |
+| quarter political economy: PWT profit rate / labour share (`--pwt-stale`) | 36 | editions 2-5 years apart | **19% / 29%** (dead 2018, 2023-24) |
+| quarter political: food imports, fuel imports / exports shares | 30 | 9 | 12-14% (countries whose series stopped; age 11 months at the median read) |
+| trade openness (quarter and exposure) | 30 | 9 | 3% (same) |
+| every other quarter political, financial and world input | 6-30 | 0-12 | 0-1% |
+
+- PWT is nil everywhere before mid-2016 in any case: the first vintage on disk is PWT 9.0, published 2016-06, and every earlier year is dated by it.
+- Only tertiary enrolment and the PWT pair are refused by a staleness shorter than their lag, and `--lag-stale` covers both. The other refusals are series that stopped, which the staleness is there to refuse.
+
+### Runs
+
+Each run's command is in data/runs/t62-*/README.txt.
+- **t62-fixes**: t57-frailty plus the three fixes.
+- **t62-fixes-seq**: plus `:evidence-at :sequential` (LEADING.md 4.4).
+- **t62-fixes-min**: t62-fixes plus `:flow-std-min-origins 10` (bnm-56c.34 at its tested value; step 7 below).
+
+Logs: data/runs/logs/score-t62-*.txt, plus calibration, outliers, up-weights and kind-folds files.
+
+Year nodes, Brier (+ = better, 90% intervals):
+
+| fold | t62-fixes vs t57-frailty | vs t53-noclim | t62-fixes-seq vs t57-frailty | vs t53-noclim | t62-fixes-min vs t57-frailty | vs t53-noclim |
+|---|---|---|---|---|---|---|
+| 2003-06 | +0.0007 [-0.0002, +0.0015] | +0.0031 [+0.0000, +0.0061] | +0.0025 [+0.0006, +0.0045] | +0.0049 [+0.0024, +0.0080] | +0.0025 [+0.0006, +0.0048] | +0.0050 [+0.0015, +0.0084] |
+| 2007-09 | +0.0022 [-0.0012, +0.0040] | -0.0010 [-0.0050, +0.0012] | +0.0009 [-0.0029, +0.0029] | -0.0023 [-0.0061, -0.0002] LOSS | +0.0001 [-0.0026, +0.0026] | -0.0031 [-0.0057, -0.0009] LOSS |
+| 2010-12 | +0.0007 [-0.0018, +0.0028] | -0.0015 [-0.0043, +0.0014] | -0.0026 [-0.0059, +0.0008] | -0.0047 [-0.0070, -0.0025] LOSS | +0.0026 [-0.0008, +0.0061] | +0.0005 [-0.0024, +0.0029] |
+| 2013-19 | +0.0016 [+0.0007, +0.0025] | +0.0060 [+0.0028, +0.0094] | +0.0025 [+0.0008, +0.0041] | +0.0068 [+0.0032, +0.0108] | +0.0006 [-0.0006, +0.0018] | +0.0050 [+0.0018, +0.0083] |
+| 2020-22 | -0.0010 [-0.0032, +0.0007] | +0.0030 [+0.0012, +0.0046] | +0.0010 [-0.0011, +0.0026] | +0.0050 [+0.0027, +0.0072] | +0.0006 [-0.0014, +0.0020] | +0.0046 [+0.0019, +0.0070] |
+| pooled | +0.0009 [-0.0001, +0.0016] | +0.0031 [+0.0013, +0.0051] GAIN | +0.0013 [-0.0001, +0.0025] | +0.0035 [+0.0013, +0.0060] GAIN | +0.0013 [+0.0003, +0.0023] GAIN | +0.0035 [+0.0016, +0.0053] GAIN |
+
+- Log pooled, against t57-frailty: t62-fixes +0.0021 [-0.0004, +0.0041], t62-fixes-seq +0.0038 [+0.0002, +0.0072] GAIN, t62-fixes-min +0.0033 [+0.0003, +0.0062] GAIN.
+- t62-fixes is the only one with no fold loss against either bench. t57-frailty itself loses 2007-09 against t53-noclim (§7).
+- Per kind against t57-frailty (bnm.world-score):
+  - market crashes gain in all three: +0.0140 [+0.0050, +0.0230], +0.0338 [+0.0184, +0.0498] and +0.0179 [+0.0063, +0.0291];
+  - food: -0.0012 [-0.0047, +0.0010], -0.0145 [-0.0265, -0.0031] (seq, a loss) and -0.0004 [-0.0079, +0.0080];
+  - small losses in protest (-0.0007 to -0.0014) and in sovereign defaults (t62-fixes -0.0001 [-0.0003, -0.0000]);
+  - everything else within ±0.0004.
+
+Calibration, country year, mean p (rate) and Brier, t53-noclim → t57-frailty → t62-fixes → t62-fixes-seq → t62-fixes-min:
+
+| kind | span | rate | mean p | Brier |
+|---|---|---|---|---|
+| market crashes | 2003-22 | 0.178 | 0.326 → 0.286 → 0.259 → 0.198 → 0.235 | 0.1996 → 0.1701 → 0.1561 → **0.1363** → 0.1523 |
+| market crashes | 1980-2002 | 0.312 | 0.259 → 0.234 → 0.226 → 0.215 → 0.205 | 0.2395 → 0.2305 → 0.2309 → 0.2313 → 0.2349 |
+| market crashes | 2010-12 | 0.080 | 0.244 → 0.276 → 0.206 → 0.139 → 0.170 | 0.1234 → 0.1174 → 0.1001 → 0.0902 → 0.0954 |
+| food | 2003-22 | 0.154 | 0.183 → 0.247 → 0.250 → 0.286 → 0.273 | 0.1560 → 0.1580 → 0.1592 → 0.1725 → 0.1584 |
+| food | 2010-12 | 0.060 | 0.206 → 0.296 → 0.323 → 0.394 → 0.288 | 0.0844 → 0.1158 → 0.1238 → 0.1746 → 0.1056 |
+| food | 2020-22 | 0.415 | 0.060 → 0.114 → 0.119 → 0.139 → 0.159 | 0.3716 → 0.3369 → 0.3365 → 0.3228 → 0.3176 |
+| growth collapses | 2003-22 | 0.106 | 0.087 → 0.083 → 0.083 → 0.084 → 0.083 | 0.0990 → 0.0966 → 0.0966 → 0.0966 → 0.0966 |
+| protest surges | 2003-22 | 0.030 | 0.040 → 0.050 → 0.047 → 0.054 → 0.050 | 0.0276 → 0.0277 → 0.0284 → 0.0292 → 0.0288 |
+| violence surges | 2003-22 | 0.080 | 0.119 → 0.107 → 0.107 → 0.105 → 0.110 | 0.0709 → 0.0710 → 0.0717 → 0.0714 → 0.0706 |
+
+Banking, sovereign, inflation, coups, conflict, war, currency and fiscal are within ±0.0005 of t57-frailty (score-t62-calibration.txt). Market crashes in 2003-22 are now below every ceiling of LEADING.md 2 under the sequential evidence (0.1363 against 0.1416-0.1546), and below t57-frailty in all three runs.
+
+**The outlier episodes** (mean p issued at the December origin, rate in brackets):
+
+| episode | origin | t57-frailty | t62-fixes | t62-fixes-seq | t62-fixes-min |
+|---|---|---|---|---|---|
+| food 2007-08 | 2006 | 0.500 (0.418) | 0.500 | 0.500 | 0.500 |
+| | 2007 | 0.238 (0.313) | 0.213 | 0.213 | 0.213 |
+| food 2020-22 | 2020 | 0.109 (0.493) | 0.109 | 0.140 | 0.169 |
+| | 2021 | 0.109 (0.500) | 0.109 | 0.143 | 0.143 |
+| market crashes 2008 | 2006 | 0.269 (0.957) | 0.269 | 0.304 | 0.273 |
+| | 2007 | 0.252 (0.957) | 0.291 | 0.273 | 0.260 |
+| growth collapses | 2007 | 0.071 (0.235) | 0.070 | 0.073 | 0.070 |
+| | 2008 | 0.068 (0.202) | 0.067 | 0.069 | 0.067 |
+| | 2019 | 0.078 (0.554) | 0.078 | 0.078 | 0.078 |
+
+The fixes do not reach the episodes. The market-crash gain is in calm years (2010-19), where the forecasts come down toward the rate.
+
+**The `:up` weight at the year country node** (Decembers; full table in score-t62-up-weights.txt):
+
+| kind | years | t57-frailty | t62-fixes | t62-fixes-seq | t62-fixes-min |
+|---|---|---|---|---|---|
+| market crashes | 1965-67 | 0.06 | 0.05-0.07 | 0.05-0.07 | 0.00 (no flows yet) |
+| market crashes | 1968-2022 | ≤ 0.004 | ≤ 0.003 | ≤ 0.005 | ≤ 0.003 |
+| food | 2008-09 | 0.06, 0.04 | 0.06, 0.03 | 0.06, 0.04 | 0.06, 0.00 |
+| food | 2010-22 | 0.000 | 0.000 | 0.000 | 0.000 |
+
+The leaders: t62-fixes, market crashes all-inputs 0.33-0.99 from 2006, food patronage 0.58-0.99 from 2012; seq and min, all-inputs at 0.98-1.00 from 2005 (market crashes) and 2010-15 (food). **`:up` is still locked out.**
+
+### Why: the losses traced (PLAN principle 9)
+
+Traced on replays of food and market crashes with each run's exact options (the lead/replayfix.clj of LEADING.md, dumping every December's issued rows, each model's issued predictive and the year models; session scratchpad).
+
+1. **One origin's cross-section as the flows' scale (bnm-56c.34, known).** Once bugs 2-3 are gone, `:up` still lands near the cap at the node's second informed origin:
+   - food Dec 2008: mean -4.07, 32% of countries at -5;
+   - market crashes Dec 1965: -3.91, 93% at the cap.
+
+   The standardizer scales by the first informed origin's spread across countries, not a spread over time. On issued scores this costs food's `:up` 37 nats at 2008 against base. It then learns a qw2 slope from those capped rows and loses 33 more in 2012. By 2019 patronage is 59 nats ahead of `:up` on cumulative issued log score. In t57 `:up` had caught up by 2021; with the fixes its 2020-21 issues are worse (-168 and -143 against t57's -137 and -101), because its qlead slopes were learned differently. `:flow-std-min-origins 10` removes the cap: t62-fixes-min food 2010-12 gains +0.010 on t57. But it holds `:up` at 0 until the tenth informed origin (food 2017), so the group has no input and drops out (weight 0, by design).
+2. **The averaging's evidence rewards hindsight, not forecasts.** This is why `:up` stays out once the caps are gone. In t57 and t62-fixes (evidence at learn time) and t62-fixes-seq (sequential at learn time), a row is scored about 27 months after issue (market crashes; 42 for food), by a state that has since learned its neighbours. On the *issued* predictive the ranking is the other way round:
+   - market crashes (seq replay): `:up` leads the all-inputs model by 16-31 nats from 1980 to 2007, and by 2007 `:down` by 35 and regime and violence by 24. In 2006-07 it beats base by 8 and 10 nats per origin. Its weight is ≤ 0.005 throughout, while all-inputs holds 0.96-1.00 from 2000.
+   - food (seq replay): the all-inputs model is the *worst* issued model from 2008 on, 25 nats behind base by 2008 and 207 by 2015. Its weight goes to 0.98-1.00 from 2010, and food 2010-12 issues 0.394 against a rate of 0.060: Brier 0.1746, the -0.0145 loss.
+
+   Under the sequential rule the widest model learns each period's pattern from the period's first rows and is paid for "predicting" the rest. This is §9's mechanism, here with the 2006-08 global shock: the frailty filters no shock at food's first origins, because it has no history to choose σ from. Scoring by the issued predictive (`:evidence-at :issue`, replayed with all three fixes) gives the ranking back but not the lock. It counts each row's coefficient uncertainty separately (bug 4), so `:up`'s 2006-07 advantage shrinks to 2-4 nats, and `:up` reaches 0.12-0.28 only in 1980-95 (market crashes) and stays 0 at food. The rule that both scores at issue and counts an origin's rows jointly (the issued predictive's joint marginal per origin, with the shared shock) does not exist in augur.
+3. **The forgetting is per period.** `:forget 0.995` applies at every period of every scale, so at the year node it is 0.5% a year: a half-life of 138 years. A group that falls 40 nats behind in its first informed decade cannot come back within the sample unless it out-scores the leader by more than that. This is a design reading, not a code bug, but it is what makes a lock permanent.
+4. **The revived gauge costs protest surges (-0.0007 to -0.0014).** Replays of protest with and without `--lag-stale` on the same code: 0.0277 → 0.0291. The gauge reads correctly (WDI gross enrolment, 5-year change). Its tension moves the averaging to the all-inputs model five years earlier (2005-11, where history had held 0.6-0.96), which is the same evidence rule as 2. Violence: 0.0710 → 0.0713.
+5. **Market crashes 2007-09 under min and seq (-0.031, -0.020 against t53-noclim).** Both lock on all-inputs from 2005 (0.99-1.00), which issues 0.26-0.30 at the 2006-07 origins (rate 0.96). Same mechanism as 2; under min, the 1964-73 decade without flows sets the path (LOOP-AUDIT 7).
+
+Bugs found and fixed: the gauge-standardizer cap (part of bnm-9fg above). Items 1-3 are known defects with options, or design: the first is fixed by an existing option, and the second needs a new evidence rule in augur (issue time, joint per origin), too large to fold in here. It goes to the user as a decision.
+
+Verdict:
+- The three fixes are correct and tested. t62-fixes gains pooled against t53-noclim (+0.0031 [+0.0013, +0.0051]) and fails no fold against either bench, while t57-frailty fails 2007-09 against t53-noclim.
+- It ties t57-frailty pooled (+0.0009 [-0.0001, +0.0016]) and gains market crashes (+0.014 [+0.005, +0.023]).
+- t62-fixes-min is the strongest against t57-frailty (+0.0013 [+0.0003, +0.0023] GAIN, no fold loss), but it loses 2007-09 against t53-noclim.
+- t62-fixes-seq has the best market crashes (0.1363), but its food loss (-0.0145) fails the rule.
+- None reopens `:up`, and none reaches the outlier episodes.
+- What locks `:up` now is the averaging's evidence: it is computed from rows learned in hindsight, while on the issued forecasts `:up` beats the models holding the weight. Next: an issue-time joint evidence rule in augur.
+- Not adopted (adoption is the user's decision); every option stays off by default.
