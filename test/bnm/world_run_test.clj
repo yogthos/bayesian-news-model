@@ -243,3 +243,17 @@
     (is (= 9 (get-in (wr/food-outcomes cats db "monthly") ["food_price_shock" :known-lag])))
     (is (= {:known-lag 12} ((wr/food-outcomes cats db "monthly") "coup")))
     (is (thrown? Exception (wr/food-outcomes cats db "quarterly")))))
+
+(deftest growth-outcomes-option
+  ;; --growth-outcomes quarterly swaps in the quarterly growth-collapse
+  ;; catalogue (bnm-56c.37), its covered units only, known five months after
+  ;; the quarter; without it the base's catalogue stands and nothing is
+  ;; read; any other value is refused
+  (let [cats {"growth_collapse" {:from {"AAA" 0 "BBB" 0} :known-lag 18} "coup" {:known-lag 12}}
+        q {:onsets {"AAA" #{24005}} :busy {"AAA" #{24005}} :from {"AAA" 23000} :through {"AAA" 24100} :known-lag 5}
+        read (fn [c] (is (= cats c)) q)]
+    (is (= cats (wr/growth-outcomes cats nil (fn [_] (throw (ex-info "read" {}))))))
+    (is (= q (get (wr/growth-outcomes cats "quarterly" read) "growth_collapse")))
+    (is (= ["AAA"] (keys (get-in (wr/growth-outcomes cats "quarterly" read) ["growth_collapse" :from]))) "the covered units only")
+    (is (= {:known-lag 12} ((wr/growth-outcomes cats "quarterly" read) "coup")))
+    (is (thrown? Exception (wr/growth-outcomes cats "monthly" read)))))

@@ -53,12 +53,17 @@
       (let [ok (or (nil? last-y) (>= (- y last-y) n))]
         (recur ys (if ok y last-y) (if ok (conj out y) out))))))
 
+(defn log-growth
+  "{year log growth} of {year level}, each year on the one before."
+  [levels]
+  (into {} (for [[y x] levels :let [b (get levels (dec y))] :when (and b (pos? b) (pos? x))] [y (Math/log (/ x b))])))
+
 (defn growth-collapses
   "Years whose growth of output per head ({year level}) is negative and more
   than two standard deviations below the mean of the previous twenty
   years' (at least fifteen of them), once in five years."
   [levels]
-  (let [g (into {} (for [[y x] levels :let [b (get levels (dec y))] :when (and b (pos? b) (pos? x))] [y (Math/log (/ x b))]))]
+  (let [g (log-growth levels)]
     (once-in 5 (for [[y x] g
                      :let [past (keep #(get g %) (range (- y 20) y))]
                      :when (>= (count past) 15)
@@ -201,6 +206,95 @@
             {} (range (count period)))
     {}))
 
+(defn per-head-levels
+  "{year output per head} at `u`: Maddison's levels (`mad`, {year level}),
+  WDI's growth of GDP per head chained on after Maddison ends; WDI's alone
+  without Maddison. The annual growth-collapse catalogue's levels."
+  [mad db u]
+  (let [wdi-g (by-year db u "economy/gdp_per_capita" true)]
+    (if (seq mad)
+      (let [last-y (apply max (keys mad))]
+        (reduce (fn [acc y] (if-let [g (and (get wdi-g y) (get wdi-g (dec y)) (/ (wdi-g y) (wdi-g (dec y))))]
+                              (if-let [b (get acc (dec y))] (assoc acc y (* b g)) acc) acc))
+                mad (range (inc last-y) 2026)))
+      wdi-g)))
+
+;; --- quarterly growth collapses (bnm-56c.37, docs/GROWTH-QUARTERLY.md) ---------
+
+(def quarterly-growth-lag
+  "Months after a quarter's last month before its GDP is read: OECD's first
+  releases come 2-4 months on (5 at most, its real-time editions), the
+  IMF's about 4 (docs/GROWTH-QUARTERLY.md 4)."
+  5)
+
+(defn quarterly-growth-collapses
+  "Quarters (quarter index, 4 x year + quarter - 1) of growth collapses from
+  {quarter per-head growth on the same quarter a year before} and the
+  annual catalogue's {year log growth of output per head}: a quarter's
+  growth negative and more than 2.5 standard deviations below the mean of
+  the twenty years before the quarter's (at least fifteen of them), once in
+  twenty quarters (the annual rule's once in five years)."
+  [g annual-g]
+  (once-in 20 (for [[i x] g
+                    :let [past (keep #(get annual-g %) (range (- (quot i 4) 20) (quot i 4)))]
+                    :when (and (neg? x) (>= (count past) 15))
+                    :let [m (/ (reduce + past) (count past))
+                          sd (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) past)) (dec (count past))))]
+                    :when (< x (- m (* 2.5 sd)))]
+                i)))
+
+(defn quarterly-growth-catalogue
+  "The lattice's catalogue of growth collapses by quarter from {iso {quarter
+  per-head growth}} and {iso {year annual log growth}}: onsets at the
+  quarter's last month (the month its data close, as quarterly-food-onsets),
+  busy twelve months, covered from the first quarter the rule can judge (a
+  growth and fifteen years of annual growth before it) to the last with
+  data, known five months after the quarter. A unit the rule never judges
+  is left out."
+  [by-iso annual-by-iso]
+  (let [judged (fn [g ag] (filter (fn [i] (>= (count (keep #(get ag %) (range (- (quot i 4) 20) (quot i 4)))) 15)) (keys g)))
+        units (for [[u g] by-iso :let [ag (get annual-by-iso u {}) js (judged g ag)] :when (seq js)]
+                [u (map #(+ 2 (* 3 %)) (quarterly-growth-collapses g ag)) (* 3 (apply min js)) (+ 2 (* 3 (apply max (keys g))))])]
+    {:onsets (into {} (for [[u os] units] [u (into (sorted-set) os)]))
+     :busy (into {} (for [[u os] units] [u (into (sorted-set) (mapcat #(range % (+ % 12)) os))]))
+     :from (into {} (for [[u _ a _] units] [u a]))
+     :through (into {} (for [[u _ _ b] units] [u b]))
+     :known-lag quarterly-growth-lag}))
+
+(defn read-quarterly-growth
+  "{iso {quarter per-head growth on the year before}} from data/derived/
+  gdp-quarterly.csv (scripts/quarterly-gdp.py)."
+  ([] (read-quarterly-growth "data/derived/gdp-quarterly.csv"))
+  ([path]
+   (with-open [r (io/reader path)]
+     (let [[h & ls] (line-seq r)
+           ix (zipmap (str/split h #",") (range))]
+       (reduce (fn [acc l]
+                 (let [f (str/split l #",")
+                       [y k] (str/split (f (ix "quarter")) #"Q")]
+                   (assoc-in acc [(f (ix "iso")) (+ (* 4 (parse-long y)) (dec (parse-long k)))] (parse-double (f (ix "yoy_pc"))))))
+               {} ls)))))
+
+(defn with-quarterly-growth
+  "`cats` with growth_collapse the quarterly catalogue `q` (world-run
+  --growth-outcomes quarterly, bnm-56c.37): the units it covers only, every
+  other kind as it was. A unit the annual catalogue does not cover is
+  refused: the annual rule's line is what it reads."
+  [cats q]
+  (when-let [bad (seq (remove (set (keys (get-in cats ["growth_collapse" :from]))) (keys (:from q))))]
+    (throw (ex-info "bnm.economic-events: quarterly growth at units the annual catalogue does not cover" {:units (vec bad)})))
+  (assoc cats "growth_collapse" q))
+
+(defn quarterly-growth
+  "The quarterly growth-collapse catalogue at the annual catalogue's units
+  (`cats`), from data/derived/gdp-quarterly.csv and the annual per-head
+  levels (Maddison, then WDI, from the db)."
+  [cats db]
+  (let [units (keys (get-in cats ["growth_collapse" :from]))
+        annual (pg/read-annual)]
+    (quarterly-growth-catalogue (select-keys (read-quarterly-growth) units)
+                                (into {} (for [u units] [u (log-growth (per-head-levels (get-in annual ["mad_gdppc" u] {}) db u))])))))
+
 (defn- read-rr-defaults
   "{iso #{years}} of sovereign default onsets and the years each country is
   covered, Reinhart & Rogoff (data/raw/slow/rr/onsets.csv)."
@@ -231,15 +325,7 @@
     (doseq [u units]
       (let [fx (by-year db u "finance/fx_per_usd" true)
             infl (by-year db u "economy/inflation" false)
-            mad (get-in annual ["mad_gdppc" u] {})
-            wdi-g (by-year db u "economy/gdp_per_capita" true)
-            ;; Maddison's levels, WDI's growth chained on after Maddison ends
-            levels (if (seq mad)
-                     (let [last-y (apply max (keys mad))]
-                       (reduce (fn [acc y] (if-let [g (and (get wdi-g y) (get wdi-g (dec y)) (/ (wdi-g y) (wdi-g (dec y))))]
-                                             (if-let [b (get acc (dec y))] (assoc acc y (* b g)) acc) acc))
-                               mad (range (inc last-y) 2026)))
-                     wdi-g)
+            levels (per-head-levels (get-in annual ["mad_gdppc" u] {}) db u)
             [rr rr-known] (read-rr-defaults)
             sov-lv (merge-with into (lv "sovereign") (lv "restructuring"))
             food (by-month db u "food/food_inflation")

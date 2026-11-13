@@ -37,6 +37,11 @@
   --food-outcomes monthly (bnm-56c.30: food price shocks by month from
   FAOSTAT's monthly food inflation, known at its publication lag, nine
   months, not the annual catalogues' eighteen),
+  --growth-outcomes quarterly (bnm-56c.37: growth collapses by quarter from
+  quarterly GDP per head, data/derived/gdp-quarterly.csv, against the
+  annual rule's line, known five months after the quarter; only the 103
+  units the quarterly data cover are forecast for the kind, docs/
+  GROWTH-QUARTERLY.md),
   --clim-prior kinds (bnm-56c.26: a node with no resolved outcome reads
   the rate the other kinds' nodes at its scale and level have resolved,
   not 0.5),
@@ -342,6 +347,19 @@
     "monthly" (ee/with-monthly-food cats db)
     (throw (ex-info (str "bnm.world-run: --food-outcomes takes monthly, not " choice) {}))))
 
+(defn growth-outcomes
+  "`cats` under --growth-outcomes: quarterly, growth collapses by quarter
+  (bnm.economic-events/quarterly-growth, bnm-56c.37), dated at the quarter's
+  last month and known five months on, at the units the quarterly data
+  cover only (the kind's lattice is built over its catalogue's units, so
+  the other units drop out of it); nil, the base's catalogue. `read` gives
+  the quarterly catalogue from `cats`."
+  [cats choice read]
+  (case choice
+    nil cats
+    "quarterly" (ee/with-quarterly-growth cats (read cats))
+    (throw (ex-info (str "bnm.world-run: --growth-outcomes takes quarterly, not " choice) {}))))
+
 (defn catalogues-through
   "Every catalogue with its uncovered tail unknown (loop audit Test 7)."
   [cats]
@@ -490,9 +508,11 @@
         out (or out "world")
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
-        cats (cond-> (food-outcomes (kinds/catalogues)
-                                    (when (:food-outcomes opts) (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")))
-                                    (:food-outcomes opts))
+        db (when (or (:food-outcomes opts) (:growth-outcomes opts))
+             (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")))
+        cats (cond-> (-> (kinds/catalogues)
+                         (food-outcomes db (:food-outcomes opts))
+                         (growth-outcomes (:growth-outcomes opts) #(ee/quarterly-growth % db)))
                (= "true" catalogue-through) catalogues-through)
         ks (if kinds (str/split kinds #",") (sort (keys kinds/tiers)))
         graph (if graph (read-graph graph) {})

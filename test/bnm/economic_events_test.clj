@@ -1,6 +1,11 @@
 (ns bnm.economic-events-test
   (:require [bnm.economic-events :as ee]
+            [bnm.lattice-political :as lp]
+            [bnm.named :as nm]
+            [bnm.political-gauges :as pg]
             [bnm.releases]
+            [bnm.slow-train :as st]
+            [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]))
 
 (deftest inflation-crises
@@ -122,3 +127,122 @@
     (is (= [24070] (vec (get-in out ["food_price_shock" :onsets "AAA"]))))
     (is (= ee/food-publication-lag (get-in out ["food_price_shock" :known-lag])))
     (is (= {:known-lag 12} (out "coup")))))
+
+;; --- quarterly growth collapses (bnm-56c.37, docs/GROWTH-QUARTERLY.md) ---------
+
+(defn- steady-growth
+  "Annual log growth of output per head, 2% a year with a little noise."
+  [y0 y1]
+  (into {} (for [y (range y0 y1)] [y (+ 0.02 (if (odd? y) 0.003 -0.003))])))
+
+(defn- qi [y k] (+ (* 4 y) (dec k)))
+
+(deftest quarterly-growth-collapses
+  ;; a quarter's per-head growth on the year before is negative and more than
+  ;; 2.5 standard deviations below the mean of the previous twenty years'
+  ;; annual growth (at least fifteen of them); once in twenty quarters
+  (let [ag (steady-growth 1980 2010)
+        calm (into {} (for [y (range 2000 2010) k (range 1 5)] [(qi y k) 0.02]))
+        hit (assoc calm (qi 2008 4) -0.04 (qi 2009 1) -0.05 (qi 2009 2) -0.03)]
+    (is (= #{(qi 2008 4)} (ee/quarterly-growth-collapses hit ag)) "2009Q1-Q2 are the same episode")
+    (is (= #{} (ee/quarterly-growth-collapses calm ag)))
+    (is (= #{(qi 2008 4) (qi 2013 4)}
+           (ee/quarterly-growth-collapses (assoc hit (qi 2013 4) -0.04) (merge ag (steady-growth 2010 2014))))
+        "again once twenty quarters have passed")
+    (is (= #{} (ee/quarterly-growth-collapses {(qi 2008 4) 0.005} ag)) "below the line but positive: no collapse")
+    (is (= #{} (ee/quarterly-growth-collapses hit (steady-growth 1995 2010))) "thirteen past years: too few to judge 2008")
+    (is (= (ee/quarterly-growth-collapses hit ag) (ee/quarterly-growth-collapses hit (merge ag {2008 -0.5 2009 -0.9})))
+        "the line reads only the years before the quarter's")))
+
+(deftest a-quarterly-growth-catalogue
+  ;; onsets at the quarter's last month (its data's, as quarterly-food-onsets),
+  ;; busy twelve months, covered from the first quarter the rule can judge to
+  ;; the last with data, known five months after the quarter
+  (let [ag (steady-growth 1980 2010)
+        g (assoc (into {} (for [y (range 1990 2010) k (range 1 5)] [(qi y k) 0.02])) (qi 2009 2) -0.06)
+        cat (ee/quarterly-growth-catalogue {"AAA" g} {"AAA" ag})]
+    (is (= [(+ (* 12 2009) 5)] (vec (get-in cat [:onsets "AAA"]))) "2009Q2: June")
+    (is (= (set (range (+ (* 12 2009) 5) (+ (* 12 2009) 17))) (set (get-in cat [:busy "AAA"]))))
+    (is (= (* 12 1995) (get-in cat [:from "AAA"])) "1995Q1: fifteen years of annual growth since 1980")
+    (is (= (+ (* 12 2009) 11) (get-in cat [:through "AAA"])))
+    (is (= 5 (:known-lag cat)))
+    (is (= {} (:from (ee/quarterly-growth-catalogue {"AAA" g} {"AAA" (steady-growth 2000 2010)})))
+        "a unit the rule never judges is not covered")))
+
+(deftest the-flag-swaps-only-the-growth-catalogue
+  ;; --growth-outcomes quarterly: growth collapses from the quarterly
+  ;; catalogue at its covered units only, every other kind as it was
+  (let [cats {"growth_collapse" {:onsets {"AAA" #{24000} "BBB" #{24012}} :from {"AAA" 0 "BBB" 0} :known-lag 18}
+              "coup" {:known-lag 12}}
+        q {:onsets {"AAA" #{24005}} :busy {"AAA" #{24005}} :from {"AAA" 23000} :through {"AAA" 24100} :known-lag 5}
+        out (ee/with-quarterly-growth cats q)]
+    (is (= q (out "growth_collapse")))
+    (is (= {:known-lag 12} (out "coup")))
+    (is (thrown? Exception (ee/with-quarterly-growth cats (assoc-in q [:from "ZZZ"] 0)))
+        "a unit the annual catalogue does not cover")))
+
+;; On the data (skipped without data/derived/gdp-quarterly.csv, written by
+;; scripts/quarterly-gdp.py): the agreement the feasibility study measured.
+
+(def ^:private quarterly-data
+  (delay (when (and (.exists (io/file "data/derived/gdp-quarterly.csv")) (.exists (io/file "data/derived/econ-events.csv")))
+           (let [db (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))
+                 annual (pg/read-annual)
+                 cats (ee/read-catalogues)
+                 units (sort (keys (get-in cats ["growth_collapse" :from])))
+                 levels (into {} (for [u units] [u (ee/per-head-levels (get-in annual ["mad_gdppc" u] {}) db u)]))
+                 q (ee/read-quarterly-growth "data/derived/gdp-quarterly.csv")]
+             {:cats cats :levels levels :q q
+              :qcat (ee/quarterly-growth-catalogue (select-keys q units) (update-vals levels ee/log-growth))}))))
+
+(deftest the-annual-rebuild-matches-the-catalogue
+  ;; the per-head levels the quarterly rule's line reads are the annual
+  ;; catalogue's: rebuilt, the rule gives its onsets exactly
+  (when-let [{:keys [cats levels]} @quarterly-data]
+    (let [{:keys [onsets from through]} (cats "growth_collapse")]
+      (is (= 171 (count from)))
+      (doseq [[u ms] onsets]
+        (is (= (set (map #(quot % 12) ms))
+               (set (filter #(<= (quot (from u) 12) % (quot (through u) 12)) (ee/growth-collapses (levels u)))))
+            u)))))
+
+(defn- agreement
+  "Annual onsets since 1980 with quarterly growth for all four quarters of
+  their year, each with the first quarterly onset in y-1 Q3 to y Q4."
+  [annual q qcat]
+  (for [[u ms] (:onsets annual) m ms
+        :let [y (quot m 12) g (get q u {})]
+        :when (and (>= y 1980) (every? #(contains? g (+ (* 4 y) %)) (range 4)))]
+    {:unit u :year y
+     :hit (first (filter #(<= (+ (* 12 (dec y)) 6) % (+ (* 12 y) 11)) (get-in qcat [:onsets u])))}))
+
+(deftest quarterly-growth-agrees-with-the-annual-catalogue
+  ;; docs/GROWTH-QUARTERLY.md: recall about 0.87 of the testable annual
+  ;; onsets since 1980, 31 of 33 in 2008-09, 2020 dated mostly 2020Q2
+  (when-let [{:keys [cats q qcat]} @quarterly-data]
+    (let [rows (agreement (cats "growth_collapse") q qcat)
+          share (/ (double (count (filter :hit rows))) (count rows))
+          in (fn [ys] (filter #(contains? ys (:year %)) rows))
+          q2020 (frequencies (for [[_ ms] (:onsets qcat) m ms :when (<= (* 12 2019) m (+ (* 12 2021) 11))]
+                               (- (quot m 3) (* 4 2020))))]
+      (is (= 104 (count (filter (set (keys (get-in cats ["growth_collapse" :from]))) (keys q)))) "lattice units with quarterly data")
+      (is (= 103 (count (:from qcat))) "units covered: Kosovo's data end in 2021, before its annual line has fifteen years")
+      (is (<= 0.85 share 0.89) (str "recall " share " of " (count rows)))
+      (is (= [31 33] [(count (filter :hit (in #{2008 2009}))) (count (in #{2008 2009}))]) "2008-09")
+      (is (> (get q2020 1 0) (* 0.7 (reduce + (vals q2020)))) (str "2020 onsets mostly 2020Q2: " (sort q2020))))))
+
+(deftest no-quarterly-onset-before-its-quarter-is-out
+  (when-let [{:keys [q levels qcat]} @quarterly-data]
+    (is (every? #(= 2 (mod % 3)) (mapcat val (:onsets qcat))) "dated at a quarter's last month")
+    (is (= 5 (:known-lag qcat)))
+    ;; the catalogue from the data up to each quarter of 2008-09 has the
+    ;; whole's onsets to that quarter: an onset reads no later quarter
+    (let [ag (update-vals levels ee/log-growth)
+          upto (fn [c k] (into {} (for [[u ms] (:onsets c) :let [s (set (filter #(<= % (+ 2 (* 3 k))) ms))] :when (seq s)] [u s])))]
+      (doseq [k (range (qi 2008 1) (qi 2010 1))]
+        (let [cut (ee/quarterly-growth-catalogue (update-vals q #(into {} (filter (fn [[i _]] (<= i k)) %))) ag)]
+          (is (= (upto qcat k) (upto cut k)) k))))
+    ;; and the lattice reads an onset five months after its quarter ends
+    (let [[u o] (first (for [[u ms] (sort (:onsets qcat)) o ms :when (>= (- o (get-in qcat [:from u])) 24)] [u o]))]
+      (is (= 0.0 (#'lp/count-known qcat u (+ o 4) 12)))
+      (is (= 1.0 (#'lp/count-known qcat u (+ o 5) 12))))))
