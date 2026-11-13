@@ -192,8 +192,19 @@
   (bnm.named/publication-stale, 36 months), else the default 30 that the
   bases to t50 read, under which the group went missing at every
   September origin."
-  [db units months {:keys [pwt-stale]}]
-  (nm/political-economy db units months (if pwt-stale {:stale nm/publication-stale} {})))
+  [db units months {:keys [pwt-stale lag-stale]}]
+  (nm/political-economy db units months (cond-> {}
+                                          pwt-stale (update :stale merge nm/publication-stale)
+                                          ;; bnm-x6o: the table between its editions
+                                          lag-stale (update :stale merge (select-keys nm/lag-stale ["economy/profit_rate" "economy/labor_share"])))))
+
+(defn wdi-reader
+  "(wdi iso var year): the WDI value known at the end of `year`, at most 18
+  months old, the base's reading; with :lag-stale (bnm-x6o) each series at
+  its own publication lag (bnm.named/lag-stale), so tertiary enrolment,
+  21 months late, is read at all."
+  [db {:keys [lag-stale]}]
+  (fn [iso v y] (some-> (db [iso v]) (sk/value (+ 11 (* 12 y)) {:stale (if lag-stale (get nm/lag-stale v 18) 18)}))))
 
 (defn ended
   "The last year ended by month t (a year-end origin's own year): data
@@ -226,7 +237,7 @@
   {:name :quarter-now :per 3 :offset 0 :horizon 3 :discount 0.995 :frailty-only true})
 
 (defn spec
-  [{:keys [kind db cats annual wdi units end known start pwt-stale year-delay leak-fixes fresh-frailty]}]
+  [{:keys [kind db cats annual wdi units end known start pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty]}]
   (let [cat (cats kind)
         ;; :fresh-frailty: the frailty-only quarter scale first, so it runs
         ;; before every coarser node at a month they share
@@ -238,7 +249,7 @@
         start (or start (* 12 (pg/long-from kind)))
         [_ pol] (nm/political db)
         months (range (+ start 2) (inc end) 3)
-        [_ pe] (political-economy-of db units months {:pwt-stale pwt-stale})
+        [_ pe] (political-economy-of db units months {:pwt-stale pwt-stale :lag-stale lag-stale})
         sub (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u s]))
         reg (into {} (for [s (set (vals sub))] [s (first (geo/parents s))]))
         parent (merge sub reg (zipmap (set (vals reg)) (repeat "world")))
@@ -274,7 +285,7 @@
                             (map :name issuing))
         table (into {} (for [{:keys [name] :as s} issuing]
                          [name (into {} (for [t (origins s) u countries :let [v ((raw name) u t)] :when v] [[u t] v]))]))
-        std (into {} (for [[name tb] table] [name (#'lb/standardizer (for [[[_ t] v] tb] [t v]))]))
+        std (into {} (for [[name tb] table] [name (#'lb/standardizer (for [[[_ t] v] tb] [t v]) gauge-std)]))
         known-at (fn [scale place t]
                    (let [w ({:quarter-lead "lead" :quarter-w2 "w2"} scale)
                          ps (when w (keep #(get known [w % (quot (- t 2) 3)]) (members place)))]
@@ -341,15 +352,16 @@
   where any kind with a catalogue may be built this way."
   ([kind end known-run] (build kind end known-run nil nil))
   ([kind end known-run cats start] (build kind end known-run cats start {}))
-  ([kind end known-run cats start {:keys [pwt-stale year-delay leak-fixes fresh-frailty]}]
+  ([kind end known-run cats start {:keys [pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
         cats (or cats (catalogues))
         units (set (filter #(first (geo/parents %)) (keys (get-in cats [kind :onsets]))))]
-    (spec {:kind kind :db db :cats cats :units units :end end :start start :pwt-stale pwt-stale :year-delay year-delay :leak-fixes leak-fixes
+    (spec {:kind kind :db db :cats cats :units units :end end :start start :pwt-stale pwt-stale :lag-stale lag-stale :gauge-std gauge-std
+           :year-delay year-delay :leak-fixes leak-fixes
            :fresh-frailty fresh-frailty
            :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
-           :wdi (fn [iso v y] (some-> (db [iso v]) (sk/value (+ 11 (* 12 y)) {:stale 18})))
+           :wdi (wdi-reader db {:lag-stale lag-stale})
            :known (lb/read-known known-run kind)}))))
 
 (defn -main [& args]

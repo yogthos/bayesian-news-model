@@ -86,6 +86,17 @@
   months before the next one was out."
   {"economy/profit_rate" 36 "economy/labor_share" 36})
 
+(def lag-stale
+  "Staleness (months) at each slow series' own publication lag (bnm-x6o,
+  --lag-stale): the newest value is never refused while the next is not
+  out. WDI's tertiary enrolment is published 21 months after its year (24
+  months old at a December origin, refused by the year row's 18 at every
+  country and origin); the Penn World Table's editions came years apart
+  (its newest year four and five years old in 2023-24, past 36). Every
+  other slow series the lattice reads is published within nine months and
+  read well inside its staleness (docs/CALIBRATION.md 11)."
+  {"people/tertiary_enrolment" 33 "economy/profit_rate" 60 "economy/labor_share" 60})
+
 (defn- x* [a b] (when (and a b) (* (double a) (double b))))
 (defn- minus [a b] (when (and a b) (- (double a) (double b))))
 

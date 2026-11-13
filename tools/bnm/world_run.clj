@@ -25,7 +25,11 @@
   --world-gate false for none), --world-extra noise|planted|false [--seed s]
   [--strength s] (the acceptance harness's extra world column; without
   --world-gauges, a group of its own),
-  --pwt-stale true (bnm-h8d), --catalogue-through true (Test 7),
+  --pwt-stale true (bnm-h8d), --lag-stale true (bnm-x6o: each slow
+  series read at its own publication lag, bnm.named/lag-stale),
+  --gauge-std stable (bnm-9fg: the gauges' standardizer reads a flat
+  history as no spread, not the cap),
+  --catalogue-through true (Test 7),
   --year-delay n (bnm-pjg.6: the political and economic kinds' year rows
   read n years later; banking's own table is not delayed), --leak-fixes
   true (bnm-56c.23: Maddison, NMC and banking's PWT read by their
@@ -266,7 +270,7 @@
 (defn build-specs
   "{kind spec} for `ks` to month `end`, the quarters' offset pooled with
   run `known`'s named model. opts (recursive step 2, each off by default):
-  :pwt-stale (bnm-h8d), :catalogue-through (Test 7; `cats` should carry
+  :pwt-stale (bnm-h8d), :lag-stale (bnm-x6o), :gauge-std (bnm-9fg), :catalogue-through (Test 7; `cats` should carry
   it too, `catalogues-through`), :leak-fixes (bnm-56c.23), :fresh-frailty
   (a set of kinds given the frailty-only quarter scale, bnm-56c.35)."
   ([ks end cats] (build-specs ks end cats "r6-at"))
@@ -488,6 +492,8 @@
         fresh (fresh-kinds (:fresh-frailty opts) ks cats)
         _ (println "building" (count ks) "kinds" (if (seq fresh) (str "; the fresh frailty scale at " (str/join "," (sort fresh))) ""))
         specs0 (-> (build-specs ks end cats (known-run opts) {:pwt-stale (= "true" pwt-stale)
+                                                               :lag-stale (= "true" (:lag-stale opts))
+                                                               :gauge-std (some-> (:gauge-std opts) keyword)
                                                                :catalogue-through (= "true" catalogue-through)
                                                                :year-delay (some-> year-delay parse-long)
                                                                :leak-fixes (= "true" leak-fixes)
