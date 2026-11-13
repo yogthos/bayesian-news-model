@@ -116,7 +116,7 @@
     (is (= lg/base-files (lg/check-base (str "data/runs/" lg/base) lg/base-files)) "the files on disk are the base's")))
 
 (deftest the-base's-inputs-are-the-ones-the-issue-reads
-  ;; t53 reads the onsets run r7-at-fx, r6-at-fx's command on the
+  ;; t65 (as t53) reads the onsets run r7-at-fx, r6-at-fx's command on the
   ;; series.tsv with FAOSTAT's prices at their publication lag (bnm-56c.31);
   ;; a command naming a run whose preds are not an input would be refused
   ;; as a stray read at issue time
@@ -128,19 +128,27 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t53-with-the-leak-fixes
-  ;; note to L1, 12 November 2026: t52's command with --known r7-at-fx and
-  ;; bnm-56c.33's fix, on the data of bnm-56c.31 and .32
-  (is (= "t53-noclim" lg/base))
+(deftest the-base-of-record-is-t65-with-the-leading-gauges
+  ;; note to L1, 13 November 2026: t53's command with the publication lags
+  ;; (bnm-x6o), the stable standardizer (bnm-9fg), the joint issued evidence
+  ;; (bnm-e1y) and the leading gauges with their priors from theory
+  ;; (bnm-56c.36); docs/CALIBRATION.md 13
+  (is (= "t65-gauges" lg/base))
   (is (= "r7-at-fx" lg/known))
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (= "true" (opt "--without-relations")))
     (is (= "true" (opt "--leak-fixes")))
     (is (= "true" (opt "--pwt-stale")))
+    (is (= "true" (opt "--lag-stale")))
+    (is (= "stable" (opt "--gauge-std")))
+    (is (= "true" (opt "--leading")))
+    (is (= "true" (opt "--leading-priors")))
     (is (nil? (opt "--clim-prior")) "bnm-56c.26 not adopted")
-    (is (= {:learn-offsets :mixture :flow-std-from :resolved} (read-string (opt "--set")))
-        "bnm-56c.33's fix is the base's option; the lattice's default is the registered issues' code")
+    (is (= {:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {}
+            :discount-from :data :flow-std :stable :evidence-at :issue-joint}
+           (read-string (opt "--set")))
+        "t65-gauges's options; the lattice's default is the registered issues' code")
     (testing "the command written to a manifest reads back as the same arguments"
       (is (= (assoc args 1 "r") (lg/manifest-args (lg/command-line args) "r"))))))
 

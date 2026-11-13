@@ -2,7 +2,7 @@
   "The forward ledger (docs/PLAN.md 0.1; the registration in
   docs/PHASE-CHANGES.md, 11 November 2026, and its amendment L1). Each
   quarter the frozen base (the world without relations; the base of record
-  is t53-noclim, note to L1 of 12 November 2026) issues every kind, place and window at the quarter's
+  is t65-gauges, note to L1 of 13 November 2026) issues every kind, place and window at the quarter's
   last month, from the data on disk at the issue date, to
   registered/ledger/<issue>/, with its hashes; nothing is refit between
   issue and outcome, and an issue is never edited. Later, when a window's
@@ -59,13 +59,14 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t53-noclim")
+(def base "t65-gauges")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
 
 (def inputs
-  "Every file the base reads (recorded by running it, 11 and 12 November 2026)."
+  "Every file the base reads (recorded by running it, 11, 12 and 13
+  November 2026)."
   ["data/derived/econ-coverage.csv" "data/derived/econ-events.csv" "data/derived/fiscal.csv"
    "data/derived/jst-credit-gap.csv" "data/derived/lattice-annual.csv" "data/derived/lattice-quarterly.csv"
    "data/derived/political-annual.csv" "data/derived/political-long.csv" "data/derived/political-states.csv"
@@ -74,27 +75,29 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t53-noclim/<kind>/
-  forecasts.tsv (12 November 2026: t52's command with --known r7-at-fx and
-  :flow-std-from :resolved, on the series.tsv and econ-events.csv of
-  bnm-56c.31 and .32; note to L1), by SHA-256."
-  {"banking_crisis" "bd8c81eeed37cc410e62f797120e6e6796072355e6026ac8c3ce02d5d4d987ec"
-   "conflict_onset" "0b36d83ed8e0d343b24069345472ea910b146f60153d07e97df2b7d7147f7e58"
-   "coup" "bb0485c03fad7cff073c0315b11b3c139af0bfbff925b90bc6ad4c24414f3374"
-   "currency_crisis" "5f56ea0ad66bf54a9321671e5526693025bceb02ba4fe59e4454a4b0ba452bcb"
-   "fiscal_consolidation" "52a2698a2ec8d7ec449e074280d311f64679da5d8cdce376d8b26425b1e26cdf"
-   "food_price_shock" "9ffff0b98a0de11df49845726796e2dc2d2c2d98dce45823169e6d28b97f5040"
-   "growth_collapse" "400769fe0e9162a5fb40c0ce70ab44368c897cbe61054b6bea5e596674ccc26d"
-   "inflation_crisis" "3915256d800f167ca349017462f5115c8a91948be356c761a5c5076fc5716180"
-   "market_crash" "01070e50c8b181f37d45167368f4f37ee2bc64b6d84051a51539bf86fe26d3da"
-   "protest_surge" "5c69c10d9eb054ce9ccb330e7a64ea80742557369a5db603eada3077772ae348"
-   "sovereign_default" "c16f6a4eee363b684c3a48f0bd8ba49b1d222a5b5092b038cbcfa56e39d364e8"
-   "violence_surge" "782a51640cc3e553fdcd09a7f9ada96c135398a7bd844bc51b1eadfe6e5a461a"
-   "war_onset" "9c6f884a3ec60b25cfaaebc1f04e8a079e3792fa3b93c0313e452cf73a3d7315"})
+  "The base of record's forecasts, data/runs/t65-gauges/<kind>/
+  forecasts.tsv (13 November 2026: t53-noclim's command with the
+  publication lags, the stable standardizer, the joint issued evidence and
+  the leading gauges with their priors from theory, at 7dc9281, on
+  t53-noclim's inputs; note to L1), by SHA-256."
+  {"banking_crisis" "ec1ae91721d82989600e7625237e1b25c3e311509212cf5a4af7afd317488702"
+   "conflict_onset" "b45b90160b256f643fbe5c3f6bce294cf317d6322476bbeae3fb63481722364d"
+   "coup" "6b86784fe0c98e3a0602d40b7d1bd8e40be427646530d40cf4fa5101bc8aaad1"
+   "currency_crisis" "3313460d1baf381f1497b1ea8b4f50c306fa965bd5f62a29b3ec2a1a6c18ce49"
+   "fiscal_consolidation" "e73471ccd1832c2d79080a41b1e1f78e97430640d7110a22c5005103abd79f9d"
+   "food_price_shock" "31b4b9843e7dc7653606872db896558802749e34ca68fd75b41605b33575db7d"
+   "growth_collapse" "22ce3e966ae8eecc7807797e90fb0847437da46c1e5bf0783532200d626a9456"
+   "inflation_crisis" "0492c49ec92f724d2075bbe28cc4188e40b840fa1ec28d37986ae93901193c98"
+   "market_crash" "c0c527b8034a84488551e38cdef388554d123f8cf72beac872080f06f15d3a14"
+   "protest_surge" "359475ccb9da3e216da545378a4e6505eb760008e0e787593a1b7cf93569ba69"
+   "sovereign_default" "50682a4d751d05cafc5cfc4024f620c960dfc511d9bd4bcd96a83a3229a06aca"
+   "violence_surge" "e9c9976a71f307b2702f9e834fb67f95a2b50e1cb7988d1c15e809219d8c84fd"
+   "war_onset" "13ffbe11e67cbbc1a780f211906071ec2889fa9e0d9513c5ad40fbb469fa7c64"})
 
 (def base-inputs
-  "The SHA-256 of every input t53-noclim was built on: a run on these
-  must reproduce it."
+  "The SHA-256 of every input t65-gauges was built on (t53-noclim's: the
+  leading gauges are series of data/slow/series.tsv): a run on these must
+  reproduce it."
   {"data/derived/econ-coverage.csv" "863b42e001b45e7eb43569b3f48eb92035d62821f3a3ea9cd543d38c1c2a4c7f"
    "data/derived/econ-events.csv" "4070fd4d07cfb6134781a40aabb36e00b6b2e07293f8987041e58be5065e2f0f"
    "data/derived/fiscal.csv" "cf8a1f4e5769901d3f09e85f4925f1b0e89dddf4f2f1b7aae1aebab8e67d98bc"
@@ -404,18 +407,26 @@
   (the catalogues rebuilt after the gazetteer fix, lapsed sources kept,
   bead bnm-8ul) on the series.tsv corrected for look-ahead (bnm-56c.23).
   The first issue, and t48 and t49, read r6-at; 2026-Q4-r1 and t50
-  r6-at-8ul; t52 r6-at-fx."
+  r6-at-8ul; t52 r6-at-fx; t53 and t65 r7-at-fx."
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments: t51b's command (the leak fixes,
-  bnm-56c.23; PWT at 36 months, bnm-h8d; learning at the offset mixture,
-  bnm-56c.22) with the flows standardized from a node's first resolved
-  outcome (:flow-std-from :resolved, bnm-56c.33) and its quarters pooled
-  with `known`."
+  "The base's bnm.world-run arguments, t65-gauges's: t51b's command (the
+  leak fixes, bnm-56c.23; PWT at 36 months, bnm-h8d; learning at the
+  offset mixture, bnm-56c.22) with the flows standardized from a node's
+  first resolved outcome (:flow-std-from :resolved, bnm-56c.33), t57's
+  climatology learned once (:clim-learn :current, bnm-56c.27) and frailty
+  at its default grid (:frailty {}), the three fixes of docs/LEADING.md 4
+  (--lag-stale, bnm-x6o; :discount-from :data, bnm-jnw; --gauge-std stable
+  and :flow-std :stable, bnm-9fg), the evidence as the joint predictive
+  issued per origin (:evidence-at :issue-joint, bnm-e1y), and the leading
+  gauges with their priors from theory (--leading, --leading-priors,
+  bnm-56c.36); its quarters pooled with `known`."
   [out end]
   ["--out" out "--without-relations" "true" "--end" (str end) "--known" known
-   "--leak-fixes" "true" "--pwt-stale" "true" "--set" "{:learn-offsets :mixture :flow-std-from :resolved}"])
+   "--leak-fixes" "true" "--pwt-stale" "true" "--lag-stale" "true" "--gauge-std" "stable"
+   "--leading" "true" "--leading-priors" "true"
+   "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"])
 
 (defn command-line
   "The shell command a manifest records for bnm.world-run `args`; an
