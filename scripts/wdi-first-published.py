@@ -37,7 +37,7 @@ def main():
     vs = json.load(open(os.path.join(RAW, "versions.json")))["source"][0]["concept"][0]["variable"]
     when = {v["id"]: edition_month(v) for v in vs}
     first = {}
-    held = set()  # editions that hold the series at all (2001 April's does not)
+    held = {var: set() for var in SERIES.values()}  # editions holding the series at all (2001 April's holds no growth per head)
     for s, var in SERIES.items():
         d = os.path.join(RAW, s)
         for f in sorted(os.listdir(d)):
@@ -46,7 +46,7 @@ def main():
             for r in body["source"]["data"]:
                 if r["value"] is None:
                     continue
-                held.add(when[vid])
+                held[var].add(when[vid])
                 c = {x["concept"]: x["id"] for x in r["variable"]}
                 k = (c["Country"], var, int(c["Time"][2:]))
                 if k not in first or when[vid] < first[k]:
@@ -55,19 +55,20 @@ def main():
     # country's year that no edition holds within that window was out no
     # earlier than the first edition past it (four years on), or, if none,
     # after the last edition
-    eds = sorted(held)
-    earliest, last = eds[0], eds[-1]
-    after_last = (last[0] + (last[1] == 12), last[1] % 12 + 1)
+    earliest = {}
     for s, var in SERIES.items():
+        eds = sorted(held[var])
+        earliest[var], last = eds[0], eds[-1]
+        after_last = (last[0] + (last[1] == 12), last[1] % 12 + 1)
         isos = {k[0] for k in first if k[1] == var}
         for iso in isos:
-            for y in range(earliest[0] - 3, last[0] + 1):
+            for y in range(earliest[var][0] - 3, last[0] + 1):
                 if (iso, var, y) not in first:
                     later = [e for e in eds if e[0] >= y + 4]
                     first[(iso, var, y)] = later[0] if later else after_last
     # a year first seen in the earliest fetched edition may have been out
     # before it: those are left out (series.tsv's date stands)
-    rows = sorted((k, v) for k, v in first.items() if v > earliest)
+    rows = sorted((k, v) for k, v in first.items() if v > earliest[k[1]])
     with open(OUT, "w") as w:
         w.write("iso\tvar\tyear\tmonth\n")
         for (iso, var, y), (ey, em) in rows:
@@ -89,7 +90,7 @@ def main():
             if k >= 100:
                 held_by[y] = min(held_by.get(y, when[f[:-5]]), when[f[:-5]])
     # a year held by the earliest edition may have been out before it
-    held_by = {y: e for y, e in held_by.items() if e > earliest}
+    held_by = {y: e for y, e in held_by.items() if e > earliest["economy/gdp_per_capita"]}
     with open(EDITIONS, "w") as w:
         w.write("year\tmonth\n")
         for y in sorted(held_by):
