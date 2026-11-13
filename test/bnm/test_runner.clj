@@ -121,6 +121,7 @@
             [bnm.warm-up-test]
             [bnm.fast-test]
             [bnm.links-test]
+            [bnm.alerts-test]
             [bnm.fast-score-test]
             [bnm.episodes-test]))
 
@@ -243,6 +244,7 @@
     bnm.warm-up-test
     bnm.fast-test
     bnm.links-test
+    bnm.alerts-test
     bnm.fast-score-test
     bnm.benchmarks-test
     bnm.dev-folds-test
