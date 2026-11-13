@@ -52,7 +52,8 @@
   bnm.lattice-political/leading-priors, docs/LEADING.md \"Priors\"),
   --leading-food2 true (bnm-5rn: with --leading, the second food set,
   bnm.lattice-political/food2-sets), --real-lags true (bnm-a1e: every slow
-  series at its true publication, bnm.named/real-lags),
+  series at its true publication, bnm.named/real-lags), --lead-std history
+  (bnm-11y: the leading gauges standardized against their own history),
   --write-reference true (also data/runs/<out>-ref, the forecasts with the
   reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
@@ -498,6 +499,17 @@
     (throw (ex-info "bnm.world-run: --leading-food2 true adds to --leading true's gauges" {})))
   (= "true" leading-food2))
 
+(defn lead-std-choice
+  "--lead-std history (bnm-11y): the leading gauges standardized against
+  their own history since 1990, not the node's few origins. Needs
+  --leading true; off by default."
+  [{:keys [leading lead-std]}]
+  (case lead-std
+    nil nil
+    "history" (if (= "true" leading) :history
+                  (throw (ex-info "bnm.world-run: --lead-std history standardizes --leading true's gauges" {})))
+    (throw (ex-info (str "bnm.world-run: --lead-std takes history, not " lead-std) {}))))
+
 (defn real-lags-choice
   "--real-lags true (bnm-a1e): every slow series read at its true
   publication date (bnm.named/real-lags), the IMF commodity prices two
@@ -539,7 +551,8 @@
                                                                :leading (leading-choice opts)
                                                                :leading-priors (= "true" (:leading-priors opts))
                                                                :real-lags (real-lags-choice opts)
-                                                               :leading-food2 (leading-food2-choice opts)})
+                                                               :leading-food2 (leading-food2-choice opts)
+                                                               :lead-std (lead-std-choice opts)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)

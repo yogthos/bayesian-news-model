@@ -258,6 +258,20 @@
   gauges' own sds, fixed before any run (docs/LEADING.md)."
   {:fert12 [0.1 0.0625] :fpi6 [0.15 0.0625] :cereals6 [0.15 0.0625] :oils6 [0.1 0.0625]})
 
+(defn history-standardizer
+  "bnm-11y, :lead-std :history: (fn [t v]) standardizing the leading
+  columns `v` (lead-f's entries at positions `ix`) against the gauges' own
+  values at every quarter end from 1990 to `end` over `units`, each as
+  known then, through the quarter ends before t. The node's standardizer
+  counts rows, so a world gauge, one value per origin repeated at every
+  country, was standardized against two or three origins."
+  [lead-f units ix end mode]
+  (#'lb/standardizer (for [t (range (+ 2 (* 12 1990)) (inc end) 3)
+                          u units
+                          :let [l (lead-f u t)]]
+                      [t (mapv #(nth l %) ix)])
+                     mode))
+
 (defn leading-sets-for
   "`leading-sets`, with the second food set when `food2`."
   [food2]
@@ -281,7 +295,7 @@
 
 (defn spec
   [{:keys [kind db cats annual wdi units end known start pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty
-           leading leading-priors leading-food2]}]
+           leading leading-priors leading-food2 lead-std]}]
   (let [cat (cats kind)
         ;; :fresh-frailty: the frailty-only quarter scale first, so it runs
         ;; before every coarser node at a month they share
@@ -343,6 +357,17 @@
         table (into {} (for [{:keys [name] :as s} issuing]
                          [name (into {} (for [t (origins s) u countries :let [v ((raw name) u t)] :when v] [[u t] v]))]))
         std (into {} (for [[name tb] table] [name (#'lb/standardizer (for [[[_ t] v] tb] [t v]) gauge-std)]))
+        ;; bnm-11y, :lead-std :history: the leading columns against their own
+        ;; history since 1990, the scale's own columns as before
+        std (if (and lead (= :history lead-std))
+              (into {} (for [[name f] std]
+                         [name (if-let [ns (seq (get lead name))]
+                                 (let [n0 (count (own-names name))
+                                       own (#'lb/standardizer (for [[[_ t] v] (table name)] [t (subvec v 0 n0)]) gauge-std)
+                                       h (history-standardizer lead-f countries (mapv lead-ix ns) end gauge-std)]
+                                   (fn [t v] (into (own t (subvec v 0 n0)) (h t (subvec v n0)))))
+                                 f)]))
+              std)
         known-at (fn [scale place t]
                    (let [w ({:quarter-lead "lead" :quarter-w2 "w2"} scale)
                          ps (when w (keep #(get known [w % (quot (- t 2) 3)]) (members place)))]
@@ -425,7 +450,7 @@
   ([kind end known-run] (build kind end known-run nil nil))
   ([kind end known-run cats start] (build kind end known-run cats start {}))
   ([kind end known-run cats start {:keys [pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty leading leading-priors
-                                         real-lags leading-food2]}]
+                                         real-lags leading-food2 lead-std]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (cond-> (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
              leading-food2 (merge (nm/load-food2)))
@@ -434,7 +459,7 @@
     (spec {:kind kind :db db :cats cats :units units :end end :start start :pwt-stale pwt-stale :lag-stale lag-stale :gauge-std gauge-std
            :year-delay year-delay :leak-fixes leak-fixes
            :fresh-frailty fresh-frailty
-           :leading leading :leading-priors leading-priors :leading-food2 leading-food2
+           :leading leading :leading-priors leading-priors :leading-food2 leading-food2 :lead-std lead-std
            :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
            :wdi (wdi-reader db {:lag-stale lag-stale})
            :known (lb/read-known known-run kind)}))))

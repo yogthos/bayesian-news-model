@@ -119,3 +119,26 @@
            (lp/named-prior-at "food_price_shock" [:food-inflation :world-food12 :fert12 :oils6] true)))
     (is (= {:world-food12 [0.3 0.0625]} (lp/named-prior-at "food_price_shock" [:world-food12 :fert12] false)))
     (is (nil? (lp/named-prior-at "coup" [:fert12] true)))))
+
+(deftest bnm-11y-leading-gauges-standardized-against-their-own-history
+  ;; the node's standardizer counts rows, so a world gauge (one value per
+  ;; origin, repeated at every country) was standardized after two or three
+  ;; origins: at the food year node's Dec 2006 origin world food12 stood at
+  ;; z +4.9 against 2003-05 alone. Under :lead-std :history the leading
+  ;; columns are standardized against the gauge's own values at every
+  ;; quarter end since 1990, as known then.
+  (let [m (fn [y mo] (+ (dec mo) (* 12 y)))
+        ;; a world gauge alternating +-1 from 1990, then 2.0 from 2006
+        g (fn [t] (if (>= t (m 2006 1)) 2.0 (if (even? (quot t 3)) 1.0 -1.0)))
+        lead-f (fn [_ t] [(g t)])
+        hist (lp/history-standardizer lead-f ["A" "B" "C"] [0] (m 2007 12) :stable)
+        dec06 (m 2006 12)
+        z (first (hist dec06 [(g dec06)]))]
+    (is (< 1.5 z 2.5) (str "about 2 sd of its own history, not the cap: " z))
+    (testing "nothing after the origin enters its spread"
+      (is (= (hist (m 2005 12) [2.0]) (hist (m 2005 12) [2.0])))
+      (is (< (Math/abs (- 2.0 (first (hist (m 2005 12) [2.0])))) 0.1)))
+    (testing "the node's own standardizer sees three Decembers, all -1 here: no spread, z 0"
+      (let [rows (for [y [2003 2004 2005 2006] u ["A" "B" "C" "D" "E" "F" "G" "H"]] [(m y 12) [(g (m y 12))]])
+            node (#'bnm.lattice-banking/standardizer rows :stable)]
+        (is (= 0.0 (first (node dec06 [(g dec06)]))))))))

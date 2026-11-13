@@ -257,3 +257,9 @@
   (is (true? (wr/leading-food2-choice {:leading "true" :leading-food2 "true"})))
   (is (thrown? Exception (wr/leading-food2-choice {:leading-food2 "true"})) "needs --leading true")
   (is (thrown? Exception (wr/leading-food2-choice {:leading "true" :leading-food2 "1"}))))
+
+(deftest bnm-11y-lead-std-option
+  (is (nil? (wr/lead-std-choice {:leading "true"})))
+  (is (= :history (wr/lead-std-choice {:leading "true" :lead-std "history"})))
+  (is (thrown? Exception (wr/lead-std-choice {:lead-std "history"})))
+  (is (thrown? Exception (wr/lead-std-choice {:leading "true" :lead-std "node"}))))
