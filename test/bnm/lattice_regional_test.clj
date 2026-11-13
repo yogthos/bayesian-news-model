@@ -138,6 +138,11 @@
       (is (= ["G0" "G1" "G2" "G3" "G4"] (:r-groups (val (last fl)))))
       (is (> n 100) n)
       (is (> c 0.8) c)))
+  (testing "regional states forced at every node (no sd 0 in the grid): a node with no regional group keeps the frailty alone"
+    (let [a (region-world 5 4 1.0 frail)
+          b (region-world 5 4 1.0 (assoc-in frail [:frailty :regional-sds] [0.5]))]
+      (is (every? #(= 0.5 (:rsd (val %))) (get-in b [:frailty [:year :country]])))
+      (is (= (get-in a [:book [:year "G0"]]) (get-in b [:book [:year "G0"]])))))
   (testing "the region node has no coarser region: its frailty is the frailty alone"
     (let [a (region-world 5 4 1.0 frail) b (region-world 5 4 1.0 regional)]
       (is (= (get-in a [:frailty [:year :region]]) (get-in b [:frailty [:year :region]])))

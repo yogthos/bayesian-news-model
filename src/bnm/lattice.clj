@@ -771,8 +771,8 @@
   its places' ancestors there; a level with fewer than two among them is
   left out, one group being z) and each place's loads on them (:member,
   its membership centred across the node's places).
-  With no group the regional candidates are dropped, and the node is the
-  frailty without the option."
+  With no group each regional candidate becomes its sd_r = 0 twin, and the
+  node is the frailty without the option."
   [fcfg spec level-ix places]
   (if-not (:regional? fcfg)
     fcfg
@@ -798,7 +798,12 @@
                                           g gs]
                                       (- (if (= g (anc p)) 1.0 0.0) (/ (double (share g)) n))))]))]
       (if (empty? groups)
-        (update fcfg :grid (fn [g] (vec (remove :rsd g))))
+        ;; each regional candidate as its sd_r = 0 twin (already in the grid
+        ;; unless :regional-sds has no 0), in the grid's order
+        (update fcfg :grid (fn [g] (vec (distinct (map #(if (:rsd %)
+                                                          (-> (dissoc % :rsd) (update :price - (double (:regional-penalty fcfg))))
+                                                          %)
+                                                       g)))))
         (assoc fcfg :r-groups groups :ng (count groups) :member member)))))
 
 (defn with-frailty
