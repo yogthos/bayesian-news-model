@@ -1446,3 +1446,61 @@ The ledger and golden tests pass, and the whole suite is green: 1388 tests, 0 fa
 - **The cost.** False alarms from VIX12 after crashes and from the 2022 curve (loss 1). These are §13's known approach limits, now reaching every model.
 - **`--lead-std history` can now be adopted with it:** the weight lock no longer decides the 2008 crash.
 - **Adoption** is the user's decision. Every option stays off by default.
+
+## 18. Fresh inputs: t72-fresh (bnm-1d8)
+
+§16 found that the growth-collapse year node's main model, `economy`, reads GDP per head and its three-year growth from Maddison at Maddison's releases (`--leak-fixes`), two to eight years behind the origin. WDI's growth per head is on disk and comes out within a year or two. This section audits every input for staleness, adds the fresher source where it measures the same quantity, and scores it.
+
+### Audit
+
+Age is months from the end of the data period to the December origin that reads it, at origins 2003-22: the median over countries and origins, with the range. The year row is bnm.political-gauges/year-row (every kind but banking crises; the half-decade reads six of its columns), the quarter rows bnm.named (political for conflict, wars, coups, protest, violence, growth, inflation and food; financial for currency, sovereign, fiscal and market crashes), the leading gauges bnm.named/leading. Session scratchpad: the ages from `nm/load-series` with `:real-lags` and from bnm.releases.
+
+| kind (scale) | group | input | source as read | age read | fresher on-disk source | its age | adopted |
+|---|---|---|---|---|---|---|---|
+| all but banking (year, half-decade) | economy | log GDP per head, growth3 | Maddison at its releases | 48 [24-96] | WDI NY.GDP.PCAP.KD (series.tsv economy/gdp_per_capita), dated by the WDI archives | 12 (24 at Dec 2003-04) | **yes**, growth spliced |
+| all but banking (year) | demography | population growth3 | Maddison at its releases | 48 [24-96] | WDI SP.POP.TOTL (people/population), archive-dated | 12 (24 at Dec 2003-04) | **yes**, growth spliced |
+| all but banking (year) | demography | urban growth5 | NMC urban/total population at releases to 2016, WDI urban share after | 72 [36-228] to 2018, then 12 | WDI SP.URB.TOTL.IN.ZS | 12 | no: national urban definitions, not NMC's cities of 100,000 |
+| all but banking (year) | military | soldiers per head, spending per soldier3 | NMC at its releases | 72 [36-228] | WDI MS.MIL.XPND.CD (spending only, raw, not in series.tsv) | 12 | no: no fresher personnel source on disk |
+| all but banking (year) | regime, violence, society, patronage | V-Dem | V-Dem, data year Y-1 | 12 | none | | |
+| all but banking (year) | demography | infant mortality, working-age share | WDI | 12 | none | | |
+| all but banking (year) | demography | tertiary enrolment5 | WDI (UIS) | 24 | none | | |
+| all but banking (year) | economy | inflation | WDI FP.CPI.TOTL.ZG (annual average) | 12 | BIS monthly CPI (62 units), FAOSTAT CPI (207) | 1, 9 | no: a twelve-month change at a month is not the annual average |
+| all but banking (year) | economy | food inflation | FAOSTAT | 9 | none | | |
+| all but banking (year) | inequality | top 10%, bottom 50% | WID at Y-2 | 24 | none | | |
+| all but banking (year) | fiscal | real spending growth, balance change | GMD 2026_09 at Y-2 | 24 | none (the WEO files in data/raw/slow/fiscal are 403 pages) | | no |
+| all but banking (year) | history, others, world | onsets | the catalogues at their known lag | the outcome's lag | | | |
+| growth, market crashes, food (year, quarter-lead) | leading | BAA12, US curve, VIX12, world food12 | FRED, IMF via FRED (`--real-lags`) | 0-2 | none | | |
+| political quarters | food, energy | food inflation, world food12, oil12, import shares | FAOSTAT, IMF, WDI | 9, 2, 0, 12 | none | | |
+| political quarters | economy | GDP growth | WDI NY.GDP.MKTP.KD.ZG | 12 [12-216] | quarterly GDP (OECD QNA, IMF QNEA; docs/GROWTH-QUARTERLY.md) | 2-4, 7-22 for about 20 countries | no: a four-quarter change is another quantity, and outside the OECD there is no record of when each quarter came out |
+| political quarters | economy | inflation | WDI FP.CPI.TOTL.ZG | 12 | BIS monthly CPI, FAOSTAT CPI | 1, 9 | no (as at the year) |
+| political quarters | fragility, demography | infant mortality, youth unemployment, population | WDI | 12 | none | | |
+| political quarters | climate | temperature, precipitation anomalies | series.tsv | 12 | none | | |
+| political quarters | events | protest, violence, coercion | GDELT | 0 | | | |
+| political quarters | political economy | profit rate, labour share | PWT at its releases (`--pwt-stale --lag-stale`) | 36 [24-48] | none | | |
+| political quarters | political economy | growth per head5 | WDI | 12 | none | | |
+| financial quarters | credit, assets, curve, global | BIS credit, house prices, debt service; share prices, yields, VIX, curve; WDI openness | BIS, OECD, FRED, WDI | 6, 6, 6; 1, 1, 0, 0; 12 | none | | |
+| banking (year, half-decade) | macrohistory, extended | JST row of Y-1; PWT at releases; WID, GDD, MV, EPWT at Y-1 | JST R6, PWT, ... | 12 (JST, see below), PWT 36 [24-48] | none | | |
+
+Only the two Maddison rows have a fresher source on disk that measures the same quantity. NMC is staler still (19 years at Dec 2003-04, when NMC 1.0's 1985 was the newest published), but no open personnel series is on disk to replace it.
+
+Two lookahead findings came out of the audit (the class of bnm-a1e and bnm-56c.23):
+
+1. **WDI at Dec 2003-04.** series.tsv dates every WDI year nine months after it ends. The WDI Database Archives (data/raw/wdi-archives) show that before 2005 a year first came out in the April edition sixteen months later: 2002 in April 2004, 2003 in April 2005. From September 2005 the September edition holds the year before, and nine months holds (2009 waited for the December 2010 edition, twelve months). So at the Dec 2003 and Dec 2004 origins every WDI input the model reads is a year ahead of publication. `--fresh-inputs` dates its two WDI series by the archives; the other WDI reads are unchanged (see "Bugs").
+2. **JST in the banking node.** bnm.lattice-banking reads the Macrohistory row of the year before the origin at every origin. JST's first release was 2016. Unlike PWT, Maddison and NMC, JST has no release dating. Dating it would leave the banking node without its main gauges before 2016, a model change rather than a hygiene fix: bead bnm-9vm, for the user's decision.
+
+### The fix
+
+`bnm.world-run --fresh-inputs true` (off by default). The year row's log GDP per head, growth3 and population growth3 are carried past Maddison's read year by WDI's growth per head (NY.GDP.PCAP.KD, series.tsv economy/gdp_per_capita) and population (SP.POP.TOTL, people/population), through the newest WDI year published by the origin (bnm.political-gauges/splice):
+
+- **Growth rates are spliced, not levels.** Each year after Maddison's read year adds WDI's log change for that year to Maddison's log level. The level stays in Maddison's 2011 PPP dollars; WDI's constant-2015-dollar level is never read. growth3 is the change over the three years to the newest spliced year, so it may span Maddison's years and WDI's. This is how the growth-collapse catalogue itself chains WDI on after Maddison (bnm.economic-events). Where Maddison has no value at its read year, or WDI nothing newer, the row is the base's.
+- **Each WDI year at its true publication.** scripts/wdi-first-published.py dates every country's year by the first edition of the WDI Database Archives that holds it (data/derived/wdi-first-published.tsv, 14,845 rows from 125 editions, April 2001 to July 2026). bnm.named/load-series `:first-published` makes a value unreadable before that month; bnm.lattice-political/year-row-opts reads the values known at the origin. An edition is dated by the later of its id's and its label's month, so the dating errs late. A year no fetched edition holds is dated after the first edition four years on, or after the last edition.
+- **What is read.** At Dec 2003 the newest WDI year is 2001 (the 2002 figures came out in April 2004), at Dec 2004 2002, and from Dec 2005 the year before the origin for 147-162 of the 169 countries with a Maddison anchor (the rest a year or more further back, where WDI lags). Maddison's read year is 2-8 years back (median 4). The 13 lattice countries without Maddison (BHS, BLZ, BRN, BTN, ERI, FJI, GUY, MDV, PNG, SLB, SOM, SUR, TLS) keep the base's missing value.
+
+`--wdi-editions true` (off by default; lookahead finding 1) reads every WDI annual series (variables.tsv's source "World Bank WDI ...") no earlier than the first archived edition holding its year for 100 countries or more (data/derived/wdi-editions.tsv: 2002 in April 2004, 2003 in April 2005, 2004 in September 2005, then each September to 2008 in October 2009, 2009 in December 2010, then June or July). The archive's inflation series (FP.CPI.TOTL.ZG, eleven editions 2004-10 checked) comes out in the same editions. It is not part of t72-fresh.
+
+Tests:
+- bnm.political-gauges-test/fresh-inputs-carry-maddison-on-with-wdi-growth: WDI known through 2013 or 2012 against Maddison's 2010; the level stays Maddison's; nothing newer, or no Maddison anchor, gives the base's row; only the three columns change. It fails on the code before the change (5 assertions).
+- bnm.named-test/fresh-inputs-wdi-is-not-read-before-its-first-edition: a year is not readable before its first edition; a year the table lacks keeps series.tsv's date; the values are unchanged.
+- bnm.lattice-political-test/fresh-inputs-the-year-row-reads-wdi-as-published-at-the-origin: at Dec 2008 a year first published in April 2009 is not read; off, no :fresh.
+- bnm.named-test/wdi-editions-no-wdi-year-before-its-edition: WDI series only, by edition; other sources unchanged.
+- bnm.world-run-test/fresh-inputs-option, wdi-editions-option: true, false or absent; anything else refused.
