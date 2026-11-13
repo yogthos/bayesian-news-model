@@ -134,3 +134,16 @@
         (is (= [] (:passed ((:world-offset s) :year "KEN" early))))
         (is (= 0.0 (:x ((:world-offset s) :year "KEN" early))))
         (is (= [nil nil] (:x ((:world-gauges s) :year "KEN" early))))))))
+
+(deftest bnm-a1e-the-world-food-gauge-at-its-true-publication
+  ;; read-raw dates the IMF food index two months after its month under
+  ;; :real-lags, as series.tsv's +1 otherwise; Brent (daily quotes) as is
+  (let [f (java.io.File/createTempFile "bnm-wg" ".tsv")]
+    (spit f (str "world\tfood/price_index\tm\t2020-10-31\t2020-11-30\t100\n"
+                 "world\tenergy/oil_brent\tm\t2020-10-31\t2020-10-31\t40\n"))
+    (let [base (wg/read-raw (.getPath f))
+          real (wg/read-raw (.getPath f) {:real-lags true})
+          oct (+ 9 (* 12 2020))]
+      (is (= (inc oct) (second (first (:food base)))))
+      (is (= (+ 2 oct) (second (first (:food real)))))
+      (is (= oct (second (first (:brent real))))))))

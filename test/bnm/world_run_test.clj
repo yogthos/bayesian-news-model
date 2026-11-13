@@ -243,3 +243,11 @@
     (is (= 9 (get-in (wr/food-outcomes cats db "monthly") ["food_price_shock" :known-lag])))
     (is (= {:known-lag 12} ((wr/food-outcomes cats db "monthly") "coup")))
     (is (thrown? Exception (wr/food-outcomes cats db "quarterly")))))
+
+(deftest bnm-a1e-real-lags-option
+  ;; --real-lags true reads every slow series at its true publication;
+  ;; absent or false, the base's dating; anything else is refused
+  (is (false? (wr/real-lags-choice {})))
+  (is (false? (wr/real-lags-choice {:real-lags "false"})))
+  (is (true? (wr/real-lags-choice {:real-lags "true"})))
+  (is (thrown? Exception (wr/real-lags-choice {:real-lags "yes"}))))

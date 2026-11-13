@@ -403,9 +403,10 @@
   where any kind with a catalogue may be built this way."
   ([kind end known-run] (build kind end known-run nil nil))
   ([kind end known-run cats start] (build kind end known-run cats start {}))
-  ([kind end known-run cats start {:keys [pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty leading leading-priors]}]
+  ([kind end known-run cats start {:keys [pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty leading leading-priors
+                                         real-lags]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
-        db (nm/load-series "data/slow/series.tsv" variables)
+        db (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
         cats (or cats (catalogues))
         units (set (filter #(first (geo/parents %)) (keys (get-in cats [kind :onsets]))))]
     (spec {:kind kind :db db :cats cats :units units :end end :start start :pwt-stale pwt-stale :lag-stale lag-stale :gauge-std gauge-std

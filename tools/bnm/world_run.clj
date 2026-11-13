@@ -360,12 +360,13 @@
   origin (fix 3, bnm.world-gauges/with-world-once), with :world-extra (noise, planted or false: the
   acceptance harness's extra world column, :seed, :strength; without
   :world-gauges the column alone, as the year's :world-gauges group);
-  :set, an EDN map merged into every spec (a nil value removes its key)."
-  [specs {:keys [world-gauges world-once world-extra seed strength] set-edn :set :as opts} end]
+  :set, an EDN map merged into every spec (a nil value removes its key);
+  :real-lags, the series read at their true publication (bnm-a1e)."
+  [specs {:keys [world-gauges world-once world-extra seed strength real-lags] set-edn :set :as opts} end]
   (let [state (when world-gauges
-                (let [db (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))
+                (let [db (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv") {:real-lags real-lags})
                       units (set (filter #(= 3 (count %)) (map first (keys db))))]
-                  (wg/load-state db units end)))
+                  (wg/load-state db units end {:real-lags real-lags})))
         exposure (when world-gauges (wg/exposure-from))
         merge-set (fn [sp] (if set-edn
                              (reduce-kv (fn [sp k v] (if (nil? v) (dissoc sp k) (assoc sp k v))) sp (read-string set-edn))
@@ -483,6 +484,15 @@
     (throw (ex-info (str "bnm.world-run: --leading takes true or false, not " leading) {})))
   (= "true" leading))
 
+(defn real-lags-choice
+  "--real-lags true (bnm-a1e): every slow series read at its true
+  publication date (bnm.named/real-lags), the IMF commodity prices two
+  months after their month, not series.tsv's one. Off by default."
+  [{:keys [real-lags]}]
+  (when (and real-lags (not (#{"true" "false"} real-lags)))
+    (throw (ex-info (str "bnm.world-run: --real-lags takes true or false, not " real-lags) {})))
+  (= "true" real-lags))
+
 (defn -main [& args]
   (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay leak-fixes clim-prior] :as opts}
         (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
@@ -491,7 +501,7 @@
         dir (str "data/runs/" out)
         end (or (some-> end parse-long) (+ (* 12 2025) 11))
         cats (cond-> (food-outcomes (kinds/catalogues)
-                                    (when (:food-outcomes opts) (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")))
+                                    (when (:food-outcomes opts) (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv") {:real-lags (real-lags-choice opts)}))
                                     (:food-outcomes opts))
                (= "true" catalogue-through) catalogues-through)
         ks (if kinds (str/split kinds #",") (sort (keys kinds/tiers)))
@@ -499,7 +509,7 @@
         parents (parents-of graph ks)
         warn (when ews
                (warnings (read-string (slurp ews))
-                         (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))
+                         (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv") {:real-lags (real-lags-choice opts)})
                          (set (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats))))))
         chosen (when states
                  (states-of (read-string (slurp states)) (set (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats))))))
@@ -513,10 +523,12 @@
                                                                :leak-fixes (= "true" leak-fixes)
                                                                :fresh-frailty fresh
                                                                :leading (leading-choice opts)
-                                                               :leading-priors (= "true" (:leading-priors opts))})
+                                                               :leading-priors (= "true" (:leading-priors opts))
+                                                               :real-lags (real-lags-choice opts)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
-                                :seed (:seed opts) :strength (:strength opts) :set (:set opts)}
+                                :seed (:seed opts) :strength (:strength opts) :set (:set opts)
+                                :real-lags (real-lags-choice opts)}
                                end)
                    finer-where-fresh)
         books (atom {})

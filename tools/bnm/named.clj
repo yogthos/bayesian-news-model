@@ -57,20 +57,75 @@
     "finance/anchor_gbp" "finance/anchor_cny" "finance/anchor_rub"
     "people/working_age_share" "finance/fx_per_usd"})
 
+(def real-lags
+  "bnm-a1e: the month after its period by whose end each monthly FRED
+  series was in fact first published, where that is later than
+  scripts/slow-normalize.py's +1 (every monthly FRED series). From ALFRED's
+  vintages (data/raw/alfred, docs/LEADING.md \"Lookahead audit\"): the
+  IMF primary commodity prices reach FRED in the month after their month
+  for 88-90 of 107 regular releases since November 2015 and within two
+  months for 99-104 (FRED's outages, July 2017 to June 2019 and July 2025
+  to January 2026, aside); the US series as their releases date them
+  (consumer credit, trade, Case-Shiller in the second month after; the
+  freight index and rail carloads in the second or third).
+  Read only under :real-lags (`load-series`), so the base reproduces."
+  {["world" "food/price_index"] 2 ["world" "commodities/copper"] 2 ["world" "commodities/aluminium"] 2
+   ["world" "commodities/nickel"] 2 ["world" "commodities/iron_ore"] 2 ["world" "commodities/all_index"] 2
+   ["world" "energy/price_index"] 2 ["world" "energy/gas_europe"] 2 ["world" "energy/gas_asia"] 2
+   ["world" "energy/coal"] 2 ["world" "food/wheat"] 2 ["world" "food/maize"] 2 ["world" "food/rice"] 2
+   ["world" "food/soybeans"] 2 ["world" "food/sugar"] 2
+   ;; US monthly releases in the second month after their month, or later
+   ;; (none of them read by the lattice)
+   ["USA" "finance/consumer_credit"] 2 ["USA" "trade/goods_services_balance"] 2
+   ["USA" "finance/house_prices"] 2 ["USA" "trade/freight_index"] 3 ["USA" "trade/rail_carloads"] 3})
+
+(defn real-lag
+  "Months after its period at which series `k` ([unit var]) was first
+  published, when later than the +1 series.tsv gives it; nil otherwise."
+  [k]
+  (get real-lags k))
+
+(def not-real-time
+  "bnm-a1e: series on disk whose history is not what was known at the
+  time, so no gauge may read them without naming a vintage
+  (`load-series`'s :vintage)."
+  {"trade/supply_pressure" "NY Fed GSCPI: first published January 2022, a principal component re-estimated over the whole history at each release"
+   "economy/leading_indicator" "OECD CLI: amplitude-adjusted and revised ex post"
+   "finance/stress" "St. Louis Fed STLFSI4: factor weights re-estimated each week (1689 of 1711 weeks changed in four weeks)"
+   "finance/conditions" "Chicago Fed NFCI: factor weights re-estimated each week (2619 of 2910 weeks changed in four weeks)"})
+
+(defn check-real-time
+  "Throws when a series in `vs` is not real time (`not-real-time`) and
+  `vintage` ({var description}) does not name the vintage read."
+  [vs vintage]
+  (doseq [v vs :when (and (contains? not-real-time v) (not (get vintage v)))]
+    (throw (ex-info (str "bnm.named: " v " is not real time (" (not-real-time v) "); name its vintage to read it")
+                    {:var v}))))
+
 (defn load-series
-  "{[unit var] series} for `vars`, values transformed as data/slow/variables.tsv says."
-  [series-path variables]
-  (let [tr (into {} (for [v variables] [(:name v) (:transform v)]))
+  "{[unit var] series} for `vars`, values transformed as data/slow/variables.tsv says.
+  opts: :real-lags true, each series available no earlier than its true
+  publication (`real-lags`, bnm-a1e; off, as series.tsv dates it); :vars,
+  the variables to read in place of `vars`, none of them `not-real-time`
+  unless :vintage names its vintage."
+  ([series-path variables] (load-series series-path variables {}))
+  ([series-path variables {:keys [real-lags vintage] :as opts}]
+  (let [want (or (:vars opts) vars)
+        _ (check-real-time want vintage)
+        tr (into {} (for [v variables] [(:name v) (:transform v)]))
         acc (java.util.HashMap.)]
     (with-open [r (io/reader series-path)]
       (doseq [line (line-seq r)
               :let [[unit v _ pend avail value] (str/split line #"\t" -1)]
-              :when (vars v)]
+              :when (want v)]
         (let [x (parse-double value)
               z (case (tr v) "log" (Math/log (Math/max x 1e-12)) "log1p" (Math/log1p (Math/max x 0.0)) x)
-              k [unit v]]
-          (.put acc k (conj (or (.get acc k) []) [(st/month-of pend) (st/month-of avail) z])))))
-    (into {} (for [[k es] acc] [k (sk/series es)]))))
+              k [unit v]
+              p (st/month-of pend)
+              a (st/month-of avail)
+              a (if-let [l (and real-lags (real-lag k))] (max a (+ p (long l))) a)]
+          (.put acc k (conj (or (.get acc k) []) [p a z])))))
+    (into {} (for [[k es] acc] [k (sk/series es)])))))
 
 (defn- getter
   ([db unit] (getter db unit {}))

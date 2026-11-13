@@ -73,3 +73,66 @@
         [_ f36] (nm/political-economy db ["X"] [sep] {:stale nm/publication-stale})]
     (is (nil? (first (f30 "X" sep))))
     (is (= 0.1 (first (f36 "X" sep))))))
+
+;; bnm-a1e: slow-normalize.py dates every monthly FRED series +1 month after
+;; its month; the IMF primary commodity prices reach FRED later (ALFRED,
+;; data/raw/alfred). Under :real-lags a value is not read before its true
+;; publication month; without it the base reads as before.
+
+(defn- tsv-file
+  "A series.tsv of `rows` [unit var pend avail value] in a temp file."
+  [rows]
+  (let [f (java.io.File/createTempFile "bnm-series" ".tsv")]
+    (spit f (apply str (for [[u v pe av x] rows] (str u "\t" v "\tm\t" pe "\t" av "\t" x "\n"))))
+    (.getPath f)))
+
+(defn- ym [t] (format "%04d-%02d-28" (quot t 12) (inc (rem t 12))))
+
+(defn- food-rows
+  "world food/price_index as slow-normalize writes it (+1 month), Jan 2019
+  to Oct 2020, the index 100 then 150 from Jan 2020 (bnm.slow-train/
+  month-of reads the year and month only)."
+  []
+  (for [t (range (* 12 2019) (+ 10 (* 12 2020)))]
+    ["world" "food/price_index" (ym t) (ym (inc t)) (if (< t (* 12 2020)) 100.0 150.0)]))
+
+(def ^:private food-vars [{:name "food/price_index" :transform "log"}])
+
+(deftest bnm-a1e-imf-prices-are-not-read-before-their-publication
+  (let [path (tsv-file (food-rows))
+        base (nm/load-series path food-vars)
+        real (nm/load-series path food-vars {:real-lags true})
+        oct (+ 9 (* 12 2020)) nov (inc oct)
+        at (fn [db t] (sk/value (db ["world" "food/price_index"]) t))]
+    (testing "the base: October's value read at the November origin"
+      (is (= (Math/log 150.0) (at base nov))))
+    (testing "real lags: published two months after its month"
+      (is (= 2 (nm/real-lag ["world" "food/price_index"])))
+      (is (= (Math/log 150.0) (at real nov)) "September's, also 150")
+      (is (nil? (sk/value (real ["world" "food/price_index"]) (+ 1 (* 12 2019)))) "January 2019's not before March")
+      (is (= (Math/log 100.0) (sk/value (real ["world" "food/price_index"]) (+ 2 (* 12 2019))))))
+    (testing "the leading food gauge reads the published value only"
+      (let [[_ fb] (nm/leading base) [_ fr] (nm/leading real)
+            jan (* 12 2020) feb (inc jan) mar (+ 2 jan)]
+        (is (< 0.4 (nth (fb "XXX" feb) 3)) "base: January's jump read at February")
+        (is (nil? (nth (fr "XXX" feb) 3)) "real: at February December is the newest, and no December before it")
+        (is (< 0.4 (nth (fr "XXX" mar) 3)) "real: read at March")))))
+
+(deftest bnm-a1e-every-monthly-fred-series-has-an-audited-lag
+  ;; the audit (data/raw/alfred): each series the lattice reads monthly
+  ;; from FRED is published at least as late as slow-normalize's +1
+  (doseq [k [["world" "food/price_index"] ["world" "commodities/copper"]
+             ["world" "commodities/aluminium"] ["world" "commodities/nickel"]]]
+    (is (<= 2 (nm/real-lag k)) k))
+  (is (nil? (nm/real-lag ["world" "finance/vix"])) "daily quotes: read in their month"))
+
+(deftest bnm-a1e-revised-series-are-not-read-without-a-vintage
+  ;; the GSCPI (first published January 2022, re-estimated each release),
+  ;; the OECD CLI (amplitude-adjusted and revised ex post), and the stress
+  ;; and conditions indexes (factor weights re-estimated weekly)
+  (doseq [v ["trade/supply_pressure" "economy/leading_indicator" "finance/stress" "finance/conditions"]]
+    (is (contains? nm/not-real-time v) v)
+    (is (not (contains? nm/vars v)) v)
+    (let [path (tsv-file [["world" v "2020-01-31" "2020-02-29" 1.0]])]
+      (is (thrown-with-msg? Exception #"not real time" (nm/load-series path [{:name v :transform "id"}] {:vars #{v}})) v)
+      (is (some? (nm/load-series path [{:name v :transform "id"}] {:vars #{v} :vintage {v "2026-10-16 fetch, backcast before 2022"}})) v))))

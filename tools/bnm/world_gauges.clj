@@ -50,18 +50,24 @@
    :policy ["USA" "finance/policy_rate" :id]})
 
 (defn read-raw
-  "{id [[period available value] ...]} of `sources` from a series.tsv."
-  [path]
+  "{id [[period available value] ...]} of `sources` from a series.tsv;
+  with :real-lags, each available no earlier than its true publication
+  (bnm.named/real-lag, bnm-a1e)."
+  ([path] (read-raw path {}))
+  ([path {:keys [real-lags]}]
+  (nm/check-real-time (map second (vals sources)) nil)
   (let [want (into {} (for [[id [u v tr]] sources] [[u v] [id tr]]))]
     (with-open [r (io/reader path)]
       (reduce (fn [acc line]
                 (let [[unit v _ pend avail value] (str/split line #"\t" -1)]
                   (if-let [[id tr] (want [unit v])]
-                    (let [x (parse-double value)]
-                      (update acc id (fnil conj []) [(st/month-of pend) (st/month-of avail)
-                                                     (if (= :log tr) (Math/log (Math/max x 1e-12)) x)]))
+                    (let [x (parse-double value)
+                          p (st/month-of pend)
+                          a (st/month-of avail)
+                          a (if-let [l (and real-lags (nm/real-lag [unit v]))] (max a (+ p (long l))) a)]
+                      (update acc id (fnil conj []) [p a (if (= :log tr) (Math/log (Math/max x 1e-12)) x)]))
                     acc)))
-              {} (line-seq r)))))
+              {} (line-seq r))))))
 
 (defn credit-entries
   "[[month month value] ...]: the world's mean three-year change in credit
@@ -79,12 +85,13 @@
 (defn load-state
   "The world state from data/slow (series.tsv, variables.tsv) and the
   loaded series `db` (bnm.named/load-series) for the credit series over
-  `units`, months from 1950 to `end`."
-  [db units end]
-  (let [raw (read-raw "data/slow/series.tsv")
+  `units`, months from 1950 to `end`; opts :real-lags (bnm-a1e, read-raw)."
+  ([db units end] (load-state db units end {}))
+  ([db units end opts]
+  (let [raw (read-raw "data/slow/series.tsv" opts)
         credit (credit-entries db units (range (* 12 1950) (inc end)))]
     (ws/world-state (into {:credit {:entries credit :lag 0}}
-                          (for [[id es] raw] [id {:entries es :lag (lag-of es)}])))))
+                          (for [[id es] raw] [id {:entries es :lag (lag-of es)}]))))))
 
 (defn- seeded-normal [seed t] (m/normal! (m/rng (+ (* 1000003 (long seed)) (long t)))))
 

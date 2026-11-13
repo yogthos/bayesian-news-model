@@ -226,6 +226,12 @@ def fred():
         counts = sorted(len(vs) for vs in by_month.values())
         if counts and counts[len(counts) // 2] > 2 and last_day < last_weekday(last_day[:7]):
             del by_month[last_day[:7]]
+        # +1 for every monthly series is too early for some (bnm-a1e): the
+        # IMF commodity prices reach FRED two months after their month in
+        # about one release in six (ALFRED, data/raw/alfred). The true
+        # lags are bnm.named/real-lags, applied by the reader under
+        # --real-lags true; this table is left as it is so the base of
+        # record reproduces.
         for ym, vs in by_month.items():
             emit(unit, name, freq, period_end("m", ym), 0 if len(vs) > 2 else 1, sum(vs) / len(vs))
         var(name, tr, freq, "FRED " + sid, desc)
@@ -609,6 +615,8 @@ def oecd():
     if os.path.exists(path):
         for r in csv.DictReader(open(path)):
             if r["REF_AREA"] in ISO3:
+                # not real time: amplitude-adjusted and revised ex post; the
+                # reader refuses it without a vintage (bnm.named/not-real-time)
                 emit(r["REF_AREA"], "economy/leading_indicator", "m", period_end("m", r["TIME_PERIOD"]), 1, r["OBS_VALUE"])
         var("economy/leading_indicator", "id", "m", "OECD CLI", "composite leading indicator, amplitude adjusted")
     path = os.path.join(RAW, "oecd", "finmark.csv")
@@ -785,6 +793,9 @@ def shocks():
             if not d or num(r.get(col)) is None:
                 continue
             y, m = int(d[:4]), int(d[5:7])
+            # the GSCPI is not real time: first published January 2022, its
+            # history re-estimated at each release; the reader refuses it
+            # without a vintage (bnm.named/not-real-time, bnm-a1e)
             emit("world", name, "m", month_end(y, m), 1, num(r[col]))
         var(name, tr, "m", src, desc)
 
