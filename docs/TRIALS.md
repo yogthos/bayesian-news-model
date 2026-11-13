@@ -77,6 +77,19 @@ true` at 7dc9281. Against t53-noclim: year Brier +0.0040 [+0.0018,
 market-crash false alarms 2018-22 from the 2022 curve inversion and vix12,
 an approach limit not tuned post hoc.
 
+Corrected base, 13 November 2026, later (bnm-a1e, bnm-96j, bnm-11y,
+bnm-v1y; not a trial and not counted): the base of record is t71-stack,
+t65-gauges's command with `--real-lags true --at-risk catalogue
+--lead-std history --frailty-gauges true` at 5f7dd70. Against t65-gauges:
+year Brier +0.0023 [+0.0004, +0.0046] pooled, log +0.0080; against
+t53-noclim +0.0062; no fold lost against either (docs/CALIBRATION.md
+15-17). Alerts at 4:1: pooled cost 0.298 against 0.310, 8 of 21 episodes
+caught against 6. Trials from now on bench against t71-stack
+(docs/PHASE-CHANGES.md, fourth note to amendment L1). Known open issues:
+market-crash false alarms from vix12 and the 2022 curve; food 2020, growth
+2007-08 and 2019, banking and sovereign defaults never alert; σ at the
+grid edge (bnm-02u).
+
 | # | configuration | first scored | note |
 |---|---|---|---|
 | 1 | mix | 2026-10 | event-code mix |

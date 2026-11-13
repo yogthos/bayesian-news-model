@@ -1,5 +1,31 @@
 # Handover
 
+## State as of 2026-11-13, later (branch `structure`)
+
+**The base of record is t71-stack** (fourth note to amendment L1, 13
+November, docs/PHASE-CHANGES.md): `bnm.world-run --out t71-stack
+--without-relations true --known r7-at-fx --leak-fixes true --pwt-stale true --lag-stale true --gauge-std stable --leading true --leading-priors true --real-lags true --at-risk catalogue --lead-std history --frailty-gauges true --set '{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}'`, at 5f7dd70 with augur v0.24.0, on t53-noclim's inputs: t65-gauges
+plus the true publication lags (bnm-a1e), the catalogue's at-risk rule
+(bnm-96j), the leading gauges standardized on their history (bnm-11y) and
+the year node's world gauges in the frailty (bnm-v1y); docs/CALIBRATION.md
+15-17. Against t65-gauges year Brier +0.0023 [+0.0004, +0.0046] pooled,
+log +0.0080; against t53-noclim +0.0062; no fold lost against either.
+Alerts at 4:1 (PLAN principle 10): pooled cost 0.298 against 0.310 for no
+skill, 8 of 21 episodes caught against 6.
+- Known open issues, not fixed: market-crash false alarms from vix12 and
+  the 2022 curve; food 2020, growth 2007-08 and 2019, banking crises and
+  sovereign defaults never alert; the frailty's σ at the edge of its grid
+  (bnm-02u). Recorded, not tuned after seeing the scores.
+- The ledger builds 2027-Q1 on t71 (`base`, `command`, `base-files`;
+  `known` r7-at-fx and `inputs`/`base-inputs` unchanged: the publication
+  lags and at-risk rules are code over series.tsv). The command reproduces
+  t71-stack byte for byte (t71-stack-repro); 2026-Q4-r1 still reproduces
+  from its archive. `score` now scores an issue on the catalogues its own
+  command built (`issue-catalogues`), so a t71 issue is scored on its
+  at-risk rows. No forecast issued.
+
+The section below is the earlier 13 November handover, kept as written.
+
 ## State as of 2026-11-13 (branch `structure`)
 
 **The base of record is t65-gauges** (third note to amendment L1, 13

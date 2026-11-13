@@ -3945,6 +3945,65 @@ next issue (2027-Q1) runs this command (bnm.ledger/command, with `--end`).
   this code 2026-Q4-r1 comes back byte for byte from its archive with
   its own command.
 
+**Fourth note to amendment L1, 13 November 2026** (beads bnm-a1e,
+bnm-96j, bnm-11y, bnm-v1y, bnm-3be; decided by the user the same day;
+written before any issue is made on it, L1 itself unchanged). The base of
+record is **t71-stack**, not t65-gauges: `bnm.world-run --out t71-stack
+--without-relations true --known r7-at-fx --leak-fixes true --pwt-stale
+true --lag-stale true --gauge-std stable --leading true --leading-priors
+true --real-lags true --at-risk catalogue --lead-std history
+--frailty-gauges true --set '{:learn-offsets :mixture :flow-std-from
+:resolved :clim-learn :current :frailty {} :discount-from :data :flow-std
+:stable :evidence-at :issue-joint}'`, at 5f7dd70 with augur v0.24.0, on
+t53-noclim's inputs. Wherever L1 or the earlier notes name t65 (or t53,
+t52, t50) as the base, read t71; the size check stays as recorded on t49.
+The next issue (2027-Q1) runs this command (bnm.ledger/command, with
+`--end`).
+
+- *What changed.* On t65-gauges (docs/CALIBRATION.md 15-17): every slow
+  series at its true publication date, from ALFRED's vintages
+  (`--real-lags true`, bnm-a1e); a row at risk only where its kind's
+  catalogue rule could date an onset in the window (`--at-risk
+  catalogue`, bnm-96j: the annual catalogues' January grid and once-in-n
+  refractory, inflation's run rule); the leading gauges standardized on
+  their own history (`--lead-std history`, bnm-11y); and the year node's
+  world gauges moved from the models into the mean of the common shock,
+  so every model issues the level and the averaging chooses among rankers
+  (`--frailty-gauges true`, bnm-v1y, RECURSIVE step 5a).
+- *Options, not defaults.* Every one is an option set by the base's
+  command; the defaults are unchanged, so the registered issues
+  reproduce with their own commands.
+- *The honest score* (year nodes, 2003-2022, thirteen kinds weighed
+  equally, + = t71 better; data/runs/logs/score-t71-*.txt). Brier against
+  t65-gauges pooled +0.0023 [+0.0004, +0.0046], log +0.0080 [+0.0028,
+  +0.0136]; against t53-noclim +0.0062 [+0.0034, +0.0094], log +0.0177
+  [+0.0097, +0.0255]. No fold lost against either.
+- *Alerts at 4:1* (bnm.alerts, alerts-t71-*.txt; PLAN principle 10).
+  Pooled cost per row 0.298 against 0.310 for the better of never or
+  always alerting; 8 of 21 episodes caught, against 6 for t65-gauges. The
+  adoption reflects the user's rule that a missed crisis costs four false
+  alarms: acceptance stays on the proper scores and the fold rule, and
+  the alert table is reported beside them.
+- *Known open issues, not fixed.* Market-crash false alarms from vix12
+  read after a crash and the 2022 curve inversion (CALIBRATION 13 loss 1,
+  17 loss 1), now reaching every model through the frailty. Food 2020,
+  growth collapses 2007-08 and 2019, and banking crises and sovereign
+  defaults at any origin never alert. The frailty's σ sits at the edge of
+  its grid at the year nodes (bnm-02u). Each would be changed after seeing
+  these scores, so each is recorded, not tuned.
+- *Scoring.* Under `--at-risk catalogue` the base is scored only on rows
+  its catalogue's rule could date an onset in. bnm.ledger's `score` now
+  scores an issue on the catalogues its own manifest command built
+  (`issue-catalogues`), so a t71 issue is scored on the rows its base is,
+  and 2026-Q4-r1 on its own (no rule).
+- *Reproduction.* bnm.ledger/command rerun to a fresh directory
+  (t71-stack-repro) gives t71-stack's forecasts.tsv byte for byte for
+  every kind, reading exactly `inputs`, at the hashes in `base-inputs`
+  (t53-noclim's: the publication lags are code, bnm.named/real-lags, and
+  the at-risk rules bnm.kinds/at-risk-rules over data/slow/series.tsv).
+  With this code 2026-Q4-r1 comes back byte for byte from its archive
+  with its own command.
+
 ## Registered, 11 November 2026: one pooled hazard over the buffer invariants, and the scanner (bead bnm-56c.6, PLAN 1.5-1.7)
 
 Written and committed before any model is fitted to break labels. The
