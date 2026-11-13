@@ -2288,3 +2288,126 @@
     (doseq [f [{:gauges {:year [:nope]}} {:gauges {:year []}} {:gauges [:g]} {:gauges {:year [:g]} :sds [0.0]}
                {:gauges {:year [:g]} :prior :parent} {:gauges {:year [:r]}} {:gauges {:year [:g]} :gauges-from "all"}]]
       (is (thrown? clojure.lang.ExceptionInfo (pool-world w {:frailty (merge {:rhos [0.0 0.5] :sds [0.0 0.5]} f)})) f))))
+
+;; --- recursive step 4b (bnm-56c.38): an issuing next-quarter scale ---
+
+(def ^:private nq-episodes
+  "Origins (March ends, never a year origin) whose next quarter holds a
+  planted common shock, announced by the world gauge read at the origin."
+  [242 302 362 422 482 542])
+
+(defn- nq-world
+  "`n` places with events by month and no signal of their own. The world
+  gauge read at quarter end t is noise (sd 0.4), or +2.5 at each of
+  `nq-episodes`; the months of the quarter after t move by 1.2 times it.
+  Scales: :quarter-next (window t..t+3, known at t+6; a leaf, `nq?`),
+  :quarter-lead (t+3..t+12, known at t+15) and :year (t..t+12, known at
+  t+24), every one reading the gauge. 50 years; `perturb` redraws every
+  event after it; `extra` merged in."
+  [n nq? extra & [{:keys [perturb leaf] :or {leaf true}}]]
+  (let [months 600
+        noise (let [g (m/rng 53)] (vec (repeatedly (+ months 24) #(* 0.4 (m/normal! g)))))
+        ep (set nq-episodes)
+        ;; the gauge read at quarter end t (and carried to the next)
+        gauge (fn [t] (let [q (- t (mod (- t 2) 3))] (cond (ep q) 2.5 (neg? q) 0.0 :else (noise q))))
+        ;; month mo lies in the quarter after origin q = the last quarter end before mo
+        shock (fn [mo] (let [q (- (dec mo) (mod (- (dec mo) 2) 3))] (* 1.2 (gauge q))))
+        draw (fn [seed] (let [g (m/rng seed)]
+                          (into {} (for [c (range n) mo (range (+ months 24))]
+                                     [[c mo] (< (m/next-double! g) (m/expit (+ -5.0 (shock mo))))]))))
+        a (draw 61)
+        ev (if perturb (let [b (draw 67)] (fn [k] (if (> (second k) perturb) (b k) (a k)))) a)
+        places (mapv #(str "P" %) (range n))
+        ix (zipmap places (range))
+        any? (fn [place lo hi] (boolean (some #(ev [(ix place) %]) (range (inc lo) (inc hi)))))]
+    (lt/run (merge {:scales (vec (concat (when nq? [(cond-> {:name :quarter-next :per 3 :offset 0 :horizon 3 :discount 0.995} leaf (assoc :leaf true))])
+                                         [{:name :quarter-lead :per 3 :offset 3 :horizon 9 :discount 0.995}
+                                          {:name :year :per 12 :horizon 12 :discount 0.998}]))
+                    :levels [[:country places]]
+                    :parent {} :start 0 :end (dec months) :forget 0.995
+                    :target (fn [scale place t]
+                              (case scale
+                                :quarter-next {:y (any? place t (+ t 3)) :known-at (+ t 6)}
+                                :quarter-lead {:y (any? place (+ t 3) (+ t 12)) :known-at (+ t 15)}
+                                :year {:y (any? place t (+ t 12)) :known-at (+ t 24)}))
+                    :gauges (fn [_ _ t] [(gauge t)])
+                    :gauge-width {:quarter-next 1 :quarter-lead 1 :year 1}
+                    :gauge-names {:quarter-next [:g] :quarter-lead [:g] :year [:g]}
+                    :named-prior {:quarter-next {:g [1.0 0.0625]}}
+                    :flow-std-from :resolved}
+                   extra))))
+
+(def ^:private nq-frailty {:rhos [0.0 0.5] :sds [0.25 0.5] :gauges {:quarter-next [:g]}})
+
+(defn- mean-p [r scale t]
+  (let [ps (keep #(when (and (= scale (:scale %)) (= t (:origin %))) (:p %)) (:forecasts r))]
+    (/ (reduce + ps) (count ps))))
+
+(defn- realized [r scale t]
+  (let [ys (keep #(when (and (= scale (:scale %)) (= t (:origin %))) (:y %)) (:forecasts r))]
+    (/ (count (filter true? ys)) (double (count ys)))))
+
+(deftest bnm-56c-38-the-next-quarter-issues-the-announced-shock
+  ;; at each episode origin the next quarter's rate is 1 - (1 - expit(-2))^3,
+  ;; about 0.32 (0.21-0.35 realized), against about 0.02 otherwise. The next-quarter scale reads the gauge at t and
+  ;; issues for (t, t+3]; the quarter-lead and the year issued at t-3 (the
+  ;; year at the December before) hold that quarter in their windows but read
+  ;; the gauge before it moved
+  (let [r (nq-world 100 true {:frailty nq-frailty})]
+    (doseq [t nq-episodes
+            :let [nq (mean-p r :quarter-next t)
+                  ;; their implied hazard for the quarter (t, t+3] under a constant hazard
+                  ql (- 1.0 (Math/pow (- 1.0 (mean-p r :quarter-lead (- t 3))) (/ 1.0 3.0)))
+                  yr (- 1.0 (Math/pow (- 1.0 (mean-p r :year (- t 3))) (/ 1.0 4.0)))]]
+      (is (> (realized r :quarter-next t) 0.15) [t (realized r :quarter-next t)])
+      ;; at least the alert threshold at 4:1
+      (is (>= nq 0.2) [t nq])
+      (is (< ql 0.08) [t ql])
+      (is (< yr 0.08) [t yr]))
+    (testing "calm quarters stay low"
+      (let [calm (remove (set nq-episodes) (filter #(<= 242 % 590) (range 2 600 3)))]
+        (is (< (/ (reduce + (map #(mean-p r :quarter-next %) calm)) (count calm)) 0.06))))
+    (testing "the leaf issues: forecasts, book, weights and its filtered shock with beta"
+      (is (some #(= :quarter-next (:scale %)) (:forecasts r)))
+      (is (seq (get-in r [:book [:quarter-next "P0"]])))
+      (is (contains? (:weights r) [:quarter-next :country]))
+      (is (some :beta (vals (get-in r [:frailty [:quarter-next :country]])))))))
+
+(deftest bnm-56c-38-the-leaf-changes-nothing-else
+  ;; nothing reads the leaf: every other scale's forecasts, book, weights
+  ;; and frailty are as without it
+  (let [without (nq-world 20 false {:frailty nq-frailty})
+        with (nq-world 20 true {:frailty nq-frailty})
+        other (fn [r] (remove #(= :quarter-next (:scale %)) (:forecasts r)))
+        drop-nq (fn [m] (into {} (remove #(= :quarter-next (first (key %))) m)))]
+    (is (= (:forecasts without) (other with)))
+    (is (= (:book without) (drop-nq (:book with))))
+    (is (= (:weights without) (drop-nq (:weights with))))
+    (is (= (:frailty without) (drop-nq (:frailty with))))
+    (testing "without the frailty too"
+      (is (= (:forecasts (nq-world 20 false {})) (other (nq-world 20 true {})))))))
+
+(deftest bnm-56c-38-a-scale-read-by-others-moves-them
+  ;; the same scale not marked a leaf is read through the year's :up group,
+  ;; so the leaf mark is what keeps the others as they were
+  (let [without (nq-world 20 false {})
+        read (nq-world 20 true {} {:leaf false})]
+    (is (not= (filter #(= :year (:scale %)) (:forecasts without))
+              (filter #(= :year (:scale %)) (:forecasts read))))))
+
+(deftest bnm-56c-38-no-lookahead
+  ;; every event after month 400 redrawn: nothing issued at or before 400 changes
+  (let [cut 400
+        a (nq-world 20 true {:frailty nq-frailty})
+        b (nq-world 20 true {:frailty nq-frailty} {:perturb cut})
+        upto (fn [r] (map (juxt :scale :place :origin :p) (filter #(<= (:origin %) cut) (:forecasts r))))]
+    (is (= (upto a) (upto b)))
+    (is (not= (map :p (:forecasts a)) (map :p (:forecasts b))) "the redraw is seen after the cut")
+    (is (= (into {} (for [[k byo] (:book a)] [k (subseq byo <= cut)]))
+           (into {} (for [[k byo] (:book b)] [k (subseq byo <= cut)]))))))
+
+(deftest bnm-56c-38-a-leaf-is-not-frailty-only
+  (is (thrown? clojure.lang.ExceptionInfo
+               (lt/run {:scales [{:name :q :per 3 :horizon 3 :leaf true :frailty-only true} {:name :year :per 12 :horizon 12}]
+                        :levels [[:country ["P0"]]] :parent {} :start 0 :end 30 :frailty {}
+                        :target (fn [_ _ _] nil) :gauges (fn [_ _ _] []) :gauge-width {}}))))

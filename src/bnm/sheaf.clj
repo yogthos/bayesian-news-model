@@ -23,9 +23,10 @@
 (defn base
   "The base poset of a lattice `spec` ({:scales :levels :parent}). A
   :frailty-only scale (bnm.lattice, recursive step 4) keeps no sections,
-  so it is not in it."
+  so it is not in it; nor is a :leaf scale (step 4b), whose sections no
+  other node reads."
   [{:keys [scales levels parent]}]
-  {:scales (mapv :name (remove :frailty-only scales)) :levels levels :parent parent})
+  {:scales (mapv :name (remove #(or (:frailty-only %) (:leaf %)) scales)) :levels levels :parent parent})
 
 (defn finer
   "The scales finer than `scale`, finest first."

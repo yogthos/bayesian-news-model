@@ -237,6 +237,12 @@
   [spec scale]
   (boolean (some #(and (= scale (:name %)) (:frailty-only %)) (:scales spec))))
 
+(defn leaf?
+  "Whether `scale` is a :leaf scale of `spec` (recursive step 4b,
+  bnm-56c.38): its nodes issue as any other, and no other node reads them."
+  [spec scale]
+  (boolean (some #(and (= scale (:name %)) (:leaf %)) (:scales spec))))
+
 (defn- layout
   "The input layout of a node: {:width n :groups {group [index...]} :order}.
   A :frailty-only node reads the intercept alone: its base model is what
@@ -245,8 +251,13 @@
   (if (frailty-only? spec scale)
     {:width 1 :finer [] :coarser [] :strain-ix nil :order [:base] :groups {:base []} :parts {} :pool [] :nested #{}}
   (let [b (sh/base spec)
-        finer (sh/finer b scale)
-        coarser (sh/coarser b scale)
+        ;; a :leaf scale (recursive step 4b) is in no other node's layout (not
+        ;; in the base); it reads the base's scales coarser than it, none finer
+        leaf? (leaf? spec scale)
+        finer (if leaf? [] (sh/finer b scale))
+        coarser (if leaf?
+                  (vec (filter (set (:scales b)) (rest (drop-while #(not= % scale) (map :name (:scales spec))))))
+                  (sh/coarser b scale))
         kids? (pos? level-ix)
         n-anc (- (count (:levels spec)) level-ix 1)
         gw (get-in spec [:gauge-width scale] 0)
@@ -1365,6 +1376,8 @@
                               (concat (:without spec) (mapcat val (:without-at spec)))))]
     (throw (ex-info (str "bnm.lattice/run: :without names no group " (vec bad)) {:without (:without spec) :without-at (:without-at spec)})))
   (frailty-config spec)
+  (when (some #(and (:leaf %) (:frailty-only %)) (:scales spec))
+    (throw (ex-info "bnm.lattice: a scale is a :leaf or :frailty-only, not both" {:scales (mapv :name (:scales spec))})))
   (when (and (some :frailty-only (:scales spec)) (not (:frailty spec)))
     (throw (ex-info "bnm.lattice: a :frailty-only scale needs the spec's :frailty" {:scales (mapv :name (:scales spec))})))
   (let [resolutions (memoize (fn [place] (if-let [f (:resolutions spec)] (or (f place) (sorted-set)) (sorted-set))))]
