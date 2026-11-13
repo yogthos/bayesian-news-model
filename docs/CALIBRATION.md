@@ -100,14 +100,14 @@ Model by model, from captures of the single-kind runs that reproduce t53-noclim'
 
 | cause | kinds | size (country year Brier, 2003-22) | verdict |
 |---|---|---|---|
-| A period's rows counted as independent evidence in the averaging: one common shock at n places moves the weights n times (the weight lock of LOOP-AUDIT 6, 7) | market crashes, growth collapses, food | market crashes 0.1996 -> 0.1707 tempered to 1/n; growth 0.0990 -> 0.0962 | sequencing: step 5 (the weighting). Tempering is augur's existing `:temper`; a per-node power 1/places is the first thing step 5 should score |
+| A period's rows counted as independent evidence in the averaging: one common shock at n places moves the weights n times (the weight lock of LOOP-AUDIT 6, 7) | market crashes, growth collapses, food | market crashes 0.1996 -> 0.1707 tempered to 1/n; growth 0.0990 -> 0.0962 | implementation bug (reclassed 12 November 2026, was sequencing: step 5): the averaging counted one origin's evidence once per place. Fix: `:weighting {:rule :temper :power :per-place}` (section 6); the frailty's per-origin shock (step 3b) replaces it later as the principled version |
 | Time-common terms (intercept, world3, parent states) learned from n rows per origin: a slope from one episode | market crashes (world3 -0.21 -> -0.58 off 2006-07), growth collapses, food 2010-11 | market crashes 0.1707 -> 0.1645 with each period counted once | sequencing: step 3. This is what the frailty's per-origin common shock is for, so here the frailty is the fix, not something that would hide a calibration error |
 | Year node issues 0.5 before its first resolved outcome | food 2003-06 (612 rows) | all of food's excess mean p | implementation bug bnm-56c.26, fixed behind `--clim-prior kinds` |
 | Offset and intercept both take a change of climatology | food 2007 (p 0.03, rate 0.31), market crashes 2009-11 | | implementation bug bnm-56c.27, fixed behind `:clim-learn :current` |
 | Climatology is the rate since the first outcome; 2003-22 was calmer | banking, coups, wars, violence, inflation, currency | causal climatology loses to the in-sample constant by as much as the base (banking 0.0314 vs 0.0310) | not a bug and not causal-fixable: hindsight. A faster level would chase the shocks (recalibration with discounts 0.9-1.0 loses on banking) |
 | A monotone recalibration | all | pooled -0.0004 Brier, banking and food worse | not the fix: the error changes sign with each shock |
 
-No new implementation bug was found. The two that bear on calibration have their fixes and tests already (lattice_test bnm-56c-27-a-change-of-climatology-decays, bnm-56c-26-a-node-with-nothing-resolved-reads-the-prior-rate; world_run_test bnm-56c-26-the-prior-rate-is-the-other-kinds'); they had not been scored together on the bnm-56c.33 base.
+No new implementation bug was found at the time; the first row has since been reclassed as one (section 6). The two that bear on calibration have their fixes and tests already (lattice_test bnm-56c-27-a-change-of-climatology-decays, bnm-56c-26-a-node-with-nothing-resolved-reads-the-prior-rate; world_run_test bnm-56c-26-the-prior-rate-is-the-other-kinds'); they had not been scored together on the bnm-56c.33 base.
 
 ## 4. Candidate t55-cand: the two fixes together
 
@@ -139,3 +139,43 @@ The frailty is the right place for most of the miscalibration rather than a risk
 - the averaging's evidence counted once per origin (per-node tempering 1/places, or the frailty's marginal likelihood), otherwise the frailty's own gains will be locked in or out by single episodes;
 - the frailty's variance estimated with the climatology and intercept not double counting (`:clim-learn :current`), since its common shock and a drifting intercept are otherwise the same quantity.
 The level left after that (a since-1870 climatology above the calm 2003-22) is not a calibration error a causal model can remove.
+
+## 6. The averaging tempered per origin: t56-temper-only and t56-cand
+
+The first row of section 3 is an implementation bug: the averaging counted one origin's evidence once per place. Its fix (a50a0b1) is `:weighting {:rule :temper :power :per-place}` (or under `:weighting-at`): each period the node's averaging is tempered to the number of origins among the rows it learns over their number, so one origin's rows at n places weigh as one row (power 1/n when one origin resolves, 2/n when two do; 1 at one place). Off by default; the ledger's issue is unchanged. Test: lattice_test averaging-tempered-per-place (the power is 1/n and 2/n exactly, one place is the posterior, at 40 places with a common input the top weight goes from 0.997 untempered to 0.50 against 0.52 at one place, bad powers refused). The frailty's per-origin shock (step 3b) replaces it later as the principled version.
+
+Runs (data/runs/t56-*/README.txt): t56-temper-only is the ledger's t53-noclim command plus the temper; t56-cand adds `:clim-learn :current`. Scores: data/runs/logs/score-t56-*.txt.
+
+Year Brier against t53-noclim (+ = better, 90% intervals):
+
+| fold | t56-temper-only | t56-cand |
+|---|---|---|
+| 2003-06 | +0.00236 [+0.00105, +0.00373] | +0.00223 [+0.00091, +0.00356] |
+| 2007-09 | -0.00052 [-0.00353, +0.00169] | +0.00006 [-0.00556, +0.00353] |
+| 2010-12 | -0.00005 [-0.00186, +0.00217] | -0.00467 [-0.00657, -0.00216] LOSS |
+| 2013-19 | +0.00428 [+0.00107, +0.00760] | +0.00319 [+0.00015, +0.00638] |
+| 2020-22 | +0.00050 [-0.00184, +0.00344] | +0.00238 [-0.00089, +0.00556] |
+| pooled 2003-22 | +0.00231 [+0.00069, +0.00404] GAIN | +0.00140 [-0.00053, +0.00325] |
+| pooled log | +0.00380 [-0.00070, +0.00791] | +0.00088 [-0.00554, +0.00680] |
+
+Pooled by kind (Brier; log where its interval excludes 0): market crashes +0.0261 [+0.0086, +0.0486] and +0.0248 [+0.0079, +0.0472]; growth collapses +0.0027 [+0.0016, +0.0040] and +0.0030 [+0.0018, +0.0043]; food +0.0040 [-0.0008, +0.0114] and -0.0032 [-0.0131, +0.0069]; conflict onsets -0.0015 [-0.0037, +0.0005] (log -0.0089 [-0.0154, -0.0018]) and -0.0026 [-0.0054, -0.0000]; inflation -0.0002 [-0.0003, +0.0000] (log -0.0060) and -0.0003 [-0.0005, -0.0001]; war onsets log -0.0051 and -0.0066; every other kind within its interval of 0.
+
+Calibration, country year 2003-22, mean p (rate), Brier, t53-noclim -> temper-only -> cand:
+
+| kind | rate | mean p | Brier |
+|---|---|---|---|
+| market crashes | 0.178 | 0.326 -> 0.313 -> 0.322 | 0.1996 -> 0.1736 -> 0.1748 |
+| food price shocks | 0.154 | 0.183 -> 0.175 -> 0.252 | 0.1560 -> 0.1521 -> 0.1592 |
+| growth collapses | 0.106 | 0.087 -> 0.075 -> 0.076 | 0.0990 -> 0.0963 -> 0.0960 |
+| banking crises | 0.032 | 0.053 -> 0.058 -> 0.056 | 0.0317 -> 0.0316 -> 0.0316 |
+| violence surges | 0.080 | 0.119 -> 0.104 -> 0.121 | 0.0709 -> 0.0713 -> 0.0724 |
+| currency crises | 0.036 | 0.038 -> 0.062 -> 0.074 | 0.0355 -> 0.0353 -> 0.0360 |
+
+1980-2002: market crashes 0.2395 -> 0.2203 -> 0.2199, growth 0.0632 -> 0.0610 -> 0.0608, banking 0.0820 -> 0.0800 -> 0.0799. The temper alone reproduces the single-kind probes of section 2 (market crashes 0.1707 at a fixed 1/47, growth 0.0962 at 1/165).
+
+Where the losses come from (score-t56-by-year.txt, score-t56-within-auc.txt, the weights.tsv files):
+- Market crashes 2010-12 (-0.028 in both runs, the kind's only losing fold): t53-noclim's lock on the world model (1.00 from 2009 to 2015) issued 0.14-0.19 in 2009-11 against rates 0.14, 0.23, 0.03, then 0.48-0.56 in 2013-15 against 0.04-0.09. Tempered, no weight passes 0.15 and the node issues 0.33-0.35 throughout. The lock's luck in 2009-11 is the price of removing its cost in 2013-15 (+0.055 in 2013-19); what is left of the 0.33 level is the world model's coefficients learned from the one 2006-07 episode at every place (section 3's second row, step 3), which the temper does not touch.
+- Conflict onsets, war, inflation, coups (log score; Brier within its interval for temper-only): with the evidence counted once per origin and forgetting at 0.995 a period, the weights barely leave their prior in a century: at conflict onsets the all-inputs model is at 0.23-0.32 and 18 others share the rest, where t53-noclim sat on it or on history at 1.00. Ranking within an origin is not what is lost (conflict AUC 0.857 -> 0.872, war 0.879 -> 0.883, inflation 0.802 -> 0.806): the blend of nearly equal weights is less sharp and its level sits above the rate (inflation mean p 0.015 -> 0.023 against 0.012, coups 0.055 -> 0.073 against 0.045). That is the power, not the code: 1/places is right where what separates the models is the same at every place (world3 at market crashes, growth), and throws away real evidence where it differs by place (a country's own history and politics). The count that fits both is the effective number of independent rows per origin, n / (1 + (n - 1) rho), rho the correlation across places of the models' log-score differences at an origin; or the frailty, which takes the common part out of the rows before the averaging sees them.
+- t56-cand's 2010-12 LOSS adds food -0.035 to the market crashes: under `:clim-learn :current` food issues 0.33 and 0.35 in 2010-11 (rates 0.11, 0.05) and 0.20-0.27 in 2012-13 (0.01, 0.05). Without the double count its level is the climatology since 2003, high after 2006-07, plus models blended near equally that learned 2007-08 as a common shock at every place (section 4's food diagnosis, step 3); the double count had pulled the level down and hid it. The level rises in the declining kinds too (currency 0.062 -> 0.074, inflation, coups), as in t55-cand. The 2003-06 food rows still issue 0.5 here (no `--clim-prior kinds`).
+
+No bug was found in the option or its interaction with `:clim-learn`. Verdict: t56-temper-only passes the fold rule (no fold's interval below 0) with a pooled gain, and loses log score on four well-ranked kinds through the bluntness of 1/places; t56-cand fails the fold rule in 2010-12. Neither is adopted here; adoption is the user's decision. Next: the effective-sample power, or the frailty with the temper on, scored the same way.
