@@ -168,6 +168,8 @@ None is interacted with food imports (the import exposure is in t65's `:food12-x
 
 Real time: the FAO index was first published in 1996 and is backcast to 1990; in July 2020 FAO reweighted it to 2014-2016 export shares and revised its history, and the last few months are revised at each release. The Pink Sheet indices are weighted by 2002-2004 export values and rarely revised. Both are weighted averages of market prices that were public at the time, so the history differs from what was known only by its weights, not by estimation as for the GSCPI; no vintages of either are on disk.
 
+Result (t66-food, docs/CALIBRATION.md 15): the set does not pay. Food +0.0024 [-0.0036, +0.0088] against t66-fix. Fertilizer learned a negative slope from 2008, when it peaked after food. Dec 2020 rises to 0.161, still short of 0.2, and Dec 2021 falls to 0.126.
+
 ## Indicators for food 2020-21 and growth 2020
 
 Research only, no model change (13 November 2026). Question: which indicators would have lifted the forecast to the alert threshold (p ≥ 0.2, the break-even when a miss costs four false alarms) at food price shocks from the December 2020 and 2021 origins (rates 0.493 and 0.500; t65-gauges issued 0.121 and 0.154) and at growth collapses from the December 2019 origin (rate 0.554; issued 0.078). Scripts in the session scratchpad (`ind/data.py`, `food.py`, `growth.py`, `pink2tsv.py`); outputs `ind/food18.txt`, `food9.txt`, `food18d.txt`, `growth.txt`.
