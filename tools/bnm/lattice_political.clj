@@ -218,10 +218,21 @@
   [leak-fixes t _year-delay]
   (if leak-fixes {:releases @release-table :origin-year (ended t) :urban-log true} {}))
 
+(def quarter-now
+  "The frailty-only quarter scale (bnm.lattice :frailty-only, recursive step
+  4, bnm-56c.35): window (t, t+3], known 3 months after it plus the
+  catalogue's lag. It issues nothing; its nodes filter the common shock a
+  coarser node's :frailty :prior :finer reads."
+  {:name :quarter-now :per 3 :offset 0 :horizon 3 :discount 0.995 :frailty-only true})
+
 (defn spec
-  [{:keys [kind db cats annual wdi units end known start pwt-stale year-delay leak-fixes]}]
+  [{:keys [kind db cats annual wdi units end known start pwt-stale year-delay leak-fixes fresh-frailty]}]
   (let [cat (cats kind)
-        scales (scales-for kind (or (pg/long-from kind) (first-year cat)))
+        ;; :fresh-frailty: the frailty-only quarter scale first, so it runs
+        ;; before every coarser node at a month they share
+        scales (cond->> (scales-for kind (or (pg/long-from kind) (first-year cat)))
+                 fresh-frailty (into [quarter-now]))
+        issuing (vec (remove :frailty-only scales))
         ;; four other political kinds' recent onsets (the :others group)
         others (take 4 (remove #{kind} kinds))
         start (or start (* 12 (pg/long-from kind)))
@@ -260,8 +271,8 @@
              :half-decade half-raw}
         qw (if fin 18 24)
         widths (select-keys {:quarter-lead qw :quarter-w2 qw :year (count year-names) :half-decade (count half-names)}
-                            (map :name scales))
-        table (into {} (for [{:keys [name] :as s} scales]
+                            (map :name issuing))
+        table (into {} (for [{:keys [name] :as s} issuing]
                          [name (into {} (for [t (origins s) u countries :let [v ((raw name) u t)] :when v] [[u t] v]))]))
         std (into {} (for [[name tb] table] [name (#'lb/standardizer (for [[[_ t] v] tb] [t v]))]))
         known-at (fn [scale place t]
@@ -330,12 +341,13 @@
   where any kind with a catalogue may be built this way."
   ([kind end known-run] (build kind end known-run nil nil))
   ([kind end known-run cats start] (build kind end known-run cats start {}))
-  ([kind end known-run cats start {:keys [pwt-stale year-delay leak-fixes]}]
+  ([kind end known-run cats start {:keys [pwt-stale year-delay leak-fixes fresh-frailty]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables)
         cats (or cats (catalogues))
         units (set (filter #(first (geo/parents %)) (keys (get-in cats [kind :onsets]))))]
     (spec {:kind kind :db db :cats cats :units units :end end :start start :pwt-stale pwt-stale :year-delay year-delay :leak-fixes leak-fixes
+           :fresh-frailty fresh-frailty
            :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
            :wdi (fn [iso v y] (some-> (db [iso v]) (sk/value (+ 11 (* 12 y)) {:stale 18})))
            :known (lb/read-known known-run kind)}))))

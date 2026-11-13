@@ -35,7 +35,13 @@
   months, not the annual catalogues' eighteen),
   --clim-prior kinds (bnm-56c.26: a node with no resolved outcome reads
   the rate the other kinds' nodes at its scale and level have resolved,
-  not 0.5), and
+  not 0.5),
+  --fresh-frailty quarter-now (bnm-56c.35, recursive step 4: every kind
+  whose catalogue dates onsets within the year gets bnm.lattice-political/
+  quarter-now, a frailty-only scale, window three months, known three
+  months plus the lag after it; with --set's :frailty {:prior :finer
+  :source :quarter-now} its coarser nodes take their prior from it, the
+  other kinds their own), and
   --write-reference true (also data/runs/<out>-ref, the forecasts with the
   reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
@@ -261,14 +267,48 @@
   "{kind spec} for `ks` to month `end`, the quarters' offset pooled with
   run `known`'s named model. opts (recursive step 2, each off by default):
   :pwt-stale (bnm-h8d), :catalogue-through (Test 7; `cats` should carry
-  it too, `catalogues-through`), :leak-fixes (bnm-56c.23)."
+  it too, `catalogues-through`), :leak-fixes (bnm-56c.23), :fresh-frailty
+  (a set of kinds given the frailty-only quarter scale, bnm-56c.35)."
   ([ks end cats] (build-specs ks end cats "r6-at"))
   ([ks end cats known] (build-specs ks end cats known {}))
   ([ks end cats known opts]
    (into {} (pmap (fn [k]
-                    [k (merge (if (= k lb/kind) (lb/build end known opts) (lp/build k end known cats start opts))
-                              quarter-design)])
+                    (let [opts (assoc opts :fresh-frailty (contains? (set (:fresh-frailty opts)) k))]
+                      (when (and (= k lb/kind) (:fresh-frailty opts))
+                        (throw (ex-info "bnm.world-run: banking crises take no fresh frailty scale" {})))
+                      [k (merge (if (= k lb/kind) (lb/build end known opts) (lp/build k end known cats start opts))
+                                quarter-design)]))
                   ks))))
+
+(defn sub-annual?
+  "Whether a catalogue dates its onsets within the year: no month of the
+  year holds more than 45% of them (an annual catalogue puts every onset in
+  its year's first month; banking's, JST's years with a few modern
+  quarters, holds 90% there, conflict onsets' COW years before UCDP 47%).
+  Only such a kind's quarter windows resolve fresher than its year's."
+  [{:keys [onsets]}]
+  (let [ms (map #(mod (long %) 12) (mapcat val onsets))]
+    (and (seq ms) (<= (apply max (vals (frequencies ms))) (* 0.45 (count ms))))))
+
+(defn fresh-kinds
+  "--fresh-frailty quarter-now (bnm-56c.35): the kinds among `ks` whose
+  catalogue (`cats`, after --food-outcomes) is sub-annual."
+  [choice ks cats]
+  (case choice
+    nil #{}
+    "quarter-now" (set (filter #(and (not= % lb/kind) (sub-annual? (cats %))) ks))
+    (throw (ex-info (str "bnm.world-run: --fresh-frailty takes quarter-now, not " choice) {}))))
+
+(defn finer-where-fresh
+  "The specs with a :frailty :prior :finer turned back to :own at a kind
+  that has no frailty-only scale (its catalogue is annual: the quarter
+  windows resolve no fresher than the year's), said once per kind."
+  [specs]
+  (into {} (for [[k sp] specs]
+             [k (if (and (= :finer (get-in sp [:frailty :prior])) (not-any? :frailty-only (:scales sp)))
+                  (do (println "  " k "has no fresh frailty scale: its frailty prior is its own")
+                      (update sp :frailty #(-> % (assoc :prior :own) (dissoc :source :cross))))
+                  sp)])))
 
 (defn cross-kind-prior
   "bnm-56c.26: (fn [scale level]) -> [onsets rows], the outcomes the other
@@ -374,13 +414,15 @@
   (when-let [fr (:frailty r)]
     (with-open [w (io/writer (str dir "/frailty.tsv"))]
       (doseq [[[scale level] hist] (sort-by key fr)
-              [s {:keys [m v rho sd lsd usd] :as e}] hist]
+              [s {:keys [m v rho sd lsd usd cross] :as e}] hist]
         ;; under :level-sds, the level's sd, state and variance as three more
         ;; columns; under :exposure-sds, the slope's sd and each column's
         ;; loading (comma-separated, empty while no slope is chosen)
         (.write w (str (name scale) "\t" (name level) "\t" s "\t" m "\t" v "\t" rho "\t" sd
                        (when lsd (str "\t" lsd "\t" (:level e) "\t" (:level-v e)))
                        (when usd (str "\t" usd "\t" (str/join "," (:u e)) "\t" (str/join "," (:u-v e))))
+                       ;; under :prior :finer, the chosen kappa (0: the node's own prior)
+                       (when cross (str "\t" cross))
                        "\n"))))))
 
 (defn world-of
@@ -443,15 +485,18 @@
                          (set (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats))))))
         chosen (when states
                  (states-of (read-string (slurp states)) (set (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats))))))
-        _ (println "building" (count ks) "kinds")
+        fresh (fresh-kinds (:fresh-frailty opts) ks cats)
+        _ (println "building" (count ks) "kinds" (if (seq fresh) (str "; the fresh frailty scale at " (str/join "," (sort fresh))) ""))
         specs0 (-> (build-specs ks end cats (known-run opts) {:pwt-stale (= "true" pwt-stale)
                                                                :catalogue-through (= "true" catalogue-through)
                                                                :year-delay (some-> year-delay parse-long)
-                                                               :leak-fixes (= "true" leak-fixes)})
+                                                               :leak-fixes (= "true" leak-fixes)
+                                                               :fresh-frailty fresh})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)}
-                               end))
+                               end)
+                   finer-where-fresh)
         books (atom {})
         ;; each kind's resolved counts by node, as of the month (--clim-prior kinds)
         clims (atom {})

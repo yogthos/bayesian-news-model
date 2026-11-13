@@ -205,9 +205,19 @@
   (into (set (:without spec)) (get-in spec [:without-at scale])))
 
 
+(defn frailty-only?
+  "Whether `scale` is a :frailty-only scale of `spec` (recursive step 4,
+  bnm-56c.35): its nodes filter the frailty and issue nothing."
+  [spec scale]
+  (boolean (some #(and (= scale (:name %)) (:frailty-only %)) (:scales spec))))
+
 (defn- layout
-  "The input layout of a node: {:width n :groups {group [index...]} :order}."
+  "The input layout of a node: {:width n :groups {group [index...]} :order}.
+  A :frailty-only node reads the intercept alone: its base model is what
+  its frailty is filtered against."
   [spec scale level-ix]
+  (if (frailty-only? spec scale)
+    {:width 1 :finer [] :coarser [] :strain-ix nil :order [:base] :groups {:base []} :parts {} :pool [] :nested #{}}
   (let [b (sh/base spec)
         finer (sh/finer b scale)
         coarser (sh/coarser b scale)
@@ -268,7 +278,7 @@
      :parts (or rel-groups {})
      ;; the learned pool weight's input, read by every model (:downscale-learn)
      :pool (vec (spans :pool))
-     :nested (if nest? (set (keys rel-groups)) #{})}))
+     :nested (if nest? (set (keys rel-groups)) #{})})))
 
 (defn layout-of
   "The input layout of the node at `scale` and level index `level-ix`:
@@ -672,7 +682,8 @@
 (def frailty-defaults
   "The frailty's grid and reference when the spec's :frailty leaves them out."
   {:rhos [0.0 0.5 0.8 0.95] :sds [0.0 0.25 0.5 1.0] :from :base :prior :own :penalty 2.0
-   :level-sds [0.0] :level-penalty 2.0 :exposure-sds [0.0] :exposure-penalty 2.0})
+   :level-sds [0.0] :level-penalty 2.0 :exposure-sds [0.0] :exposure-penalty 2.0
+   :cross [0.0 0.5 1.0 1.5]})
 
 (defn frailty-config
   "The spec's :frailty with its defaults, checked; nil without one. A map
@@ -692,14 +703,22 @@
   the origin): one loading u_j per column, AR(1) with the transient's
   persistence and a stationary sd chosen from the grid, a non-zero one
   paying :exposure-penalty nats (2.0). The place's shock is then z + u.e,
-  filtered jointly once per origin. The default, [0.0], is no slope."
+  filtered jointly once per origin. The default, [0.0], is no slope.
+  :prior :finer with :source, a scale of the spec (bnm-56c.35, recursive
+  step 4): every node at a scale coarser than the source issues with kappa
+  times the source scale's state at its level (filtered before the node
+  issues, from rows known by t, run forward at the source's own period),
+  kappa chosen from :cross ([0.0 0.5 1.0 1.5]) with the rest of the grid,
+  a non-zero one paying :penalty; kappa 0 is the node's own prior, so
+  :cross [0.0] is :prior :own. The source and finer scales use their own."
   [spec]
   (when-let [f (:frailty spec)]
     (when-not (map? f)
       (throw (ex-info "bnm.lattice: :frailty takes a map of :rhos :sds :from :prior" {:frailty f})))
-    (when-let [bad (seq (remove #{:rhos :sds :from :prior :penalty :level-sds :level-penalty :exposure-sds :exposure-penalty} (keys f)))]
+    (when-let [bad (seq (remove #{:rhos :sds :from :prior :penalty :level-sds :level-penalty :exposure-sds :exposure-penalty
+                                  :source :cross} (keys f)))]
       (throw (ex-info (str "bnm.lattice: :frailty names no option " (vec bad)) {:frailty f})))
-    (let [{:keys [rhos sds from prior penalty level-sds level-penalty exposure-sds exposure-penalty] :as c} (merge frailty-defaults f)
+    (let [{:keys [rhos sds from prior penalty level-sds level-penalty exposure-sds exposure-penalty source cross] :as c} (merge frailty-defaults f)
           nums? (fn [xs ok?] (and (sequential? xs) (seq xs) (every? #(and (number? %) (ok? (double %))) xs)))]
       (when-not (nums? rhos #(and (<= 0.0 %) (< % 1.0)))
         (throw (ex-info "bnm.lattice: :frailty :rhos takes persistences in [0, 1)" {:rhos rhos})))
@@ -709,8 +728,19 @@
         (throw (ex-info "bnm.lattice: :frailty :from names a model's group" {:from from})))
       (when-not (and (number? penalty) (<= 0.0 (double penalty)))
         (throw (ex-info "bnm.lattice: :frailty :penalty takes nats of at least 0" {:penalty penalty})))
-      (when-not (#{:own :parent} prior)
-        (throw (ex-info "bnm.lattice: :frailty :prior takes :own or :parent" {:prior prior})))
+      (when-not (#{:own :parent :finer} prior)
+        (throw (ex-info "bnm.lattice: :frailty :prior takes :own, :parent or :finer" {:prior prior})))
+      (when (and source (not= :finer prior))
+        (throw (ex-info "bnm.lattice: :frailty :source goes with :prior :finer" {:source source})))
+      (when (= :finer prior)
+        (let [names (mapv :name (:scales spec))
+              ix (.indexOf ^java.util.List names source)]
+          (when-not (and (keyword? source) (<= 0 ix) (< ix (dec (count names))))
+            (throw (ex-info "bnm.lattice: :frailty :prior :finer takes a :source scale finer than another of the spec's" {:source source :scales names})))
+          (when-not (nums? cross #(<= 0.0 %))
+            (throw (ex-info "bnm.lattice: :frailty :cross takes coefficients of at least 0" {:cross cross})))
+          (when (or (some pos? (map double level-sds)) (some pos? (map double exposure-sds)))
+            (throw (ex-info "bnm.lattice: :frailty :prior :finer takes no level or slope" {:level-sds level-sds :exposure-sds exposure-sds})))))
       (when-not (nums? level-sds #(<= 0.0 %))
         (throw (ex-info "bnm.lattice: :frailty :level-sds takes sds of at least 0" {:level-sds level-sds})))
       (when-not (and (number? level-penalty) (<= 0.0 (double level-penalty)))
@@ -728,12 +758,20 @@
         (assoc c :level? (boolean (some pos? (map double level-sds)))
                :exposure? exposure?
                :width (when exposure? (long (:exposure-width spec)))
-               :grid (vec (for [u (sort (distinct (map double exposure-sds)))
-                                l (sort (distinct (map double level-sds)))
-                                s (sort (distinct (map double sds))) r (sort (distinct (map double rhos)))]
-                            (cond-> {:rho r :sd s :price (if (pos? s) (double penalty) 0.0)}
-                              (pos? l) (-> (assoc :lsd l) (update :price + (double level-penalty)))
-                              (pos? u) (-> (assoc :usd u) (update :price + (double exposure-penalty)))))))))))
+               :grid (vec (concat
+                           (for [u (sort (distinct (map double exposure-sds)))
+                                 l (sort (distinct (map double level-sds)))
+                                 s (sort (distinct (map double sds))) r (sort (distinct (map double rhos)))]
+                             (cond-> {:rho r :sd s :price (if (pos? s) (double penalty) 0.0)}
+                               (pos? l) (-> (assoc :lsd l) (update :price + (double level-penalty)))
+                               (pos? u) (-> (assoc :usd u) (update :price + (double exposure-penalty)))))
+                           ;; :prior :finer: the source's state times kappa, after the
+                           ;; node's own candidates (kappa 0) so a tie keeps its own;
+                           ;; its own persistence unused, rho 0
+                           (when (= :finer prior)
+                             (for [k (sort (distinct (map double cross))) :when (pos? k)
+                                   s (sort (distinct (map double sds)))]
+                               {:rho 0.0 :sd s :cross k :price (double penalty)})))))))))
 
 (defn with-frailty
   "Offsets [[w o] ...] with a shared state z ~ N(m, v) added, by the
@@ -750,8 +788,10 @@
 
 (defn- frailty-fresh
   "A node's frailty before its first resolved origin: one filter per
-  grid point at its stationary prior, scored 0."
-  [{:keys [grid width]}]
+  grid point at its stationary prior, scored 0. Without `cross?` (a node
+  that takes no finer source) the :prior :finer candidates are left out."
+  ([cfg] (frailty-fresh cfg false))
+  ([{:keys [grid width]} cross?]
   {:cands (mapv (fn [{:keys [sd lsd usd] :as g}]
                   (cond
                     ;; a slope on exposure: the joint state as a vector and its variance
@@ -759,8 +799,8 @@
                     :else (cond-> (assoc g :m 0.0 :v (* sd sd) :t nil :score 0.0)
                             ;; the level starts at 0, known: the base's level is the start
                             lsd (assoc :lm 0.0 :lv 0.0 :c 0.0))))
-                grid)
-   :filtered (sorted-map)})
+                (if cross? grid (vec (remove :cross grid))))
+   :filtered (sorted-map)}))
 
 (defn- chosen
   "The index of the candidate with the best prequential score less its
@@ -909,7 +949,7 @@
   passed update the current state. Rows issued before the node had a
   resolved outcome are neither scored nor filtered: the base's miss there
   is its uninformed start (bnm-56c.26), not a common shock."
-  [{:keys [from level? exposure?]} fr ready per]
+  [{:keys [from level? exposure? prior]} fr ready per]
   (reduce (fn [{:keys [cands] :as fr} [s rows]]
             (let [obs (mapv (fn [r] (let [{:keys [f q]} (or (get-in r [:lp from])
                                                             (throw (ex-info "bnm.lattice: :frailty :from names a model the node does not average" {:from from})))]
@@ -952,6 +992,8 @@
               (assoc fr :cands cands
                      :filtered (assoc (:filtered fr) s (cond-> (assoc (select-keys pick [:m :v :rho :sd])
                                                                  :scores (mapv :score cands))
+                                                         ;; :prior :finer: the chosen kappa (0, the node's own)
+                                                         (= :finer prior) (assoc :cross (double (:cross pick 0.0)))
                                                          level? (assoc :lsd (double (:lsd pick 0.0))
                                                                        :level (double (:lm pick 0.0))
                                                                        :level-v (double (:lv pick 0.0)))
@@ -965,9 +1007,23 @@
   its state less half its stationary variance (mean one in the rate, as
   augur.hier/states), and its variance. Under :prior :parent,
   rho times the coarser level's state at this scale (filtered before the
-  node issues), else the node's own run forward."
-  [{:keys [prior]} fr parent-fr t per]
+  node issues), else the node's own run forward. Under :prior :finer
+  (`finer` {:src the source node's frailty :src-per its months a period}),
+  a candidate with kappa (:cross) issues with kappa times the source's
+  chosen state run forward to t at the source's own period, less half the
+  stationary variance S = max(sd^2, kappa^2 sd_src^2), its variance kappa^2
+  v_src plus S less kappa^2 sd_src^2 (the year's shock is kappa times the
+  source's plus a part of its own); a candidate without kappa issues with
+  the node's own."
+  ([cfg fr parent-fr t per] (frailty-prior cfg fr parent-fr t per nil))
+  ([{:keys [prior]} fr parent-fr t per {:keys [src src-per] :as finer}]
   (let [{:keys [cands]} fr
+        ;; the source's chosen state at t, run forward at its own period
+        ;; (not the node's: a quarter's state runs four periods to a year's one)
+        [sm sv ss] (when finer
+                     (if-let [pc (some->> (:cands src) not-empty (#(nth % (chosen %))))]
+                       (let [{:keys [m v]} (cand-ahead pc t src-per)] [m v (double (:sd pc))])
+                       [0.0 0.0 0.0]))
         ;; a candidate's transient z run forward, a slope candidate's from its joint state
         z-ahead (fn [c] (if (:usd c)
                           (let [{:keys [mu P]} (slope-ahead c t per)] {:m (first mu) :v (get-in P [0 0])})
@@ -999,6 +1055,13 @@
                      (:lsd c)
                      (let [j (level-ahead c t per)]
                        (level-applied c (if (and (= :parent prior) parent-fr) (assoc (merge j (of c)) :c 0.0) j)))
+                     (:cross c)
+                     (do (when-not finer
+                           (throw (ex-info "bnm.lattice: a :prior :finer candidate without its source" {:cand c})))
+                         (let [k (double (:cross c)) s2 (* (double (:sd c)) (double (:sd c)))
+                               ks2 (* k k ss ss)
+                               big (Math/max s2 ks2)]
+                           [(- (* k sm) (* 0.5 big)) (+ (* k k sv) (- big ks2))]))
                      :else
                      (let [{:keys [m v]} (of c)] [(- m (half-var c)) v])))
                  cands)
@@ -1010,7 +1073,8 @@
       (let [[mu P] (nth zc ci)]
         {:mu mu :P P :cand (select-keys pick [:rho :sd :lsd :usd]) :rho (:rho pick) :sd (:sd pick) :zc zc})
       (let [[m v] (nth zc ci)]
-        {:m m :v v :rho (:rho pick) :sd (:sd pick) :zc zc}))))
+        (cond-> {:m m :v v :rho (:rho pick) :sd (:sd pick) :zc zc}
+          (= :finer prior) (assoc :cross (double (:cross pick 0.0)))))))))
 
 (declare start step finish)
 
@@ -1153,6 +1217,8 @@
                               (concat (:without spec) (mapcat val (:without-at spec)))))]
     (throw (ex-info (str "bnm.lattice/run: :without names no group " (vec bad)) {:without (:without spec) :without-at (:without-at spec)})))
   (frailty-config spec)
+  (when (and (some :frailty-only (:scales spec)) (not (:frailty spec)))
+    (throw (ex-info "bnm.lattice: a :frailty-only scale needs the spec's :frailty" {:scales (mapv :name (:scales spec))})))
   (let [resolutions (memoize (fn [place] (if-let [f (:resolutions spec)] (or (f place) (sorted-set)) (sorted-set))))]
     {:t (:start spec)
      :st {:book {} :errors {} :tension {} :models {} :pending {} :resolutions resolutions :resets {}}
@@ -1190,6 +1256,9 @@
               (reduce
                (fn [[st forecasts weights trace] [scale-spec level-ix]]
                  (let [scale (:name scale-spec)
+                       ;; a :frailty-only node (recursive step 4) filters its frailty
+                       ;; and issues nothing: no forecast, book entry, weights or errors
+                       fo? (boolean (:frailty-only scale-spec))
                        [level places] (nth levels level-ix)
                        k [scale level]
                        model (or (get-in st [:models k]) (node-model spec scale level scale-spec (layout spec scale level-ix)))
@@ -1231,13 +1300,21 @@
                        ;; the frailty filtered from the origins now known, then its prior at t:
                        ;; the node's own run forward, or (:prior :parent) the coarser level's,
                        ;; filtered at an earlier period
+                       ;; :prior :finer: a node coarser than the source scale issues
+                       ;; with the source's state at its level, filtered earlier in
+                       ;; this step (the scales run finest first) from rows known by t
+                       src (when (= :finer (:prior fcfg)) (:source fcfg))
+                       cross? (boolean (and src (finer? spec src scale)))
                        st (if fcfg
-                            (assoc-in st [:frailty k] (frailty-learn fcfg (or (get-in st [:frailty k]) (frailty-fresh fcfg)) ready (:per scale-spec)))
+                            (assoc-in st [:frailty k] (frailty-learn fcfg (or (get-in st [:frailty k]) (frailty-fresh fcfg cross?)) ready (:per scale-spec)))
                             st)
                        zprior (when fcfg
                                 (frailty-prior fcfg (get-in st [:frailty k])
                                                (when-let [[pl _] (get (vec levels) (inc level-ix))] (get-in st [:frailty [scale pl]]))
-                                               t (:per scale-spec)))
+                                               t (:per scale-spec)
+                                               (when cross?
+                                                 {:src (get-in st [:frailty [src level]])
+                                                  :src-per (:per (first (filter #(= src (:name %)) scales)))})))
                        ;; :exposure-sds: each place's exposures standardized across the node's places
                        ez (when (:exposure? fcfg) (standardized-exposures spec scale places t))
                        ;; climatology: the rate among this node's resolved outcomes
@@ -1252,11 +1329,11 @@
                        ;; the offset, and whether it is climatology (:clim, its log odds):
                        ;; with an :offset that has nothing to say, the rate among the
                        ;; node's resolved outcomes (or the prior's, before any)
-                       offset-of (if-let [f (:offset spec)]
+                       offset-of (if-let [f (when-not fo? (:offset spec))]
                                    (fn [place t] (if-let [o (f scale place t)]
                                                    {:o (double o)}
                                                    {:o clim-now :clim clim-now}))
-                                   (constantly {:o 0.0}))
+                                   (if (and fo? clim-now) (constantly {:o clim-now :clim clim-now}) (constantly {:o 0.0})))
                        ;; :downscale: the offset from a coarser node's latest forecast for the
                        ;; place, issued before t, scaled to this window under a constant
                        ;; hazard (docs/DOWNSCALE.md); pooled in log odds with what is known
@@ -1284,10 +1361,11 @@
                                              :pool (when known (- om known))})
                                           (let [{:keys [o clim]} (offset-of place t)]
                                             {:os [[1.0 o]] :down 0.0 :clim clim})))))
-                       st (reduce (fn [st {:keys [place y p known-at]}]
-                                    (update-in st [:errors [scale place]] (fnil assoc (sorted-map)) known-at
-                                               (- (if y 1.0 0.0) p)))
-                                  st ready)
+                       st (if fo? st
+                                (reduce (fn [st {:keys [place y p known-at]}]
+                                          (update-in st [:errors [scale place]] (fnil assoc (sorted-map)) known-at
+                                                     (- (if y 1.0 0.0) p)))
+                                        st ready))
                        ;; the node's own inputs (everything past the intercept and the
                        ;; gauges, which the spec standardizes) against their past
                        g-width (if (contains? (without spec scale) :gauges) 0 (get-in spec [:gauge-width scale] 0))
@@ -1295,7 +1373,7 @@
                        ;; :principal, a set of groups (or :auto, every contradiction, turn
                        ;; and relation group): the one contributing most at each place under
                        ;; the all-inputs model's coefficients, recorded in the book
-                       principal-of (when-let [pc (:principal spec)]
+                       principal-of (when-let [pc (when-not fo? (:principal spec))]
                                       (let [{:keys [groups parts]} (layout spec scale level-ix)
                                             groups (merge groups parts)
                                             all (get-in model [:models :all])
@@ -1310,15 +1388,17 @@
                                                                    (map-indexed vector (:inputs all)))]
                                                     (rel/principal mx x groups cands))))))
                        seen (vec (for [place places
-                                       :let [g ((:gauges spec) scale place t)
+                                       :let [g (if fo? [] ((:gauges spec) scale place t))
                                              {:keys [os read down pool clim]} (offsets-of place t)
                                              ;; :world-offset (fix 3): the world's term, learned once
                                              ;; per origin at the world node, added to every offset
-                                             wo (when-let [f (:world-offset spec)] (f scale place t))
+                                             wo (when-let [f (when-not fo? (:world-offset spec))] (f scale place t))
                                              _ (when-let [late (seq (filter #(> (or (:known-at %) (:origin %)) t) (:reads wo)))]
                                                  (throw (ex-info "bnm.lattice: a world offset read after the origin" {:scale scale :place place :t t :reads (vec late)})))
                                              os (if-let [x (:x wo)] (mapv (fn [[w o]] [w (+ o (double x))]) os) os)
-                                             {:keys [x reads stated tension strain resolved]} (inputs spec st scale scale-spec level-ix place t g {:pool pool})
+                                             {:keys [x reads stated tension strain resolved]} (if fo?
+                                                                                                {:x [1.0] :reads []}
+                                                                                                (inputs spec st scale scale-spec level-ix place t g {:pool pool}))
                                              raw-flows (subvec x (inc g-width))
                                              ;; bnm-56c.34, :flow-std-min-origins n: 0 until the
                                              ;; standardizer has seen n origins, not just ten rows
@@ -1337,7 +1417,7 @@
                        ;; resumes
                        live (let [out (dormant (layout spec scale level-ix) (get-in spec [:core scale]) (map :x seen))]
                               (if (seq out) (assoc model :w (live-weights (d/weights model) out)) model))
-                       state-of (state-fn spec)
+                       state-of (when-not fo? (state-fn spec))
                        made (vec (for [{:keys [place x os] :as e} seen
                                        :let [one? (= 1 (count os))
                                              ;; the mean offset, learned from: the one whose
@@ -1378,7 +1458,8 @@
                                                                          :mean-offset (d/predictive mdl x o)
                                                                          :f (m/logit (Math/max 1e-300 (Math/min (- 1.0 1e-16) pg)))
                                                                          :q 0.0)]))))))
-                       st (reduce (fn [st {:keys [place p stated tension strain resolved f q principal down ref frailty]}]
+                       st (if fo? st
+                           (reduce (fn [st {:keys [place p stated tension strain resolved f q principal down ref frailty]}]
                                     (-> st
                                         (update-in [:book [scale place]] (fnil assoc (sorted-map)) t
                                                    ;; a node's state: the spec's when it gives one, else its
@@ -1398,7 +1479,7 @@
                                                        frailty (assoc :z (:m frailty) :z-var (:v frailty)))))
                                         (assoc-in [:tension [scale place]] tension)
                                         (cond-> resolved (update-in [:resets [scale place]] (fnil into []) resolved))))
-                                  st made)
+                                  st made))
                        ;; bnm-56c.33, :flow-std-from :resolved: the flows are standardized
                        ;; over the span the node's inputs carry information, from its first
                        ;; resolved outcome on; before it the states it reads are uninformed
@@ -1406,7 +1487,7 @@
                        ;; moves read near the cap. Until then nothing is observed, so its
                        ;; flows read 0. The default, :all, counts every origin (the
                        ;; registered issues' code)
-                       st (if (or (not= :resolved (:flow-std-from spec)) (flows-informed? st k))
+                       st (if (and (not fo?) (or (not= :resolved (:flow-std-from spec)) (flows-informed? st k)))
                             (assoc-in st [:flow-std k] (cond-> (reduce (fn [sd {:keys [raw-flows]}] (observe sd raw-flows)) flow-std made)
                                                          ;; counted only under the option, so the state
                                                          ;; without it is the registered issues'
@@ -1436,6 +1517,8 @@
                                                                ;; under a slope the joint state it loads on as issued
                                                                ez (assoc :e ez)
                                                                (:load frailty) (assoc :shared [t (:mu frailty) (:P frailty)] :load (:load frailty) :zh (:h frailty)))))))]
+                   (if fo?
+                     [st forecasts weights trace]
                    [st
                     (into forecasts (for [{:keys [place p target]} made]
                                               {:scale scale :place place :origin t :p p :y (:y target)}))
@@ -1454,7 +1537,7 @@
                                                      :learned (map #(select-keys % [:known-at]) ready)}
                                               (= :inputs (:trace spec)) (assoc :x x :p p :o o)
                                               (and (= :inputs (:trace spec)) (= :issue (:evidence-at spec))) (assoc :lp issued))))
-                      trace)]))
+                      trace)])))
                [st forecasts weights trace]
                (for [s due level-ix (range (count levels))] [s level-ix]))
               ;; the levels share what they learned this period

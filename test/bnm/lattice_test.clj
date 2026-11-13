@@ -1816,3 +1816,122 @@
     (is (= (z own "W") (z par "W")) "the top level issues with its own")
     (is (not= (z own "P0") (z par "P0")))
     (is (every? number? (z par "P29")))))
+
+;; --- recursive step 4 (bnm-56c.35): the frailty from a fresh quarter scale ---
+
+(def ^:private fresh-onsets
+  "The planted episodes' first months: four of eight quarters each."
+  [99 219 339 459])
+
+(defn- fresh-world
+  "`n` places with events by month and no signal of their own: each
+  month's chance moved by +2 log odds through eight quarters from each of
+  `fresh-onsets`, around expit(-5) a month. A year node (window t..t+12,
+  rows known at t+24, after the window has closed and a year more) and,
+  under `quarter-now?`, a frailty-only quarter scale (window t..t+3, rows
+  known at t+6) before it. The year reads one relation, noise the same at
+  every place. 50 years; `perturb` (a month) redraws every event after it
+  from another seed; `extra` merged in."
+  [n quarter-now? extra & [{:keys [perturb]}]]
+  (let [months 600
+        shock (fn [m] (if (some #(and (<= % m) (< m (+ % 24))) fresh-onsets) 2.0 0.0))
+        draw (fn [seed] (let [g (m/rng seed)]
+                          (into {} (for [c (range n) mo (range (+ months 24))]
+                                     [[c mo] (< (m/next-double! g) (m/expit (+ -5.0 (shock mo))))]))))
+        a (draw 41)
+        ev (if perturb (let [b (draw 43)] (fn [k] (if (> (second k) perturb) (b k) (a k)))) a)
+        places (mapv #(str "P" %) (range n))
+        ix (zipmap places (range))
+        gauge (let [g (m/rng 47)] (vec (repeatedly 60 #(m/normal! g))))
+        any? (fn [place lo hi] (boolean (some #(ev [(ix place) %]) (range (inc lo) (inc hi)))))]
+    (lt/run (merge {:scales (vec (concat (when quarter-now? [{:name :quarter-now :per 3 :horizon 3 :discount 0.995 :frailty-only true}])
+                                         [{:name :year :per 12 :horizon 12 :discount 0.998}]))
+                    :levels [[:country places]]
+                    :parent {} :start 0 :end (dec months) :forget 0.995
+                    :target (fn [scale place t]
+                              (if (= :year scale)
+                                {:y (any? place t (+ t 12)) :known-at (+ t 24)}
+                                {:y (any? place t (+ t 3)) :known-at (+ t 6)}))
+                    :gauges (fn [_ _ _] [])
+                    :gauge-width {:year 0}
+                    :relations (fn [_ _ t] {:x [(gauge (quot (inc t) 12))] :reads []})
+                    :relation-width {:year 1}
+                    :flow-std-from :resolved}
+                   extra))))
+
+(def ^:private fresh-grid {:rhos [0.0 0.6 0.9] :sds [0.0 0.5 1.0]})
+(def ^:private finer (merge fresh-grid {:prior :finer :source :quarter-now}))
+
+(defn- year-z
+  "The shock the year node issued at origin t with, at P0."
+  [r t]
+  (:z (get-in r [:book [:year "P0"] t])))
+
+(deftest bnm-56c-35-the-year-takes-the-fresh-quarter-s-shock
+  ;; the last episode starts at 459; the first year origin six months on
+  ;; is 467. The year's own rows from it are known at 491, the quarter's
+  ;; at 464 and 467
+  (let [own (fresh-world 120 true {:frailty fresh-grid})
+        fresh (fresh-world 120 true {:frailty finer})
+        fl (get-in fresh [:frailty [:year :country]])]
+    (testing "with the quarter's prior the year issues the shock six months in; with its own it cannot"
+      (is (> (year-z fresh 467) 1.0) (year-z fresh 467))
+      (is (< (year-z own 467) 0.3) (year-z own 467)))
+    (testing "the cross coefficient chosen at 467 (after origin 443 resolved) is above 0, and recorded"
+      (is (pos? (:cross (get fl 443))) (get fl 443)))
+    (testing "the frailty-only scale issues nothing: no forecast, book or weights, only its filtered state"
+      (is (not-any? #(= :quarter-now (:scale %)) (:forecasts fresh)))
+      (is (not-any? #(= :quarter-now (first %)) (keys (:book fresh))))
+      (is (not (contains? (:weights fresh) [:quarter-now :country])))
+      (is (seq (get-in fresh [:frailty [:quarter-now :country]]))))))
+
+(deftest bnm-56c-35-a-frailty-only-scale-changes-nothing-else
+  ;; the scale and a cross grid of 0 leave every year forecast and entry
+  ;; as they were
+  (let [without (fresh-world 20 false {:frailty fresh-grid})
+        with (fresh-world 20 true {:frailty fresh-grid})
+        zero (fresh-world 20 true {:frailty (assoc finer :cross [0.0])})]
+    (is (= (:forecasts without) (:forecasts with)))
+    (is (= (:book without) (:book with)))
+    (is (= (:forecasts without) (:forecasts zero)))
+    (is (= (:book without) (:book zero)))))
+
+(deftest bnm-56c-35-a-grid-of-sd-0-changes-nothing
+  (let [off (fresh-world 20 false {})
+        zero (fresh-world 20 true {:frailty (assoc finer :sds [0.0])})]
+    (is (= (mapv :p (:forecasts off)) (mapv :p (:forecasts zero))))))
+
+(deftest bnm-56c-35-no-lookahead
+  ;; every event after month 470 redrawn: nothing issued at or before 470
+  ;; changes, at either scale's filter
+  (let [cut 470
+        a (fresh-world 20 true {:frailty finer})
+        b (fresh-world 20 true {:frailty finer} {:perturb cut})
+        ;; the forecasts issued, not the outcomes (those after the cut are redrawn)
+        upto (fn [r] (map (juxt :scale :place :origin :p) (filter #(<= (:origin %) cut) (:forecasts r))))]
+    (is (= (upto a) (upto b)))
+    (is (not= (map :p (:forecasts a)) (map :p (:forecasts b))) "the redraw is seen after the cut")
+    (is (= (into {} (for [[k byo] (:book a)] [k (subseq byo <= cut)]))
+           (into {} (for [[k byo] (:book b)] [k (subseq byo <= cut)]))))))
+
+(deftest bnm-56c-35-the-source-runs-forward-at-its-own-pace
+  ;; the source's state, filtered at 29, runs to 35 at its own three
+  ;; months a period (two periods at rho 0.5), not the year's twelve; the
+  ;; year's shift is kappa times it less half its stationary variance
+  ;; max(sd^2, kappa^2 sd_src^2), its variance kappa^2 v_src plus the rest
+  (let [fr {:cands [{:rho 0.0 :sd 1.5 :cross 1.0 :m 0.0 :v 2.25 :t nil :score 0.0 :price 2.0}]}
+        src {:cands [{:rho 0.5 :sd 1.0 :m 2.0 :v 0.1 :t 29 :score 0.0 :price 2.0}]}
+        {:keys [m v cross]} (lt/frailty-prior {:prior :finer} fr nil 35 12 {:src src :src-per 3})
+        vs (+ (* 0.0625 0.1) (* 1.0 (- 1.0 0.0625)))]
+    (is (< (Math/abs (- m (- 0.5 1.125))) 1e-12) m)
+    (is (< (Math/abs (- v (+ vs 1.25))) 1e-12) v)
+    (is (= 1.0 cross))))
+
+(deftest bnm-56c-35-bad-options-are-refused
+  (doseq [bad [{:prior :finer} {:prior :finer :source :nope} {:prior :finer :source :year}
+               {:source :quarter-now} {:prior :finer :source :quarter-now :cross [-0.5]}
+               {:prior :finer :source :quarter-now :cross []} {:prior :finer :source :quarter-now :cross :x}
+               {:prior :finer :source :quarter-now :level-sds [0.0 0.1]}]]
+    (is (thrown? clojure.lang.ExceptionInfo (fresh-world 3 true {:end 30 :frailty bad})) (pr-str bad)))
+  (testing "a frailty-only scale needs the frailty"
+    (is (thrown? clojure.lang.ExceptionInfo (fresh-world 3 true {:end 30})))))
