@@ -103,3 +103,46 @@ No lookahead found: every gauge read above was taken at its availability date (w
 Most promising next steps:
 1. **Step 5's gated weighting must be able to reopen a group** — and the lock's causes fixed first, since they are cheap: start each node's model at its prior when its first data arrive (no discount before data, bug 2), `:flow-std-min-origins` at the year nodes (bug 3) and `:evidence-at :sequential` (4). Evidence: the `:up` inputs alone give market crashes 0.1424-0.1546 against 0.1701 and food 0.1441-0.1546 against 0.1580, with weight 0.00 in t57; the `:up` model was the best-scoring model in food 2020 and 2021 by 37 and 70 nats.
 2. **Wire the missing financial gauges with theory-signed priors, counted per origin**: the US financial stress index, the BAA spread change and the curve, at the market-crash (and growth) year and world nodes, as step 5's confidence-weighted world inputs. Evidence: stress alone 0.1416-0.1456 (Dec 2007 p 0.69-0.81 against 0.25), curve alone 0.1602-0.1624 (Dec 2006 p 0.45-0.52); and food12 x food imports with a positive prior would act at 2006-07, where no outcome history exists to learn its sign.
+
+## Priors (bnm-56c.36)
+
+Written 13 November 2026, before any run with these gauges and before any outcome score of them; the git history of this section dates it. The gauges are wired behind `--leading true`, the priors behind `--leading-priors true` (bnm.lattice `:named-prior`); both are off by default.
+
+### The gauges and why these
+
+| name | series (data/slow/series.tsv) | read at origin t | theory |
+|---|---|---|---|
+| `:baa12` | USA finance/spread_baa (FRED BAA10Y, Moody's Baa yield less the 10-year Treasury, monthly mean of daily, from 1986) | 12-month change in points | credit and equity are claims on the same firms (Merton 1974): a widening spread is a rise in the price of default risk and a fall in risk-bearing capacity, and it predicts falling stock prices and output over the next year (Gilchrist & Zakrajšek 2012); the US risk price moves risky asset prices everywhere (the global financial cycle: Rey 2013, Miranda-Agrippino & Rey 2020) and drives capital-flow stops in emerging markets (Forbes & Warnock 2012) |
+| `:us-curve` | USA finance/curve_10y3m (FRED T10Y3M, from 1982) | level, points | a flat or inverted curve precedes US recessions by 2-6 quarters (Estrella & Hardouvelis 1991, Estrella & Mishkin 1998); bear markets accompany recessions (Chauvet & Potter 2000), and a US recession is a fall in world demand (Kose, Otrok & Prasad 2003); the global curve is among the strongest crisis predictors (Bluwstein et al. 2023) |
+| `:vix12` | world finance/vix (FRED VIXCLS, log, from 1990) | 12-month change of the log | an uncertainty shock is followed by a fall in output within a year (Bloom 2009); global risk aversion is the main common driver of capital-flow stops (Forbes & Warnock 2012); volatility clusters and rises before and through declines (Schwert 1989) |
+| `:world-food12` | world food/price_index (IMF PFOODINDEXM, log, from 1992, published a month after its month) | 12-month change | world food prices pass through to domestic food prices within a year (Furceri, Loungani, Simon & Wachter 2016) |
+| `:food12-x-imports` | the same times the country's food imports share (WDI, read at its publication lag) | product | pass-through is larger where imports supply more of what is eaten (Ianchovichina, Loening & Wood 2014; Furceri et al. 2016) |
+
+Where they enter (the `:leading` group, a gauge group as `:world` is for world3: the same value at every country, a place above the countries the mean of its countries, the year country node also through `:up`):
+- market crashes: year `[:baa12 :us-curve :vix12]`; quarter-lead `[:baa12 :vix12]` beside the quarter's own `:us-curve` (and VIX level), which gets the same prior;
+- growth collapses: year and quarter-lead `[:baa12 :us-curve :vix12]` (the political quarter reads no financial input otherwise, LEADING.md 1);
+- food price shocks: year `[:world-food12 :food12-x-imports]`; the quarter-lead already reads both (its `:food` group), and they get the priors there.
+
+Left out, with reasons:
+- **The St. Louis Fed stress index and the Chicago Fed NFCI** (section 2's best single ceiling): both are estimated factor indexes whose weights are re-estimated on the full sample, so the history on disk is not what was known at the origin. Checked (data/raw/fred-vintages/SOURCE.txt): fetched again on 13 November, four weeks after the copies in data/raw/slow/fred, STLFSI4 differs at 1689 of 1711 past weeks (max 0.046) and NFCI at 2619 of 2910 (max 0.065); STLFSI version 1 (discontinued 2020) against version 4 over 1993-2020 correlates 0.70, max difference 4.7, Dec 2007 1.08-1.41 against 1.34-2.09. The market series are not revised: BAA10Y, T10Y3M and VIXCLS are identical at every overlapping day in the two fetches (they are quotes, published the same day).
+- **The BAA spread's level**: its sign depends on the horizon. A high spread is stress now, but a low spread with fast credit growth precedes crises two to three years on (López-Salido, Stein & Zakrajšek 2017; Krishnamurthy & Muir 2017), and the year window spans both. No sign can be fixed in advance, so it is not read.
+- **Equity drawdown**: at market crashes it is the outcome itself (a crash under way at the origin), at growth collapses it is concurrent with the VIX change.
+
+Timing: every gauge is read through bnm.stocks at the origin, so a value enters only once its `available` month is at or before t (the monthly mean of daily quotes the same month, the food index a month later, WDI imports at its own lag); tested in bnm-56c-36-leading-gauges-are-read-at-their-availability-date. The gauges are standardized like every quarter and year gauge (bnm.lattice-banking's standardizer, `--gauge-std stable`): against their own values at the node's earlier origins, so a coefficient is in log odds per standard deviation of the gauge's own history as known then.
+
+### The priors
+
+Coefficient prior mean and variance on the standardized gauge, at the year and quarter-lead nodes of every level, in every model that reads the input (its group's and the all-inputs model, where it replaces `:shrink`). The rest of each node keeps its priors. Sign from the theory above; size by one rule: a gauge whose mechanism is direct and established moves the log odds about 0.5 per standard deviation (odds x1.6), one with a weaker or partly concurrent mechanism 0.25-0.3, and a US gauge read at every country at about two thirds to a half of its US effect. Prior sd 0.25 for all (variance 0.0625): the sign is held at two sd, the size is the data's to set. The quarter-lead uses the year's priors (a shorter window, but the quarters' rate is lower as well).
+
+| kind | input | mean | sd | reasoning |
+|---|---|---|---|---|
+| market crashes | `:baa12` | +0.5 | 0.25 | direct: credit and equity price the same risk (Merton; Gilchrist & Zakrajšek), transmitted to every market (Rey) |
+| | `:us-curve` | -0.4 | 0.25 | inversion before US recessions (Estrella & Mishkin), bear markets with them; less than direct for a non-US market |
+| | `:vix12` | +0.25 | 0.25 | volatility rises before and through declines (Schwert), but partly concurrent with a fall already under way |
+| growth collapses | `:baa12` | +0.4 | 0.25 | credit spreads predict output (Gilchrist & Zakrajšek); stops in emerging markets (Forbes & Warnock); collapses are mostly outside the US, so less than at crashes |
+| | `:us-curve` | -0.3 | 0.25 | US recession as a world demand shock, partial transmission |
+| | `:vix12` | +0.3 | 0.25 | uncertainty shocks cut output within a year (Bloom), global risk drives stops (Forbes & Warnock) |
+| food price shocks | `:food12-x-imports` | +0.5 | 0.25 | pass-through scales with import dependence (Ianchovichina et al.; Furceri et al.) |
+| | `:world-food12` | +0.3 | 0.25 | some pass-through everywhere, damped where markets are insulated |
+
+These are the numbers `bnm.lattice-political/leading-priors` holds; t65-gauges reads them, t65-gauges-flat reads the same gauges at the node's default priors (variance 1, the all-inputs model's `:shrink` 0.1, mean 0), so the two runs separate the priors from the gauges.
