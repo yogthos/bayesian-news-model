@@ -25,6 +25,7 @@
             [bnm.lattice-test]
             [bnm.lattice-golden-test]
             [bnm.lattice-regional-test]
+            [bnm.marginal-test]
             [bnm.world-state-test]
             [bnm.world-gauges-test]
             [bnm.world-term-test]
@@ -151,6 +152,7 @@
     bnm.lattice-test
     bnm.lattice-golden-test
     bnm.lattice-regional-test
+    bnm.marginal-test
     bnm.world-state-test
     bnm.world-gauges-test
     bnm.world-term-test

@@ -62,6 +62,7 @@
   seeds coefficients with what is known."
   (:require [augur.dynamic :as d]
             [augur.hier :as hier]
+            [bnm.marginal :as mg]
             [bnm.relations :as rel]
             [bnm.sheaf :as sh]
             [augur.math :as m]))
@@ -1118,10 +1119,11 @@
                                   (let [[pm pv] (nth (:zc (first rows)) i)
                                         c (with-dims c)
                                         sobs (mapv (fn [o r] (assoc o :f (- (double (:f o)) (slope-half c (:e r) (:rg r))) :load (slope-load c (:e r) (:rg r)))) obs rows)
-                                        ll (:ll (hier/shared-marginal :logistic sobs pm pv))
+                                        ;; augur's vector marginal on arrays, the same numbers (bnm-2oc)
+                                        ll (:ll (mg/shared-marginal-n sobs pm pv))
                                         prior (if (and t (<= s t)) {:m (:mu c) :v (:P c)} (let [{:keys [mu P]} (slope-ahead c s per)] {:m mu :v P}))
-                                        post (hier/states-step prior sobs {:kind :logistic})]
-                                    (assoc c :score (+ (double (:score c)) ll) :t (if t (max t s) s) :mu (:m post) :P (:v post)))
+                                        post (mg/shared-marginal-n sobs (:m prior) (:v prior))]
+                                    (assoc c :score (+ (double (:score c)) ll) :t (if t (max t s) s) :mu (:z post) :P (:v post)))
                                 (let [[zm zv] (nth (:zc (first rows)) i)
                                       ll (:ll (hier/shared-marginal :logistic obs zm zv))
                                       c (assoc c :score (+ (double (:score c)) ll) :t (if t (max t s) s))]
