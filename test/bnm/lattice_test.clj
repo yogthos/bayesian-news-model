@@ -1648,3 +1648,171 @@
   (doseq [bad [{:level-sds [-0.1]} {:level-sds []} {:level-sds :x} {:level-sds ["0.1"]}
                {:level-penalty -1.0} {:level-penalty :big}]]
     (is (thrown? clojure.lang.ExceptionInfo (shock-world 3 1.0 {:frailty bad})) (pr-str bad))))
+
+;; --- the frailty's loading on exposure (bnm-56c.20.2): a shared random slope ---
+
+(defn- exposure-spec
+  "`n` places under a world node, each with a fixed exposure e_i spread
+  over [0, 2]; each year every place's log odds is moved by a common shock
+  z_t (AR(1), persistence 0.6, stationary sd about `s`) plus u_t e_i, a
+  shock loading on the exposure (persistence 0.6, sd about `su`), around
+  a base of -1.5. The exposure group reads what comes down from the world
+  node times e_i. 40 years from month 11, outcomes known 24 months on;
+  `extra` merged in. [spec planted]"
+  [n s su extra]
+  (let [g (m/rng 31)
+        ar (fn [sd] (vec (take 40 (iterate #(+ (* 0.6 %) (* sd 0.8 (m/normal! g))) 0.0))))
+        z (ar s) u (ar su)
+        places (mapv #(str "P" %) (range n))
+        ex (into {} (map-indexed (fn [i p] [p (if (= 1 n) 1.0 (* 2.0 (/ (double i) (dec n))))]) places))
+        yr (fn [t] (quot (inc t) 12))
+        ys (into {} (for [c places y (range 40)]
+                      [[c y] (< (m/next-double! g) (m/expit (+ -1.5 (z y) (* (u y) (ex c)))))]))]
+    [(merge {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
+                           :levels [[:country places] [:world ["W"]]]
+                           :parent (zipmap places (repeat "W"))
+                           :start 0 :end 359 :forget 0.995
+                           :target (fn [_ place t] {:y (if (= "W" place) (boolean (some #(ys [% (yr t)]) places)) (ys [place (yr t)]))
+                                                    :known-at (+ t 24)})
+                           :gauges (fn [_ _ _] [])
+                           :gauge-width {:year 0}
+                           :exposure (fn [_ place _] [(ex place 1.0)])
+                           :exposure-width 1
+                           :flow-std-from :resolved}
+                          extra)
+     {:z z :u u :yr yr :ex ex}]))
+
+(defn- exposure-world
+  "exposure-spec's world, run."
+  [n s su extra]
+  (let [[spec planted] (exposure-spec n s su extra)]
+    (merge (lt/run spec) planted)))
+
+(defn- evidence-gaps
+  "exposure-spec's world stepped period by period, the exposure model's
+  evidence less the base's in each period that learns rows: how far one
+  origin moves the averaging."
+  [n s su extra]
+  (let [[spec] (exposure-spec n s su (assoc extra :trace true))
+        k [:year :country]]
+    (loop [state (lt/start spec) prev 0.0 out []]
+      (if (> (:t state) (:end spec))
+        out
+        (let [state (lt/step spec state)
+              ev (get-in state [:st :evidence k])
+              g (if ev (- (double (first (:exposure ev))) (double (first (:base ev)))) 0.0)]
+          (recur state g (if (not= g prev) (conj out (- g prev)) out)))))))
+
+(defn- mean-abs [xs] (/ (reduce + (map #(Math/abs (double %)) xs)) (max 1 (count xs))))
+
+(defn- exposure-var
+  "The posterior variance of the exposure input's coefficient in the
+  exposure model at the country level."
+  [r]
+  (let [mdl (lt/model r :year :country :exposure)
+        k (:k mdl)
+        i (dec k)]
+    (aget ^doubles (:c mdl) (+ (* i k) i))))
+
+(defn- corr [xs ys]
+  (let [n (count xs) mx (/ (reduce + xs) n) my (/ (reduce + ys) n)]
+    (/ (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
+       (Math/sqrt (* (reduce + (map #(let [d (- % mx)] (* d d)) xs)) (reduce + (map #(let [d (- % my)] (* d d)) ys)))))))
+
+(def ^:private with-exposure (assoc-in frail [:frailty :exposure-sds] [0.0 0.5 1.0]))
+
+(deftest bnm-56c-20-2-a-shock-loading-on-exposure-is-learned-once
+  (let [off30 (exposure-world 30 0.5 1.0 frail) off150 (exposure-world 150 0.5 1.0 frail)
+        on30 (exposure-world 30 0.5 1.0 with-exposure) on150 (exposure-world 150 0.5 1.0 with-exposure)]
+    (testing "the scalar frailty alone: the exposure coefficient taught once per place"
+      (is (> (/ (exposure-var off30) (exposure-var off150)) 3.0) [(exposure-var off30) (exposure-var off150)]))
+    (testing "with the loading, once per origin: the variance saturates whatever the places"
+      (is (< (/ (exposure-var on30) (exposure-var on150)) 1.5) [(exposure-var on30) (exposure-var on150)])
+      (is (> (exposure-var on150) (* 5.0 (exposure-var off150)))))
+    (testing "the filtered slope tracks the planted one, its sd chosen above 0"
+      (let [fl (get-in on150 [:frailty [:year :country]])
+            pairs (for [[s {:keys [u]}] fl :when u] [(first u) ((:u on150) ((:yr on150) s))])]
+        (is (pos? (:usd (val (last fl)))))
+        (is (> (count pairs) 20) (count pairs))
+        (is (> (corr (map first pairs) (map second pairs)) 0.8))))
+    (testing "the book carries each place's shock as issued: higher exposure, its own mean and a larger variance"
+      (let [lo (val (last (get-in on150 [:book [:year "P0"]])))
+            hi (val (last (get-in on150 [:book [:year "P149"]])))]
+        (is (not= (:z lo) (:z hi)))
+        (is (> (:z-var hi) (:z-var (val (last (get-in on150 [:book [:year "P75"]]))))))))))
+
+(deftest bnm-56c-20-2-the-averaging-counts-the-loaded-shock-once
+  ;; the base and the exposure model alone, so all that tells them apart
+  ;; within an origin is the exposure input, d_t e_i: affine in e_i, the
+  ;; span of the shared state's loads [1 e_i]. One origin's evidence for
+  ;; the exposure model over the base, per origin:
+  (let [only {:only #{:base :exposure}}
+        sq {:evidence-at :sequential}
+        gaps (fn [n cfg] (evidence-gaps n 0.5 1.0 (merge cfg only)))
+        weight (fn [n cfg] (apply max (map (comp :exposure second) (get-in (exposure-world n 0.5 1.0 (merge cfg only)) [:weights [:year :country]]))))
+        off30 (gaps 30 frail) off150 (gaps 150 frail)
+        slope150 (gaps 150 with-exposure)
+        on30 (gaps 30 (merge with-exposure sq)) on150 (gaps 150 (merge with-exposure sq))]
+    (testing "the scalar frailty alone: the loaded shock's pattern is evidence once per place, growing with the places, and the weights lock"
+      (is (> (mean-abs off150) (* 2.0 (mean-abs off30))) [(mean-abs off30) (mean-abs off150)])
+      (is (> (weight 150 frail) 0.99)))
+    (testing "the loading alone: the coefficient's uncertainty at its first reading is still paid once per row (each row integrates it on its own)"
+      (is (> (apply max (map #(Math/abs (double %)) slope150)) 10.0)))
+    (testing "the loading with each row given the ones before it (:evidence-at :sequential): bounded per origin, not growing with the places, and no lock"
+      (is (< (mean-abs on150) (* 0.2 (mean-abs off150))) [(mean-abs on150) (mean-abs off150)])
+      (is (<= (mean-abs on150) (mean-abs on30)) [(mean-abs on30) (mean-abs on150)])
+      (is (< (apply max (map #(Math/abs (double %)) on150)) 5.0))
+      (is (< (weight 150 (merge with-exposure sq)) 0.95)))))
+
+(deftest bnm-56c-20-2-no-loading-no-slope
+  ;; a world whose shock does not load on exposure keeps the slope's sd at
+  ;; 0 at every origin, and issues exactly what the frailty without it does
+  (let [off (exposure-world 30 1.0 0.0 {:frailty {}})
+        on (exposure-world 30 1.0 0.0 {:frailty {:exposure-sds [0.0 0.5 1.0]}})]
+    (is (every? zero? (map (comp :usd val) (get-in on [:frailty [:year :country]]))))
+    (is (= (:forecasts off) (:forecasts on)))
+    (is (= (:book off) (:book on)))))
+
+(deftest bnm-56c-20-2-an-exposure-grid-of-0-changes-nothing
+  (let [a (exposure-world 20 1.0 1.0 frail)
+        b (exposure-world 20 1.0 1.0 (assoc-in frail [:frailty :exposure-sds] [0.0]))]
+    (is (= (:forecasts a) (:forecasts b)))
+    (is (= (:frailty a) (:frailty b)))))
+
+(deftest bnm-56c-20-2-the-place-s-shock-in-the-prior
+  ;; a candidate with a slope: the place's shift is z + u.e less half its
+  ;; stationary variance (sd^2 + usd^2 |e|^2), so the expected rate is the
+  ;; base's at every place; its variance is a P a' with a = [1 e]
+  (let [c {:rho 0.0 :sd 1.0 :usd 0.5 :mu [0.2 0.4] :P [[0.3 0.1] [0.1 0.2]] :t 23 :score 0.0 :price 0.0}
+        fr {:cands [c]}
+        zp (lt/frailty-prior {:prior :own} fr nil 35 12)
+        at (fn [e] (lt/frailty-at zp [e]))]
+    (testing "one period on at rho 0 the state is its stationary prior"
+      (is (= [0.0 0.0] (:mu zp)))
+      (is (= [[1.0 0.0] [0.0 0.25]] (:P zp))))
+    (let [{:keys [m v]} (at 2.0)]
+      (is (< (Math/abs (- m (- (* 0.5 (+ 1.0 (* 0.25 4.0)))))) 1e-12) m)
+      (is (< (Math/abs (- v (+ 1.0 (* 4.0 0.25)))) 1e-12) v))
+    (testing "the rate's mean is one at any exposure"
+      (doseq [e [-1.5 0.0 2.0]]
+        (let [{:keys [m v]} (at e)
+              rate (reduce + (for [[w o'] (lt/with-frailty [[1.0 -4.0]] {:m m :v v})] (* w (Math/exp o'))))]
+          (is (< (Math/abs (- 1.0 (/ rate (Math/exp -4.0)))) 0.02) [e rate]))))))
+
+(deftest bnm-56c-20-2-bad-exposure-options-are-refused
+  (doseq [bad [{:exposure-sds [-0.1]} {:exposure-sds []} {:exposure-sds :x} {:exposure-sds ["0.5"]}
+               {:exposure-penalty -1.0} {:exposure-penalty :big}]]
+    (is (thrown? clojure.lang.ExceptionInfo (exposure-world 3 1.0 1.0 {:frailty bad})) (pr-str bad)))
+  (testing "a slope on exposure needs the spec's :exposure"
+    (is (thrown? clojure.lang.ExceptionInfo (shock-world 3 1.0 {:frailty {:exposure-sds [0.0 0.5]}})))))
+
+(deftest bnm-56c-20-2-the-parent-prior-with-a-slope
+  ;; :prior :parent with a slope: z from the world's state, the slope the
+  ;; node's own; the countries still issue per place
+  (let [cfg (assoc-in with-exposure [:frailty :prior] :parent)
+        own (exposure-world 30 0.5 1.0 with-exposure)
+        par (exposure-world 30 0.5 1.0 cfg)
+        z (fn [r place] (mapv (comp :z val) (get-in r [:book [:year place]])))]
+    (is (= (z own "W") (z par "W")) "the top level issues with its own")
+    (is (not= (z own "P0") (z par "P0")))
+    (is (every? number? (z par "P29")))))

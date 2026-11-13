@@ -374,10 +374,14 @@
   (when-let [fr (:frailty r)]
     (with-open [w (io/writer (str dir "/frailty.tsv"))]
       (doseq [[[scale level] hist] (sort-by key fr)
-              [s {:keys [m v rho sd lsd] :as e}] hist]
-        ;; under :level-sds, the level's sd, state and variance as three more columns
+              [s {:keys [m v rho sd lsd usd] :as e}] hist]
+        ;; under :level-sds, the level's sd, state and variance as three more
+        ;; columns; under :exposure-sds, the slope's sd and each column's
+        ;; loading (comma-separated, empty while no slope is chosen)
         (.write w (str (name scale) "\t" (name level) "\t" s "\t" m "\t" v "\t" rho "\t" sd
-                       (when lsd (str "\t" lsd "\t" (:level e) "\t" (:level-v e))) "\n"))))))
+                       (when lsd (str "\t" lsd "\t" (:level e) "\t" (:level-v e)))
+                       (when usd (str "\t" usd "\t" (str/join "," (:u e)) "\t" (str/join "," (:u-v e))))
+                       "\n"))))))
 
 (defn world-of
   "The world for bnm.world from the final states: each kind's year-node
