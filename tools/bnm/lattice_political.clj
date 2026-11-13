@@ -261,16 +261,39 @@
 (defn history-standardizer
   "bnm-11y, :lead-std :history: (fn [t v]) standardizing the leading
   columns `v` (lead-f's entries at positions `ix`) against the gauges' own
-  values at every quarter end from 1990 to `end` over `units`, each as
-  known then, through the quarter ends before t. The node's standardizer
-  counts rows, so a world gauge, one value per origin repeated at every
-  country, was standardized against two or three origins."
-  [lead-f units ix end mode]
-  (#'lb/standardizer (for [t (range (+ 2 (* 12 1990)) (inc end) 3)
-                          u units
-                          :let [l (lead-f u t)]]
-                      [t (mapv #(nth l %) ix)])
-                     mode))
+  values at every quarter end from month `from` (the node's start) to
+  `end` over `units`, each as known then, through the quarter ends before
+  t; capped at 5, 0 for a missing value. A column is read once it has 20
+  quarter ends of history: the node's standardizer counts rows, so a
+  world gauge, one value per origin repeated at every country, was
+  standardized against two or three origins."
+  [lead-f units ix from end]
+  (let [w (count ix)
+        ts (range (+ from (mod (- 2 from) 3)) (inc end) 3)
+        stats (loop [[t & more] ts n (double-array w) mu (double-array w) ss (double-array w) q (long-array w) acc (sorted-map)]
+                (if-not t
+                  acc
+                  (let [acc (assoc acc t [(aclone n) (aclone mu) (aclone ss) (aclone q)])
+                        seen (boolean-array w)]
+                    (doseq [u units :let [l (lead-f u t)]]
+                      (dotimes [j w]
+                        (when-let [x (nth l (nth ix j))]
+                          (aset seen j true)
+                          (aset n j (inc (aget n j)))
+                          (let [m0 (aget mu j) m1 (+ m0 (/ (- x m0) (aget n j)))]
+                            (aset mu j m1) (aset ss j (+ (aget ss j) (* (- x m0) (- x m1))))))))
+                    (dotimes [j w] (when (aget seen j) (aset q j (inc (aget q j)))))
+                    (recur more n mu ss q acc))))]
+    (fn [t v]
+      (let [[^doubles n ^doubles mu ^doubles ss ^longs q] (or (some-> (rsubseq stats <= t) first val)
+                                                              [(double-array w) (double-array w) (double-array w) (long-array w)])]
+        (vec (for [j (range w) :let [x (nth v j)]]
+               (if (and x (>= (aget q j) 20))
+                 (let [sd (Math/sqrt (/ (aget ss j) (aget n j)))]
+                   (if (> sd (Math/max 1e-9 (* 1e-8 (Math/abs (aget mu j)))))
+                     (Math/max -5.0 (Math/min 5.0 (/ (- x (aget mu j)) sd)))
+                     0.0))
+                 0.0)))))))
 
 (defn leading-sets-for
   "`leading-sets`, with the second food set when `food2`."
@@ -364,7 +387,7 @@
                          [name (if-let [ns (seq (get lead name))]
                                  (let [n0 (count (own-names name))
                                        own (#'lb/standardizer (for [[[_ t] v] (table name)] [t (subvec v 0 n0)]) gauge-std)
-                                       h (history-standardizer lead-f countries (mapv lead-ix ns) end gauge-std)]
+                                       h (history-standardizer lead-f countries (mapv lead-ix ns) start end)]
                                    (fn [t v] (into (own t (subvec v 0 n0)) (h t (subvec v n0)))))
                                  f)]))
               std)
