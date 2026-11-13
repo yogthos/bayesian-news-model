@@ -278,7 +278,7 @@ Verdict: the level does nothing for what it was built for. The year nodes score 
 
 Design: docs/RECURSIVE.md step 3d. The option is `:frailty {:exposure-sds [0.0 0.25 0.5]}`: a loading u_j per exposure column (at the political year nodes, trade openness and capital openness), each column standardized across the node's places at the origin. The place's shock is then z + u.e, filtered jointly once per origin and learned with the rows as augur's vector `:shared`; σ_u is chosen by the same prequential grid at 2 nats.
 
-Building it surfaced a second count per place. At an input's first reading, augur's evidence integrated a model's coefficient uncertainty separately in every row, so a model unsure of a place-varying input was paid or rewarded for it once per place. In the planted world that was 3 to 26 nats in one origin. The fix is `:evidence-at :sequential`: each row is scored given the period's rows before it. Both options are off by default, and 2026-Q4-r1 reproduces byte for byte with them off (data/runs/logs/repro-r1-exposure.log).
+Building it surfaced a second count per place. At an input's first reading, augur's evidence integrated a model's coefficient uncertainty separately in every row, so a model unsure of a place-varying input was paid or rewarded for it once per place. In the planted world that was 2 to 8 nats in one origin (26 under augur v0.23.0, whose marginal did not converge there). The fix is `:evidence-at :sequential`: each row is scored given the period's rows before it. Both options are off by default, and 2026-Q4-r1 reproduces byte for byte with them off (data/runs/logs/repro-r1-exposure.log).
 
 Runs, at 9b81890 with augur v0.23.0 (data/runs/t59-*/README.txt):
 - t59-exposure: t57-frailty's command plus both options (the candidate);
@@ -286,6 +286,8 @@ Runs, at 9b81890 with augur v0.23.0 (data/runs/t59-*/README.txt):
 - t59-seq: the sequential evidence alone.
 
 Logs: data/runs/logs/score-t59-*.txt; calibration in score-t59-calibration.txt.
+
+These runs predate augur v0.23.1 (bnm-2sf). v0.23.0's vector Laplace marginal could stop short of the mode, overstating a wide slope prior's marginal by 10 to 25 nats an origin in the planted world, so the grid chose σ_u too large. t59-slope and t59-exposure, and any run with a vector shared state, need rerunning before their numbers are read; RECURSIVE.md step 3d has the planted world's corrected numbers.
 
 Year nodes, Brier (+ = better, 90% intervals):
 

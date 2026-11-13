@@ -1721,14 +1721,49 @@
 
 (def ^:private with-exposure (assoc-in frail [:frailty :exposure-sds] [0.0 0.5 1.0]))
 
+(defn- e-var
+  "The variance of exposure-spec's exposures across `n` places."
+  ^double [n]
+  (let [es (map #(* 2.0 (/ (double %) (dec n))) (range n))
+        mu (/ (reduce + es) n)]
+    (/ (reduce + (map #(* (- % mu) (- % mu)) es)) n)))
+
+(defn- slope-info
+  "One origin's information on the exposure coefficient (per unit of the
+  input's scale) from `n` places in exposure-spec's world, Gaussian
+  reference: the rows' log odds seen with noise 1/(p(1-p)) at the base
+  rate, the slope state's sd `usd` (0: none) per standardized exposure
+  and z taking the mean, so only the exposures' spread informs it:
+  n var(e) / (noise + n usd^2)."
+  ^double [n usd]
+  (let [p (m/expit -1.5)
+        noise (/ 1.0 (* p (- 1.0 p)))]
+    (/ (* n (e-var n)) (+ noise (* n usd usd)))))
+
 (deftest bnm-56c-20-2-a-shock-loading-on-exposure-is-learned-once
+  ;; the exposure coefficient's variance, 30 places against 150, against
+  ;; slope-info's reference ratio: per place without the loading (4.7),
+  ;; once per origin with it (1.5 at the planted slope's sd). Measured
+  ;; at a fixed slope sd: with the grid the first origins choose no slope
+  ;; (nothing yet pays its price) and teach the coefficient per place.
   (let [off30 (exposure-world 30 0.5 1.0 frail) off150 (exposure-world 150 0.5 1.0 frail)
-        on30 (exposure-world 30 0.5 1.0 with-exposure) on150 (exposure-world 150 0.5 1.0 with-exposure)]
+        fixed (assoc-in frail [:frailty :exposure-sds] [0.5])
+        fix30 (exposure-world 30 0.5 1.0 fixed) fix150 (exposure-world 150 0.5 1.0 fixed)
+        on150 (exposure-world 150 0.5 1.0 with-exposure)
+        near (fn [x ref] (< (Math/abs (- (/ x ref) 1.0)) 0.1))]
     (testing "the scalar frailty alone: the exposure coefficient taught once per place"
-      (is (> (/ (exposure-var off30) (exposure-var off150)) 3.0) [(exposure-var off30) (exposure-var off150)]))
-    (testing "with the loading, once per origin: the variance saturates whatever the places"
-      (is (< (/ (exposure-var on30) (exposure-var on150)) 1.5) [(exposure-var on30) (exposure-var on150)])
-      (is (> (exposure-var on150) (* 5.0 (exposure-var off150)))))
+      (is (> (/ (exposure-var off30) (exposure-var off150)) 3.0) [(exposure-var off30) (exposure-var off150)])
+      (is (near (/ (exposure-var off30) (exposure-var off150)) (/ (slope-info 150 0.0) (slope-info 30 0.0)))))
+    (testing "with the loading, once per origin: the variance follows the reference, far from per place"
+      (is (near (/ (exposure-var fix30) (exposure-var fix150)) (/ (slope-info 150 0.5) (slope-info 30 0.5)))
+          [(exposure-var fix30) (exposure-var fix150) (/ (slope-info 150 0.5) (slope-info 30 0.5))])
+      (is (> (exposure-var fix150) (* 5.0 (exposure-var off150)))))
+    (testing "the slope's sd chosen is the grid's nearest to the planted one (u's sd 1 per unit exposure, 0.58 per sd of it)"
+      (let [planted (Math/sqrt (e-var 150))
+            nearest (apply min-key #(Math/abs (- % planted)) [0.5 1.0])
+            usds (keep (comp :usd val) (get-in on150 [:frailty [:year :country]]))]
+        (is (> (count (filter pos? usds)) 20) (vec usds))
+        (is (every? #(= nearest %) (filter pos? usds)) (vec usds))))
     (testing "the filtered slope tracks the planted one, its sd chosen above 0"
       (let [fl (get-in on150 [:frailty [:year :country]])
             pairs (for [[s {:keys [u]}] fl :when u] [(first u) ((:u on150) ((:yr on150) s))])]
@@ -1749,20 +1784,29 @@
   (let [only {:only #{:base :exposure}}
         sq {:evidence-at :sequential}
         gaps (fn [n cfg] (evidence-gaps n 0.5 1.0 (merge cfg only)))
-        weight (fn [n cfg] (apply max (map (comp :exposure second) (get-in (exposure-world n 0.5 1.0 (merge cfg only)) [:weights [:year :country]]))))
+        weights (fn [n cfg] (map (comp :exposure second) (get-in (exposure-world n 0.5 1.0 (merge cfg only)) [:weights [:year :country]])))
+        weight (fn [n cfg] (apply max (weights n cfg)))
+        ;; the largest move of the weight's log odds from one period to the next
+        jump (fn [n cfg] (let [ls (map #(let [p (min (max % 1e-12) (- 1.0 1e-12))] (Math/log (/ p (- 1.0 p))))
+                                       (drop-while #(< % 1e-9) (weights n cfg)))]
+                           (apply max (map #(Math/abs (- %2 %1)) ls (rest ls)))))
+        first-read (fn [gs] (apply max (map #(Math/abs (double %)) (take 3 gs))))
         off30 (gaps 30 frail) off150 (gaps 150 frail)
-        slope150 (gaps 150 with-exposure)
+        slope30 (gaps 30 with-exposure) slope150 (gaps 150 with-exposure)
         on30 (gaps 30 (merge with-exposure sq)) on150 (gaps 150 (merge with-exposure sq))]
     (testing "the scalar frailty alone: the loaded shock's pattern is evidence once per place, growing with the places, and the weights lock"
       (is (> (mean-abs off150) (* 2.0 (mean-abs off30))) [(mean-abs off30) (mean-abs off150)])
       (is (> (weight 150 frail) 0.99)))
-    (testing "the loading alone: the coefficient's uncertainty at its first reading is still paid once per row (each row integrates it on its own)"
-      (is (> (apply max (map #(Math/abs (double %)) slope150)) 10.0)))
-    (testing "the loading with each row given the ones before it (:evidence-at :sequential): bounded per origin, not growing with the places, and no lock"
+    (testing "the loading, rows scored independently: the coefficient's uncertainty at its first reading is paid once per row (each row integrates it on its own), at least in proportion to the rows"
+      (is (> (first-read slope150) (* 5.0 (first-read slope30))) [(first-read slope30) (first-read slope150)]))
+    (testing "the loading with each row given the ones before it (:evidence-at :sequential): bounded per origin, not growing with the places, and no origin locks the weights"
       (is (< (mean-abs on150) (* 0.2 (mean-abs off150))) [(mean-abs on150) (mean-abs off150)])
       (is (<= (mean-abs on150) (mean-abs on30)) [(mean-abs on30) (mean-abs on150)])
       (is (< (apply max (map #(Math/abs (double %)) on150)) 5.0))
-      (is (< (weight 150 (merge with-exposure sq)) 0.95)))))
+      ;; the weight moves by what each origin's bounded evidence says; per
+      ;; place it jumps by ten nats an origin
+      (is (< (jump 150 (merge with-exposure sq)) 5.0))
+      (is (> (jump 150 frail) 5.0)))))
 
 (deftest bnm-56c-20-2-no-loading-no-slope
   ;; a world whose shock does not load on exposure keeps the slope's sd at
