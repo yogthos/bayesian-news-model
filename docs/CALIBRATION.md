@@ -780,3 +780,111 @@ Verdict:
 - **`:up` does not reopen,** and the reason has changed. Under the issued joint score, `:up` is not the better forecaster of market crashes or food. §11's issued ranking came from the per-row count. The lock that remains (`:down` at market crashes, exposure at inflation) is the regional common shock the scalar frailty omits.
 - **Next.** The regional shared state, with `:issue-joint` as its evidence.
 - **Adoption.** Neither is adopted (the user's decision); both options stay off by default. augur v0.24.0 is pinned in deps.edn (32acf39).
+
+## 13. Leading gauges with priors from theory: t65-gauges (bnm-56c.36)
+
+LEADING.md 5 found the leading information in the data but unread (stress, the BAA spread) or unlearnable (§12: a common shock is about one observation per origin, so a slope for it cannot be learned from the few episodes on record). This step wires unrevised market gauges at the market-crash and growth-collapse year and quarter-lead nodes, and world food times food imports at the food year node. Their coefficient priors come from theory and were fixed before any run (docs/LEADING.md "Priors", committed in 0532af3 before the code). The stress indexes are left out: they are revised every week (STLFSI4 changed at 1689 of 1711 past weeks in four weeks; v1 against v4 correlates 0.70). The BAA spread, the curve and the VIX are unchanged at every day.
+
+Code 7dc9281: `--leading true` (bnm.named/leading, bnm.lattice-political/leading-sets) and `--leading-priors true` (bnm.lattice `:named-prior` with `:gauge-names`, a coefficient prior by input name). Both are off by default.
+
+Tests:
+- bnm-56c-36-leading-gauges-are-read-at-their-availability-date: a December value published in January is not read at the December origin, and a stopped quote series goes stale.
+- bnm-56c-36-leading-gauges-and-priors-by-kind.
+- bnm-56c-36-a-named-prior-holds-at-the-first-data: under `:discount-from :data` the node meets its first rows at the declared mean 0.5 and variance 0.0625, in the group's and the all-inputs model. With the option off, the forecasts are identical. Unknown names, a width mismatch and a variance of 0 are refused.
+
+The suite is green (1363 tests, data/runs/logs/suite-t65.log), and 2026-Q4-r1 reproduces byte for byte (data/runs/logs/repro-r1-leading.log, sha bdb361c8…).
+
+### Runs
+
+- **t65-gauges:** t63-issue (t62-fixes plus `:evidence-at :issue-joint`) plus `--leading true --leading-priors true`.
+- **t65-gauges-flat:** the same gauges at the node's default priors.
+
+Commands are in data/runs/t65-*/README.txt. Logs: data/runs/logs/score-t65-*.txt (folds, world, calibration, outliers, weights, kind-folds, flat-kind-folds). The other ten kinds are identical to t63-issue at every row, so the gauges reach no kind they were not wired to.
+
+Year nodes, Brier (+ = better, 90% intervals):
+
+| fold | t65-gauges vs t53-noclim | vs t62-fixes | vs t63-issue | vs t65-gauges-flat | flat vs t53-noclim | flat vs t63-issue |
+|---|---|---|---|---|---|---|
+| 2003-06 | +0.0039 [+0.0011, +0.0064] | +0.0008 [-0.0007, +0.0021] | +0.0015 [+0.0001, +0.0029] | +0.0020 [+0.0005, +0.0036] | +0.0019 [-0.0024, +0.0055] | -0.0005 [-0.0009, -0.0000] LOSS |
+| 2007-09 | +0.0031 [-0.0040, +0.0073] | +0.0041 [-0.0015, +0.0073] | +0.0096 [-0.0017, +0.0133] | +0.0093 [-0.0013, +0.0129] | -0.0062 [-0.0085, -0.0025] LOSS | +0.0003 [-0.0003, +0.0007] |
+| 2010-12 | +0.0009 [-0.0015, +0.0031] | +0.0024 [+0.0006, +0.0043] | +0.0017 [-0.0017, +0.0052] | +0.0003 [-0.0004, +0.0010] | +0.0006 [-0.0012, +0.0022] | +0.0015 [-0.0013, +0.0043] |
+| 2013-19 | +0.0069 [+0.0020, +0.0114] | +0.0009 [-0.0016, +0.0028] | +0.0015 [-0.0012, +0.0037] | +0.0005 [+0.0003, +0.0007] | +0.0064 [+0.0014, +0.0109] | +0.0011 [-0.0018, +0.0032] |
+| 2020-22 | +0.0016 [-0.0033, +0.0057] | -0.0014 [-0.0052, +0.0020] | -0.0026 [-0.0055, +0.0001] | +0.0002 [+0.0000, +0.0005] | +0.0013 [-0.0035, +0.0055] | -0.0028 [-0.0059, -0.0002] LOSS |
+| pooled | +0.0040 [+0.0018, +0.0065] GAIN | +0.0009 [-0.0005, +0.0022] | +0.0015 [-0.0001, +0.0036] | +0.0015 [+0.0004, +0.0029] GAIN | +0.0025 [+0.0000, +0.0053] GAIN | +0.0001 [-0.0012, +0.0013] |
+
+- **t65-gauges loses no fold against any bench.** It removes t63-issue's 2007-09 loss against t53-noclim (-0.0065 → +0.0031). Log pooled: +0.0096 [+0.0034, +0.0157] GAIN against t53-noclim and +0.0033 [+0.0007, +0.0070] GAIN against flat. The 2020-22 log score loses against t62-fixes (-0.0131 [-0.0207, -0.0040]) and t63-issue (-0.0097 [-0.0181, -0.0017]): see loss 1.
+- **t65-gauges-flat** fails 2007-09 against t53-noclim, as t63-issue did, and fails 2003-06 and 2020-22 against t63-issue. The gauges without the priors do not pay.
+- **Per kind (bnm.world-score).**
+  - Against t63-issue: food +0.0078 [+0.0025, +0.0140] GAIN, market crashes +0.0118 [-0.0071, +0.0330], growth +0.00007 [+0.00001, +0.00018] GAIN.
+  - Against flat: market crashes +0.0184 [+0.0045, +0.0359] GAIN, growth +0.00007 GAIN, food +0.0005 [-0.0014, +0.0024].
+  - Against t53-noclim: market crashes +0.048 [+0.020, +0.083] GAIN, growth +0.0025 [+0.0006, +0.0045] GAIN.
+
+Calibration, country year, mean p and Brier, t62-fixes → t63-issue → t65-gauges-flat → t65-gauges:
+
+| kind | span | rate | mean p | Brier |
+|---|---|---|---|---|
+| market crashes | 2003-22 | 0.178 | 0.259 → 0.266 → 0.277 → 0.277 | 0.1561 → 0.1638 → 0.1703 → **0.1520** |
+| market crashes | 1980-2002 | 0.312 | 0.226 → 0.217 → 0.224 → 0.256 | 0.2309 → 0.2358 → 0.2340 → 0.2335 |
+| market crashes | 2006-07 | 0.957 | 0.280 → 0.233 → 0.231 → 0.318 | 0.5063 → 0.5655 → 0.5687 → 0.4505 |
+| market crashes | 2010-12 | 0.080 | 0.206 → 0.297 → 0.247 → 0.245 | 0.1001 → 0.1220 → 0.1123 → 0.1128 |
+| food | 2003-22 | 0.154 | 0.250 → 0.256 → 0.238 → 0.237 | 0.1592 → 0.1599 → 0.1526 → **0.1521** |
+| food | 2010-12 | 0.060 | 0.323 → 0.238 → 0.222 → 0.214 | 0.1238 → 0.1001 → 0.0906 → 0.0868 |
+| food | 2020-22 | 0.415 | 0.119 → 0.128 → 0.142 → 0.142 | 0.3365 → 0.3302 → 0.3249 → 0.3275 |
+| growth collapses | 2003-22 | 0.106 | 0.083 → 0.084 → 0.084 → 0.084 | 0.0966 → 0.0966 → 0.0966 → 0.0965 |
+| growth collapses | 2007-08 | 0.219 | 0.069 → 0.071 → 0.071 → 0.073 | 0.1934 → 0.1921 → 0.1921 → 0.1914 |
+
+Market crashes in 2003-22 (0.1520) are below LEADING.md 2's stress ceiling (0.1416-0.1456 per origin, from a revised series) only in part, but below every run except t62-fixes-seq (0.1363). Food 2003-22 (0.1521) is below t53-noclim (0.1560) for the first time since t53.
+
+**The outlier episodes** (mean p at the December origin, rate in brackets):
+
+| episode | origin | t62-fixes | t63-issue | t65-gauges-flat | t65-gauges |
+|---|---|---|---|---|---|
+| food 2007-08 | 2006 (0.418) | 0.500 | 0.500 | 0.500 | 0.550 |
+| | 2007 (0.313) | 0.213 | 0.213 | 0.217 | 0.236 |
+| food 2020-22 | 2020 (0.493) | 0.109 | 0.122 | 0.126 | 0.121 |
+| | 2021 (0.500) | 0.109 | 0.131 | 0.154 | 0.154 |
+| market crashes 2008 | 2006 (0.957) | 0.269 | 0.240 | 0.232 | 0.287 |
+| | 2007 (0.957) | 0.291 | 0.225 | 0.229 | 0.348 |
+| growth collapses | 2007 (0.235) | 0.070 | 0.072 | 0.072 | 0.073 |
+| | 2008 (0.202) | 0.067 | 0.069 | 0.069 | 0.073 |
+| | 2019 (0.554) | 0.078 | 0.078 | 0.078 | 0.078 |
+
+The priors move market crashes 2006-07 for the first time: 0.348 at Dec 2007 (t63-issue 0.225). The gauges' z values at the US are BAA12 +2.1, VIX12 +2.5 and curve -0.4 at Dec 2007, and curve -1.8 at Dec 2006. Food 2006 moves the wrong way: the node had no resolved outcome, so it issued an even 0.5 lifted by the prior (food12 x imports +0.8 sd). Food 2007 moves the right way (0.213 → 0.236). Growth and food 2020-21 hardly move.
+
+**The `:leading` group's weight at the country node** (Decembers; score-t65-weights.txt):
+
+| kind, scale | years | t65-gauges-flat | t65-gauges |
+|---|---|---|---|
+| market crashes, year | 1990-95 | 0.08-0.21 | 0.37-0.70 |
+| | 2000-05 | ≤ 0.008 (`:down` 0.83-0.92) | 0.06-0.10 (`:down` 0.54-0.88) |
+| | 2006-08 | 0.02-0.04 | **0.40-0.57 (the leader)** |
+| | 2010-22 | 0.80-0.95 | 0.99-1.00 |
+| market crashes, quarter-lead | 1995-2022 | ≤ 0.01 (assets, then all-inputs) | ≤ 0.01 (0.21 in 2010) |
+| growth, year | 2003-22 | 0.000 | ≤ 0.04 (economy 0.43-1.00) |
+| growth, quarter-lead | 2010-22 | 0.06-0.78 | 0.54-0.97 |
+| food, year | 2005-08 | 0.05-0.08 (even, uninformed) | 0.05-0.08 |
+| | 2010-22 | 0.000 (the all-inputs model, which reads them, holds 1.00 from 2015) | 0.000 (the same) |
+
+### Why: the losses traced (PLAN principle 9)
+
+Each loss was traced to its origins and gauges from forecasts.tsv, weights.tsv and the gauges' z against their own quarterly history up to the origin (bnm.named/leading on data/slow). No replay with coefficient dumps was made, so the coefficient values below are the priors, not the learned ones.
+
+1. **Market crashes 2020-22, -0.036 (×1000: -36.5) against t63-issue, in both runs (flat -42.0); the 2020-22 log loss.** The year node's weight sits at 0.99-1.00 on the `:leading` model from 2010.
+   - Dec 2020 issues 0.34 against a rate of 0.08: VIX12 +1.3 sd after the COVID crash, curve -0.7.
+   - Dec 2022 issues 0.36 against a rate of 0.05: curve -2.2 sd, the deepest inversion since 1982, then no US recession in 2023-24.
+   - Dec 2018 (2013-19 fold) issues 0.49 against 0.21: VIX12 +2.7 after the Q4 2018 fall.
+
+   The sign of every term is theory's. The flat run learns the same signs from 2007-09 and loses more. The verdict is **approach, partly**: the curve's 2022-24 miss is that gauge's known out-of-sample failure, not a bug. VIX12 is the term LEADING.md's prior already called partly concurrent. A VIX rise after a crash is the crash already counted (the onset falls before the window), so it reads as risk to come. Under the joint evidence one origin is about one observation, so three wrong origins in 2018-22 cannot undo the weight the 2006-08 origins earned. The fix theory suggests is to read VIX12 only at growth collapses, or with the crash's own state as a control. It is a change to the gauges, recorded here, not made: it would be chosen after seeing the scores.
+2. **t65-gauges-flat 2007-09 against t53-noclim (-0.0062): the §12 lock, unchanged.** Without priors, the leading model's coefficients sit at mean 0 (variance 1, `:shrink` 0.1 in the all-inputs model) when the episode arrives. Its weight is 0.02-0.04, and `:down` keeps the node (0.71-0.43) as in t63-issue, issuing 0.23 at Dec 2006-07. This is LEADING.md 5's "cannot be learned from the few episodes", confirmed. With the priors the same gauges carry 0.40-0.57 and the fold turns to +0.0031.
+3. **Food 2003-06 (-0.0012 ×1000 per row, t65-gauges against t63-issue and flat).** This is the Dec 2006 origin only. The node had no resolved outcome, so its models carried even weights and the leading model's prior lifted the even 0.5 to 0.55 (rate 0.418). The prior acted as designed. The 0.5 itself is the uninformed base (`--clim-prior` off, bnm-56c.26), a sequencing matter, not this step's.
+4. **Inflation crises 2007-09 (-20.7 against t53-noclim):** inherited from t63-issue unchanged (§12 loss 2, the regional lock). The gauges do not touch the kind.
+
+Bugs found: one, in this step's own test (two runs sharing one world's noise generator, fixed before the commit). None in the runs.
+
+Verdict:
+- **The gauges and their priors do what LEADING.md 5 asked.** The financial leading information now enters at the 2008 episode (market crashes Dec 2007 0.225 → 0.348) and holds the year node's weight from it.
+- **On the world.** t65-gauges gains pooled against t53-noclim (+0.0040 [+0.0018, +0.0065]) and loses no fold against t53-noclim, t62-fixes or t63-issue. It mends t63-issue's 2007-09 fold failure. It gains market crashes against flat (+0.018) and food against t63-issue (+0.008).
+- **The priors, not the gauges alone, make the gain.** t65-gauges against flat: +0.0015 [+0.0004, +0.0029] GAIN, 2007-09 +0.0093. Flat ties t63-issue pooled (+0.0001) and fails three folds.
+- **Not reached:** growth 2007-08 (the year leading model never takes weight: economy holds 0.43-1.00) and food and growth 2019-21.
+- **Cost:** false alarms at market crashes after 2018 (loss 1).
+- **Adoption** is the user's decision. Both options stay off by default.
