@@ -1367,3 +1367,62 @@
   (testing "a value that is not a positive integer is refused"
     (is (thrown? clojure.lang.ExceptionInfo (many-place-world {:flow-std-min-origins 0})))
     (is (thrown? clojure.lang.ExceptionInfo (many-place-world {:flow-std-min-origins :ten})))))
+
+(defn- common-shock-world
+  "`places` sharing one signal (the same at every place at an origin, as a
+  world input is) and its outcomes' rate; each place's outcome drawn on
+  its own. Outcomes from month 120, each known at `known-at` (place t) or
+  24 months after the origin; `extra` merged in."
+  ([places extra] (common-shock-world places extra (fn [_ t] (+ t 24))))
+  ([places extra known-at]
+   (let [g (m/rng 11)
+         sig (into {} (for [t (range 400)] [t (m/normal! g)]))
+         ys (into {} (for [c places t (range 400)] [[c t] (< (m/next-double! g) (m/expit (- (* 0.3 (sig t)) 1.5)))]))]
+     (lt/run (merge
+              {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
+               :levels [[:country places]]
+               :parent {} :start 0 :end 359 :forget 0.995
+               :target (fn [_ place t] (when (>= t 120) {:y (ys [place (+ t 12)]) :known-at (known-at place t)}))
+               :gauges (fn [_ _ _] [])
+               :gauge-width {:year 0}
+               :relations (fn [_ _ t] {:x [(sig t)] :reads []})
+               :relation-width {:year 1}}
+              extra)))))
+
+(defn- weight-path
+  "The year node's largest weight at each origin."
+  [r]
+  (mapv (fn [[_ w]] (apply max (vals w))) (get-in r [:weights [:year :country]])))
+
+(deftest averaging-tempered-per-place
+  ;; an input the same at every place (world3) and outcomes at n places: one
+  ;; origin's evidence moved the averaging's weights once per place, so a
+  ;; single episode locked them (docs/CALIBRATION.md 2). :power :per-place
+  ;; counts each origin's rows as one row's evidence
+  (let [per-place {:weighting {:rule :temper :power :per-place}}]
+    (testing "an origin's n rows resolved together: the power is 1/n"
+      (is (= (:forecasts (many-place-world per-place))
+             (:forecasts (many-place-world {:weighting {:rule :temper :power (/ 1.0 20)}})))))
+    (testing "one place: the posterior"
+      (is (= (:forecasts (common-shock-world ["C0"] per-place))
+             (:forecasts (common-shock-world ["C0"] {})))))
+    (testing "rows of several origins resolved together: each origin counts once"
+      ;; half the places' outcomes known a year later: a period learns two
+      ;; origins' rows, 20 of them, at power 2/20
+      (let [late (fn [place t] (+ t (if (even? (count place)) 24 36)))
+            places (mapv #(str "C" %) (range 20))]
+        (is (= (:forecasts (common-shock-world places per-place late))
+               (:forecasts (common-shock-world places {:weighting {:rule :temper :power 0.1}} late))))))
+    (testing "the weights move about as much at 40 places as at one"
+      (let [places (mapv #(str "C" %) (range 40))
+            one (weight-path (common-shock-world ["C0"] {}))
+            many (weight-path (common-shock-world places {}))
+            tempered (weight-path (common-shock-world places per-place))
+            top (fn [p] (apply max p))]
+        (is (< 0.99 (top many)) "untempered, the weights lock")
+        (is (< (top tempered) (+ 0.1 (top one))) [(top one) (top tempered)])))
+    (testing "the default is the posterior"
+      (is (= (:forecasts (many-place-world {})) (:forecasts (many-place-world {:weighting nil})))))
+    (testing "a power other than a number in (0, 1] or :per-place is refused"
+      (is (thrown? clojure.lang.ExceptionInfo (many-place-world {:weighting {:rule :temper :power :per-origin}})))
+      (is (thrown? clojure.lang.ExceptionInfo (many-place-world {:weighting {:rule :temper :power 0.0}}))))))

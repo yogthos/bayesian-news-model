@@ -289,6 +289,25 @@
                         :when (seq ps)]
                     [g ps])))))
 
+(defn- per-place?
+  "Whether a weighting is :temper at :power :per-place; any other power
+  that is not a number is refused (augur checks a number's range)."
+  [wt]
+  (when (= :temper (:rule wt))
+    (let [pw (:power wt)]
+      (cond (= :per-place pw) true
+            (number? pw) false
+            :else (throw (ex-info "bnm.lattice: :temper's :power takes a number in (0, 1] or :per-place" wt))))))
+
+(defn per-place-power
+  "The power a period's evidence is tempered to under :power :per-place:
+  the origins its resolved rows were issued at over their number, so each
+  origin's rows (one per place) weigh as one row. 1 with none."
+  [ready]
+  (if (seq ready)
+    (/ (double (count (distinct (map :origin ready)))) (count ready))
+    1.0))
+
 (defn- node-model
   "A node's model average: one dynamic logistic per group of its inputs and
   one over all of them, each reading the intercept and the spec's :core
@@ -337,6 +356,9 @@
                   ;; weights without; :weight-prior {group share}, the shares
                   ;; they start from and fade toward, equal without (bnm-56c.2)
                   (let [wt (get-in spec [:weighting-at scale] (:weighting spec))
+                        ;; :temper :power :per-place: built at 1, set each period
+                        ;; by `per-place-power` before the node learns
+                        wt (if (per-place? wt) (assoc wt :power 1.0) wt)
                         ;; :evidence (ranked increments): the base model is the
                         ;; reference, a nested link set against the all-inputs model
                         wt (if (= :evidence (:rule wt))
@@ -685,6 +707,12 @@
    :forget, the model averaging's forgetting, :only, a subset of groups,
    :weighting, how the averaging sets its weights (augur.dynamic/averaged's
    :weighting: tempered posterior or stacked; posterior weights without),
+   :weighting {:rule :temper :power :per-place} tempers each period's
+   evidence to the number of origins its rows were issued at over the
+   number of rows: one origin's rows at n places count as one row's
+   evidence (a world input is the same at every place, so untempered one
+   episode moved the weights n times and locked them; docs/CALIBRATION.md
+   2, the fix until the frailty's per-origin shock replaces it),
    :weighting-at {scale weighting} the same at one scale, :hold-links, a
    nested link's own coefficients not discounted (augur.dynamic's :hold),
    :weight-prior {group share}, the averaging's prior weights (augur's
@@ -798,6 +826,11 @@
                                       (update-in st [:evidence k g] (fn [[ll0 n]] [(+ (or ll0 0.0) ll) (+ (or n 0) (count rows))])))
                                     st (d/evidence model rows))
                             st)
+                       ;; :temper :power :per-place: this period's evidence counted
+                       ;; once per origin, not once per place (docs/CALIBRATION.md 2)
+                       model (if (per-place? (get-in spec [:weighting-at scale] (:weighting spec)))
+                               (assoc-in model [:weighting :power] (per-place-power ready))
+                               model)
                        model (d/step model rows)
                        ;; climatology: the rate among this node's resolved outcomes
                        st (update-in st [:clim k] (fn [[n1 n]] [(+ (or n1 0) (count (filter :y ready))) (+ (or n 0) (count ready))]))
@@ -965,7 +998,7 @@
                                                            ;; under :state-from); :lp each model's predictive at issue;
                                                            ;; :regime-at-issue a slot for the regime layer
                                                            (for [{:keys [place x o os p target ref issued clim]} made :when target]
-                                                             (cond-> {:place place :x x :o o :p (if ref (:p ref) p) :y (:y target) :known-at (:known-at target)
+                                                             (cond-> {:place place :origin t :x x :o o :p (if ref (:p ref) p) :y (:y target) :known-at (:known-at target)
                                                                       :regime-at-issue nil}
                                                                issued (assoc :lp issued)
                                                                ;; bnm-56c.27: the climatology it was issued at
