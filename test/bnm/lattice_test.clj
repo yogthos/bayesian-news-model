@@ -1389,7 +1389,7 @@
                :relation-width {:year 1}}
               extra)))))
 
-(defn- weight-path
+(defn- top-weight-path
   "The year node's largest weight at each origin."
   [r]
   (mapv (fn [[_ w]] (apply max (vals w))) (get-in r [:weights [:year :country]])))
@@ -1415,9 +1415,9 @@
                (:forecasts (common-shock-world places {:weighting {:rule :temper :power 0.1}} late))))))
     (testing "the weights move about as much at 40 places as at one"
       (let [places (mapv #(str "C" %) (range 40))
-            one (weight-path (common-shock-world ["C0"] {}))
-            many (weight-path (common-shock-world places {}))
-            tempered (weight-path (common-shock-world places per-place))
+            one (top-weight-path (common-shock-world ["C0"] {}))
+            many (top-weight-path (common-shock-world places {}))
+            tempered (top-weight-path (common-shock-world places per-place))
             top (fn [p] (apply max p))]
         (is (< 0.99 (top many)) "untempered, the weights lock")
         (is (< (top tempered) (+ 0.1 (top one))) [(top one) (top tempered)])))
@@ -1426,3 +1426,145 @@
     (testing "a power other than a number in (0, 1] or :per-place is refused"
       (is (thrown? clojure.lang.ExceptionInfo (many-place-world {:weighting {:rule :temper :power :per-origin}})))
       (is (thrown? clojure.lang.ExceptionInfo (many-place-world {:weighting {:rule :temper :power 0.0}}))))))
+;; --- the frailty: a common shock learned once (recursive step 3b, bnm-56c.20, bnm-3be) ---
+
+(defn- shock-world
+  "`n` places with no signal of their own and a common shock: each year's
+  outcomes at every place moved by z (AR(1), persistence 0.6, stationary
+  sd `s`). The one flow input (a relation) is a world gauge, the same at
+  every place, that carries nothing. Year origins from month 11, outcomes
+  known 24 months after; `extra` merged in."
+  [n s extra]
+  (let [g (m/rng 21)
+        z (vec (take 40 (iterate #(+ (* 0.6 %) (* s 0.8 (m/normal! g))) 0.0)))
+        gauge (vec (repeatedly 40 #(m/normal! g)))
+        places (mapv #(str "P" %) (range n))
+        yr (fn [t] (quot (inc t) 12))
+        ys (into {} (for [c places y (range 40)] [[c y] (< (m/next-double! g) (m/expit (+ -1.5 (z y))))]))]
+    (assoc (lt/run (merge {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
+                           :levels [[:country places]]
+                           :parent {} :start 0 :end 359 :forget 0.995
+                           :target (fn [_ place t] {:y (if (= "W" place) (boolean (some #(ys [% (yr t)]) places)) (ys [place (yr t)]))
+                                                    :known-at (+ t 24)})
+                           :gauges (fn [_ _ _] [])
+                           :gauge-width {:year 0}
+                           :relations (fn [_ _ t] {:x [(gauge (yr t))] :reads []})
+                           :relation-width {:year 1}
+                           :flow-std-from :resolved}
+                          extra))
+           :z z :yr yr)))
+
+(defn- slope-var
+  "The posterior variance of the time-common gauge's coefficient in the
+  relations model."
+  [r]
+  (let [mdl (lt/model r :year :country :relations)
+        k (:k mdl)
+        i (dec k)]
+    (aget ^doubles (:c mdl) (+ (* i k) i))))
+
+(defn- weight-path
+  "The mean absolute change, origin to origin, of the relations model's
+  weight: how hard the evidence moves the averaging."
+  [r]
+  (let [ws (map (comp :relations second) (get-in r [:weights [:year :country]]))]
+    (/ (reduce + (map #(Math/abs (- (double %1) (double %2))) (rest ws) ws)) (dec (count ws)))))
+
+(def ^:private frail {:frailty {:rhos [0.0 0.6] :sds [0.0 0.5 1.0]}})
+
+(deftest bnm-56c-20-a-common-shock-is-learned-as-one-state
+  (let [one (shock-world 1 1.0 {})
+        off20 (shock-world 20 1.0 {}) off100 (shock-world 100 1.0 {})
+        on20 (shock-world 20 1.0 frail) on (shock-world 100 1.0 frail)]
+    (testing "without the frailty, the world gauge's coefficient is taught once per place: five times the places, a fifth of the variance"
+      (is (> (/ (slope-var off20) (slope-var off100)) 3.5) [(slope-var off20) (slope-var off100)]))
+    (testing "with it, once per origin: the variance saturates at what the shock's size allows, whatever the places"
+      (is (< (/ (slope-var on20) (slope-var on)) 1.5) [(slope-var on20) (slope-var on)])
+      (is (> (slope-var on) (* 10.0 (slope-var off100)))))
+    (testing "the averaging's weights: 100 places without it lock and move hard; with it about as one place does"
+      (is (> (:base (lt/weights off100 :year :country)) 0.999))
+      (is (> (weight-path off100) (* 2.0 (weight-path on))) [(weight-path one) (weight-path off100) (weight-path on)])
+      (is (< (weight-path on) (* 2.0 (weight-path one))) [(weight-path one) (weight-path on)]))
+    (testing "the shock is filtered once per origin and tracks the planted one, its sd chosen above 0"
+      (let [fl (get-in on [:frailty [:year :country]])
+            pairs (for [[s {:keys [m]}] fl] [m ((:z on) ((:yr on) s))])
+            xs (map first pairs) ys (map second pairs)
+            n (count pairs) mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
+            c (/ (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
+                 (Math/sqrt (* (reduce + (map #(let [d (- % mx)] (* d d)) xs)) (reduce + (map #(let [d (- % my)] (* d d)) ys)))))]
+        (is (= 26 n) "every origin issued once the node had an outcome")
+        (is (> c 0.8) c)
+        (is (pos? (:sd (val (last fl)))))))
+    (testing "the book carries the shock each forecast was issued with"
+      (let [e (val (last (get-in on [:book [:year "P0"]])))]
+        (is (number? (:z e)))
+        (is (pos? (:z-var e)))))))
+
+(deftest bnm-56c-20-no-common-shock-no-state
+  (testing "a world without a shock chooses sd 0"
+    (let [on (shock-world 20 0.0 frail)]
+      (is (zero? (:sd (val (last (get-in on [:frailty [:year :country]])))))))))
+
+(deftest bnm-56c-20-a-grid-of-sd-0-changes-nothing
+  ;; the shock at sd 0 everywhere: the rows share a shock of variance 0 and
+  ;; the forecasts are those without the option
+  (let [off (shock-world 20 1.0 {})
+        zero (shock-world 20 1.0 {:frailty {:sds [0.0]}})]
+    (is (= (mapv :p (:forecasts off)) (mapv :p (:forecasts zero))))))
+
+(deftest bnm-56c-20-the-shock-is-filtered-without-lookahead
+  ;; the state issued at t reads only origins whose rows are known by t:
+  ;; with outcomes known 24 months on, the last origin filtered by t is t - 24
+  ;; or earlier, so changing outcomes after a cut changes nothing before it
+  (let [cut 200
+        a (shock-world 20 1.0 (merge frail {:end cut}))
+        b (shock-world 20 1.0 frail)]
+    (is (= (mapv :p (:forecasts a)) (mapv :p (filter #(<= (:origin %) cut) (:forecasts b)))))
+    (is (every? #(<= % (- cut 24)) (keys (get-in a [:frailty [:year :country]]))))))
+
+(deftest bnm-56c-20-the-parent-prior
+  ;; :prior :parent: the country level issues with rho times the world
+  ;; level's state, filtered at an earlier period
+  (let [places (mapv #(str "P" %) (range 20))
+        tree {:levels [[:country places] [:world ["W"]]] :parent (zipmap places (repeat "W"))}
+        persistent {:frailty {:rhos [0.6] :sds [0.0 0.5 1.0]}}
+        own (shock-world 20 1.0 (merge persistent tree))
+        par (shock-world 20 1.0 (merge (assoc-in persistent [:frailty :prior] :parent) tree))
+        z (fn [r place] (mapv (comp :z val) (get-in r [:book [:year place]])))]
+    (is (= (z own "W") (z par "W")) "the top level issues with its own")
+    (is (not= (z own "P0") (z par "P0")) "the countries with the world's")
+    (is (every? number? (z par "P0")))))
+
+(deftest bnm-56c-20-c4-signs-under-the-shared-shock
+  ;; docs/RECURSIVE.md C4, on the offsets the frailty issues over: at a
+  ;; fixed mean log odds a rare place's p rises with the shock's variance;
+  ;; P(any onset) among places sharing it falls with the variance at a
+  ;; fixed expected count (mean -v/2) and rises at a fixed mean log rate
+  ;; when events are rare
+  (let [os [[1.0 -4.0]]
+        p (fn [m v] (reduce + (for [[w o] (lt/with-frailty os {:m m :v v})] (* w (m/expit o)))))
+        any (fn [m v n] (let [pts (lt/with-frailty [[1.0 -4.0]] {:m m :v v})]
+                          (- 1.0 (reduce + (for [[w o] pts] (* w (Math/pow (- 1.0 (m/expit o)) n)))))))]
+    (is (= os (lt/with-frailty os {:m 0.0 :v 0.0})) "no shock: the offsets as they are")
+    (is (< (Math/abs (- 1.0 (reduce + (map first (lt/with-frailty os {:m 0.3 :v 0.8}))))) 1e-12))
+    (is (> (p 0.0 1.0) (p 0.0 0.5) (p 0.0 0.0)))
+    (is (< (any -0.5 1.0 30) (any -0.25 0.5 30) (any 0.0 0.0 30)) "fixed expected count")
+    (is (> (any 0.0 1.0 3) (any 0.0 0.0 3)) "fixed mean log rate, rare")))
+
+(deftest bnm-56c-20-bad-frailty-options-are-refused
+  (doseq [bad [true {:rhos [1.0]} {:rhos [-0.1]} {:rhos []} {:sds [-1.0]} {:sds :all} {:from "base"}
+               {:prior :up} {:bogus 1} {:from :no-such-model}]]
+    (is (thrown? clojure.lang.ExceptionInfo (shock-world 3 1.0 {:frailty bad})) (pr-str bad))))
+
+(deftest bnm-56c-20-the-shock-has-mean-one-in-the-rate
+  ;; as augur.hier/states, the shift applied is the state less half its
+  ;; stationary variance, so with nothing known (the state at 0) the
+  ;; expected rate is the base's: a node does not run high just because
+  ;; its shocks have a size (t57-frailty: rare kinds issued above the base)
+  (let [fr {:cands [{:rho 0.0 :sd 1.0 :m 0.0 :v 1.0 :t 11 :score 0.0 :price 0.0}]}
+        {:keys [m v zc]} (lt/frailty-prior {:prior :own} fr nil 35 12)
+        o -4.0
+        rate (reduce + (for [[w o'] (lt/with-frailty [[1.0 o]] {:m m :v v})] (* w (Math/exp o'))))]
+    (is (< (Math/abs (- m -0.5)) 1e-12))
+    (is (= [[m v]] zc))
+    (is (< (Math/abs (- 1.0 (/ rate (Math/exp o)))) 0.01) rate)))

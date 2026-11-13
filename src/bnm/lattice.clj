@@ -61,6 +61,7 @@
   not yet known) drops out of that origin's forecasts, weight 0. :prior
   seeds coefficients with what is known."
   (:require [augur.dynamic :as d]
+            [augur.hier :as hier]
             [bnm.relations :as rel]
             [bnm.sheaf :as sh]
             [augur.math :as m]))
@@ -657,6 +658,137 @@
     (cond-> (update row :o + delta)
       (:os row) (update :os (fn [os] (mapv (fn [[w o]] [w (+ (double o) delta)]) os))))))
 
+;; --- the frailty: one common shock per node and origin (recursive step 3b) ----------
+
+(def frailty-defaults
+  "The frailty's grid and reference when the spec's :frailty leaves them out."
+  {:rhos [0.0 0.5 0.8 0.95] :sds [0.0 0.25 0.5 1.0] :from :base :prior :own :penalty 2.0})
+
+(defn frailty-config
+  "The spec's :frailty with its defaults, checked; nil without one. A map
+  of :rhos (persistences in [0, 1)), :sds (stationary sds, at least 0),
+  :from (the model whose issue-time predictive the state is filtered
+  against, the base by default) and :prior (:own, the node's filter run
+  forward, or :parent, rho times the coarser level's state) and :penalty,
+  the nats a state of non-zero size must earn before it is chosen (2.0,
+  Akaike's price of its two parameters, as augur.hier/states)."
+  [spec]
+  (when-let [f (:frailty spec)]
+    (when-not (map? f)
+      (throw (ex-info "bnm.lattice: :frailty takes a map of :rhos :sds :from :prior" {:frailty f})))
+    (when-let [bad (seq (remove #{:rhos :sds :from :prior :penalty} (keys f)))]
+      (throw (ex-info (str "bnm.lattice: :frailty names no option " (vec bad)) {:frailty f})))
+    (let [{:keys [rhos sds from prior penalty] :as c} (merge frailty-defaults f)
+          nums? (fn [xs ok?] (and (sequential? xs) (seq xs) (every? #(and (number? %) (ok? (double %))) xs)))]
+      (when-not (nums? rhos #(and (<= 0.0 %) (< % 1.0)))
+        (throw (ex-info "bnm.lattice: :frailty :rhos takes persistences in [0, 1)" {:rhos rhos})))
+      (when-not (nums? sds #(<= 0.0 %))
+        (throw (ex-info "bnm.lattice: :frailty :sds takes sds of at least 0" {:sds sds})))
+      (when-not (keyword? from)
+        (throw (ex-info "bnm.lattice: :frailty :from names a model's group" {:from from})))
+      (when-not (and (number? penalty) (<= 0.0 (double penalty)))
+        (throw (ex-info "bnm.lattice: :frailty :penalty takes nats of at least 0" {:penalty penalty})))
+      (when-not (#{:own :parent} prior)
+        (throw (ex-info "bnm.lattice: :frailty :prior takes :own or :parent" {:prior prior})))
+      ;; the grid, smallest sd first, so a tie keeps the smaller state
+      (assoc c :grid (vec (for [s (sort (distinct (map double sds))) r (sort (distinct (map double rhos)))]
+                            {:rho r :sd s :price (if (pos? s) (double penalty) 0.0)}))))))
+
+(defn with-frailty
+  "Offsets [[w o] ...] with a shared state z ~ N(m, v) added, by the
+  five-point Hermite rule; the offsets moved by m when v is 0, unchanged
+  when both are."
+  [os {:keys [m v]}]
+  (let [m (double (or m 0.0)) v (double (or v 0.0))]
+    (cond (and (zero? m) (zero? v)) os
+          (zero? v) (mapv (fn [[w o]] [w (+ (double o) m)]) os)
+          :else (let [sd (Math/sqrt v)]
+                  (vec (for [[w o] os [z hw] hermite] [(* (double w) hw) (+ (double o) m (* sd z))]))))))
+
+(defn- frailty-fresh
+  "A node's frailty before its first resolved origin: one filter per
+  grid point at its stationary prior, scored 0."
+  [{:keys [grid]}]
+  {:cands (mapv (fn [{:keys [sd] :as g}] (assoc g :m 0.0 :v (* sd sd) :t nil :score 0.0)) grid)
+   :filtered (sorted-map)})
+
+(defn- chosen
+  "The index of the candidate with the best prequential score less its
+  price (the first, smallest sd, on a tie)."
+  [cands]
+  (let [net (fn [c] (- (double (:score c)) (double (:price c 0.0))))]
+    (first (reduce (fn [[bi bs] [i c]] (if (> (net c) (double bs)) [i (net c)] [bi bs]))
+                   [0 (net (first cands))] (map-indexed vector cands)))))
+
+(defn- half-var
+  "Half a candidate's stationary variance: what the shift applied is less
+  than its state, so the expected rate multiplier is one (augur.hier/states)."
+  ^double [c]
+  (* 0.5 (double (:sd c)) (double (:sd c))))
+
+(defn- cand-ahead
+  "A candidate's state run forward to origin t, `per` months a period."
+  [{:keys [m v t] :as c} to per]
+  (if (nil? t)
+    {:m 0.0 :v (* (:sd c) (:sd c))}
+    (hier/states-predict {:m m :v v} c (Math/max 0.0 (/ (double (- to t)) per)))))
+
+(defn frailty-learn
+  "A node's frailty after the `ready` rows (each with its :origin, its
+  :zc, the prior each candidate issued it with, and its :lp, the models'
+  issue-time predictives): origin by origin, each candidate scored by the
+  rows' log marginal under the prior it issued them with (the horizon its
+  forecasts serve), then filtered: its state run forward one period from
+  the last origin it filtered, updated by the rows against the `from`
+  model's predictive (augur.hier/states-step). Rows of an origin already
+  passed update the current state. Rows issued before the node had a
+  resolved outcome are neither scored nor filtered: the base's miss there
+  is its uninformed start (bnm-56c.26), not a common shock."
+  [{:keys [from]} fr ready per]
+  (reduce (fn [{:keys [cands] :as fr} [s rows]]
+            (let [obs (mapv (fn [r] (let [{:keys [f q]} (or (get-in r [:lp from])
+                                                            (throw (ex-info "bnm.lattice: :frailty :from names a model the node does not average" {:from from})))]
+                                      {:f f :q q :y (:y r)}))
+                            rows)
+                  cands (vec (map-indexed
+                              (fn [i {:keys [t] :as c}]
+                                (let [[zm zv] (nth (:zc (first rows)) i)
+                                      ll (:ll (hier/shared-marginal :logistic obs zm zv))
+                                      prior (if (and t (<= s t)) {:m (:m c) :v (:v c)} (cand-ahead c s per))
+                                      ;; the rows see the state less its half variance
+                                      h (half-var c)
+                                      post (hier/states-step (update prior :m - h) obs {:kind :logistic})]
+                                  (assoc c :score (+ (double (:score c)) ll) :m (+ (:m post) h) :v (:v post)
+                                         :t (if t (max t s) s))))
+                              cands))
+                  ci (chosen cands)]
+              (assoc fr :cands cands
+                     :filtered (assoc (:filtered fr) s (assoc (select-keys (nth cands ci) [:m :v :rho :sd])
+                                                         :scores (mapv :score cands))))))
+          fr (sort-by key (group-by :origin (filter :informed ready)))))
+
+(defn frailty-prior
+  "The frailty a node issues with at origin t: {:m :v :rho :sd} from the
+  chosen candidate, and :zc, each candidate's [m v]: the shift applied,
+  its state less half its stationary variance (mean one in the rate, as
+  augur.hier/states), and its variance. Under :prior :parent,
+  rho times the coarser level's state at this scale (filtered before the
+  node issues), else the node's own run forward."
+  [{:keys [prior]} fr parent-fr t per]
+  (let [{:keys [cands]} fr
+        of (fn [c]
+             (if (and (= :parent prior) parent-fr)
+               (let [pc (nth (:cands parent-fr) (chosen (:cands parent-fr)))
+                     {pm :m pv :v} (cand-ahead pc t per)
+                     r (double (:rho c)) s2 (* (double (:sd c)) (double (:sd c)))]
+                 {:m (* r pm) :v (+ (* r r pv) (* s2 (- 1.0 (* r r))))})
+               (cand-ahead c t per)))
+        ;; the shift applied: the state less half its stationary variance
+        zc (mapv (fn [c] (let [{:keys [m v]} (of c)] [(- m (half-var c)) v])) cands)
+        ci (chosen cands)
+        [m v] (nth zc ci)]
+    {:m m :v v :rho (:rho (nth cands ci)) :sd (:sd (nth cands ci)) :zc zc}))
+
 (declare start step finish)
 
 (defn run
@@ -749,6 +881,20 @@
    world's term (bnm.world-term, learned once per origin) added to the
    node's offsets, so every model reads it at a fixed coefficient of 1
    (fix 3); none without,
+   :frailty {:rhos :sds :from :prior} (recursive step 3b, bnm-56c.20,
+   bnm-3be; docs/RECURSIVE.md step 3), a common shock per node and origin:
+   a log-odds shift z shared by every place of the node, AR(1) across its
+   origins, filtered from each origin's rows once they are known
+   (augur.hier/states-step, against the :from model's issue-time
+   predictive, the base's by default), its persistence and sd chosen
+   online from the grid by each one's prequential score at the horizon
+   its prior serves (sd 0 in the grid: a node with no common shock gets
+   none). Each forecast is integrated over the prior issued at t, and an
+   origin's rows are learned jointly with its shock (augur's :shared), so
+   a shock common to n places teaches the coefficients and the averaging's
+   weights about what one observation does, not n. :prior :parent takes
+   the prior as rho times the coarser level's state (lagged) instead of
+   the node's own; none without,
    :without, groups dropped from the inputs altogether, :without-at
    {scale #{groups}} the same at one scale,
    :trace, to record what each node read and learned from (:inputs, also
@@ -767,6 +913,7 @@
   (when-let [bad (seq (remove #{:gauges :up :down :contradiction :turn :exposure :feedback :relations :world-gauges}
                               (concat (:without spec) (mapcat val (:without-at spec)))))]
     (throw (ex-info (str "bnm.lattice/run: :without names no group " (vec bad)) {:without (:without spec) :without-at (:without-at spec)})))
+  (frailty-config spec)
   (let [resolutions (memoize (fn [place] (if-let [f (:resolutions spec)] (or (f place) (sorted-set)) (sorted-set))))]
     {:t (:start spec)
      :st {:book {} :errors {} :tension {} :models {} :pending {} :resolutions resolutions :resets {}}
@@ -777,7 +924,8 @@
   [{:keys [st forecasts weights trace]}]
   {:forecasts forecasts :weights weights :trace trace
    :book (:book st) :models (:models st) :resets (:resets st)
-   :evidence (:evidence st) :flow-std (:flow-std st)})
+   :evidence (:evidence st) :flow-std (:flow-std st)
+   :frailty (not-empty (into {} (for [[k fr] (:frailty st)] [k (:filtered fr)])))})
 
 (defn flows-informed?
   "Whether node `k` has a resolved outcome, from which on, under
@@ -813,7 +961,12 @@
                        ;; climatology as it stands once this period's outcomes are
                        ;; counted: what the node's forecasts at t are issued at
                        clim-now (clim-logit spec st k scale level ready)
+                       ;; :frailty (recursive step 3b): the node's common shock, one per origin
+                       fcfg (frailty-config spec)
                        rows (learning-rows (map #(cond-> (select-keys % [:x :y :o :os]) (:lp %) (assoc :issued (:lp %))
+                                                   ;; the origin's shared shock, as issued: the rows of one
+                                                   ;; origin are learned jointly with it (augur's :shared)
+                                                   (:shared %) (assoc :shared (:shared %))
                                                    ;; bnm-56c.27: :clim-learn :current, a row issued at
                                                    ;; climatology is learned at the climatology current now
                                                    (and (= :current (:clim-learn spec)) (:clim %)) (reanchor (- clim-now (:clim %))))
@@ -832,6 +985,16 @@
                                (assoc-in model [:weighting :power] (per-place-power ready))
                                model)
                        model (d/step model rows)
+                       ;; the frailty filtered from the origins now known, then its prior at t:
+                       ;; the node's own run forward, or (:prior :parent) the coarser level's,
+                       ;; filtered at an earlier period
+                       st (if fcfg
+                            (assoc-in st [:frailty k] (frailty-learn fcfg (or (get-in st [:frailty k]) (frailty-fresh fcfg)) ready (:per scale-spec)))
+                            st)
+                       zprior (when fcfg
+                                (frailty-prior fcfg (get-in st [:frailty k])
+                                               (when-let [[pl _] (get (vec levels) (inc level-ix))] (get-in st [:frailty [scale pl]]))
+                                               t (:per scale-spec)))
                        ;; climatology: the rate among this node's resolved outcomes
                        st (update-in st [:clim k] (fn [[n1 n]] [(+ (or n1 0) (count (filter :y ready))) (+ (or n 0) (count ready))]))
                        _ (when (and (:clim-learn spec) (not= :current (:clim-learn spec)))
@@ -935,16 +1098,23 @@
                                              ;; the mean offset, learned from: the one whose
                                              ;; probability is the offsets' average
                                              o (if one? (second (first os)) (logit (reduce + (for [[w o] os] (* w (m/expit o))))))
-                                             p (if one? (d/predict live x o) (reduce + (for [[w o] os] (* w (d/predict live x o)))))
-                                             {pf :f pq :q} (d/predictive live x o)
+                                             ;; :frailty: the forecast integrated over the common shock's prior
+                                             osz (if zprior (with-frailty os zprior) os)
+                                             p (if (= 1 (count osz))
+                                                 (d/predict live x (second (first osz)))
+                                                 (reduce + (for [[w o] osz] (* w (d/predict live x o)))))
+                                             {pf :f pq :q} (cond-> (d/predictive live x o)
+                                                             zprior (-> (update :f + (:m zprior)) (update :q + (:v zprior))))
                                              target ((:target spec) scale place t)]]
                                    (assoc e :o o :p p :target target :f pf :q pq :principal (when principal-of (principal-of x))
+                                          :frailty zprior
                                           ;; :state-from: the node's state, and the errors it feeds back,
                                           ;; from a fixed reference rather than the combination, which is
                                           ;; only issued (loop audit issue 1)
                                           :ref (when state-of
                                                  (state-of {:scale scale :level level :place place :t t
-                                                            :models (:models model) :x x :o o :os os}))
+                                                            :models (:models model) :x x
+                                                            :o (if zprior (+ o (double (:m zprior))) o) :os osz}))
                                           ;; each model's predictive as issued: over several
                                           ;; offsets (:downscale-uncertainty) the forecast issued
                                           ;; is their mixture, so each model's is too, carried as
@@ -959,7 +1129,7 @@
                                                                          :mean-offset (d/predictive mdl x o)
                                                                          :f (m/logit (Math/max 1e-300 (Math/min (- 1.0 1e-16) pg)))
                                                                          :q 0.0)]))))))
-                       st (reduce (fn [st {:keys [place p stated tension strain resolved f q principal down ref]}]
+                       st (reduce (fn [st {:keys [place p stated tension strain resolved f q principal down ref frailty]}]
                                     (-> st
                                         (update-in [:book [scale place]] (fnil assoc (sorted-map)) t
                                                    ;; a node's state: the spec's when it gives one, else its
@@ -974,7 +1144,9 @@
                                                                  (:up-net-of-downscale spec) (- down)))]
                                                      (cond-> (assoc (if ref base {}) :p sp :s s :strain strain :f sf :q sq)
                                                        ref (assoc :issued {:p p :f f :q q})
-                                                       principal (assoc :principal principal))))
+                                                       principal (assoc :principal principal)
+                                                       ;; the common shock issued with (§1.2 :hazard :z :z-var)
+                                                       frailty (assoc :z (:m frailty) :z-var (:v frailty)))))
                                         (assoc-in [:tension [scale place]] tension)
                                         (cond-> resolved (update-in [:resets [scale place]] (fnil into []) resolved))))
                                   st made)
@@ -997,14 +1169,20 @@
                                                            ;; the error fed back is the state's (the reference's p
                                                            ;; under :state-from); :lp each model's predictive at issue;
                                                            ;; :regime-at-issue a slot for the regime layer
-                                                           (for [{:keys [place x o os p target ref issued clim]} made :when target]
+                                                           (for [{:keys [place x o os p target ref issued clim frailty]} made :when target]
                                                              (cond-> {:place place :origin t :x x :o o :p (if ref (:p ref) p) :y (:y target) :known-at (:known-at target)
                                                                       :regime-at-issue nil}
                                                                issued (assoc :lp issued)
                                                                ;; bnm-56c.27: the climatology it was issued at
                                                                (and clim (:clim-learn spec)) (assoc :clim clim)
                                                                ;; bnm-56c.22: the offsets issued over, learned at
-                                                               (and (= :mixture (:learn-offsets spec)) (< 1 (count os))) (assoc :os os))))))]
+                                                               (and (= :mixture (:learn-offsets spec)) (< 1 (count os))) (assoc :os os)
+                                                               ;; :frailty: the origin, its shock as issued, each candidate's prior
+                                                               frailty (assoc :origin t :shared [t (:m frailty) (:v frailty)] :zc (:zc frailty)
+                                                                              ;; issued once the node had a resolved outcome: before
+                                                                              ;; it the base reads nothing of its own (climatology
+                                                                              ;; 0.5 or a prior), and its miss is not a common shock
+                                                                              :informed (flows-informed? st k)))))))]
                    [st
                     (into forecasts (for [{:keys [place p target]} made]
                                               {:scale scale :place place :origin t :p p :y (:y target)}))
