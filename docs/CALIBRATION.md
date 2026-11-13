@@ -833,7 +833,7 @@ Calibration, country year, mean p and Brier, t62-fixes → t63-issue → t65-gau
 | growth collapses | 2003-22 | 0.106 | 0.083 → 0.084 → 0.084 → 0.084 | 0.0966 → 0.0966 → 0.0966 → 0.0965 |
 | growth collapses | 2007-08 | 0.219 | 0.069 → 0.071 → 0.071 → 0.073 | 0.1934 → 0.1921 → 0.1921 → 0.1914 |
 
-Market crashes in 2003-22 (0.1520) are below LEADING.md 2's stress ceiling (0.1416-0.1456 per origin, from a revised series) only in part, but below every run except t62-fixes-seq (0.1363). Food 2003-22 (0.1521) is below t53-noclim (0.1560) for the first time since t53.
+Market crashes in 2003-22 (0.1520) are still above LEADING.md 2's stress ceiling (0.1416-0.1456, from a revised series) and t62-fixes-seq (0.1363), and below every other run. Food 2003-22 (0.1521) is below t53-noclim (0.1560) for the first time since t53.
 
 **The outlier episodes** (mean p at the December origin, rate in brackets):
 
@@ -876,7 +876,7 @@ Each loss was traced to its origins and gauges from forecasts.tsv, weights.tsv a
 
    The sign of every term is theory's. The flat run learns the same signs from 2007-09 and loses more. The verdict is **approach, partly**: the curve's 2022-24 miss is that gauge's known out-of-sample failure, not a bug. VIX12 is the term LEADING.md's prior already called partly concurrent. A VIX rise after a crash is the crash already counted (the onset falls before the window), so it reads as risk to come. Under the joint evidence one origin is about one observation, so three wrong origins in 2018-22 cannot undo the weight the 2006-08 origins earned. The fix theory suggests is to read VIX12 only at growth collapses, or with the crash's own state as a control. It is a change to the gauges, recorded here, not made: it would be chosen after seeing the scores.
 2. **t65-gauges-flat 2007-09 against t53-noclim (-0.0062): the §12 lock, unchanged.** Without priors, the leading model's coefficients sit at mean 0 (variance 1, `:shrink` 0.1 in the all-inputs model) when the episode arrives. Its weight is 0.02-0.04, and `:down` keeps the node (0.71-0.43) as in t63-issue, issuing 0.23 at Dec 2006-07. This is LEADING.md 5's "cannot be learned from the few episodes", confirmed. With the priors the same gauges carry 0.40-0.57 and the fold turns to +0.0031.
-3. **Food 2003-06 (-0.0012 ×1000 per row, t65-gauges against t63-issue and flat).** This is the Dec 2006 origin only. The node had no resolved outcome, so its models carried even weights and the leading model's prior lifted the even 0.5 to 0.55 (rate 0.418). The prior acted as designed. The 0.5 itself is the uninformed base (`--clim-prior` off, bnm-56c.26), a sequencing matter, not this step's.
+3. **Food 2003-06 (-1.2 ×1000, t65-gauges against t63-issue and flat).** This is the Dec 2006 origin only. The node had no resolved outcome, so its models carried even weights and the leading model's prior lifted the even 0.5 to 0.55 (rate 0.418). The prior acted as designed. The 0.5 itself is the uninformed base (`--clim-prior` off, bnm-56c.26), a sequencing matter, not this step's.
 4. **Inflation crises 2007-09 (-20.7 against t53-noclim):** inherited from t63-issue unchanged (§12 loss 2, the regional lock). The gauges do not touch the kind.
 
 Bugs found: one, in this step's own test (two runs sharing one world's noise generator, fixed before the commit). None in the runs.
