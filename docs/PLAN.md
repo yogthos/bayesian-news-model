@@ -174,6 +174,7 @@ trigger terms multiply it.
    kept the bugs and left a worse model. "Approach wrong" is a verdict
    that has to be shown with evidence, as for VIX at market crashes, not
    the default reading of a loss.
+10. **Alerts at the user's cost ratio** (added 13 November 2026 on the user's direction: a missed crisis costs 4 false alarms). Every candidate's report includes the alert table of bnm.alerts (alert when p >= 0.2; CALIBRATION.md 14); acceptance itself stays on proper scores and the fold rule.
 
 ## 4. Phases
 

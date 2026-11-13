@@ -888,3 +888,63 @@ Verdict:
 - **Not reached:** growth 2007-08 (the year leading model never takes weight: economy holds 0.43-1.00) and food and growth 2019-21.
 - **Cost:** false alarms at market crashes after 2018 (loss 1).
 - **Adoption** is the user's decision. Both options stay off by default.
+
+## 14. Alerts at the 4:1 cost ratio
+
+The user's decision of 13 November 2026: a missed crisis costs 4 false alarms. Forecasts stay calibrated and acceptance stays on proper scores and the fold rule. The asymmetry goes into an alert layer on top: **alert when p >= C_false / (C_false + C_miss) = 1/5 = 0.2.** Every candidate's report adds the alert table (PLAN principle 10).
+
+Tool: `jolt -A:tools -M -m bnm.alerts --run RUN [--bench BASE] [--threshold 0.2] [--miss-cost 4] [--from 2003 --to 2022] [--episodes ratio|decile] [--ratio 2] [--min-rows 10]`. It reads year country nodes, December origins and resolved rows only, as bnm.paired/read-lattice does. It reports:
+- hit rate (onset rows alerted), false-alarm rate (quiet rows alerted), alert share;
+- cost per row, (misses x 4 + false alarms) / rows. Beside it is the cost of the better constant rule, never or always alerting, given the span's rate (min(4r, 1 - r)): the no-skill reference;
+- with `--bench`, the bench's cost minus the run's (+ = run cheaper), with a 90% interval that resamples countries and years (augur.score/paired-loss-2way with the cost as the loss, as bnm.world-score does), per kind and pooled with kinds weighed equally;
+- episodes and the fixed outliers of 10-13, below, and the world node's counts.
+
+**Episodes.** An episode is a December origin with at least 10 resolved rows whose realized country rate is at least 2x the kind's 2003-2022 pooled rate. It is caught when the mean issued p reaches 0.2. The ratio rule is the default because the top-decile rule (`--episodes decile`) always flags two of the twenty origins per kind, whether or not the kind had a crisis-shaped year. Twice the rate is a property of the year itself. For rare kinds the rule flags years such as inflation 2020 (rate 0.025) whose rate is below 0.2. A calibrated forecast at the origin would not alert on those, so the table also counts the episodes whose rate itself reaches 0.2 (`rate>=t`).
+
+Tests: test/bnm/alerts_test.clj covers the threshold edge (p = 0.2 alerts), hit, miss and false-alarm counts, the constant rule, empty kinds and origins, the episode rules, the sign of the cost difference both ways, and the reader.
+
+Logs: data/runs/logs/alerts-t65-gauges-vs-t53-noclim.txt, alerts-t65-gauges-vs-t62-fixes.txt, alerts-t63-issue.txt, alerts-t53-noclim.txt.
+
+**t65-gauges against t53-noclim**, country year nodes, 2003-2022:
+
+| kind | rows | onsets | hit | false alarm | alerts | constant | cost | t53 cost | Δcost (+ = t65 cheaper) |
+|---|---|---|---|---|---|---|---|---|---|
+| banking crises | 2558 | 82 | 0.0% | 0.2% | 0.2% | 0.128 | 0.131 | 0.129 | -0.0016 [-0.0054, +0.0000] |
+| conflict onsets | 3308 | 271 | 41.0% | 6.5% | 9.3% | 0.328 | 0.253 | 0.256 | +0.0030 [-0.0127, +0.0213] |
+| coups | 3481 | 157 | 7.6% | 3.6% | 3.8% | 0.180 | 0.201 | 0.198 | -0.0032 [-0.0133, +0.0055] |
+| currency crises | 3262 | 117 | 0.0% | 0.0% | 0.0% | 0.143 | 0.143 | 0.147 | +0.0040 [-0.0037, +0.0103] |
+| fiscal consolidations | 2944 | 801 | 89.8% | 84.6% | 86.0% | 0.728 | 0.728 | 0.716 | -0.0119 [-0.0464, +0.0258] |
+| food price shocks | 2913 | 450 | 61.8% | 49.2% | 51.2% | 0.618 | 0.653 | 0.639 | -0.0137 [-0.1159, +0.0895] |
+| growth collapses | 3205 | 339 | 0.0% | 0.1% | 0.1% | 0.423 | 0.424 | 0.432 | +0.0084 [+0.0003, +0.0190] GAIN |
+| inflation crises | 3197 | 39 | 0.0% | 1.3% | 1.3% | 0.049 | 0.062 | 0.049 | -0.0125 [-0.0258, -0.0038] LOSS |
+| market crashes | 798 | 142 | 91.5% | 80.8% | 82.7% | 0.712 | 0.724 | 0.831 | +0.1065 [-0.0533, +0.3051] |
+| protest surges | 3411 | 104 | 41.3% | 2.6% | 3.8% | 0.122 | 0.097 | 0.114 | +0.0173 [+0.0029, +0.0327] GAIN |
+| sovereign defaults | 3217 | 101 | 0.0% | 0.3% | 0.3% | 0.126 | 0.128 | 0.127 | -0.0016 [-0.0075, +0.0034] |
+| violence surges | 3387 | 271 | 26.6% | 7.4% | 8.9% | 0.320 | 0.303 | 0.310 | +0.0068 [-0.0300, +0.0467] |
+| war onsets | 3402 | 85 | 14.1% | 2.0% | 2.3% | 0.100 | 0.106 | 0.106 | +0.0000 [-0.0061, +0.0073] |
+| pooled (kinds equally) | 39083 | 2959 | 28.7% | 18.4% | 19.2% | 0.306 | **0.304** | 0.312 | +0.0078 [-0.0073, +0.0256] |
+
+Pooled cost per row (constant rule 0.306 in every run): t53-noclim 0.312, t63-issue 0.316, t65-gauges 0.304. Against t62-fixes, t65-gauges is +0.0135 [+0.0002, +0.0280] GAIN.
+
+Episodes (the same 22 in every run, 11 with a rate of at least 0.2): t53-noclim catches 5, t62-fixes, t63-issue and t65-gauges 6 each. Fiscal consolidations 2019-20 and market crashes 2006-07 are caught by all four, and so is food 2006, where every run issues the uninformed 0.5. Food 2007 is caught from t62-fixes on. Missed by t65-gauges with a rate of at least 0.2: food 2020 and 2021 and growth collapses 2007, 2018 and 2019. Missed below 0.2: banking 2006-07 (rates 0.17, 0.15; p 0.025, 0.022), sovereign defaults 2018, 2019 and 2021, coups 2020, currency 2014, inflation 2020, protest 2004, and wars 2012 and 2021.
+
+The fixed outliers (mean p at the December origin; caught at p >= 0.2):
+
+| episode | origin (rate) | t53-noclim | t62-fixes | t63-issue | t65-gauges |
+|---|---|---|---|---|---|
+| food 2007-08 | 2006 (0.418) | 0.500 caught | 0.500 caught | 0.500 caught | 0.550 caught |
+| | 2007 (0.313) | 0.102 missed | 0.213 caught | 0.213 caught | 0.236 caught |
+| food 2020-22 | 2020 (0.493) | 0.053 missed | 0.109 missed | 0.122 missed | 0.121 missed |
+| | 2021 (0.500) | 0.057 missed | 0.109 missed | 0.131 missed | 0.154 missed |
+| market crashes 2008 | 2006 (0.957) | 0.281 caught | 0.269 caught | 0.240 caught | 0.287 caught |
+| | 2007 (0.957) | 0.289 caught | 0.291 caught | 0.225 caught | 0.348 caught |
+| growth collapses | 2007 (0.235) | 0.051 missed | 0.070 missed | 0.072 missed | 0.073 missed |
+| | 2008 (0.202) | 0.061 missed | 0.067 missed | 0.069 missed | 0.073 missed |
+| | 2019 (0.554) | 0.068 missed | 0.078 missed | 0.078 missed | 0.078 missed |
+
+What the tables say:
+- **At 4:1 the model barely beats the constant rule.** The pooled cost is 0.304 against 0.306. It beats the constant rule clearly only at conflict onsets, protest surges and violence surges, where it separates countries (hit rate 27-41% at false-alarm rates of 3-7%). At the common-shock kinds it is close to a constant rule. Market crashes and fiscal consolidations alert at 83-86% of rows, near "always". Growth collapses, banking, currency, sovereign and inflation crises almost never alert (hit rate 0%), so they cost what "never" costs.
+- **Growth collapses are the costliest kind the model never alerts on** (0.424 per row, all of it misses). An onset rate of 0.106 is below 0.2 overall, but 2007, 2018 and 2019 run at 0.24-0.56 while the year node stays at 0.07-0.08. These are the outliers 10-13 already name.
+- **Inflation crises lose against t53-noclim** (-0.0125 LOSS): 1.3% of rows alert against a rate of 1.2%. This is the regional lock of 12 (loss 2) seen through the alert layer.
+- **Market crashes:** t65-gauges is cheaper than t53-noclim by 0.107 per row (not significant at 90%). The saving is in misses: it alerts at 91.5% of onsets against 74.6%, with false alarms about the same (80.8% against 79.1%). Both runs cost more than "always alert" (0.712).
+- None of this changes acceptance, which stays on proper scores and the fold rule. The alert table is reported beside them.
