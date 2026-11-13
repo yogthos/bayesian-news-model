@@ -146,3 +146,133 @@ Coefficient prior mean and variance on the standardized gauge, at the year and q
 | | `:world-food12` | +0.3 | 0.25 | some pass-through everywhere, damped where markets are insulated |
 
 These are the numbers `bnm.lattice-political/leading-priors` holds; t65-gauges reads them, t65-gauges-flat reads the same gauges at the node's default priors (variance 1, the all-inputs model's `:shrink` 0.1, mean 0), so the two runs separate the priors from the gauges.
+
+## Indicators for food 2020-21 and growth 2020
+
+Research only, no model change (13 November 2026). Question: which indicators would have lifted the forecast to the alert threshold (p ≥ 0.2, the break-even when a miss costs four false alarms) at food price shocks from the December 2020 and 2021 origins (rates 0.493 and 0.500; t65-gauges issued 0.121 and 0.154) and at growth collapses from the December 2019 origin (rate 0.554; issued 0.078). Scripts in the session scratchpad (`ind/data.py`, `food.py`, `growth.py`, `pink2tsv.py`); outputs `ind/food18.txt`, `food9.txt`, `food18d.txt`, `growth.txt`.
+
+Method as in section 2: every gauge is read as known at the origin (its availability month ≤ t); z is against the gauge's own monthly history since 1990 as known then (country gauges: the median across countries against the 2003-18 December medians). The ceiling is a causal logistic on t65-gauges' food rows (2,913 country-years, 2003-22): at origin t it is fitted only on rows whose outcome is known by t (origin + 24 months + 18, the catalogue's lag), inputs standardized on the training rows, slope priors from theory fixed in the script before any fit (sd 0.25; means in the tables), each row counted once ("row"), or each origin as ten ("origin"). Before the first resolved origin (food 2003-06) it issues what t65 issued. "Cost" is the 4:1 decision cost per row at the 0.2 threshold (4 per missed shock, 1 per false alarm).
+
+### When the 2020-21 shocks happened
+
+The December 2020 window is 2021-22. Of its 74 positive countries the first onset fell in 2021 for 11, in 2022 Q1 for 12 and in 2022 Q2-Q4 for 51. All 72 of December 2021's fell in 2022-23. Most of the episode was the 2022 surge: food CPI inflation crossing 15% from the second quarter of 2022, after world food prices rose 28% in 2021 and Russia invaded Ukraine in February 2022. At December 2020 that was 15-21 months away.
+
+It was a common shock, not a cross-section the model failed to rank. Within each origin the rate hardly differs between the countries an indicator marks and the rest:
+
+| origin | depreciation > 10% (12m) | food imports > 15% | food inflation > 10% (lag 9) | reserves < 3 months |
+|---|---|---|---|---|
+| Dec 2020 | 0.50 (14) vs 0.51 | 0.45 vs 0.52 | 0.52 vs 0.49 | 0.61 vs 0.44 |
+| Dec 2021 | 0.55 (11) vs 0.52 | 0.50 vs 0.51 | 0.48 vs 0.50 | 0.66 vs 0.46 |
+
+Only low reserves separates the two groups, and only with the sign theory gives. A forecast that ranks countries well cannot reach these origins. What has to rise is the level at every place, and only world gauges move a level.
+
+### Food: the candidates
+
+z at December 2019 / 2020 / 2021. "Ceiling" is the causal fit of t65's two gauges (world food12 and food12 × food imports) plus the indicator, row-counted. It shows mean p at the 2020 and 2021 origins and Brier over 2003-22 (lag 18). Reference rows: t65-gauges as issued, 0.121 / 0.154, Brier 0.1521, cost 0.653. Climatology, 0.123 / 0.120, 0.1526, 0.720. t65's two gauges refitted, 0.141 / 0.258, 0.1468, 0.548.
+
+| indicator | mechanism | source (on disk unless marked) | lag | z 2019 / 2020 / 2021 | prior | ceiling p 2020 / 2021, Brier |
+|---|---|---|---|---|---|---|
+| world food 12m (IMF), t65's gauge | world prices pass through to domestic food prices (Furceri et al. 2016) | data/slow/series.tsv world food/price_index (FRED PFOODINDEXM) | 1 stated, 2-3 real (bug 1 below) | +0.23 / +0.56 / +1.44 | +0.3 | 0.141 / 0.258, 0.1468 (the reference) |
+| FAO Food Price Index 12m | the same, FAO's weights | **downloaded** data/raw/fao-fpi | 1 | +0.37 / +0.41 / +1.60 | +0.3 | 0.125 / 0.237, 0.1709 (in place of IMF) |
+| FAO food 6m and 3m change | momentum: a rise under way passes through in the next year | data/raw/fao-fpi | 1 | 6m +0.38 / **+1.53** / +0.45; 3m +0.79 / **+1.72** / +0.92 | +0.3 | 6m (in place of 12m): 0.176 / 0.124, 0.1643 |
+| FAO vegetable oils 12m and 6m | led the 2020 rise (palm and soy oil; biodiesel mandates, labour shortages on plantations) | data/raw/fao-fpi; Pink Sheet oils & meals index, data/raw/fast-pinksheet | 1 | 12m +0.72 / +1.01 / +1.47; 6m +0.97 / **+2.60** / +0.19 | +0.2 | sub-index set (cereals12, oils12, grains12 × imports, oils & meals12 × imports, in place of food12): **0.189** / 0.210, 0.1473 |
+| FAO cereals 12m; Pink Sheet grains 12m | staples, the largest share of poor households' food | data/raw/fao-fpi; data/raw/fast-pinksheet | 1 | cereals -0.30 / +0.85 / +0.94; grains +0.08 / +0.86 / +0.86 | +0.2 / +0.3 | in the sub-index set |
+| urea, DAP, fertilizer index 12m | input cost, passed to crop prices in 6-12 months (Baffes & Koh) | Pink Sheet (data/raw/fast-pinksheet; index also data/fast/series.tsv fast/fertiliser) | 1 | urea -0.95 / +0.18 / **+3.46**; DAP -1.62 / +1.09 / +1.97; index -0.90 / +0.15 / **+3.67** | +0.2 | index: 0.141 / **0.321**, 0.1471 (0.1673 at lag 9); urea: 0.140 / 0.282, 0.1468 |
+| Brent 12m | energy and transport costs, biofuel demand | series.tsv world energy/oil_brent | 0 | +0.35 / -0.94 / +0.99 | +0.2 | 0.153 / 0.257, 0.1618 |
+| shipping and supply chains (NY Fed GSCPI) | freight costs, delays | series.tsv world trade/supply_pressure | **none before January 2022** (bug 2) | +0.81 / +1.46 / +5.01 | +0.2 | 0.097 / 0.152, 0.1663 |
+| broad dollar 12m | a strong dollar raises local-currency prices | series.tsv world finance/usd_broad | 0 | -0.23 / -0.76 / +0.40 | +0.2 | 0.128 / 0.285, 0.1466 |
+| local currency vs USD, 12m | exchange-rate pass-through, larger for importers | data/fast/series.tsv fast/fx (BIS WS_XRU, monthly, 188 units) | 1 | median +0.29 / -0.24 / +0.52; share > 10%: 0.08 / 0.13 / 0.12 | +0.5, × imports +0.3 | 0.142 / 0.271, 0.1479 (with × imports the same) |
+| world median depreciation | the same, as a level | data/fast/series.tsv | 1 | +0.17 / -0.52 / +0.26 | +0.3 | 0.141 / 0.272, 0.1508 |
+| domestic food inflation, and its 6-month acceleration | persistence | series.tsv food/food_inflation (FAOSTAT) | 9 | median -1.10 / -0.29 / -0.72; acceleration +0.19 / +0.61 / -0.52 | +0.3 / +0.2 | 0.142 / 0.249, 0.1466; acceleration 0.140 / 0.258, 0.1469 |
+| headline CPI, monthly | persistence, monetary pressure | series.tsv economy/inflation_monthly (BIS, 61 countries) | 1 | median -0.75 / -1.98 / +1.80 | +0.2 | 0.129 / 0.274, **0.1462** |
+| broad money / GDP, 1 year | money growth | series.tsv finance/broad_money_gdp (WDI, annual) | 9 | -1.61 / -0.42 / +5.48 (2020's GDP fall in the denominator) | +0.2 | 0.139 / 0.269, 0.1470 |
+| food imports share | import dependence | series.tsv food/imports_share (WDI) | 9 | +0.70 / +0.51 / +2.99 | (in t65's product) | - |
+| reserves, months of imports | can the country pay for imports and hold its currency | series.tsv debt/reserves_months (WDI) | 9 | +0.40 / +1.21 / +3.78 | -0.2 | 0.141 / 0.261, 0.1472 |
+| export restrictions | exporters' bans raise world prices (Martin & Anderson 2012) | not on disk. IFPRI's trackers begin in April 2020 (COVID) and 2022 (food and fertilizer); no earlier history | - | - | - | cannot be standardized or learned causally |
+| ocean freight rates | import costs | not open: the Baltic Dry Index and container indexes (Drewry, Freightos) are proprietary. FRED's US deep-sea freight PPI is open but was not reachable from here | - | - | - | - |
+
+Combined sets (food12, food12 × imports, food 6m, fx12, fertilizer 12m, domestic food inflation): row-counted 0.153 / 0.284, Brier 0.1467, cost 0.605; origin-counted 0.161 / 0.322, 0.1562, cost **0.542**. Adding GSCPI and reserves, origin-counted: 0.165 / 0.341, 0.1717, cost 0.566. At flat N(0, 1) priors: t65's gauges 0.1469 (the same), combined 0.1507 (worse), combined with GSCPI 0.1643 (better than 0.1717, because the GSCPI's prior is what hurts). The catalogue's own lag (9 months; bug 3) in place of 18 changes no conclusion: t65's gauges 0.1490, combined origin-counted 0.1561.
+
+What the table says:
+- **December 2021 was reachable with what t65 already reads.** Refitted causally, t65's two gauges issue 0.26-0.28, against 0.154 issued. They alert 85-100% of countries (recall 0.88-1.00, against t65's 0.32). Brier 2003-22 falls from 0.1521 to 0.1468, and the cost from 0.653 to 0.548. The gauges were wired in t65, but the year node gives the model that reads them no weight (CALIBRATION 13: `:leading` 0.000 in 2010-22, all-inputs 1.00). The loss is in how the node weights its models, not in the gauges. Fertilizer prices (z +3.5 to +3.7) add the most at this origin (0.32).
+- **December 2020 was not reachable.** No set's mean p exceeds 0.19. The signals were short-horizon: food 6m z +1.5, 3m +1.7, vegetable oils 6m +2.6, Pink Sheet oils & meals 12m +1.6. The 12-month gauges were near normal, fertilizer was flat (+0.15), and the dollar was weak (-0.76), so depreciation was not the driver (median z -0.24). The best, the sub-indices, issues 0.189 on average and alerts 19% of countries.
+- **The cost of reaching it.** Every world-price set that rises at Dec 2020 rises more at Dec 2010: food12 +0.18 to +0.23, oils12 +0.41, against a rate of 0.114 (the 2011 world spike passed through to few countries at the 15% mark). The ceilings issue 0.39-0.81 there. The FAO 12m set's 0.807 at Dec 2010 is its whole Brier loss (0.1709). Brent and GSCPI lose the same way at 2009-10 (0.475-0.676). A prior strong enough to lift Dec 2020 to 0.2 alerts at Dec 2010 too. At 4:1 that is right on average over 2007, 2010 and 2020 (mean rate 0.31), but it is a choice from three episodes.
+- **Country gauges do not help this episode** (within-origin table above). Against t65's two gauges, domestic inflation, money and reserves move Brier by -0.0006 to +0.0004, the country exchange rate by +0.0011, and the world median depreciation by +0.0040. Headline CPI is the best (0.1462).
+
+### Growth 2020: what was knowable when
+
+| indicator | mechanism | source | lag | z Dec 2019 / Mar 2020 / Jun 2020 |
+|---|---|---|---|---|
+| VIX, log level | uncertainty shock cuts output (Bloom 2009) | series.tsv world finance/vix | 0 | -0.81 / **+3.43** / +1.57 |
+| VIX 3m / 12m change | the same, as a change | the same | 0 | 3m -0.48 / **+5.48** / -2.31; 12m -1.69 / **+3.96** / +1.89 |
+| BAA spread 12m | price of default risk (Gilchrist & Zakrajšek) | series.tsv USA finance/spread_baa | 0 | -0.39 / +1.47 / +0.65 |
+| US curve 10y-3m | recession signal | series.tsv USA finance/curve_10y3m | 0 | -1.27 / -1.01 / -1.01 |
+| Brent 3m / 12m | a demand collapse shows in oil (also a supply story: 2014) | series.tsv world energy/oil_brent | 0 | 3m +0.32 / **-4.02** / +1.13; 12m +0.35 / -2.31 / -1.46 |
+| commodities 12m | world demand | series.tsv world commodities/all_index | 1 | -0.39 / -0.57 / -1.55 |
+| US industrial production 12m | world demand, hard data | series.tsv USA economy/industrial_production (FRED INDPRO, revised) | 1 | -0.94 / -0.78 / **-4.49** |
+| US payrolls 3m | the same | series.tsv USA economy/payrolls (FRED PAYEMS, revised) | 1 | +0.12 / +0.31 / **-11.74** |
+| global policy uncertainty (EPU), log | uncertainty | series.tsv world uncertainty/policy | 1 | **+2.07** / +1.50 / +3.23 |
+| OECD CLI, 17 countries, level - 100 | business-cycle turning points | series.tsv economy/leading_indicator (heavily revised) | 1 | mean -0.47 / -1.3 / -7.1; share < -1: 0.24 / 0.35 / 0.94 |
+| confirmed COVID-19 cases | the pandemic itself | **downloaded** data/raw/owid-covid (WHO via OWID) | ~1 day | 31 Dec 2019: 0 anywhere (WHO was told of the Wuhan cluster that day); 31 Mar 2020: 195 locations with a case, 97 with ≥ 100, 688,753 total; 30 Jun: 175 locations with ≥ 100 |
+| US weekly jobless claims | the same, weekly | FRED ICSA (open; FRED did not respond from here, not fetched) | 5 days | 3.3 million in the week to 21 March 2020, 20 times any earlier week (public record, not computed here) |
+| world trade volume, world IP | world demand | CPB World Trade Monitor (open, monthly, about 8 weeks late); not fetched | ~2 months | - |
+| mobility | lockdowns | Google and Apple mobility reports (open, from February 2020); not fetched, no history before 2020 | days | - |
+
+**At December 2019 nothing was knowable.** Every gauge was at or below normal except policy uncertainty (+2.1, trade war) and a flat curve. No case had been reported. Section 2's ceilings issued 0.02-0.05 for the 2020-21 window. The year node's own `:up` inputs issued 0.03. The only honest input is a base rate for a pandemic that stops the world economy: two in about 110 years (1918, 2020), so about 1-2% a year, or 2-4% over the two-year window. At the 0.55 conditional rate that adds about 0.01-0.02 to p. Reaching 0.2 at December 2019 would mean alerting every country in every year.
+
+**In-year origins.** The growth catalogue is annual and dates an onset at January of the collapse year (bug 4). The 2020 collapses were therefore in the window of the September 2019 quarter-lead, which covers January to September 2020 (t65 issued 0.025, rate 0.552), and of no origin from December 2019 on. The December 2019 quarter-lead's rate is 0.000. To ask what March or June 2020 could have said, the ceiling below targets "onset in calendar year y". It reads gauges at month m of y and trains on years whose outcome was known (onset month + 18). The rows are countries at risk (no onset in the previous four years), 2,875 country-years 2003-22. In 2020, 90 of 155 had an onset (0.581).
+
+| origin | inputs (theory priors) | Brier 2003-22 | cost | p 2020 | alert share 2020 | 2020 slopes (intercept, slopes) |
+|---|---|---|---|---|---|---|
+| any | climatology | 0.0567 | 0.237 | 0.028 | 0 | -3.53 |
+| Dec 2019 | t65's leading gauges (BAA12 +0.4, curve -0.3, VIX12 +0.3) | 0.0561 | 0.237 | 0.011 | 0 | |
+| Dec 2019 | EPU + VIX3 (+0.2, +0.3) | 0.0593 | 0.284 | 0.047 | 0 | |
+| Mar 2020 | t65's leading gauges | 0.0545 | 0.237 | 0.040 | 0 | -3.84, +0.77, +0.29, +0.01 |
+| Mar 2020 | VIX level + VIX3 | 0.0560 | 0.237 | 0.037 | 0 | -3.75, +0.58, **-0.32** |
+| Mar 2020 | VIX3 + Brent3 (-0.2) + US IP12 (-0.4) | 0.0542 | 0.237 | 0.069 | 0 | -3.78, -0.04, -0.19, -0.60 |
+| Mar 2020 | VIX3 + US IP12 + payrolls3 (-0.4) + country CLI3 (-0.3) | 0.0561 | 0.234 | 0.022 | 0.01 | |
+| Jun 2020 | VIX level + VIX3 | 0.0499 | 0.237 | 0.159 | 0 | |
+| Jun 2020 | VIX3 + US IP12 + payrolls3 | 0.0679 | 0.153 | **0.257** | 1.00 | -3.79, +0.07, -0.44, -0.21 |
+| Jun 2020 | VIX3 + Brent3 + US IP12 | **0.0474** | **0.134** | **0.210** | 1.00 | -3.77, +0.04, -0.01, -0.61 |
+| Jun 2020 | VIX3 + US IP12 + payrolls3 + country CLI3 | 0.0664 | 0.153 | **0.289** | 0.99 | |
+
+- **End of March 2020: the markets had moved, but nothing learnable said "collapse".** VIX z +3.4, its 3-month change +5.5, Brent -4.0, cases in 195 locations. Causal ceilings issue 0.02-0.07. The one precedent in the gauges' span, 2009, teaches the wrong slopes. By March 2009 the VIX was falling from its November 2008 peak, so VIX3 learns a negative slope (-0.32) and the March 2020 jump counts against collapse. Oil's 2014 fall was supply, and a December origin reading Brent3 issues 2015 false alarms (Brier 0.333). US IP and payrolls had not moved yet: the February data was the newest. Cases have no history (zero in every training year), so their slope cannot be learned at all. Only a prior from theory could act on them.
+- **End of June 2020: hard data was enough.** US IP12 z -4.5, payrolls -11.7, 94% of the OECD CLIs below -1. Theory-signed ceilings issue 0.21-0.29, alert every country, and lower the 4:1 cost over 2003-22 from 0.237 to 0.13-0.15. This is a nowcast of a year already half over, not anticipation. Brier rises where payrolls enter (0.068), from false alarms in other years.
+- **A monthly or quarterly growth-collapse outcome is not possible from data on disk.** Industrial production is US only (FRED INDPRO), the OECD CLI covers 17 countries (an indicator, revised, not an outcome), and unemployment is monthly only for the US. Open sources:
+  - OECD quarterly national accounts: the 38 members plus about 10 partners. That covers 37 of the 90 countries with a 2020 onset, all 30 OECD members among them, plus ARG, BGR, HRV, IDN, IND, SAU and ZAF.
+  - IMF IFS quarterly GDP: wider emerging-market coverage, count not checked here.
+  - UNIDO monthly industrial production (about 50 countries); the CPB World Trade Monitor (regions, not countries).
+  - Most of Africa, the Caribbean and the small states have annual GDP only. A rule like the annual one (two sd below the last 15-20 years) needs that many years of quarterly history.
+
+  A quarterly outcome is buildable for about half the 2020 set at best, with a new catalogue, its own lag (GDP about 2 months late, then revised), and a 15-year burn-in.
+
+### Bugs and leaks in what the model reads (not fixed)
+
+1. **The IMF food index (and every FRED IMF commodity series) is dated one month earlier than it was known.** scripts/slow-normalize.py:230 gives every monthly FRED series availability +1 month (0 for daily means). data/raw/slow/fred/PFOODINDEXM.csv, fetched 16 October 2026, ends in July 2026, and PALLFNFINDEXM and PWHEAMTUSDM are the same. So FRED carries the IMF series 2.5 months or more behind, and +1 reads the November value at a December origin when September's or October's was the newest. The model reads it at tools/bnm/named.clj:149 (food and growth quarter, `:world-food12`, and the three products), :182 (the t65 `:leading` gauge) and :245 (structure). The lookahead is small (a 12-month change read 1-2 months early), but it is a lookahead in the gauge that t65's food priors rest on. Its default staleness is 30 months (named.clj:79), so a stopped IMF series would keep being read. The Pink Sheet food index (data/fast/series.tsv fast/food, verified one month: the 2 October edition holds September) and the FAO index (released on the first Friday) carry the same information on time.
+2. **The GSCPI is on disk as if published monthly since 1998.** scripts/slow-normalize.py:788 gives it availability +1, but the NY Fed first published it in January 2022 and re-estimates its history with each release (a principal component). Before 2022 it is backcast, not known. No lattice model reads it (only tools/bnm/readings.clj:24, as a freshness check), but section 1's note "supply pressure z +5.0" at Dec 2021 was not knowable at that origin, and the ceilings above that use it are not real time. The OECD CLI (slow-normalize.py:612, +1) is likewise revised and amplitude-adjusted ex post. It is read nowhere in the lattice.
+3. **The food catalogue's resolution lag is twice the data's.** tools/bnm/economic_events.clj:193 (`read-catalogues`) sets `:known-lag 18` for every kind. Food onsets are dated at the month whose data show them (`quarterly-food-onsets`, :98-106), and that data is out 9 months later (`food-publication-lag`, :120-129; `--food-outcomes monthly` uses 9). The annual year-row lag is applied to a monthly-dated catalogue, so food rows reach the node 9 months later than they could. This is conservative, not a leak. In the ceilings it changes nothing material (0.1468 → 0.1490 for t65's gauges).
+4. **Growth onsets are dated at January of the collapse year.** tools/bnm/economic_events.clj:171-173 (`catalogue`, `(* 12 x)`) dates them so, and they stay busy for 12 months. A collapse that the year's data shows is placed at the year's first month, before most of it happened, so no origin after December of the year before can target it. For 2020 that is the September 2019 quarter-lead. No quarter origin in 2020 can forecast or nowcast it, so the route that section 2 hoped quarter nodes would give does not exist for growth. This is a design limit of an annual catalogue, not a coding error. Dating at the year's middle would at least let the December and March origins see it, and an in-year outcome (above) needs a sub-annual catalogue.
+5. **Not bugs, checked:**
+   - Domestic food inflation is read at its 9-month lag (series.tsv availability +9 for every FAOSTAT row; the year row at stale 18, political_gauges.clj:150; the quarter at 30, named.clj:152).
+   - WDI shares are read at +9.
+   - Brent, VIX, BAA and the curve are read in the same month, the month's mean of daily quotes, with a partial month dropped (slow-normalize.py:226-228).
+   - Late food rows that are unresolved (81 of 165 at Dec 2022) are countries with an onset in the previous year, not at risk; they are not dropped by outcome.
+
+### Recommendations, ranked
+
+1. **Food: make the year node use the gauges it already has** (CALIBRATION 13). t65's world food12 and food12 × imports, refitted causally with the section's priors, issue 0.26-0.28 at Dec 2021 and cut the 4:1 cost from 0.653 to 0.548 over 2003-22. Nothing new needs to be read for this.
+2. **Food: fertilizer prices, 12-month change** (Pink Sheet index or urea), prior +0.2 sd 0.25, at the food year and quarter-lead nodes. Mechanism: input costs reach crop prices in 6-12 months. It is the strongest gauge at Dec 2021 (z +3.7, ceiling 0.32) and costs nothing elsewhere at lag 18. Read it from the Pink Sheet, which is on disk and on time.
+3. **Food: short-horizon momentum and the vegetable-oil and cereal sub-indices** (FAO, downloaded; or the Pink Sheet oils & meals and grains indices on disk), prior +0.2 to +0.3. These were the only signals present at Dec 2020 (oils 6m z +2.6), and they lift that origin to 0.18-0.19, the most any set reaches. The risk is Dec 2010, where they alarm at a rate of 0.11. Read them in place of the IMF index, which is late (bug 1).
+4. **Food, country level, low priority:** headline CPI monthly (BIS, +0.2), domestic food inflation (+0.3), and reserves (-0.2, the one country gauge that separates within 2020-21). Each moves Brier by under 0.001. Depreciation (BIS monthly on disk, +0.5) is theory's strongest country channel, but it shows nothing in this episode (the dollar fell in 2020). Keep it for idiosyncratic shocks. Do not wire Brent, money or the GSCPI.
+5. **Growth: a sub-annual outcome before any new gauge.** With the annual catalogue dated at January, no 2020 origin can carry COVID. With an in-year outcome, US IP and payrolls (and country CLIs where they exist) at quarter origins issue 0.21-0.29 by June 2020. Priors: IP12 -0.4, payrolls3 -0.4, CLI3 -0.3, VIX3 +0.3. An outbreak gauge (cases per million, or a lockdown index) has no history and must enter on a prior alone, so it should be read only as a rare-event switch with a stated prior, not learned.
+
+**What cannot be done:**
+- Growth at December 2019: no data held or open was unusual, and a pandemic base rate adds about 0.01-0.02.
+- Food at December 2020 at 0.2 without also alarming at December 2010. Most of its window's shocks came 15-21 months later, after an invasion no gauge could see.
+- Export restrictions and ocean freight as gauges: there is no history to learn from, or the data is not open.
+
+**Data downloaded:**
+- data/raw/fao-fpi (FAO Food Price Index and sub-indices, CC BY-NC-SA 3.0 IGO).
+- data/raw/owid-covid (WHO cases via OWID, CC BY 4.0).
+
+Both have a SOURCE.txt. FRED ICSA and the CPB World Trade Monitor were not reachable from here.
