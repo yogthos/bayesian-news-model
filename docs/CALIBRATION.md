@@ -1446,3 +1446,134 @@ The ledger and golden tests pass, and the whole suite is green: 1388 tests, 0 fa
 - **The cost.** False alarms from VIX12 after crashes and from the 2022 curve (loss 1). These are §13's known approach limits, now reaching every model.
 - **`--lead-std history` can now be adopted with it:** the weight lock no longer decides the 2008 crash.
 - **Adoption** is the user's decision. Every option stays off by default.
+
+## 18. Frailty grid and climatology prior: t74-sigma, t75-clim (bnm-02u, bnm-56c.26)
+
+Two tests on the base of record, t71-stack, both approved before any run. Neither passes, so the combined run (t76-both) was not made.
+
+### A. The σ grid past 1 (bnm-02u)
+
+Every year node's frailty chose σ = 1.0, the top of the default `:sds` (§16 loss 4, §17 loss 4). The design is docs/RECURSIVE.md step 3e, written and committed (941f650) before the run:
+- `:frailty {:sds :wide}` = [0, 0.25, 0.5, 1, 1.5, 2, 3], every non-zero σ at the same 2 nats. The default is unchanged.
+- Above σ = 1 the five-point Hermite rule errs by up to 10% in the forecast at σ = 3, and Laplace's marginal by up to 0.07 nats an origin, toward the larger σ on quiet origins. So a state above 1 is integrated by twenty points and its candidate scored by adaptive Gauss-Hermite. At σ ≤ 1 both are as before.
+- Tests (lattice_test bnm-02u-*): the grid; the twenty-point rule's moments; the forecast at σ = 3 within 0.2% of a 4000-step trapezoid from base log odds −8 to 2; the score within 0.002 nats on one row, quiet and busy batches and q > 0; Laplace and five points unchanged at σ ≤ 1; a planted shock of sd 3 chooses 1.0 on the default grid and above 1 on the wide one; no shock still chooses 0. Suite: 1398 tests, 0 failures (data/runs/logs/suite-t74.log).
+
+**t74-sigma** = t71-stack's command with `:frailty {:sds :wide}`, all 13 kinds (data/runs/logs/run-t74-sigma.log).
+
+**σ chosen** at the year country node, 2003-22 (t71-stack: 1.0 at all of these; score-t74-sigma-by-node.txt has every node and scale):
+
+| kind | t74-sigma (ρ) |
+|---|---|
+| growth collapses | 3.0 at every origin since 1874 (ρ 0.8) |
+| food | 3.0 (2008-19, ρ 0 to 2017), 2.0 (2020-21) |
+| market crashes | 2.0 (ρ 0) |
+| banking crises | 1.5 (ρ 0.8; 2.0 in 1995-98) |
+| coup | 1.0 since 1979; 3.0 in 1877-1939, 2.0 and 1.5 after |
+| sovereign defaults, inflation | 1.0 |
+| fiscal consolidation, conflict, war, protest, violence, currency | as t71-stack (0-1.0) |
+
+The quarter country nodes moved to 1.5-2.0 almost everywhere. So the grid did truncate. But growth collapses and food now sit at the new top, 3.
+
+**Scores against t71-stack**, year nodes (90% intervals; score-t74-folds/world-vs-t71-stack.txt):
+
+| fold | Brier | log |
+|---|---|---|
+| 2003-06 | -0.0006 [-0.0058, +0.0033] | -0.0001 [-0.0119, +0.0102] |
+| 2007-09 | -0.0073 [-0.0104, +0.0016] | -0.0148 [-0.0204, +0.0029] |
+| 2010-12 | +0.0021 [-0.0002, +0.0041] | +0.0050 [-0.0025, +0.0117] |
+| 2013-19 | +0.0029 [+0.0016, +0.0048] | +0.0085 [+0.0035, +0.0149] |
+| 2020-22 | -0.0026 [-0.0064, +0.0010] | **-0.0222 [-0.0350, -0.0068]** |
+| pooled | +0.0006 [-0.0015, +0.0023] | +0.0005 [-0.0054, +0.0063] |
+
+No pooled gain, and the log score loses 2020-22. **Not accepted.** By kind (Brier): market crashes +0.0138 [-0.0114, +0.0363], food -0.0078 [-0.0201, +0.0013], sovereign +0.0005 GAIN, inflation +0.0003 GAIN, banking -0.0002 (log -0.0027, a loss), growth +0.0004 (score-t74-kind-folds.txt).
+
+**Alerts at 4:1** (cost per row, + = t74 cheaper): market crashes +0.234 [+0.108, +0.379] GAIN, food -0.057 [-0.153, +0.018], growth -0.015, fiscal -0.018, pooled +0.0114 [-0.0028, +0.0255]. Episodes caught: 7 of 21, against 8. Lost: food 2021. Market crashes now alert on 50.8% of rows (82.3% before), at a 44.7% false-alarm rate.
+
+### B. The climatology prior (bnm-56c.26)
+
+`--clim-prior kinds` (7ad4263, opt-in): a node with nothing of its own resolved takes the resolved counts of the other kinds at its scale and level, instead of an even 0.5. It reads the other kinds' state, so all 13 kinds were run. **t75-clim** = t71-stack's command + `--clim-prior kinds`. The forecasts of banking, conflict, fiscal, growth, sovereign and war are byte-identical to t71-stack's. Their catalogues start in the 1870s with every other kind's, so their nodes never issue before a resolved outcome while another kind has one. Coup, currency, food, inflation, market crashes, protest and violence change.
+
+t52a-climprior's runaway (food year p 0.98 at 2012) does not recur. It was the intercept learned against the low prior offset, and `:clim-learn :current` (bnm-56c.27, in the base since) re-anchors those rows.
+
+| fold | Brier | log |
+|---|---|---|
+| 2003-06 | +0.0081 [+0.0041, +0.0120] | +0.0182 [+0.0085, +0.0283] |
+| 2007-09 | -0.0007 [-0.0015, +0.0009] | -0.0017 [-0.0042, +0.0023] |
+| 2010-12 | **-0.0005 [-0.0008, -0.0001] LOSS** | -0.0013 [-0.0022, -0.0002] |
+| 2013-19 | -0.0003 [-0.0007, +0.0001] | -0.0012 [-0.0025, +0.0002] |
+| 2020-22 | **-0.0031 [-0.0041, -0.0020] LOSS** | -0.0119 [-0.0169, -0.0060] |
+| pooled | +0.0011 [-0.0005, +0.0030] | +0.0015 [-0.0024, +0.0065] |
+
+**Fails the fold rule** (2010-12, 2020-22). By kind (Brier): food +0.0130 [-0.0029, +0.0303], market crashes +0.0023, violence -0.0009, inflation -0.0004 (log -0.0044), others within ±0.0002 (score-t75-kind-folds.txt). Alerts: pooled +0.0035 [-0.0055, +0.0140]; 7 episodes caught, against 8. Lost: food 2006, whose catch at 0.547 was the uninformed 0.5.
+
+### Calibration and the outliers
+
+Country year, December origins, mean p / Brier (score-t74-t75-outliers-calibration.txt):
+
+| kind | span | rate | t71-stack | t74-sigma | t75-clim |
+|---|---|---|---|---|---|
+| market crashes | 2003-22 | 0.178 | 0.304 / 0.1415 | 0.216 / **0.1277** | 0.303 / 0.1392 |
+| market crashes | 2006-07 | 0.957 | 0.463 / 0.2917 | 0.337 / 0.4287 | 0.472 / 0.2798 |
+| market crashes | 2010-12 | 0.080 | 0.237 / 0.1125 | 0.167 / 0.0906 | 0.246 / 0.1167 |
+| market crashes | 2018-22 | 0.123 | 0.346 / 0.1741 | 0.247 / 0.1262 | 0.361 / 0.1813 |
+| food | 2003-22 | 0.154 | 0.229 / 0.1449 | 0.189 / 0.1527 | 0.152 / **0.1319** |
+| food | 2003-06 | 0.209 | 0.493 / 0.2390 | 0.493 / 0.2390 | 0.186 / **0.1590** |
+| food | 2010-12 | 0.060 | 0.224 / 0.0903 | 0.183 / 0.0798 | 0.224 / 0.0903 |
+| food (carried calm) | 2020-22 | 0.415 | 0.174 / 0.3040 | 0.060 / 0.3697 | 0.114 / 0.3343 |
+| growth | 2003-22 | 0.118 | 0.092 / 0.0999 | 0.119 / 0.0995 | = t71 |
+| growth (carried calm) | 2007-08 | 0.219 | 0.119 / 0.1790 | 0.179 / 0.1707 | = t71 |
+| banking | 2003-22 | 0.032 | 0.045 / 0.0322 | 0.046 / 0.0324 | = t71 |
+| banking (carried calm) | 2006-07 | 0.158 | 0.024 / 0.1496 | 0.021 / 0.1506 | = t71 |
+
+| episode (rate) | t71-stack | t74-sigma | t75-clim |
+|---|---|---|---|
+| food 2006 (0.418) | 0.547 | 0.547 | 0.238 |
+| food 2007 (0.313) | 0.310 | 0.310 | 0.310 |
+| food 2010 (0.114) | 0.264 | 0.264 | 0.264 |
+| food 2020 (0.493) | 0.153 | 0.053 | 0.076 |
+| food 2021 (0.500) | 0.227 | 0.060 | 0.167 |
+| market crashes 2006 (0.957) | 0.382 | 0.276 | 0.416 |
+| market crashes 2007 (0.957) | 0.542 | 0.398 | 0.528 |
+| growth 2007 (0.235) | 0.111 | 0.165 | 0.111 |
+| growth 2008 (0.202) | 0.129 | 0.193 | 0.129 |
+| growth 2019 (0.571) | 0.055 | 0.108 | 0.055 |
+
+The carried calms: t74 moves growth 2007-08 toward the rate (0.119 → 0.179), but it carries food's calm deeper into 2020-22 and leaves banking 2006-07 as it was. t75 leaves growth and banking alone (identical) and also carries food's calm further.
+
+### Why: the losses traced (PLAN principle 9)
+
+1. **t74: σ is a level knob through the half variance (food 2020-22 -0.066, market crashes 2007-09 -0.102, and the calm-year gains).** Step 3e's table predicted this. The shift applied is z − σ²/2, so the expected odds are the base's, but in probability a non-rare base is deflated: 0.20 → 0.169 at σ = 1, 0.102 at σ = 2 and 0.046 at σ = 3.
+   - The year nodes issue 24 months plus the lag after their last filtered origin. Where the chosen ρ is 0 (market crashes at every origin since 2003, food in 2008-17), the issued prior is the stationary N(−σ²/2, σ²) whatever was filtered. The frailty then brings no information to the forecast, only the deflation and the spread. In t71-stack this is already true at σ = 1 (market crashes ρ 0 throughout), only milder.
+   - The score prefers the larger σ because the deflation fits the calm years, which are most of the origins. Market crashes 2010-12 0.1125 → 0.0906 and 2013-19 +0.036, against the 2006-07 crash: 0.382/0.542 → 0.276/0.398, Brier 0.29 → 0.43.
+   - Food: σ = 3 from 2008. The filtered state sits at m ≈ +3 for 2013-19 (applied m − 4.5 ≈ −1.5: a persistent calm level that a ρ = 0 transient cannot carry). By Dec 2020 the node issues from σ = 3, ρ = 0.8, the 2018 state run forward: shift about −2.7 with sd 2.3, so 0.053 against a rate of 0.493.
+   - Growth's year country node at σ = 3 from the first origin is the opposite case. Growth is rare at the year (0.1), so the deflation is small, and the spread lifts 2007-08 and 2019 (0.111 → 0.165, 0.055 → 0.108). But it loses 2003-06, 2010-12 and 2020-22 (Brier LOSS in each, -0.003 to -0.008).
+   - Banking (log -0.0027): σ 1.5 with ρ 0.8 carries the 2003-04 calm into 2006-07 harder (0.024 → 0.021), §7's persistence.
+
+   Verdict: **not a code bug; a defect of the mean-one rule that the wide grid exposes** (bead bnm-0fe). With σ ≤ 1 the knob is small. Past 1 the grid chooses σ for its level, not for the shock, and a top at 3 is chosen again. The fix is a shift with mean one in probability (place-dependent, through the quadrature), or a level state for the calm, or both. It changes the default at every σ, so it needs a decision and is not made here.
+2. **t75, food 2020-22 (-0.030) and 2013-19: the year-quarter loop.** The prior lowers the year node's 2003-06 forecasts from 0.5 to 0.17-0.24 (food 2003-06 +0.080 GAIN, the bug's fix). The quarter-lead node takes its offset from the year's downscaled forecast, so its intercept is now learned against a 0.15-0.2 offset instead of 0.4-0.5, and it is less negative.
+   - With 2007's quarter shock (rate 0.26) in it, quarter-lead issues 0.11-0.13 through the 2008-13 calm (rates 0.01-0.06), against t71-stack's 0.03-0.06.
+   - t71-stack's calm quarter was right for a wrong reason: an intercept pushed down by the uninformed year 0.5.
+   - The year node's all-inputs model reads the quarter state (`:up`), so it issues higher in the calm. It loses weight to economy (2019: all-inputs 0.19, against 0.64 in t71-stack). Its year frailty chooses ρ 0.8 with a lower state in 2015-21, and Dec 2020 issues 0.076 against 0.153.
+
+   Verdict: **approach.** The quarter node learns a level against a downscale it cannot separate from its own intercept (bnm-56c.26's note named this loop). No bug.
+3. **t75, market crashes 2010-12 and 2020-22 (-0.004, -0.010), inflation 2007-09 (-0.004), currency 2003-06: the averaging's path.** These kinds' catalogues start in the 1960s-80s, so their nodes issued decades of rows before their first outcome. The other kinds' prior changes those rows' offsets, so it changes the models' evidence at those rows and hence the weights for decades.
+   - Market crashes 2005: `:down` 0.51 and fiscal 0.43, against 0.75 and 0.21.
+   - Inflation 2008: exposure 0.48 and all-inputs 0.40, against all-inputs 0.97; 2007-08 issues 0.066/0.052 against 0.038/0.024 at a rate of 0.01.
+   - The same path also gives market crashes 2003-06 +0.025 GAIN.
+
+   Verdict: **sequencing.** The weight-lock path (§7) amplifies any early change. No bug.
+
+Bugs: none found in either option. The forecast's integral and the candidate's score were both checked against fine quadrature, and the vector candidate's one-dimensional marginal matches augur's vector Laplace to 1e-15 (and departs from quadrature by up to 0.07 nats at σ = 3, as the scalar does).
+
+### Reproduction
+
+- **t71-stack.** t75-clim was run on this code with the default grid. Its six unchanged kinds are byte-identical to t71-stack, banking (the scalar frailty) and growth collapses (the gauged vector frailty at the year node) among them. The new code is reached only through a state above σ = 1, which the default grid cannot hold.
+- **2026-Q4-r1.** Its command has no `:frailty`, so `with-frailty` and `shared-ll` are unreachable.
+- **The suite,** with the ledger and golden tests: 1398 tests, 0 failures.
+
+### Verdict
+
+- **A (t74-sigma).** The grid did truncate: the year nodes move to 1.5-3. But the larger σ is chosen as a calm-level knob through the half variance, not for the shocks. It gains the calm years and market crashes' alerts, and loses the 2006-07 crash, food 2020-22 and the log score in 2020-22, with no pooled gain. Not accepted. The finding for the base of record: at ρ = 0 the year frailty adds no information to the forecast, only a deflation (σ = 1: 0.20 → 0.17). The mean-one fix (bnm-0fe) comes before a wider grid can be judged.
+- **B (t75-clim).** It removes the uninformed 0.5 (food 2003-06 Brier 0.239 → 0.159, food 2003-22 0.1449 → 0.1319). It fails the fold rule in 2010-12 and 2020-22, through the year-quarter loop at food and the averaging's path at the late-catalogue kinds. Not accepted.
+- **t76-both** was not run: neither passes.
+- Both options stay off by default. Adoption is the user's decision.
