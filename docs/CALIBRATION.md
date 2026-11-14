@@ -1560,7 +1560,9 @@ The runs showed no bugs.
 
 With the option off:
 - t71-stack's command for banking (t79-off) gives its forecasts, preds, weights and frailty byte for byte.
-- REPRO-PLACEHOLDER
+- 2026-Q4-r1 reproduces byte for byte through `bnm.ledger/reproduce-issue!` (8556 lines, forecasts sha bdb361c8…).
+
+The whole suite is green: 1403 tests, 0 failures.
 
 ### Verdict
 
