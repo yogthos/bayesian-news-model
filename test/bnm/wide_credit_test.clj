@@ -131,4 +131,26 @@
   (is (false? (wr/wide-credit-choice {:wide-credit "false"})))
   (is (true? (wr/wide-credit-choice {:wide-credit "true" :dated-credit "true"})))
   (is (thrown? Exception (wr/wide-credit-choice {:wide-credit "true"})) "needs --dated-credit true")
-  (is (thrown? Exception (wr/wide-credit-choice {:wide-credit "yes" :dated-credit "true"}))))
+  (is (thrown? Exception (wr/wide-credit-choice {:wide-credit "yes" :dated-credit "true"})))
+  (is (= :bank (wr/wide-credit-choice {:wide-credit "bank" :dated-credit "true"})) "bank credit for the credit input"))
+
+(deftest bank-credit-for-the-credit-input
+  ;; --wide-credit bank: the credit input outside the panel from the BIS's
+  ;; bank credit (JST's concept), growth by the panel's ratio of JST's
+  ;; loans to the BIS's bank credit; household credit and house prices as
+  ;; under true
+  (let [q (fn [vs] (sk/series (for [[y v] vs] [(+ (* 12 y) 11) (+ (* 12 y) 15) v])))
+        years (range 1980 2011)
+        rows (jst-rows "AAA" 1.0)
+        all-lender (into {} (for [y years] [y (+ 300.0 (* 8.0 (- y 1980)) (* 9.0 (wiggle 2 y)))]))
+        bank (into {} (for [y years] [y (+ 60.0 (* 0.5 (- y 1980)) (* 4.0 (wiggle 6 y)))]))
+        aaa-bank (into {} (for [r rows] [(:year r) (* 100.0 (/ (:tloans r) (:gdp r)))]))
+        db {["XXX" "finance/credit_gdp"] (q all-lender)
+            ["XXX" "finance/household_credit_gdp"] (q (for [y years] [y (+ 40.0 (* 3.0 (wiggle 4 y)))]))}
+        w (lb/wide-credit-values db rows #{"AAA" "XXX"} {:bank {"XXX" bank "AAA" aaa-bank}})
+        v (vec (for [y (range 1870 2011)] (get bank y)))]
+    (is (close? (iv/stretch v (- 2008 1870) 10 6) (get-in w [["XXX" 2008] :specific :credit])))
+    (is (close? (* 0.01 (- (bank 2008) (bank 2005))) (get-in w [["XXX" 2008] :growth :credit]))
+        "JST's loans are the BIS's bank credit here: the ratio is a percentage's")
+    (is (= (get-in (lb/wide-credit-values db rows #{"AAA" "XXX"}) [["XXX" 2008] :specific :mortgages])
+           (get-in w [["XXX" 2008] :specific :mortgages])))))

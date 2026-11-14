@@ -581,13 +581,15 @@
   "--wide-credit true (with --dated-credit true): the banking node's credit,
   household credit and house-price inputs for the countries outside the
   Macrohistory panel too, from the BIS by the same transforms and lag
-  (bnm.lattice-banking/wide-credit-values). Off by default."
+  (bnm.lattice-banking/wide-credit-values); bank, the credit input from
+  the BIS's bank credit (JST's concept) in place of all lenders'. Off by
+  default."
   [{:keys [wide-credit] :as opts}]
-  (when (and wide-credit (not (#{"true" "false"} wide-credit)))
-    (throw (ex-info (str "bnm.world-run: --wide-credit takes true or false, not " wide-credit) {})))
-  (when (and (= "true" wide-credit) (not (dated-credit-choice opts)))
-    (throw (ex-info "bnm.world-run: --wide-credit true needs --dated-credit true" {})))
-  (= "true" wide-credit))
+  (when (and wide-credit (not (#{"true" "false" "bank"} wide-credit)))
+    (throw (ex-info (str "bnm.world-run: --wide-credit takes true, bank or false, not " wide-credit) {})))
+  (when (and (#{"true" "bank"} wide-credit) (not (dated-credit-choice opts)))
+    (throw (ex-info (str "bnm.world-run: --wide-credit " wide-credit " needs --dated-credit true") {})))
+  (case wide-credit "true" true "bank" :bank false))
 
 (defn options
   "The options of bnm.world-run `args`: {:out \"x\" ...}, values as given."

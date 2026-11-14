@@ -35,6 +35,7 @@
             [bnm.macrohistory :as mh]
             [bnm.named :as nm]
             [bnm.onsets :as on]
+            [bnm.paths]
             [bnm.releases :as rel]
             [bnm.slow-train :as st]
             [clojure.java.io :as io]
@@ -692,19 +693,36 @@
   year's December quarter; three-year credit growth in JST's units by the
   panel's median ratio (bnm.macrohistory/panel-scale). An input whose BIS
   history is too short for its transform is nil, so the country keeps the
-  world's inputs alone there."
-  [db jst-rows units]
+  world's inputs alone there.
+
+  opts :bank ({iso {year value}}, `read-bank-credit`; --wide-credit bank):
+  the credit input from the BIS's bank credit, JST's concept, in place of
+  credit from all lenders, which at a financial centre is mostly non-bank
+  and cross-border corporate debt; growth by the panel's ratio of JST's
+  loans to it."
+  ([db jst-rows units] (wide-credit-values db jst-rows units {}))
+  ([db jst-rows units {:keys [bank]}]
   (let [jst-isos (set (map :iso jst-rows))
-        scale (mh/panel-scale jst-rows (jst-bis db jst-isos) dated-from)
+        scale (mh/panel-scale jst-rows (if bank
+                                         (into {} (for [u jst-isos] [u {:credit (get bank u)}]))
+                                         (jst-bis db jst-isos))
+                              dated-from)
         bis (into {} (for [u (sort (remove jst-isos units))
-                           :let [m {:credit (some-> (db [u "finance/credit_gdp"]) q4-annual)
+                           :let [m {:credit (if bank (get bank u) (some-> (db [u "finance/credit_gdp"]) q4-annual))
                                     :mortgages (some-> (db [u "finance/household_credit_gdp"]) q4-annual)
                                     :house-prices (some-> (db [u "finance/real_house_prices"]) q4-annual)}]
                            :when (some seq (vals m))]
                        [u m]))]
     (into {} (for [[[_ y] :as e] (mh/dated-inputs nil bis dated-from {:dims bis-dimensions :scale scale})
                    :when (>= y dated-from)]
-               e))))
+               e)))))
+
+(defn read-bank-credit
+  "{iso {year value}}: the BIS's bank credit to the private non-financial
+  sector, % GDP, fourth quarters (scripts/bis-bank-credit.py)."
+  []
+  (reduce (fn [acc l] (let [[iso y v] (str/split l #",")] (assoc-in acc [iso (parse-long y)] (parse-double v))))
+          {} (rest (str/split-lines (slurp (str bnm.paths/derived "bis-bank-credit.csv"))))))
 
 (defn build
   "The banking lattice's spec to month `end`, from the data on disk, with
@@ -716,7 +734,8 @@
   :dated-credit, the credit-family inputs from the BIS from the December
   2003 origin (bnm-9vm option A, `dated-from`); :wide-credit (with it),
   the same and house prices for the countries outside the panel
-  (`wide-credit-values`)."
+  (`wide-credit-values`; :bank, the credit input from the BIS's bank
+  credit)."
   ([end known-run] (build end known-run {}))
   ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit wide-credit]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
@@ -727,8 +746,9 @@
                        [[(:iso r) (:year r)] r]))
         cat (cond-> (catalogue jst-rows) catalogue-through (assoc :unknown-past-through true))
         units (set (filter #(first (geo/parents %)) (keys (:onsets cat))))
+        dated (cond-> dated (and dated wide-credit)
+                (update :values merge (wide-credit-values db jst-rows units (if (= :bank wide-credit) {:bank (read-bank-credit)} {}))))
         ;; the quarter nodes' origins: the last month of each quarter
-        dated (cond-> dated (and dated wide-credit) (update :values merge (wide-credit-values db jst-rows units)))
         months (range (+ start 2) (inc end) 3)
         wc (nm/world-credit db units months)
         ext (extended-table jst-rows (read-pwt) db units (read-annual)
