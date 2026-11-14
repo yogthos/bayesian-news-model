@@ -188,6 +188,31 @@
   households, of which mortgages are most)."
   [:credit :mortgages])
 
+(defn- jst-to-bis
+  "JST's mean credit to GDP over the BIS's over the ten years to `from`
+  for country `c` (both known then, at least five years of each), or nil."
+  [jst-credit c bis-credit from]
+  (let [both (keep (fn [y] (when-let [j (get jst-credit [c y])] (when-let [b (get bis-credit y)] [j b])))
+                   (range (- from 9) (inc from)))]
+    (when (>= (count both) 5)
+      (/ (/ (reduce + (map first both)) (count both)) (/ (reduce + (map second both)) (count both))))))
+
+(defn- jst-credit-of [jst-rows]
+  (into {} (for [r jst-rows :let [v (div (:tloans r) (:gdp r))] :when v] [[(:iso r) (:year r)] v])))
+
+(defn panel-scale
+  "The median over the JST countries of `jst-to-bis` (`bis` {iso {:credit
+  {year value}}}): what three-year growth of the BIS's credit is in JST's
+  units for a country without a JST series (--wide-credit). The JST
+  countries' own ratios run 0.0038-0.0087 (BIS total credit at 1.2-2.6
+  times bank loans); the median, 0.0059, is the panel's typical one."
+  [jst-rows bis from]
+  (let [jc (jst-credit-of jst-rows)
+        ks (vec (sort (keep (fn [c] (jst-to-bis jc c (get-in bis [c :credit]) from)) (distinct (map :iso jst-rows)))))
+        n (count ks)]
+    (when (pos? n)
+      (if (odd? n) (ks (quot n 2)) (/ (+ (ks (dec (quot n 2))) (ks (quot n 2))) 2.0)))))
+
 (defn dated-inputs
   "{[iso year] {:specific {dim z} :short {dim z} :long {dim z} :flow {dim
   z} :growth {:credit g} :gap {:credit-gap-z z}}}: each of
@@ -198,33 +223,38 @@
   one-sided gap in units of its own past gaps. Three-year growth is not
   scale free: the BIS's change times the ratio of JST's mean level to the
   BIS's over the ten years to `from` (both known then), so it is in JST's
-  units. Years 1870 to the series' last."
-  [jst-rows bis from]
-  (let [jst-credit (into {} (for [r jst-rows :let [v (div (:tloans r) (:gdp r))] :when v] [[(:iso r) (:year r)] v]))]
+  units. Years 1870 to the series' last.
+
+  opts (--wide-credit, countries outside the panel): :dims, the dimensions
+  in place of `dated-dimensions` (with :house-prices, the log real index:
+  its growth is the three-year log change, as JST's); :scale, the growth
+  ratio where a country has no JST series (`panel-scale`)."
+  ([jst-rows bis from] (dated-inputs jst-rows bis from {}))
+  ([jst-rows bis from {:keys [dims scale]}]
+  (let [jst-credit (jst-credit-of jst-rows)
+        dims (or dims dated-dimensions)]
     (into {}
-          (for [[c dims] bis
-                :let [last-y (apply max 1870 (mapcat keys (vals dims)))
+          (for [[c ds] bis
+                :let [last-y (apply max 1870 (mapcat keys (vals ds)))
                       years (range 1870 (inc last-y))
-                      vecs (into {} (for [k dated-dimensions] [k (mapv #(get-in dims [k %]) years)]))
+                      vecs (into {} (for [k dims] [k (mapv #(get-in ds [k %]) years)]))
                       flows (update-vals vecs (fn [xs] (mapv (fn [i] (let [a (get xs (dec i)) b (get xs i)] (when (and a b) (- b a))))
                                                              (range (count xs)))))
-                      both (keep (fn [y] (when-let [j (get jst-credit [c y])] (when-let [b (get-in dims [:credit y])] [j b])))
-                                 (range (- from 9) (inc from)))
-                      scale (when (>= (count both) 5)
-                              (/ (/ (reduce + (map first both)) (count both)) (/ (reduce + (map second both)) (count both))))
-                      gaps (one-sided-gaps (sort (:credit dims)))
-                      credit (:credit vecs)]
+                      k (or (jst-to-bis jst-credit c (:credit ds) from) scale)
+                      gaps (one-sided-gaps (sort (:credit ds)))
+                      credit (:credit vecs)
+                      house (:house-prices vecs)]
                 y years
                 :let [i (- y 1870)
-                      per (fn [f] (into {} (for [k dated-dimensions] [k (f k)])))]]
+                      per (fn [f] (into {} (for [d dims] [d (f d)])))
+                      d3 (fn [xs] (when (>= i 3) (when-let [a (get xs (- i 3))] (when-let [b (get xs i)] (- b a)))))]]
             [[c y] {:specific (per #(iv/stretch (vecs %) i 10 6))
                     :short (per #(iv/stretch (vecs %) i 5 4))
                     :long (per #(iv/stretch (vecs %) i 20 12))
                     :flow (per #(iv/stretch (flows %) i 10 6))
-                    :growth {:credit (when-let [a (get credit (- i 3))]
-                                       (when-let [b (get credit i)]
-                                         (when (and scale (>= i 3)) (* scale (- b a)))))}
-                    :gap {:credit-gap-z (gap-z gaps y)}}]))))
+                    :growth (cond-> {:credit (when k (some-> (d3 credit) (* k)))}
+                              house (assoc :house (d3 house)))
+                    :gap {:credit-gap-z (gap-z gaps y)}}])))))
 
 (defn build
   "Country-years with :specific (stretches), the invariants and targets;
