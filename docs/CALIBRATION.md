@@ -1571,3 +1571,162 @@ The whole suite is green: 1403 tests, 0 failures.
 - **The 2006-08 miss does not come from JST's credit.** The level is set by the crisis process, and half the onsets are outside the panel.
 - **The cost** is post-crisis false alarms where the BIS's ratio rose as GDP fell (loss 1).
 - The inputs it gives are the agencies' own series, dated by their releases. Adoption is the user's decision; the option stays off by default.
+
+## Banking credit beyond JST: t81-widebank, t82-widebank (bnm-56c.39)
+
+14 November 2026, branch wide-banking (from bis-credit 834376f). t79-bis found that half the banking onsets at the 2006 and 2007 origins (10 of 22, 9 of 18) are outside JST's 18 countries. There the year node has no credit stretches, house prices or booms, and issues a flat 0.021-0.024. Here those countries get the same inputs from the BIS, behind `--wide-credit` (needs `--dated-credit true`; off by default).
+
+### Coverage
+
+The lattice has 130 countries, 18 in JST. Of the other 112, data/slow/series.tsv has BIS credit to GDP (all lenders) and household credit for 23, and real residential property prices for 36. WS_TC.zip adds no country (the same 44 economies) but holds bank credit to the private non-financial sector, which series.tsv lacks (43 economies; scripts/bis-bank-credit.py writes data/derived/bis-bank-credit.csv). WS_SPP.zip adds Malta and Serbia, neither in the lattice.
+
+| country | credit (all lenders) | bank credit | household credit | real house prices | onset rows (origin) |
+|---|---|---|---|---|---|
+| ARG | 1984 | 1984 | 1994 | - | |
+| AUT | 1960 | 1960 | 1995 | 1986 | 2005, 2006 |
+| BGR | - | - | - | 1998 | |
+| BRA | 1996 | 1996 | 1996 | 2001 | |
+| CHL | 1983 | 1983 | 2002 | 2002 | |
+| CHN | 1985 | 1985 | 2006 | 2005 | |
+| COL | 1996 | 1994 | 1996 | 1988 | |
+| CYP | - | - | - | 2002 | 2009, 2010 |
+| CZE | 1993 | 1993 | 1995 | 2008 | |
+| EST | - | - | - | 2005 | |
+| GRC | 1970 | 1970 | 1994 | 1997 | 2008, 2009 |
+| HRV | - | - | - | 1997 | 2005, 2006 |
+| HUN | 1970 | 1970 | 1970 | 1992 | 2006, 2007 |
+| IDN | 1976 | 1976 | 2001 | 2002 | |
+| IND | 1951 | 1951 | 2007 | 2009 | |
+| ISL | - | - | - | 1981 | 2006, 2007 |
+| ISR | 1990 | 1990 | 1992 | 1994 | |
+| KOR | 1962 | 1962 | 1962 | 1975 | |
+| LTU | - | - | - | 1998 | 2006, 2007 |
+| LUX | 1995 | 2003 | 1995 | 2007 | 2006, 2007 |
+| LVA | - | - | - | 2006 | 2006, 2007 |
+| MAR, MKD, PER, PHL, SVK | - | - | - | 2007, 2000, 1998, 2008, 2006 | |
+| MEX | 1980 | 1980 | 1994 | 2005 | |
+| MYS | 1964 | 1964 | 2006 | 1988 | |
+| NZL | 1960 | 1960 | 1990 | 1962 | |
+| POL | 1992 | 1992 | 1995 | 2010 | |
+| ROU | - | - | - | 2009 | 2005, 2006 |
+| RUS | 1995 | 1995 | 1998 | 2001 | |
+| SGP | 1970 | 1970 | 1991 | 1998 | |
+| SVN | - | - | - | 2007 | 2007, 2008 |
+| THA | 1970 | 1970 | 1991 | 1991 | |
+| TUR | 1986 | 1986 | 1986 | 2010 | |
+| ZAF | 1965 | 1965 | 2008 | 1966 | |
+
+First year of each annual (fourth-quarter) series. Onset rows are the year node's December origins 2003-22 with an onset in the window.
+
+- **2003-22:** 82 onset rows, 28 at JST countries, 54 outside. With an input usable at the row the origin reads (enough history for the transform): credit stretch 6 (bank credit; 8 with all lenders), household credit 8, house prices 14, any input 16 of 54. The other 38 have no usable BIS input, mostly countries the BIS does not cover (Ukraine, Kazakhstan, Nigeria, Mongolia, Moldova, Azerbaijan, Angola, Ghana, Lebanon and others).
+- **2006-08:** at 2006, 6 of the 10 outside the panel get an input (Austria, Hungary, Luxembourg from credit; Croatia, Iceland, Lithuania from house prices alone); at 2007, 4 of 9 (Hungary, Iceland, Lithuania, Luxembourg); at 2008, Greece. Latvia's house prices start in 2006, too late; Romania, Slovenia, Mongolia, Ukraine and Nigeria have nothing.
+
+### Design
+
+- **Same transforms, same lag, same splice.** Each input outside the panel is `bnm.macrohistory/dated-inputs` on the BIS series, exactly as for the JST countries after the splice: stretches against 10 (min 6), 5 (min 4) and 20 years (min 12), the flows, the one-sided HP gap in units of its own past gaps (at least ten, so nineteen years of credit). Each year's December quarter, read at `bis-lag` 6, from row 2002 (the December 2003 origin). Before the splice these countries keep what they had.
+- **House prices.** finance/real_house_prices (BIS, real index, log) in place of JST's log of nominal house prices over the CPI. A log index's stretch is free of its base; three-year growth is its three-year log change, as JST's.
+- **Growth needs a scale.** JST countries' three-year credit growth is in JST's units (loans over GDP), via each country's ratio of JST's mean level to the BIS's over 1993-2002. Outside the panel there is no JST level, so `bnm.macrohistory/panel-scale` takes the median of the JST countries' ratios, known in 2002:
+  - against all-lender credit the ratios run 0.0038-0.0087, median 0.0059: total credit at 1.2-2.6 times bank loans, so the median assumes a typical bank share;
+  - against BIS bank credit (`--wide-credit bank`) the median is 0.0105: JST's loans and the BIS's bank credit are the same thing at the same level, so growth is the BIS's own units, a percentage made a ratio.
+  A scale-free growth (relative to the country's own level) was considered and rejected: it gives Luxembourg's 2006-09 jump (all-lender credit 209% to 346% of GDP) 66%, as alarming as in pp.
+- **Too little history: unknown.** An input whose own history is too short for its transform is nil, and the gauge reads it as the panel mean (0), as before. The displacement invariants (norm, breadth, resonance, flows) need five dimensions and these rows have three, so they stay unknown: a three-dimension norm would be a different quantity under the JST norm's coefficient.
+- **Household credit in the extended dimensions** (slot 39) also comes from the BIS for these countries, as `--dated-credit` does for the JST countries.
+- **One model, one standardization.** The rows join the same year and half-decade models and the same standardizer. The inputs are z-scores against each country's own past (or growth in JST's units), so a coefficient has the same meaning in both, and the lattice has one model per scale and level. A side effect: the pooled standardizer now includes these countries' values from 2003, which moves the JST rows' gauges slightly (JST rows in t82: Brier +0.00026 [+0.00002, +0.00047] against t79-bis).
+- **Two credit series.** `--wide-credit true` uses all-lender credit, the series the JST rows use under `--dated-credit`. `--wide-credit bank` uses BIS bank credit for the credit input, JST's own concept (household credit and house prices are the same in both). Bank credit was added after t81's losses traced to Luxembourg (loss 1 below).
+
+### Tests (test/bnm/wide_credit_test.clj)
+
+- The panel scale is the median of the JST countries' ratios.
+- Outside the panel, a country with a JST country's BIS series gets the same stretches, short and long stretches, flows and gap z at every year from the splice. Its growth is the BIS change times the panel scale. House prices are the log index's own stretches and three-year log change. Inside the panel nothing gains house inputs.
+- Too short a history stays unknown: no stretch before six past years, no long stretch before twelve, no gap before ten past gaps.
+- A value is read only once published: at December 2008 the node reads row 2007 (the June release), in November row 2006. Nothing is read before the splice. The other stretches and the displacement stay unknown.
+- Off is t79-bis: no row for a country outside the panel, and a JST country's row past the panel reads the same.
+- The wide values cover only countries outside the panel, nothing before the splice.
+- `--wide-credit bank` takes the credit input from bank credit, growth in its own units, household credit unchanged.
+- `--wide-credit` takes true, bank or false, and refuses true or bank without `--dated-credit true`.
+
+### Runs
+
+t71-stack's command with `--dated-credit true`, banking only (the other twelve kinds copied from t71-stack: under `--without-relations true` the kinds are independent):
+- **t81-off**: `--wide-credit false`. Its forecasts, preds, weights and frailty are byte for byte t79-bis's (forecasts sha c61913e6…).
+- **t81-widebank**: `--wide-credit true` (171c37d).
+- **t82-widebank**: `--wide-credit bank` (70bceeb).
+
+Year nodes, banking (`bnm.links --folds --kinds banking_crisis`; + = the run better; 90% intervals):
+
+| fold | t81 vs t79-bis, Brier | t81 vs t79-bis, log | t82 vs t79-bis, Brier | t82 vs t79-bis, log |
+|---|---|---|---|---|
+| 2003-06 | +0.00009 [-0.00003, +0.00029] | +0.00193 [-0.00027, +0.00570] | +0.00008 [-0.00002, +0.00024] | +0.00167 [-0.00015, +0.00473] |
+| 2007-09 | -0.00005 [-0.00092, +0.00081] | +0.00223 [-0.00215, +0.00757] | +0.00026 [-0.00063, +0.00172] | +0.00258 [-0.00219, +0.00962] |
+| 2010-12 | -0.00054 [-0.00162, +0.00009] | -0.00126 [-0.00498, +0.00156] | -0.00020 [-0.00076, +0.00024] | -0.00070 [-0.00323, +0.00166] |
+| 2013-19 | **-0.00013 [-0.00028, -0.00002]** | -0.00084 [-0.00212, +0.00017] | **-0.00010 [-0.00021, -0.00002]** | -0.00068 [-0.00163, +0.00013] |
+| 2020-22 | **-0.00015 [-0.00042, -0.00000]** | -0.00124 [-0.00300, +0.00006] | **-0.00006 [-0.00014, -0.00000]** | -0.00076 [-0.00174, +0.00016] |
+| pooled | -0.00014 [-0.00042, +0.00008] | +0.00003 [-0.00132, +0.00180] | -0.00002 [-0.00022, +0.00022] | +0.00025 [-0.00104, +0.00214] |
+
+Against t71-stack, t82 pooled Brier -0.00001 [-0.00031, +0.00034], log -0.00004 [-0.00176, +0.00206], no fold significant (2013-19 log -0.00105 [-0.00234, +0.00007]). t82 against t81: every fold's Brier point estimate better, pooled +0.00012 [-0.00003, +0.00037]. Over all 13 kinds (`bnm.world-score`), t82 against t79-bis: Brier -0.00000 [-0.00002, +0.00002], log +0.00002 [-0.00009, +0.00015].
+
+Half-decade country nodes (not in the fold rule; countries resampled, 400 reps):
+- t81 vs t79-bis: Brier +0.00030 [-0.00021, +0.00092], log +0.00249 [+0.00061, +0.00468];
+- t82 vs t79-bis: Brier +0.00008 [-0.00035, +0.00056], log +0.00107 [-0.00065, +0.00305]; vs t71-stack log +0.00421 [+0.00094, +0.00787].
+
+Within-origin AUC, year node, December origins 2003-22:
+
+| rows | t71-stack | t79-bis | t81 | t82 |
+|---|---|---|---|---|
+| all countries | 0.654 | 0.645 | 0.696 | 0.682 |
+| JST | 0.587 | 0.583 | 0.581 | 0.581 |
+| outside JST | 0.578 | 0.572 | 0.661 | 0.640 |
+| outside JST with a BIS input (673 rows, 16 onsets) | 0.576 | 0.576 | 0.752 | 0.695 |
+
+Half-decade, all countries: 0.447, 0.503, 0.558, 0.527.
+
+Calibration, banking, country year node (rate; mean p and Brier for t71-stack, t79-bis, t81, t82):
+
+| span | rate | mean p | Brier |
+|---|---|---|---|
+| 2003-22 | 0.032 | 0.045, 0.045, 0.046, 0.046 | 0.0322, 0.0322, 0.0324, 0.0322 |
+| 2006 | 0.169 | 0.025, 0.025, 0.025, 0.026 | 0.1600, 0.1602, 0.1598, 0.1599 |
+| 2007 | 0.146 | 0.022, 0.022, 0.022, 0.023 | 0.1385, 0.1387, 0.1384, 0.1385 |
+| 2008 | 0.035 | 0.047, 0.047, 0.048, 0.048 | 0.0328, 0.0329, 0.0327, 0.0326 |
+| 2010-12 | 0.016 | 0.070, 0.072, 0.073, 0.073 | 0.0192, 0.0195, 0.0200, 0.0197 |
+| 2013-19 | 0.025 | 0.042, 0.043, 0.043, 0.043 | 0.0246, 0.0246, 0.0247, 0.0247 |
+| 2020-22 | 0.000 | 0.030, 0.028, 0.029, 0.029 | 0.0014, 0.0008, 0.0010, 0.0009 |
+
+The rows outside JST with a BIS input: rate 0.024 over 2003-22, mean p 0.044 (t79-bis) and 0.048 (t82); 2013-22, rate 0, mean p 0.038 to 0.041.
+
+### Alerts at 4:1 (`bnm.alerts`)
+
+- **Cost per row, banking:** t79-bis 0.132; t81 0.132, Δ -0.0004 [-0.0023, +0.0012]; t82 0.131, Δ **+0.0008 [+0.0000, +0.0024]** (cheaper; against t71-stack -0.0004 [-0.0032, +0.0027]). Pooled over kinds, t82 against t79-bis +0.0001 [+0.0000, +0.0002].
+- **Hits** stay 0 of 82. False alarms 0.4% of quiet rows in t81 (Luxembourg 2010 at 0.379, 2015-21 at 0.10-0.15), 0.3% in t82.
+- **The 2006 and 2007 episodes** stay missed: mean p 0.026 at a rate of 0.169, 0.023 at 0.146 (t82).
+- **The world node** is unchanged (0.350).
+
+### The 2006-08 onsets
+
+Issued p, t79-bis → t81 / t82:
+- outside the panel: Hungary 2006 0.024 → 0.033 / 0.032, 2007 0.021 → 0.026 / 0.025; Lithuania 2006 0.024 → 0.030 / 0.030, 2007 0.021 → 0.026 / 0.026; Luxembourg 2006 0.024 → 0.031 / 0.025, 2007 0.021 → 0.028 / 0.022; Austria 2006 0.024 → 0.027 / 0.029; Iceland 2006 0.024 → 0.026; Croatia 2006 0.024 → 0.025; Greece 2008 0.046 → 0.061 / 0.073. Latvia, Romania, Slovenia, Mongolia, Ukraine and Nigeria unchanged (no input).
+- inside: Ireland 2006 0.066 → 0.065, Spain 2007 0.056, 2008 0.104, the USA 2006 0.038, Britain 2006 0.028: unchanged within 0.001 (the standardizer's pooling).
+
+The inputs rank the boom countries up (Hungary's credit stretch +2.8 and gap z +2.6 at 2005, Lithuania's house stretch +3.7, Greece's credit stretch +2.1 to +2.3 and gap z +2.4 to +2.7 at 2005-06) by 10-60%, but from the same level of 0.02. As at the JST countries in t79-bis, the miss is the level, not the ranking.
+
+### Why: the losses traced (PLAN principle 9)
+
+1. **Luxembourg (t81): all-lender credit at a financial centre.** Of t81's 2010-22 loss against t79-bis, Luxembourg is the largest part: its rows lose 0.22 of the summed Brier over 2010-22, and without it 2020-22 goes from -0.00015 to -0.00003 and 2010-12 from -0.00054 to -0.00020. Its all-lender credit is 450% of GDP, mostly the intra-group and cross-border debt of holding companies, and rose from 209% to 346% in 2006-09; its three-year growth (0.81 in JST units) sat at the standardizer's cap of 5, where Spain 2007 is 4.6. Its bank credit is 66-108% of GDP. Verdict: **approach** (the series' concept), fixed by `--wide-credit bank`. It is the same non-bank debt that drove t79-bis's Irish false alarms (Ireland's bank credit falls from 169% in 2009 to 51% in 2015 while all-lender credit stays above 300%). With bank credit, Luxembourg's growth is 0.24 at 2009 and its 2010 p 0.189 (from 0.379); t82 is better than t81 on every fold's point estimate.
+2. **2013-22 (t82: -0.00010, -0.00006): booms in the covered emerging markets that did not end in crises.** The largest losses are China (-0.030 summed Brier), Singapore, Luxembourg, Turkey, Thailand, Chile and Malaysia: credit stretches of +2 and more and growth in the top fifth, with no crisis in the catalogue. The rows with a BIS input have no onset in 2013-22 (0 of 370) while the countries without one have all 22. The BIS covers the larger, financially deeper economies, and after 2012 their crisis rate fell to zero while frontier and post-Soviet economies, which the BIS does not cover, had the crises. The node shares one level across countries, so positive credit evidence at the covered rows raises p exactly where the rate is lowest. Verdict: **approach** (coverage selects on a lower rate, and the shared coefficients carry JST's boom-to-crisis link to booms that did not break). A coverage indicator in the gauge set, so the node could learn the covered countries' own rate, is the obvious next step; separate coefficients for these rows would remove the 2006-08 ranking gain, which needs the JST coefficients from the start.
+3. **2010-12 (t82: -0.00020, not significant): the denominator after the crisis.** At the December 2010 origin every country outside the panel stood at 0.098 in t79-bis; covered ones rise to 0.13-0.20 (Brazil 0.197, Singapore 0.174, China 0.153, Poland 0.153), where credit to GDP rose as GDP fell in 2009. Verdict: **approach**, t79-bis's loss 1 again.
+
+The runs showed no bugs.
+
+### Reproduction
+
+- `--wide-credit false` (t81-off) gives t79-bis's banking files byte for byte.
+- 2026-Q4-r1 reproduces byte for byte through `bnm.ledger/reproduce-issue!` at 70bceeb (8556 lines, forecasts sha bdb361c8…).
+- The suite is green at 70bceeb: 1411 tests, 0 failures.
+
+### Verdict
+
+- **Fails the fold rule** in both forms: 2013-19 and 2020-22 lose on Brier against t79-bis (t82: -0.00010 [-0.00021, -0.00002], -0.00006 [-0.00014, -0.00000]), and no fold gains. Not an improvement under the acceptance rule.
+- **The ranking improves where the inputs reach:** within-origin AUC outside JST with a BIS input 0.58 → 0.70 (t82; 0.75 in t81), all countries 0.645 → 0.682; half-decade log +0.0011 (t82, n.s.) and +0.0025 [+0.0006, +0.0047] (t81).
+- **Alerts:** t82 is cheaper than t79-bis at 4:1 (+0.0008 [+0.0000, +0.0024]) through fewer false alarms, but catches nothing: 0 of 82 hits; 2006 and 2007 still missed.
+- **The 2006-08 miss is still the level.** The new inputs lift Hungary, Lithuania, Greece and Austria by 10-60%, from 0.02. Most onsets outside the panel are in countries without BIS data.
+- If credit beyond JST is wanted, `bank` is the form: JST's concept, no share guess, and better than all-lender credit at every fold. The option stays off by default.
