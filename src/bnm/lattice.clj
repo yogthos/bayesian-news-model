@@ -126,6 +126,39 @@
   [[0.0 0.5333333333333333] [1.3556261799742657 0.2220759220056126] [-1.3556261799742657 0.2220759220056126]
    [2.8569700138728056 0.011257411327720691] [-2.8569700138728056 0.011257411327720691]])
 
+(defn hermite-rule
+  "n-point Gauss-Hermite quadrature for the standard normal: [[node
+  weight] ...], from Newton on the orthonormal Hermite recurrence
+  (Numerical Recipes' gauher), the nodes scaled by sqrt 2 and the
+  weights by 1/sqrt pi."
+  [n]
+  (let [n (long n)
+        pim4 0.7511255444649425
+        m (quot (inc n) 2)
+        root (fn [z]
+               (loop [z (double z) it 0]
+                 (let [[p1 p2] (loop [j 1 p1 pim4 p2 0.0]
+                                 (if (> j n) [p1 p2]
+                                     (recur (inc j)
+                                            (- (* z (Math/sqrt (/ 2.0 j)) p1) (* (Math/sqrt (/ (dec j) (double j))) p2))
+                                            p1)))
+                       pp (* (Math/sqrt (* 2.0 n)) (double p2))
+                       z' (- z (/ (double p1) pp))]
+                   (if (or (< (Math/abs (- z' z)) 1e-14) (> it 100))
+                     [z' (/ 2.0 (* pp pp))]
+                     (recur z' (inc it))))))
+        xs (loop [i 0 acc []]
+             (if (= i m) acc
+                 (let [z (case i
+                           0 (- (Math/sqrt (+ (* 2 n) 1)) (* 1.85575 (Math/pow (+ (* 2 n) 1) -0.16667)))
+                           1 (let [z (first (acc 0))] (- z (/ (* 1.14 (Math/pow n 0.426)) z)))
+                           2 (- (* 1.86 (first (acc 1))) (* 0.86 (first (acc 0))))
+                           3 (- (* 1.91 (first (acc 2))) (* 0.91 (first (acc 1))))
+                           (- (* 2.0 (first (acc (dec i)))) (first (acc (- i 2)))))]
+                   (recur (inc i) (conj acc (root z))))))]
+    (vec (for [[x w] (concat xs (map (fn [[x w]] [(- x) w]) (if (odd? n) (butlast xs) xs)))]
+           [(* (Math/sqrt 2.0) x) (/ w (Math/sqrt Math/PI))]))))
+
 (defn offsets-under
   "[[weight offset]...]: a coarser node's linear predictor N(f, q) carried
   into a finer window (a fraction `ratio` of its own), by quadrature over
@@ -745,6 +778,12 @@
    :level-sds [0.0] :level-penalty 2.0 :exposure-sds [0.0] :exposure-penalty 2.0
    :cross [0.0 0.5 1.0 1.5] :gauges-from :all})
 
+(def frailty-wide-sds
+  "The grid :sds :wide names (bnm-02u, docs/RECURSIVE.md step 3b): the
+  default's carried past 1, where every year node chose its top, to 3,
+  each non-zero sd at the same price."
+  [0.0 0.25 0.5 1.0 1.5 2.0 3.0])
+
 (defn frailty-config
   "The spec's :frailty with its defaults, checked; nil without one. A map
   of :rhos (persistences in [0, 1)), :sds (stationary sds, at least 0),
@@ -790,7 +829,10 @@
     (when-let [bad (seq (remove #{:rhos :sds :from :prior :penalty :level-sds :level-penalty :exposure-sds :exposure-penalty
                                   :source :cross :gauges :gauges-from} (keys f)))]
       (throw (ex-info (str "bnm.lattice: :frailty names no option " (vec bad)) {:frailty f})))
-    (let [{:keys [rhos sds from prior penalty level-sds level-penalty exposure-sds exposure-penalty source cross] :as c} (merge frailty-defaults f)
+    (when (and (keyword? (:sds f)) (not= :wide (:sds f)))
+      (throw (ex-info "bnm.lattice: :frailty :sds takes sds of at least 0, or :wide" {:sds (:sds f)})))
+    (let [c (cond-> (merge frailty-defaults f) (= :wide (:sds f)) (assoc :sds frailty-wide-sds))
+          {:keys [rhos sds from prior penalty level-sds level-penalty exposure-sds exposure-penalty source cross]} c
           nums? (fn [xs ok?] (and (sequential? xs) (seq xs) (every? #(and (number? %) (ok? (double %))) xs)))]
       (when-not (nums? rhos #(and (<= 0.0 %) (< % 1.0)))
         (throw (ex-info "bnm.lattice: :frailty :rhos takes persistences in [0, 1)" {:rhos rhos})))
@@ -883,16 +925,62 @@
        :b0 (mapv #(double (first (np %))) ns)
        :bv (mapv #(double (second (np %))) ns)})))
 
+(def hermite-fine
+  "Twenty-point Gauss-Hermite for the standard normal: a frailty state of
+  sd above 1 (bnm-02u, the wide grid), where five points err by up to 10%
+  in the forecast at sd 3 and twenty by under 0.1%."
+  (hermite-rule 20))
+
+(defn- fine-state?
+  "Whether a frailty state's stationary sd is above 1, the default grid's
+  top: the five-point rule and Laplace serve up to 1 (errors under 2e-4
+  relative and 0.01 nats); above it the twenty-point rule (bnm-02u)."
+  [sd]
+  (> (double (or sd 0.0)) 1.0))
+
 (defn with-frailty
   "Offsets [[w o] ...] with a shared state z ~ N(m, v) added, by the
-  five-point Hermite rule; the offsets moved by m when v is 0, unchanged
+  five-point Hermite rule, or the twenty-point one when the state's :sd
+  is above 1 (bnm-02u); the offsets moved by m when v is 0, unchanged
   when both are."
-  [os {:keys [m v]}]
-  (let [m (double (or m 0.0)) v (double (or v 0.0))]
+  [os {:keys [m v sd]}]
+  (let [m (double (or m 0.0)) v (double (or v 0.0))
+        rule (if (fine-state? sd) hermite-fine hermite)]
     (cond (and (zero? m) (zero? v)) os
           (zero? v) (mapv (fn [[w o]] [w (+ (double o) m)]) os)
-          :else (let [sd (Math/sqrt v)]
-                  (vec (for [[w o] os [z hw] hermite] [(* (double w) hw) (+ (double o) m (* sd z))]))))))
+          :else (let [s (Math/sqrt v)]
+                  (vec (for [[w o] os [z hw] rule] [(* (double w) hw) (+ (double o) m (* s z))]))))))
+
+(defn shared-ll
+  "The log marginal of logistic rows {:f :q :y :w} sharing a shock z ~
+  N(m, v) added to each: augur.hier/shared-marginal's Laplace value for a
+  state of `sd` 1 or less, as before; above 1 (bnm-02u) the integral by
+  the twenty-point rule about Laplace's mode and curvature (adaptive
+  Gauss-Hermite), each row's likelihood as augur's (MacKay's probit
+  approximation over q). Laplace errs by up to 0.07 nats an origin at sd
+  3, toward the larger sd on quiet origins."
+  ^double [rows m v sd]
+  (let [{z0 :z v0 :v ll :ll} (hier/shared-marginal :logistic rows m v)
+        m (double m) v (double v)]
+    (if (or (not (fine-state? sd)) (zero? v) (empty? rows))
+      (double ll)
+      (let [rows (mapv (fn [{:keys [f q y w]}]
+                         [(double f) (/ 1.0 (Math/sqrt (+ 1.0 (/ (* Math/PI (double (or q 0.0))) 8.0))))
+                          (if (if (number? y) (pos? (double y)) (boolean y)) 1.0 0.0) (double (or w 1.0))])
+                       rows)
+            lik (fn [z] (reduce (fn [acc [f k yy w]]
+                                  (let [e (* k (+ f z))]
+                                    (+ acc (* w (- (* yy e) (if (> e 0.0) (+ e (Math/log1p (Math/exp (- e)))) (Math/log1p (Math/exp e))))))))
+                                0.0 rows))
+            s (Math/sqrt (double v0))
+            ;; z = z0 + s x: the integrand over the standard normal's weights
+            terms (for [[x w] hermite-fine
+                        :let [z (+ (double z0) (* s x))
+                              d (- z m)]]
+                    (+ (Math/log w) (lik z) (- (/ (* d d) (* 2.0 v))) (* -0.5 (Math/log (* 2.0 Math/PI v)))
+                       (* 0.5 x x) (* 0.5 (Math/log (* 2.0 Math/PI))) (Math/log s)))
+            top (apply max terms)]
+        (+ top (Math/log (reduce + (map #(Math/exp (- % top)) terms))))))))
 
 (declare slope-fresh)
 
@@ -1094,12 +1182,20 @@
                                   ;; prior issued, then filtered from the state run forward
                                   (let [[pm pv] (nth (:zc (first rows)) i)
                                         sobs (mapv (fn [o r] (assoc o :f (- (double (:f o)) (slope-half c (:e r))) :load (slope-load c (:e r) (:g r)))) obs rows)
-                                        ll (:ll (hier/shared-marginal :logistic sobs pm pv))
+                                        ;; bnm-02u: above sd 1 every row of the origin loading alike
+                                        ;; (the gauges' [1 g_t]), the marginal is one-dimensional in
+                                        ;; the shift a.s, taken by quadrature (`shared-ll`)
+                                        a (:load (first sobs))
+                                        ll (if (and (fine-state? (:sd c)) (every? #(= a (:load %)) sobs))
+                                             (shared-ll sobs (reduce + 0.0 (map * a pm))
+                                                        (reduce + 0.0 (for [i (range (count a)) j (range (count a))] (* (a i) (a j) (double (get-in pv [i j])))))
+                                                        (:sd c))
+                                             (:ll (hier/shared-marginal :logistic sobs pm pv)))
                                         prior (if (and t (<= s t)) {:m (:mu c) :v (:P c)} (let [{:keys [mu P]} (slope-ahead c s per)] {:m mu :v P}))
                                         post (hier/states-step prior sobs {:kind :logistic})]
                                     (assoc c :score (+ (double (:score c)) ll) :t (if t (max t s) s) :mu (:m post) :P (:v post)))
                                 (let [[zm zv] (nth (:zc (first rows)) i)
-                                      ll (:ll (hier/shared-marginal :logistic obs zm zv))
+                                      ll (shared-ll obs zm zv (:sd c))
                                       c (assoc c :score (+ (double (:score c)) ll) :t (if t (max t s) s))]
                                   (if (:lsd c)
                                     ;; the transient and the persistent level, filtered jointly
@@ -1598,7 +1694,7 @@
                                              o (if one? (second (first os)) (logit (reduce + (for [[w o] os] (* w (m/expit o))))))
                                              ;; with a slope on exposure, the place's own shock from the node's joint state
                                              zprior (if (:mu zprior)
-                                                      (merge (frailty-at zprior (get ez place)) (select-keys zprior [:zc :mu :P :g]))
+                                                      (merge (frailty-at zprior (get ez place)) (select-keys zprior [:zc :mu :P :g :sd]))
                                                       zprior)
                                              ;; :frailty: the forecast integrated over the common shock's prior
                                              osz (if zprior (with-frailty os zprior) os)

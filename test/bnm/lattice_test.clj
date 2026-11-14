@@ -1,5 +1,6 @@
 (ns bnm.lattice-test
   (:require [augur.dynamic]
+            [augur.hier]
             [augur.math :as m]
             [bnm.lattice :as lt]
             [bnm.world-term :as wt]
@@ -1568,6 +1569,80 @@
     (is (< (Math/abs (- m -0.5)) 1e-12))
     (is (= [[m v]] zc))
     (is (< (Math/abs (- 1.0 (/ rate (Math/exp o)))) 0.01) rate)))
+
+;; --- the frailty's wide grid (bnm-02u): sds past 1, integrated finely ---
+
+(defn- fine-normal
+  "E f(m + sd Z), Z standard normal, by a 4000-step trapezoid over +-10 sd."
+  [f m sd]
+  (let [n 4000 h (/ 20.0 n)]
+    (* h (reduce + (for [i (range (inc n)) :let [z (+ -10.0 (* i h)) w (if (or (= i 0) (= i n)) 0.5 1.0)]]
+                     (* w (/ (Math/exp (* -0.5 z z)) (Math/sqrt (* 2 Math/PI))) (f (+ m (* sd z)))))))))
+
+(deftest bnm-02u-the-wide-grid
+  (testing ":sds :wide is the default grid carried past 1 (docs/RECURSIVE.md step 3b)"
+    (is (= [0.0 0.25 0.5 1.0 1.5 2.0 3.0] (vec (distinct (map :sd (:grid (lt/frailty-config {:frailty {:sds :wide}}))))))))
+  (testing "the default grid as before"
+    (is (= [0.0 0.25 0.5 1.0] (:sds lt/frailty-defaults)))
+    (is (= [0.0 0.25 0.5 1.0] (vec (distinct (map :sd (:grid (lt/frailty-config {:frailty {}})))))))
+    (is (= (:grid (lt/frailty-config {:frailty {}})) (:grid (lt/frailty-config {:frailty {:sds [0.0 0.25 0.5 1.0]}})))))
+  (testing "every non-zero sd pays the same price"
+    (is (= #{2.0} (set (map :price (remove #(zero? (:sd %)) (:grid (lt/frailty-config {:frailty {:sds :wide}}))))))))
+  (testing "a grid named otherwise is refused"
+    (is (thrown? clojure.lang.ExceptionInfo (lt/frailty-config {:frailty {:sds :wider}})))))
+
+(deftest bnm-02u-the-twenty-point-rule
+  (let [r (lt/hermite-rule 20)]
+    (is (= 20 (count r)))
+    (is (< (Math/abs (- 1.0 (reduce + (map second r)))) 1e-12))
+    (is (< (Math/abs (- 1.0 (reduce + (map (fn [[z w]] (* w z z)) r)))) 1e-10))
+    (is (< (Math/abs (- 3.0 (reduce + (map (fn [[z w]] (* w z z z z)) r)))) 1e-9)))
+  (testing "five points: the hermite rule"
+    (is (every? true? (map (fn [[a b] [c d]] (and (< (Math/abs (- a c)) 1e-12) (< (Math/abs (- b d)) 1e-12)))
+                           (sort lt/hermite) (sort (lt/hermite-rule 5)))))))
+
+(deftest bnm-02u-the-predictive-at-sd-3-against-fine-quadrature
+  ;; the forecast integrated over the shock's prior at the wide grid's top,
+  ;; sd 3 with its half variance: the five-point rule errs by 10% there
+  ;; (base log odds -2: 0.0287 against 0.0320), so a state of sd above 1
+  ;; is integrated by twenty points, within 0.2% of a fine trapezoid
+  (doseq [o [-8.0 -6.0 -4.0 -3.0 -2.0 -1.0 0.0 1.0 2.0]]
+    (let [zp {:m -4.5 :v 9.0 :sd 3.0}
+          q (reduce + (for [[w x] (lt/with-frailty [[1.0 o]] zp)] (* w (m/expit x))))
+          ex (fine-normal #(m/expit (+ o %)) -4.5 3.0)]
+      (is (< (Math/abs (/ (- q ex) ex)) 0.002) [o q ex])))
+  (testing "a state of sd 1 or less: the five-point rule, as before"
+    (doseq [sd [0.25 0.5 1.0]]
+      (is (= (lt/with-frailty [[0.5 -2.0] [0.5 -1.0]] {:m -0.3 :v (* sd sd)})
+             (lt/with-frailty [[0.5 -2.0] [0.5 -1.0]] {:m -0.3 :v (* sd sd) :sd sd}))))
+    (is (= 10 (count (lt/with-frailty [[0.5 -2.0] [0.5 -1.0]] {:m -0.3 :v 1.0 :sd 1.0}))))))
+
+(deftest bnm-02u-the-candidate-score-at-sd-3-against-fine-quadrature
+  ;; a candidate is scored by its rows' log marginal with the shock
+  ;; integrated; Laplace errs by up to 0.07 nats an origin at sd 3 (one
+  ;; row, or a quiet batch), in the direction of the larger sd on quiet
+  ;; origins, so above sd 1 the marginal is taken by quadrature about the
+  ;; mode: within 0.002 nats of a fine trapezoid
+  (doseq [[n1 n f q] [[1 1 -3.0 0.0] [0 1 -3.0 0.0] [3 20 -3.0 0.0] [0 20 -3.0 0.4] [15 20 -1.0 0.0] [10 150 -3.0 0.2] [80 150 -2.0 0.0]]]
+    (let [m -4.5 v 9.0
+          rows (vec (concat (repeat n1 {:f f :q q :y true}) (repeat (- n n1) {:f f :q q :y false})))
+          k (/ 1.0 (Math/sqrt (+ 1.0 (/ (* Math/PI q) 8.0))))
+          lik (fn [z] (let [p (m/expit (* k (+ f z)))] (* (Math/pow p n1) (Math/pow (- 1 p) (- n n1)))))
+          ex (Math/log (fine-normal lik m 3.0))
+          ll (lt/shared-ll rows m v 3.0)]
+      (is (< (Math/abs (- ll ex)) 0.002) [n1 n ll ex])))
+  (testing "sd 1 or less: Laplace (augur.hier/shared-marginal), as before"
+    (let [rows [{:f -2.0 :q 0.1 :y true} {:f -2.0 :q 0.1 :y false}]]
+      (is (= (:ll (augur.hier/shared-marginal :logistic rows -0.5 1.0)) (lt/shared-ll rows -0.5 1.0 1.0))))))
+
+(deftest bnm-02u-a-large-shock-takes-the-wide-grid
+  ;; a common shock of stationary sd 3: the default grid stops at 1, the wide
+  ;; one chooses above it; a world with no shock still chooses 0
+  (let [last-sd (fn [r] (:sd (val (last (get-in r [:frailty [:year :country]])))))
+        wide {:frailty {:rhos [0.0 0.6] :sds :wide}}]
+    (is (= 1.0 (last-sd (shock-world 20 3.0 {:frailty {:rhos [0.0 0.6]}}))))
+    (is (< 1.0 (last-sd (shock-world 20 3.0 wide))))
+    (is (zero? (last-sd (shock-world 20 0.0 wide))))))
 
 ;; --- the frailty's persistent level (bnm-56c.20.1): a local level beside the transient ---
 
