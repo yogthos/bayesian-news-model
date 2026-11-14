@@ -8,7 +8,7 @@ series = sys.argv[2:]
 vs = json.load(open(os.path.join(out, "versions.json")))["source"][0]["concept"][0]["variable"]
 for s in series:
     os.makedirs(os.path.join(out, s), exist_ok=True)
-    for v in [v for v in vs if int(v["id"][:4]) >= 2001]:
+    for v in vs:
         vid = v["id"]
         path = os.path.join(out, s, vid + ".json")
         if os.path.exists(path) and os.path.getsize(path) > 100:

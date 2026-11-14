@@ -4,9 +4,10 @@ WDI Database Archives (World Bank DataBank source 57; data/raw/wdi-archives,
 see its SOURCE.txt): the month of the first archived edition that holds a
 value for it. An edition is dated by the later of its id's month and its
 label's month (the archive lists 201703 as "2017 Apr" and 201704 as "2017
-Mar"), so the table errs late. Editions from 2001 are fetched, so a year
-first published before 2001 is not in the table and keeps series.tsv's
-date (bnm.named/load-series :first-published).
+Mar"), so the table errs late. The editions before 2001 hold no values
+under these codes, so a year before the earliest edition that does is
+dated to the April edition two years on: the sixteen months the 2002-2004
+editions show (bnm.named/load-series :first-published).
 
   data/derived/wdi-first-published.tsv   iso, var, year, month (YYYY-MM)
   data/derived/wdi-editions.tsv          year, month: the first edition holding
@@ -43,7 +44,7 @@ def main():
         for f in sorted(os.listdir(d)):
             vid = f[:-5]
             body = json.load(open(os.path.join(d, f)))
-            for r in body["source"]["data"]:
+            for r in body["source"]["data"] or []:
                 if r["value"] is None:
                     continue
                 held[var].add(when[vid])
@@ -68,7 +69,16 @@ def main():
                     first[(iso, var, y)] = later[0] if later else after_last
     # a year first seen in the earliest fetched edition may have been out
     # before it: those are left out (series.tsv's date stands)
-    rows = sorted((k, v) for k, v in first.items() if v > earliest[k[1]])
+    dated = {k: v for k, v in first.items() if v > earliest[k[1]]}
+    # before the archive: the editions up to 2000 hold no values under
+    # these codes, and the earliest ones that do (2002-2004) put a year in
+    # the April edition two years on, sixteen months after it; years from
+    # 1950 to the earliest edition's are dated so, unless dated later above
+    for s, var in SERIES.items():
+        for iso in {k[0] for k in first if k[1] == var}:
+            for y in range(1950, earliest[var][0] + 1):
+                dated.setdefault((iso, var, y), (y + 2, 4))
+    rows = sorted(dated.items())
     with open(OUT, "w") as w:
         w.write("iso\tvar\tyear\tmonth\n")
         for (iso, var, y), (ey, em) in rows:
@@ -82,7 +92,7 @@ def main():
     for f in sorted(os.listdir(d)):
         body = json.load(open(os.path.join(d, f)))
         n = {}
-        for r in body["source"]["data"]:
+        for r in body["source"]["data"] or []:
             if r["value"] is not None:
                 y = int(r["variable"][1]["id"][2:])
                 n[y] = n.get(y, 0) + 1
@@ -91,6 +101,8 @@ def main():
                 held_by[y] = min(held_by.get(y, when[f[:-5]]), when[f[:-5]])
     # a year held by the earliest edition may have been out before it
     held_by = {y: e for y, e in held_by.items() if e > earliest["economy/gdp_per_capita"]}
+    for y in range(1950, earliest["economy/gdp_per_capita"][0] + 1):
+        held_by.setdefault(y, (y + 2, 4))
     with open(EDITIONS, "w") as w:
         w.write("year\tmonth\n")
         for y in sorted(held_by):
