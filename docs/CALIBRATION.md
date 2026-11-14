@@ -1446,3 +1446,126 @@ The ledger and golden tests pass, and the whole suite is green: 1388 tests, 0 fa
 - **The cost.** False alarms from VIX12 after crashes and from the 2022 curve (loss 1). These are §13's known approach limits, now reaching every model.
 - **`--lead-std history` can now be adopted with it:** the weight lock no longer decides the 2008 crash.
 - **Adoption** is the user's decision. Every option stays off by default.
+
+## Dated credit for banking: t79-bis (bnm-9vm option A)
+
+13 November 2026, branch bis-credit. The check on bnm-9vm found JST's credit-family inputs far from the agencies' own series (corr 0.69-0.91, 14-46% of country-origins more than 0.5 sd apart), because of JST's compilation, not revisions. House prices agree and stay on JST. Option A, the user's choice: take those inputs from the BIS from the December 2003 origin, behind `--dated-credit true` (off by default).
+
+### Design
+
+- **Series.** data/slow/series.tsv's `finance/credit_gdp` is the BIS's credit to the private non-financial sector from all lenders, % GDP (WS_CREDIT_GAP, the series its credit-to-GDP gap is built on). It is not bank credit, as JST's `tloans` is. `finance/household_credit_gdp` is the BIS's total credit to households (WS_TC, all lenders, % GDP), mostly mortgages. Credit replaces JST's credit (tloans/gdp). Household credit replaces JST's mortgages (tmort/gdp) and its household credit (thh/gdp, the extended dimension). Business credit (tbus) is not in the option and stays JST's.
+- **Publication.** series.tsv dates BIS quarters four months after they end. ALFRED's vintages of the BIS credit series (data/raw/alfred-bis, 2016-26) show the quarterly releases in early March, June, September and December, each carrying the quarter that ended five to six months before: the fourth quarter in June, the second in December (December 2018 was skipped). `bis-lag` is 6 months. Each year's value is its December quarter (`q4-annual`), so December Y reads Q4 of Y-1, out since June. Q2 of Y is also out at most December origins but is not read: the transforms are annual, and the December release comes only days before the origin.
+- **The JST rows (the timing fix).** A row is read at origin t only once every source in it is published (`read-year`, `row-year`). `jst-lag` is 12 months, the slowest of the national sources JST compiles: market prices and the CPI within a month; credit and house price indices within a quarter; annual national accounts by spring; bank balance sheets and fiscal accounts within ten months; compensation (for the wage share) by the autumn. So December Y reads row Y-1 as before. The rule is in the code and tested, and it moves no December value. It dates by the sources, not by JST's releases (from 2016): dating by JST's releases would leave the node without its gauges before 2016, which is bnm-9vm's original question and a model change.
+- **The splice, in transformed space.** Every input is computed on the BIS series alone (`bnm.macrohistory/dated-inputs`). Its own history is the baseline, so a level difference from JST cancels:
+  - stretches against 10 years (min 6), 5 (min 4) and 20 (min 12), and the one-year change against its own past changes: z-scores, free of scale and level;
+  - the credit gap: scripts/jst-credit-gap.py's one-sided HP filter (lambda 1562.5, from the tenth value) on the BIS's annual credit to GDP, in units of the spread of its own past gaps (`gap-z`, at least ten), so the gap's scale cancels. The Clojure filter (`hp-trend`) reproduces the script's statsmodels output for the US to 1e-6;
+  - three-year credit growth is not scale free: it is the BIS's change times the ratio of JST's mean level to the BIS's over 1993-2002 (both known by then), so it stays in JST's units. BIS total credit runs 1.3-1.7 times JST's bank loans.
+  - From row 2002 on (the December 2003 origin) each input takes the BIS value. Everything the node reads that is built from these inputs is rebuilt from the substituted stretches: the displacement (norm, breadth, largest) at 5, 10 and 20 years, resonance, the flows and stock-times-flow, and the world's mean displacement.
+- **No BIS value: JST kept.** All 18 JST countries have both BIS series. Household credit starts late for Switzerland (1999), Denmark (1994), the Netherlands (1990) and Ireland (2002). Where the BIS's own history is too short for a transform, JST's value is kept:
+  - Switzerland's household stretch to 2004, Ireland's to 2007;
+  - their long household stretches to 2010 and 2013, Denmark's to 2005.
+
+  Dropping the dimension instead would set the gauge to the panel mean (0) and take a dimension out of the norm. JST's value correlates 0.7-0.8 with the BIS's. Ireland's mortgage boom (stretch +3.4 at 2005) is exactly the warning that a miss costing four false alarms can least afford to lose.
+- **Past the panel.** JST ends in 2020, so from the December 2022 origin t71-stack's year node has no credit inputs for the JST countries. Under the option they get the BIS's credit, household credit, growth, long stretches and gap. The other JST dimensions and the displacement stay unknown.
+- **Not real time.** The BIS first published its long credit series in 2013 (Dembiermont, Drehmann & Muksakunratana). Its values at the 2003-12 origins are a backcast. They are closer to the official statistics than JST's compilation, and revised little (bnm-9vm: real time against latest, credit stretch corr 0.97), but they are not what a forecaster had then.
+
+### Tests (test/bnm/dated_credit_test.clj)
+
+- The one-sided gap is the script's (USA, to 1e-6).
+- A level difference cancels at the splice: a BIS series at 1.7 times JST's (households at 2.0) leaves every input, the invariants and the world's displacement unchanged at every year.
+- From the splice on, each input is the BIS series' own transform (stretches, long stretch, growth in JST's units, gap z); before it, JST's.
+- Too short a BIS history keeps JST's value.
+- Off is the base: `build` gives the same result with and without `dated` nil.
+- Each year's BIS value is its December quarter; a year without one has none.
+- A value is read only once published: from the June release, not in May; a JST row not before the December a year on. This holds at the year node too.
+- Past the panel, the node reads the BIS's inputs alone, and nothing with the option off.
+- Household credit switches to the BIS from the splice.
+- `--dated-credit` takes true or false.
+
+### Runs
+
+- **t79-off**: t71-stack's command for banking only. Its forecasts, preds, weights and frailty are identical byte for byte to t71-stack's (forecasts sha ec1ae917…, the base's).
+- **t79-bis**: the same with `--dated-credit true`, at 92f2e4b. Under `--without-relations true` the kinds are independent and the option reaches no other kind, so t79-bis's other twelve kinds are t71-stack's, copied.
+
+Year nodes, banking, against t71-stack (`bnm.links --folds --kinds banking_crisis`; + = t79-bis better, 90% intervals):
+
+| fold | Brier | log |
+|---|---|---|
+| 2003-06 | -0.00005 [-0.00025, +0.00008] | -0.00052 [-0.00298, +0.00136] |
+| 2007-09 | -0.00010 [-0.00035, +0.00011] | -0.00120 [-0.00415, +0.00045] |
+| 2010-12 | -0.00031 [-0.00100, +0.00039] | -0.00133 [-0.00412, +0.00175] |
+| 2013-19 | +0.00000 [-0.00009, +0.00010] | -0.00037 [-0.00111, +0.00037] |
+| 2020-22 | +0.00055 [-0.00003, +0.00160] | +0.00206 [-0.00036, +0.00606] |
+| pooled | +0.00001 [-0.00023, +0.00029] | -0.00029 [-0.00150, +0.00092] |
+
+No fold gains or loses. Over all 13 kinds (`bnm.links --folds`, `bnm.world-score`): pooled Brier +0.00000 [-0.00002, +0.00002], log -0.00002 [-0.00010, +0.00007].
+
+The half-decade country nodes are not in the fold rule. Resampling countries (400 reps):
+- all countries: Brier +0.00070 [-0.00006, +0.00154], log +0.00314 [+0.00023, +0.00641];
+- the JST countries alone: Brier +0.0042 [-0.0008, +0.0099], log +0.0199 [+0.0015, +0.0412].
+
+Within-origin AUC rises from 0.64 to 0.82 at the JST countries, and from 0.45 to 0.51 over all countries. The gain comes from the December 2004 origin, where four countries that had a crisis by 2009 moved up: Belgium 0.121 → 0.212, Germany 0.143 → 0.201, Norway 0.154 → 0.190, Ireland 0.141 → 0.165.
+
+Calibration, banking, country year node, December origins (mean p / Brier, t71-stack → t79-bis):
+
+| span | rate | mean p | Brier |
+|---|---|---|---|
+| 2003-22 | 0.032 | 0.045 → 0.045 | 0.0322 → 0.0322 |
+| 2006 | 0.169 | 0.025 → 0.025 | 0.1600 → 0.1602 |
+| 2007 | 0.146 | 0.022 → 0.022 | 0.1385 → 0.1387 |
+| 2008 | 0.035 | 0.047 → 0.047 | 0.0328 → 0.0329 |
+| 2008-10 | 0.024 | 0.086 → 0.086 | 0.0283 → 0.0285 |
+| 2020-22 | 0.000 | 0.030 → 0.028 | 0.0014 → 0.0008 |
+
+### Alerts at 4:1 (`bnm.alerts`)
+
+- **Cost.** Banking cost per row goes from 0.131 (t71-stack) to 0.132 (t79-bis), Δ -0.0012 [-0.0044, +0.0023]. Pooled over kinds, Δ -0.0001 [-0.0003, +0.0002].
+- **Hits** stay at 0 of 82. The extra cost is false alarms at Ireland, Sweden and Belgium in 2009-11 (loss 1).
+- **The 2006 and 2007 episodes** stay missed: mean p 0.025 at a rate of 0.169, and 0.022 at 0.146.
+- **The world node's** cost is unchanged (0.350).
+
+### Banking 2006-08: which inputs moved
+
+At the December 2006-08 origins (rows 2005-07), the BIS moved some JST countries' inputs a long way (raw value, JST → BIS):
+- credit stretch: Belgium 2005 -0.98 → +1.08, Switzerland 2007 -2.45 → +1.44, Germany 2007 -2.21 → -0.19, Sweden 2005 +4.52 → +1.63, France 2006 +3.19 → +1.97;
+- household credit in place of mortgages: Japan 2005-07 about +2.1 → -2.0 to -3.4 (JST has mortgages rising while BIS household credit falls), Germany 2007 +0.27 → -3.49, Canada 2005 +0.50 → +2.93;
+- the gap z: Spain 2006 +5.64 → +3.12, the Netherlands 2006 +0.31 → -1.52, the USA 2007 +1.04 → +2.46;
+- three-year growth and the norm moved by under 0.15.
+
+Yet the issued p moved by under 0.012 at every onset row: Ireland 2006 0.077 → 0.066, Belgium 2006 0.033 → 0.039, Denmark 2007 0.045 → 0.052, Spain 2008 0.109 → 0.104. **The 2006-07 miss does not come from JST's credit:**
+- 10 of the 22 onsets at the 2006 origin, and 9 of 18 at 2007, are outside JST's panel. There the year node has no credit stretches and issues a flat 0.021-0.024.
+- At the JST countries the credit groups hold the weight (booms 0.43, stretches 0.38) and rank the boom countries (Ireland, Spain, Denmark) at two to three times the rest. But the level they start from is 0.02. That level comes from the crisis process and the climatology, after two quiet decades since 1990-92.
+
+### Why: the losses traced (PLAN principle 9)
+
+1. **2010-12 (-0.00031, not significant): the BIS's ratio rose as GDP fell.** The largest losses are false alarms after the crisis:
+
+   | country, origin | t71-stack → t79-bis |
+   |---|---|
+   | Ireland, Dec 2010 | 0.158 → 0.292 |
+   | Ireland, Dec 2011 | 0.014 → 0.209 |
+   | Sweden, Dec 2010 | 0.187 → 0.282 |
+   | Belgium, Dec 2010 | 0.156 → 0.220 |
+   | Switzerland, Dec 2010 | 0.102 → 0.156 |
+
+   At Ireland's row 2010, JST shows deleveraging (growth -0.24, gap z -1.82) where the BIS shows growth +0.56 and gap z +2.49. At Switzerland's rows 2009-10 the BIS credit stretch is +4.2 and +2.4, against JST's +0.4 and -1.8. Two things drive this. Total credit from all lenders includes the corporate and cross-border debt that JST's bank loans leave out (Ireland's multinationals). And a ratio to GDP rises when GDP falls, a known weakness of the credit-to-GDP gap after a crisis.
+
+   Verdict: **approach.** It comes from the series' concept, not a bug. The BIS's bank-credit series (closer to JST's concept, and what bnm-9vm checked against) would remove the non-bank part, though not the denominator effect. It is not in series.tsv, so it is recorded, not changed here.
+2. **2003-09 (-0.00005, -0.00010): small moves at onset rows.** Spain 2007-08 and the Netherlands 2007 are lower by 0.003-0.005; Spain's gap z falls from JST's +4.9 to the BIS's +2.7. Verdict: the data, not the code.
+3. **Japan.** JST's mortgages stretch is about +2 at 2005-10 while BIS household credit falls (-1 to -3.4). No Japanese crisis followed, so the move costs nothing here, but it shows how far JST's mortgage series is from the agencies'.
+
+The runs showed no bugs.
+
+### Reproduction
+
+With the option off:
+- t71-stack's command for banking (t79-off) gives its forecasts, preds, weights and frailty byte for byte.
+- REPRO-PLACEHOLDER
+
+### Verdict
+
+- **Neutral on the fold rule.** No year-node fold gains or loses at banking (pooled Brier +0.00001 [-0.00023, +0.00029]), so it is not an improvement under the acceptance rule.
+- **The half-decade node gains** on the log score (+0.0031 [+0.0002, +0.0064]), from the 2004 origin's ranking. That node is not in the fold rule.
+- **The 2006-08 miss does not come from JST's credit.** The level is set by the crisis process, and half the onsets are outside the panel.
+- **The cost** is post-crisis false alarms where the BIS's ratio rose as GDP fell (loss 1).
+- The inputs it gives are the agencies' own series, dated by their releases. Adoption is the user's decision; the option stays off by default.
