@@ -1504,3 +1504,59 @@ Tests:
 - bnm.lattice-political-test/fresh-inputs-the-year-row-reads-wdi-as-published-at-the-origin: at Dec 2008 a year first published in April 2009 is not read; off, no :fresh.
 - bnm.named-test/wdi-editions-no-wdi-year-before-its-edition: WDI series only, by edition; other sources unchanged.
 - bnm.world-run-test/fresh-inputs-option, wdi-editions-option: true, false or absent; anything else refused.
+
+### Run: t72-fresh
+
+t71-stack's command plus `--fresh-inputs true`, at d87e466 (data/runs/t72-fresh/README.txt), for the twelve kinds that read the year row. Banking crises read no year row (bnm.lattice-banking builds its own), and without relations (and without `--clim-prior kinds`) the kinds of a world run do not read each other, so banking_crisis/ is copied from t71-stack. Logs: data/runs/logs/run-t72-fresh.log, score-t72-*.txt, alerts-t72-vs-t71.txt.
+
+**Reproduction with the option off.**
+- t71-stack's command for the same twelve kinds at 06b5f27 (t71-repro-fresh): forecasts, weights, preds and frailty identical to t71-stack's for every kind, 48 files (data/runs/logs/repro-t71-fresh.txt).
+- **2026-Q4-r1** byte for byte through `bnm.ledger/reproduce-issue!` at d87e466, with `--wdi-editions` in the code too (data/runs/logs/repro-r1-fresh.log, 8556 lines, forecasts sha bdb361c8…).
+- The suite is green: 1398 tests, 0 failures (data/runs/logs/suite-fresh2.log).
+
+**Year nodes, Brier** (+ = t72-fresh better, 90% intervals resampling countries and years):
+
+| fold | vs t71-stack | vs t53-noclim |
+|---|---|---|
+| 2003-06 | +0.0018 [+0.0001, +0.0034] | +0.0089 [+0.0049, +0.0126] |
+| 2007-09 | +0.0001 [-0.0005, +0.0008] | +0.0165 [-0.0044, +0.0256] |
+| 2010-12 | +0.0001 [-0.0003, +0.0005] | +0.0007 [-0.0028, +0.0037] |
+| 2013-19 | +0.0000 [-0.0003, +0.0004] | +0.0072 [+0.0032, +0.0111] |
+| 2020-22 | +0.0002 [-0.0002, +0.0007] | +0.0030 [-0.0028, +0.0078] |
+| pooled | **+0.00045 [+0.00001, +0.00101] GAIN** | +0.0067 [+0.0039, +0.0097] GAIN |
+
+Log pooled: +0.0011 [-0.0004, +0.0030] against t71-stack (2013-19 -0.0007 [-0.0021, +0.0008] and 2020-22 -0.0011 [-0.0036, +0.0016]), +0.0188 [+0.0115, +0.0263] against t53-noclim (t71-stack's: +0.0177). **No fold's interval is below 0 against either bench**: the fold rule passes. Against t53-noclim t72-fresh is at or above t71-stack in every fold.
+
+Per kind against t71-stack (bnm.world-score; Brier, log):
+- market crashes +0.0059 [+0.0003, +0.0117] GAIN, log +0.0154 GAIN;
+- growth collapses -0.0003 [-0.0009, +0.0004], log -0.0006 [-0.0039, +0.0032];
+- currency crises -0.0002 [-0.0008, +0.0005], log -0.0028 [-0.0082, +0.0019];
+- violence surges +0.0002, inflation +0.0001 (log +0.0011), sovereign defaults +0.0001; the rest within ±0.0001.
+
+By fold (×1000, intervals in data/runs/logs/score-t72-kind-folds.txt; a bold value's interval is wholly below 0):
+
+| kind | 2003-06 | 2007-09 | 2010-12 | 2013-19 | 2020-22 |
+|---|---|---|---|---|---|
+| growth collapses | +1.33 | **-2.01** | +0.49 | **-0.97** | +0.32 |
+| market crashes | +19.31 | **-1.88** | +0.46 | +2.61 | +4.57 |
+| currency crises | +1.80 | -0.15 | -0.06 | **-1.37** | -0.06 |
+| fiscal consolidations | -0.01 | -0.10 | -0.09 | +0.03 | **-0.25** |
+| coups | -0.04 | +0.19 | -0.05 | +0.09 | **-0.31** |
+| food price shocks | -0.00 | +5.12 | -0.18 | -0.48 | -3.27 |
+| inflation crises | +0.17 | -0.13 | +0.03 | +0.15 | -0.09 |
+| sovereign defaults | +0.30 | +0.07 | -0.09 | -0.00 | +0.00 |
+
+**The growth node** (score-t72-growth-diag.txt), t71-stack → t72-fresh:
+- within-origin AUC 0.544 → 0.512 (17 origins), pooled 0.634 → 0.630;
+- the spread of p within an origin falls: sd 0.011-0.014 → 0.002-0.003 at Dec 2006-08;
+- mean p against the realized rate: +0.34 → +0.35 at the same origin, +0.56 → +0.53 four origins back. The level still lags;
+- calibration 2003-22: rate 0.118, mean p 0.092 → 0.090, Brier 0.0999 → 0.1002; 2007-08: p 0.119 → 0.117 (rate 0.219), Brier 0.1790 → 0.1818; 2018-19: p 0.138 both (rate 0.580).
+
+The fresh growth3 is a different input: across the 2654 scored rows it correlates with Maddison's growth3 at 0.43, and at Greece Dec 2012 it reads -1.86 sd against +0.38. As a raw ranker (lower growth, higher risk) its within-origin AUC is 0.51 against Maddison's 0.45: 0.63-0.76 at Dec 2006-09, 0.27-0.42 at Dec 2010-15 (the recoveries after 2009 rank the other way).
+
+**Alerts** (p ≥ 0.2, a miss costing 4; against t71-stack): pooled dcost +0.0045 [-0.0010, +0.0115]. Market crashes +0.0426 [-0.0206, +0.1160] (false alarms 81.1% → 75.3% at hits 88.0% → 87.3%), food +0.0165, growth +0.0035 (hits 25.7% → 26.5%), fiscal +0.0031; coups -0.0029, inflation -0.0025 (hits 2.6% → 0%: one onset), violence -0.0015. Episodes: the same 8 of 21 caught.
+
+**The outliers** (mean p at the December origin, rate in brackets), t71-stack → t72-fresh:
+- Growth: 2007 (0.235) 0.111 → 0.106; 2008 (0.202) 0.129 → 0.128; 2019 (0.571) 0.055 → 0.056. All missed.
+- Food: 2020 (0.493) 0.153 → 0.133, missed; 2021 (0.500) 0.227 → 0.224, caught.
+- Market crashes: 2006 (0.957) 0.382 → 0.383; 2007 0.542 → 0.541, both caught.
