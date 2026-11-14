@@ -1577,3 +1577,109 @@ Bugs: none found in either option. The forecast's integral and the candidate's s
 - **B (t75-clim).** It removes the uninformed 0.5 (food 2003-06 Brier 0.239 → 0.159, food 2003-22 0.1449 → 0.1319). It fails the fold rule in 2010-12 and 2020-22, through the year-quarter loop at food and the averaging's path at the late-catalogue kinds. Not accepted.
 - **t76-both** was not run: neither passes.
 - Both options stay off by default. Adoption is the user's decision.
+
+## 19. Frailty centred on the rate: t77-pmean, t78-pmean-wide (bnm-0fe, bnm-02u)
+
+§18 found that the frailty's shift z − σ²/2 keeps the odds multiplier at one, so it deflates a common kind's probability, and that a large σ was being chosen as a calm-level knob. The frailty's design (docs/RECURSIVE.md 3b) says the shock leaves the expected rate as it is, so this was reclassed as a bug (bnm-0fe). The fix is docs/RECURSIVE.md step 3f, written and committed (ac6cba6) before any run.
+- `:frailty {:centre :rate}`. Each place's shift is the state's mean plus c, where c solves E[F(r + c + √(r_v + v_z) Z)] = E[F(r + √r_v Z)] on the row's own probability curve F. v_z is the transient's stationary variance. N(r, r_v) is the part that is not centred: a level, or the gauges' β·g with its uncertainty. The same c is applied in the issued forecast (F the node's model average), in the learning rows' offsets (the shared effect is the state's own mean), and in the filter and candidate scores (F the `:from` model's predictive, with each candidate's own v_z). If only the forecast were centred, the filter would carry the old correction in its mean. The default `:odds` is unchanged.
+- The rule changes the shift at σ = 1 too. Rows at p = 0.03, 0.10 and 0.26 (q = 0) take c = −0.45, −0.37 and −0.21, against −0.5 under the odds rule. With the model's own predictive variance q = 2 they take −0.35, −0.29 and −0.16, since MacKay's probit scales the shock by k < 1. At σ = 1.5 the same rows take −0.97, −0.76 and −0.41, against −1.125.
+- Tests (lattice_test bnm-0fe-*):
+  - The rate shift's predictive equals the base to 1e-6 for bases 0.01, 0.12, 0.5 and 0.9 at σ 0.25, 1 and 3, also with q > 0 and a part not centred, and is within 0.2% of a fine trapezoid.
+  - With nothing filtered, the forecasts equal those without the frailty to 1e-6, for the scalar state and the slope at every base and σ, and for the gauges' state (unit level, g in {−1.5, 0, 2}). The odds rule fails this for a common base.
+  - The prior's entries carry no half variance: a level is added as it stands, and a slope's place takes v_z = σ² + σ_u²|e|².
+  - `:centre :odds` is byte-identical to the default; bad values are refused.
+  - Every form (scalar, level, slope, parent, finer, gauges) runs and still finds its planted world.
+  - A planted common kind (base 0.4, no shock, σ held at 2): under the odds rule the base's intercept learns +1.4 to undo the half variance (−2), against −0.4 under the rate rule. So the odds rule's deflation is not always visible as a level: it moves into the intercept, which then measures the chosen candidate's size and not the departure from the climatology.
+  - Suite: 1404 tests, 0 failures (data/runs/logs/suite-t77.log).
+- Reproduction with the option off: 2026-Q4-r1 byte for byte through `bnm.ledger/reproduce-issue!` (data/runs/logs/repro-r1-pmean.log, forecasts sha bdb361c8…). t71-stack's command rerun for market crashes, food and banking (t71-repro-pmean) gives forecasts.tsv, frailty.tsv and weights.tsv byte for byte.
+
+**Runs.** The frailty is at every node of every kind, so all 13 kinds were run. Both runs use t71-stack's command plus the frailty option:
+- **t77-pmean**: `:frailty {:centre :rate}` (22 min).
+- **t78-pmean-wide**: `:frailty {:centre :rate :sds :wide}` (40 min).
+
+**σ chosen at the year country node, 2003-22** (score-t77-t78-outliers-calibration.txt):
+
+| kind | t71-stack | t74-sigma (odds, wide) | t77-pmean | t78-pmean-wide |
+|---|---|---|---|---|
+| growth collapses | 1.0 ρ 0.8 | 3.0 | 1.0 ρ 0.8 | 1.5 (1.0 in 2008, 2017-18) ρ 0.8 |
+| food | 1.0, ρ 0-0.8 | 3.0 then 2.0 | 1.0, ρ 0.8 from 2012 | 3.0 (2008-13), 2.0 (2014-19), 1.5 (2020-21), ρ 0.8 from 2012 |
+| market crashes | 1.0 ρ 0 | 2.0 ρ 0 | 1.0 ρ 0 | 1.5 ρ 0 |
+| banking | 1.0 ρ 0.8 | 1.5 | 1.0 ρ 0.8 | 1.5 ρ 0.8 |
+| inflation | 1.0 ρ 0.95 | 1.5 in 2006-09 | as t71 | 1.5 in 2008 |
+| the other eight | | as t71 | as t71 | as t71 |
+
+Under the rate rule the wide grid no longer runs to its top. Growth stops at 1.5 instead of 3 and market crashes at 1.5 instead of 2, and food leaves 3 after 2013. So t74's σ = 3 was the half-variance knob, as §18 traced. Some year nodes still choose above 1, so the default grid's top of 1 still truncates them.
+
+**Scores against t71-stack**, year nodes (90% intervals; score-t77/t78-folds/world-vs-t71-stack.txt):
+
+| fold | t77 Brier | t77 log | t78 Brier | t78 log |
+|---|---|---|---|---|
+| 2003-06 | +0.0010 [-0.0014, +0.0031] | +0.0018 [-0.0038, +0.0069] | +0.0002 [-0.0017, +0.0019] | -0.0014 [-0.0063, +0.0029] |
+| 2007-09 | +0.0003 [-0.0003, +0.0007] | +0.0005 [-0.0012, +0.0025] | -0.0000 [-0.0011, +0.0006] | -0.0015 [-0.0052, +0.0015] |
+| 2010-12 | **-0.0015 [-0.0023, -0.0006] LOSS** | -0.0041 [-0.0065, -0.0013] | **-0.0021 [-0.0033, -0.0006] LOSS** | -0.0062 [-0.0099, -0.0016] |
+| 2013-19 | -0.0002 [-0.0006, +0.0003] | -0.0002 [-0.0016, +0.0017] | -0.0003 [-0.0012, +0.0010] | -0.0014 [-0.0042, +0.0023] |
+| 2020-22 | -0.0009 [-0.0024, +0.0005] | -0.0025 [-0.0074, +0.0024] | +0.0000 [-0.0013, +0.0013] | +0.0043 [-0.0019, +0.0105] |
+| pooled | -0.0002 [-0.0009, +0.0005] | -0.0006 [-0.0025, +0.0014] | -0.0005 [-0.0011, +0.0003] | -0.0016 [-0.0038, +0.0009] |
+
+Both runs fail the fold rule in 2010-12 and have no pooled gain. **Neither is accepted.** By kind (Brier, score-t77/t78-kind-folds.txt):
+- t77: market crashes -0.0021 (LOSS in 2010-12, 2013-19 and 2020-22; +0.016 in 2003-06 and +0.007 in 2007-09), food -0.0020 (LOSS in 2003-06 and 2010-12), growth +0.0009 (LOSS in 2003-12 and 2020-22, +0.0056 in 2013-19), sovereign -0.0002 (LOSS), banking -0.0001 (LOSS in 2010-22), fiscal +0.0008.
+- t78: food -0.0025, growth -0.0022 (log -0.0135), market crashes -0.0019, banking -0.0005 (LOSS in every fold from 2007), sovereign -0.0003 (LOSS), fiscal +0.0011, coup +0.0003.
+
+**Alerts at 4:1** (cost per row, + = cheaper than t71-stack; alerts-t77/t78-vs-t71-stack.txt):
+- t77 pooled -0.0031 [-0.0067, +0.0006]: market crashes -0.021, growth -0.013, food -0.010, fiscal +0.008.
+- t78 pooled **-0.0087 [-0.0147, -0.0022] LOSS**: growth -0.046 LOSS, market crashes -0.045 LOSS, food -0.024, coup +0.006.
+- Both catch the same 8 of 21 episodes as t71-stack. Food 2020 and growth 2019 are still missed.
+
+**Calibration and outliers**, country year, December origins, mean p / Brier:
+
+| kind | span | rate | t71-stack | t77-pmean | t78-pmean-wide |
+|---|---|---|---|---|---|
+| market crashes | 2003-22 | 0.178 | 0.304 / 0.1415 | 0.320 / 0.1436 | 0.318 / 0.1434 |
+| market crashes | 2006-07 | 0.957 | 0.463 / 0.2917 | 0.493 / **0.2605** | 0.476 / 0.2795 |
+| market crashes | 2010-12 | 0.080 | 0.237 / 0.1125 | 0.259 / 0.1220 | 0.270 / 0.1228 |
+| market crashes | 2018-22 | 0.123 | 0.346 / 0.1741 | 0.366 / 0.1863 | 0.358 / 0.1766 |
+| food | 2003-06 | 0.209 | 0.493 / 0.2390 | 0.497 / 0.2416 | 0.497 / 0.2416 |
+| food | 2010-12 | 0.060 | 0.224 / 0.0903 | 0.236 / 0.0965 | 0.236 / 0.0967 |
+| food (carried calm) | 2020-22 | 0.415 | 0.174 / 0.3040 | 0.184 / 0.3068 | 0.156 / 0.3043 |
+| growth | 2003-22 | 0.118 | 0.092 / 0.0999 | 0.102 / 0.0990 | 0.111 / 0.1021 |
+| growth (carried calm) | 2007-08 | 0.219 | 0.119 / 0.1790 | 0.112 / 0.1816 | 0.088 / 0.1870 |
+| growth | 2010-12 | 0.052 | 0.084 / 0.0518 | 0.098 / 0.0540 | 0.127 / 0.0587 |
+| growth | 2020-22 | 0.047 | 0.141 / 0.0590 | 0.166 / 0.0659 | 0.148 / 0.0593 |
+| banking | 2003-22 | 0.032 | 0.045 / 0.0322 | 0.046 / 0.0323 | 0.050 / 0.0327 |
+| banking (carried calm) | 2006-07 | 0.158 | 0.024 / 0.1496 | 0.024 / 0.1492 | 0.023 / 0.1495 |
+| banking | 2008-10 | 0.024 | 0.086 / 0.0283 | 0.088 / 0.0286 | 0.097 / 0.0298 |
+
+| episode (rate) | t71-stack | t77-pmean | t78-pmean-wide |
+|---|---|---|---|
+| food 2006 (0.418) | 0.547 | 0.552 | 0.552 |
+| food 2007 (0.313) | 0.310 | 0.308 | 0.308 |
+| food 2010 (0.114) | 0.264 | 0.262 | 0.262 |
+| food 2020 (0.493) | 0.153 | 0.117 | 0.131 |
+| food 2021 (0.500) | 0.227 | 0.269 | 0.215 |
+| market crashes 2006 (0.957) | 0.382 | 0.433 | 0.397 |
+| market crashes 2007 (0.957) | 0.542 | 0.553 | 0.552 |
+| growth 2007 (0.235) | 0.111 | 0.111 | 0.101 |
+| growth 2008 (0.202) | 0.129 | 0.113 | 0.075 |
+| growth 2019 (0.571) | 0.055 | 0.059 | 0.060 |
+
+The carried calms do not lift. Growth 2007-08 falls further (0.119 → 0.112 → 0.088). Banking 2006-07 does not move. Food 2020-22 rises slightly in t77 (0.174 → 0.184) and falls in t78 (0.156).
+
+### Why: the losses traced (PLAN principle 9)
+
+1. **Calm years at market crashes, food and growth (2010-12 in both runs; market crashes 2013-22).** These are rows the models already over-forecast. Market crashes 2010-12 issue 0.237 against a rate of 0.080 in t71-stack, food 2010-12 0.224 against 0.060, growth 2020-22 0.141 against 0.047. The odds rule's −σ²/2 was a fixed downward correction applied at every origin, whatever the frailty had filtered. The rate rule removes it, so these forecasts rise by about 0.01-0.025.
+   - The frailty itself sees the calm. Market crashes' filtered z is −1.4 to −1.7 at every origin from 2012 to 2018 in both rules (frailty.tsv). But the year node chooses ρ = 0, so the forecast discards it. It issues 24 months plus the lag after its last filtered origin, and at ρ = 0 the issued prior is the stationary N(0, σ²) whatever was filtered.
+   - Food 2008-10 is the same case: ρ = 0, σ = 1.
+   - Growth's carried shocks at ρ 0.8 (the 2009 and 2019 episodes, z +0.6 and +2.6) lift the following calm years. Under the rate rule a carried shock is not offset by a deflation.
+   - Verdict: **not a bug.** The rate rule does what the design says, and the tests pin it. The odds rule's deflation was hiding a calm-level gap, as §18 found at large σ. The gap is a persistent level that an AR(1) shock, filtered 24-36 months behind the forecast, cannot carry. That is step 3c's level, which failed to carry calms for the same lag (§8), or a regime (step 5). The calm years were scored better under the odds rule for a wrong reason.
+2. **Food 2003-06 (LOSS in both, -0.0026).** These are the uninformed year forecasts at 0.5 (§18 B). With nothing filtered, the odds rule issued 0.493 and the rate rule issues the 0.5 the models give, so this is the deflation's removal on an uninformed start. Verdict: **not a bug.** The fix is the climatology prior (bnm-56c.26), already a separate option.
+3. **Banking (t78, every fold from 2007, log -0.004) and sovereign defaults (both, -0.0002).** These kinds are rare, so the rows sit where the two rules nearly agree. But the year models' predictive variance is large (q around 2), MacKay's probit scales the shock by k < 1, and the rate shift is about −k σ²/2: −0.35 against −0.5 at p = 0.03 and q = 2. Banking at σ 1.5 and ρ 0.8 also carries its shocks further (2008-10: 0.086 → 0.097 against a rate of 0.024). Verdict: **not a bug.** The rate rule centres the predictive the node actually issues. The odds rule's extra deflation at large q had been working as a calm correction there too.
+4. **t78's alerts (growth -0.046, market crashes -0.045).** Higher calm forecasts cross 0.2 more often. Market crashes alert on 90% of rows (86% in t77, 82% in t71-stack) at a 90% false-alarm rate, and growth's false alarms rise from 6.4% to 10.6%. These are the same calm rows as loss 1. No bug.
+5. **Gains.** Market crashes 2006-07 (t77: Brier 0.2917 → 0.2605; 2006 0.382 → 0.433) and the 2003-09 folds at market crashes, and food 2021 (0.227 → 0.269). An episode after a calm is no longer deflated.
+
+### Verdict
+
+- The bug is fixed behind `:centre :rate`, tested, and byte-identical when off. The design (docs/RECURSIVE.md step 3f) applies the centring to the forecast, the learning rows and the filter alike.
+- Neither run is accepted: both fail the fold rule in 2010-12, with no pooled gain, and t78 loses the alert cost.
+- The traced losses are calm years whose over-forecast the odds rule's deflation had masked. They are not a defect of the centring.
+- For bnm-02u: centred on the rate, the wide grid no longer runs to its top (growth 1.5, market crashes 1.5, food leaving 3). The wide grid's σ = 3 was the half-variance knob. A wider grid is now a fair test, but it does not pay on its own.
+- What the calm years need is a level that reaches the forecast within the information lag: step 3c's level with a fresher source, or step 5's regime. `:centre :rate` should come with it, so that the level is not counted against a hidden deflation. The option stays off by default; adoption is the user's decision.
