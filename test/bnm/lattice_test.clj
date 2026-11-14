@@ -2363,3 +2363,168 @@
     (doseq [f [{:gauges {:year [:nope]}} {:gauges {:year []}} {:gauges [:g]} {:gauges {:year [:g]} :sds [0.0]}
                {:gauges {:year [:g]} :prior :parent} {:gauges {:year [:r]}} {:gauges {:year [:g]} :gauges-from "all"}]]
       (is (thrown? clojure.lang.ExceptionInfo (pool-world w {:frailty (merge {:rhos [0.0 0.5] :sds [0.0 0.5]} f)})) f))))
+
+;; --- bnm-0fe: the frailty centred on the rate (:frailty {:centre :rate}) ---
+
+(def ^:private base-ps [0.01 0.12 0.5 0.9])
+(def ^:private sizes [0.25 1.0 3.0])
+
+(defn- frailty-mean
+  "The mean of expit over offsets [[w o] ...] with `zp` added (the
+  forecast's own rule)."
+  [os zp]
+  (reduce + (for [[w o] (lt/with-frailty os zp)] (* w (m/expit o)))))
+
+(deftest bnm-0fe-the-rate-shift
+  ;; the shift c with E[expit(eta + c + sd Z)] = expit(eta), by the rule the
+  ;; forecast integrates with (five points to sd 1, twenty above)
+  (doseq [p base-ps sd sizes]
+    (let [eta (m/logit p)
+          c (lt/rate-shift (lt/logistic-curve eta 0.0) 0.0 0.0 (* sd sd) sd)
+          q (frailty-mean [[1.0 eta]] {:m c :v (* sd sd) :sd sd})]
+      (is (< (Math/abs (- q p)) 1e-6) [p sd c q])
+      (testing "against a fine trapezoid"
+        (is (< (Math/abs (- (fine-normal #(m/expit (+ eta %)) c sd) p)) (* 2e-3 p)) [p sd]))))
+  (testing "rare: the odds' half variance; even: none; common: above 0"
+    (is (< (Math/abs (- (lt/rate-shift (lt/logistic-curve -14.0 0.0) 0.0 0.0 1.0 1.0) -0.5)) 1e-3))
+    (is (< (Math/abs (lt/rate-shift (lt/logistic-curve 0.0 0.0) 0.0 0.0 1.0 1.0)) 1e-9))
+    (is (pos? (lt/rate-shift (lt/logistic-curve (m/logit 0.9) 0.0) 0.0 0.0 1.0 1.0))))
+  (testing "with the predictive's own variance q (MacKay's probit), and a part not centred (mean rm, variance rv)"
+    (doseq [p base-ps sd sizes]
+      (let [f (m/logit p) q 0.7 k (/ 1.0 (Math/sqrt (+ 1.0 (/ (* Math/PI q) 8.0))))
+            pr (fn [os zp] (reduce + (for [[w o] (lt/with-frailty os zp)] (* w (m/expit (* k o))))))
+            c (lt/rate-shift (lt/logistic-curve f q) 0.4 0.09 (* sd sd) sd)]
+        (is (< (Math/abs (- (pr [[1.0 f]] {:m (+ 0.4 c) :v (+ 0.09 (* sd sd)) :sd sd})
+                            (pr [[1.0 f]] {:m 0.4 :v 0.09 :sd sd})))
+               1e-6) [p sd]))))
+  (testing "no size, no shift"
+    (is (= 0.0 (lt/rate-shift (lt/logistic-curve -1.0 0.0) 0.0 0.0 0.0 0.0)))))
+
+(defn- early
+  "The forecasts issued before any row is learned (origins before 35)."
+  [r]
+  (mapv :p (filter #(< (:origin %) 35) (:forecasts r))))
+
+(defn- close? [a b] (and (= (count a) (count b)) (pos? (count a)) (every? #(< (Math/abs (double %)) 1e-6) (map - a b))))
+
+(deftest bnm-0fe-the-prior-predictive-is-the-base
+  ;; with nothing filtered the forecast with the frailty centred on the
+  ;; rate is the forecast without it, at any base and size: scalar state,
+  ;; the slope on exposure, and the gauges' loadings (their mean and its
+  ;; uncertainty kept, the transient centred)
+  (doseq [p base-ps sd sizes]
+    (let [o {:offset (fn [_ _ _] (m/logit p)) :end 40}
+          one {:centre :rate :rhos [0.0] :sds [sd] :penalty 0.0}
+          off (shock-world 20 1.0 o)
+          on (shock-world 20 1.0 (assoc o :frailty one))
+          odds (shock-world 20 1.0 (assoc o :frailty (dissoc one :centre)))
+          xoff (exposure-world 30 0.5 1.0 o)
+          xon (exposure-world 30 0.5 1.0 (assoc o :frailty (assoc one :exposure-sds [0.5] :exposure-penalty 0.0)))]
+      (is (close? (early off) (early on)) [p sd :scalar])
+      (is (close? (early xoff) (early xon)) [p sd :slope])
+      (when (and (>= sd 1.0) (< 0.05 p))
+        (is (not (close? (early off) (early odds))) "the odds' half variance deflates a common base"))))
+  (testing "the gauges: the transient centred about the gauges' shift and its uncertainty"
+    (doseq [p base-ps sd sizes g [-1.5 0.0 2.0]]
+      (let [c {:rho 0.0 :sd sd :b0 [0.6] :bv [0.0625] :mu [0.0 0.6] :P [[(* sd sd) 0.0] [0.0 0.0625]] :t nil :score 0.0 :price 0.0}
+            zp (lt/frailty-prior {:prior :own :centre :rate} {:cands [c]} nil 11 12)
+            {:keys [m v rm rv vz]} (lt/frailty-at (assoc zp :g [g]) nil)
+            eta (m/logit p)
+            s (lt/rate-shift (lt/logistic-curve eta 0.0) rm rv vz sd)]
+        (is (< (Math/abs (- (frailty-mean [[1.0 eta]] {:m (+ m s) :v v :sd sd})
+                            (frailty-mean [[1.0 eta]] {:m rm :v rv :sd sd})))
+               1e-6) [p sd g])
+        (is (< (Math/abs (- rm (* 0.6 g))) 1e-12))
+        (is (< (Math/abs (- vz (* sd sd))) 1e-12))))))
+
+(deftest bnm-0fe-the-prior-under-rate
+  ;; the state as it is, the half variance gone from every candidate's
+  ;; mean; each candidate's centred variance beside it
+  (let [fr {:cands [{:rho 0.0 :sd 1.0 :m 0.0 :v 1.0 :t 11 :score 0.0 :price 0.0}]}
+        {:keys [m zc vz]} (lt/frailty-prior {:prior :own :centre :rate} fr nil 35 12)]
+    (is (= 0.0 m))
+    (is (= 1.0 vz))
+    (is (= [[0.0 1.0 1.0 0.0 0.0]] zc)))
+  (testing "a level: added as it is and not centred, the transient centred"
+    (let [fr {:cands [{:rho 0.0 :sd 1.0 :lsd 0.1 :m 0.0 :v 1.0 :lm -0.8 :lv 0.04 :c 0.0 :t 11 :score 0.0 :price 0.0}]}
+          {:keys [m rm rv vz]} (lt/frailty-prior {:prior :own :centre :rate} fr nil 35 12)]
+      (is (< (Math/abs (- m -0.8)) 1e-12) m)
+      (is (< (Math/abs (- rm -0.8)) 1e-12))
+      (is (< (Math/abs (- rv 0.06)) 1e-12) rv)
+      (is (= 1.0 vz))))
+  (testing "a slope: the place's centred variance sd^2 + usd^2 |e|^2, nothing taken from its mean"
+    (let [c {:rho 0.0 :sd 1.0 :usd 0.5 :mu [0.2 0.4] :P [[0.3 0.1] [0.1 0.2]] :t 23 :score 0.0 :price 0.0}
+          zp (lt/frailty-prior {:prior :own :centre :rate} {:cands [c]} nil 35 12)
+          {:keys [m v rm rv vz]} (lt/frailty-at zp [2.0])]
+      (is (= 0.0 m))
+      (is (< (Math/abs (- v 2.0)) 1e-12))
+      (is (= [0.0 0.0 2.0] [rm rv vz])))))
+
+(deftest bnm-0fe-off-is-unchanged-and-bad-values-refused
+  (let [a (shock-world 20 1.0 frail)
+        b (shock-world 20 1.0 (assoc-in frail [:frailty :centre] :odds))]
+    (is (= (:forecasts a) (:forecasts b)))
+    (is (= (:book a) (:book b))))
+  (doseq [bad [:prob "rate" true]]
+    (is (thrown? clojure.lang.ExceptionInfo (shock-world 3 1.0 {:frailty {:centre bad}})) (pr-str bad))))
+
+(deftest bnm-0fe-a-common-kind-with-no-shock
+  ;; a base of 0.4 and no common shock, the frailty held at sd 2: centred on
+  ;; the rate the forecasts stay at the rate and the base's intercept, read
+  ;; against the current climatology, stays near 0; under the odds' half
+  ;; variance (-2 in log odds) the intercept learns to undo it (+1.4), so
+  ;; it carries a candidate's size rather than a departure from the climatology
+  (let [g (m/rng 5)
+        places (mapv #(str "P" %) (range 30))
+        yr (fn [t] (quot (inc t) 12))
+        ys (into {} (for [c places y (range 40)] [[c y] (< (m/next-double! g) 0.4)]))
+        run (fn [centre]
+              (lt/run {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
+                       :levels [[:country places]] :parent {} :start 0 :end 359 :forget 0.995
+                       :target (fn [_ place t] {:y (ys [place (yr t)]) :known-at (+ t 24)})
+                       :gauges (fn [_ _ _] []) :gauge-width {:year 0}
+                       :flow-std-from :resolved :clim-learn :current :discount-from :data
+                       :frailty (cond-> {:rhos [0.0] :sds [2.0] :penalty 0.0} centre (assoc :centre centre))}))
+        mean-p (fn [r] (let [fs (filter #(>= (:origin %) 95) (:forecasts r))] (/ (reduce + (map :p fs)) (count fs))))
+        late (filter #(>= (second (key %)) 8) ys)
+        rate (/ (count (filter val late)) (double (count late)))
+        icpt (fn [r] (first (augur.dynamic/means (lt/model r :year :country :base))))
+        rr (run :rate) ro (run nil)]
+    (is (< (Math/abs (- (mean-p rr) rate)) 0.03) [(mean-p rr) rate])
+    (is (< (Math/abs (icpt rr)) 0.6) (icpt rr))
+    (is (> (icpt ro) 1.0) (icpt ro))))
+
+(deftest bnm-0fe-every-form-of-the-frailty-under-rate
+  ;; the scalar state, the level, the slope, the parent and finer priors and
+  ;; the gauges' loadings all issue and filter centred on the rate, and each
+  ;; still finds what its planted world holds
+  (let [rate (fn [cfg] (assoc-in cfg [:frailty :centre] :rate))
+        finite? (fn [r] (and (seq (:forecasts r)) (every? #(< 0.0 (:p %) 1.0) (:forecasts r))))
+        last-f (fn [r] (val (last (get-in r [:frailty [:year :country]]))))]
+    (testing "scalar: the shock is tracked"
+      (let [on (shock-world 20 1.0 (rate frail))
+            fl (get-in on [:frailty [:year :country]])
+            pairs (for [[s {:keys [m]}] fl] [m ((:z on) ((:yr on) s))])]
+        (is (finite? on))
+        (is (> (corr (map first pairs) (map second pairs)) 0.8))
+        (is (pos? (:sd (last-f on))))))
+    (testing "level: carried"
+      (let [on (persistent-world -1.2 (rate with-level))]
+        (is (finite? on))
+        (is (pos? (:lsd (last-f on))))
+        (is (< (:level (last-f on)) -0.5))))
+    (testing "slope: chosen, the place's shocks differ"
+      (let [on (exposure-world 150 0.5 1.0 (rate with-exposure))]
+        (is (finite? on))
+        (is (pos? (:usd (last-f on))))
+        (is (not= (:z (val (last (get-in on [:book [:year "P0"]])))) (:z (val (last (get-in on [:book [:year "P149"]]))))))))
+    (testing "parent"
+      (is (finite? (exposure-world 30 0.5 1.0 (rate (assoc-in with-exposure [:frailty :prior] :parent))))))
+    (testing "finer: the year takes the quarter's shock"
+      (let [r (fresh-world 30 true {:frailty (assoc finer :centre :rate)})]
+        (is (finite? r))
+        (is (some #(pos? (:cross (val %) 0.0)) (get-in r [:frailty [:year :country]])))))
+    (testing "gauges: beta learned, the issued shock the gauge's shift plus the place's centring"
+      (let [r (pool-world {:n 30} (rate pooled))]
+        (is (finite? r))
+        (is (< (beta-v r) 0.0625))))))
