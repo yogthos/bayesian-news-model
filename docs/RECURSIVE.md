@@ -434,6 +434,14 @@ Earlier: **Base of record (12 November 2026): t53-noclim** (second note to amend
 - **Alerts and scores.** The alert layer reads the scale (`bnm.alerts --scale quarter-next`): every quarter-end origin, the same 4:1 threshold 0.2. Scored on its own rows (country nodes, 2003-22): Brier and log against (a) a causal climatology, the rate among the kind's resolved quarter-next country rows known by t, and (b) the quarter-lead's implied hazard for the same quarter, from its forecast issued at t − 3 for (t, t + 9], 1 − (1 − p)^(1/3), on the quarter-next outcome. 90% intervals resampling countries and years.
 - **Tests first** (lattice_test bnm-56c-38-*, world_run_test): a planted world whose common shock in quarter (t, t+3] is announced by a world gauge read at t: the next-quarter scale issues high p for the quarters it hits, and the year and quarter-lead issued before the gauge moved cannot; the leaf leaves every other scale's forecasts and book as they were; no lookahead; the offset from named's w1; the world-run option's kinds and catalogues; off, every spec as before; 2026-Q4-r1 and t71-stack reproduce.
 - **Run.** t73-nq = t71-stack's command + `--next-quarter true`, for food, market crashes and growth collapses; the other ten kinds are copied from t71-stack (under `--without-relations true` the kinds are independent, and coups, protest and violence would get the scale but are not run).
+- **Status (13 November 2026): built, scored, not adopted** (docs/CALIBRATION.md 18).
+  - The year nodes are unchanged against t71-stack (+0.00000 in every fold), and 2026-Q4-r1 reproduces.
+  - On its own rows, from 2005, the scale is level with a causal climatology (+0.0010 [-0.0005, +0.0035] pooled Brier) and with the quarter-lead's implied hazard (+0.0007 [-0.0008, +0.0025]).
+  - It catches no outlier quarter beyond market crashes Dec 2008 (3 rows).
+  - What limits it:
+    - a calm carried at ρ 0.95 (growth Mar 2020 issued 0.007 at a rate of 0.83);
+    - the year's theory priors, overturned at three months for the curve and the VIX;
+    - the size of the 2020 and 2022 shocks.
 
 **Step 5: regime filter and gated encompassing (bnm-56c.2).**
 - `src/bnm/regime_filter.clj`. Augur `:weighting {:rule :gated :regimes P :pool-siblings κ}`. Drivers: world state (step 2) first, buffers when step 6 lands. The world gauges (food12, brent12 and the unwired VIX, credit, dollar, policy rate) enter here with confidence weights, not a hard gate: their weight at a kind grows with the posterior evidence for their lead and shrinks to zero under noise, so step 2's harness (noise, planted, false move, short burst) applies to the weights.
