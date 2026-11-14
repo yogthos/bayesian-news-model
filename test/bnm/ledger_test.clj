@@ -116,7 +116,7 @@
     (is (= lg/base-files (lg/check-base (str "data/runs/" lg/base) lg/base-files)) "the files on disk are the base's")))
 
 (deftest the-base's-inputs-are-the-ones-the-issue-reads
-  ;; t71 (as t53 and t65) reads the onsets run r7-at-fx, r6-at-fx's command on the
+  ;; t80 (as t53, t65 and t71) reads the onsets run r7-at-fx, r6-at-fx's command on the
   ;; series.tsv with FAOSTAT's prices at their publication lag (bnm-56c.31);
   ;; a command naming a run whose preds are not an input would be refused
   ;; as a stray read at issue time
@@ -128,13 +128,19 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t71-with-the-stack
-  ;; note to L1, 13 November 2026 (fourth): t65's command with the series
+(deftest the-base-of-record-is-t80-with-dated-credit
+  ;; note to L1, 14 November 2026 (fifth): t71-stack's command with the
+  ;; banking node's credit inputs from the BIS, dated by its releases
+  ;; (--dated-credit, bnm-9vm option A; docs/CALIBRATION.md "Dated credit
+  ;; for banking"). t71-stack (fourth note): t65's command with the series
   ;; at their true publication (bnm-a1e), rows at risk by the catalogue's
   ;; rule (bnm-96j), the leading gauges standardized on their history
-  ;; (bnm-11y) and the year node's gauges moving frailty (bnm-v1y);
-  ;; docs/CALIBRATION.md 15-17
-  (is (= "t71-stack" lg/base))
+  ;; (bnm-11y) and the year node's gauges moving frailty (bnm-v1y)
+  (is (= "t80-base" lg/base))
+  (is (= "c61913e67692325a7ee8ba2306e5a98353dc5ee9bfd286678cf30881eb3a65d3" (lg/base-files "banking_crisis"))
+      "banking is t79-bis's, the only kind the option reaches")
+  (is (= "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442" (lg/base-files "conflict_onset"))
+      "the other twelve are t71-stack's")
   (is (= "r7-at-fx" lg/known))
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
@@ -149,11 +155,12 @@
     (is (= "catalogue" (opt "--at-risk")))
     (is (= "history" (opt "--lead-std")))
     (is (= "true" (opt "--frailty-gauges")))
+    (is (= "true" (opt "--dated-credit")))
     (is (nil? (opt "--clim-prior")) "bnm-56c.26 not adopted")
     (is (= {:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {}
             :discount-from :data :flow-std :stable :evidence-at :issue-joint}
            (read-string (opt "--set")))
-        "t71-stack's options, t65-gauges's; the lattice's default is the registered issues' code")
+        "t80-base's options, t71-stack's and t65-gauges's; the lattice's default is the registered issues' code")
     (testing "the command written to a manifest reads back as the same arguments"
       (is (= (assoc args 1 "r") (lg/manifest-args (lg/command-line args) "r"))))))
 

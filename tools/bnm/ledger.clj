@@ -2,7 +2,7 @@
   "The forward ledger (docs/PLAN.md 0.1; the registration in
   docs/PHASE-CHANGES.md, 11 November 2026, and its amendment L1). Each
   quarter the frozen base (the world without relations; the base of record
-  is t71-stack, the fourth note to L1 of 13 November 2026) issues every kind, place and window at the quarter's
+  is t80-base, the fifth note to L1 of 14 November 2026) issues every kind, place and window at the quarter's
   last month, from the data on disk at the issue date, to
   registered/ledger/<issue>/, with its hashes; nothing is refit between
   issue and outcome, and an issue is never edited. Later, when a window's
@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t71-stack")
+(def base "t80-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -69,7 +69,9 @@
   "Every file the base reads (recorded by running it, 11, 12 and 13
   November 2026; t71-stack's --real-lags are code, bnm.named/real-lags,
   and its --at-risk rules bnm.kinds/at-risk-rules and data/slow/
-  series.tsv's inflation)."
+  series.tsv's inflation; t80-base's --dated-credit reads the BIS's credit
+  from data/slow/series.tsv, finance/credit_gdp and finance/
+  household_credit_gdp)."
   ["data/derived/econ-coverage.csv" "data/derived/econ-events.csv" "data/derived/fiscal.csv"
    "data/derived/jst-credit-gap.csv" "data/derived/lattice-annual.csv" "data/derived/lattice-quarterly.csv"
    "data/derived/political-annual.csv" "data/derived/political-long.csv" "data/derived/political-states.csv"
@@ -78,13 +80,12 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t71-stack/<kind>/
-  forecasts.tsv (13 November 2026: t65-gauges's command with the series
-  at their true publication, rows at risk by the catalogue's rule, the
-  leading gauges standardized on their history and the year node's gauges
-  moving frailty, at 5f7dd70, on t53-noclim's inputs; the fourth note to
-  L1), by SHA-256."
-  {"banking_crisis" "ec1ae91721d82989600e7625237e1b25c3e311509212cf5a4af7afd317488702"
+  "The base of record's forecasts, data/runs/t80-base/<kind>/
+  forecasts.tsv (14 November 2026: t71-stack's command with the banking
+  node's credit inputs from the BIS, dated by its releases, at 92f2e4b, on
+  t53-noclim's inputs; the fifth note to L1), by SHA-256. Only banking
+  moves (t79-bis's); the other twelve are t71-stack's."
+  {"banking_crisis" "c61913e67692325a7ee8ba2306e5a98353dc5ee9bfd286678cf30881eb3a65d3"
    "conflict_onset" "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442"
    "coup" "7d9e32befa2d67f7ab67b08bae3d08b8b3938db257439337815065cc357a292d"
    "currency_crisis" "854a4842451c809bf7f7f2978cc91a7187acc77613649f5aba907b011a9ae8bd"
@@ -99,10 +100,10 @@
    "war_onset" "25fafb6577491beb364e3809352ea2fb38bec4cc416b71596abba0f77e9c70b1"})
 
 (def base-inputs
-  "The SHA-256 of every input t71-stack was built on (t53-noclim's and
-  t65-gauges's: the leading gauges are series of data/slow/series.tsv, the
-  publication lags and at-risk rules are code): a run on these must
-  reproduce it."
+  "The SHA-256 of every input t80-base was built on (t53-noclim's,
+  t65-gauges's and t71-stack's: the leading gauges and the BIS's credit
+  are series of data/slow/series.tsv, the publication lags and at-risk
+  rules are code): a run on these must reproduce it."
   {"data/derived/econ-coverage.csv" "863b42e001b45e7eb43569b3f48eb92035d62821f3a3ea9cd543d38c1c2a4c7f"
    "data/derived/econ-events.csv" "4070fd4d07cfb6134781a40aabb36e00b6b2e07293f8987041e58be5065e2f0f"
    "data/derived/fiscal.csv" "cf8a1f4e5769901d3f09e85f4925f1b0e89dddf4f2f1b7aae1aebab8e67d98bc"
@@ -412,11 +413,11 @@
   (the catalogues rebuilt after the gazetteer fix, lapsed sources kept,
   bead bnm-8ul) on the series.tsv corrected for look-ahead (bnm-56c.23).
   The first issue, and t48 and t49, read r6-at; 2026-Q4-r1 and t50
-  r6-at-8ul; t52 r6-at-fx; t53, t65 and t71 r7-at-fx."
+  r6-at-8ul; t52 r6-at-fx; t53, t65, t71 and t80 r7-at-fx."
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t71-stack's: t51b's command (the
+  "The base's bnm.world-run arguments, t80-base's: t51b's command (the
   leak fixes, bnm-56c.23; PWT at 36 months, bnm-h8d; learning at the
   offset mixture, bnm-56c.22) with the flows standardized from a node's
   first resolved outcome (:flow-std-from :resolved, bnm-56c.33), t57's
@@ -430,13 +431,15 @@
   bnm-a1e), rows at risk only where the kind's catalogue rule could date
   an onset (--at-risk catalogue, bnm-96j), the leading gauges standardized
   on their own history (--lead-std history, bnm-11y) and the year node's
-  world gauges moving frailty (--frailty-gauges, bnm-v1y); its quarters
-  pooled with `known`."
+  world gauges moving frailty (--frailty-gauges, bnm-v1y), and the
+  banking node's credit inputs from the BIS from the December 2003
+  origin, each source read once published (--dated-credit, bnm-9vm option
+  A); its quarters pooled with `known`."
   [out end]
   ["--out" out "--without-relations" "true" "--end" (str end) "--known" known
    "--leak-fixes" "true" "--pwt-stale" "true" "--lag-stale" "true" "--gauge-std" "stable"
    "--leading" "true" "--leading-priors" "true" "--real-lags" "true" "--at-risk" "catalogue"
-   "--lead-std" "history" "--frailty-gauges" "true"
+   "--lead-std" "history" "--frailty-gauges" "true" "--dated-credit" "true"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"])
 
 (defn command-line
