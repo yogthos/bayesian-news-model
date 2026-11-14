@@ -315,6 +315,26 @@
                              (and food2 (contains? food2-sets kind)) (merge food2-priors))
                            names))))
 
+(def horizon-priors
+  "--horizon-priors (bnm-56c.38): the leading gauges' priors at the next
+  quarter, (t, t+3], per kind (docs/LEADING.md \"Priors at the next
+  quarter\"; chosen after t73-nq, so in-sample for the choice): the curve's
+  2-6 quarter lead centred at 0, the VIX's clustering and uncertainty
+  shocks stronger, food's pass-through a smaller share in a quarter."
+  {"market_crash" {:us-curve [0.0 0.0625] :baa12 [0.5 0.0625] :vix12 [0.4 0.0625]}
+   "growth_collapse" {:us-curve [0.0 0.0625] :baa12 [0.4 0.0625] :vix12 [0.5 0.0625]}
+   "food_price_shock" {:world-food12 [0.2 0.0625] :food12-x-imports [0.35 0.0625]}})
+
+(defn named-prior-for
+  "The kind's leading priors among the gauge `names` scale `scale` reads
+  (`named-prior-at`), with :horizon the next quarter's own (`horizon-
+  priors`) in place of the year's there; every other scale as without."
+  [kind scale names {:keys [food2 horizon]}]
+  (let [base (named-prior-at kind names food2)]
+    (if (and horizon (= :quarter-next scale))
+      (not-empty (merge base (select-keys (horizon-priors kind) names)))
+      base)))
+
 (def quarter-now
   "The frailty-only quarter scale (bnm.lattice :frailty-only, recursive step
   4, bnm-56c.35): window (t, t+3], known 3 months after it plus the
@@ -374,7 +394,7 @@
 
 (defn spec
   [{:keys [kind db cats annual wdi units end known start pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty
-           leading leading-priors leading-food2 lead-std next-quarter nq-cat]}]
+           leading leading-priors leading-food2 lead-std next-quarter nq-cat horizon-priors]}]
   (let [cat (cats kind)
         ;; :fresh-frailty: the frailty-only quarter scale first, so it runs
         ;; before every coarser node at a month they share; :next-quarter the
@@ -501,7 +521,7 @@
                                           [s (into (vec (own-names s)) (get lead s))])))
       (and lead leading-priors)
       (assoc :named-prior (into {} (for [s [:quarter-next :quarter-lead :year] :when (widths s)
-                                         :let [np (named-prior-at kind (into (vec (own-names s)) (get lead s)) leading-food2)]
+                                         :let [np (named-prior-for kind s (into (vec (own-names s)) (get lead s)) {:food2 leading-food2 :horizon horizon-priors})]
                                          :when np]
                                      [s np]))))))
 
@@ -523,7 +543,7 @@
   ([kind end known-run] (build kind end known-run nil nil))
   ([kind end known-run cats start] (build kind end known-run cats start {}))
   ([kind end known-run cats start {:keys [pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty leading leading-priors
-                                         real-lags leading-food2 lead-std next-quarter nq-cats]}]
+                                         real-lags leading-food2 lead-std next-quarter nq-cats horizon-priors]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (cond-> (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
              leading-food2 (merge (nm/load-food2)))
@@ -532,7 +552,7 @@
     (spec {:kind kind :db db :cats cats :units units :end end :start start :pwt-stale pwt-stale :lag-stale lag-stale :gauge-std gauge-std
            :year-delay year-delay :leak-fixes leak-fixes
            :fresh-frailty fresh-frailty
-           :next-quarter next-quarter :nq-cat (get nq-cats kind)
+           :next-quarter next-quarter :nq-cat (get nq-cats kind) :horizon-priors horizon-priors
            :leading leading :leading-priors leading-priors :leading-food2 leading-food2 :lead-std lead-std
            :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
            :wdi (wdi-reader db {:lag-stale lag-stale})

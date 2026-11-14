@@ -398,3 +398,12 @@
     (is (= {:year [:baa12 :us-curve :vix12] :quarter-next [:us-curve :baa12 :vix12]} (get-in out ["market_crash" :frailty :gauges])))
     (is (= {:year [:baa12] :quarter-next [:baa12 :us-curve :vix12]} (get-in out ["growth_collapse" :frailty :gauges]))
         "world food12 has no prior at growth collapses")))
+
+(deftest bnm-56c-38-horizon-priors-option
+  ;; --horizon-priors true: the next quarter's priors (docs/LEADING.md),
+  ;; needing the scale and the theory priors; off by default
+  (is (false? (wr/horizon-priors-choice {})))
+  (is (true? (wr/horizon-priors-choice {:horizon-priors "true" :next-quarter "true" :leading "true" :leading-priors "true"})))
+  (is (thrown? Exception (wr/horizon-priors-choice {:horizon-priors "true" :leading "true" :leading-priors "true"})) "needs --next-quarter")
+  (is (thrown? Exception (wr/horizon-priors-choice {:horizon-priors "true" :next-quarter "true" :leading "true"})) "needs --leading-priors")
+  (is (thrown? Exception (wr/horizon-priors-choice {:horizon-priors "yes" :next-quarter "true" :leading "true" :leading-priors "true"}))))

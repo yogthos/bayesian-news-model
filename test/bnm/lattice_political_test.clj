@@ -177,3 +177,22 @@
       (is (= {:y true :known-at 112} (target :quarter-next "AAA" 100)))
       (is (= {:y false :known-at 117} (target :quarter-next "AAA" 105)) "the run's catalogue's 105 is not the scale's")
       (is (= {:y true :known-at (+ 112 18)} (target :quarter-lead "AAA" 100))))))
+
+(deftest bnm-56c-38-horizon-priors-at-the-next-quarter
+  ;; docs/LEADING.md "Priors at the next quarter" (in-sample for the choice):
+  ;; only the next-quarter scale reads them, only under :horizon
+  (is (= {"market_crash" {:us-curve [0.0 0.0625] :baa12 [0.5 0.0625] :vix12 [0.4 0.0625]}
+          "growth_collapse" {:us-curve [0.0 0.0625] :baa12 [0.4 0.0625] :vix12 [0.5 0.0625]}
+          "food_price_shock" {:world-food12 [0.2 0.0625] :food12-x-imports [0.35 0.0625]}}
+         lp/horizon-priors))
+  (let [names [:credit3 :us-curve :baa12 :vix12]]
+    (is (= {:us-curve [0.0 0.0625] :baa12 [0.5 0.0625] :vix12 [0.4 0.0625]}
+           (lp/named-prior-for "market_crash" :quarter-next names {:horizon true})))
+    (is (= (lp/named-prior-at "market_crash" names) (lp/named-prior-for "market_crash" :quarter-next names {}))
+        "off: the year's priors")
+    (is (= (lp/named-prior-at "market_crash" names) (lp/named-prior-for "market_crash" :quarter-lead names {:horizon true}))
+        "other scales keep the year's")
+    (is (= (lp/named-prior-at "market_crash" names) (lp/named-prior-for "market_crash" :year names {:horizon true}))))
+  (is (= {:world-food12 [0.2 0.0625] :food12-x-imports [0.35 0.0625]}
+         (lp/named-prior-for "food_price_shock" :quarter-next [:food-inflation :world-food12 :food12-x-imports] {:horizon true})))
+  (is (nil? (lp/named-prior-for "coup" :quarter-next [:world-food12] {:horizon true}))))

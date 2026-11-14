@@ -71,7 +71,9 @@
   next-quarter scale, window three months from the origin, a leaf no other
   node reads, at every kind whose catalogue for it is sub-annual; food by
   month, growth by quarter, the rest on the run's catalogues; with
-  --frailty-gauges its world gauges set its frailty's mean),
+  --frailty-gauges its world gauges set its frailty's mean; with
+  --horizon-priors true its own leading priors, docs/LEADING.md \"Priors at
+  the next quarter\", chosen in-sample),
   --write-reference true (also data/runs/<out>-ref, the forecasts with the
   reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
@@ -646,6 +648,18 @@
     (throw (ex-info "bnm.world-run: --next-quarter true replaces --fresh-frailty's quarter-now" {})))
   (= "true" next-quarter))
 
+(defn horizon-priors-choice
+  "--horizon-priors true (bnm-56c.38): the leading gauges' priors at the
+  next quarter its own (bnm.lattice-political/horizon-priors, docs/LEADING.md
+  \"Priors at the next quarter\", in-sample for the choice). Needs
+  --next-quarter true and --leading-priors true; off by default."
+  [{:keys [horizon-priors next-quarter leading-priors]}]
+  (when (and horizon-priors (not (#{"true" "false"} horizon-priors)))
+    (throw (ex-info (str "bnm.world-run: --horizon-priors takes true or false, not " horizon-priors) {})))
+  (when (and (= "true" horizon-priors) (not (and (= "true" next-quarter) (= "true" leading-priors))))
+    (throw (ex-info "bnm.world-run: --horizon-priors true sets the next quarter's priors: it needs --next-quarter true and --leading-priors true" {})))
+  (= "true" horizon-priors))
+
 (defn nq-catalogues
   "The next-quarter scale's catalogues (recursive step 4b): the run's
   `cats`, food price shocks by month (`food`, a fn of the catalogues, unless
@@ -701,6 +715,7 @@
                                                                :leak-fixes (= "true" leak-fixes)
                                                                :fresh-frailty fresh
                                                                :next-quarter nq :nq-cats nq-cats
+                                                               :horizon-priors (horizon-priors-choice opts)
                                                                :leading (leading-choice opts)
                                                                :leading-priors (= "true" (:leading-priors opts))
                                                                :real-lags (real-lags-choice opts)
