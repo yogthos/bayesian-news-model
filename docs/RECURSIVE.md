@@ -442,6 +442,7 @@ Earlier: **Base of record (12 November 2026): t53-noclim** (second note to amend
     - a calm carried at ρ 0.95 (growth Mar 2020 issued 0.007 at a rate of 0.83);
     - the year's theory priors, overturned at three months for the curve and the VIX;
     - the size of the 2020 and 2022 shocks.
+  - Horizon priors (docs/LEADING.md "Priors at the next quarter", allowed by the user as in-sample; t76-nq-hp): against t73-nq, pooled Brier +0.00007 [-0.00005, +0.00021]. Three episodes are caught (market crashes Mar and Jun 2008, growth Dec 2008), against none. The data overturn the VIX prior within a decade of quarters, and growth Mar 2020 stays at 0.008. Not adopted.
 
 **Step 5: regime filter and gated encompassing (bnm-56c.2).**
 - `src/bnm/regime_filter.clj`. Augur `:weighting {:rule :gated :regimes P :pool-siblings κ}`. Drivers: world state (step 2) first, buffers when step 6 lands. The world gauges (food12, brent12 and the unwired VIX, credit, dollar, policy rate) enter here with confidence weights, not a hard gate: their weight at a kind grows with the posterior evidence for their lead and shrinks to zero under noise, so step 2's harness (noise, planted, false move, short burst) applies to the weights.
