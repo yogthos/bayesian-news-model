@@ -4004,6 +4004,60 @@ The next issue (2027-Q1) runs this command (bnm.ledger/command, with
   With this code 2026-Q4-r1 comes back byte for byte from its archive
   with its own command.
 
+**Fifth note to amendment L1, 14 November 2026** (bead bnm-9vm, option
+A; decided by the user the same day; written before any issue is made on
+it, L1 itself unchanged). The base of record is **t80-base**, not
+t71-stack: `bnm.world-run --out t80-base --without-relations true --known r7-at-fx --leak-fixes true --pwt-stale true --lag-stale true --gauge-std stable --leading true --leading-priors true --real-lags true --at-risk catalogue --lead-std history --frailty-gauges true --dated-credit true --set '{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}'`, on t53-noclim's inputs. Wherever L1 or the earlier
+notes name t71 (or t65, t53, t52, t50) as the base, read t80; the size
+check stays as recorded on t49. The next issue (2027-Q1) runs this
+command (bnm.ledger/command, with `--end`).
+
+- *What changed.* On t71-stack, the banking node's credit inputs from
+  the BIS from the December 2003 origin (`--dated-credit true`;
+  docs/CALIBRATION.md "Dated credit for banking: t79-bis"): credit to the
+  private non-financial sector in place of JST's bank loans, household
+  credit in place of JST's mortgages and household credit, each year's
+  December quarter read six months after it (the BIS's release dates in
+  ALFRED's vintages), each transform computed on the BIS series' own
+  history so a level difference from JST cancels, and JST kept where the
+  BIS's history is too short. Every JST row is read only once its slowest
+  source is published (12 months), which moves no December value. Past
+  JST's panel (2020) the JST countries keep the BIS's credit inputs.
+  Only banking_crisis changes; under `--without-relations` the other
+  twelve kinds are t71-stack's byte for byte.
+- *Why.* A data-vintage correction, not a model improvement. bnm-9vm
+  found the banking node reading JST's Macrohistory at Y-1 at every
+  December origin, years before JST existed (first release 2016), and
+  JST's credit compilation far from the agencies' own series (corr
+  0.69-0.91). The BIS's series are the agencies' own, dated by their
+  releases.
+- *The honest score* (banking year nodes, 2003-2022, + = t80 better).
+  Pooled Brier +0.00001 [-0.00023, +0.00029], log -0.00029 [-0.00150,
+  +0.00092]; no fold gains or loses. All 13 kinds: Brier +0.00000
+  [-0.00002, +0.00002]. Neutral on the fold rule, so adopted as a
+  correction, not under the acceptance rule. The half-decade country
+  node (not in the fold rule) gains on log, +0.0031 [+0.0002, +0.0064].
+  Alerts at 4:1: banking cost 0.131 to 0.132, hits 0 of 82 as before.
+- *Caveats.* The BIS first published its long credit series in 2013, so
+  its values at the 2003-12 origins are a backcast: closer to the official
+  statistics than JST's compilation and little revised, but not what a
+  forecaster then had. The 2010-12 fold's loss (-0.00031, not
+  significant) is post-crisis false alarms (Ireland 2010-11, Sweden,
+  Belgium, Switzerland 2010): the BIS series is credit from all lenders,
+  including corporate and cross-border debt JST's bank loans leave out,
+  and a ratio to GDP rises when GDP falls. The BIS's bank-credit series
+  would remove the first, not the second; it is not in series.tsv.
+  Recorded, not tuned.
+- *Option, not default.* `--dated-credit` is set by the base's command;
+  the default is off, so the registered issues reproduce with their own
+  commands.
+- *Reproduction.* bnm.ledger/command rerun to a fresh directory
+  (data/runs/t80-base) gives t79-bis's banking forecasts.tsv and
+  t71-stack's other twelve byte for byte, reading exactly `inputs` at the
+  hashes in `base-inputs` (unchanged: the BIS credit series are in
+  data/slow/series.tsv). With this code 2026-Q4-r1 comes back byte for
+  byte from its archive with its own command.
+
 ## Registered, 11 November 2026: one pooled hazard over the buffer invariants, and the scanner (bead bnm-56c.6, PLAN 1.5-1.7)
 
 Written and committed before any model is fitted to break labels. The

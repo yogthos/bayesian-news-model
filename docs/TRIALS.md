@@ -90,6 +90,16 @@ market-crash false alarms from vix12 and the 2022 curve; food 2020, growth
 2007-08 and 2019, banking and sovereign defaults never alert; σ at the
 grid edge (bnm-02u).
 
+Corrected base, 14 November 2026 (bnm-9vm option A; not a trial and not
+counted): the base of record is t80-base, t71-stack's command with
+`--dated-credit true`: the banking node's credit, household credit and
+credit gap from the BIS from the December 2003 origin, each source read
+once published. A data-vintage correction, adopted neutral: banking year
+Brier +0.00001 [-0.00023, +0.00029] pooled, no fold gains or loses; all
+13 kinds +0.00000 (docs/CALIBRATION.md "Dated credit for banking"). Only
+banking changes. Trials from now on bench against t80-base
+(docs/PHASE-CHANGES.md, fifth note to amendment L1).
+
 | # | configuration | first scored | note |
 |---|---|---|---|
 | 1 | mix | 2026-10 | event-code mix |

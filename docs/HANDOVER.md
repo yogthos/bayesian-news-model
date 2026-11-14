@@ -1,5 +1,29 @@
 # Handover
 
+## State as of 2026-11-14 (branch `structure`)
+
+**The base of record is t80-base** (fifth note to amendment L1, 14
+November, docs/PHASE-CHANGES.md): `bnm.world-run --out t80-base --without-relations true --known r7-at-fx --leak-fixes true --pwt-stale true --lag-stale true --gauge-std stable --leading true --leading-priors true --real-lags true --at-risk catalogue --lead-std history --frailty-gauges true --dated-credit true --set '{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}'`, on t53-noclim's inputs:
+t71-stack plus the banking node's credit inputs from the BIS, dated by
+its releases (`--dated-credit true`, bnm-9vm option A; docs/CALIBRATION.md
+"Dated credit for banking: t79-bis"). A data-vintage correction, adopted
+neutral: banking year nodes pooled Brier +0.00001 [-0.00023, +0.00029], no
+fold gains or loses; all 13 kinds +0.00000. Only banking_crisis changes
+(t79-bis's forecasts); the other twelve kinds are t71-stack's byte for
+byte.
+- The ledger builds 2027-Q1 on t80 (`base`, `command`, `base-files`;
+  `known` r7-at-fx and `inputs`/`base-inputs` unchanged: the BIS credit is
+  in data/slow/series.tsv). The command rerun to data/runs/t80-base gives
+  t79-bis's banking and t71-stack's other twelve byte for byte, reading
+  exactly `inputs`; 2026-Q4-r1 still reproduces from its archive. No
+  forecast issued.
+- Caveats: the BIS's long credit series were first published in 2013, so
+  the 2003-12 origins read a backcast; post-crisis false alarms at 2010-12
+  (Ireland, Sweden, Belgium) where all-lender credit to GDP rose as GDP
+  fell. Recorded, not tuned.
+
+The section below is the earlier 13 November handover, kept as written.
+
 ## State as of 2026-11-13, later (branch `structure`)
 
 **The base of record is t71-stack** (fourth note to amendment L1, 13
