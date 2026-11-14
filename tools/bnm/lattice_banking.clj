@@ -262,6 +262,51 @@
               sd (Math/max sd (* 0.02 (Math/abs m)))]
           (when (> sd 1e-9) (Math/max -5.0 (Math/min 5.0 (/ (- x m) sd)))))))))
 
+(def jst-lag
+  "Months after the end of its year by which every Macrohistory input the
+  banking node reads without a dated alternative was published by its
+  national source (bnm-9vm): market prices, rates and the CPI within a
+  month; credit, mortgages, money and house price indices within a
+  quarter; the annual national accounts (output, investment, the current
+  account) by spring; banks' aggregate balance sheets (capital, loans to
+  deposits, non-core funding) and the fiscal accounts within ten months;
+  compensation of employees, for the wage share, last, by the autumn. So a
+  row is read at the December a year after it, never sooner. JST's own
+  releases (from 2016) compile these after the fact: the dating is the
+  sources', not JST's (dating by JST's would leave the node without its
+  gauges before 2016)."
+  12)
+
+(def bis-lag
+  "Months after its quarter by which the BIS's credit statistics publish
+  it: the quarterly release in the first half of March, June, September
+  and December carries the quarter that ended five to six months before
+  (ALFRED's vintages of its credit series, data/raw/alfred-bis, 2016-26:
+  the fourth quarter in early June, the second in early December, the
+  December 2018 release skipped). The long series were first published in
+  2013, so before then this dates a backcast."
+  6)
+
+(defn read-year
+  "The latest year whose December value, published `lag` months after it,
+  is out at origin month t."
+  [t lag]
+  (quot (- t 11 lag) 12))
+
+(defn q4-annual
+  "{year value} of a quarterly series (bnm.stocks/series): each year's
+  December quarter, so a year whose fourth quarter is not out has none."
+  [{:keys [period value]}]
+  (into {} (for [i (range (count period)) :let [p (long (nth period i))] :when (= 11 (mod p 12))]
+             [(quot p 12) (double (nth value i))])))
+
+(defn dated-stretch
+  "stretch-at of household credit in year y: the BIS's (`bis`) from year
+  `from` on where its own decade gives one, JST's (`jst`) before it and
+  where the BIS's series is too short or missing."
+  [jst bis from y]
+  (or (when (and bis (>= y from)) (stretch-at bis y)) (stretch-at jst y)))
+
 (defn- count10
   "Events in the ten years to `year`, or nil unless at least eight of them
   are covered: no data is not no events."
@@ -356,7 +401,7 @@
   year published by then, and labour's share, the capital stock and TFP
   unknown before PWT 8.0 first published them; without it, PWT at y - 1."
   ([jst-rows pwt db units annual] (extended-table jst-rows pwt db units annual {}))
-  ([jst-rows pwt db units annual {:keys [releases]}]
+  ([jst-rows pwt db units annual {:keys [releases dated-hh]}]
   (let [origin (fn [y] (+ 11 (* 12 (inc y))))
         ;; PWT's read year for row y, and whether a column was out by then
         py (fn [y] (if releases (rel/read-year releases "pwt" (origin y) (dec y)) (dec y)))
@@ -390,7 +435,8 @@
                       [u {:crises (currency-crises ys) :covered (set (keys ys))}]))
         years (range 1870 2027)]
     (into {} (for [u (into (set units) (map :iso jst-rows)) y years]
-               [[u y] [(stretch-at (hh u) y) (stretch-at (biz u) y) (stretch-at (ltd u) y) (stretch-at (noncore u) y)
+               [[u y] [(if dated-hh (dated-stretch (hh u) (get-in dated-hh [:series u]) (:from dated-hh) y) (stretch-at (hh u) y))
+                       (stretch-at (biz u) y) (stretch-at (ltd u) y) (stretch-at (noncore u) y)
                        (stretch-at (rent u) y) (stretch-at (dp u) y) (stretch-at (fiscal u) y)
                        ;; the national accounts' and distribution sources a further year
                        ;; back: they are published one to three years late
@@ -424,16 +470,34 @@
                         [y {:invariant (select-keys (:invariant r) world-invariants)
                             :process (select-keys (:process r) world-process)}])))))
 
+(defn- row-year
+  "The Macrohistory row read at origin t: the year before's, or under
+  --dated-credit the latest published by then (`jst-lag`; the BIS's
+  values, at `bis-lag`, are out sooner)."
+  [t dated-credit]
+  (if dated-credit (read-year t (max jst-lag bis-lag)) (dec (quot t 12))))
+
+(defn- dated-row
+  "Past the Macrohistory panel (it ends in 2020), the BIS's credit inputs
+  alone for a JST country, under --dated-credit."
+  [jst {:keys [from values]} unit y]
+  (when (and from (>= y from) (nil? (get jst [unit y])))
+    (when-let [d (get values [unit y])]
+      {:specific (select-keys (:specific d) mh/dated-dimensions)
+       :growth-3y {:credit (get-in d [:growth :credit])}
+       :specific-long (assoc (select-keys (:long d) mh/dated-dimensions) :credit-gap-z (get-in d [:gap :credit-gap-z]))})))
+
 (defn- year-raw
   "The year node's raw gauges for a country at origin t, from its
   Macrohistory row and extended dimensions of the year before (published
   by then) and its known history; the world's quantities for every
-  country."
-  [jst ext cat unit t]
-  (let [y (dec (quot t 12))
+  country. opts :dated-credit (bnm-9vm), the row by `row-year` and, past
+  the panel, the BIS's inputs."
+  [jst ext cat unit t & [{:keys [dated-credit]}]]
+  (let [y (row-year t dated-credit)
         w (get (world-of jst) y)
-        r (merge-with merge w (get jst [unit y]))
-        e (get ext [unit (dec (quot t 12))] (repeat (count extended-names) nil))]
+        r (merge-with merge w (or (get jst [unit y]) (dated-row jst dated-credit unit y)))
+        e (get ext [unit y] (repeat (count extended-names) nil))]
     (vec (concat (map #(get-in r [:specific %]) year-specific)
                  (map #(get-in r [:invariant %]) year-invariants)
                  (map #(get-in r [:process %]) year-process)
@@ -442,8 +506,9 @@
                  [(get-in r [:growth-3y :credit]) (get-in r [:growth-3y :house])]
                  e))))
 
-(defn- half-raw [jst cat unit t]
-  (let [r (get jst [unit (dec (quot t 12))])
+(defn- half-raw [jst cat unit t & [{:keys [dated-credit]}]]
+  (let [y (row-year t dated-credit)
+        r (or (get jst [unit y]) (dated-row jst dated-credit unit y))
         h (history cat unit t)]
     [(get-in r [:specific-long :credit]) (get-in r [:specific-long :mortgages]) (get-in r [:specific-long :house-prices])
      (get-in r [:specific-long :credit-gap-z])
@@ -519,7 +584,7 @@
 
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std]}]
+  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit]}]
   (let [[_ fin] (nm/financial db wc)
         sub (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u s]))
         reg (into {} (for [s (set (vals sub))] [s (first (geo/parents s))]))
@@ -533,8 +598,8 @@
                                (quarter-stretch (get-in quarterly ["oecd_price_rent" u]) q)]))
         raw {:quarter-lead (fn [u t] (into (vec (fin u t)) (valuation u t)))
              :quarter-w2 (fn [u t] (into (vec (fin u t)) (valuation u t)))
-             :year (fn [u t] (year-raw jst ext cat u t))
-             :half-decade (fn [u t] (half-raw jst cat u t))}
+             :year (fn [u t] (year-raw jst ext cat u t {:dated-credit dated-credit}))
+             :half-decade (fn [u t] (half-raw jst cat u t {:dated-credit dated-credit}))}
         ;; each scale's country gauges at its origins, then standardized by the past
         table (into {} (for [{:keys [name] :as s} scales]
                          [name (into {} (for [t (origins s) u countries] [[u t] ((raw name) u t)]))]))
@@ -592,19 +657,37 @@
      :prior (fn [scale _level {:keys [groups]}]
               (into {} (for [[g ixs] (get priors scale) [i mv] ixs] [(nth (groups g) i) mv])))}))
 
+(def dated-from
+  "--dated-credit's first BIS year: the row the December 2003 origin reads."
+  2002)
+
+(defn dated-credit-inputs
+  "{:from :values} for bnm.macrohistory/build's `dated`: the JST
+  countries' credit to the private non-financial sector and to households
+  from the BIS (finance/credit_gdp, finance/household_credit_gdp), each
+  year's December quarter, from `dated-from`."
+  [db jst-rows]
+  (let [bis (into {} (for [u (set (map :iso jst-rows))]
+                       [u {:credit (some-> (db [u "finance/credit_gdp"]) q4-annual)
+                           :mortgages (some-> (db [u "finance/household_credit_gdp"]) q4-annual)}]))]
+    {:from dated-from :values (mh/dated-inputs jst-rows bis dated-from)}))
+
 (defn build
   "The banking lattice's spec to month `end`, from the data on disk, with
   `known-run`'s named forecasts as what is known. opts :catalogue-through,
   the catalogue's uncovered tail unknown (loop audit Test 7); :leak-fixes,
   PWT read by its releases (bnm-56c.23, extended-table); :gauge-std
   :stable, the gauges' standardizer without its flat-history cap (bnm-9fg);
-  :real-lags, each slow series read at its true publication (bnm-a1e)."
+  :real-lags, each slow series read at its true publication (bnm-a1e);
+  :dated-credit, the credit-family inputs from the BIS from the December
+  2003 origin (bnm-9vm option A, `dated-from`)."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
         jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
-        jst (into {} (for [r (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap))]
+        dated (when dated-credit (dated-credit-inputs db jst-rows))
+        jst (into {} (for [r (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap) dated)]
                        [[(:iso r) (:year r)] r]))
         cat (cond-> (catalogue jst-rows) catalogue-through (assoc :unknown-past-through true))
         units (set (filter #(first (geo/parents %)) (keys (:onsets cat))))
@@ -612,9 +695,13 @@
         months (range (+ start 2) (inc end) 3)
         wc (nm/world-credit db units months)
         ext (extended-table jst-rows (read-pwt) db units (read-annual)
-                            (if leak-fixes {:releases (rel/read-releases)} {}))]
+                            (cond-> (if leak-fixes {:releases (rel/read-releases)} {})
+                              dated (assoc :dated-hh {:from dated-from
+                                                      :series (into {} (for [u (set (map :iso jst-rows))
+                                                                             :let [s (db [u "finance/household_credit_gdp"])] :when s]
+                                                                         [u (q4-annual s)]))})))]
     (spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
-           :known (read-known known-run) :quarterly (read-quarterly) :gauge-std gauge-std}))))
+           :known (read-known known-run) :quarterly (read-quarterly) :gauge-std gauge-std :dated-credit dated}))))
 
 (defn -main [& args]
   (let [{:keys [out end without coupling known without-at downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))

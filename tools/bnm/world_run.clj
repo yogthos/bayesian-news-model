@@ -60,7 +60,9 @@
   Januaries, not after a year of inflation's run),
   --frailty-gauges true (bnm-v1y: the year node's world gauges set its
   frailty's mean instead of entering its models; needs --leading-priors
-  true and --set's :frailty),
+  true and --set's :frailty), --dated-credit true (bnm-9vm option A:
+  banking's credit-family inputs from the BIS from the December 2003
+  origin, bnm.lattice-banking/dated-credit-inputs),
   --write-reference true (also data/runs/<out>-ref, the forecasts with the
   reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
@@ -563,6 +565,16 @@
     (throw (ex-info (str "bnm.world-run: --real-lags takes true or false, not " real-lags) {})))
   (= "true" real-lags))
 
+(defn dated-credit-choice
+  "--dated-credit true (bnm-9vm option A): the banking node's credit,
+  mortgage and household credit inputs, and the displacement built from
+  them, from the BIS's series from the December 2003 origin, each read once
+  published (bnm.lattice-banking/dated-credit-inputs). Off by default."
+  [{:keys [dated-credit]}]
+  (when (and dated-credit (not (#{"true" "false"} dated-credit)))
+    (throw (ex-info (str "bnm.world-run: --dated-credit takes true or false, not " dated-credit) {})))
+  (= "true" dated-credit))
+
 (defn options
   "The options of bnm.world-run `args`: {:out \"x\" ...}, values as given."
   [args]
@@ -609,7 +621,8 @@
                                                                :leading-priors (= "true" (:leading-priors opts))
                                                                :real-lags (real-lags-choice opts)
                                                                :leading-food2 (leading-food2-choice opts)
-                                                               :lead-std (lead-std-choice opts)})
+                                                               :lead-std (lead-std-choice opts)
+                                                               :dated-credit (dated-credit-choice opts)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)

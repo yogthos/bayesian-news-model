@@ -122,20 +122,132 @@
                [[(:iso m) (parse-long (:year m))] {:gold v}])]
     (reduce (fn [acc [k v]] (update acc k merge v)) {} (concat ka gold))))
 
+;; --- dated credit (bnm-9vm option A) --------------------------------------------
+
+(def hp-lambda
+  "scripts/jst-credit-gap.py's smoothing: the BIS's 400,000 for quarterly
+  data, scaled to annual by Ravn & Uhlig's fourth power."
+  (/ 400000.0 (Math/pow 4.0 4.0)))
+
+(defn hp-trend
+  "The Hodrick-Prescott trend of `xs`: the solution of (I + lambda D'D) t =
+  xs, D the second difference (statsmodels' hpfilter), by elimination in
+  the matrix's band."
+  [xs lambda]
+  (let [n (count xs)]
+    (if (< n 3)
+      (vec xs)
+      (let [a (make-array Double/TYPE n n)
+            b (double-array xs)
+            x (double-array n)]
+        (dotimes [i n] (aset a i i 1.0))
+        (dotimes [k (- n 2)]
+          (let [d [1.0 -2.0 1.0]]
+            (dotimes [p 3]
+              (dotimes [q 3]
+                (let [i (+ k p) j (+ k q)]
+                  (aset a i j (+ (aget a i j) (* lambda (nth d p) (nth d q)))))))))
+        (dotimes [k n]
+          (doseq [i (range (inc k) (min n (+ k 3)))]
+            (let [f (/ (aget a i k) (aget a k k))]
+              (doseq [j (range k (min n (+ k 3)))]
+                (aset a i j (- (aget a i j) (* f (aget a k j)))))
+              (aset b i (- (aget b i) (* f (aget b k)))))))
+        (doseq [i (range (dec n) -1 -1)]
+          (aset x i (/ (- (aget b i) (reduce + (map #(* (aget a i %) (aget x %)) (range (inc i) (min n (+ i 3))))))
+                       (aget a i i))))
+        (vec x)))))
+
+(defn one-sided-gaps
+  "{year gap} of [year value] pairs in year order: each value less the last
+  point of the Hodrick-Prescott trend of the values to it, from the tenth
+  on (scripts/jst-credit-gap.py, Drehmann & Tsatsaronis 2014): known in
+  real time."
+  [pairs]
+  (let [pairs (vec pairs) vs (mapv second pairs)]
+    (into {} (for [i (range 9 (count pairs))]
+               [(first (pairs i)) (- (vs i) (peek (hp-trend (subvec vs 0 (inc i)) hp-lambda)))]))))
+
+(defn gap-z
+  "The gap in `year` (`g-of`, a function of the year) in units of the
+  spread of its gaps from 1870 to the year before (at least ten): the
+  credit gap carried across sources measured differently."
+  [g-of yr]
+  (when-let [g (g-of yr)]
+    (let [past (keep g-of (range 1870 yr))]
+      (when (>= (count past) 10)
+        (let [m (/ (reduce + past) (count past))
+              sd (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) past)) (dec (count past))))]
+          (when (> sd 1e-9) (/ g sd)))))))
+
+(def dated-dimensions
+  "The dimensions --dated-credit takes from the BIS (bnm-9vm option A):
+  credit (JST's bank loans to GDP; the BIS's credit to the private
+  non-financial sector from all lenders, the series of its credit-to-GDP
+  gaps) and mortgages (JST's mortgage loans to GDP; the BIS's credit to
+  households, of which mortgages are most)."
+  [:credit :mortgages])
+
+(defn dated-inputs
+  "{[iso year] {:specific {dim z} :short {dim z} :long {dim z} :flow {dim
+  z} :growth {:credit g} :gap {:credit-gap-z z}}}: each of
+  `dated-dimensions`' transforms computed on the BIS series alone (`bis`,
+  {iso {dim {year value}}}, percentages of GDP), so its own history is the
+  baseline and a level apart from JST's cancels: the stretches against 10,
+  5 and 20 years, the one-year change against its past changes, the
+  one-sided gap in units of its own past gaps. Three-year growth is not
+  scale free: the BIS's change times the ratio of JST's mean level to the
+  BIS's over the ten years to `from` (both known then), so it is in JST's
+  units. Years 1870 to the series' last."
+  [jst-rows bis from]
+  (let [jst-credit (into {} (for [r jst-rows :let [v (div (:tloans r) (:gdp r))] :when v] [[(:iso r) (:year r)] v]))]
+    (into {}
+          (for [[c dims] bis
+                :let [last-y (apply max 1870 (mapcat keys (vals dims)))
+                      years (range 1870 (inc last-y))
+                      vecs (into {} (for [k dated-dimensions] [k (mapv #(get-in dims [k %]) years)]))
+                      flows (update-vals vecs (fn [xs] (mapv (fn [i] (let [a (get xs (dec i)) b (get xs i)] (when (and a b) (- b a))))
+                                                             (range (count xs)))))
+                      both (keep (fn [y] (when-let [j (get jst-credit [c y])] (when-let [b (get-in dims [:credit y])] [j b])))
+                                 (range (- from 9) (inc from)))
+                      scale (when (>= (count both) 5)
+                              (/ (/ (reduce + (map first both)) (count both)) (/ (reduce + (map second both)) (count both))))
+                      gaps (one-sided-gaps (sort (:credit dims)))
+                      credit (:credit vecs)]
+                y years
+                :let [i (- y 1870)
+                      per (fn [f] (into {} (for [k dated-dimensions] [k (f k)])))]]
+            [[c y] {:specific (per #(iv/stretch (vecs %) i 10 6))
+                    :short (per #(iv/stretch (vecs %) i 5 4))
+                    :long (per #(iv/stretch (vecs %) i 20 12))
+                    :flow (per #(iv/stretch (flows %) i 10 6))
+                    :growth {:credit (when-let [a (get credit (- i 3))]
+                                       (when-let [b (get credit i)]
+                                         (when (and scale (>= i 3)) (* scale (- b a)))))}
+                    :gap {:credit-gap-z (gap-z gaps y)}}]))))
+
 (defn build
   "Country-years with :specific (stretches), the invariants and targets;
-  `intensity` is the world crisis process's probability by year (bnm.waves)."
-  [data & [intensity regimes gaps]]
+  `intensity` is the world crisis process's probability by year (bnm.waves).
+  `dated` ({:from year :values (dated-inputs ...)}, bnm-9vm option A):
+  from that year on, each of `dated-dimensions`' transforms, and everything
+  built from them (the displacement at three scales, the flows, the world's
+  displacement), takes the BIS's value where it has one, JST's where its
+  series is too short."
+  [data & [intensity regimes gaps dated]]
   (let [by-c (update-vals (group-by :iso data) with-derived)
+        ;; under `dated`, dimension k's transform `kind` for country c in yr
+        sub (fn [c yr kind k v]
+              (if-let [d (and dated (>= yr (:from dated)) (get-in (:values dated) [[c yr] kind k]))] d v))
         stretches (into {} (for [[c rows] by-c]
                              [c (let [series (into {} (for [[k f] dimensions] [k (mapv f rows)]))]
-                                  (mapv (fn [i] (into {} (for [[k _] dimensions] [k (iv/stretch (series k) i 10 6)])))
+                                  (mapv (fn [i] (into {} (for [[k _] dimensions] [k (sub c (:year (rows i)) :specific k (iv/stretch (series k) i 10 6))])))
                                         (range (count rows))))]))
         ;; the same dimensions against the previous 5 and 20 years: displacement at three scales
-        scaled (fn [window n]
+        scaled (fn [window n kind]
                  (into {} (for [[c rows] by-c]
                             [c (let [series (into {} (for [[k f] dimensions] [k (mapv f rows)]))]
-                                 (mapv (fn [i] (keep #(iv/stretch (series %) i window n) (map first dimensions)))
+                                 (mapv (fn [i] (keep #(sub c (:year (rows i)) kind % (iv/stretch (series %) i window n)) (map first dimensions)))
                                        (range (count rows))))])))
         ;; the flows: each dimension's one-year change against its own past changes
         flow-z (into {} (for [[c rows] by-c]
@@ -143,17 +255,17 @@
                                                      [k (let [xs (mapv f rows)]
                                                           (mapv (fn [i] (let [a (get xs (dec i)) b (get xs i)] (when (and a b) (- b a))))
                                                                 (range (count xs))))]))]
-                               (mapv (fn [i] (keep #(iv/stretch (series %) i 10 6) (map first dimensions)))
+                               (mapv (fn [i] (keep #(sub c (:year (rows i)) :flow % (iv/stretch (series %) i 10 6)) (map first dimensions)))
                                      (range (count rows))))]))
         ;; the financial stocks against their own twenty years: financial cycles run 15-20 years
         ;; (Borio; the BIS credit gap's long trend), so a ten-year baseline absorbs a long boom
         long-specific (into {} (for [[c rows] by-c]
                                  [c (let [series (into {} (for [[k f] dimensions] [k (mapv f rows)]))]
                                       (mapv (fn [i] (into {} (for [k [:credit :mortgages :house-prices]]
-                                                               [k (iv/stretch (series k) i 20 12)])))
+                                                               [k (sub c (:year (rows i)) :long k (iv/stretch (series k) i 20 12))])))
                                             (range (count rows))))]))
-        short-z (scaled 5 4)
-        long-z (scaled 20 12)
+        short-z (scaled 5 4 :short)
+        long-z (scaled 20 12 :long)
         growth (into {} (for [[c rows] by-c] [c (mapv #(lg (:rgdpbarro %)) rows)]))
         dim-series (into {} (for [[c rows] by-c] [c (mapv (fn [[_ f]] (mapv f rows)) dimensions)]))
         ;; the world's mean real equity change by year, to measure each country's synchrony with it
@@ -201,12 +313,7 @@
             ;; the credit gap in units of its own past spread, so the panel's coefficient
             ;; carries to a gap measured differently (the BIS's total credit for the US)
             :specific-long (assoc ((long-specific c) i)
-                                  :credit-gap-z (when-let [g (get gaps [c yr])]
-                                                  (let [past (keep #(get gaps [c %]) (range 1870 yr))]
-                                                    (when (>= (count past) 10)
-                                                      (let [m (/ (reduce + past) (count past))
-                                                            sd (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) past)) (dec (count past))))]
-                                                        (when (> sd 1e-9) (/ g sd)))))))
+                                  :credit-gap-z (sub c yr :gap :credit-gap-z (gap-z #(get gaps [c %]) yr)))
             :invariant {:max-displacement (:max a) :breadth (:breadth a) :norm (:norm a)
                         :variability (iv/variance-ratio (growth c) i 5 20)
                         :world-norm (world-norm yr) :world-crises (world-crises yr) :small-falls small
@@ -249,7 +356,7 @@
             :growth-3y (let [d (fn [f] (let [a (f (get rows (- i 3))) b (f r)] (when (and a b (>= i 3)) (- b a))))
                              credit #(div (:tloans %) (:gdp %))
                              house #(lg (div (:hpnom %) (:cpi %)))]
-                         {:credit (d credit) :equity (d :real-equity) :house (d house)})
+                         {:credit (sub c yr :growth :credit (d credit)) :equity (d :real-equity) :house (d house)})
             :wave (let [n (count (filter (fn [c'] (some #(crisis? c' %) [(inc yr) (+ yr 2)])) (keys by-c)))] (>= n 3))
             :crisis crisis-ahead :fall fall-ahead}))))
 
