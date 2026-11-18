@@ -1,0 +1,32 @@
+# Synthetic crisis testbed (bnm-3j8)
+
+Written 18 November 2026, before the code. From reports/Signal detection for crisis forecasting.md and reports/Cross domain detection transfer.md (in the bayesian-news-model workspace): disease surveillance tunes and compares detectors on synthetic outbreaks injected at known sizes, so the real outbreaks are not used up in tuning; the world has about ten crisis waves, and every design chosen on them is in-sample for the next.
+
+## What it is
+
+A world with known truth, run through the real signal layer (bnm.signals declarations) and the real lattice (bnm.lattice/run), scored the way the base is scored. A run takes seconds to minutes, not the half hour of a banking world run, so a change to the signal layer or the averaging can be tried on dozens of worlds before it is tried once on the data.
+
+## The world (bnm.testbed/world)
+
+- **Countries** in regions, over years; each country has a set of stocks (credit, house prices, reserves, terms of trade, ...), each an AR(1) around a slow trend, plus a common world cycle, plus country noise with heavy tails (Student t) at a level that differs by country (the CFAR problem: a country's own noise).
+- **Published with a lag:** each stock's year is published a set number of months after it ends, and the testbed's db is the slow table's shape (bnm.stocks series of [period available value]), so every read is point in time exactly as on the data.
+- **Crises from a known hazard:** log odds = base + the episode's channel loading times a stretched stock meeting a turning flow (docs/INVARIANTS.md), + a world wave term, + a refractory term after the country's own crisis (its sign is a parameter: the banking finding was no refractory effect, and the model over-forecast recent-crisis countries), then a crisis lasts a set number of years (its spell: not at risk again until it ends). Which stock drives an episode is drawn per wave from a set of channels, so combinations differ each time and the structure is common.
+- **Truth kept:** each country-year's true hazard and which channel drove it, so a detector's skill can be measured against the true probability, not only the outcomes.
+
+## Scenarios (bnm.testbed/scenarios)
+
+Each isolates a failure the reports or the base runs named:
+1. **credit waves:** two or three world waves driven by credit stretch and a house-price turn (2008-like). The base's anti-phase frailty should show; a fix should remove it.
+2. **commodity bust:** crises in exporters after a terms-of-trade fall, few of them with a credit history (the first-time crises the base under-forecasts 2x).
+3. **mixed channels:** each wave a different channel; tests learned combinations and breadth.
+4. **late data:** one informative stock published only from year 60 of 100 (the lock-out, bnm-1hu).
+5. **null:** stocks and crises independent. Every detector must stay at the base rate: its alerts at 4:1 must cost no more than the constant rule, and its level must not track anything.
+6. **synchronized wave:** a common shock with many countries stretched at once (cell-averaging's masking: peers as a reference hide the wave).
+
+## Scores (bnm.testbed/score)
+
+Per run: AUC pooled and within year; the yearly level's correlation with the realized rate; Brier and log score against climatology and against the true hazard (the oracle); expected calibration error by decile; Molchan area (alarm fraction against miss rate, 0.5 for random); the 4:1 alert cost against the better constant rule; the delay from a wave's first crisis to the first origin whose world-level p exceeds its long-run mean. Across worlds (seeds): means and the spread, so a design is chosen on dozens of draws, not one.
+
+## How it is used
+
+A change is tried on the testbed first, registered with its expected effect per scenario, then registered and run on the data under the fold rule as before. The testbed never replaces the data's rule; it decides what is worth a data run.

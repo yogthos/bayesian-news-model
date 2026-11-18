@@ -4,18 +4,24 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   JOLT_VERSION: v0.8.27
   JOLT_METRICS_VERSION: v0.6.0
 
 jobs:
+  # macOS, as the golden snapshots (test/resources/*golden*) were recorded:
+  # Linux's libm rounds exp and log differently in the last digits
   test:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - name: Install jolt
-        run: ci/install-jolt.sh "$JOLT_VERSION" x86_64-linux
+        run: ci/install-jolt.sh "$JOLT_VERSION" aarch64-macos
       - name: Cache git dependencies
         uses: actions/cache@v6
         with:
