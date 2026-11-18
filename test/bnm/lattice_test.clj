@@ -2,6 +2,7 @@
   (:require [augur.dynamic]
             [augur.hier]
             [augur.math :as m]
+            [bnm.known-gap :as kg]
             [bnm.lattice :as lt]
             [bnm.regime-filter :as rf]
             [bnm.world-term :as wt]
@@ -2604,12 +2605,16 @@
         fs (filter #(and (>= (:origin %) 239) (= (if stress? 1 0) (s (quot (inc (:origin %)) 12))) (some? (:y %))) (:forecasts r))]
     [(/ (reduce + (map :p fs)) (count fs)) (/ (count (filter :y fs)) (double (count fs)))]))
 
+(def ^:private regime-stack
+  "5a's stack (frailty with the gauge mean) without and with the regime
+  layer, in the default regime world; shared by the deftest and the gap."
+  (delay [(regime-world {} {}) (regime-world {:regime-on true} {})]))
+
 (deftest bnm-56c-40-the-regime-raises-the-level-within-the-lag
   (let [w {}
         frail (regime-world (assoc w :gauges? false :models #{:base :place}) {})
         frail-r (regime-world (assoc w :gauges? false :models #{:base :place} :regime-on true) {})
-        stack (regime-world w {})
-        stack-r (regime-world (assoc w :regime-on true) {})
+        [stack stack-r] @regime-stack
         [lf lfr ls lsr] (map regime-late-log [frail frail-r stack stack-r])]
     (testing "with no gauge anywhere (banking's node): the frailty alone cannot move within the lag, the regime layer does"
       (is (> lfr (+ lf 0.01)) [lfr lf])
@@ -2617,17 +2622,25 @@
             [c0 crate] (by-regime frail w false) [c1 _] (by-regime frail-r w false)]
         (is (> p1 (+ p0 0.05)) [:stress p1 p0 rate])
         (is (< c1 c0) [:calm c1 c0 crate])))
-    ;; written first as "does better still"; it did not: where the gauge is the
-    ;; regime's only emission, 5a's linear gauge mean already carries its level,
-    ;; and the chain's persistence (lambda 0.45) earned 1.2 nats over 40
-    ;; origins, short of the 2-nat price, so the layer stayed off. Recorded
-    ;; in docs/CALIBRATION.md "Regime layer"; asserted as what it does
+    ;; an additional check, not the acceptance rule: the assertion as first
+    ;; written ("does better still") is the known gap below
     (testing "on top of the gauge mean (5a's stack) it costs nothing"
       (is (>= lsr (- ls 0.002)) [lsr ls]))
     (testing "delta is chosen and learned where no gauge reads the level"
       (let [fr (val (last (get-in frail-r [:frailty [:year :country]])))]
         (is (:regime fr) fr)
         (is (> (last (:beta fr)) 0.5) fr)))))
+
+(kg/defgap bnm-56c-40-on-top-of-the-gauge-mean-known-gap-bnm-56c-40
+  "bnm-56c.40: on top of 5a's gauge mean the regime layer was to do better
+  still. It does not: where the gauge is the regime's only emission, the
+  linear gauge mean already carries the level; the regime candidates earned
+  1.24 nats over 40 origins, under the 2-nat price, and the layer stayed off
+  (late log -0.5002 both). docs/CALIBRATION.md 'Regime layer'. Open."
+  (let [[stack stack-r] @regime-stack
+        [ls lsr] (map regime-late-log [stack stack-r])]
+    (testing "on top of the gauge mean (5a's stack) it does better still"
+      (is (> lsr (+ ls 0.01)) [lsr ls]))))
 
 (deftest bnm-56c-40-no-regime-the-layer-stays-off
   (let [w {:regime? false :n 60}
