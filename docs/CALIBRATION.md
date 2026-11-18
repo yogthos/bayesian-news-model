@@ -2850,3 +2850,15 @@ Runs, banking only (other kinds from t80-base), one at a time, with `--set` addi
 - **t93-entry-cov-rho0**: the same with banking's frailty at ρ 0.
 
 Rule, fixed now: each against t80-base, banking year nodes: the fold rule (no fold lost with its 90% interval below zero, pooled Brier gain) and the alert table at 4:1. Reported beside it: each against the one before it (what each step adds), the weights the late groups and the coverage reach, AUC pooled and within year split JST / outside JST, the level's correlation with the rate, calibration by decile, and the split by years since the country's last crisis (first-time crises: rate 0.084 at a mean p of 0.044 in t80-base).
+
+## Long baselines at banking: t94 (bnm-3j8)
+
+Written 18 November 2026, before any run. From docs/TESTBED.md "The baseline absorbs the boom": against 60 years (at least 10) in place of ten (at least six), the planted turn's recovered share of the oracle's skill went from 0.21, -0.41, -0.32 to 0.35, 0.01, 0.19 (credit waves, the lattice) and from 0.11, 0.07, 0.15 to 0.22, 0.23, 0.48 (synchronized). `--long-baseline N` (this commit) sets every level stretch banking's year node reads to N years (at least 10): bnm.macrohistory's specific dimensions, the BIS splice under --dated-credit, and the extended stretches; the flows keep ten years, so one thing changes. The displacement invariants (norm, breadth, resonance) are built from the specific stretches, so they move with it.
+
+Runs, banking only (other kinds from t80-base), one at a time:
+- **t94-off**: t80-base's command on this commit: banking byte for byte t80-base's.
+- **t94-long60**: `--long-baseline 60`.
+- **t94-long60-entry**: the same with `:late-entry :prior`.
+- **t94-long60-entry-rho0**: the same with banking's frailty at ρ 0.
+
+Rule, fixed now: each against t80-base, banking year nodes, the fold rule and the alert table at 4:1. Reported beside it: each against the one before it, pooled and within-year AUC (JST / outside), the level's correlation with the rate, calibration by decile.
