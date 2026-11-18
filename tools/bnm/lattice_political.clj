@@ -322,9 +322,17 @@
   coarser node's :frailty :prior :finer reads."
   {:name :quarter-now :per 3 :offset 0 :horizon 3 :discount 0.995 :frailty-only true})
 
+(defn delayed-lead
+  "--lead-delay n (bnm-pjg.6): the leading gauges `f` as they were read n
+  months before each origin; `f` itself when n is nil or 0."
+  [f n]
+  (if (and n (pos? n))
+    (fn [u t] (f u (- t n)))
+    f))
+
 (defn spec
   [{:keys [kind db cats annual wdi units end known start pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty
-           leading leading-priors leading-food2 lead-std]}]
+           leading leading-priors leading-food2 lead-std lead-delay]}]
   (let [cat (cats kind)
         ;; :fresh-frailty: the frailty-only quarter scale first, so it runs
         ;; before every coarser node at a month they share
@@ -365,7 +373,9 @@
                 (fn [u t] (when (in-system u t) (into (vec (pol u t)) (pe u t)))))
         ;; --leading (bnm-56c.36): the kind's leading gauges after a scale's own
         lead (when leading (get (leading-sets-for leading-food2) kind))
-        lead-f (when lead (second (nm/leading db)))
+        ;; --lead-delay (bnm-pjg.6): read n months late everywhere, the
+        ;; history standardizer included
+        lead-f (when lead (delayed-lead (second (nm/leading db)) lead-delay))
         lead-ix (zipmap nm/leading-names (range))
         with-lead (fn [scale f]
                     (if-let [ns (seq (get lead scale))]
@@ -479,7 +489,7 @@
   ([kind end known-run] (build kind end known-run nil nil))
   ([kind end known-run cats start] (build kind end known-run cats start {}))
   ([kind end known-run cats start {:keys [pwt-stale lag-stale gauge-std year-delay leak-fixes fresh-frailty leading leading-priors
-                                         real-lags leading-food2 lead-std]}]
+                                         real-lags leading-food2 lead-std lead-delay]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (cond-> (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
              leading-food2 (merge (nm/load-food2)))
@@ -489,6 +499,7 @@
            :year-delay year-delay :leak-fixes leak-fixes
            :fresh-frailty fresh-frailty
            :leading leading :leading-priors leading-priors :leading-food2 leading-food2 :lead-std lead-std
+           :lead-delay lead-delay
            :annual (merge (pg/read-annual) (lb/read-annual) (pg/read-annual "data/derived/fiscal.csv"))
            :wdi (wdi-reader db {:lag-stale lag-stale})
            :known (lb/read-known known-run kind)}))))

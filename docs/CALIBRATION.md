@@ -1571,3 +1571,18 @@ The whole suite is green: 1403 tests, 0 failures.
 - **The 2006-08 miss does not come from JST's credit.** The level is set by the crisis process, and half the onsets are outside the panel.
 - **The cost** is post-crisis false alarms where the BIS's ratio rose as GDP fell (loss 1).
 - The inputs it gives are the agencies' own series, dated by their releases. Adoption is the user's decision; the option stays off by default.
+
+## Delay test on the base of record: t86 (bnm-pjg.6)
+
+Written 18 November 2026, before any run. The s2 test (docs/PHASE-CHANGES.md, "Round 4's delay test") delayed t50's year rows; the base has since adopted the leak fixes, the leading gauges at the quarter-lead and year nodes (`--leading`, `--leading-priors`, `--lead-std history`) and those gauges in the frailty mean (`--frailty-gauges`). This tests the base's adopted groups as they stand.
+
+Runs, each t80-base's command (data/runs/t80-base/README.txt) with one change, thirteen kinds, one at a time:
+- **t86-ldelay**: `--lead-delay 3`, every leading gauge read three months late at every node and in the frailty mean (bnm.lattice-political/delayed-lead).
+- **t86-nolead**: without `--leading`, `--leading-priors`, `--lead-std` and `--frailty-gauges` (with no leading gauge the frailty mean has none to read), the reference for the leading gauges' gain.
+- **t86-ydelay**: `--year-delay 1`, the political and economic kinds' year rows a year late (banking's own table not delayed, as in s2).
+
+Scores (bnm.links): `--runs` against the bench for the pooled year and quarter-lead nodes, `--folds` for the year nodes by fold, and the alert table.
+
+Rule, fixed now:
+1. **Leading gauges.** G = t80-base against t86-nolead, G_d = t86-ldelay against t86-nolead, pooled log, year and quarter-lead nodes each. If G's interval does not lie above zero at a scale, the gauges have no gain there to test, and that is the result at that scale. Where it does, the gain survives the delay if G_d ≥ G/2 and t86-ldelay loses no fold against t80-base with a 90% interval below zero. Otherwise the gain rests on the latest quarter and is flagged for review; nothing is removed without the user's decision.
+2. **Year rows.** No run without the year gauges exists for this base, so t86-ydelay is read against t80-base alone: a pooled log loss with its interval below zero, or a fold lost that way, means the year gauges' gain rests on the latest year's row, as s2 found for t50. The leak fixes date Maddison, NMC and PWT by release, so a loss here no longer points to those sources.
