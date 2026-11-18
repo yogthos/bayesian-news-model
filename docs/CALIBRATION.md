@@ -1571,3 +1571,42 @@ The whole suite is green: 1403 tests, 0 failures.
 - **The 2006-08 miss does not come from JST's credit.** The level is set by the crisis process, and half the onsets are outside the panel.
 - **The cost** is post-crisis false alarms where the BIS's ratio rose as GDP fell (loss 1).
 - The inputs it gives are the agencies' own series, dated by their releases. Adoption is the user's decision; the option stays off by default.
+
+## Banking gauges: t85-bgauges, t85-bgauges-flat (bnm-cpv)
+
+18 November 2026, branch banking-gauges. Banking's lattice had no `:gauge-names`, so `--leading` and `--frailty-gauges` never reached it. `--banking-gauges true|flat` adds four world gauges at its year node: `:baa12`, `:us-curve`, `:vix12` and `:world-credit3`. The priors were committed before any run (docs/LEADING.md "Banking gauges", deb3191). Under `--frailty-gauges` the gauges set the common shock's mean. Off by default: t85-off, t80-base's command for banking alone, reproduces t80-base's banking forecasts, preds, weights and frailty byte for byte.
+
+Runs (banking only; the other twelve kinds copied from t80-base): **t85-bgauges** (theory priors) and **t85-bgauges-flat** (mean 0, variance 1). Logs: data/runs/logs/score-t85-*.txt, alerts-t85-vs-t80-base.txt.
+
+Year nodes, banking, against t80-base (+ = candidate better, 90% intervals):
+
+| fold | t85-bgauges Brier | log | t85-bgauges-flat Brier | log |
+|---|---|---|---|---|
+| 2003-06 | -0.00168 [-0.00330, -0.00023] | -0.0311 [-0.0689, -0.0022] | -0.00167 [-0.00349, -0.00006] | -0.0345 [-0.0795, +0.0004] |
+| 2007-09 | +0.00094 [-0.00214, +0.00474] | -0.0003 [-0.0332, +0.0319] | +0.00085 [-0.00307, +0.00486] | -0.0067 [-0.0530, +0.0315] |
+| 2010-12 | +0.00075 [-0.00278, +0.00503] | +0.0036 [-0.0194, +0.0309] | -0.00030 [-0.00628, +0.00606] | -0.0005 [-0.0358, +0.0376] |
+| 2013-19 | -0.00564 [-0.01087, -0.00148] | -0.0353 [-0.0594, -0.0154] | -0.00236 [-0.00523, +0.00016] | -0.0169 [-0.0366, +0.0011] |
+| 2020-22 | -0.00041 [-0.00112, +0.00027] | -0.0038 [-0.0136, +0.0058] | -0.00010 [-0.00067, +0.00046] | +0.0006 [-0.0082, +0.0095] |
+| pooled | -0.00213 [-0.00443, +0.00001] | -0.0188 [-0.0348, -0.0048] | -0.00111 [-0.00266, +0.00057] | -0.0138 [-0.0299, -0.0008] |
+
+Both lose by the fold rule. Not adopted.
+
+Country year node, December origins (mean p; rate):
+
+| origin | rate | t80-base | t85-bgauges | t85-bgauges-flat |
+|---|---|---|---|---|
+| 2006 | 0.169 | 0.025 | 0.014 | 0.012 |
+| 2007 | 0.146 | 0.022 | 0.018 | 0.015 |
+| 2009 | 0.024 | 0.101 | 0.054 | 0.052 |
+| 2018 | 0.008 | 0.051 | 0.168 | 0.137 |
+
+Alerts at 4:1: banking cost 0.132 → 0.138, Δ -0.0066 [-0.0203, +0.0059]. The 2006 and 2007 episodes are still missed. Pooled over kinds, Δ -0.0005 [-0.0019, +0.0004].
+
+### Why: the losses traced (PLAN principle 9)
+
+1. **The slopes leave theory before 2003.** The gauges' coefficients are learned in the frailty filter from 1986 (BAA's start) on. By Dec 1998, `:world-credit3` is at -0.09 (prior +0.4) and `:baa12` at -0.03 (prior +0.3). Only the VIX (+0.2) and the curve (-0.1 to -0.17) keep theory's sign. At Dec 2006-07, world credit reads +1.5 and +3.7 sd, and with its learned slope near zero or below it lowers the level instead of raising it.
+2. **World credit to GDP reads a crisis's aftermath as a boom.** It is +3.6 sd at Dec 1998 and at its cap (+5.0) at Dec 2008-09, when GDP fell under the credit stock. That is the denominator effect noted under "Dated credit for banking", here at the world's scale. Before 2003 the gauge stood high after crises and before calm, which is what the filter learned. This was knowable before the run and should have kept the gauge out of the set. Recorded, not refit: a different gauge chosen now would be chosen on these scores.
+3. **The changed level reshuffles the node's models.** With the gauges carrying part of the shock, the residual shock picks ρ 0.95 (t80-base 0.8) and runs at -1.2 to -3.4 throughout. Every model's issue-time evidence moves with it. At Dec 2006-07 the boom and stretch models, which rank Ireland, Spain and Denmark, fall from 0.81 of the weight to about 0.10, spread over process, household and nine others. At Dec 2017-18 the exposure model takes 0.67-0.89 (t80-base: booms 0.99), which is the 2018 false alarm (0.168 at a rate of 0.008).
+4. **The flat run loses the same way.** The loss is not the priors: wiring world gauges into banking's frailty is what lowers the level and spreads the weights.
+
+The miss at 2006-07 stays where "Dated credit for banking" left it: a level of 0.02 from two quiet decades. A world gauge in the frailty mean does not lift it, because the slopes must be learned from the 1990-92 and 1997-98 waves, where these gauges lag the crises.
