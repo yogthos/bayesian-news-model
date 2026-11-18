@@ -64,7 +64,9 @@
   banking's credit-family inputs from the BIS from the December 2003
   origin, bnm.lattice-banking/dated-credit-inputs), --banking-gauges
   true|flat (bnm-cpv: the world's leading gauges at banking's year node,
-  at theory's priors or the node's default ones),
+  at theory's priors or the node's default ones), --wide-credit true
+  (with it: the same and house prices for the countries outside the
+  Macrohistory panel, bnm.lattice-banking/wide-credit-values),
   --write-reference true (also data/runs/<out>-ref, the forecasts with the
   reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
@@ -690,6 +692,20 @@
                                                                       (mapv #(if-let [s (sign %)] (rf/emission-mean chain s p) 0.0) fg)))))}))
                     sp)]))))
 
+(defn wide-credit-choice
+  "--wide-credit true (with --dated-credit true): the banking node's credit,
+  household credit and house-price inputs for the countries outside the
+  Macrohistory panel too, from the BIS by the same transforms and lag
+  (bnm.lattice-banking/wide-credit-values); bank, the credit input from
+  the BIS's bank credit (JST's concept) in place of all lenders'. Off by
+  default."
+  [{:keys [wide-credit] :as opts}]
+  (when (and wide-credit (not (#{"true" "false" "bank"} wide-credit)))
+    (throw (ex-info (str "bnm.world-run: --wide-credit takes true, bank or false, not " wide-credit) {})))
+  (when (and (#{"true" "bank"} wide-credit) (not (dated-credit-choice opts)))
+    (throw (ex-info (str "bnm.world-run: --wide-credit " wide-credit " needs --dated-credit true") {})))
+  (case wide-credit "true" true "bank" :bank false))
+
 (defn options
   "The options of bnm.world-run `args`: {:out \"x\" ...}, values as given."
   [args]
@@ -738,7 +754,8 @@
                                                                :leading-food2 (leading-food2-choice opts)
                                                                :lead-std (lead-std-choice opts)
                                                                :dated-credit (dated-credit-choice opts)
-                                                               :banking-gauges (banking-gauges-choice opts)})
+                                                               :banking-gauges (banking-gauges-choice opts)
+                                                               :wide-credit (wide-credit-choice opts)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)
