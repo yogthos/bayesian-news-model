@@ -2466,3 +2466,284 @@ Bugs found in this work:
 - **It does not make the growth node discriminate.** Within-origin AUC 0.544 → 0.512; the level still lags the waves by about four years. A current growth input does not help a model whose slope was learned on one kind of wave and is applied to another. The growth collapses that matter (2009, 2020) were not visible in the previous year's annual accounts.
 - **The lookaheads it uncovered matter more than the staleness.** WDI read at nine months before 2005 is a year early; in the fresh inputs' training years that lookahead alone made a pooled GAIN (t72-fresh-v1). `--wdi-editions` fixes it for every WDI series and should be scored before any base adopts a WDI input change.
 - **Adoption** is the user's decision. Every option stays off by default.
+
+## 18. Issuing next-quarter scale: t73-nq (bnm-56c.38)
+
+No issuing scale covered (t, t+3]. The year is (t, t+24], quarter-lead (t+3, t+12], quarter-w2 (t+12, t+24], and quarter-now (step 4a) issues nothing. An onset in the next quarter could only be targeted from origins at least three months before it, before the gauges that lead it had moved.
+
+### Design
+
+docs/RECURSIVE.md step 4b, committed before the code and before any run. In short:
+- **`:quarter-next`.** Window (t, t+3], issued at every quarter end. It has its own models and averaging over the quarter-lead's input groups, trial 41's quarter design, its own book rows, errors, weights and frailty. It is written as scale `quarter-next`.
+- **A leaf (`:leaf true` in bnm.lattice).** No other node reads it. It is not in the sheaf's base, so the year's `:up` group does not grow and every other row is unchanged byte for byte. It replaces the frailty-only quarter-now (same window and known-at); `--next-quarter` and `--fresh-frailty` are refused together.
+- **Its outcome.** The scale reads its own catalogue:
+  - food price shocks by month (lag 9);
+  - growth collapses by quarter (the GROWTH-QUARTERLY catalogue, merged from origin/growth-q; lag 5, 103 covered units);
+  - the other kinds on the run's catalogue.
+
+  Under `--at-risk catalogue` each carries its rule: monthly food grid [1 0], refractory 12; quarterly growth grid [3 2], refractory 60. The other scales keep the run's catalogues, so t71's targets are unchanged.
+- **Kinds.** Those whose scale catalogue is sub-annual: coups, protest and violence surges, market crashes, food and growth. Not banking, conflict, war or the annual economic kinds.
+- **Known-at.** Window end plus the catalogue's lag: t+6 at market crashes (and coups, protest, violence), t+8 at growth, t+12 at food. Nothing reads past t (planted test).
+- **Offset.** The year's forecast carried down to the quarter, pooled 0.5 with named's w1 carried to the quarter. For food, market crashes and growth, r7-at-fx has no named w1 forecast (nor a lead one). The offset is therefore the year's alone, as at their quarter-lead.
+- **Frailty.** With `--frailty-gauges true`, the world gauges the scale reads that carry a theory prior set its shock's mean, at the year's priors:
+  - market crashes `[:us-curve :baa12 :vix12]`;
+  - growth `[:baa12 :us-curve :vix12]`;
+  - food `[:world-food12]`.
+
+Code:
+- bnm.lattice `:leaf`, and bnm.sheaf/base;
+- bnm.lattice-political `quarter-next`, `scales-of`, `known-log-odds`, `target-fn`;
+- bnm.world-run `--next-quarter`, `nq-catalogues`, `nq-kinds`, `design-for`;
+- bnm.alerts `--scale quarter-next`;
+- bnm.nq-score.
+
+### Tests
+
+- **lattice_test bnm-56c-38-*.** The planted world has 100 places. A world gauge read at each quarter end is noise (sd 0.4), or +2.5 at six March origins, and moves the next quarter's monthly log odds by 1.2 times its value. The realized rate is 0.21-0.35 at the episodes, against about 0.02 otherwise.
+  - The next-quarter scale issues at least 0.2 at every episode origin. The quarter-lead and the year issued three months earlier, whose windows hold the same quarter, imply under 0.08 for it. Calm quarters average under 0.06.
+  - The leaf leaves every other scale's forecasts, book, weights and frailty as they are without it. The same scale without the leaf mark moves the year.
+  - No lookahead: events redrawn after a cut change nothing issued by it.
+  - A scale cannot be both a leaf and frailty-only.
+- **lattice_political_test.** The scale and its place in the order; the w1 offset carried to the quarter; the target read from the scale's own catalogue at its own lag.
+- **world_run_test.**
+  - The option, and its refusal beside `--fresh-frailty`.
+  - The scale's catalogues, kinds and at-risk rules.
+  - Its design.
+  - Its frailty gauges: only those with a theory prior (world food12 has none at growth).
+- **nq_score_test.** The causal climatology, the quarter-lead's implied hazard, the lags, and the alert layer reading the scale at every origin.
+- **Bug fixed on the way.** Merging origin/growth-q dropped `--growth-outcomes` from `run-catalogues` (structure had moved catalogue building there), so the option was silently ignored. Separately, `--at-risk catalogue` gave the quarterly growth catalogue the annual rule (a January grid). Both are fixed, with tests (bnm-56c-38-run-catalogues-reads-growth-outcomes, -at-risk-knows-the-quarterly-growth-catalogue).
+- **Suite.** Green: 1411 tests, 0 failures (data/runs/logs/suite-t73.log).
+- **Reproduction.**
+  - t73-nq against t71-stack, for food, growth and market crashes: forecasts.tsv, weights.tsv and frailty.tsv are byte-identical once the quarter-next lines are dropped, and preds.tsv is byte-identical (data/runs/logs/repro-t73-nq.txt).
+  - 2026-Q4-r1 reproduces byte for byte through `bnm.ledger/reproduce-issue!` (data/runs/logs/repro-r1-nq.log; forecasts sha bdb361c8…). That run builds all 13 kinds through the refactored scale, target and offset code with the option off.
+  - t71-stack was not rerun in full with the option off. Its three changed kinds are covered by t73-nq's identity above, and the other ten by the 2026-Q4-r1 reproduction's code path.
+
+### Run
+
+t73-nq = t71-stack's command + `--next-quarter true`, at b05d3e1, for food, growth collapses and market crashes (15 minutes). The other ten kinds are copied from t71-stack, since they are independent under `--without-relations true`. Coups, protest and violence would get the scale but were not run (data/runs/t73-nq/README.txt).
+
+**Year nodes against t71-stack:**
+- +0.00000 in every fold, Brier and log (score-t73-folds-vs-t71-stack.txt).
+- Year alerts identical: cost 0.298, 8 of 21 episodes caught (alerts-t73-vs-t71-stack.txt).
+- The fold rule holds trivially: the scale adds rows and changes none.
+
+### The scale's own scores
+
+Country nodes, quarter-end origins 2003-22, resolved rows (score-t73-nq.txt). Brier and log differences, + = the next quarter's loss is lower; 90% intervals resampling countries and years.
+
+| kind | rows | onsets | mean p | Brier | clim | ql-imp | Brier vs clim | log vs clim | Brier vs ql-imp | log vs ql-imp |
+|---|---|---|---|---|---|---|---|---|---|---|
+| food | 11142 | 264 | 0.025 | 0.0250 | 0.0360 | 0.0243 | +0.0110 [+0.0002, +0.0300] | +0.0258 [+0.0005, +0.0675] | -0.0007 [-0.0029, +0.0007] | +0.0004 [-0.0085, +0.0081] |
+| growth | 4659 | 136 | 0.017 | 0.0285 | 0.0286 | 0.0283 | +0.0002 [-0.0010, +0.0017] | +0.0009 [-0.0220, +0.0229] | -0.0002 [-0.0021, +0.0017] | -0.0047 [-0.0493, +0.0347] |
+| market crashes | 3156 | 79 | 0.036 | 0.0223 | 0.0247 | 0.0238 | +0.0024 [-0.0011, +0.0077] | +0.0218 [-0.0013, +0.0553] | +0.0015 [-0.0009, +0.0053] | +0.0085 [-0.0043, +0.0272] |
+| pooled (kinds equal) | | | | | | | +0.0045 [+0.0005, +0.0107] | +0.0162 [-0.0004, +0.0376] | +0.0002 [-0.0013, +0.0019] | +0.0014 [-0.0158, +0.0194] |
+
+- **The references.**
+  - clim: the kind's rate among the scale's country rows resolved by t.
+  - ql-imp: the quarter-lead's forecast at t-3 for (t, t+9], carried to (t, t+3] as 1 - (1 - p)^(1/3) and scored on the scale's outcome. For food and growth the quarter-lead's own target is a different catalogue.
+- **The food gain over climatology is 2004 alone.** From 2005 (score-t73-nq-from2005.txt):
+  - food: +0.0002 [-0.0001, +0.0006] against climatology, +0.0005 [-0.0001, +0.0013] against ql-imp;
+  - pooled: +0.0010 [-0.0005, +0.0035] and +0.0007 [-0.0008, +0.0025].
+
+  In 2004 both the node and the climatology start uninformed (loss 1).
+- **Market crashes** are the one kind with an edge, and it is not significant: +0.0024 Brier and +0.022 log against climatology.
+
+Alerts at 4:1 (p ≥ 0.2), cost per row (alerts-t73-nq-quarter-next.txt, score-t73-nq.txt):
+
+| kind | next quarter (hit / FA) | clim | ql-imp | dcost vs clim | dcost vs ql-imp |
+|---|---|---|---|---|---|
+| food | 0.118 (2.3% / 2.6%) | 0.144 | 0.095 | +0.026 [+0.000, +0.065] | -0.023 [-0.073, +0.001] |
+| growth | 0.122 (2.2% / 0.8%) | 0.117 | 0.117 | -0.005 [-0.014, +0.000] | -0.005 [-0.014, +0.000] |
+| market crashes | 0.092 (15.2% / 0.7%) | 0.100 | 0.102 | +0.009 [-0.006, +0.035] | +0.010 [-0.003, +0.036] |
+| pooled | | | | +0.010 [-0.002, +0.023] | -0.006 [-0.025, +0.005] |
+
+**Episodes.** There are 26 quarter-end origins with a rate at least twice the kind's; 5 of them have a rate of at least 0.2. None is caught.
+
+**Where the alerts fire** (rows alerted, onsets among them):
+
+| kind | origin | alerts | onsets | note |
+|---|---|---|---|---|
+| food | Jun and Sep 2004 | 293 | 6 | loss 1 |
+| growth | Dec 2008 | 23 | 3 | |
+| growth | Dec 2020 | 16 | 0 | loss 4 |
+| market crashes | Mar and Jun 2008 | 23 | 11 | |
+| market crashes | 2009 | 7 | 0 | |
+
+**The outlier quarters** (rows, realized rate, mean p issued; caught at 0.2):
+
+| kind | origin | rows | rate | next quarter | clim | ql-imp |
+|---|---|---|---|---|---|---|
+| food | Sep 2021 | 146 | 0.048 | 0.017 | 0.018 | 0.010 |
+| | Dec 2021 | 142 | 0.099 | 0.014 | 0.018 | 0.013 |
+| | Mar 2022 | 130 | 0.215 | 0.023 | 0.018 | 0.022 |
+| | Jun 2022 | 102 | 0.137 | 0.028 | 0.018 | 0.026 |
+| market crashes | Jun 2007 | 47 | 0.000 | 0.036 | 0.037 | 0.054 |
+| | Sep 2007 | 47 | 0.000 | 0.054 | 0.036 | 0.047 |
+| | Dec 2007 | 47 | 0.128 | 0.082 | 0.036 | 0.049 |
+| | Mar 2008 | 41 | 0.146 | 0.190 | 0.036 | 0.048 |
+| | Jun 2008 | 35 | 0.429 | 0.187 | 0.037 | 0.071 |
+| | Sep 2008 | 20 | 0.850 | 0.150 | 0.038 | 0.076 |
+| | Dec 2008 | 3 | 0.333 | 0.362 caught | 0.041 | 0.067 |
+| growth | Sep 2008 | 66 | 0.136 | 0.018 | 0.011 | 0.005 |
+| | Dec 2008 | 57 | 0.298 | 0.184 | 0.011 | 0.004 |
+| | Mar 2009 | 40 | 0.125 | 0.124 | 0.011 | 0.004 |
+| | Dec 2019 | 81 | 0.136 | 0.021 | 0.013 | 0.029 |
+| | Mar 2020 | 71 | 0.831 | 0.007 | 0.013 | 0.031 |
+| | Jun 2020 | 15 | 0.133 | 0.004 | 0.013 | 0.007 |
+
+Where its gauges move, the scale moves the right way:
+- market crashes in 2008: four to five times climatology, and 2.5 times the quarter-lead's implied hazard;
+- growth at Dec 2008: 0.184, against 0.004 for the quarter-lead.
+
+It reaches 0.2 nowhere that matters.
+
+### Why: the losses traced (PLAN principle 9)
+
+β at the country nodes (frailty.tsv; the gauges in the order listed above):
+
+| kind | gauge | prior | learned 1999-2023 |
+|---|---|---|---|
+| market crashes | `:us-curve` | -0.4 | +0.03 to +0.11 |
+| | `:baa12` | +0.5 | +0.05 (1999), +0.19 to +0.28 (2002-23) |
+| | `:vix12` | +0.25 | -0.05 to -0.12 |
+| growth | `:baa12` | +0.4 | +0.09 to +0.32 |
+| | `:us-curve` | -0.3 | -0.14 (1999) to +0.10 (2023) |
+| | `:vix12` | +0.3 | +0.07 (1999), -0.02 to -0.10 (2008-19), +0.29 (2020-23) |
+| food | `:world-food12` | +0.3 | +0.21 to +0.42 |
+
+1. **Food 2004: the uninformed start.**
+   - Food's monthly catalogue covers places from January 2004. Until the node's first row resolves, twelve months later, it issues an even 0.5, and so does the causal climatology.
+   - That gives 293 alerts at Jun and Sep 2004, for 6 onsets.
+   - This is bnm-56c.26's uninformed start. `--clim-prior kinds` addresses it, but the base does not run that option.
+   - It accounts for all of food's Brier gain over climatology and its alert loss against the quarter-lead.
+   - Not a bug of the scale. Not changed, since the base's command is fixed.
+2. **Growth Mar 2020 (rate 0.831, issued 0.007): a carried calm, and gauges that had learned nothing.**
+   - Rows are known 8 months on, so at Mar 2020 the last filtered origin was Jun 2019. There z = -1.39 at ρ = 0.95 (σ = 1.0, the grid's edge, bnm-02u): the 2015-19 calm, carried. Run forward it is -1.19, less the half variance 0.5.
+   - The gauges read VIX12 +4.0 sd, BAA12 +1.6 and the curve -1.1. But β had moved to [0.28, 0.03, -0.02], so β·g = +0.34.
+   - The shock issued was about -1.35, which puts the forecast below climatology.
+   - The VIX's β fell from its prior +0.3 to about 0 over 2008-19. There a high 12-month VIX change mostly followed collapses already counted, at units that were then busy or refractory.
+   - Even at the theory priors with z = 0, the issue would have been about 0.065. One precedent (2008-09) in the gauges' span cannot support a +5 log-odds move.
+   - **Approach and information, not a bug.** The carried calm is the year's mechanism (sections 7 and 8), now at three months.
+3. **Market crashes 2008 (rate 0.43-0.85 at Jun-Sep 2008, issued 0.15-0.19): theory priors that the 1980s-90s quarters overturned.**
+   - By 1999 the next quarter's VIX12 β was -0.07 and the curve's +0.05, against priors of +0.25 and -0.4. Only BAA12 kept its sign, at half its prior.
+   - At Sep 2008 BAA12 read +3.1 sd (β·g +0.65), and the node issued about four times climatology.
+   - The curve's sign is a horizon mismatch. Inversion leads recessions and bear markets by 2-6 quarters (LEADING.md "Priors"). At a three-month horizon the curve is already steep again, with the Fed cutting, when the crashes come. The year's prior does not fit this horizon.
+   - **Approach.** Step 4b fixed the priors for the year and took them unchanged; a horizon-specific prior chosen after these scores would be post hoc. Recorded, not changed.
+4. **Growth Dec 2020 (16 alerts, no onset): a carried shock.**
+   - The Mar 2020 origin's rows, known in Nov 2020, filtered z to +3.4, and the grid moved to ρ = 0.8.
+   - At Dec 2020 that state was run forward three quarters (+1.7, less 0.5), at the units still at risk, which did not collapse.
+   - This mirrors loss 2: an AR(1) shock carries a one-quarter wave forward. Approach.
+5. **Food 2022 (rate 0.10-0.22, issued 0.014-0.028): the information limit LEADING.md found.**
+   - World food12 read +1.4 to +2.6 sd from Sep 2021 to Mar 2022. At β 0.30-0.35 that is +0.4 to +0.8, about doubling a 0.018 base.
+   - Food's own z was 12 months stale (lag 9 + 3) and read -0.24 to +0.32 when issued from Sep 2021 to Mar 2022.
+   - The 2022 surge followed the invasion of February 2022. No gauge read at Dec 2021 or Mar 2022 supports a tenfold move.
+   - **Information limit.**
+
+**Bugs found:** only the growth-q merge's, fixed above. None in the runs:
+- the leaf reproduces t71-stack exactly;
+- the β and z read from frailty.tsv account for each issue;
+- the gauge columns are read at t.
+
+### Verdict
+
+- **The scale works as designed.**
+  - In the planted world it issues the gauge-announced shock that the coarser scales cannot.
+  - On the world it changes no row of any other scale, so the fold rule is met with zero change.
+  - It issues for the quarter at hand.
+- **On its own rows it is level** with a causal climatology and with the quarter-lead's implied hazard, once the 2004 uninformed start is set aside. From 2005, pooled Brier is +0.0010 [-0.0005, +0.0035] and +0.0007 [-0.0008, +0.0025]. Market crashes are the only kind with an edge, and it is not significant.
+- **No outlier quarter is caught** except Dec 2008 at market crashes (3 rows). The 2008 crash, growth at Dec 2008 and growth at Mar 2020 move the right way, but far short of 0.2.
+- **What limits it:**
+  - z carried at ρ 0.95 (growth) through calms and waves (losses 2 and 4);
+  - theory priors set for a 24-month window, overturned at three months for the curve and the VIX (loss 3);
+  - the size of 2020 and 2022, beyond anything one or two precedents can teach (losses 2 and 5).
+- **Where to act next.** This scale is where a horizon-specific prior, or a regime state that switches on the gauges (step 5), would act. By itself it does not reach the episodes.
+- **Not merged into structure.** Adoption is the user's decision, and the option stays off by default.
+
+### Horizon priors: t76-nq-hp (in-sample for the choice)
+
+The user allowed priors specific to the next quarter, on condition that they are flagged as in-sample: they were chosen after seeing 2008, 2020 and 2022 at the three-month horizon in t73-nq. They are in docs/LEADING.md "Priors at the next quarter", committed (653221a) before the code and the run:
+- the curve centred at 0 at both kinds (its 2-6 quarter lead);
+- VIX12 +0.4 at market crashes (clustering) and +0.5 at growth (Bloom's 4-6 month trough);
+- BAA12 kept;
+- world food12 +0.2 and food12 × imports +0.35 (a quarter's share of a year's pass-through).
+
+Every 2003-22 number below is in-sample for that choice.
+
+- **Code.** `bnm.lattice-political/horizon-priors` and `named-prior-for`; `world-run --horizon-priors true`, which needs `--next-quarter true` and `--leading-priors true` (4e54ae1). Only the next-quarter scale reads them, in its models and its frailty's β. Off by default.
+- **Tests.** The priors, the scales they reach, the option and its refusals (lattice_political_test, world_run_test bnm-56c-38-horizon-priors-*).
+- **Run.** t76-nq-hp = t73-nq's command + `--horizon-priors true`, the same three kinds; the other ten copied from t71-stack.
+- **Reproduction.**
+  - Without its quarter-next lines, every file of the three kinds is byte-identical to t71-stack (repro-t76-nq-hp.txt).
+  - Year folds against t71-stack are +0.00000 (score-t76-folds-vs-t71-stack.txt).
+  - 2026-Q4-r1 reproduces byte for byte at 4e54ae1 (repro-r1-nq-hp.log, sha bdb361c8…).
+
+**Against t73-nq**, on the scale's rows (score-t76-vs-t73-quarter-next.txt; + = t76's loss lower):
+
+| kind | Brier | log |
+|---|---|---|
+| food | +0.00003 [-0.00003, +0.00010] | -0.00011 [-0.00080, +0.00061] |
+| growth | +0.00003 [-0.00019, +0.00031] | +0.00231 [-0.00034, +0.00632] |
+| market crashes | +0.00016 [-0.00008, +0.00050] | +0.00073 [-0.00037, +0.00214] |
+| pooled | +0.00007 [-0.00005, +0.00021] | +0.00098 [-0.00019, +0.00226] |
+
+**Against the references** (score-t76-nq-hp.txt and -from2005.txt):
+- 2003-22, against climatology: Brier +0.0046 [+0.0005, +0.0108], log +0.0172 [+0.0006, +0.0397]. As in t73, both rest on the 2004 uninformed start.
+- From 2005: +0.0011 [-0.0006, +0.0038] against climatology and +0.0007 [-0.0009, +0.0028] against ql-imp, pooled.
+- Market crashes: +0.0029 [-0.0011, +0.0093] against climatology from 2005, the edge a little larger and still not significant.
+
+**Alerts at 4:1** (alerts-t76-nq-hp-quarter-next.txt):
+
+| | t76-nq-hp | t73-nq |
+|---|---|---|
+| cost, pooled | 0.109 | 0.111 |
+| dcost against t73-nq | +0.0014 [-0.0005, +0.0052] | |
+| market crashes: cost (hits) | 0.088 (22.8%) | 0.092 (15.2%) |
+| growth: cost (hits) | 0.121 (4.4%) | 0.122 (2.2%) |
+| food: cost | 0.119 | 0.118 |
+| episodes caught, of 26 | 3 | 0 |
+
+The three episodes caught are market crashes Mar 2008 and Jun 2008, and growth Dec 2008. Against climatology and ql-imp from 2005 the alert cost is level: +0.003 [-0.004, +0.016] and +0.003 [-0.003, +0.017].
+
+**Outlier quarters**, mean p in t76-nq-hp (t73-nq) / rate:
+
+| kind | origin | t76 (t73) | rate |
+|---|---|---|---|
+| market crashes | Dec 2007 | 0.094 (0.082) | 0.128 |
+| | Mar 2008 | **0.214 caught** (0.190) | 0.146 |
+| | Jun 2008 | **0.202 caught** (0.187) | 0.429 |
+| | Sep 2008 | 0.162 (0.150) | 0.850 |
+| | Dec 2008 | 0.386 caught (0.362) | 0.333 |
+| growth | Dec 2008 | **0.222 caught** (0.184) | 0.298 |
+| | Mar 2009 | 0.150 (0.124) | 0.125 |
+| | Mar 2020 | 0.008 (0.007) | 0.831 |
+| | Jun 2020 | 0.005 (0.004) | 0.133 |
+| food | Sep 2021-Jun 2022 | 0.014-0.027 (0.014-0.028) | 0.05-0.22 |
+
+**Why so little: the data overturned the new priors as they did the old** (frailty.tsv, β at the country nodes):
+
+| kind | gauge | horizon prior | learned 1999 | learned 2005-19 |
+|---|---|---|---|---|
+| market crashes | `:us-curve` | 0.0 | +0.22 | +0.19 to +0.25 |
+| | `:baa12` | +0.5 | +0.05 | +0.18 to +0.26 |
+| | `:vix12` | +0.4 | +0.03 | +0.08 to -0.08 |
+| growth | `:baa12` | +0.4 | +0.11 | +0.13 to +0.29 |
+| | `:us-curve` | 0.0 | +0.03 | +0.06 to +0.15 |
+| | `:vix12` | +0.5 | +0.19 | +0.13 to -0.04 (+0.33 after 2020) |
+| food | `:world-food12` | +0.2 | +0.22 | +0.21 to +0.40 |
+
+1. **The curve.** From 0 the market-crash β went straight to +0.2: a steep curve goes with a crash in the next quarter. This is the re-steepening before and in bear markets that motivated the 0 prior, and the data give it a sign. At growth the curve's β stays small. The 0 prior removed t73's pull in the wrong direction, so the curve now adds to the 2008 level: at Mar and Jun 2008 it read +0.5 sd.
+2. **The VIX.** Theory's short-horizon prior (+0.4, +0.5) is overturned again: β was about 0 at both kinds by 2005-08. A high 12-month VIX change comes mostly after a crash or a collapse has happened, when the units that crashed or collapsed are busy or refractory and leave the at-risk set (as in t73, loss 2). Within the at-risk set the gauge then reads high in quiet quarters, such as 2002, 2009 Q2-Q4 and 2011. The 12-month change is the wrong transform at this horizon: it measures the crash already under way. The prior cannot fix that, and is overturned within a decade of quarters. A level or 3-month change read before the event (LEADING.md "Growth 2020") would be a different gauge. That is recorded, not built: choosing it now would be a second in-sample choice.
+3. **Growth Mar 2020 still 0.008.**
+   - At Jun 2019, the last origin known by Mar 2020: β = [0.26, 0.13, 0.03] and z = -1.31 at ρ 0.95.
+   - The gauges then read BAA12 +1.58, the curve -1.07 and VIX12 +4.01, so β·g is about +0.41 - 0.14 + 0.14 = +0.41. The carried calm takes it back below climatology.
+   - With β at the horizon priors and z = 0, the issue would have been about 0.1. The prior was gone before 2020.
+4. **Food.** World food12's β stayed near its prior (+0.21 to +0.40), so lowering the prior changed little (Brier +0.00003). 2022 is the same information limit as in t73 (loss 5).
+
+**Bugs:** none. The option touches only the next quarter, its β start where LEADING.md says (market crashes and growth: the first filtered rows of frailty.tsv hold exactly the priors, before the gauges have history), and the other scales reproduce.
+
+**Verdict on the horizon priors.**
+- In-sample, they move the scale the intended way at 2008: three episodes caught against none, market-crash hits 15% → 23%, Brier and log a hair better. None of these is significant.
+- They do not reach Mar 2020 or 2022.
+- Given that they were chosen after seeing these episodes, and that the gain is within noise even in-sample, they are no evidence for the scale.
+- The limit is the gauge's transform and the carried calm, not the prior: sd 0.25 lets twenty years of quarters overturn any prior on VIX12.
+- Not adopted. The option stays off by default.

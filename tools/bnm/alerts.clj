@@ -5,7 +5,7 @@
   alert drawn from them costs. Alert when p >= C_false / (C_false + C_miss),
   0.2 at 4:1.
 
-    jolt -A:tools -M -m bnm.alerts --run RUN [--bench BASE] [--threshold 0.2] [--miss-cost 4]
+    jolt -A:tools -M -m bnm.alerts --run RUN [--bench BASE] [--threshold 0.2] [--miss-cost 4] [--scale quarter-next]
                                    [--from 2003 --to 2022] [--episodes ratio|decile]
                                    [--ratio 2] [--min-rows 10] [--reps 400]
 
@@ -70,18 +70,20 @@
 (defn read-node
   "{[place origin] [p y]} of a kind's forecasts.tsv at the year scale,
   December origins in the years `from` to `to`, resolved rows only;
-  `node` :country (three-letter places) or :world."
-  [file node from to]
+  `node` :country (three-letter places) or :world. Another `scale` (the
+  next quarter, bnm-56c.38) is read at every origin."
+  ([file node from to] (read-node file node from to "year"))
+  ([file node from to scale]
   (with-open [r (io/reader file)]
     (reduce (fn [acc line]
               (let [[s place o p y] (str/split line #"\t")
                     o (parse-long o)]
-                (if (and (= s "year") (#{"true" "false"} y)
+                (if (and (= s scale) (#{"true" "false"} y)
                          (if (= node :world) (= place "world") (= 3 (count place)))
-                         (= 11 (mod o 12)) (<= from (quot o 12) to))
+                         (or (not= "year" scale) (= 11 (mod o 12))) (<= from (quot o 12) to))
                   (assoc acc [place o] [(parse-double p) (= y "true")])
                   acc)))
-            {} (line-seq r))))
+            {} (line-seq r)))))
 
 (defn origins
   "[{:year :n :rate :p}] of a node's forecasts, by origin: the realized
@@ -89,7 +91,7 @@
   [fs]
   (vec (for [[o rows] (sort-by key (group-by (comp second key) fs))
              :let [n (count rows)]]
-         {:year (quot o 12) :n n
+         {:year (quot o 12) :origin o :n n
           :rate (/ (count (filter (comp second val) rows)) (double n))
           :p (/ (reduce + (map (comp first val) rows)) (double n))})))
 
@@ -126,17 +128,32 @@
    ["market_crash" 2006] ["market_crash" 2007]
    ["growth_collapse" 2007] ["growth_collapse" 2008] ["growth_collapse" 2019]])
 
+(def quarter-outliers
+  "The next quarter's episodes by quarter origin (bnm-56c.38): [kind first
+  origin last origin], months."
+  [["food_price_shock" (+ 8 (* 12 2021)) (+ 5 (* 12 2022))]
+   ["market_crash" (+ 5 (* 12 2007)) (+ 11 (* 12 2008))]
+   ["growth_collapse" (+ 8 (* 12 2008)) (+ 2 (* 12 2009))]
+   ["growth_collapse" (+ 11 (* 12 2019)) (+ 5 (* 12 2020))]])
+
+(defn label
+  "An origin's label: its year at the year scale, its year and month else."
+  [scale o]
+  (if (= "year" scale) (str (quot o 12)) (format "%d-%02d" (quot o 12) (inc (mod o 12)))))
+
 (defn- kind-file [run k] (str "data/runs/" run "/" k "/forecasts.tsv"))
 
 (defn- pct [x] (if x (format "%5.1f%%" (* 100.0 x)) "     -"))
 
 (defn report
   "The report's lines."
-  [{:keys [run bench t miss-cost from to rule ratio min-rows reps]}]
+  [{:keys [run bench t miss-cost from to rule ratio min-rows reps scale] :or {scale "year"}}]
   (let [ks (sort (filter #(.exists (io/file (kind-file run %))) (keys kinds/tiers)))
         read (fn [r node] (into {} (for [k ks :when (.exists (io/file (kind-file r k)))]
-                                     [k (read-node (kind-file r k) node from to)])))
+                                     [k (read-node (kind-file r k) node from to scale)])))
         cs (read run :country)
+        ;; another scale: only the kinds that issue it
+        ks (if (= "year" scale) ks (filter #(seq (cs %)) ks))
         bs (when bench (read bench :country))
         out (transient [])
         say (fn [& xs] (conj! out (apply format xs)))
@@ -145,8 +162,9 @@
         rule-text (if (= rule :ratio)
                     (format "rate at least %.1fx the kind's %d-%d rate" ratio from to)
                     "rate in the top tenth of the kind's origins")]
-    (say "%s: alerts at p >= %.3f (a miss costs %.0f false alarms), year nodes, December origins %d-%d%s"
-         run t miss-cost from to (if bench (str ", against " bench) ""))
+    (say "%s: alerts at p >= %.3f (a miss costs %.0f false alarms), %s%d-%d%s"
+         run t miss-cost (if (= "year" scale) "year nodes, December origins " (str scale " nodes, every quarter-end origin "))
+         from to (if bench (str ", against " bench) ""))
     (say "")
     (say "Countries. hit = onset rows alerted, FA = quiet rows alerted, cost = (misses x %.0f + FA) / rows, const = cost of never or always alerting, the better%s"
          miss-cost (if bench "; dcost = bench cost - run cost (+ = run cheaper), 90% interval over countries and years" ""))
@@ -170,13 +188,13 @@
              (format "  %6s  %+.4f [%+.4f %+.4f]%s" "" diff lo hi (cond (pos? lo) " GAIN" (neg? hi) " LOSS" :else ""))
              "")))
     (say "")
-    (say "Episodes: December origins with at least %d resolved rows and a %s; caught when the mean issued p >= %.3f." min-rows rule-text t)
+    (say "Episodes: %s origins with at least %d resolved rows and a %s; caught when the mean issued p >= %.3f." (if (= "year" scale) "December" "quarter-end") min-rows rule-text t)
     (say "rate>=t: episodes whose realized rate itself reaches the threshold, which an origin-level calibrated forecast would alert on.")
     (say "%-20s %8s %7s %6s  %s" "kind" "episodes" "rate>=t" "caught" "missed (origin: mean p / rate)")
     (let [all (for [k ks
                     :let [es (map #(caught % t) (episodes (cs k) ep-opts))]]
                 (do (say "%-20s %8d %7d %6d  %s" k (count es) (count (filter #(alert? (:rate %) t) es)) (count (filter :caught es))
-                         (str/join ", " (for [e es :when (not (:caught e))] (format "%d: %.3f / %.3f" (:year e) (:p e) (:rate e)))))
+                         (str/join ", " (for [e es :when (not (:caught e))] (format "%s: %.3f / %.3f" (label scale (:origin e)) (:p e) (:rate e)))))
                     es))
           es (apply concat all)]
       (say "%-20s %8d %7d %6d" "all" (count es) (count (filter #(alert? (:rate %) t) es)) (count (filter :caught es))))
@@ -184,7 +202,7 @@
       (say "%s's episodes (the same rule on its own forecasts; the rates are the same outcomes):" bench)
       (let [es (for [k ks e (episodes (bs k) ep-opts)] (assoc (caught e t) :kind k))]
         (say "   %d episodes, %d caught; caught: %s" (count es) (count (filter :caught es))
-             (str/join ", " (for [e es :when (:caught e)] (format "%s %d" (:kind e) (:year e)))))))
+             (str/join ", " (for [e es :when (:caught e)] (format "%s %s" (:kind e) (label scale (:origin e))))))))
     (let [ws (read run :world)
           wb (when bench (read bench :world))]
       (when (some seq (vals ws))
@@ -196,6 +214,14 @@
           (say "%-20s %5d %4d %5d %6d %4d %6.3f%s" k n pos hits misses false-alarms cost
                (if-let [b (some-> wb (get k) (select-keys (keys fs)) seq)]
                  (format " %6.3f" (:cost (confusion (vals b) t miss-cost))) "")))))
+    (when (not= "year" scale)
+      (say "")
+      (say "Episodes by quarter origin (bnm-56c.38): mean p, caught when >= %.3f" t)
+      (say "%-20s %7s %5s %6s %6s" "kind" "origin" "rows" "rate" "p")
+      (doseq [[k lo hi] quarter-outliers :when (cs k)
+              o (origins (filter #(<= lo (second (key %)) hi) (cs k)))]
+        (say "%-20s %7s %5d %6.3f %6.3f %s" k (label scale (:origin o)) (:n o) (:rate o) (:p o) (if (alert? (:p o) t) "caught" "missed"))))
+    (when (= "year" scale)
     (say "")
     (say "Fixed outliers (CALIBRATION 10-13): mean p at the December origin, caught when >= %.3f" t)
     (say "%-20s %6s %5s %6s %6s%s" "kind" "origin" "rows" "rate" "p" (if bs (format " %6s %6s" "bench" "") ""))
@@ -205,11 +231,11 @@
       (if-not o
         (say "%-20s %6d  no resolved rows" k y)
         (say "%-20s %6d %5d %6.3f %6.3f %-6s%s" k y (:n o) (:rate o) (:p o) (if (alert? (:p o) t) "caught" "missed")
-             (if b (format " %6.3f %s" (:p b) (if (alert? (:p b) t) "caught" "missed")) ""))))
+             (if b (format " %6.3f %s" (:p b) (if (alert? (:p b) t) "caught" "missed")) "")))))
     (persistent! out)))
 
 (defn -main [& args]
-  (let [{:keys [run bench threshold from to episodes ratio reps] miss :miss-cost min-rows :min-rows}
+  (let [{:keys [run bench threshold from to episodes ratio reps scale] miss :miss-cost min-rows :min-rows}
         (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
         miss-cost (or (some-> miss parse-double) 4.0)]
     (when-not run (throw (ex-info "bnm.alerts: --run is required" {})))
@@ -217,5 +243,6 @@
                        :t (or (some-> threshold parse-double) (threshold-of miss-cost))
                        :from (or (some-> from parse-long) 2003) :to (or (some-> to parse-long) 2022)
                        :rule (keyword (or episodes "ratio")) :ratio (or (some-> ratio parse-double) 2.0)
-                       :min-rows (or (some-> min-rows parse-long) 10) :reps (or (some-> reps parse-long) 400)})]
+                       :min-rows (or (some-> min-rows parse-long) 10) :reps (or (some-> reps parse-long) 400)
+                       :scale (or scale "year")})]
       (println l))))

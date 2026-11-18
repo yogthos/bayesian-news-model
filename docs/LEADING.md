@@ -147,6 +147,34 @@ Coefficient prior mean and variance on the standardized gauge, at the year and q
 
 These are the numbers `bnm.lattice-political/leading-priors` holds; t65-gauges reads them, t65-gauges-flat reads the same gauges at the node's default priors (variance 1, the all-inputs model's `:shrink` 0.1, mean 0), so the two runs separate the priors from the gauges.
 
+### Priors at the next quarter (bnm-56c.38), behind `--horizon-priors true`
+
+**In-sample for the choice.** These priors were written on 13 November 2026, after t73-nq (docs/CALIBRATION.md 18). They were chosen after seeing how the year's priors fared at the (t, t+3] horizon in the 2008 crash and collapses, the 2020 collapses and food 2020-22:
+- the curve's β went to the wrong sign;
+- the VIX's β went to about 0;
+- growth at Mar 2020 issued 0.007.
+
+Any 2003-22 score of the next-quarter scale under them is therefore in-sample for the choice of prior and is not evidence that they forecast. The user allowed them on that condition. What is fixed independently is the rule each number follows: the sources below, and the size rule of the table above. They hold at the next-quarter scale only (its models and its frailty's β). The year and quarter-lead keep the priors above.
+
+The horizon question for each gauge is how much of its effect falls in the next three months, against the 24 months the year's priors were set for. Prior sd 0.25 for all, as above.
+
+| kind | gauge | year | next quarter | reasoning at (t, t+3] |
+|---|---|---|---|---|
+| market crashes | `:us-curve` | -0.4 | **0.0** | An inversion leads US recessions by 2-6 quarters (Estrella & Hardouvelis 1991; Estrella & Mishkin 1998, whose predictive power peaks at 4-6 quarters and is weak at one). In the quarter before a recession and a bear market the curve is usually re-steepening as the policy rate is cut (1990, 2001, 2007-08). The sign at one quarter is not given by theory, so the prior is centred at 0 and the data set it. |
+| | `:baa12` | +0.5 | +0.5 | Credit and equity price the same default risk at the same time (Merton 1974). A spread that has widened over the year is stress under way. Gilchrist & Zakrajšek (2012) find the excess bond premium predicts the next 1-4 quarters, strongest at the shortest. Kept. |
+| | `:vix12` | +0.25 | **+0.4** | Volatility clusters (Schwert 1989; Bollerslev 1986): a high-volatility regime persists over the next months, and large declines come in it. At a quarter the clustering, not the year's mean reversion, dominates. Still partly concurrent (a rise that comes with a fall already under way), so below the direct 0.5. |
+| growth collapses | `:us-curve` | -0.3 | **0.0** | As at market crashes: the 2-6 quarter lead puts the curve's effect beyond the next quarter. |
+| | `:baa12` | +0.4 | +0.4 | Spreads predict output over the next 1-4 quarters (Gilchrist & Zakrajšek 2012). Capital-flow stops follow global risk within the quarter (Forbes & Warnock 2012). Kept. |
+| | `:vix12` | +0.3 | **+0.5** | An uncertainty shock cuts output with a trough after about 4-6 months, the drop in the first two quarters (Bloom 2009; Baker, Bloom & Davis 2016). The next quarter is where the effect is largest, so this is a direct mechanism at this horizon. |
+| food price shocks | `:world-food12` | +0.3 | **+0.2** | Pass-through from world to domestic food prices builds over about a year, a third to a half of it within the first quarter or two (Furceri, Loungani, Simon & Wachter 2016; Dawe 2008; Minot 2011). The quarter's share of the year's effect is smaller. |
+| | `:food12-x-imports` | +0.5 | **+0.35** | The same scaling of the import-weighted channel (Ianchovichina, Loening & Wood 2014). |
+
+**Expected effect, stated before the run.**
+- The curve can no longer pull the next-quarter scale's level down while the curve steepens.
+- The VIX's prior is stronger, but sd 0.25 lets the data overturn it as before. With the 1980s-90s quarters that moved it to about -0.1 at market crashes, the likely change at Mar-Sep 2008 is small.
+- At growth Mar 2020 a VIX12 of +4 sd at β 0.5 adds 2.0 log odds. Against z = -1.2 carried calm, the issue would rise from 0.007 to perhaps 0.03-0.05, still far below the 0.83 rate.
+- The run is t76-nq-hp: t73-nq's command plus `--horizon-priors true`, for the same three kinds.
+
 ### The second food set (bnm-5rn), behind `--leading-food2 true`
 
 Written 13 November 2026, before any run with these gauges. **These gauges were chosen after inspecting the 2020-21 episode** (the section below, "Indicators for food 2020-21 and growth 2020", which scored them against 2003-22 outcomes). Their 2020-22 scores are therefore in-sample for the choice of gauge, and any gain they show there is not evidence that they forecast. Only their priors were set independently: the research section suggested +0.2 to +0.3 after seeing the 2020-21 data, and those numbers are not used. The priors below come from the published pass-through literature and the gauges' own standard deviations over 1992-2019 (no outcome enters), by the rule of the table above: a gauge's prior is the share r of a one-sd move in world food12 that a one-sd move in the gauge carries to domestic food prices, times world food12's +0.3. Prior sd 0.25 for all, as above.
