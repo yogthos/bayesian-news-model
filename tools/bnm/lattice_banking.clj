@@ -239,6 +239,35 @@
                      missing))
                  missing))))))))
 
+(def leading-names
+  "--banking-gauges (bnm-cpv, docs/LEADING.md \"Banking gauges\"): the
+  year node's world gauges, bnm.named/leading's three US market gauges
+  and the world's three-year credit change (bnm.named/world-credit)."
+  [:baa12 :us-curve :vix12 :world-credit3])
+
+(defn leading-priors-for
+  "Each gauge's coefficient prior [mean variance] on its standardized
+  value: :theory, fixed before any run (docs/LEADING.md); :flat, the
+  node's default, mean 0 and variance 1."
+  [mode]
+  (case mode
+    :theory {:world-credit3 [0.4 0.0625] :baa12 [0.3 0.0625] :us-curve [-0.2 0.0625] :vix12 [0.2 0.0625]}
+    :flat (zipmap leading-names (repeat [0.0 1.0]))))
+
+(defn leading-row
+  "(fn [unit t]) giving `leading-names`' values at origin t: the first three
+  of bnm.named/leading's `lead-f`, then world credit `wc` ({month value})."
+  [lead-f wc]
+  (fn [u t] (conj (subvec (vec (lead-f u t)) 0 3) (get wc t))))
+
+(defn leading-wiring
+  "The year node's names (its `n-own` columns, then the gauges), the
+  gauges' group and their :named-prior under `mode`."
+  [n-own mode]
+  {:names (into (mapv #(keyword (str "banking-" %)) (range n-own)) leading-names)
+   :group (vec (range n-own (+ n-own (count leading-names))))
+   :named-prior (leading-priors-for mode)})
+
 (def quarter-groups
   "The financial inputs of bnm.named in groups (indices among them), and
   the OECD's house prices to incomes and to rents against their own ten
