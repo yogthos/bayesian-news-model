@@ -3,6 +3,7 @@
             [bnm.kinds]
             [bnm.lattice-political]
             [bnm.named]
+            [bnm.regime-filter :as rf]
             [bnm.slow-train]
             [bnm.world-run :as wr]
             [clojure.test :refer [deftest is testing]]))
@@ -312,3 +313,72 @@
       (is (= {:frailty {}} (out "coup")))
       (is (= specs (wr/with-frailty-gauges specs false)))
       (is (thrown? Exception (wr/with-frailty-gauges {"market_crash" {:gauge-names {:year [:baa12]}}} true)) "needs the frailty"))))
+
+(deftest bnm-56c-40-regime-option
+  (is (false? (wr/regime-choice {})))
+  (is (true? (wr/regime-choice {:regime "true"})))
+  (is (thrown? Exception (wr/regime-choice {:regime "yes"})))
+  (let [scales [{:name :quarter-lead :per 3 :offset 3 :horizon 9} {:name :year :per 12 :offset 0 :horizon 24}]
+        sp {:frailty {} :scales scales :start (* 12 1980) :end (+ 11 (* 12 2000))}
+        ;; the gauges unread before 1985, then calm but for a stress reading in 1998
+        lead-f (fn [_ t] (let [y (quot t 12)]
+                           (if (< y 1985) [nil nil nil nil] [(if (= y 1998) 3.0 0.1) 1.0 (if (= y 1998) 3.0 0.1) 0.2])))
+        specs {"market_crash" sp "food_price_shock" sp "banking_crisis" sp "coup" sp}
+        out (wr/with-regime specs true lead-f)]
+    (testing "the kinds of regime-sets take the year node's regime, the others nothing"
+      (is (= #{"market_crash" "food_price_shock" "banking_crisis"} (set (filter #(get-in out [% :regime]) (keys out)))))
+      (is (= sp (out "coup")))
+      (is (= [1.0 0.25] (get-in out ["market_crash" :regime :year :prior])))
+      (is (= [0.5 0.25] (get-in out ["food_price_shock" :regime :year :prior]))))
+    (testing "read at December origins; unread gauges leave the stationary law (x 0), a stress reading raises it"
+      (let [at (get-in out ["market_crash" :regime :year :at])]
+        (is (nil? (at (* 12 1990))))
+        (is (< (Math/abs (double (first (at (+ 11 (* 12 1984)))))) 1e-12))
+        (is (> (second (at (+ 11 (* 12 1998)))) 0.9))))
+    (is (= specs (wr/with-regime specs false nil)))
+    (is (thrown? Exception (wr/with-regime {"market_crash" (dissoc sp :frailty)} true lead-f)) "needs the frailty")))
+
+(deftest bnm-56c-40-regime-clim-option
+  (is (false? (wr/regime-clim-choice {})))
+  (is (true? (wr/regime-clim-choice {:regime-clim "true"})))
+  (is (thrown? Exception (wr/regime-clim-choice {:regime-clim "yes"})))
+  (is (thrown? Exception (wr/regime-clim-choice {:regime-clim "true" :regime "true"})) "not with 5b's delta")
+  (let [scales [{:name :quarter-lead :per 3 :offset 3 :horizon 9} {:name :year :per 12 :offset 0 :horizon 24}]
+        sp {:frailty {} :scales scales :start (* 12 1980) :end (+ 11 (* 12 2000))}
+        lead-f (fn [_ t] (let [y (quot t 12)]
+                           (if (< y 1985) [nil nil nil nil] [(if (= y 1998) 3.0 0.1) 1.0 (if (= y 1998) 3.0 0.1) (if (= y 1998) 3.0 0.2)])))
+        specs {"market_crash" (assoc-in sp [:frailty :gauges :year] [:baa12 :us-curve :vix12])
+               "food_price_shock" (assoc-in sp [:frailty :gauges :year] [:world-food12])
+               "banking_crisis" sp "coup" sp}
+        out (wr/with-regime-clim specs true lead-f)]
+    (testing "the kinds of regime-sets take the year node's regime climatology, the others nothing"
+      (is (= #{"market_crash" "food_price_shock" "banking_crisis"} (set (filter #(get-in out [% :regime-clim]) (keys out)))))
+      (is (= (specs "coup") (out "coup"))))
+    (testing "pi from the first origin with a gauge read; nil before it"
+      (let [at (get-in out ["market_crash" :regime-clim :year :at])
+            drv (wr/regime-drivers lead-f [:baa12 :us-curve :vix12] (:start sp) (:end sp))
+            os (range (+ 11 (* 12 1980)) (inc (:end sp)) 12)
+            read? (reductions #(or %1 (boolean (some some? (drv %2)))) false os)]
+        (is (nil? (at (+ 11 (* 12 1984)))))
+        (is (some true? read?))
+        (doseq [[t r] (map vector os (rest read?))]
+          (is (= r (some? (at t))) t))
+        (is (> (at (+ 11 (* 12 1998))) 0.9))))
+    (testing "the gauge mean: each frailty gauge's regime mean, with its theory sign; none where no frailty gauge"
+      (let [at (get-in out ["market_crash" :regime-clim :year :at])
+            gm (get-in out ["market_crash" :regime-clim :year :gauge-mean])
+            t (+ 11 (* 12 1998)) pi (at t)]
+        (is (= (mapv #(rf/emission-mean rf/financial % pi) [1.0 -1.0 1.0]) (gm t)))
+        (is (nil? (gm (+ 11 (* 12 1984)))) "no pi, no centring"))
+      (let [gm (get-in out ["food_price_shock" :regime-clim :year :gauge-mean])
+            at (get-in out ["food_price_shock" :regime-clim :year :at])
+            t (+ 11 (* 12 1998))]
+        (is (number? (at t)))
+        (is (= [(rf/emission-mean rf/food 1.0 (at t))] (gm t))))
+      (is (nil? (get-in out ["banking_crisis" :regime-clim :year :gauge-mean]))))
+    (is (= specs (wr/with-regime-clim specs false nil)))
+    (testing "--regime-clim uncentred (after the planted test, before any world run): the climatology, the gauge mean as read"
+      (is (= :uncentred (wr/regime-clim-choice {:regime-clim "uncentred"})))
+      (let [u (wr/with-regime-clim specs :uncentred lead-f)]
+        (is (fn? (get-in u ["market_crash" :regime-clim :year :at])))
+        (is (nil? (get-in u ["market_crash" :regime-clim :year :gauge-mean])))))))

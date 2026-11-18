@@ -1,5 +1,7 @@
 (ns bnm.test-runner
   (:require [clojure.test :as t]
+            [bnm.known-gap :as kg]
+            [bnm.known-gap-test]
             [bnm.time-test]
             [bnm.calibrate-test]
             [bnm.core-test]
@@ -108,6 +110,7 @@
             [bnm.ledger-test]
             [bnm.engine-test]
             [bnm.regime-test]
+            [bnm.regime-filter-test]
             [bnm.modules-world3-test]
             [bnm.modules-stocks-test]
             [bnm.control-test]
@@ -128,7 +131,8 @@
             [bnm.episodes-test]))
 
 (def namespaces
-  '[bnm.time-test
+  '[bnm.known-gap-test
+    bnm.time-test
     bnm.model-test
     bnm.core-test
     bnm.calibrate-test
@@ -233,6 +237,7 @@
     bnm.watchlist-test
     bnm.engine-test
     bnm.regime-test
+    bnm.regime-filter-test
     bnm.modules-world3-test
     bnm.modules-stocks-test
     bnm.control-test
@@ -256,5 +261,8 @@
     bnm.episodes-test])
 
 (defn -main [& _]
-  (let [{:keys [fail error]} (apply t/run-tests namespaces)]
-    (System/exit (if (zero? (+ fail error)) 0 1))))
+  (let [{:keys [fail error]} (apply t/run-tests namespaces)
+        ;; known gaps (bnm.known-gap): reported, never silent; one that now
+        ;; passes fails the suite until it is made a deftest again
+        gaps-ok (kg/report! (map kg/run-gap (kg/gaps namespaces)))]
+    (System/exit (if (and (zero? (+ fail error)) gaps-ok) 0 1))))

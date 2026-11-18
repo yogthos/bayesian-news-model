@@ -206,8 +206,11 @@
   t; capped at 5, 0 for a missing value. A column is read once it has 20
   quarter ends of history: the node's standardizer counts rows, so a
   world gauge, one value per origin repeated at every country, was
-  standardized against two or three origins."
-  [lead-f units ix from end]
+  standardized against two or three origins. `missing` (0.0 by default) is
+  what an unread value, or one with too short a history, reads as: the
+  regime filter (bnm-56c.40) takes nil, so it drops out."
+  ([lead-f units ix from end] (history-standardizer lead-f units ix from end 0.0))
+  ([lead-f units ix from end missing]
   (let [w (count ix)
         ts (range (+ from (mod (- 2 from) 3)) (inc end) 3)
         stats (loop [[t & more] ts n (double-array w) mu (double-array w) ss (double-array w) q (long-array w) acc (sorted-map)]
@@ -232,37 +235,8 @@
                  (let [sd (Math/sqrt (/ (aget ss j) (aget n j)))]
                    (if (> sd (Math/max 1e-9 (* 1e-8 (Math/abs (aget mu j)))))
                      (Math/max -5.0 (Math/min 5.0 (/ (- x (aget mu j)) sd)))
-                     0.0))
-                 0.0)))))))
-
-(def leading-names
-  "--banking-gauges (bnm-cpv, docs/LEADING.md \"Banking gauges\"): the
-  year node's world gauges, bnm.named/leading's three US market gauges
-  and the world's three-year credit change (bnm.named/world-credit)."
-  [:baa12 :us-curve :vix12 :world-credit3])
-
-(defn leading-priors-for
-  "Each gauge's coefficient prior [mean variance] on its standardized
-  value: :theory, fixed before any run (docs/LEADING.md); :flat, the
-  node's default, mean 0 and variance 1."
-  [mode]
-  (case mode
-    :theory {:world-credit3 [0.4 0.0625] :baa12 [0.3 0.0625] :us-curve [-0.2 0.0625] :vix12 [0.2 0.0625]}
-    :flat (zipmap leading-names (repeat [0.0 1.0]))))
-
-(defn leading-row
-  "(fn [unit t]) giving `leading-names`' values at origin t: the first three
-  of bnm.named/leading's `lead-f`, then world credit `wc` ({month value})."
-  [lead-f wc]
-  (fn [u t] (conj (subvec (vec (lead-f u t)) 0 3) (get wc t))))
-
-(defn leading-wiring
-  "The year node's names (its `n-own` columns, then the gauges), the
-  gauges' group and their :named-prior under `mode`."
-  [n-own mode]
-  {:names (into (mapv #(keyword (str "banking-" %)) (range n-own)) leading-names)
-   :group (vec (range n-own (+ n-own (count leading-names))))
-   :named-prior (leading-priors-for mode)})
+                     missing))
+                 missing))))))))
 
 (def quarter-groups
   "The financial inputs of bnm.named in groups (indices among them), and

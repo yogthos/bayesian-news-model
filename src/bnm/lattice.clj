@@ -126,6 +126,39 @@
   [[0.0 0.5333333333333333] [1.3556261799742657 0.2220759220056126] [-1.3556261799742657 0.2220759220056126]
    [2.8569700138728056 0.011257411327720691] [-2.8569700138728056 0.011257411327720691]])
 
+(defn hermite-rule
+  "n-point Gauss-Hermite quadrature for the standard normal: [[node
+  weight] ...], from Newton on the orthonormal Hermite recurrence
+  (Numerical Recipes' gauher), the nodes scaled by sqrt 2 and the
+  weights by 1/sqrt pi."
+  [n]
+  (let [n (long n)
+        pim4 0.7511255444649425
+        m (quot (inc n) 2)
+        root (fn [z]
+               (loop [z (double z) it 0]
+                 (let [[p1 p2] (loop [j 1 p1 pim4 p2 0.0]
+                                 (if (> j n) [p1 p2]
+                                     (recur (inc j)
+                                            (- (* z (Math/sqrt (/ 2.0 j)) p1) (* (Math/sqrt (/ (dec j) (double j))) p2))
+                                            p1)))
+                       pp (* (Math/sqrt (* 2.0 n)) (double p2))
+                       z' (- z (/ (double p1) pp))]
+                   (if (or (< (Math/abs (- z' z)) 1e-14) (> it 100))
+                     [z' (/ 2.0 (* pp pp))]
+                     (recur z' (inc it))))))
+        xs (loop [i 0 acc []]
+             (if (= i m) acc
+                 (let [z (case i
+                           0 (- (Math/sqrt (+ (* 2 n) 1)) (* 1.85575 (Math/pow (+ (* 2 n) 1) -0.16667)))
+                           1 (let [z (first (acc 0))] (- z (/ (* 1.14 (Math/pow n 0.426)) z)))
+                           2 (- (* 1.86 (first (acc 1))) (* 0.86 (first (acc 0))))
+                           3 (- (* 1.91 (first (acc 2))) (* 0.91 (first (acc 1))))
+                           (- (* 2.0 (first (acc (dec i)))) (first (acc (- i 2)))))]
+                   (recur (inc i) (conj acc (root z))))))]
+    (vec (for [[x w] (concat xs (map (fn [[x w]] [(- x) w]) (if (odd? n) (butlast xs) xs)))]
+           [(* (Math/sqrt 2.0) x) (/ w (Math/sqrt Math/PI))]))))
+
 (defn offsets-under
   "[[weight offset]...]: a coarser node's linear predictor N(f, q) carried
   into a finer window (a fraction `ratio` of its own), by quadrature over
@@ -745,6 +778,12 @@
    :level-sds [0.0] :level-penalty 2.0 :exposure-sds [0.0] :exposure-penalty 2.0
    :cross [0.0 0.5 1.0 1.5] :gauges-from :all})
 
+(def frailty-wide-sds
+  "The grid :sds :wide names (bnm-02u, docs/RECURSIVE.md step 3b): the
+  default's carried past 1, where every year node chose its top, to 3,
+  each non-zero sd at the same price."
+  [0.0 0.25 0.5 1.0 1.5 2.0 3.0])
+
 (defn frailty-config
   "The spec's :frailty with its defaults, checked; nil without one. A map
   of :rhos (persistences in [0, 1)), :sds (stationary sds, at least 0),
@@ -782,15 +821,29 @@
   filtered against :gauges-from's predictive (:all, the all-inputs model,
   by default): against the base, which omits what ranks the places, a
   common shift is attenuated on the average log odds (the logistic's
-  omitted-heterogeneity bias), and beta with it."
+  omitted-heterogeneity bias), and beta with it.
+  :centre (bnm-0fe, docs/RECURSIVE.md step 3f): :odds, the default, takes
+  half the transient's stationary variance from its mean, so the expected
+  odds multiplier is one (a rate's, for rare events); :rate solves each
+  place's own shift so that at its stationary prior the transient leaves
+  the probability issued as it is (`rate-shift`), in the forecast, the
+  rows' offsets and the filter alike."
   [spec]
   (when-let [f (:frailty spec)]
     (when-not (map? f)
       (throw (ex-info "bnm.lattice: :frailty takes a map of :rhos :sds :from :prior" {:frailty f})))
     (when-let [bad (seq (remove #{:rhos :sds :from :prior :penalty :level-sds :level-penalty :exposure-sds :exposure-penalty
-                                  :source :cross :gauges :gauges-from} (keys f)))]
+                                  :source :cross :gauges :gauges-from :centre :regime-penalty} (keys f)))]
       (throw (ex-info (str "bnm.lattice: :frailty names no option " (vec bad)) {:frailty f})))
-    (let [{:keys [rhos sds from prior penalty level-sds level-penalty exposure-sds exposure-penalty source cross] :as c} (merge frailty-defaults f)
+    (when-not (contains? #{nil :odds :rate} (:centre f))
+      (throw (ex-info "bnm.lattice: :frailty :centre takes :odds or :rate" {:centre (:centre f)})))
+    (when-let [rp (:regime-penalty f)]
+      (when-not (and (number? rp) (<= 0.0 (double rp)))
+        (throw (ex-info "bnm.lattice: :frailty :regime-penalty takes nats of at least 0" {:regime-penalty rp}))))
+    (when (and (keyword? (:sds f)) (not= :wide (:sds f)))
+      (throw (ex-info "bnm.lattice: :frailty :sds takes sds of at least 0, or :wide" {:sds (:sds f)})))
+    (let [c (cond-> (merge frailty-defaults f) (= :wide (:sds f)) (assoc :sds frailty-wide-sds))
+          {:keys [rhos sds from prior penalty level-sds level-penalty exposure-sds exposure-penalty source cross]} c
           nums? (fn [xs ok?] (and (sequential? xs) (seq xs) (every? #(and (number? %) (ok? (double %))) xs)))]
       (when-not (nums? rhos #(and (<= 0.0 %) (< % 1.0)))
         (throw (ex-info "bnm.lattice: :frailty :rhos takes persistences in [0, 1)" {:rhos rhos})))
@@ -883,16 +936,212 @@
        :b0 (mapv #(double (first (np %))) ns)
        :bv (mapv #(double (second (np %))) ns)})))
 
+;; --- bnm-56c.40, recursive step 5b: the regime state's loading on the level ---
+
+(defn regime-params
+  "The regime layer at `scale` (bnm-56c.40, docs/RECURSIVE.md step 5b): the
+  spec's {:regime {scale {:at (fn [t]) -> [x pi] :prior [delta0 v]}}}, x the
+  world family's stress loading at origin t (bnm.regime-filter/reader),
+  delta its coefficient, a static state appended to the frailty's vector
+  with its theory prior. {:at :d0 :dv :price}, or nil. Only under
+  :frailty, :prior :own, with no level or slope."
+  [spec fcfg scale]
+  (when-let [{:keys [at prior] :as r} (get-in spec [:regime scale])]
+    (when-not fcfg
+      (throw (ex-info "bnm.lattice: :regime needs :frailty" {:scale scale})))
+    (when-not (and (fn? at) (sequential? prior) (= 2 (count prior)) (every? number? prior) (pos? (double (second prior))))
+      (throw (ex-info "bnm.lattice: :regime takes {scale {:at (fn [t]) :prior [mean variance]}}" {:scale scale :regime (dissoc r :at)})))
+    (when-not (= :own (:prior fcfg))
+      (throw (ex-info "bnm.lattice: :regime goes with :frailty :prior :own" {:prior (:prior fcfg)})))
+    (when (or (:level? fcfg) (:exposure? fcfg))
+      (throw (ex-info "bnm.lattice: :regime takes no level or slope" {})))
+    (when-not (some #(pos? (double (:sd %))) (:grid fcfg))
+      (throw (ex-info "bnm.lattice: :regime needs an sd above 0 in :sds" {})))
+    {:at at :d0 (double (first prior)) :dv (double (second prior)) :price (double (:regime-penalty fcfg 2.0))}))
+
+(defn- regime-x
+  "The regime loading at t, 0 where the reader has none."
+  ^double [rp t]
+  (double (or (first ((:at rp) t)) 0.0)))
+
+;; --- bnm-56c.40, recursive step 5c: the regime climatology ---
+
+(defn regime-clim-params
+  "The regime climatology at `scale` (docs/RECURSIVE.md step 5c): the spec's
+  {:regime-clim {scale {:at (fn [t]) -> pi or nil :gauge-mean (fn [t]) ->
+  [E[g_j | pi_t]] or nil}}}, pi the world family's stress probability as the
+  chain issued it at origin t (bnm.regime-filter/pi-reader), the gauge mean
+  in :frailty :gauges' order. {:at :gauge-mean}, or nil. It replaces the
+  climatology, so it needs one (an :offset, nil where it has nothing to
+  say) learned under :clim-learn :current; not with 5b's :regime (a second
+  copy of the same signal)."
+  [spec scale]
+  (when-let [{:keys [at gauge-mean] :as r} (get-in spec [:regime-clim scale])]
+    (when-not (and (fn? at) (or (nil? gauge-mean) (fn? gauge-mean)))
+      (throw (ex-info "bnm.lattice: :regime-clim takes {scale {:at (fn [t]) :gauge-mean (fn [t])}}" {:scale scale :regime-clim (dissoc r :at :gauge-mean)})))
+    (when-not (= :current (:clim-learn spec))
+      (throw (ex-info "bnm.lattice: :regime-clim needs :clim-learn :current" {:scale scale})))
+    (when-not (:offset spec)
+      (throw (ex-info "bnm.lattice: :regime-clim replaces the climatology: it needs an :offset" {:scale scale})))
+    (when (get-in spec [:regime scale])
+      (throw (ex-info "bnm.lattice: :regime-clim and :regime read the same regime twice" {:scale scale})))
+    {:at at :gauge-mean gauge-mean}))
+
+(defn regime-level
+  "The log odds of the regime climatology at stress probability `pi`:
+  logit(pi r_s + (1 - pi) r_c), the mixture in probability (the law of total
+  probability over the regimes). Each regime's rate is its rows' rate, each
+  row weighted by the pi it was issued at ({:s1 :s} the stress-weighted
+  onsets and rows, {:c1 :c} the calm), under a beta prior of strength `a`
+  rows centred on the node's overall rate `rbar`."
+  ^double [{:keys [s1 s c1 c]} rbar a pi]
+  (let [rbar (double rbar) a (double a) pi (double pi)
+        rs (/ (+ (double (or s1 0.0)) (* a rbar)) (+ (double (or s 0.0)) a))
+        rc (/ (+ (double (or c1 0.0)) (* a rbar)) (+ (double (or c 0.0)) a))]
+    (if (and (zero? (double (or s 0.0))) (zero? (double (or c 0.0))))
+      (logit rbar)
+      (logit (+ (* pi rs) (* (- 1.0 pi) rc))))))
+
+(defn- regime-counts
+  "The node's regime-classed counts after `ready` rows: each row with a pi
+  at issue (:rpi) adds pi to the stress side and 1 - pi to the calm; and
+  the origins seen, whose count sets the prior's strength."
+  [{:keys [s1 s c1 c origins] :or {s1 0.0 s 0.0 c1 0.0 c 0.0 origins #{}}} ready]
+  (reduce (fn [acc {:keys [rpi y origin]}]
+            (cond-> (update acc :origins conj origin)
+              rpi (-> (update :s + rpi) (update :c + (- 1.0 rpi))
+                      (update :s1 + (if y rpi 0.0)) (update :c1 + (if y (- 1.0 rpi) 0.0)))))
+          {:s1 s1 :s s :c1 c1 :c c :origins origins}
+          ready))
+
+(def hermite-fine
+  "Twenty-point Gauss-Hermite for the standard normal: a frailty state of
+  sd above 1 (bnm-02u, the wide grid), where five points err by up to 10%
+  in the forecast at sd 3 and twenty by under 0.1%."
+  (hermite-rule 20))
+
+(defn- fine-state?
+  "Whether a frailty state's stationary sd is above 1, the default grid's
+  top: the five-point rule and Laplace serve up to 1 (errors under 2e-4
+  relative and 0.01 nats); above it the twenty-point rule (bnm-02u)."
+  [sd]
+  (> (double (or sd 0.0)) 1.0))
+
 (defn with-frailty
   "Offsets [[w o] ...] with a shared state z ~ N(m, v) added, by the
-  five-point Hermite rule; the offsets moved by m when v is 0, unchanged
+  five-point Hermite rule, or the twenty-point one when the state's :sd
+  is above 1 (bnm-02u); the offsets moved by m when v is 0, unchanged
   when both are."
-  [os {:keys [m v]}]
-  (let [m (double (or m 0.0)) v (double (or v 0.0))]
+  [os {:keys [m v sd]}]
+  (let [m (double (or m 0.0)) v (double (or v 0.0))
+        rule (if (fine-state? sd) hermite-fine hermite)]
     (cond (and (zero? m) (zero? v)) os
           (zero? v) (mapv (fn [[w o]] [w (+ (double o) m)]) os)
-          :else (let [sd (Math/sqrt v)]
-                  (vec (for [[w o] os [z hw] hermite] [(* (double w) hw) (+ (double o) m (* sd z))]))))))
+          :else (let [s (Math/sqrt v)]
+                  (vec (for [[w o] os [z hw] rule] [(* (double w) hw) (+ (double o) m (* s z))]))))))
+
+;; --- bnm-0fe, :frailty {:centre :rate}: the shock centred so its expected effect on the
+;; rate (the probability) is one, not on the odds (docs/RECURSIVE.md step 3f) ---
+
+(defn logistic-curve
+  "The probability of a row whose linear predictor is N(f, q), moved by d:
+  d -> [p dp/dd], MacKay's probit approximation as augur's (and
+  `shared-ll`'s) logistic."
+  [f q]
+  (let [f (double f)
+        k (/ 1.0 (Math/sqrt (+ 1.0 (/ (* Math/PI (double (or q 0.0))) 8.0))))]
+    (fn [d] (let [p (m/expit (* k (+ f (double d))))] [p (* k p (- 1.0 p))]))))
+
+(defn forecast-curve
+  "The probability a node issues for inputs x over offsets `os` with its
+  averaged models `live`, moved by d: d -> [p dp/dd]. Under a mixture of
+  logistic models from each model's predictive moments, computed once
+  (the offset moves only their mean, so this is augur's predict at o + d);
+  otherwise (a pooled :evidence or :synth rule) augur's predict itself,
+  its slope by a central difference."
+  [live x os]
+  (let [models (:models live)
+        w (d/weights live)
+        mixture? (and (= :averaged (:type live)) (not (#{:evidence :synth} (:rule (:weighting live))))
+                      (every? #(= :logistic (:type %)) (vals models)))]
+    (if mixture?
+      (let [parts (vec (for [[ow o] os [g mdl] models
+                             :let [wg (double (get w g 0.0))]
+                             :when (pos? wg)
+                             :let [{:keys [f q]} (d/predictive mdl x (double o))]]
+                         [(* (double ow) wg) (double f) (/ 1.0 (Math/sqrt (+ 1.0 (/ (* Math/PI (double q)) 8.0))))]))]
+        (fn [dd] (let [dd (double dd)]
+                   (reduce (fn [[p dp] [wt f k]]
+                             (let [pi (m/expit (* k (+ f dd)))]
+                               [(+ p (* wt pi)) (+ dp (* wt k pi (- 1.0 pi)))]))
+                           [0.0 0.0] parts))))
+      (let [pr (fn [dd] (reduce + (for [[ow o] os] (* (double ow) (d/predict live x (+ (double o) (double dd)))))))]
+        (fn [dd] [(pr dd) (/ (- (pr (+ dd 1e-5)) (pr (- dd 1e-5))) 2e-5)])))))
+
+(defn rate-shift
+  "The shift c that centres a frailty on the rate: with the row's
+  probability `curve` (d -> [p dp]), a part of the shift not centred,
+  N(rm, rv) (the gauges' loadings, a persistent level: means, their
+  uncertainty integrated as the models' own), and the centred transient's
+  stationary variance vz, E[curve(rm + c + sqrt(rv + vz) Z)] =
+  E[curve(rm + sqrt(rv) Z)]: at its stationary prior the shock leaves the
+  forecast as it is. Integrated by the rule the forecast is (`with-frailty`
+  at sd `sd`); Newton kept inside [rm - vz/2 - 1, rm + vz/2 + 1], which
+  holds the root (the odds' half variance and its mirror are the limits).
+  0 when vz is."
+  ^double [curve rm rv vz sd]
+  (let [rm (double rm) rv (double rv) vz (double vz)]
+    (if (<= vz 0.0)
+      0.0
+      (let [rule (if (fine-state? sd) hermite-fine hermite)
+            mean-over (fn [mu v] (if (zero? v)
+                                   (curve mu)
+                                   (let [s (Math/sqrt v)]
+                                     (reduce (fn [[p dp] [x hw]]
+                                               (let [[pi di] (curve (+ mu (* s x)))]
+                                                 [(+ p (* hw pi)) (+ dp (* hw di))]))
+                                             [0.0 0.0] rule))))
+            target (double (first (mean-over rm rv)))
+            g (fn [c] (let [[p dp] (mean-over (+ rm c) (+ rv vz))] [(- (double p) target) (double dp)]))]
+        (loop [lo (- (* -0.5 vz) 1.0) hi (+ (* 0.5 vz) 1.0) c 0.0 i 0]
+          (let [[gc dc] (g c)
+                [lo hi] (if (pos? gc) [lo c] [c hi])
+                nc (- c (/ gc (Math/max dc 1e-300)))
+                nc (if (and (< lo nc) (< nc hi)) nc (* 0.5 (+ lo hi)))]
+            (if (or (< (Math/abs (double gc)) 1e-13) (>= i 100) (< (Math/abs (- nc c)) 1e-14))
+              c
+              (recur lo hi nc (inc i)))))))))
+
+(defn shared-ll
+  "The log marginal of logistic rows {:f :q :y :w} sharing a shock z ~
+  N(m, v) added to each: augur.hier/shared-marginal's Laplace value for a
+  state of `sd` 1 or less, as before; above 1 (bnm-02u) the integral by
+  the twenty-point rule about Laplace's mode and curvature (adaptive
+  Gauss-Hermite), each row's likelihood as augur's (MacKay's probit
+  approximation over q). Laplace errs by up to 0.07 nats an origin at sd
+  3, toward the larger sd on quiet origins."
+  ^double [rows m v sd]
+  (let [{z0 :z v0 :v ll :ll} (hier/shared-marginal :logistic rows m v)
+        m (double m) v (double v)]
+    (if (or (not (fine-state? sd)) (zero? v) (empty? rows))
+      (double ll)
+      (let [rows (mapv (fn [{:keys [f q y w]}]
+                         [(double f) (/ 1.0 (Math/sqrt (+ 1.0 (/ (* Math/PI (double (or q 0.0))) 8.0))))
+                          (if (if (number? y) (pos? (double y)) (boolean y)) 1.0 0.0) (double (or w 1.0))])
+                       rows)
+            lik (fn [z] (reduce (fn [acc [f k yy w]]
+                                  (let [e (* k (+ f z))]
+                                    (+ acc (* w (- (* yy e) (if (> e 0.0) (+ e (Math/log1p (Math/exp (- e)))) (Math/log1p (Math/exp e))))))))
+                                0.0 rows))
+            s (Math/sqrt (double v0))
+            ;; z = z0 + s x: the integrand over the standard normal's weights
+            terms (for [[x w] hermite-fine
+                        :let [z (+ (double z0) (* s x))
+                              d (- z m)]]
+                    (+ (Math/log w) (lik z) (- (/ (* d d) (* 2.0 v))) (* -0.5 (Math/log (* 2.0 Math/PI v)))
+                       (* 0.5 x x) (* 0.5 (Math/log (* 2.0 Math/PI))) (Math/log s)))
+            top (apply max terms)]
+        (+ top (Math/log (reduce + (map #(Math/exp (- % top)) terms))))))))
 
 (declare slope-fresh)
 
@@ -905,19 +1154,31 @@
   of 0 are left out."
   ([cfg] (frailty-fresh cfg false nil))
   ([cfg cross?] (frailty-fresh cfg cross? nil))
-  ([{:keys [grid width]} cross? gp]
-  {:cands (mapv (fn [{:keys [sd lsd usd] :as g}]
+  ([cfg cross? gp] (frailty-fresh cfg cross? gp nil))
+  ([{:keys [grid width]} cross? gp rp]
+  (let [grid (cond->> (if cross? grid (vec (remove :cross grid)))
+               gp (filterv #(pos? (double (:sd %)))))
+        ;; bnm-56c.40, :regime: every candidate with an sd above 0 repeated
+        ;; with delta, the regime's loading, after those without it (a tie
+        ;; keeps the layer off), paying the regime's price
+        grid (if rp
+               (into grid (for [g grid :when (pos? (double (:sd g)))]
+                            (-> g (assoc :regime true) (update :price + (double (:price rp))))))
+               grid)]
+  {:cands (mapv (fn [{:keys [sd lsd usd regime] :as g}]
                   (cond
                     ;; a slope on exposure or the gauges' loadings: the joint
                     ;; state as a vector and its variance
-                    (or usd gp) (let [g (cond-> g gp (assoc :b0 (:b0 gp) :bv (:bv gp)))]
-                                  (merge (assoc g :t nil :score 0.0) (slope-fresh g width)))
+                    (or usd gp regime) (let [g (cond-> g
+                                                 gp (assoc :b0 (:b0 gp) :bv (:bv gp))
+                                                 regime (-> (update :b0 (fnil conj []) (:d0 rp))
+                                                            (update :bv (fnil conj []) (:dv rp))))]
+                                         (merge (assoc g :t nil :score 0.0) (slope-fresh g width)))
                     :else (cond-> (assoc g :m 0.0 :v (* sd sd) :t nil :score 0.0)
                             ;; the level starts at 0, known: the base's level is the start
                             lsd (assoc :lm 0.0 :lv 0.0 :c 0.0))))
-                (cond->> (if cross? grid (vec (remove :cross grid)))
-                  gp (filterv #(pos? (double (:sd %))))))
-   :filtered (sorted-map)}))
+                grid)
+   :filtered (sorted-map)})))
 
 (defn- vec-cand?
   "Whether a candidate's state is a vector: a slope on exposure or the
@@ -962,17 +1223,21 @@
 
 (defn- level-applied
   "The shift a level candidate's joint state applies, [m v]: the level as
-  it is plus the transient less half its stationary variance."
-  [c {:keys [m v lm lv] cv :c}]
-  [(+ (double lm) (- (double m) (half-var c))) (+ (double lv) (double v) (* 2.0 (double cv)))])
+  it is plus the transient less half its stationary variance; with
+  `rate?` (bnm-0fe, :centre :rate) the transient as it is, each row
+  centred on its own (`rate-shift`)."
+  ([c j] (level-applied c j false))
+  ([c {:keys [m v lm lv] cv :c} rate?]
+   [(+ (double lm) (if rate? (double m) (- (double m) (half-var c)))) (+ (double lv) (double v) (* 2.0 (double cv)))]))
 
 (defn- level-step
   "A level candidate's joint state updated by one origin's rows: the sum
   the rows see is updated by Laplace (augur.hier/states-step), and the
   level and transient each take their share of the move by their
   covariance with the sum (the Gaussian projection)."
-  [c prior obs]
-  (let [[mu vu] (level-applied c prior)]
+  ([c prior obs] (level-step c prior obs false))
+  ([c prior obs rate?]
+  (let [[mu vu] (level-applied c prior rate?)]
     (if (zero? vu)
       prior
       (let [{u :m vu' :v} (hier/states-step {:m mu :v vu} obs {:kind :logistic})
@@ -983,7 +1248,7 @@
             shrink (- vu (double vu'))]
         {:m (+ (double m) (* kz d)) :v (- (double v) (* kz kz shrink))
          :lm (+ (double lm) (* kl d)) :lv (- (double lv) (* kl kl shrink))
-         :c (- (double cv) (* kl kz shrink))}))))
+         :c (- (double cv) (* kl kz shrink))})))))
 
 ;; --- the slope on exposure (bnm-56c.20.2): the joint state [z (L) u_1 .. u_J] ---
 
@@ -1029,9 +1294,11 @@
   (bnm-v1y)."
   ([c e] (slope-load c e nil))
   ([{:keys [lsd b0]} e g]
-   (when (and b0 (not= (count b0) (count g)))
+   ;; under :regime (bnm-56c.40) the origin's loadings are the gauges then
+   ;; the regime's x: a candidate without delta reads the gauges alone
+   (when (and b0 (not (<= (count b0) (count g) (inc (count b0)))))
      (throw (ex-info "bnm.lattice: :frailty :gauges read at the wrong width" {:want (count b0) :got (count g)})))
-   (vec (concat [1.0] (when lsd [1.0]) (map double e) (when b0 (map double g))))))
+   (vec (concat [1.0] (when lsd [1.0]) (map double e) (when b0 (map double (take (count b0) g)))))))
 
 (defn- slope-half
   "Half the stationary variance of the place's shift: what the shift
@@ -1046,9 +1313,25 @@
   and its standardized exposures e: {:m :v}, and with a slope the loading
   :load and :h, the half variance taken from its mean. Without a slope the
   node's prior as it is."
-  [{:keys [mu P cand g] :as zp} e]
-  (if-not mu
-    zp
+  [{:keys [mu P cand g centre] :as zp} e]
+  (cond
+    (not mu) zp
+    ;; bnm-0fe, :centre :rate: the state as it is; beside it the part not
+    ;; centred (the level, the gauges' loadings: :rm :rv from the joint
+    ;; state) and the transient's stationary variance, sd^2 + usd^2 |e|^2
+    ;; (:vz), from which the row's own shift is solved (`rate-shift`)
+    (= :rate centre)
+    (let [a (slope-load cand e g)
+          n (count a)
+          quad (fn [ix] (reduce + 0.0 (for [i ix j ix] (* (a i) (a j) (double (get-in P [i j]))))))
+          rest-ix (vec (concat (when (:lsd cand) [1]) (range (- n (count (:b0 cand))) n)))]
+      {:m (reduce + 0.0 (map * a mu))
+       :v (quad (range n))
+       :rm (reduce + 0.0 (map #(* (a %) (double (mu %))) rest-ix))
+       :rv (quad rest-ix)
+       :vz (* 2.0 (slope-half cand e))
+       :load a :h 0.0})
+    :else
     (let [a (slope-load cand e g)
           h (slope-half cand e)]
       {:m (- (reduce + 0.0 (map * a mu)) h)
@@ -1080,7 +1363,12 @@
   passed update the current state. Rows issued before the node had a
   resolved outcome are neither scored nor filtered: the base's miss there
   is its uninformed start (bnm-56c.26), not a common shock."
-  [{:keys [from level? exposure? prior]} fr ready per]
+  [{:keys [from level? exposure? prior centre]} fr ready per]
+  (let [rate? (= :rate centre)
+        ;; bnm-0fe, :centre :rate: each row's own shift under a candidate, from
+        ;; the :from model's predictive (the reference the state is filtered
+        ;; against), memoized: the base's rows of an origin share theirs
+        cen (memoize (fn [f q rm rv vz sd] (rate-shift (logistic-curve f q) rm rv vz sd)))]
   (reduce (fn [{:keys [cands] :as fr} [s rows]]
             (let [obs (mapv (fn [r] (let [{:keys [f q]} (or (get-in r [:lp from])
                                                             (throw (ex-info "bnm.lattice: :frailty :from names a model the node does not average" {:from from})))]
@@ -1093,22 +1381,39 @@
                                   ;; state and sees it less its own half variance; scored under the
                                   ;; prior issued, then filtered from the state run forward
                                   (let [[pm pv] (nth (:zc (first rows)) i)
-                                        sobs (mapv (fn [o r] (assoc o :f (- (double (:f o)) (slope-half c (:e r))) :load (slope-load c (:e r) (:g r)))) obs rows)
-                                        ll (:ll (hier/shared-marginal :logistic sobs pm pv))
+                                        sobs (if rate?
+                                               (mapv (fn [o r] (let [{:keys [rm rv vz load]} (frailty-at {:mu pm :P pv :cand c :g (:g r) :centre :rate} (:e r))]
+                                                                 (assoc o :f (+ (double (:f o)) (cen (:f o) (:q o) rm rv vz (:sd c))) :load load)))
+                                                     obs rows)
+                                               (mapv (fn [o r] (assoc o :f (- (double (:f o)) (slope-half c (:e r))) :load (slope-load c (:e r) (:g r)))) obs rows))
+                                        ;; bnm-02u: above sd 1 every row of the origin loading alike
+                                        ;; (the gauges' [1 g_t]), the marginal is one-dimensional in
+                                        ;; the shift a.s, taken by quadrature (`shared-ll`)
+                                        a (:load (first sobs))
+                                        ll (if (and (fine-state? (:sd c)) (every? #(= a (:load %)) sobs))
+                                             (shared-ll sobs (reduce + 0.0 (map * a pm))
+                                                        (reduce + 0.0 (for [i (range (count a)) j (range (count a))] (* (a i) (a j) (double (get-in pv [i j])))))
+                                                        (:sd c))
+                                             (:ll (hier/shared-marginal :logistic sobs pm pv)))
                                         prior (if (and t (<= s t)) {:m (:mu c) :v (:P c)} (let [{:keys [mu P]} (slope-ahead c s per)] {:m mu :v P}))
                                         post (hier/states-step prior sobs {:kind :logistic})]
                                     (assoc c :score (+ (double (:score c)) ll) :t (if t (max t s) s) :mu (:m post) :P (:v post)))
-                                (let [[zm zv] (nth (:zc (first rows)) i)
-                                      ll (:ll (hier/shared-marginal :logistic obs zm zv))
+                                (let [[zm zv vz rm rv] (nth (:zc (first rows)) i)
+                                      ;; :centre :rate: each row moved by its own shift, the state as it is
+                                      obs (if rate? (mapv (fn [o] (update o :f #(+ (double %) (cen (:f o) (:q o) rm rv vz (:sd c))))) obs) obs)
+                                      ll (shared-ll obs zm zv (:sd c))
                                       c (assoc c :score (+ (double (:score c)) ll) :t (if t (max t s) s))]
                                   (if (:lsd c)
                                     ;; the transient and the persistent level, filtered jointly
-                                    (merge c (level-step c (if (and t (<= s t)) (select-keys c [:m :v :lm :lv :c]) (level-ahead (assoc c :t t) s per)) obs))
-                                    (let [prior (if (and t (<= s t)) {:m (:m c) :v (:v c)} (cand-ahead (assoc c :t t) s per))
-                                          ;; the rows see the state less its half variance
-                                          h (half-var c)
-                                          post (hier/states-step (update prior :m - h) obs {:kind :logistic})]
-                                      (assoc c :m (+ (:m post) h) :v (:v post)))))))
+                                    (merge c (level-step c (if (and t (<= s t)) (select-keys c [:m :v :lm :lv :c]) (level-ahead (assoc c :t t) s per)) obs rate?))
+                                    (let [prior (if (and t (<= s t)) {:m (:m c) :v (:v c)} (cand-ahead (assoc c :t t) s per))]
+                                      (if rate?
+                                        (let [post (hier/states-step prior obs {:kind :logistic})]
+                                          (assoc c :m (:m post) :v (:v post)))
+                                        ;; the rows see the state less its half variance
+                                        (let [h (half-var c)
+                                              post (hier/states-step (update prior :m - h) obs {:kind :logistic})]
+                                          (assoc c :m (+ (:m post) h) :v (:v post)))))))))
                               cands))
                   ci (chosen cands)
                   pick (nth cands ci)
@@ -1137,8 +1442,13 @@
                                                          exposure? (assoc :usd (double (:usd pick 0.0))
                                                                           :u (:u pick) :u-v (:u-v pick))
                                                          ;; the gauges' loadings and the origin's gauges
-                                                         (:b0 pick) (assoc :beta (:beta pick) :beta-v (:beta-v pick) :g (:g (first rows))))))))
-          fr (sort-by key (group-by :origin (filter :informed ready)))))
+                                                         (:b0 pick) (assoc :beta (:beta pick) :beta-v (:beta-v pick) :g (:g (first rows)))
+                                                         ;; bnm-56c.40: whether delta is chosen (beta's last), the origin's x
+                                                         (some :regime cands) (assoc :regime (boolean (:regime pick)) :rx (last (:g (first rows)))
+                                                                                     ;; the best candidate with delta less the best without, before prices
+                                                                                     :rgain (- (double (apply max (map :score (filter :regime cands))))
+                                                                                               (double (apply max (map :score (remove :regime cands)))))))))))
+          fr (sort-by key (group-by :origin (filter :informed ready))))))
 
 (defn frailty-prior
   "The frailty a node issues with at origin t: {:m :v :rho :sd} from the
@@ -1155,8 +1465,13 @@
   source's plus a part of its own); a candidate without kappa issues with
   the node's own."
   ([cfg fr parent-fr t per] (frailty-prior cfg fr parent-fr t per nil))
-  ([{:keys [prior]} fr parent-fr t per {:keys [src src-per] :as finer}]
+  ([{:keys [prior centre]} fr parent-fr t per {:keys [src src-per] :as finer}]
   (let [{:keys [cands]} fr
+        ;; bnm-0fe, :centre :rate: no half variance in the mean; a scalar
+        ;; candidate's entry is [m v vz rm rv], vz its transient's stationary
+        ;; variance and N(rm, rv) the part not centred (a level as it is), from
+        ;; which each place's own shift is solved as it issues (`rate-shift`)
+        rate? (= :rate centre)
         ;; the source's chosen state at t, run forward at its own period
         ;; (not the node's: a quarter's state runs four periods to a year's one)
         [sm sv ss] (when finer
@@ -1192,17 +1507,26 @@
                                           (cond (= 0 i j) zv (or (zero? i) (zero? j)) 0.0 :else (get-in P [i j]))))))])
                          [mu P]))
                      (:lsd c)
-                     (let [j (level-ahead c t per)]
-                       (level-applied c (if (and (= :parent prior) parent-fr) (assoc (merge j (of c)) :c 0.0) j)))
+                     (let [j (level-ahead c t per)
+                           j (if (and (= :parent prior) parent-fr) (assoc (merge j (of c)) :c 0.0) j)]
+                       (if rate?
+                         (let [[m v] (level-applied c j true)]
+                           [m v (* (double (:sd c)) (double (:sd c))) (double (:lm j)) (double (:lv j))])
+                         (level-applied c j)))
                      (:cross c)
                      (do (when-not finer
                            (throw (ex-info "bnm.lattice: a :prior :finer candidate without its source" {:cand c})))
                          (let [k (double (:cross c)) s2 (* (double (:sd c)) (double (:sd c)))
                                ks2 (* k k ss ss)
                                big (Math/max s2 ks2)]
-                           [(- (* k sm) (* 0.5 big)) (+ (* k k sv) (- big ks2))]))
+                           (if rate?
+                             [(* k sm) (+ (* k k sv) (- big ks2)) big 0.0 0.0]
+                             [(- (* k sm) (* 0.5 big)) (+ (* k k sv) (- big ks2))])))
                      :else
-                     (let [{:keys [m v]} (of c)] [(- m (half-var c)) v])))
+                     (let [{:keys [m v]} (of c)]
+                       (if rate?
+                         [(double m) (double v) (* (double (:sd c)) (double (:sd c))) 0.0 0.0]
+                         [(- m (half-var c)) v]))))
                  cands)
         ci (chosen cands)
         pick (nth cands ci)]
@@ -1211,10 +1535,12 @@
       ;; is read from it with the place's exposures (`frailty-at`), and the
       ;; origin's gauges (bnm-v1y)
       (let [[mu P] (nth zc ci)]
-        {:mu mu :P P :cand (select-keys pick [:rho :sd :lsd :usd :b0]) :rho (:rho pick) :sd (:sd pick) :zc zc})
-      (let [[m v] (nth zc ci)]
+        (cond-> {:mu mu :P P :cand (select-keys pick [:rho :sd :lsd :usd :b0 :regime]) :rho (:rho pick) :sd (:sd pick) :zc zc}
+          rate? (assoc :centre :rate)))
+      (let [[m v vz rm rv] (nth zc ci)]
         (cond-> {:m m :v v :rho (:rho pick) :sd (:sd pick) :zc zc}
-          (= :finer prior) (assoc :cross (double (:cross pick 0.0)))))))))
+          (= :finer prior) (assoc :cross (double (:cross pick 0.0)))
+          rate? (assoc :centre :rate :vz vz :rm rm :rv rv)))))))
 
 (declare start step finish)
 
@@ -1417,6 +1743,20 @@
                        ;; climatology as it stands once this period's outcomes are
                        ;; counted: what the node's forecasts at t are issued at
                        clim-now (clim-logit spec st k scale level ready)
+                       ;; bnm-56c.40 step 5c, :regime-clim: the climatology by regime, each
+                       ;; regime's rate from the rows of origins the chain classed (weighted by
+                       ;; the pi it issued there), shrunk to clim-now by one origin's rows
+                       rcp (regime-clim-params spec scale)
+                       rcounts (when rcp (regime-counts (get-in st [:rclim k]) ready))
+                       clim-at (if (and rcp clim-now)
+                                 (let [[_ n] (get-in st [:clim k] [0 0])
+                                       n (+ (long (or n 0)) (count ready))
+                                       o (count (:origins rcounts))
+                                       a (if (pos? o) (/ (double n) o) 0.0)
+                                       rbar (m/expit clim-now)]
+                                   (fn [pi] (if pi (regime-level rcounts rbar a pi) clim-now)))
+                                 (constantly clim-now))
+                       clim-t (if rcp (clim-at ((:at rcp) t)) clim-now)
                        ;; :frailty (recursive step 3b): the node's common shock, one per origin
                        fcfg (frailty-config spec)
                        rows (learning-rows (map #(cond-> (select-keys % [:x :y :o :os]) (:lp %) (assoc :issued (:lp %))
@@ -1430,9 +1770,12 @@
                                                    ;; joint state each row loads on, its place's half variance
                                                    ;; taken from its offsets and its models' predictives
                                                    (:load %) (-> (assoc :load (:load %)) (shift-shock (- (double (:zh %)))))
+                                                   ;; bnm-0fe, :centre :rate: the place's own shift, as issued
+                                                   (:zcen %) (shift-shock (double (:zcen %)))
                                                    ;; bnm-56c.27: :clim-learn :current, a row issued at
                                                    ;; climatology is learned at the climatology current now
-                                                   (and (= :current (:clim-learn spec)) (:clim %)) (reanchor (- clim-now (:clim %))))
+                                                   ;; (step 5c: the regime climatology at the row's own pi as issued)
+                                                   (and (= :current (:clim-learn spec)) (:clim %)) (reanchor (- (if rcp (clim-at (:rpi %)) clim-now) (:clim %))))
                                                 ready)
                                            (= :mixture (:learn-offsets spec)))
                        ;; traced: each model's evidence, the log score of the outcomes it
@@ -1466,8 +1809,10 @@
                        cross? (boolean (and src (finer? spec src scale)))
                        ;; bnm-v1y, :frailty :gauges: the world gauges that set the shock's mean here
                        gp (when fcfg (frailty-gauges spec scale))
+                       ;; bnm-56c.40, :regime: the world family's stress loading at t
+                       rp (regime-params spec fcfg scale)
                        st (if fcfg
-                            (assoc-in st [:frailty k] (frailty-learn (cond-> fcfg gp (assoc :from (:gauges-from fcfg))) (or (get-in st [:frailty k]) (frailty-fresh fcfg cross? gp)) ready (:per scale-spec)))
+                            (assoc-in st [:frailty k] (frailty-learn (cond-> fcfg gp (assoc :from (:gauges-from fcfg))) (or (get-in st [:frailty k]) (frailty-fresh fcfg cross? gp rp)) ready (:per scale-spec)))
                             st)
                        zprior (when fcfg
                                 (frailty-prior fcfg (get-in st [:frailty k])
@@ -1480,6 +1825,7 @@
                        ez (when (:exposure? fcfg) (standardized-exposures spec scale places t))
                        ;; climatology: the rate among this node's resolved outcomes
                        st (update-in st [:clim k] (fn [[n1 n]] [(+ (or n1 0) (count (filter :y ready))) (+ (or n 0) (count ready))]))
+                       st (if rcp (assoc-in st [:rclim k] rcounts) st)
                        _ (when (and (:clim-learn spec) (not= :current (:clim-learn spec)))
                            (throw (ex-info "bnm.lattice: :clim-learn takes :current" {:clim-learn (:clim-learn spec)})))
                        _ (when-not (#{:all :resolved} (:flow-std-from spec :all))
@@ -1493,8 +1839,8 @@
                        offset-of (if-let [f (when-not fo? (:offset spec))]
                                    (fn [place t] (if-let [o (f scale place t)]
                                                    {:o (double o)}
-                                                   {:o clim-now :clim clim-now}))
-                                   (if (and fo? clim-now) (constantly {:o clim-now :clim clim-now}) (constantly {:o 0.0})))
+                                                   {:o clim-t :clim clim-t}))
+                                   (if (and fo? clim-t) (constantly {:o clim-t :clim clim-t}) (constantly {:o 0.0})))
                        ;; :downscale: the offset from a coarser node's latest forecast for the
                        ;; place, issued before t, scaled to this window under a constant
                        ;; hazard (docs/DOWNSCALE.md); pooled in log odds with what is known
@@ -1577,11 +1923,19 @@
                        gt (when gp
                             (let [in (filter #((:target spec) scale (:place %) t) seen)
                                   in (if (seq in) in seen)]
-                              (mapv (fn [i] (/ (reduce + 0.0 (map #(double (nth (:x %) i)) in)) (count in))) (:ix gp))))
+                              (cond-> (mapv (fn [i] (/ (reduce + 0.0 (map #(double (nth (:x %) i)) in)) (count in))) (:ix gp))
+                                ;; step 5c: under the regime climatology each gauge's departure
+                                ;; from its regime mean, so the regime's level is counted once
+                                (:gauge-mean rcp) (as-> g (if-let [gm ((:gauge-mean rcp) t)]
+                                                            (mapv - g gm)
+                                                            g)))))
                        seen (if gp
                               (mapv (fn [e] (update e :x (fn [x] (reduce #(assoc %1 %2 0.0) x (:ix gp))))) seen)
                               seen)
-                       zprior (if gp (assoc zprior :g gt) zprior)
+                       ;; bnm-56c.40: the regime's loading after the gauges, at every
+                       ;; candidate's rows (a candidate without delta reads the gauges alone)
+                       gt (if rp (conj (or gt []) (regime-x rp t)) gt)
+                       zprior (if (or gp rp) (assoc zprior :g gt) zprior)
                        ;; a group with no input anywhere at t (its source ended, a signal
                        ;; gone stale, errors not yet known) reads the unknown's mean, 0, at
                        ;; every place: an intercept-only model under another name. It drops
@@ -1598,7 +1952,15 @@
                                              o (if one? (second (first os)) (logit (reduce + (for [[w o] os] (* w (m/expit o))))))
                                              ;; with a slope on exposure, the place's own shock from the node's joint state
                                              zprior (if (:mu zprior)
-                                                      (merge (frailty-at zprior (get ez place)) (select-keys zprior [:zc :mu :P :g]))
+                                                      (merge (frailty-at zprior (get ez place)) (select-keys zprior [:zc :mu :P :g :sd]))
+                                                      zprior)
+                                             ;; bnm-0fe, :centre :rate: the place's own shift c, so that at
+                                             ;; the shock's stationary prior the forecast is the one issued
+                                             ;; without it; the state's mean kept as :m0 (the rows' shared
+                                             ;; effect), c added to the mean issued and to the row's offsets
+                                             zprior (if (:vz zprior)
+                                                      (let [c (rate-shift (forecast-curve live x os) (:rm zprior) (:rv zprior) (:vz zprior) (:sd zprior))]
+                                                        (assoc zprior :m0 (:m zprior) :m (+ (double (:m zprior)) c) :c c))
                                                       zprior)
                                              ;; :frailty: the forecast integrated over the common shock's prior
                                              osz (if zprior (with-frailty os zprior) os)
@@ -1651,7 +2013,9 @@
                                                        ;; the common shock issued with (§1.2 :hazard :z :z-var)
                                                        frailty (assoc :z (:m frailty) :z-var (:v frailty))
                                                        ;; bnm-v1y: the gauges it was issued at
-                                                       (:g frailty) (assoc :zg (:g frailty)))))
+                                                       (:g frailty) (assoc :zg (:g frailty))
+                                                       ;; step 5c: pi and the regime climatology issued at
+                                                       rcp (assoc :rclim [((:at rcp) t) clim-t]))))
                                         (assoc-in [:tension [scale place]] tension)
                                         (cond-> resolved (update-in [:resets [scale place]] (fnil into []) resolved))))
                                   st made))
@@ -1677,17 +2041,19 @@
                                                            (for [{:keys [place x o os p target ref issued clim frailty ez]} made :when target
                                                                  :let [ist (d/issue-state model)]]
                                                              (cond-> {:place place :origin t :x x :o o :p (if ref (:p ref) p) :y (:y target) :known-at (:known-at target)
-                                                                      :regime-at-issue nil}
+                                                                      :regime-at-issue (when rp (second ((:at rp) t)))}
                                                                issued (assoc :lp issued)
                                                                ;; bnm-e1y: the models' state at issue, for the
                                                                ;; origin's joint issued predictive
                                                                (= :issue-joint (:evidence-at spec)) (assoc :ist ist)
                                                                ;; bnm-56c.27: the climatology it was issued at
                                                                (and clim (:clim-learn spec)) (assoc :clim clim)
+                                                               ;; step 5c: the stress probability it was issued at
+                                                               rcp (assoc :rpi ((:at rcp) t))
                                                                ;; bnm-56c.22: the offsets issued over, learned at
                                                                (and (= :mixture (:learn-offsets spec)) (< 1 (count os))) (assoc :os os)
                                                                ;; :frailty: the origin, its shock as issued, each candidate's prior
-                                                               frailty (assoc :origin t :shared [t (:m frailty) (:v frailty)] :zc (:zc frailty)
+                                                               frailty (assoc :origin t :shared [t (if (:vz frailty) (:m0 frailty) (:m frailty)) (:v frailty)] :zc (:zc frailty)
                                                                               ;; issued once the node had a resolved outcome: before
                                                                               ;; it the base reads nothing of its own (climatology
                                                                               ;; 0.5 or a prior), and its miss is not a common shock
@@ -1697,7 +2063,9 @@
                                                                ez (assoc :e ez)
                                                                ;; bnm-v1y: the origin's gauges, loaded on beta
                                                                (:g frailty) (assoc :g (:g frailty))
-                                                               (:load frailty) (assoc :shared [t (:mu frailty) (:P frailty)] :load (:load frailty) :zh (:h frailty)))))))]
+                                                               (:load frailty) (assoc :shared [t (:mu frailty) (:P frailty)] :load (:load frailty) :zh (:h frailty))
+                                                               ;; bnm-0fe: the place's own shift, learned in its offsets
+                                                               (:vz frailty) (assoc :zcen (:c frailty)))))))]
                    (if fo?
                      [st forecasts weights trace]
                    [st

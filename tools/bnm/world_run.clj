@@ -104,6 +104,7 @@
             [bnm.lattice-banking :as lb]
             [bnm.lattice-political :as lp]
             [bnm.lattice-smoke :as smoke]
+            [bnm.regime-filter :as rf]
             [bnm.named :as nm]
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
@@ -444,6 +445,14 @@
             :when (zero? (mod (- t 11) 12))
             [g wt] (sort-by key ws)]
       (.write w (str (name scale) "\t" (name level) "\t" (quot t 12) "\t" (if (namespace g) (str (namespace g) "/" (name g)) (name g)) "\t" wt "\n"))))
+  ;; under :regime-clim (step 5c): each year place's pi and the climatology's
+  ;; log odds as issued at each origin
+  (when-let [rows (seq (for [[[s place] byo] (sort-by key (:book r)) :when (= s :year)
+                             [o e] byo :when (:rclim e)
+                             :let [[pi lvl] (:rclim e)]]
+                         (str place "\t" (quot o 12) "\t" (if (nil? pi) "" pi) "\t" lvl "\n")))]
+    (with-open [w (io/writer (str dir "/rclim.tsv"))]
+      (doseq [row rows] (.write w ^String row))))
   ;; under bnm.lattice's :frailty: each node's common shock, filtered per origin
   (when-let [fr (:frailty r)]
     (with-open [w (io/writer (str dir "/frailty.tsv"))]
@@ -459,6 +468,9 @@
                        (when cross (str "\t" cross))
                        ;; under :gauges (bnm-v1y), beta, its variance and the origin's gauges
                        (when-let [b (:beta e)] (str "\t" (str/join "," b) "\t" (str/join "," (:beta-v e)) "\t" (str/join "," (:g e))))
+                       ;; under --regime (bnm-56c.40): whether delta is chosen (it is
+                       ;; beta's last) and the origin's regime loading x
+                       (when (contains? e :regime) (str "\tregime=" (:regime e) "\t" (:rx e) "\trgain=" (:rgain e)))
                        "\n"))))))
 
 (defn world-of
@@ -588,6 +600,96 @@
     (throw (ex-info (str "bnm.world-run: --dated-credit takes true or false, not " dated-credit) {})))
   (= "true" dated-credit))
 
+(defn regime-choice
+  "--regime true (bnm-56c.40, recursive step 5b): the world families'
+  calm/stress chains set the year node's level through the frailty. Off by
+  default."
+  [{:keys [regime]}]
+  (when (and regime (not (#{"true" "false"} regime)))
+    (throw (ex-info (str "bnm.world-run: --regime takes true or false, not " regime) {})))
+  (= "true" regime))
+
+(def regime-sets
+  "Each kind the regime layer reaches: its world family's chain and gauges
+  (positions in bnm.named/leading's), and delta's theory prior [mean
+  variance] (docs/RECURSIVE.md step 5b: 1.0 where financial stress is the
+  kind's own domain, 0.5 where it reaches the kind by transmission, sd
+  0.5). The other kinds read no world family."
+  {"market_crash" {:chain rf/financial :gauges [:baa12 :us-curve :vix12] :prior [1.0 0.25]}
+   "banking_crisis" {:chain rf/financial :gauges [:baa12 :us-curve :vix12] :prior [1.0 0.25]}
+   "growth_collapse" {:chain rf/financial :gauges [:baa12 :us-curve :vix12] :prior [0.5 0.25]}
+   "food_price_shock" {:chain rf/food :gauges [:world-food12] :prior [0.5 0.25]}})
+
+(defn regime-drivers
+  "(fn [t]) -> the family's gauges read at t (bnm.named/leading, at their
+  availability dates), each standardized against its own history at the
+  quarter ends from `from` before t (bnm.lattice-political/
+  history-standardizer, as --lead-std history), nil where unread or with
+  under 20 quarter ends of history. World gauges: the same at every place."
+  [lead-f names from end]
+  (let [ix (mapv #(.indexOf ^java.util.List nm/leading-names %) names)
+        h (lp/history-standardizer lead-f ["USA"] ix from end nil)]
+    (fn [t] (let [l (lead-f "USA" t)] (h t (mapv #(nth l %) ix))))))
+
+(defn with-regime
+  "Each spec of `regime-sets` with :regime at its year node (the chain's
+  reader over its year origins, the window its year scale's), when `on?`;
+  `lead-f` is bnm.named/leading's reader. A spec without :frailty is
+  refused."
+  [specs on? lead-f]
+  (if-not on?
+    specs
+    (into {} (for [[k sp] specs]
+               [k (if-let [{:keys [chain gauges prior]} (regime-sets k)]
+                    (let [{:keys [per offset horizon]} (first (filter #(= :year (:name %)) (:scales sp)))
+                          start (:start sp) end (:end sp)
+                          origins (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))]
+                      (when-not (map? (:frailty sp))
+                        (throw (ex-info "bnm.world-run: --regime true needs --set's :frailty" {:kind k})))
+                      (assoc sp :regime {:year {:at (rf/reader chain origins (regime-drivers lead-f gauges start end)
+                                                               (/ (+ (double (or offset 0)) horizon) 12.0))
+                                                :prior prior}}))
+                    sp)]))))
+
+(defn regime-clim-choice
+  "--regime-clim true (bnm-56c.40, recursive step 5c): the year node's
+  climatology by regime, each regime's resolved rate weighted by the chain's
+  pi at issue. Off by default; not with --regime true (the same signal
+  twice). --regime-clim uncentred: the same with the frailty's gauge mean
+  reading the gauges as read, not net of their regime mean (added after the
+  planted test, before any world run: docs/CALIBRATION.md 'Regime
+  climatology'); :uncentred."
+  [{:keys [regime regime-clim]}]
+  (when (and regime-clim (not (#{"true" "false" "uncentred"} regime-clim)))
+    (throw (ex-info (str "bnm.world-run: --regime-clim takes true, uncentred or false, not " regime-clim) {})))
+  (when (and (#{"true" "uncentred"} regime-clim) (= "true" regime))
+    (throw (ex-info "bnm.world-run: --regime-clim and --regime true read the same regime twice" {})))
+  (case regime-clim "true" true "uncentred" :uncentred false))
+
+(defn with-regime-clim
+  "Each spec of `regime-sets` with :regime-clim at its year node, when `on?`:
+  the family chain's pi at the year origins, nil before its first gauge
+  read (bnm.regime-filter/pi-reader), and, where the year node's frailty
+  reads world gauges (--frailty-gauges), each one's regime mean at pi
+  (its theory sign in the family; 0 for a gauge outside it), which the
+  gauge mean reads net of. `lead-f` is bnm.named/leading's reader."
+  [specs on? lead-f]
+  (if-not on?
+    specs
+    (into {} (for [[k sp] specs]
+               [k (if-let [{:keys [chain gauges]} (regime-sets k)]
+                    (let [{:keys [per]} (first (filter #(= :year (:name %)) (:scales sp)))
+                          start (:start sp) end (:end sp)
+                          origins (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))
+                          at (rf/pi-reader chain origins (regime-drivers lead-f gauges start end))
+                          sign (zipmap gauges (:signs chain))
+                          fg (when-not (= :uncentred on?) (seq (get-in sp [:frailty :gauges :year])))]
+                      (assoc sp :regime-clim
+                             {:year (cond-> {:at at}
+                                      fg (assoc :gauge-mean (fn [t] (when-let [p (at t)]
+                                                                      (mapv #(if-let [s (sign %)] (rf/emission-mean chain s p) 0.0) fg)))))}))
+                    sp)]))))
+
 (defn options
   "The options of bnm.world-run `args`: {:out \"x\" ...}, values as given."
   [args]
@@ -643,7 +745,16 @@
                                 :real-lags (real-lags-choice opts)}
                                end)
                    finer-where-fresh
-                   (with-frailty-gauges (frailty-gauges-choice opts)))
+                   (with-frailty-gauges (frailty-gauges-choice opts))
+                   (with-regime (regime-choice opts)
+                     (when (regime-choice opts)
+                       (second (nm/leading (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
+                                                           {:real-lags (real-lags-choice opts)})))))
+                   ;; step 5c: after --frailty-gauges, whose gauges it centres
+                   (with-regime-clim (regime-clim-choice opts)
+                     (when (regime-clim-choice opts)
+                       (second (nm/leading (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
+                                                           {:real-lags (real-lags-choice opts)}))))))
         books (atom {})
         ;; each kind's resolved counts by node, as of the month (--clim-prior kinds)
         clims (atom {})
@@ -700,6 +811,16 @@
         (System/exit (if (every? empty? (vals fails)) 0 1)))
       (do
         (doseq [[k r] finished] (write-kind (str dir "/" k) k r))
+        ;; --regime (bnm-56c.40): the family's path at the year origins, year x pi
+        (doseq [[k sp] specs :let [at (get-in sp [:regime :year :at])] :when at]
+          (with-open [w (io/writer (str dir "/" k "/regime.tsv"))]
+            (doseq [t (range (:start sp) (inc end)) :let [[x p] (at t)] :when p]
+              (.write w (str (quot t 12) "\t" x "\t" p "\n")))))
+        ;; --regime-clim (step 5c): pi at the year origins the chain had read, year pi
+        (doseq [[k sp] specs :let [at (get-in sp [:regime-clim :year :at])] :when at]
+          (with-open [w (io/writer (str dir "/" k "/regime.tsv"))]
+            (doseq [t (range (:start sp) (inc end)) :let [p (at t)] :when p]
+              (.write w (str (quot t 12) "\t" p "\n")))))
         ;; --write-reference true: the reference's forecasts as a run of
         ;; their own, <out>-ref
         (when (= "true" (:write-reference opts))
