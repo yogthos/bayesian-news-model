@@ -14,7 +14,12 @@
     the one-pass sums), read once enough values or periods are seen.
 
   Every option reproduces a copy it replaced to the bit
-  (test/bnm/signals_test.clj).")
+  (test/bnm/signals_test.clj).
+
+  And signals declared as data (docs/SIGNALS.md): `read-signal` reads one
+  point in time from the slow table's series, `assemble` builds a node's
+  row, names, groups and priors from declarations."
+  (:require [bnm.stocks :as sk]))
 
 (defn- mean [xs] (/ (reduce + xs) (count xs)))
 
@@ -135,3 +140,76 @@
          ts (range (+ from (mod (- 2 from) 3)) (inc end) 3)
          by-t (for [t ts] [t (for [u units :let [l (lead-f u t)]] (mapv #(nth l %) ix))])]
      (reader (snapshots by-t w true) w {:count-by :periods :min 20 :stable true :missing missing}))))
+
+;; --- signals declared as data (docs/SIGNALS.md) ------------------------------
+
+(def reads
+  "The reads a declaration may name."
+  #{:value :change :volatility :stretch :turn})
+
+(defn- fresh?
+  "Whether the latest published period `p` is within :stale months of t."
+  [stale t p]
+  (or (nil? stale) (<= (- t p) (long stale))))
+
+(defn- stretch-of-obs
+  "The stretch of observation i of `vs` (published values, oldest first)
+  against the :window observations before it."
+  [vs i opts]
+  (when (>= i 0) (stretch vs i opts)))
+
+(defn- read-series
+  "One read of series `s` at origin t, nil when nothing usable is published."
+  [s [kind arg] stale t]
+  (case kind
+    :value (sk/value s t {:stale stale})
+    :change (sk/change s t (long arg) {:stale stale})
+    :volatility (sk/volatility s t (long arg) {:stale stale})
+    (:stretch :turn)
+    (let [known (sk/known s t)
+          vs (mapv second known)
+          i (dec (count vs))]
+      (when (and (>= i 0) (fresh? stale t (first (peek known))))
+        (case kind
+          :stretch (stretch-of-obs vs i arg)
+          :turn (let [z1 (stretch-of-obs vs i arg)
+                      z0 (stretch-of-obs vs (dec i) arg)
+                      th (double (:threshold arg 1.0))]
+                  (when (and z0 z1)
+                    (if (and (>= (Math/abs (double z0)) th) (neg? (* (Math/signum (double z0)) (- z1 z0))))
+                      (Math/abs (- (double z1) (double z0)))
+                      0.0))))))))
+
+(defn read-signal
+  "Declaration `decl`'s value for `unit` at origin t from `db` ({[unit var]
+  series}, bnm.named/load-series), nil when unknown."
+  [db {:keys [var unit read stale times]} row-unit t]
+  (let [u (if (or (nil? unit) (= :own unit)) row-unit unit)
+        x (some-> (db [u var]) (read-series read stale t))]
+    (if (and x times)
+      (some-> (read-signal db (assoc times :unit (or (:unit times) unit)) row-unit t) (* x))
+      x)))
+
+(defn- check-decls [decls]
+  (let [names (map :name decls)]
+    (when-not (apply distinct? names)
+      (throw (ex-info "bnm.signals: declaration names must be unique" {:names names})))
+    (doseq [{:keys [name var read times] :as d} decls]
+      (when-not (and name var)
+        (throw (ex-info "bnm.signals: a declaration needs :name and :var" {:decl d})))
+      (doseq [r (cons read (some-> times :read list))]
+        (when-not (contains? reads (first r))
+          (throw (ex-info (str "bnm.signals: unknown read " (first r)) {:decl d})))))))
+
+(defn assemble
+  "A node's inputs from declarations: {:row (fn [unit t] vector) :names
+  :groups {domain [index ...]} :named-prior {name [mean variance]}}, in
+  declaration order."
+  [db decls]
+  (check-decls decls)
+  (let [decls (vec decls)]
+    {:row (fn [unit t] (mapv #(read-signal db % unit t) decls))
+     :names (mapv :name decls)
+     :groups (reduce (fn [g [i {:keys [domain]}]] (if domain (update g domain (fnil conj []) i) g))
+                     {} (map-indexed vector decls))
+     :named-prior (into {} (for [{:keys [name prior]} decls :when prior] [name prior]))}))
