@@ -38,6 +38,7 @@
             [bnm.paths]
             [bnm.releases :as rel]
             [bnm.signals :as sg]
+            [bnm.theory :as th]
             [bnm.slow-train :as st]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -281,6 +282,14 @@
      :distress [64 65]
      :external [66 67]}))
 
+
+(def theory-inputs
+  "--theory-offset (bnm-ris): the year row's columns the theory reads,
+  [name index]: the credit stretch and the three-year credit growth (the
+  plain logit that ranks JST's countries at 0.70 within years on the
+  node's own rows, CALIBRATION 'Against a reference that knows only that
+  crises cluster')."
+  [[:credit (first (:stretches year-groups))] [:boom-credit3 (first (:booms year-groups))]])
 (defn- by-country-year
   "{iso {year value}} from rows, keeping non-nil values of (f row)."
   [rows iso-of year-of f]
@@ -629,7 +638,7 @@
 
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db]}]
+  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset]}]
   (let [[_ fin] (nm/financial db wc)
         ;; --banking-gauges (bnm-cpv): the world's leading gauges after the
         ;; year node's own columns
@@ -670,12 +679,26 @@
         ;; what is known: named's forecast for the window, as log odds (from
         ;; 2000); an aggregate's, the chance any member has a crisis. nil
         ;; elsewhere, where the node starts from climatology
+        ;; --theory-offset (bnm-ris): the year node's offset, a logit on its own
+        ;; credit stretch and three-year growth (standardized as the node reads
+        ;; them, a missing value its mean) refit at each origin on what is known
+        year-scale (first (filter #(= :year (:name %)) scales))
+        year-target (fn [u t] (let [{:keys [offset horizon]} year-scale
+                                     lo (+ t offset) hi (+ t offset horizon)]
+                                 (when-some [y (onset-in? cat u t lo hi)] {:y y :known-at (+ hi known-lag)})))
+        theory (when theory-offset
+                 (th/offsets {:places countries :origins (origins year-scale) :prior 1.0
+                              :inputs (fn [u t] (when-let [v (get-in table [:year [u t]])]
+                                                  (let [z ((std :year) t v)] (mapv #(nth z (second %)) theory-inputs))))
+                              :target year-target}))
         known-at (fn [scale place t]
+                   (if (and theory (= :year scale))
+                     (th/any-of (keep #(get theory [% t]) (members place)))
                    (let [w ({:quarter-lead "lead" :quarter-w2 "w2"} scale)
                          ps (when w (keep #(get known [w % (quot (- t 2) 3)]) (members place)))]
                      (when (seq ps)
                        (let [p (- 1.0 (reduce * (map #(- 1.0 %) ps)))]
-                         (Math/log (/ (max 1e-6 p) (max 1e-6 (- 1.0 p))))))))
+                         (Math/log (/ (max 1e-6 p) (max 1e-6 (- 1.0 p)))))))))
         gauges (fn [scale place t]
                  (let [f (std scale)
                        vs (keep #(some->> (get-in table [scale [% t]]) (f t)) (members place))]
@@ -805,7 +828,7 @@
   their archived editions; :banking-coverage, the declared signals of
   `coverage-decls` at the year node."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit theory-offset]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables
                            (cond-> {:real-lags real-lags} wdi-editions (assoc :wdi-editions (nm/read-wdi-editions))))
@@ -832,6 +855,7 @@
     (spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
            :known (read-known known-run) :quarterly (read-quarterly) :gauge-std gauge-std :dated-credit dated
            :banking-gauges banking-gauges
+           :theory-offset theory-offset
            ;; --banking-coverage (bnm-7bh): its series alone, read as the rest are
            :coverage-db (when banking-coverage
                           (nm/load-series "data/slow/series.tsv" variables

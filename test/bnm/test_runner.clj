@@ -74,6 +74,8 @@
             [bnm.testbed-test]
             [bnm.long-baseline-test]
             [bnm.splice-credit-test]
+            [bnm.theory-test]
+            [bnm.theory-offset-test]
             [bnm.lattice-smoke-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -218,6 +220,8 @@
     bnm.testbed-test
     bnm.long-baseline-test
     bnm.splice-credit-test
+    bnm.theory-test
+    bnm.theory-offset-test
     bnm.lattice-smoke-test
     bnm.political-gauges-test
     bnm.reconcile-test

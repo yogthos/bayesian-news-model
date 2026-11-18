@@ -707,6 +707,13 @@
   [opts]
   (flag-choice opts :dated-credit))
 
+(defn theory-offset-choice
+  "--theory-offset true (bnm-ris): banking's year node reads a theory
+  forecast as its offset (bnm.lattice-banking/theory-inputs, bnm.theory).
+  Off by default."
+  [opts]
+  (flag-choice opts :theory-offset))
+
 (defn splice-credit-choice
   "--splice-credit bank (bnm-ris): under --dated-credit, JST's bank loans
   spliced with the BIS's bank credit (JST's concept) in place of its credit
@@ -944,6 +951,7 @@
                                                                :banking-coverage (banking-coverage-choice opts)
                                                                :long-baseline (long-baseline-choice opts)
                                                                :splice-credit (splice-credit-choice opts)
+                                                               :theory-offset (theory-offset-choice opts)
                                                                :wide-credit (wide-credit-choice opts)
                                                                :fresh-inputs (fresh-inputs-choice opts)
                                                                :wdi-editions (wdi-editions-choice opts)

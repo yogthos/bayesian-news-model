@@ -11,6 +11,7 @@
             [bnm.lattice :as lt]
             [bnm.signals :as sg]
             [bnm.stat :as stat]
+            [bnm.theory :as th]
             [bnm.stocks :as sk]
             [clojure.edn :as edn]
             [clojure.string :as str]))
@@ -205,21 +206,32 @@
         members (fn [place] (cond (= "world" place) countries
                                   (some #{place} regions) (filter #(= place (parent %)) countries)
                                   :else [place]))
-        width (count ds)]
+        width (count ds)
+        target (fn [_ place origin]
+                 (let [y (quot (inc origin) 12)
+                       ys (for [c (members place) :when (at-risk? w c y)] (contains? (get-in w [:onsets c] #{}) y))]
+                   (when (seq ys) {:y (boolean (some true? ys)) :known-at (+ origin 24)})))
+        ;; :theory (bnm-ris): the theory's forecast as the node's offset, a logit
+        ;; on the driving stock's stretch and turn refit at each origin on what is
+        ;; known (bnm.theory), the groups learning departures from it
+        theory (when (:theory opts)
+                 (let [ix (vec (keep-indexed (fn [i d] (when (#{:credit-stretch :credit-turn} (:name d)) i)) ds))
+                       off (th/offsets {:places countries :origins origins :prior 1.0
+                                        :inputs (fn [c t] (let [v (std t (table [c t]))] (mapv #(nth v %) ix)))
+                                        :target (fn [c t] (target :year c t))})]
+                   (fn [_ place t] (th/any-of (keep #(get off [% t]) (members place))))))]
     (merge {:scales [{:name :year :per 12 :horizon 12 :discount 0.995}]
             :levels [[:country countries] [:region regions] [:world ["world"]]]
             :parent parent
             :start start :end end
             :forget 0.995
-            :target (fn [_ place origin]
-                      (let [y (quot (inc origin) 12)
-                            ys (for [c (members place) :when (at-risk? w c y)] (contains? (get-in w [:onsets c] #{}) y))]
-                        (when (seq ys) {:y (boolean (some true? ys)) :known-at (+ origin 24)})))
+            :target target
             :gauges (fn [_ place origin]
                       (let [vs (for [c (members place) :let [v (table [c origin])] :when v] (std origin v))]
                         (if (seq vs) (apply mapv (fn [& xs] (/ (reduce + xs) (count xs))) vs) (vec (repeat width 0.0)))))
             :gauge-width {:year width}
             :gauge-groups {:year groups}}
+           (when theory {:offset theory})
            extra)))
 
 ;; --- scores -------------------------------------------------------------------------
@@ -324,6 +336,7 @@
                (:years o) (assoc :years (parse-long (:years o)))
                (:signals o) (assoc :signals (keyword (:signals o)))
                (:guard o) (assoc :guard (= "true" (:guard o)))
+               (:theory o) (assoc :theory (= "true" (:theory o)))
                (:set o) (assoc :lattice (edn/read-string (:set o))))
         ks [:auc :oracle-auc :within-auc :level-r :p-sd :log-skill :oracle-log-skill :skill-share :ece :alert-cost :constant-cost :molchan]
         results (vec (for [s seeds] (evaluate (assoc base :seed s))))]
