@@ -2776,3 +2776,23 @@ Runs, banking only (`--kinds banking_crisis`; the other twelve kinds copied from
 - **t88-nofrail**: the same without a frailty at banking (`:frailty nil`).
 
 Rule, fixed now: against t80-base, banking year nodes, `bnm.links --folds` (no fold lost with its 90% interval below zero, pooled Brier gain) and the alert table at 4:1. Pooled and within-year AUC reported beside them, not as the rule. A run that passes is a candidate; adoption is the user's decision.
+
+### Results (18 November 2026)
+
+t88-off's banking forecasts equal t80-base's byte for byte: the integrate branch reproduces banking with every option off.
+
+Banking year nodes against t80-base (`bnm.links --folds`; logs data/runs/logs/score-t88-*.txt, alerts-t88-*-vs-t80-base.txt):
+
+| fold | t88-rho0 Brier | t88-nofrail Brier |
+|---|---|---|
+| 2003-06 | +0.00137 [-0.00124, +0.00504] | +0.00083 [-0.00166, +0.00432] |
+| 2007-09 | +0.00459 [+0.00082, +0.00912] GAIN | +0.00310 [-0.00024, +0.00623] |
+| 2010-12 | +0.00254 [+0.00002, +0.00583] GAIN | +0.00191 [-0.00040, +0.00483] |
+| 2013-19 | +0.00002 [-0.00042, +0.00054] | -0.00006 [-0.00053, +0.00049] |
+| 2020-22 | -0.00164 [-0.00183, -0.00145] LOSS | -0.00172 [-0.00196, -0.00149] LOSS |
+| pooled | +0.00107 [-0.00005, +0.00242] | +0.00062 [-0.00032, +0.00180] |
+
+- Pooled AUC: t80-base 0.371, t88-rho0 0.578, t88-nofrail 0.495; within-year 0.641, 0.629, 0.602.
+- Alert cost, banking: t80-base 0.132, t88-rho0 0.128 (+0.0035 [+0.0000, +0.0094]), t88-nofrail 0.129. Episodes caught: 0 of 2 in all three; mean p at Dec 2006-07 is 0.052 and 0.051 (rate 0.169, 0.146), against t80-base's 0.025 and 0.022.
+- **Verdict: both fail the fold rule** (2020-22, the calm years after COVID's exogenous rows are left out: a level near 0.05 where t80-base's carried calm issued lower). Not adopted.
+- **What it shows.** The persistence is what inverts the level: without it the pooled AUC goes from 0.37 to 0.58 and 2007-12 gain. But no variant lifts the level before the wave (0.05 at a rate of 0.17): with the frailty neutral, nothing in the node moves the level with the build-up. Removing the lagged carrier restores neutrality, not anticipation. The level needs a state built from the stocks and flows (the redesign proposed with this result: stretched stocks meeting turning flows, aggregated across countries, as the shock's mean, learned from 1870 with theory's signs).
