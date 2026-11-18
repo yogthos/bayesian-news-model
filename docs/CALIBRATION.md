@@ -2761,3 +2761,18 @@ Scores (bnm.links): `--runs` against the bench for the pooled year and quarter-l
 Rule, fixed now:
 1. **Leading gauges.** G = t80-base against t86-nolead, G_d = t86-ldelay against t86-nolead, pooled log, year and quarter-lead nodes each. If G's interval does not lie above zero at a scale, the gauges have no gain there to test, and that is the result at that scale. Where it does, the gain survives the delay if G_d ≥ G/2 and t86-ldelay loses no fold against t80-base with a 90% interval below zero. Otherwise the gain rests on the latest quarter and is flagged for review; nothing is removed without the user's decision.
 2. **Year rows.** No run without the year gauges exists for this base, so t86-ydelay is read against t80-base alone: a pooled log loss with its interval below zero, or a fold lost that way, means the year gauges' gain rests on the latest year's row, as s2 found for t50. The leak fixes date Maddison, NMC and PWT by release, so a loss here no longer points to those sources.
+
+## Banking's frailty out of phase: t88 (bnm-g5t.29)
+
+Written 18 November 2026, before any run.
+
+**The finding.** t80-base's banking year country node has a pooled AUC of 0.371 over 2003-2022 (82 onsets in 2558 rows), below chance, while its AUC within each December origin is 0.641. The ranking within a year is moderate; the level across years runs against the rate. It dates from the frailty: t53-noclim, without it, has a pooled AUC of 0.553 (within-year 0.625); t57-frailty, the first run with it, 0.374 (0.593), and every base since keeps that (t65-gauges 0.379, t71-stack 0.379, t80-base 0.371). The year node's frailty takes ρ 0.8, sd 1.0 at every origin from 2000. Its filtered state by origin: -1.3 to -1.6 at 2003-04, +1.6 at 2006-07, -0.5 to -1.1 at 2010-11. Each is known about two years after its origin, so the state issued at Dec 2006 carries 2003-04's calm and the one issued at 2009-11 carries the wave: with a lag near the waves' spacing, the persistent shock is in anti-phase. Mean issued p is 0.025 at Dec 2006 (rate 0.169) and IRL, DNK, SWE and BEL issue 0.20-0.29 at Dec 2009-10, when few new crises began.
+
+Checked and not the cause: crises under way. data/slow/events.tsv has no episode durations (its fifth column is the latest month an onset could be dated), so banking's at-risk set drops only a crisis's onset quarter. With the ESRB's end-of-crisis-management dates and Laeven-Valencia's end years, 162 of the 2558 rows are mid-crisis; without them t80-base's pooled AUC is 0.352 and within-year 0.628. A gap in the target, recorded (bnm bead to follow), not the inversion.
+
+Runs, banking only (`--kinds banking_crisis`; the other twelve kinds copied from t80-base, independent under `--without-relations`), at the integrate branch, one at a time:
+- **t88-off**: t80-base's command. Its banking forecasts must equal t80-base's byte for byte (the off path of every option merged into integrate).
+- **t88-rho0**: the same with banking's frailty at ρ 0 only (`:frailty {:rhos [0.0]}`): a common shock with no persistence carried across origins.
+- **t88-nofrail**: the same without a frailty at banking (`:frailty nil`).
+
+Rule, fixed now: against t80-base, banking year nodes, `bnm.links --folds` (no fold lost with its 90% interval below zero, pooled Brier gain) and the alert table at 4:1. Pooled and within-year AUC reported beside them, not as the rule. A run that passes is a candidate; adoption is the user's decision.
