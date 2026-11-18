@@ -155,7 +155,38 @@
 
 (def reads
   "The reads a declaration may name."
-  #{:value :change :volatility :stretch :turn})
+  #{:value :change :volatility :stretch :turn :filtered})
+
+(defn kalman-level
+  "The causal local-level Kalman filter's estimates of a series' level
+  (xs, oldest first, no nils): each from the values up to it alone. The
+  level's and the noise's variances are estimated from the series' own
+  first differences, for a level plus noise Var(dx) = q + 2r and
+  Cov(dx_t, dx_t-1) = -r (method of moments), r floored at 0 and q at a
+  hundredth of Var(dx); a series too short (under 8 values) or flat is
+  returned as it is. The research's answer to a stock seen through noise
+  (reports, \"Signal detection for crisis forecasting\": state-space
+  filtering of the signal-to-noise)."
+  [xs]
+  (let [xs (vec xs) n (count xs)
+        dx (mapv - (rest xs) xs)
+        nd (count dx)]
+    (if (< n 8)
+      xs
+      (let [md (/ (reduce + dx) nd)
+            v (/ (reduce + (map #(let [d (- % md)] (* d d)) dx)) nd)
+            c1 (/ (reduce + (map (fn [a b] (* (- a md) (- b md))) (rest dx) dx)) (dec nd))
+            r (Math/max 0.0 (- c1))
+            q (Math/max (* 0.01 v) (- v (* 2.0 r)))]
+        (if (<= v 1e-12)
+          xs
+          (loop [i 1 m (double (xs 0)) p (+ q r) out [(double (xs 0))]]
+            (if (= i n)
+              out
+              (let [p- (+ p q)
+                    k (/ p- (+ p- r))
+                    m' (+ m (* k (- (xs i) m)))]
+                (recur (inc i) m' (* (- 1.0 k) p-) (conj out m'))))))))))
 
 (defn- fresh?
   "Whether the latest published period `p` is within :stale months of t."
@@ -175,9 +206,13 @@
     :value (sk/value s t {:stale stale})
     :change (sk/change s t (long arg) {:stale stale})
     :volatility (sk/volatility s t (long arg) {:stale stale})
-    (:stretch :turn)
+    (:stretch :turn :filtered)
     (let [known (sk/known s t)
-          vs (mapv second known)
+          ;; [:filtered [:stretch opts]]: the read on the Kalman-filtered path
+          ;; of the values published by t (`kalman-level`)
+          [kind arg vs] (if (= :filtered kind)
+                          [(first arg) (second arg) (kalman-level (mapv second known))]
+                          [kind arg (mapv second known)])
           i (dec (count vs))]
       (when (and (>= i 0) (fresh? stale t (first (peek known))))
         (case kind
@@ -244,8 +279,9 @@
       (letfn [(walk [e]
                 (if (map? e)
                   (doseq [r (cons (:read e) (some-> (:times e) :read list))]
-                    (when-not (contains? reads (first r))
-                      (throw (ex-info (str "bnm.signals: unknown read " (first r)) {:decl d}))))
+                    (when-not (and (contains? reads (first r))
+                                   (or (not= :filtered (first r)) (#{:stretch :turn} (first (second r)))))
+                      (throw (ex-info (str "bnm.signals: unknown read " (pr-str r)) {:decl d}))))
                   (do (when-not (contains? ops (first e))
                         (throw (ex-info (str "bnm.signals: unknown operator " (first e)) {:decl d})))
                       (when-not (= :fn (first e)) (doseq [a (rest e) :when (or (map? a) (vector? a))] (walk a))))))]

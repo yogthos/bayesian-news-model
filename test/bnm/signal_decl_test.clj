@@ -1,7 +1,8 @@
 (ns bnm.signal-decl-test
   "docs/SIGNALS.md: signals declared as data, read point in time, and a
   node's inputs assembled from the declarations."
-  (:require [bnm.signals :as sg]
+  (:require [augur.math]
+            [bnm.signals :as sg]
             [bnm.stocks :as sk]
             [clojure.test :refer [deftest is testing]]))
 
@@ -111,3 +112,30 @@
       (let [both (merge db (select-keys @#'bnm.signal-decl-test/db [["AAA" "finance/credit"]]))]
         (is (= 55.0 (sg/read-signal both {:name :c :var "finance/credit" :read [:value]} "AAA" (dec-origin 2007))))
         (is (= 0.62 (sg/read-signal both d "AAA" (dec-origin 2001))))))))
+
+(deftest the-filtered-read-recovers-a-latent-path-under-noise
+  ;; an AR(1) latent stock seen through heavy observation noise: the
+  ;; filtered level tracks the latent path closer than the raw values do
+  (let [g (augur.math/rng 5)
+        n 120
+        latent (vec (reductions (fn [b _] (+ (* 0.8 b) (* 0.5 (augur.math/normal! g)))) 0.0 (range (dec n))))
+        obs (mapv #(+ % (* 0.8 (augur.math/normal! g))) latent)
+        f (sg/kalman-level obs)
+        err (fn [xs] (/ (reduce + (map (fn [a b] (let [d (- a b)] (* d d))) (drop 20 xs) (drop 20 latent))) (- n 20)))]
+    (is (= n (count f)))
+    (is (< (err f) (* 0.7 (err obs))) [(err f) (err obs)])
+    (testing "a read at an origin sees only what was published by it: later values do not move it"
+      (let [series (fn [xs] (sk/series (map-indexed (fn [i x] [(+ (* 12 (+ 1900 i)) 11) (+ (* 12 (+ 1900 i)) 17) x]) xs)))
+            d {:name :f :var "v" :read [:filtered [:stretch {:window 10 :min 6}]]}
+            at (+ (* 12 1960) 11)]
+        (is (= (sg/read-signal {["U" "v"] (series (subvec obs 0 62))} d "U" at)
+               (sg/read-signal {["U" "v"] (series obs)} d "U" at)))))
+    (testing "a flat or too short series is returned as it is"
+      (is (= [1.0 1.0 1.0] (sg/kalman-level [1.0 1.0 1.0]))))))
+
+(deftest a-declaration-can-read-the-filtered-path
+  (let [d {:name :fs :var "finance/credit" :read [:filtered [:stretch {:window 10 :min 6}]]}
+        t (dec-origin 2008)
+        vs (mapv second (sk/known (get db ["AAA" "finance/credit"]) t))]
+    (is (= (sg/stretch (sg/kalman-level vs) (dec (count vs)) {:window 10 :min 6})
+           (sg/read-signal db d "AAA" t)))))

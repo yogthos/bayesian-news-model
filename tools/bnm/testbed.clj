@@ -116,11 +116,21 @@
 
 (defn decls
   "The node's signals over the world's stocks, declared as on the data:
-  each stock's stretch, its turn, and its change over a year."
-  [stocks]
-  (let [st {:window 10 :min 6 :cap 5.0 :eps 1e-9}]
-    (vec (for [k stocks [n rd] [["stretch" [:stretch st]] ["turn" [:turn (assoc st :threshold 1.0)]] ["change" [:change 12]]]]
-           {:name (keyword (str k "-" n)) :var k :read rd :domain (keyword k)}))))
+  each stock's stretch, its turn, and its change over a year. `mode`
+  :raw (the default) reads the published values, :filtered their
+  Kalman-filtered path (bnm.signals/kalman-level), :both each, :long
+  the stretch and turn against a long baseline (60 years, at least 10)
+  in place of the ten-year window, so a slow boom is not absorbed into its
+  own baseline."
+  ([stocks] (decls stocks :raw))
+  ([stocks mode]
+   (let [st (if (= :long mode) {:window 60 :min 10 :cap 5.0 :eps 1e-9} {:window 10 :min 6 :cap 5.0 :eps 1e-9})
+         raw (fn [k] [[(str k "-stretch") [:stretch st]] [(str k "-turn") [:turn (assoc st :threshold 1.0)]]])
+         flt (fn [k] [[(str k "-fstretch") [:filtered [:stretch st]]] [(str k "-fturn") [:filtered [:turn (assoc st :threshold 1.0)]]]])]
+     (vec (for [k stocks
+                [n rd] (concat (case mode (:raw :long) (raw k) :filtered (flt k) :both (concat (raw k) (flt k)))
+                               [[(str k "-change") [:change 12]]])]
+            {:name (keyword n) :var k :read rd :domain (keyword k)})))))
 
 (defn spec
   "A lattice spec over world `w`: a year scale over countries, regions and
@@ -130,7 +140,8 @@
   [w extra]
   (let [{:keys [countries regions parent db opts]} w
         {:keys [years stocks]} (merge defaults opts)
-        {:keys [row groups]} (sg/assemble db (decls stocks))
+        ds (decls stocks (:signals opts :raw))
+        {:keys [row groups]} (sg/assemble db ds)
         start (* 12 epoch) end (+ (* 12 (+ epoch years -1)) 11)
         origins (range (+ start 11) (inc end) 12)
         table (into {} (for [t origins c countries] [[c t] (row c t)]))
@@ -138,7 +149,7 @@
         members (fn [place] (cond (= "world" place) countries
                                   (some #{place} regions) (filter #(= place (parent %)) countries)
                                   :else [place]))
-        width (count (decls stocks))]
+        width (count ds)]
     (merge {:scales [{:name :year :per 12 :horizon 12 :discount 0.995}]
             :levels [[:country countries] [:region regions] [:world ["world"]]]
             :parent parent
@@ -255,10 +266,11 @@
         base (cond-> {:scenario (keyword (or (:scenario o) "credit-waves"))}
                (:countries o) (assoc :countries (parse-long (:countries o)))
                (:years o) (assoc :years (parse-long (:years o)))
+               (:signals o) (assoc :signals (keyword (:signals o)))
                (:set o) (assoc :lattice (edn/read-string (:set o))))
         ks [:auc :oracle-auc :within-auc :level-r :log-skill :oracle-log-skill :skill-share :ece :alert-cost :constant-cost :molchan]
         results (vec (for [s seeds] (evaluate (assoc base :seed s))))]
-    (println (str "scenario " (name (:scenario base)) ", seeds " (str/join "," seeds) (when (:lattice base) (str ", lattice " (pr-str (:lattice base))))))
+    (println (str "scenario " (name (:scenario base)) ", signals " (name (:signals base :raw)) ", seeds " (str/join "," seeds) (when (:lattice base) (str ", lattice " (pr-str (:lattice base))))))
     (doseq [k ks]
       (let [xs (keep k results)]
         (println (format "  %-17s mean %+.4f  [%s]" (name k) (/ (reduce + xs) (count xs)) (str/join " " (map #(format "%.3f" %) xs))))))))

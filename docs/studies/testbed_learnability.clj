@@ -7,10 +7,10 @@
 
 (defn- ll [p y] (let [p (Math/max 1e-9 (Math/min (- 1 1e-9) p))] (Math/log (if y p (- 1.0 p)))))
 
-(doseq [scenario [:credit-waves :synchronized :mixed-channels] seed [1 2 3]]
-  (let [w (tb/world {:seed seed :scenario scenario})
+(doseq [mode [:raw :long] scenario [:credit-waves :synchronized] seed [1 2 3]]
+  (let [w (tb/world {:seed seed :scenario scenario :signals mode})
         {:keys [years stocks]} (merge tb/defaults (:opts w))
-        {:keys [row]} (sg/assemble (:db w) (tb/decls stocks))
+        {:keys [row]} (sg/assemble (:db w) (tb/decls stocks mode))
         split (+ tb/epoch (long (* 0.6 years)))
         origins (range (+ (* 12 tb/epoch) 11) (* 12 (+ tb/epoch years -1)) 12)
         table (into {} (for [t origins c (:countries w)] [[c t] (row c t)]))
@@ -31,6 +31,6 @@
         lattice (let [r (lt/run (tb/spec w {}))
                       ps (into {} (for [{:keys [scale place origin p]} (:forecasts r) :when (= :year scale)] [[place (quot (inc origin) 12)] p]))]
                   (tb/score w r))]
-    (println (format "%-15s seed %d  oracle %+.4f  pooled logit %+.4f (share %.2f)  lattice %+.4f (share %.2f)   per row vs climatology"
-                     (name scenario) seed (- oracle clim) (- logit clim) (/ (- logit clim) (- oracle clim))
+    (println (format "%-8s %-15s seed %d  oracle %+.4f  pooled logit %+.4f (share %.2f)  lattice %+.4f (share %.2f)   per row vs climatology"
+                     (name mode) (name scenario) seed (- oracle clim) (- logit clim) (/ (- logit clim) (- oracle clim))
                      (:log-skill lattice) (or (:skill-share lattice) Double/NaN)))))
