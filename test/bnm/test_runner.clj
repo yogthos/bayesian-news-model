@@ -71,6 +71,7 @@
             [bnm.banking-coverage-test]
             [bnm.metrics-gate-test]
             [bnm.late-entry-test]
+            [bnm.testbed-test]
             [bnm.lattice-smoke-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -212,6 +213,7 @@
     bnm.banking-coverage-test
     bnm.metrics-gate-test
     bnm.late-entry-test
+    bnm.testbed-test
     bnm.lattice-smoke-test
     bnm.political-gauges-test
     bnm.reconcile-test
