@@ -68,6 +68,7 @@
             [bnm.signals-test]
             [bnm.signal-decl-test]
             [bnm.named-decl-test]
+            [bnm.banking-coverage-test]
             [bnm.lattice-smoke-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -206,6 +207,7 @@
     bnm.signals-test
     bnm.signal-decl-test
     bnm.named-decl-test
+    bnm.banking-coverage-test
     bnm.lattice-smoke-test
     bnm.political-gauges-test
     bnm.reconcile-test

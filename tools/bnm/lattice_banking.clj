@@ -200,6 +200,47 @@
    :group (vec (range n-own (+ n-own (count leading-names))))
    :named-prior (leading-priors-for mode)})
 
+(def coverage-vars
+  "--banking-coverage's series, loaded only under the option so the off
+  path reads the database it always read."
+  #{"trade/commodity_tot" "energy/fuel_exports_share" "trade/metal_exports_share"
+    "debt/reserves_months" "debt/current_account_gdp" "finance/private_credit_gdp"})
+
+(def coverage-decls
+  "--banking-coverage (bnm-7bh step 1): the year node's signals for every
+  country, declared (docs/SIGNALS.md), with theory's priors [mean variance],
+  sd 0.25, fixed before any run (docs/CALIBRATION.md \"Banking coverage
+  from declared signals\")."
+  (let [p (fn [m] [m 0.0625])
+        tot12 {:var "trade/commodity_tot" :read [:change 12] :stale 6}
+        exporter [:div [:sum-or-zero {:var "energy/fuel_exports_share" :read [:value] :stale 30 :lag 24}
+                                     {:var "trade/metal_exports_share" :read [:value] :stale 30 :lag 24}] 100.0]
+        stretch {:window 10 :min 6 :cap 5.0 :eps 1e-9}
+        credit (fn [rd] {:var "finance/private_credit_gdp" :read rd :stale 30})]
+    [{:name :tot12 :expr tot12 :domain :coverage :sign -1 :prior (p -0.2)}
+     {:name :tot12-x-exporter :expr [:mul tot12 exporter] :domain :coverage :sign -1 :prior (p -0.3)}
+     {:name :tot-vol12 :expr {:var "trade/commodity_tot" :read [:volatility 12] :stale 6} :domain :coverage :sign 1 :prior (p 0.1)}
+     {:name :reserves :expr {:var "debt/reserves_months" :read [:value] :stale 30} :domain :coverage :sign -1 :prior (p -0.2)}
+     {:name :reserves12 :expr {:var "debt/reserves_months" :read [:change 12] :stale 30} :domain :coverage :sign -1 :prior (p -0.2)}
+     {:name :ca-stretch :expr {:var "debt/current_account_gdp" :read [:stretch stretch] :stale 30} :domain :coverage :sign -1 :prior (p -0.2)}
+     {:name :pcredit-stretch :expr (credit [:stretch (assoc stretch :floor-frac 0.02)]) :domain :coverage :sign 1 :prior (p 0.3)}
+     {:name :pcredit-turn :expr (credit [:turn (assoc stretch :floor-frac 0.02 :threshold 1.0)]) :domain :coverage :sign 1 :prior (p 0.3)}
+     {:name :pcredit3 :expr (credit [:change 36]) :domain :coverage :sign 1 :prior (p 0.2)}]))
+
+(defn coverage-wiring
+  "The year node's names, the coverage group's indices and its priors by
+  name, after `n-own` columns of its own."
+  [n-own]
+  (let [{:keys [names named-prior]} (sg/assemble {} coverage-decls)]
+    {:names (into (mapv #(keyword (str "banking-" %)) (range n-own)) names)
+     :group (vec (range n-own (+ n-own (count names))))
+     :named-prior named-prior}))
+
+(defn with-coverage
+  "The year row `own` followed by the coverage signals `cov` reads."
+  [own cov]
+  (fn [u t] (into (vec (own u t)) (cov u t))))
+
 (def quarter-groups
   "The financial inputs of bnm.named in groups (indices among them), and
   the OECD's house prices to incomes and to rents against their own ten
@@ -582,7 +623,7 @@
 
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges]}]
+  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db]}]
   (let [[_ fin] (nm/financial db wc)
         ;; --banking-gauges (bnm-cpv): the world's leading gauges after the
         ;; year node's own columns
@@ -599,9 +640,10 @@
                                (quarter-stretch (get-in quarterly ["oecd_price_rent" u]) q)]))
         raw {:quarter-lead (fn [u t] (into (vec (fin u t)) (valuation u t)))
              :quarter-w2 (fn [u t] (into (vec (fin u t)) (valuation u t)))
-             :year (if lead
-                     (fn [u t] (into (year-raw jst ext cat u t {:dated-credit dated-credit}) (lead u t)))
-                     (fn [u t] (year-raw jst ext cat u t {:dated-credit dated-credit})))
+             :year (cond->> (fn [u t] (year-raw jst ext cat u t {:dated-credit dated-credit}))
+                     lead (#(fn [u t] (into (% u t) (lead u t))))
+                     ;; --banking-coverage (bnm-7bh): the declared signals after the node's own
+                     coverage-db (#(with-coverage % (:row (sg/assemble coverage-db coverage-decls)))))
              :half-decade (fn [u t] (half-raw jst cat u t {:dated-credit dated-credit}))}
         ;; each scale's country gauges at its origins, then standardized by the past
         table (into {} (for [{:keys [name] :as s} scales]
@@ -616,7 +658,9 @@
                     h (history-standardizer lead countries (vec (range n-lead)) start end)]
                 (assoc std :year (fn [t v] (into (own t (subvec v 0 n-own)) (h t (subvec v n-own))))))
               std)
-        wiring (when lead (leading-wiring n-own banking-gauges))
+        n-own (if coverage-db (- n-own (count coverage-decls)) n-own)
+        wiring (cond lead (leading-wiring n-own banking-gauges)
+                     coverage-db (coverage-wiring n-own))
         ;; what is known: named's forecast for the window, as log odds (from
         ;; 2000); an aggregate's, the chance any member has a crisis. nil
         ;; elsewhere, where the node starts from climatology
@@ -651,7 +695,7 @@
      :gauges gauges
      :gauge-width widths
      :gauge-groups {:quarter-lead quarter-groups :quarter-w2 quarter-groups
-                    :year (cond-> year-groups wiring (assoc :leading (:group wiring)))
+                    :year (cond-> year-groups wiring (assoc (if lead :leading :coverage) (:group wiring)))
                     :half-decade half-groups}
      :shrink 0.1
      ;; theory's sign on the contradiction summaries: more strain, more
@@ -747,9 +791,10 @@
   `leading-names`); :wide-credit (with it), the same and house prices for
   the countries outside the panel (`wide-credit-values`; :bank, the credit
   input from the BIS's bank credit); :wdi-editions, WDI's annual series by
-  their archived editions."
+  their archived editions; :banking-coverage, the declared signals of
+  `coverage-decls` at the year node."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables
                            (cond-> {:real-lags real-lags} wdi-editions (assoc :wdi-editions (nm/read-wdi-editions))))
@@ -772,7 +817,12 @@
                                                                          [u (q4-annual s)]))})))]
     (spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
            :known (read-known known-run) :quarterly (read-quarterly) :gauge-std gauge-std :dated-credit dated
-           :banking-gauges banking-gauges}))))
+           :banking-gauges banking-gauges
+           ;; --banking-coverage (bnm-7bh): its series alone, read as the rest are
+           :coverage-db (when banking-coverage
+                          (nm/load-series "data/slow/series.tsv" variables
+                                          (cond-> {:real-lags real-lags :vars coverage-vars}
+                                            wdi-editions (assoc :wdi-editions (nm/read-wdi-editions)))))}))))
 
 (defn -main [& args]
   (let [{:keys [out end without coupling known without-at downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))

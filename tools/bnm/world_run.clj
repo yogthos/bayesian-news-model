@@ -68,7 +68,9 @@
   frailty's mean instead of entering its models; needs --leading-priors
   true and --set's :frailty), --dated-credit true (bnm-9vm option A:
   banking's credit-family inputs from the BIS from the December 2003
-  origin, bnm.lattice-banking/dated-credit-inputs), --banking-gauges
+  origin, bnm.lattice-banking/dated-credit-inputs), --banking-coverage
+  true (bnm-7bh: nine declared signals at banking's year node,
+  bnm.lattice-banking/coverage-decls), --banking-gauges
   true|flat (bnm-cpv: the world's leading gauges at banking's year node,
   at theory's priors or the node's default ones), --wide-credit true
   (with it: the same and house prices for the countries outside the
@@ -649,6 +651,18 @@
   [opts]
   (flag-choice opts :real-lags))
 
+(defn banking-coverage-choice
+  "--banking-coverage true (bnm-7bh step 1, docs/CALIBRATION.md \"Banking
+  coverage from declared signals\"): nine signals declared through
+  bnm.signals at banking's year node (bnm.lattice-banking/coverage-decls).
+  Off by default; not with --banking-gauges (parked), one extra group at a
+  time."
+  [opts]
+  (let [on (flag-choice opts :banking-coverage)]
+    (when (and on (get #{"true" "flat"} (:banking-gauges opts)))
+      (throw (ex-info "bnm.world-run: --banking-coverage and --banking-gauges add one group each; run one" {})))
+    on))
+
 (defn banking-gauges-choice
   "--banking-gauges true|flat (bnm-cpv, docs/LEADING.md \"Banking gauges\"):
   the world's leading gauges at banking's year node, at theory's priors
@@ -903,6 +917,7 @@
                                                                :lead-std (lead-std-choice opts)
                                                                :dated-credit (dated-credit-choice opts)
                                                                :banking-gauges (banking-gauges-choice opts)
+                                                               :banking-coverage (banking-coverage-choice opts)
                                                                :wide-credit (wide-credit-choice opts)
                                                                :fresh-inputs (fresh-inputs-choice opts)
                                                                :wdi-editions (wdi-editions-choice opts)
