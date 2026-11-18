@@ -96,3 +96,18 @@
       (let [{:keys [row names]} (sg/assemble db [{:name :e :expr [:mul c x]} {:name :c :var "finance/credit" :read [:value]}])]
         (is (= [:e :c] names))
         (is (= [35.0 70.0] (row "AAA" t)))))))
+
+(deftest stock-tables-and-engine-states-are-sources
+  ;; bnm.states/read-states' shape: {variable {iso {year value}}}
+  (let [states {"keen/w" {"AAA" (sorted-map 2000 0.6 2001 0.62 2002 0.65)}}
+        db (sg/series-from-annual states {})
+        lagged (sg/series-from-annual states {:lag-years 2})
+        d {:name :w :var "keen/w" :read [:value]}]
+    (is (= 0.62 (sg/read-signal db d "AAA" (dec-origin 2001))) "known at the end of its year")
+    (is (= 0.6 (sg/read-signal db d "AAA" (- (dec-origin 2001) 1))) "not before")
+    (is (= 0.6 (sg/read-signal lagged d "AAA" (dec-origin 2002))) "a table by data year, known two years on")
+    (is (= (- 0.65 0.6) (sg/read-signal db {:name :w2 :var "keen/w" :read [:change 24]} "AAA" (dec-origin 2002))))
+    (testing "merged with the slow table: one db, one way to read"
+      (let [both (merge db (select-keys @#'bnm.signal-decl-test/db [["AAA" "finance/credit"]]))]
+        (is (= 55.0 (sg/read-signal both {:name :c :var "finance/credit" :read [:value]} "AAA" (dec-origin 2007))))
+        (is (= 0.62 (sg/read-signal both d "AAA" (dec-origin 2001))))))))

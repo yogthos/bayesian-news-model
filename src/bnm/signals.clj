@@ -143,6 +143,16 @@
 
 ;; --- signals declared as data (docs/SIGNALS.md) ------------------------------
 
+(defn series-from-annual
+  "{[unit var] series} (bnm.stocks) from an annual table {var {unit {year
+  value}}} (bnm.states/read-states: the stock tables, the coupled engine's
+  states), so a stock-flow model's state is read as any downloaded series:
+  each year's value at December, known at the end of the year :lag-years
+  after it (0)."
+  [table {:keys [lag-years] :or {lag-years 0}}]
+  (into {} (for [[v by-unit] table [u by-year] by-unit]
+             [[u v] (sk/series (for [[y x] by-year] [(+ (* 12 y) 11) (+ (* 12 (+ y lag-years)) 11) (double x)]))])))
+
 (def reads
   "The reads a declaration may name."
   #{:value :change :volatility :stretch :turn})
