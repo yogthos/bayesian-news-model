@@ -646,6 +646,19 @@
     "flat" :flat
     (throw (ex-info (str "bnm.world-run: --banking-gauges takes true, flat or false, not " banking-gauges) {}))))
 
+(defn lead-delay-choice
+  "--lead-delay n (bnm-pjg.6): the leading gauges read n months late
+  (bnm.lattice-political/delayed-lead), the leakage test of the adopted
+  --leading. Needs --leading true; off by default."
+  [{:keys [leading lead-delay]}]
+  (when lead-delay
+    (let [n (parse-long lead-delay)]
+      (when-not (and n (not (neg? n)))
+        (throw (ex-info (str "bnm.world-run: --lead-delay takes a count of months, not " lead-delay) {})))
+      (when-not (= "true" leading)
+        (throw (ex-info "bnm.world-run: --lead-delay delays --leading true's gauges" {})))
+      n)))
+
 (defn dated-credit-choice
   "--dated-credit true (bnm-9vm option A): the banking node's credit,
   mortgage and household credit inputs, and the displacement built from
@@ -890,7 +903,8 @@
                                                                :banking-gauges (banking-gauges-choice opts)
                                                                :wide-credit (wide-credit-choice opts)
                                                                :fresh-inputs (fresh-inputs-choice opts)
-                                                               :wdi-editions (wdi-editions-choice opts)})
+                                                               :wdi-editions (wdi-editions-choice opts)
+                                                               :lead-delay (lead-delay-choice opts)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)
