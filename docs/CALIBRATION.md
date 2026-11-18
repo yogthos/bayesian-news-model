@@ -2870,3 +2870,27 @@ Banking year nodes (`bnm.links --folds`; logs data/runs/logs/run-t93-*.txt):
 - **t93-entry-cov** against t93-entry: every fold within 0.00002: the coverage still adds nothing when it can enter (its group does not reach 0.03 of the weight at 1990, 2006 or 2015).
 - **t93-entry-cov-rho0** against t80-base: t88-rho0's pattern (2007-09 +0.00369 [+0.00018, +0.00691], 2010-12 +0.00254 [+0.00001, +0.00583], 2020-22 -0.00164 [-0.00186, -0.00143] LOSS); against t88-rho0, pooled -0.00017 [-0.00047, +0.00001], log -0.00113. Fails the fold rule. Dec 2006-07 p 0.051 and 0.050 (rates 0.169, 0.146).
 - **Verdict:** none adopted. Late entry is right in principle and removes the lock-out (bnm-1hu), but on banking it changes nothing worth a base change, and the coverage carries nothing through ten-year stretches. The testbed's finding (a ten-year baseline absorbs the boom) is the next test, t94.
+
+## Against a reference that knows only that crises cluster (bnm-3j8)
+
+From reports/Cross domain detection transfer.md (earthquake forecasting, Luen & Stark: a rule that alarms after every large event beats a shuffle at P < 0.001). docs/studies/clustering_reference.clj: at each December origin, a logit refit each year on the rows before it, reading the share of the country's region and of the world with an onset in the two years whose outcomes are known (origins t-24 and t-36). t80-base's year country rows, 2003-2022, log score per row (run less reference) and AUC (run / reference):
+
+| kind | run - reference | AUC |
+|---|---|---|
+| banking crises | **-0.0065** | 0.371 / 0.426 |
+| sovereign defaults | **-0.0064** | 0.517 / 0.570 |
+| inflation crises | +0.0013 | 0.704 / 0.490 |
+| currency crises | +0.0124 | 0.693 / 0.443 |
+| coups | +0.0131 | 0.764 / 0.607 |
+| war onsets | +0.0193 | 0.866 / 0.613 |
+| protest surges | +0.0206 | 0.785 / 0.684 |
+| violence surges | +0.0338 | 0.719 / 0.640 |
+| fiscal consolidations | +0.0374 | 0.553 / 0.390 |
+| conflict onsets | +0.0446 | 0.842 / 0.712 |
+| growth collapses | +0.0616 | 0.634 / 0.442 |
+| market crashes | +0.0670 | 0.755 / 0.391 |
+| food price shocks | +0.0964 | 0.664 / 0.343 |
+
+Banking and sovereign defaults lose to it: both financial, both with a level against the rate. Every other kind beats it.
+
+**Banking: target or pipeline** (docs/studies/banking_credit_check.clj). On the lattice's own banking year rows and labels at JST's 18 countries, a logit on the published JST row's credit stretch and three-year credit growth, refit each year on rows whose outcomes are known (three years after the origin): 1990-2002 AUC 0.805 (lattice 0.501), 2003-2020 AUC 0.699 and log skill against climatology +0.0227 (lattice 0.367 and -0.0509); on JST's own crisis flags the same (0.701 / 0.316). The labels mostly agree (1990-2020: 38 lattice onsets, 30 JST, 26 both). The lattice reads these very inputs (its year gauge for credit is JST's stretch of the year before, Spearman 1.00 at every December checked, without --dated-credit), and the groups that read them hold most of the weight. So the target and the inputs are not the fault: the lattice loses the signal between its inputs and its forecast. Under --dated-credit the gauge follows the BIS from 2003 (Spearman 0.58-0.83 with JST's stretch, some countries opposite in sign: BIS credit from all lenders against JST's bank loans), but the inversion predates it (t71-stack's pooled AUC 0.379).
