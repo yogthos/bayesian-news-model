@@ -969,7 +969,7 @@
                                                         (placebo-source (filter #(= 3 (count %)) (mapcat (comp keys :from) (vals cats))))
                                                         identity)
                                                       {:warning (get warn k) :states (get chosen k)}))
-                              (= "true" smoke) (assoc :trace :inputs))]))
+                              (or (= "true" smoke) (:trace-groups opts)) (assoc :trace :inputs))]))
         ;; the runner owns the books atom the relations read
         _ (println "running the world")
         edges (vec (for [[[j k] _] graph :when (and (contains? (set ks) j) (contains? (set ks) k))] [j k]))
@@ -1007,6 +1007,16 @@
         (System/exit (if (every? empty? (vals fails)) 0 1)))
       (do
         (doseq [[k r] finished] (write-kind (str dir "/" k) k r))
+        ;; --trace-groups FILE (bnm-ris): each group's issued predictive at the
+        ;; year country nodes, kind place origin group f q (log odds and their
+        ;; variance as the averaging scores them)
+        (when-let [f (:trace-groups opts)]
+          (with-open [w (io/writer f)]
+            (doseq [[k r] finished
+                    {:keys [scale level place origin lp]} (:trace r)
+                    :when (and (= :year scale) (= :country level) lp)
+                    [g {fl :f q :q}] (sort-by key lp)]
+              (.write w (str k "\t" place "\t" origin "\t" (name g) "\t" fl "\t" q "\n")))))
         ;; --regime (bnm-56c.40): the family's path at the year origins, year x pi
         (doseq [[k sp] specs :let [at (get-in sp [:regime :year :at])] :when at]
           (with-open [w (io/writer (str dir "/" k "/regime.tsv"))]

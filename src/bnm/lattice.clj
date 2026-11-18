@@ -2131,7 +2131,7 @@
                                             (cond-> {:scale scale :level level :place place :origin t :reads reads
                                                      :learned (map #(select-keys % [:known-at]) ready)}
                                               (= :inputs (:trace spec)) (assoc :x x :p p :o o)
-                                              (and (= :inputs (:trace spec)) (= :issue (:evidence-at spec))) (assoc :lp issued))))
+                                              (and (= :inputs (:trace spec)) (#{:issue :issue-joint} (:evidence-at spec))) (assoc :lp issued))))
                       trace)])))
                [st forecasts weights trace]
                (for [s due level-ix (range (count levels))] [s level-ix]))
