@@ -722,6 +722,29 @@
                           (every? (fn [x] (every? #(let [v (nth x %)] (or (nil? v) (zero? (double v)))) own)) xs))]
            g))))
 
+(defn late-entry-choice
+  "The spec's :late-entry (bnm-1hu): nil, a group's record runs from the
+  node's start (its dormant periods as the intercept's); :prior, a group
+  enters at its prior share the first time it is live."
+  [spec]
+  (let [v (:late-entry spec)]
+    (when-not (contains? #{nil :prior} v)
+      (throw (ex-info "bnm.lattice: :late-entry takes :prior" {:late-entry v})))
+    v))
+
+(defn enter-weights
+  "Weights `w` with the groups `fresh` set to their prior shares (`prior`
+  {group share}, or equal shares when nil) and the others scaled so the
+  whole sums to one."
+  [w fresh prior]
+  (let [n (count w)
+        share (fn [g] (double (if prior (get prior g) (/ 1.0 n))))
+        fresh (set fresh)
+        given (reduce + 0.0 (map share fresh))
+        rest-sum (reduce + 0.0 (for [[g v] w :when (not (fresh g))] (double v)))
+        scale (if (pos? rest-sum) (/ (- 1.0 given) rest-sum) 0.0)]
+    (into {} (for [[g v] w] [g (if (fresh g) (share g) (* scale (double v)))]))))
+
 (defn live-weights
   "Model-averaging weights `w` with the `out` groups at 0 and the rest
   renormalized; `w` as it is when nothing else carries weight."
@@ -1955,8 +1978,18 @@
                        ;; out of this period's forecasts, weight 0, the others renormalized;
                        ;; the averaging keeps its record, so it comes back when its source
                        ;; resumes
-                       live (let [out (dormant (layout spec scale level-ix) (get-in spec [:core scale]) (map :x seen))]
-                              (if (seq out) (assoc model :w (live-weights (d/weights model) out)) model))
+                       out (dormant (layout spec scale level-ix) (get-in spec [:core scale]) (map :x seen))
+                       ;; :late-entry :prior (bnm-1hu): a group live for the first time at a
+                       ;; node that has issued before enters at its prior share, not with the
+                       ;; intercept-only record it carried while dormant
+                       fresh (when (= :prior (late-entry-choice spec))
+                               (when-let [ent (get-in st [:entered k])]
+                                 (seq (remove (into ent out) (keys (d/weights model))))))
+                       model (if fresh (assoc model :w (enter-weights (d/weights model) fresh (:prior model))) model)
+                       st (if (late-entry-choice spec)
+                            (update-in st [:entered k] (fnil into #{}) (remove out (keys (d/weights model))))
+                            st)
+                       live (if (seq out) (assoc model :w (live-weights (d/weights model) out)) model)
                        state-of (when-not fo? (state-fn spec))
                        made (vec (for [{:keys [place x os] :as e} seen
                                        :let [one? (= 1 (count os))

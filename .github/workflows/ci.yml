@@ -13,11 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install jolt
         run: ci/install-jolt.sh "$JOLT_VERSION" x86_64-linux
       - name: Cache git dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.gitlibs
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install jolt
         run: ci/install-jolt.sh "$JOLT_VERSION" x86_64-linux
       - name: Install jolt-metrics
@@ -43,7 +43,7 @@ jobs:
       - name: Markdown report for review
         if: always()
         run: jolt-metrics . metrics-report.md --no-git --top 40
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: metrics-report
