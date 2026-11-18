@@ -2902,3 +2902,24 @@ t94-off's banking forecasts equal t80-base's byte for byte. Banking year nodes a
 - **t94-long60-entry**: pooled -0.00024 [-0.00052, -0.00004] LOSS, 2010-12 -0.00103 LOSS; within-year 0.713, pooled 0.352.
 - **t94-long60-entry-rho0**: 2007-09 +0.00351 [+0.00017, +0.00665], 2020-22 -0.00163 [-0.00193, -0.00135] LOSS; pooled AUC 0.566, within-year 0.667; against t88-rho0 pooled -0.00066 [-0.00127, -0.00020] LOSS (2010-12 -0.00274). Calibration still inverted at the top (decile 10: p 0.088, rate 0.031). Dec 2006-07 p 0.051, 0.050.
 - **Verdict:** none adopted. The long baseline restores the ranking within years, as planted, but no setting moves banking's proper scores: the lattice's combination loses what its groups read (bnm-ris; next, t95's trace of each group's issued forecast).
+
+### Where the banking signal is lost: each group's own forecast (t95-trace, bnm-ris)
+
+t95-trace is t80-base's command with `--trace-groups` (b56812b): its banking forecasts equal t80-base's byte for byte, and each group's issued predictive at the year country node is written out (docs/studies/banking_groups.py). Within-year AUC at JST's 18 countries (pooled AUC mixes the level, which every group shares through the frailty and the climatology: the base model's p is one value across countries at each origin):
+
+| group | 1980-2002 | 2003-2022 | mean weight 1980-2002 |
+|---|---|---|---|
+| booms (three-year credit growth) | **0.727** | 0.609 | 0.151 |
+| stretches (credit, mortgages, house prices) | **0.701** | 0.493 | 0.148 |
+| funding | 0.672 | 0.498 | 0.055 |
+| household | 0.648 | 0.544 | 0.015 |
+| invariants | 0.624 | 0.679 | 0.014 |
+| bank equity | 0.540 | 0.600 | **0.277** |
+| fiscal | 0.514 | 0.395 | **0.132** |
+| external | 0.471 | 0.514 | **0.099** |
+| combined | 0.540 | 0.577 | |
+
+The combined forecast's within-JST AUC is 0.540-0.609 in every run (t65-gauges, t71-stack, t79-bis, t80-base, t88-rho0, t94-long60), before and after the splice.
+
+1. **The averaging does not weigh what the groups know.** In 1980-2002 the groups that read credit rank JST's countries at 0.70-0.73, the plain logit's level, and carry 0.15 each; bank equity (0.54), fiscal (0.51) and external (0.47) carry 0.51 between them. A group's weight is its evidence pooled over every country at the node, about 130, and the groups that read JST's dimensions differ from the intercept only at JST's 18: elsewhere their inputs are missing (the mean, 0), so their record there is the intercept's and the evidence that separates them is diluted by the rows they cannot see. The cross-sectional twin of the lock-out (bnm-1hu): a group should be judged where it has data.
+2. **The splice degrades the credit stretch from 2003.** Under --dated-credit the stretches group's within-JST AUC falls from 0.701 to 0.493 (the gauge follows the BIS's credit from all lenders, Spearman 0.58-0.83 with JST's bank loans' stretch); booms holds better (0.609). The BIS's bank credit (`read-bank-credit`, JST's concept) is the matching series for the splice.
