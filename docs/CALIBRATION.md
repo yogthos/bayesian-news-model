@@ -1610,3 +1610,5 @@ Alerts at 4:1: banking cost 0.132 → 0.138, Δ -0.0066 [-0.0203, +0.0059]. The 
 4. **The flat run loses the same way.** The loss is not the priors: wiring world gauges into banking's frailty is what lowers the level and spreads the weights.
 
 The miss at 2006-07 stays where "Dated credit for banking" left it: a level of 0.02 from two quiet decades. A world gauge in the frailty mean does not lift it, because the slopes must be learned from the 1990-92 and 1997-98 waves, where these gauges lag the crises.
+
+Parked 18 November 2026 by the user's decision. `--banking-gauges` stays off by default and in the code; banking's 2006-07 miss is a recorded gap.
