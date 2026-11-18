@@ -43,3 +43,11 @@ A missing read is nil; the node's standardizer reads nil as its mean (0), as eve
 4. Engine emits as a source (`:module` in place of `:var`), so a stock-flow model's state is read the same way as a downloaded series.
 
 Not moved: macrohistory's JST pipeline (the panel's own splices and dated inputs) stays as it is until step 3 reaches it; the lattice core's incremental standardizer (its state is threaded through bnm.lattice/step) and bnm.tension/zscore (its mean includes the value scored) are different transforms and keep their own code.
+
+## Progress (18 November 2026)
+
+- **Transforms** (ecddeed): bnm.signals' stretch, z-against, aggregate, running-z and history-standardizer replace the copies in bnm.invariants, bnm.precursors and lattice-banking (stretch-at, quarter-stretch, the gauge standardizer, the leading gauges' history standardizer). signals_test: 13,194 assertions, bit for bit.
+- **Declarations** (aed747d, 8eb5932): reads (value, change, volatility, stretch, turn, lagged), exposures, and operators (mul, minus, div, neg, min, max, sum-or-zero, mean-of, fn for a quantity across countries).
+- **bnm.named's builders moved** (acc31b1, 8eb5932, 935a6a5): leading, financial, terms-of-trade, fx, structure, political, political-economy (under each staleness override), institutions, youth. named_decl_test checks each against its hand-built reader on the slow table, every country and quarter end from 1985 or 1990: 341,292 assertions, equal.
+- **Sources** (dcb10ec): `series-from-annual` reads bnm.states' tables (the stock tables, the coupled engine's states) as the slow table's series.
+- **Still hand-built**: bnm.named's nonlinear, regime and leaders (quantile hinges across countries, election calendars), the event-stream loaders (counts, mix, ties, calm, sync, breaks, departure); lattice-banking's year-raw and extended-table (JST, PWT, WID tables, not series); the political year rows (bnm.political-gauges). The JST, PWT and WID tables can move the same way once read as series (series-from-annual's shape), each move gated by the base's reproduction.
