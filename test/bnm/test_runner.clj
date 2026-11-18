@@ -107,6 +107,7 @@
             [bnm.ledger-test]
             [bnm.engine-test]
             [bnm.regime-test]
+            [bnm.regime-filter-test]
             [bnm.modules-world3-test]
             [bnm.modules-stocks-test]
             [bnm.control-test]
@@ -231,6 +232,7 @@
     bnm.watchlist-test
     bnm.engine-test
     bnm.regime-test
+    bnm.regime-filter-test
     bnm.modules-world3-test
     bnm.modules-stocks-test
     bnm.control-test

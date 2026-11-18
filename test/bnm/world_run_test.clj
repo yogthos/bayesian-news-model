@@ -312,3 +312,27 @@
       (is (= {:frailty {}} (out "coup")))
       (is (= specs (wr/with-frailty-gauges specs false)))
       (is (thrown? Exception (wr/with-frailty-gauges {"market_crash" {:gauge-names {:year [:baa12]}}} true)) "needs the frailty"))))
+
+(deftest bnm-56c-40-regime-option
+  (is (false? (wr/regime-choice {})))
+  (is (true? (wr/regime-choice {:regime "true"})))
+  (is (thrown? Exception (wr/regime-choice {:regime "yes"})))
+  (let [scales [{:name :quarter-lead :per 3 :offset 3 :horizon 9} {:name :year :per 12 :offset 0 :horizon 24}]
+        sp {:frailty {} :scales scales :start (* 12 1980) :end (+ 11 (* 12 2000))}
+        ;; the gauges unread before 1985, then calm but for a stress reading in 1998
+        lead-f (fn [_ t] (let [y (quot t 12)]
+                           (if (< y 1985) [nil nil nil nil] [(if (= y 1998) 3.0 0.1) 1.0 (if (= y 1998) 3.0 0.1) 0.2])))
+        specs {"market_crash" sp "food_price_shock" sp "banking_crisis" sp "coup" sp}
+        out (wr/with-regime specs true lead-f)]
+    (testing "the kinds of regime-sets take the year node's regime, the others nothing"
+      (is (= #{"market_crash" "food_price_shock" "banking_crisis"} (set (filter #(get-in out [% :regime]) (keys out)))))
+      (is (= sp (out "coup")))
+      (is (= [1.0 0.25] (get-in out ["market_crash" :regime :year :prior])))
+      (is (= [0.5 0.25] (get-in out ["food_price_shock" :regime :year :prior]))))
+    (testing "read at December origins; unread gauges leave the stationary law (x 0), a stress reading raises it"
+      (let [at (get-in out ["market_crash" :regime :year :at])]
+        (is (nil? (at (* 12 1990))))
+        (is (< (Math/abs (double (first (at (+ 11 (* 12 1984)))))) 1e-12))
+        (is (> (second (at (+ 11 (* 12 1998)))) 0.9))))
+    (is (= specs (wr/with-regime specs false nil)))
+    (is (thrown? Exception (wr/with-regime {"market_crash" (dissoc sp :frailty)} true lead-f)) "needs the frailty")))

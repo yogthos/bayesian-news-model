@@ -272,8 +272,11 @@
   t; capped at 5, 0 for a missing value. A column is read once it has 20
   quarter ends of history: the node's standardizer counts rows, so a
   world gauge, one value per origin repeated at every country, was
-  standardized against two or three origins."
-  [lead-f units ix from end]
+  standardized against two or three origins. `missing` (0.0 by default) is
+  what an unread value, or one with too short a history, reads as: the
+  regime filter (bnm-56c.40) takes nil, so it drops out."
+  ([lead-f units ix from end] (history-standardizer lead-f units ix from end 0.0))
+  ([lead-f units ix from end missing]
   (let [w (count ix)
         ts (range (+ from (mod (- 2 from) 3)) (inc end) 3)
         stats (loop [[t & more] ts n (double-array w) mu (double-array w) ss (double-array w) q (long-array w) acc (sorted-map)]
@@ -298,8 +301,8 @@
                  (let [sd (Math/sqrt (/ (aget ss j) (aget n j)))]
                    (if (> sd (Math/max 1e-9 (* 1e-8 (Math/abs (aget mu j)))))
                      (Math/max -5.0 (Math/min 5.0 (/ (- x (aget mu j)) sd)))
-                     0.0))
-                 0.0)))))))
+                     missing))
+                 missing))))))))
 
 (defn leading-sets-for
   "`leading-sets`, with the second food set when `food2`."

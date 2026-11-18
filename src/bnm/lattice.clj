@@ -833,10 +833,13 @@
     (when-not (map? f)
       (throw (ex-info "bnm.lattice: :frailty takes a map of :rhos :sds :from :prior" {:frailty f})))
     (when-let [bad (seq (remove #{:rhos :sds :from :prior :penalty :level-sds :level-penalty :exposure-sds :exposure-penalty
-                                  :source :cross :gauges :gauges-from :centre} (keys f)))]
+                                  :source :cross :gauges :gauges-from :centre :regime-penalty} (keys f)))]
       (throw (ex-info (str "bnm.lattice: :frailty names no option " (vec bad)) {:frailty f})))
     (when-not (contains? #{nil :odds :rate} (:centre f))
       (throw (ex-info "bnm.lattice: :frailty :centre takes :odds or :rate" {:centre (:centre f)})))
+    (when-let [rp (:regime-penalty f)]
+      (when-not (and (number? rp) (<= 0.0 (double rp)))
+        (throw (ex-info "bnm.lattice: :frailty :regime-penalty takes nats of at least 0" {:regime-penalty rp}))))
     (when (and (keyword? (:sds f)) (not= :wide (:sds f)))
       (throw (ex-info "bnm.lattice: :frailty :sds takes sds of at least 0, or :wide" {:sds (:sds f)})))
     (let [c (cond-> (merge frailty-defaults f) (= :wide (:sds f)) (assoc :sds frailty-wide-sds))
@@ -932,6 +935,34 @@
        :ix (mapv #(inc (long (pos %))) ns)
        :b0 (mapv #(double (first (np %))) ns)
        :bv (mapv #(double (second (np %))) ns)})))
+
+;; --- bnm-56c.40, recursive step 5b: the regime state's loading on the level ---
+
+(defn regime-params
+  "The regime layer at `scale` (bnm-56c.40, docs/RECURSIVE.md step 5b): the
+  spec's {:regime {scale {:at (fn [t]) -> [x pi] :prior [delta0 v]}}}, x the
+  world family's stress loading at origin t (bnm.regime-filter/reader),
+  delta its coefficient, a static state appended to the frailty's vector
+  with its theory prior. {:at :d0 :dv :price}, or nil. Only under
+  :frailty, :prior :own, with no level or slope."
+  [spec fcfg scale]
+  (when-let [{:keys [at prior] :as r} (get-in spec [:regime scale])]
+    (when-not fcfg
+      (throw (ex-info "bnm.lattice: :regime needs :frailty" {:scale scale})))
+    (when-not (and (fn? at) (sequential? prior) (= 2 (count prior)) (every? number? prior) (pos? (double (second prior))))
+      (throw (ex-info "bnm.lattice: :regime takes {scale {:at (fn [t]) :prior [mean variance]}}" {:scale scale :regime (dissoc r :at)})))
+    (when-not (= :own (:prior fcfg))
+      (throw (ex-info "bnm.lattice: :regime goes with :frailty :prior :own" {:prior (:prior fcfg)})))
+    (when (or (:level? fcfg) (:exposure? fcfg))
+      (throw (ex-info "bnm.lattice: :regime takes no level or slope" {})))
+    (when-not (some #(pos? (double (:sd %))) (:grid fcfg))
+      (throw (ex-info "bnm.lattice: :regime needs an sd above 0 in :sds" {})))
+    {:at at :d0 (double (first prior)) :dv (double (second prior)) :price (double (:regime-penalty fcfg 2.0))}))
+
+(defn- regime-x
+  "The regime loading at t, 0 where the reader has none."
+  ^double [rp t]
+  (double (or (first ((:at rp) t)) 0.0)))
 
 (def hermite-fine
   "Twenty-point Gauss-Hermite for the standard normal: a frailty state of
@@ -1073,19 +1104,31 @@
   of 0 are left out."
   ([cfg] (frailty-fresh cfg false nil))
   ([cfg cross?] (frailty-fresh cfg cross? nil))
-  ([{:keys [grid width]} cross? gp]
-  {:cands (mapv (fn [{:keys [sd lsd usd] :as g}]
+  ([cfg cross? gp] (frailty-fresh cfg cross? gp nil))
+  ([{:keys [grid width]} cross? gp rp]
+  (let [grid (cond->> (if cross? grid (vec (remove :cross grid)))
+               gp (filterv #(pos? (double (:sd %)))))
+        ;; bnm-56c.40, :regime: every candidate with an sd above 0 repeated
+        ;; with delta, the regime's loading, after those without it (a tie
+        ;; keeps the layer off), paying the regime's price
+        grid (if rp
+               (into grid (for [g grid :when (pos? (double (:sd g)))]
+                            (-> g (assoc :regime true) (update :price + (double (:price rp))))))
+               grid)]
+  {:cands (mapv (fn [{:keys [sd lsd usd regime] :as g}]
                   (cond
                     ;; a slope on exposure or the gauges' loadings: the joint
                     ;; state as a vector and its variance
-                    (or usd gp) (let [g (cond-> g gp (assoc :b0 (:b0 gp) :bv (:bv gp)))]
-                                  (merge (assoc g :t nil :score 0.0) (slope-fresh g width)))
+                    (or usd gp regime) (let [g (cond-> g
+                                                 gp (assoc :b0 (:b0 gp) :bv (:bv gp))
+                                                 regime (-> (update :b0 (fnil conj []) (:d0 rp))
+                                                            (update :bv (fnil conj []) (:dv rp))))]
+                                         (merge (assoc g :t nil :score 0.0) (slope-fresh g width)))
                     :else (cond-> (assoc g :m 0.0 :v (* sd sd) :t nil :score 0.0)
                             ;; the level starts at 0, known: the base's level is the start
                             lsd (assoc :lm 0.0 :lv 0.0 :c 0.0))))
-                (cond->> (if cross? grid (vec (remove :cross grid)))
-                  gp (filterv #(pos? (double (:sd %))))))
-   :filtered (sorted-map)}))
+                grid)
+   :filtered (sorted-map)})))
 
 (defn- vec-cand?
   "Whether a candidate's state is a vector: a slope on exposure or the
@@ -1201,9 +1244,11 @@
   (bnm-v1y)."
   ([c e] (slope-load c e nil))
   ([{:keys [lsd b0]} e g]
-   (when (and b0 (not= (count b0) (count g)))
+   ;; under :regime (bnm-56c.40) the origin's loadings are the gauges then
+   ;; the regime's x: a candidate without delta reads the gauges alone
+   (when (and b0 (not (<= (count b0) (count g) (inc (count b0)))))
      (throw (ex-info "bnm.lattice: :frailty :gauges read at the wrong width" {:want (count b0) :got (count g)})))
-   (vec (concat [1.0] (when lsd [1.0]) (map double e) (when b0 (map double g))))))
+   (vec (concat [1.0] (when lsd [1.0]) (map double e) (when b0 (map double (take (count b0) g)))))))
 
 (defn- slope-half
   "Half the stationary variance of the place's shift: what the shift
@@ -1347,7 +1392,9 @@
                                                          exposure? (assoc :usd (double (:usd pick 0.0))
                                                                           :u (:u pick) :u-v (:u-v pick))
                                                          ;; the gauges' loadings and the origin's gauges
-                                                         (:b0 pick) (assoc :beta (:beta pick) :beta-v (:beta-v pick) :g (:g (first rows))))))))
+                                                         (:b0 pick) (assoc :beta (:beta pick) :beta-v (:beta-v pick) :g (:g (first rows)))
+                                                         ;; bnm-56c.40: whether delta is chosen (beta's last), the origin's x
+                                                         (some :regime cands) (assoc :regime (boolean (:regime pick)) :rx (last (:g (first rows)))))))))
           fr (sort-by key (group-by :origin (filter :informed ready))))))
 
 (defn frailty-prior
@@ -1435,7 +1482,7 @@
       ;; is read from it with the place's exposures (`frailty-at`), and the
       ;; origin's gauges (bnm-v1y)
       (let [[mu P] (nth zc ci)]
-        (cond-> {:mu mu :P P :cand (select-keys pick [:rho :sd :lsd :usd :b0]) :rho (:rho pick) :sd (:sd pick) :zc zc}
+        (cond-> {:mu mu :P P :cand (select-keys pick [:rho :sd :lsd :usd :b0 :regime]) :rho (:rho pick) :sd (:sd pick) :zc zc}
           rate? (assoc :centre :rate)))
       (let [[m v vz rm rv] (nth zc ci)]
         (cond-> {:m m :v v :rho (:rho pick) :sd (:sd pick) :zc zc}
@@ -1694,8 +1741,10 @@
                        cross? (boolean (and src (finer? spec src scale)))
                        ;; bnm-v1y, :frailty :gauges: the world gauges that set the shock's mean here
                        gp (when fcfg (frailty-gauges spec scale))
+                       ;; bnm-56c.40, :regime: the world family's stress loading at t
+                       rp (regime-params spec fcfg scale)
                        st (if fcfg
-                            (assoc-in st [:frailty k] (frailty-learn (cond-> fcfg gp (assoc :from (:gauges-from fcfg))) (or (get-in st [:frailty k]) (frailty-fresh fcfg cross? gp)) ready (:per scale-spec)))
+                            (assoc-in st [:frailty k] (frailty-learn (cond-> fcfg gp (assoc :from (:gauges-from fcfg))) (or (get-in st [:frailty k]) (frailty-fresh fcfg cross? gp rp)) ready (:per scale-spec)))
                             st)
                        zprior (when fcfg
                                 (frailty-prior fcfg (get-in st [:frailty k])
@@ -1809,7 +1858,10 @@
                        seen (if gp
                               (mapv (fn [e] (update e :x (fn [x] (reduce #(assoc %1 %2 0.0) x (:ix gp))))) seen)
                               seen)
-                       zprior (if gp (assoc zprior :g gt) zprior)
+                       ;; bnm-56c.40: the regime's loading after the gauges, at every
+                       ;; candidate's rows (a candidate without delta reads the gauges alone)
+                       gt (if rp (conj (or gt []) (regime-x rp t)) gt)
+                       zprior (if (or gp rp) (assoc zprior :g gt) zprior)
                        ;; a group with no input anywhere at t (its source ended, a signal
                        ;; gone stale, errors not yet known) reads the unknown's mean, 0, at
                        ;; every place: an intercept-only model under another name. It drops
@@ -1913,7 +1965,7 @@
                                                            (for [{:keys [place x o os p target ref issued clim frailty ez]} made :when target
                                                                  :let [ist (d/issue-state model)]]
                                                              (cond-> {:place place :origin t :x x :o o :p (if ref (:p ref) p) :y (:y target) :known-at (:known-at target)
-                                                                      :regime-at-issue nil}
+                                                                      :regime-at-issue (when rp (second ((:at rp) t)))}
                                                                issued (assoc :lp issued)
                                                                ;; bnm-e1y: the models' state at issue, for the
                                                                ;; origin's joint issued predictive

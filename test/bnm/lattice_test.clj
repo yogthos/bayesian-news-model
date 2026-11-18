@@ -3,6 +3,7 @@
             [augur.hier]
             [augur.math :as m]
             [bnm.lattice :as lt]
+            [bnm.regime-filter :as rf]
             [bnm.world-term :as wt]
             [clojure.test :refer [deftest is testing]]))
 
@@ -2528,3 +2529,135 @@
       (let [r (pool-world {:n 30} (rate pooled))]
         (is (finite? r))
         (is (< (beta-v r) 0.0625))))))
+
+;; --- bnm-56c.40, recursive step 5b: the regime state sets the level ---
+
+(def ^:private chain1
+  "A one-gauge chain with the financial family's transitions."
+  {:p-cc 0.85 :p-ss 0.6 :signs [1.0] :r 0.5})
+
+(defn- regime-world
+  "`n` places, year origins from month 11, each year window known 24 months
+  after its origin. A calm/stress chain S_y (chain1's transitions; with
+  `regime?` false, calm always) moves every place's log odds by d S_y, and a
+  transient (sd 0.3) moves them too. A world gauge read at the origin is a
+  noisy emission of S_y (chain1's: the regimes two within-regime sds apart;
+  without a regime, pure noise of sd 1). A place input ranks the places
+  (1.2 per sd). With `cut` (a year) the gauge and the outcomes from it on
+  are redrawn from `seed2`. `extra` merged into the spec; under `:regime-on`
+  the regime layer reads the gauge through bnm.regime-filter."
+  [{:keys [n seed seed2 d regime? cut yrs regime-on gauges? models]
+    :or {n 120 seed 5 d 2.0 regime? true yrs 60 gauges? true models #{:base :world :place}}} extra]
+  (let [draw (fn [sd]
+               (let [rg (m/rng sd)
+                     {:keys [pbar sw delta]} (rf/emission chain1)
+                     s (vec (reductions (fn [s _] (if-not regime? 0
+                                                    (let [u (m/next-double! rg)]
+                                                      (if (= 1 s) (if (< u 0.6) 1 0) (if (< u 0.15) 1 0)))))
+                                        0 (range (dec yrs))))
+                     g (mapv (fn [s] (if regime?
+                                       (+ (if (= 1 s) (* (- 1.0 pbar) delta) (- (* pbar delta))) (* sw (m/normal! rg)))
+                                       (m/normal! rg)))
+                             s)
+                     e (vec (repeatedly yrs #(* 0.3 (m/normal! rg))))
+                     u (vec (repeatedly (* n yrs) #(m/next-double! rg)))]
+                 {:s s :g g :e e :u u}))
+        a (draw seed)
+        b (when cut (draw seed2))
+        pick (fn [k y] (if (and cut (>= y cut)) ((b k) y) ((a k) y)))
+        places (mapv #(str "P" %) (range n))
+        r (zipmap places (repeatedly n (let [rg (m/rng (+ 1000 seed))] #(m/normal! rg))))
+        ix (zipmap places (range))
+        yr (fn [t] (quot (inc t) 12))
+        y-of (fn [c y] (< (if (and cut (>= y cut)) ((:u b) (+ (* n y) (ix c))) ((:u a) (+ (* n y) (ix c))))
+                          (m/expit (+ -1.8 (* d (pick :s y)) (pick :e y) (* 1.2 (r c))))))
+        origins (range 11 (- (* 12 yrs) 12) 12)
+        reader (rf/reader chain1 origins (fn [t] [(pick :g (yr t))]) 1.0)]
+    (lt/run (merge {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
+                    :levels [[:country places]]
+                    :parent {} :start 0 :end (- (* 12 yrs) 13) :forget 0.995
+                    :target (fn [_ place t] {:y (y-of place (yr t)) :known-at (+ t 24)})
+                    :gauges (fn [_ place t] [(pick :g (yr t)) (r place)])
+                    :gauge-width {:year 2}
+                    :gauge-groups {:year {:world [0] :place [1]}}
+                    :gauge-names {:year [:g :r]}
+                    :named-prior {:year {:g [0.5 0.0625]}}
+                    :only models
+                    :shrink 0.1
+                    :flow-std-from :resolved :discount-from :data :clim-learn :current
+                    :evidence-at :issue-joint
+                    :frailty (cond-> {:rhos [0.0 0.5] :sds [0.0 0.25 0.5 1.0]}
+                               gauges? (assoc :gauges {:year [:g]} :gauges-from :place))}
+                   (when regime-on {:regime {:year {:at reader :prior [1.0 0.25]}}})
+                   extra))))
+
+(defn- regime-late-log [r] (log-score (filter #(>= (:origin %) 239) (:forecasts r))))
+
+(defn- by-regime
+  "Mean issued p and realized rate at the origins from year 20 whose window
+  is (1) or is not (0) in stress, in the world of `w`."
+  [r w stress?]
+  (let [rg (m/rng (:seed w 5))
+        ;; the chain as regime-world draws it, first
+        s (vec (reductions (fn [s _] (let [u (m/next-double! rg)] (if (= 1 s) (if (< u 0.6) 1 0) (if (< u 0.15) 1 0))))
+                           0 (range (dec (:yrs w 60)))))
+        fs (filter #(and (>= (:origin %) 239) (= (if stress? 1 0) (s (quot (inc (:origin %)) 12))) (some? (:y %))) (:forecasts r))]
+    [(/ (reduce + (map :p fs)) (count fs)) (/ (count (filter :y fs)) (double (count fs)))]))
+
+(deftest bnm-56c-40-the-regime-raises-the-level-within-the-lag
+  (let [w {}
+        frail (regime-world (assoc w :gauges? false :models #{:base :place}) {})
+        frail-r (regime-world (assoc w :gauges? false :models #{:base :place} :regime-on true) {})
+        stack (regime-world w {})
+        stack-r (regime-world (assoc w :regime-on true) {})
+        [lf lfr ls lsr] (map regime-late-log [frail frail-r stack stack-r])]
+    (testing "with no gauge anywhere (banking's node): the frailty alone cannot move within the lag, the regime layer does"
+      (is (> lfr (+ lf 0.01)) [lfr lf])
+      (let [[p0 rate] (by-regime frail w true) [p1 _] (by-regime frail-r w true)
+            [c0 crate] (by-regime frail w false) [c1 _] (by-regime frail-r w false)]
+        (is (> p1 (+ p0 0.05)) [:stress p1 p0 rate])
+        (is (< c1 c0) [:calm c1 c0 crate])))
+    ;; written first as "does better still"; it did not: where the gauge is the
+    ;; regime's only emission, 5a's linear gauge mean already carries its level,
+    ;; and the chain's persistence (lambda 0.45) earned 1.2 nats over 40
+    ;; origins, short of the 2-nat price, so the layer stayed off. Recorded
+    ;; in docs/CALIBRATION.md "Regime layer"; asserted as what it does
+    (testing "on top of the gauge mean (5a's stack) it costs nothing"
+      (is (>= lsr (- ls 0.002)) [lsr ls]))
+    (testing "delta is chosen and learned where no gauge reads the level"
+      (let [fr (val (last (get-in frail-r [:frailty [:year :country]])))]
+        (is (:regime fr) fr)
+        (is (> (last (:beta fr)) 0.5) fr)))))
+
+(deftest bnm-56c-40-no-regime-the-layer-stays-off
+  (let [w {:regime? false :n 60}
+        off (regime-world w {})
+        on (regime-world (assoc w :regime-on true) {})]
+    (is (every? #(false? (:regime (val %))) (get-in on [:frailty [:year :country]])))
+    (is (= (count (:forecasts off)) (count (:forecasts on))))
+    (is (every? true? (map (fn [a b] (< (Math/abs (- (:p a) (:p b))) 1e-12)) (:forecasts off) (:forecasts on))))))
+
+(deftest bnm-56c-40-no-lookahead
+  ;; the gauge and the outcomes from year 30 redrawn: every forecast and
+  ;; book entry issued before then is unchanged
+  (let [w {:n 40 :regime-on true}
+        a (regime-world (assoc w :cut 30 :seed2 91) {})
+        b (regime-world (assoc w :cut 30 :seed2 92) {})
+        before (fn [r] (filter #(< (:origin %) 359) (:forecasts r)))]
+    (is (= (before a) (before b)))
+    (is (= (into {} (for [[k byo] (lt/book a)] [k (into {} (filter #(< (key %) 359) byo))]))
+           (into {} (for [[k byo] (lt/book b)] [k (into {} (filter #(< (key %) 359) byo))]))))
+    (is (not= (:forecasts a) (:forecasts b)))))
+
+(deftest bnm-56c-40-off-is-unchanged-and-bad-values-refused
+  (let [w {:n 30 :yrs 20}]
+    (testing "no :regime: the spec as before (the golden test pins the rest)"
+      (is (= (:forecasts (regime-world w {})) (:forecasts (regime-world w {:regime nil})))))
+    (doseq [[extra why] [[{:frailty nil} "needs the frailty"]
+                         [{:frailty {:rhos [0.0] :sds [0.0 0.5] :prior :parent}} "prior :own only"]
+                         [{:frailty {:rhos [0.0] :sds [0.0]}} "an sd above 0"]
+                         [{:frailty {:rhos [0.0] :sds [0.0 0.5] :level-sds [0.0 0.1]}} "no level"]
+                         [{:frailty {:rhos [0.0] :sds [0.0 0.5] :regime-penalty -1}} "a price of at least 0"]]]
+      (is (thrown? clojure.lang.ExceptionInfo (regime-world (assoc w :regime-on true :gauges? false) extra)) why))
+    (is (thrown? clojure.lang.ExceptionInfo
+                 (regime-world (assoc w :gauges? false) {:regime {:year {:at (fn [_] nil) :prior [1.0]}}})))))
