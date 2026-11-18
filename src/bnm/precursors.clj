@@ -20,7 +20,9 @@
     correlation of Keilis-Borok and Soloviev; spatial early warnings).
 
   Settings are the literatures' defaults, fixed before any scored run.
-  Only quarters up to the row's are read.")
+  Only quarters up to the row's are read. The z-scores and the summary are
+  bnm.signals'."
+  (:require [bnm.signals :as sg]))
 
 (def names [:norm :breadth :max :resonance :trigger :dispersion :range-shift])
 
@@ -28,10 +30,6 @@
 (def ^:private threshold 1.5)
 
 (defn- mean [xs] (/ (reduce + xs) (double (count xs))))
-
-(defn- sd [xs]
-  (let [mu (mean xs)]
-    (Math/sqrt (/ (reduce + (map #(let [d (- % mu)] (* d d)) xs)) (dec (count xs))))))
 
 (def ^:private sd-floor
   "The least spread a z-score divides by, on the log scale: a stream silent
@@ -44,8 +42,7 @@
   "x against `past` (at least n values), its spread floored and the
   result capped; nil when too few."
   [x past n]
-  (when (and x (>= (count past) (max n 2)))
-    (Math/max (- cap) (Math/min cap (/ (- x (mean past)) (Math/max sd-floor (sd past)))))))
+  (sg/z-against x past {:min n :floor sd-floor :cap cap :eps 0.0}))
 
 (defn- logs [counts t] (some->> (get counts t) (mapv #(Math/log1p (double %)))))
 
@@ -57,9 +54,7 @@
     (let [past (keep #(logs counts %) (range (- q w) q))
           zs (keep identity (for [k (range (count now))] (z (now k) (map #(% k) past) (quot w 2))))]
       (when (seq zs)
-        {:norm (Math/sqrt (mean (map #(* % %) zs)))
-         :breadth (/ (count (filter #(> (Math/abs (double %)) threshold) zs)) (double (count zs)))
-         :max (reduce max (map #(Math/abs (double %)) zs))}))))
+        (select-keys (sg/aggregate zs {:threshold threshold :min-n 1}) [:norm :breadth :max])))))
 
 (defn- trigger
   "The largest one-quarter rise at q in any stream, in units of that
@@ -111,8 +106,7 @@
     0.0
     (or (when-let [now (rf q)]
           (let [past (keep rf (range (- q 40) (- q 11)))]
-            (when (>= (count past) 8)
-              (Math/max (- cap) (Math/min cap (/ (- now (mean past)) (Math/max 0.05 (sd past))))))))
+            (sg/z-against now past {:min 8 :floor 0.05 :cap cap :eps 0.0})))
         0.0)))
 
 (defn features-for

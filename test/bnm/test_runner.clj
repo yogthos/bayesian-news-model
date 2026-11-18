@@ -65,6 +65,7 @@
             [bnm.banking-gauges-test]
             [bnm.wide-credit-test]
             [bnm.lead-delay-test]
+            [bnm.signals-test]
             [bnm.lattice-smoke-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -197,6 +198,7 @@
     bnm.banking-gauges-test
     bnm.wide-credit-test
     bnm.lead-delay-test
+    bnm.signals-test
     bnm.lattice-smoke-test
     bnm.political-gauges-test
     bnm.reconcile-test

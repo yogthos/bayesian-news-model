@@ -37,6 +37,7 @@
             [bnm.onsets :as on]
             [bnm.paths]
             [bnm.releases :as rel]
+            [bnm.signals :as sg]
             [bnm.slow-train :as st]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -158,86 +159,17 @@
   of squared deviations and reads a spread under 1e-9, or under 1e-8 of
   the level, as none (z 0): without it a gauge flat until t (world3 at 0
   before a kind's first known onset) has the 1e-12 variance floor for its
-  spread and its first move lands on the cap at every place."
+  spread and its first move lands on the cap at every place. An input is
+  read once more than 20 of its values are seen (bnm.signals/running-z)."
   ([samples] (standardizer samples nil))
   ([samples mode]
-  (when-not (contains? #{nil :stable} mode)
-    (throw (ex-info "bnm.lattice-banking: :gauge-std takes :stable" {:gauge-std mode})))
-  (let [by-t (into (sorted-map) (group-by first samples))
-        width (count (second (first samples)))
-        stable (= :stable mode)
-        ;; running sums through each origin (under :stable s holds the
-        ;; means and ss the sums of squared deviations)
-        stats (loop [[[t xs] & more] (seq by-t) n (double-array width) s (double-array width) ss (double-array width) acc (sorted-map)]
-                (if-not t
-                  acc
-                  (let [acc (assoc acc t [(aclone n) (aclone s) (aclone ss)])]
-                    (doseq [[_ v] xs]
-                      (dotimes [j width]
-                        (when-let [x (nth v j)]
-                          (aset n j (inc (aget n j)))
-                          (if stable
-                            (let [m (aget s j) m' (+ m (/ (- x m) (aget n j)))]
-                              (aset s j m') (aset ss j (+ (aget ss j) (* (- x m) (- x m')))))
-                            (do (aset s j (+ (aget s j) x)) (aset ss j (+ (aget ss j) (* x x))))))))
-                    (recur more n s ss acc))))]
-    (fn [t v]
-      (let [[^doubles n ^doubles s ^doubles ss] (or (some-> (rsubseq stats <= t) first val)
-                                                    [(double-array width) (double-array width) (double-array width)])]
-        (vec (for [j (range width)
-                   :let [x (nth v j)
-                         k (aget n j)]]
-               (if (and x (> k 20))
-                 (if stable
-                   (let [mu (aget s j)
-                         sd (Math/sqrt (/ (aget ss j) k))]
-                     (if (> sd (Math/max 1e-9 (* 1e-8 (Math/abs mu))))
-                       (Math/max -5.0 (Math/min 5.0 (/ (- x mu) sd)))
-                       0.0))
-                   (let [mu (/ (aget s j) k)
-                         sd (Math/sqrt (Math/max 1e-12 (- (/ (aget ss j) k) (* mu mu))))]
-                     (Math/max -5.0 (Math/min 5.0 (/ (- x mu) sd)))))
-                 0.0))))))))
+   (when-not (contains? #{nil :stable} mode)
+     (throw (ex-info "bnm.lattice-banking: :gauge-std takes :stable" {:gauge-std mode})))
+   (sg/running-z samples {:count-by :values :min-exclusive 20 :stable (= :stable mode)})))
 
-(defn history-standardizer
-  "bnm-11y, :lead-std :history: (fn [t v]) standardizing the leading
-  columns `v` (lead-f's entries at positions `ix`) against the gauges' own
-  values at every quarter end from month `from` (the node's start) to
-  `end` over `units`, each as known then, through the quarter ends before
-  t; capped at 5, 0 for a missing value. A column is read once it has 20
-  quarter ends of history: the node's standardizer counts rows, so a
-  world gauge, one value per origin repeated at every country, was
-  standardized against two or three origins. `missing` (0.0 by default) is
-  what an unread value, or one with too short a history, reads as: the
-  regime filter (bnm-56c.40) takes nil, so it drops out."
-  ([lead-f units ix from end] (history-standardizer lead-f units ix from end 0.0))
-  ([lead-f units ix from end missing]
-  (let [w (count ix)
-        ts (range (+ from (mod (- 2 from) 3)) (inc end) 3)
-        stats (loop [[t & more] ts n (double-array w) mu (double-array w) ss (double-array w) q (long-array w) acc (sorted-map)]
-                (if-not t
-                  acc
-                  (let [acc (assoc acc t [(aclone n) (aclone mu) (aclone ss) (aclone q)])
-                        seen (boolean-array w)]
-                    (doseq [u units :let [l (lead-f u t)]]
-                      (dotimes [j w]
-                        (when-let [x (nth l (nth ix j))]
-                          (aset seen j true)
-                          (aset n j (inc (aget n j)))
-                          (let [m0 (aget mu j) m1 (+ m0 (/ (- x m0) (aget n j)))]
-                            (aset mu j m1) (aset ss j (+ (aget ss j) (* (- x m0) (- x m1))))))))
-                    (dotimes [j w] (when (aget seen j) (aset q j (inc (aget q j)))))
-                    (recur more n mu ss q acc))))]
-    (fn [t v]
-      (let [[^doubles n ^doubles mu ^doubles ss ^longs q] (or (some-> (rsubseq stats <= t) first val)
-                                                              [(double-array w) (double-array w) (double-array w) (long-array w)])]
-        (vec (for [j (range w) :let [x (nth v j)]]
-               (if (and x (>= (aget q j) 20))
-                 (let [sd (Math/sqrt (/ (aget ss j) (aget n j)))]
-                   (if (> sd (Math/max 1e-9 (* 1e-8 (Math/abs (aget mu j)))))
-                     (Math/max -5.0 (Math/min 5.0 (/ (- x (aget mu j)) sd)))
-                     missing))
-                 missing))))))))
+(def history-standardizer
+  "bnm-11y, :lead-std :history: bnm.signals/history-standardizer."
+  sg/history-standardizer)
 
 (def leading-names
   "--banking-gauges (bnm-cpv, docs/LEADING.md \"Banking gauges\"): the
@@ -275,15 +207,10 @@
   {:credit [0 1 2 3] :assets [4 5 6 7 8 9 10] :curve [11] :global [12 13 14 15 16 17] :house-valuation [18 19]})
 
 (defn- quarter-stretch
-  "x at quarter q against the 40 quarters before (at least 20), or nil."
+  "x at quarter q against the 40 quarters before (at least 20), or nil;
+  the spread floored at 2% of the level, capped at 5."
   [qs q]
-  (when-let [x (get qs q)]
-    (let [past (keep #(get qs %) (range (- q 40) q))]
-      (when (>= (count past) 20)
-        (let [m (/ (reduce + past) (count past))
-              sd (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) past)) (dec (count past))))]
-          (let [sd (Math/max sd (* 0.02 (Math/abs m)))]
-            (when (> sd 1e-9) (Math/max -5.0 (Math/min 5.0 (/ (- x m) sd))))))))))
+  (sg/stretch qs q {:window 40 :min 20 :floor-frac 0.02 :eps 1e-9 :cap 5.0}))
 
 (def year-specific (mapv first mh/dimensions))
 (def year-invariants [:norm :breadth :max-displacement :resonance :norm-long :flow-norm :stock-x-flow :world-norm :world-crises])
@@ -324,13 +251,7 @@
   capped at 5: a source's imputed years held nearly flat would otherwise
   make any change look enormous."
   [ys year]
-  (when-let [x (get ys year)]
-    (let [past (keep #(get ys %) (range (- year 10) year))]
-      (when (>= (count past) 6)
-        (let [m (/ (reduce + past) (count past))
-              sd (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) past)) (dec (count past))))
-              sd (Math/max sd (* 0.02 (Math/abs m)))]
-          (when (> sd 1e-9) (Math/max -5.0 (Math/min 5.0 (/ (- x m) sd)))))))))
+  (sg/stretch ys year {:window 10 :min 6 :floor-frac 0.02 :eps 1e-9 :cap 5.0}))
 
 (def jst-lag
   "Months after the end of its year by which every Macrohistory input the
