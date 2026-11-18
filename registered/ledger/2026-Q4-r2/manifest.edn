@@ -1,0 +1,157 @@
+{:issue "2026-Q4-r2",
+ :quarter "2026-Q4",
+ :issued "2026-11-18",
+ :base "t80-base",
+ :model "the world without relations",
+ :code-commit "099345d2e9546ceb75113a524bc756280ca0b19e",
+ :command
+ "jolt -A:tools -M -m bnm.world-run --out ledger-2026-Q4-r2 --without-relations true --end 24323 --known r7-at-fx --leak-fixes true --pwt-stale true --lag-stale true --gauge-std stable --leading true --leading-priors true --real-lags true --at-risk catalogue --lead-std history --frailty-gauges true --dated-credit true --set '{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}'",
+ :jolt "jolt v0.8.27",
+ :deps
+ #:io.github.jlt-commons{augur
+                         #:git{:url
+                               "https://github.com/jlt-commons/augur",
+                               :tag "v0.24.0",
+                               :sha
+                               "cd956a15c1ce344bdc249dd4dd23a292e6e73bf1"},
+                         dodeca
+                         #:git{:url
+                               "https://github.com/jlt-commons/dodeca",
+                               :tag "v0.1.0",
+                               :sha
+                               "20b01f749d8789ae5d6a6756649a2278d240199d"}},
+ :end 24323,
+ :issue-month 24322,
+ :origins
+ {:half-decade 24299,
+  :quarter-lead 24323,
+  :quarter-w2 24323,
+  :year 24323},
+ :inputs
+ {"data/derived/econ-coverage.csv"
+  "863b42e001b45e7eb43569b3f48eb92035d62821f3a3ea9cd543d38c1c2a4c7f",
+  "data/derived/econ-events.csv"
+  "4070fd4d07cfb6134781a40aabb36e00b6b2e07293f8987041e58be5065e2f0f",
+  "data/derived/fiscal.csv"
+  "cf8a1f4e5769901d3f09e85f4925f1b0e89dddf4f2f1b7aae1aebab8e67d98bc",
+  "data/derived/jst-credit-gap.csv"
+  "334bac25217589ad7d1f1d9e03e41e4770655bed0bea24e4d58b54da2906e9c4",
+  "data/derived/lattice-annual.csv"
+  "6bf028adc82c45e33d7d7d4d7bcd4581092ef8853b1dbbb3ebfd2dfebab6cf03",
+  "data/derived/lattice-quarterly.csv"
+  "6d90af49651238dd955526ea825a65796bcc30cf8f4aaaa8ec1d8630173a4923",
+  "data/derived/political-annual.csv"
+  "8bc657fcc49bd69d52382a8237ad1f98f2ccb7237aa992a2551b243fd4108591",
+  "data/derived/political-long.csv"
+  "06a537c9f442aea6e1010a9ec7614ab44483b4917c5b283474704cad4f877563",
+  "data/derived/political-states.csv"
+  "2685bc4ff0ab40c2f88d38b9cd15f8acf809e589521896f972485fd74d13885f",
+  "data/raw/slow/jst/jst.csv"
+  "c4e930b520a9b4488620c766292f1e2b55f3bbd67742097a634e5aa54a9c2020",
+  "data/raw/slow/kaopen/kaopen.csv"
+  "5b2d58021c0f3874f51730f0fbadba9eeb62d21beff6985abf809f1aeb5dd4dd",
+  "data/raw/slow/pwt/pwt110-full.csv"
+  "310920974fb86512c2176110a8b790712d108584ed1ac7035aa94fe2b3040302",
+  "data/raw/slow/rr/onsets.csv"
+  "5ed893bdfe01e294aa9d8834b6906ced3b603cb7db9daa51888eb03df10a0a0d",
+  "data/runs/r7-at-fx/preds.tsv"
+  "2cb2d9be87712b79b3b5bdc2c0c125240ecc0f70c55c772f2b89b42970961fc7",
+  "data/slow/coverage.tsv"
+  "c1937d50f6a3ff2d2eb34342e1540ebae2c19cbe6742cce7d4883b861f9e54b3",
+  "data/slow/events.tsv"
+  "4405a6d552a2fe549ae67c0b0ead5a88cbef98c0ecd8b139e437617c4ed493c0",
+  "data/slow/series.tsv"
+  "9eba3cd75dc0e5519cbac7ae4a3f6b04a873aec31f522a4c1ecaccc641bcfeee",
+  "data/slow/variables.tsv"
+  "1e2f1de00b9d9ab0855c79210480e69b7617b1c98ed3934d9aace7dbd3ccce99"},
+ :inputs-dir "data/ledger-inputs/2026-Q4-r2",
+ :previous
+ {:issue "2026-Q4-r1",
+  :reproduced true,
+  :inputs-dir "data/ledger-inputs/2026-Q4-r1",
+  :lines 8556,
+  :forecasts
+  "bdb361c83ff63d11a7451e0c4cc6339fa0f82b1e671c3523722dae6524f0a576"},
+ :data-changes
+ {"data/derived/econ-events.csv"
+  {:old
+   "db737e6ef92fafe1c37ae3d4ac1bd801f7f5acd8ddada2f5e4c9e37bcb572267",
+   :new
+   "4070fd4d07cfb6134781a40aabb36e00b6b2e07293f8987041e58be5065e2f0f"},
+  "data/runs/r6-at-8ul/preds.tsv"
+  {:old
+   "eb79d8bc568e5081add82c4c27754eefe2ccf5f069695249ffc52717bfcdb9d5",
+   :new nil},
+  "data/runs/r7-at-fx/preds.tsv"
+  {:old nil,
+   :new
+   "2cb2d9be87712b79b3b5bdc2c0c125240ecc0f70c55c772f2b89b42970961fc7"},
+  "data/slow/series.tsv"
+  {:old
+   "2900140fe79f6934f8736ac799df0eec29dd2d5f62b1a59605c90fed00ee7673",
+   :new
+   "9eba3cd75dc0e5519cbac7ae4a3f6b04a873aec31f522a4c1ecaccc641bcfeee"}},
+ :reproduces
+ {:base "t80-base",
+  :through 24311,
+  :kinds
+  {"banking_crisis" {:rows 222425, :differing 0},
+   "conflict_onset" {:rows 288435, :differing 0},
+   "coup" {:rows 294175, :differing 0},
+   "currency_crisis" {:rows 275184, :differing 0},
+   "fiscal_consolidation" {:rows 282695, :differing 0},
+   "food_price_shock" {:rows 268164, :differing 0},
+   "growth_collapse" {:rows 282695, :differing 0},
+   "inflation_crisis" {:rows 269568, :differing 0},
+   "market_crash" {:rows 92664, :differing 0},
+   "protest_surge" {:rows 280800, :differing 0},
+   "sovereign_default" {:rows 284130, :differing 0},
+   "violence_surge" {:rows 286416, :differing 0},
+   "war_onset" {:rows 285565, :differing 0}},
+  :base-files
+  {"banking_crisis"
+   "c61913e67692325a7ee8ba2306e5a98353dc5ee9bfd286678cf30881eb3a65d3",
+   "conflict_onset"
+   "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442",
+   "coup"
+   "7d9e32befa2d67f7ab67b08bae3d08b8b3938db257439337815065cc357a292d",
+   "currency_crisis"
+   "854a4842451c809bf7f7f2978cc91a7187acc77613649f5aba907b011a9ae8bd",
+   "fiscal_consolidation"
+   "778d9b2be42d12002307bf15111224b26ab7ec078c3b4c68c88f18a764d71620",
+   "food_price_shock"
+   "32a8c9c7a058a94c792bde3e94b8f6dc645ee33c833ec009dd4b6d12c7bc2fc3",
+   "growth_collapse"
+   "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c",
+   "inflation_crisis"
+   "28d25338c8848c9507f6d86a4bec8ffa8af854648ee37da4fa62ebb3872be3c5",
+   "market_crash"
+   "404f381fdb47e404bdb364044d554fd64b93d159e6a66552841348d5b1c2b1af",
+   "protest_surge"
+   "98f6a3d14855b3ba0f5eda59b4975de2a13e55b19d8963c36191e496a1dcd373",
+   "sovereign_default"
+   "e6175b0a0cfa9ba6bc90f78c9efaf5f53a41d9776533c89c58ecdec8453e5d30",
+   "violence_surge"
+   "ea2c590835d306a47e3891ae0de3dfdd16b916f53391182079c075f7d2cc3e86",
+   "war_onset"
+   "25fafb6577491beb364e3809352ea2fb38bec4cc416b71596abba0f77e9c70b1"}},
+ :rows 8555,
+ :kinds
+ ["banking_crisis"
+  "conflict_onset"
+  "coup"
+  "currency_crisis"
+  "fiscal_consolidation"
+  "food_price_shock"
+  "growth_collapse"
+  "inflation_crisis"
+  "market_crash"
+  "protest_surge"
+  "sovereign_default"
+  "violence_surge"
+  "war_onset"],
+ :files
+ {"forecasts.tsv"
+  "528b3ea81969b6aebf72fa9a33ac3179fef422642a9fed8e552a0ca14eff4452"},
+ :rule
+ "never edited; nothing refit between issue and outcome; scored once"}

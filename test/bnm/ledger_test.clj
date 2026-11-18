@@ -191,6 +191,14 @@
           [n sha] files]
     (is (= sha (sfc/sha256-file (str "registered/ledger/" q "/" n))) (str q "/" n))))
 
+(deftest a-quarter's-windows-count-once
+  ;; revisions of a quarter forecast the same windows: one carries the
+  ;; verdicts, the others are reported beside it (sixth note to L1)
+  (doseq [[q ids] (group-by lg/issue-quarter (keys lg/issued))]
+    (is (= 1 (count (filter #(= :primary (:role (lg/issued %))) ids))) q))
+  (is (= :primary (:role (lg/issued "2026-Q4-r2"))))
+  (is (= "2026-Q4-r2" (lg/previous-issue lg/issued "2027-Q1"))))
+
 (deftest every-registered-scanner-ranking-is-intact
   (doseq [[q files] lg/scanners
           [n sha] files]

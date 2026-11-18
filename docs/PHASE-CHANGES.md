@@ -4058,6 +4058,25 @@ command (bnm.ledger/command, with `--end`).
   data/slow/series.tsv). With this code 2026-Q4-r1 comes back byte for
   byte from its archive with its own command.
 
+**Sixth note to amendment L1, 18 November 2026** (decided by the user
+the same day; L1 itself unchanged). Issue **2026-Q4-r2** is made on
+t80-base and carries the verdicts for 2026-Q4; 2026-Q4-r1 stays on
+record unchanged and is reported beside it with no verdict, as 2026-Q4
+beside r1. The two forecast the same windows, so they count once, as
+r2's (bnm.ledger/issued holds one primary per quarter, checked in
+test/bnm/ledger_test.clj). No 2026-Q4 window had an outcome when r2 was
+made: rows whose window opened before the issue date are not counted, as
+in every issue. The 2027-Q1 issue reproduces r2 on its archive with r2's
+command.
+
+- *Made.* `bnm.ledger issue --issue 2026-Q4-r2`, dated 2026-11-18, code
+  at 099345d. It reran 2026-Q4-r1 on its archive byte for byte (8556
+  lines), then ran t80-base's command with `--end` on the data on disk.
+  Four inputs changed since r1 (in the manifest); the run reproduces
+  t80-base on every row it has through month 24311, 0 rows differing in
+  all 13 kinds. 8555 rows; forecasts.tsv 528b3ea8…, manifest.edn
+  2517fcd9…; inputs archived in data/ledger-inputs/2026-Q4-r2/.
+
 ## Registered, 11 November 2026: one pooled hazard over the buffer invariants, and the scanner (bead bnm-56c.6, PLAN 1.5-1.7)
 
 Written and committed before any model is fitted to break labels. The

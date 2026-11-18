@@ -141,6 +141,10 @@
    "2026-Q4-r1" {:files {"forecasts.tsv" "bdb361c83ff63d11a7451e0c4cc6339fa0f82b1e671c3523722dae6524f0a576"
                          "2026-Q4-baselines.tsv" "432ea3cf6457771a075f56641f9fe1531930408b99d9b6ce7b4ffbfb03d234b8"
                          "manifest.edn" "cf557fedb45171b1b40cdca1b28f15f4651520a9720ff6d39af974342acedaf3"}
+                 ;; primary until 2026-Q4-r2 (sixth note to L1)
+                 :role :reported}
+   "2026-Q4-r2" {:files {"forecasts.tsv" "528b3ea81969b6aebf72fa9a33ac3179fef422642a9fed8e552a0ca14eff4452"
+                         "manifest.edn" "2517fcd95dcb660c29bdab9845bb6c6001c0d566f9e7f7fda8343ee521816fb3"}
                  :role :primary}})
 
 (def scanners
