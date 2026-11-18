@@ -20,7 +20,8 @@
   - `fit`, `predict`, `pooled`: the model on rows {:f features :y :family}.
   - `label-rows`: panel place-years into labelled rows per window.
   - `auc`, `recall-at`, `cluster-interval`: the tests' measures."
-  (:require [augur.hier :as h]
+  (:require [bnm.time :as tm]
+            [augur.hier :as h]
             [augur.math :as m]
             [augur.score :as sc]
             [clojure.string]))
@@ -147,7 +148,7 @@
 
 (defn month-of "\"YYYY-MM\" as year x 12 + month - 1." [s]
   (when (and s (re-matches #"\d{4}-\d{2}.*" s))
-    (+ (* 12 (parse-long (subs s 0 4))) (dec (parse-long (subs s 5 7))))))
+    (tm/month-index s)))
 
 (defn reserve-class
   "An episode's class for the reserve-crisis labels: :gra when its only

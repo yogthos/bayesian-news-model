@@ -10,7 +10,8 @@
   flags), and the forward ranking to registered/ledger/2026-Q4/scanner.tsv
   with its manifest scanner.edn (new files beside the issue). --smoke true
   runs the code on labels drawn at random and writes only under --out."
-  (:require [augur.logit :as lg]
+  (:require [bnm.cli :as cli]
+            [augur.logit :as lg]
             [augur.math :as m]
             [bnm.dev-folds :as df]
             [bnm.episodes :as ep]
@@ -200,7 +201,7 @@
           (for [[p os] sfc :let [r (flag "SFC: net lending summed over the five sectors / GNI" p os)] :when r] r)))))
 
 (defn -main [& args]
-  (let [opts (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [opts (cli/opts args)
         out (or (:out opts) "data/derived/hazard")
         reps (or (some-> (:reps opts) parse-long) 1000)
         report (StringBuilder.)

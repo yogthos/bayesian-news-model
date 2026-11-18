@@ -38,7 +38,8 @@
   neither jumps when CHAT ends; productivity-inflow chains across both.
 
   The frontier is the United States (Comin & Hobijn's benchmark)."
-  (:require [bnm.geo :as geo]
+  (:require [bnm.table :as tbl]
+            [bnm.geo :as geo]
             [bnm.stat :as stat]
             [bnm.slow-train :as st]
             [bnm.technology :as tech]
@@ -152,13 +153,6 @@
 
 ;; ---------------------------------------------------------------- output
 
-(defn write-rows [path rows]
-  (io/make-parents path)
-  (with-open [w (io/writer path)]
-    (.write w "iso,year,variable,value\n")
-    (doseq [{:keys [iso year variable value]} rows]
-      (.write w (str iso "," year "," variable "," value "\n")))))
-
 (defn- index [rows] (into {} (map (fn [r] [[(:iso r) (:year r) (:variable r)] (:value r)])) rows))
 
 (defn- f1 [x] (if x (format "%7.1f" (double x)) "      -"))
@@ -255,7 +249,7 @@
                               {(tech/var-name "frontier-semiconductor-production") es}))}
         rows (vec (sort-by (juxt :iso :year :variable)
                            (concat diffusion (tech/latest-rows lead years 3) (tech/latest-rows world years 1))))]
-    (write-rows out-path rows)
+    (tbl/write-values out-path rows)
     (println "wrote" out-path)
     (report rows store)
     (identification store 2005)

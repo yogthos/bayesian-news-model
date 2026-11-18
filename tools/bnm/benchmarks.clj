@@ -31,7 +31,8 @@
   prints the base's Brier and log skill against each benchmark by kind and
   scale (a development figure: those years are development data) and
   writes it to data/runs/<run>/benchmarks-dev.txt."
-  (:require [augur.score :as sc]
+  (:require [bnm.cli :as cli]
+            [augur.score :as sc]
             [bnm.geo :as geo]
             [bnm.kinds :as kinds]
             [bnm.lattice-banking :as lb]
@@ -204,10 +205,10 @@
     all))
 
 (defn -main [& args]
-  (let [{:keys [run from to reps]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run from to reps]} (cli/opts args)
         run (or run "t48-world-norel")
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out (str s "\n"))))]
+        say (cli/say-fn out {:flush false})]
     (report say run (kinds/catalogues) {:from (or (some-> from parse-long) 2003) :to (or (some-> to parse-long) 2022)
                                         :reps (or (some-> reps parse-long) 400)})
     (spit (str "data/runs/" run "/benchmarks-dev.txt") (str out))))

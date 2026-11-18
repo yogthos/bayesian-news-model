@@ -25,7 +25,8 @@
   The default run writes data/derived/stocks/essential.csv (iso, year
   known, variable, value) and prints the report: the ranking tables, the
   registered targets, the held-out precision and the back-test."
-  (:require [bnm.cell-profiles :as cprof]
+  (:require [bnm.table :as tbl]
+            [bnm.cell-profiles :as cprof]
             [bnm.chokepoints :as cp]
             [bnm.concordance :as conc]
             [bnm.csv :as csv]
@@ -40,13 +41,6 @@
 (def dir "data/derived/supply")
 (def loss-path (str dir "/essentiality-loss.csv"))
 (def cuts [0.1 0.5])
-
-(defn- read-plain
-  "Rows of a plain CSV (no quoted fields) as maps."
-  [path]
-  (with-open [r (io/reader path)]
-    (let [[h & ls] (line-seq r) ks (mapv keyword (str/split h #","))]
-      (mapv #(zipmap ks (str/split % #"," -1)) (doall ls)))))
 
 (def subnode-products
   "subnodes.csv's sub-nodes that bnm.supply/load-graph splits out of their
@@ -91,7 +85,7 @@
         stocks (sup/stocks (filter #(<= (:known %) 2013) (sup/stock-rows (str dir "/stocks.csv"))))
         regions (sort (distinct (map first (keys (:recipes g)))))
         parents (if only (str/split only #",") (hs92-parents))
-        done (if (.exists (io/file loss-path)) (set (map :product (read-plain loss-path))) #{})
+        done (if (.exists (io/file loss-path)) (set (map :product (tbl/read-csv-maps loss-path))) #{})
         todo (remove done parents)]
     (println "graph" (- (System/currentTimeMillis) t0) "ms;" (count todo) "of" (count parents) "products to do")
     (when-not (.exists (io/file loss-path))
@@ -177,7 +171,7 @@
 (defn load-loss
   "{product {horizon {:cuts [..] :loss [..] :use U}}} from essentiality-loss.csv."
   [path]
-  (->> (read-plain path)
+  (->> (tbl/read-csv-maps path)
        (group-by (juxt :product (comp keyword :horizon)))
        (reduce (fn [m [[p hz] rs]]
                  (let [rs (sort-by (comp parse-double :cut) rs)

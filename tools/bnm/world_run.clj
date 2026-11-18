@@ -110,7 +110,8 @@
   year end from 2003, for each edge and country, the simulated chances of
   each onset and of both within three years, from what the world had
   learned by then)."
-  (:require [bnm.economic-events :as ee]
+  (:require [bnm.cli :as cli]
+            [bnm.economic-events :as ee]
             [bnm.ews :as ews]
             [bnm.states :as states]
             [bnm.factors :as fac]
@@ -776,7 +777,7 @@
 (defn options
   "The options of bnm.world-run `args`: {:out \"x\" ...}, values as given."
   [args]
-  (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v])))
+  (cli/opts args))
 
 (defn run-catalogues
   "The catalogues a run with `opts` fits and scores on: --food-outcomes,

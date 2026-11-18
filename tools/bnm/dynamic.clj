@@ -17,7 +17,8 @@
     jolt -A:tools -M -m bnm.dynamic --run r6-pooled --models hedge,named --out r7-dyn [--levels subregion,region] [--threads 4]
 
   Writes data/runs/<out>/preds.tsv: the run's rows and the dynamic ones."
-  (:require [bnm.onset :as o]
+  (:require [bnm.cli :as cli]
+            [bnm.onset :as o]
             [bnm.onsets :as on]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -47,7 +48,7 @@
                (str kind "\t" wname "\t" "dyn-" m "\t" q "\t" unit "\t" p "\t" (str y) "\n"))))
 
 (defn -main [& args]
-  (let [{:keys [run models out levels threads]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run models out levels threads]} (cli/opts args)
         threads (or (some-> threads parse-long) 4)
         models (set (str/split models #","))
         levels (when levels (str/split levels #","))

@@ -17,7 +17,8 @@
   Macrohistory hazards.
 
     jolt -A:tools -M -m bnm.waves [--name waves-1]"
-  (:require [augur.logit :as lgt]
+  (:require [bnm.cli :as cli]
+            [augur.logit :as lgt]
             [augur.score :as sc]
             [bnm.invariants :as iv]
             [clojure.java.io :as io]
@@ -92,7 +93,7 @@
   (let [name (or name "waves")
         {:keys [rows wave]} (build (read-onsets "data/raw/slow/rr/onsets.csv"))
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
+        say (cli/say-fn out)
         fmt (fn [x] (if x (format "%.2f" (double x)) "  - "))
         all-names (vec (sort (keys (:x (first rows)))))
         world-banking (filterv #(str/starts-with? (clojure.core/name %) "world-banking") all-names)
@@ -122,4 +123,4 @@
       (spit (str dir "/waves.txt") (str out)))))
 
 (defn -main [& args]
-  (run (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))))
+  (run (cli/opts args)))

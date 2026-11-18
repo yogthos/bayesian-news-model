@@ -20,21 +20,14 @@
                          markets of French's international files (1975 on)
 
   Everything is read a month late."
-  (:require [bnm.invariants :as iv]
+  (:require [bnm.table :as tbl]
+            [bnm.invariants :as iv]
             [bnm.french :as fr]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
 (def names [:macro-sync :macro-sync-shift :macro-persistence :macro-persistence-rise
             :market-sync :market-sync-shift :loops-present])
-
-(defn- read-monthly [path]
-  (with-open [r (io/reader path)]
-    (into {} (for [line (rest (line-seq r))
-                   :let [[d v] (str/split line #",")
-                         x (some-> v str/trim not-empty parse-double)]
-                   :when (and x (re-matches #"\d{4}-\d{2}.*" d))]
-               [(+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 5 7)))) x]))))
 
 (defn- lg [m] (into {} (for [[k v] m :when (pos? v)] [k (Math/log v)])))
 
@@ -43,7 +36,7 @@
   wealth} for the US market."
   [market]
   (let [dir "data/raw/slow/market/"
-        rd #(read-monthly (str dir % ".csv"))
+        rd #(tbl/read-monthly (str dir % ".csv"))
         cpi (rd "CPIAUCNS")
         baa (rd "BAA") aaa (rd "AAA")
         series [(lg (rd "INDPRO")) (rd "UNRATE") (lg (rd "PAYEMS")) (lg cpi) (rd "TB3MS") (rd "GS10")

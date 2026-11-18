@@ -15,7 +15,8 @@
   known (data/slow/series.tsv, FRED's IMF prices, 1992-).
 
     jolt -A:tools -M -m bnm.food-run"
-  (:require [bnm.food :as food]
+  (:require [bnm.table :as tbl]
+            [bnm.food :as food]
             [bnm.stat :as stat]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -72,13 +73,6 @@
                       acc))
                   acc))
               {} (line-seq r)))))
-
-(defn write-rows [path rows]
-  (io/make-parents path)
-  (with-open [w (io/writer path)]
-    (.write w "iso,year,variable,value\n")
-    (doseq [{:keys [iso year variable value]} rows]
-      (.write w (str iso "," year "," variable "," value "\n")))))
 
 (defn- annual-log-prices
   "{item {year mean log price}} of the world's monthly cereal prices."
@@ -145,5 +139,5 @@
                               :exports (food/exports-from imports coverage)
                               :production (read-crops series-path)}
                              {})]
-    (write-rows out-path rows)
+    (tbl/write-values out-path rows)
     (report rows)))

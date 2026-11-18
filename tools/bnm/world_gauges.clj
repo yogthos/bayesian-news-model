@@ -32,7 +32,8 @@
               the future: a diagnostic only);
     :false    the noise plus 3 at the origins of 2013 and 2014, a world
               move that carries nothing."
-  (:require [augur.math :as m]
+  (:require [bnm.cli :as cli]
+            [augur.math :as m]
             [bnm.named :as nm]
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
@@ -266,7 +267,7 @@
   (exposure-fn (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))))
 
 (defn -main [& args]
-  (let [{:keys [out]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [out]} (cli/opts args)
         out (or out "data/derived/world-state/series.tsv")
         db (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))
         units (set (filter #(= 3 (count %)) (map first (keys db))))

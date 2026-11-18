@@ -17,7 +17,8 @@
   90% intervals resampling countries and years (augur.score/paired-loss-
   2way), per kind and pooled with the kinds weighed equally; alerts at 4:1
   for each; and the quarter origins of bnm.alerts/quarter-outliers."
-  (:require [augur.score :as sc]
+  (:require [bnm.cli :as cli]
+            [augur.score :as sc]
             [bnm.alerts :as al]
             [bnm.kinds :as kinds]
             [clojure.java.io :as io]
@@ -137,7 +138,7 @@
     (persistent! out)))
 
 (defn -main [& args]
-  (let [{:keys [run from to reps]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))]
+  (let [{:keys [run from to reps]} (cli/opts args)]
     (when-not run (throw (ex-info "bnm.nq-score: --run is required" {})))
     (doseq [l (report {:run run :from (or (some-> from parse-long) 2003) :to (or (some-> to parse-long) 2022)
                        :reps (or (some-> reps parse-long) 400)})]

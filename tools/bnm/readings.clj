@@ -10,7 +10,8 @@
   model should be refit or recalibrated before it is trusted.
 
     jolt -A:tools -M -m bnm.readings [--onsets data/derived/onset-preds.tsv] [--n 10]"
-  (:require [augur.score :as sc]
+  (:require [bnm.cli :as cli]
+            [augur.score :as sc]
             [bnm.paths :as paths]
             [bnm.slow-train :as st]
             [bnm.weekly]
@@ -105,11 +106,11 @@
             now (double (:last up)) (double (:last down)) (double (:max up)) (double (:max down)) (or refit ""))))
 
 (defn -main [& args]
-  (let [{:keys [onsets n model]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [onsets n model]} (cli/opts args)
         onsets (or onsets (str paths/derived "onset-preds.tsv"))
         n (parse-long (or n "10"))
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out s) (.append out "\n")))]
+        say (cli/say-fn out {:flush false})]
     (say "READINGS" (str (java.time.LocalDate/now)))
     (say)
     (say "Data, latest period:")

@@ -15,7 +15,8 @@
     jolt -A:tools -M -m bnm.polycrisis [--to 2002] [--reps 200] [--start 1960]
 
   Prints the triples and a summary; writes data/runs/sequencing/polycrisis.tsv."
-  (:require [augur.math :as m]
+  (:require [bnm.cli :as cli]
+            [augur.math :as m]
             [bnm.hypergraph :as hg]
             [bnm.kinds :as kinds]
             [clojure.java.io :as io]
@@ -72,7 +73,7 @@
     {:ws ws :rows (mapv #(assoc %1 :q %2) rows qs)}))
 
 (defn -main [& args]
-  (let [{:keys [to reps start]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [to reps start]} (cli/opts args)
         to (or (some-> to parse-long) 2002)
         reps (or (some-> reps parse-long) 200)
         start (or (some-> start parse-long) 1960)

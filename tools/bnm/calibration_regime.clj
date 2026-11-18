@@ -54,7 +54,9 @@
     jolt -A:tools -M -m bnm.calibration-regime [--run t44-world-norel]
       [--from 1960] [--to 2002] [--design-from 1960] [--design-to 2002]
       [--draws 200] [--seed 1] [--out data/runs/sequencing/calibration-t2-design.tsv]"
-  (:require [augur.logit :as lg]
+  (:require [bnm.time :as tm]
+            [bnm.cli :as cli]
+            [augur.logit :as lg]
             [bnm.stat :as stat]
             [augur.math :as m]
             [bnm.horizon-profile :as hp]
@@ -383,7 +385,7 @@
     (reduce (fn [acc line]
               (let [[unit var _ pend avail value] (str/split line #"\t" -1)]
                 (if-let [x (and (= var v) (parse-double value))]
-                  (update acc unit (fnil conj []) [(+ (* 12 (parse-long (subs pend 0 4))) (dec (parse-long (subs pend 5 7))))
+                  (update acc unit (fnil conj []) [(tm/month-index pend)
                                                    (parse-long (subs avail 0 4)) x])
                   acc)))
             {} (line-seq r))))
@@ -430,7 +432,7 @@
 ;; --- the run ------------------------------------------------------------------------
 
 (defn parse-opts [args]
-  (let [o (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
+  (let [o (cli/opts args)
         n (fn [k d] (or (some-> (o k) parse-long) d))]
     {:run (or (:run o) "t44-world-norel")
      :from (n :from 1960) :to (n :to 2002)

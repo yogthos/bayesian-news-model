@@ -76,7 +76,8 @@
       [--pool 0.5] [--lag 1] [--draws 1000] [--block 2] [--seed 1]
       [--out data/runs/sequencing/recalibrate-online-design.tsv]
       [--out-run t44-world-norel-online]"
-  (:require [augur.dynamic :as d]
+  (:require [bnm.cli :as cli]
+            [augur.dynamic :as d]
             [bnm.stat :as stat]
             [augur.math :as m]
             [bnm.kinds :as kinds]
@@ -300,7 +301,7 @@
 ;; --- the run ------------------------------------------------------------------------
 
 (defn parse-opts [args]
-  (let [o (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
+  (let [o (cli/opts args)
         n (fn [k dflt] (or (some-> (o k) parse-long) dflt))
         x (fn [k dflt] (or (some-> (o k) parse-double) dflt))
         run (or (:run o) "t44-world-norel")]

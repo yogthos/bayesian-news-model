@@ -50,7 +50,8 @@
 
   (options over bnm.cycles/run-defaults, :from 1950; :only reports
   without writing; :parallel runs the commodities in parallel)"
-  (:require [bnm.cycles :as cy]
+  (:require [bnm.time :as tm]
+            [bnm.cycles :as cy]
             [bnm.stat :as stat]
             [bnm.food :as food]
             [bnm.named :as named]
@@ -131,7 +132,7 @@
                :let [[d x] (str/split l #"," -1)
                      x (some-> x str/trim not-empty parse-double)]
                :when (and x (re-matches #"\d{4}-\d{2}.*" d))
-               :let [m (+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 5 7))))]]
+               :let [m (tm/month-index d)]]
            [m (inc m) x]))))
 
 (defn read-wide-monthly-csv
@@ -148,7 +149,7 @@
                   (let [[d & xs] (str/split l #"," -1)]
                     (if-not (re-matches #"\d{4}-\d{2}" (str d))
                       acc
-                      (let [m (+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 5 7))))]
+                      (let [m (tm/month-index d)]
                         (reduce (fn [acc [c x]]
                                   (if-let [x (some-> x str/trim not-empty parse-double)]
                                     (update acc c (fnil conj []) [m (inc m) x])

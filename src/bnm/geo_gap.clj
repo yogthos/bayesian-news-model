@@ -27,7 +27,8 @@
   linear, for restrictions) with dyad and year fixed effects, clustered by
   dyad (bnm.econ-coupling/fe-ols), and a permutation check that hands each
   dyad another dyad's gap series."
-  (:require [augur.math :as m]
+  (:require [bnm.table :as tbl]
+            [augur.math :as m]
             [bnm.econ-coupling :as ec]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -142,9 +143,4 @@
                  :er-ab (num (g "er_ab")) :er-ba (num (g "er_ba"))}))
             ls))))
 
-(defn write-stock [rows path]
-  (io/make-parents path)
-  (with-open [w (io/writer path)]
-    (.write w "iso,year,variable,value,known,data_year\n")
-    (doseq [{:keys [iso year variable value known data-year]} rows]
-      (.write w (str iso "," year "," variable "," (format "%.6f" (double value)) "," known "," data-year "\n")))))
+(def write-stock "iso,year,variable,value,known,data_year (year = known)." tbl/write-stock)

@@ -39,7 +39,8 @@
   lattice runs on its own (the same forecasts as stepping them together).
   Writes data/runs/<out>/<kind>/{forecasts,preds,weights}.tsv as
   bnm.world-run does."
-  (:require [bnm.fast :as fast]
+  (:require [bnm.cli :as cli]
+            [bnm.fast :as fast]
             [bnm.kinds :as kinds]
             [bnm.lattice :as lt]
             [bnm.ledger :as lg]
@@ -94,7 +95,7 @@
 (declare run-main)
 
 (defn -main [& args]
-  (let [opts (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))]
+  (let [opts (cli/opts args)]
     (if-let [root (:archive opts)]
       (first (lg/recording #(run-main opts) (lg/redirect-to root lg/inputs)))
       (run-main opts))))

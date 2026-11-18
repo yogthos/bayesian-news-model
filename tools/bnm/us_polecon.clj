@@ -27,7 +27,8 @@
     on credit, so the same signals mean little.
   So the macro inputs enter multiplied by the regime: the wage share's and
   the profit rate's deviations."
-  (:require [bnm.polecon :as pe]
+  (:require [bnm.time :as tm]
+            [bnm.polecon :as pe]
             [bnm.stocks :as sk]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -50,7 +51,7 @@
                    :let [[d v] (str/split line #",")
                          x (some-> v str/trim not-empty parse-double)]
                    :when x]
-               [(+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 5 7)))) x]))))
+               [(tm/month-index d) x]))))
 
 (def names
   [:wage-share-dev :wage-share3 :profit-rate-dev :profit-rate3 :investment-dev :overaccumulation

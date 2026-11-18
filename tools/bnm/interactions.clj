@@ -77,7 +77,8 @@
       [--from 1960] [--to 2002] [--design-from 1960] [--design-to 2002]
       [--draws 200] [--seed 1] [--out data/runs/sequencing/interactions-t3-design.tsv]
       [--export data/runs/sequencing/t7-design-rows.tsv]"
-  (:require [augur.logit :as lg]
+  (:require [bnm.cli :as cli]
+            [augur.logit :as lg]
             [augur.ftest :as ft]
             [augur.math :as m]
             [bnm.calibration-regime :as cr]
@@ -428,7 +429,7 @@
 ;; --- the run ------------------------------------------------------------------------
 
 (defn parse-opts [args]
-  (let [o (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
+  (let [o (cli/opts args)
         n (fn [k d] (or (some-> (o k) parse-long) d))]
     {:run (or (:run o) "t44-world-norel")
      :from (n :from 1960) :to (n :to 2002)

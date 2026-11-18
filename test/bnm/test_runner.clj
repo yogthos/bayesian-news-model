@@ -79,6 +79,7 @@
             [bnm.calm-test]
             [bnm.sync-test]
             [bnm.stat-test]
+            [bnm.table-test]
             [bnm.ingest-test]
             [bnm.fstats-test]
             [bnm.vol-test]
@@ -264,7 +265,8 @@
     bnm.dev-folds-test
     bnm.ledger-test
     bnm.episodes-test
-    bnm.stat-test])
+    bnm.stat-test
+    bnm.table-test])
 
 (defn -main [& _]
   (let [{:keys [fail error]} (apply t/run-tests namespaces)

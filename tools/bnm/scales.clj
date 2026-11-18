@@ -19,7 +19,8 @@
   scales); scored on 1990 on at every scale.
 
     jolt -A:tools -M -m bnm.scales [--name scales-1]"
-  (:require [augur.logit :as lgt]
+  (:require [bnm.cli :as cli]
+            [augur.logit :as lgt]
             [augur.score :as sc]
             [bnm.paths]
             [bnm.trade :as tr]
@@ -69,7 +70,7 @@
                                       :when (and x (some? y))]
                                   {:k k :yr (year-of k) :x (double-array (cons 1.0 x)) :y y}))]))
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
+        say (cli/say-fn out)
         train-of (fn [rs] (for [r rs :when (<= 1930 (:yr r) 1989)] {:x (:x r) :y (:y r) :w 1.0}))
         fit (fn [train] (lgt/fit train (inc (count names)) {:prior 10.0}))
         ;; pooled over scales, the scale's own intercept as dummies
@@ -117,4 +118,4 @@
       (spit (str dir "/scales.txt") (str out)))))
 
 (defn -main [& args]
-  (run (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))))
+  (run (cli/opts args)))

@@ -30,7 +30,8 @@
   penalties chosen and written. Registered (after registration only):
   --fit-from 1960 --fit-to 2002 --from 2002 --to 2022 with the design's
   penalties."
-  (:require [bnm.attribution :as at]
+  (:require [bnm.cli :as cli]
+            [bnm.attribution :as at]
             [bnm.econ-divergence :as dv]
             [bnm.horizon-profile :as hp]
             [clojure.edn :as edn]
@@ -66,7 +67,7 @@
       (and (seq where) (seq when')) (conj ["where" where] ["when" when']))))
 
 (defn parse-opts [args]
-  (let [o (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
+  (let [o (cli/opts args)
         base (at/parse-opts args)]
     (assoc base
            :kinds (or (:kinds base) ["banking_crisis" "market_crash"])

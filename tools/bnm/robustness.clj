@@ -67,7 +67,8 @@
 
   --from is the first scored origin and --to the last outcome year scored,
   as in bnm.attribution; no row whose window ends after --to is read."
-  (:require [augur.math :as m]
+  (:require [bnm.cli :as cli]
+            [augur.math :as m]
             [bnm.stat :as stat]
             [bnm.attribution :as at]
             [bnm.kinds :as kinds]
@@ -607,7 +608,7 @@
 ;; --- main -----------------------------------------------------------------------------------
 
 (defn parse-opts [args]
-  (let [o (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
+  (let [o (cli/opts args)
         n #(some-> (o %) parse-long)
         longs #(mapv parse-long (str/split % #","))
         fit-from (n :fit-from)]

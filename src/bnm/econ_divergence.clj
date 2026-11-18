@@ -29,7 +29,8 @@
   Rows {:iso :year :known :data-year :variable :value} with :year the year
   known (the stocks convention, so bnm.states reads them), :known the same
   and :data-year the data year."
-  (:require [clojure.java.io :as io]
+  (:require [bnm.table :as tbl]
+            [clojure.java.io :as io]
             [clojure.string :as str]))
 
 (def window "Trailing years a gap is measured against." 25)
@@ -46,14 +47,7 @@
 (defn read-inputs
   "{indicator {iso (sorted-map data-year [known value])}}."
   [path]
-  (with-open [r (io/reader path)]
-    (let [[h & ls] (line-seq r)
-          ix (zipmap (str/split h #",") (range))]
-      (reduce (fn [acc l]
-                (let [f (str/split l #"," -1) g #(nth f (ix %))]
-                  (update-in acc [(g "indicator") (g "iso")] (fnil assoc (sorted-map))
-                             (parse-long (g "year")) [(parse-long (g "known")) (parse-double (g "value"))])))
-              {} ls))))
+  (tbl/read-known-panel path "indicator" "year"))
 
 (defn gap
   "[known gap] at data year y of `s` ({data-year [known value]}): the value
@@ -126,27 +120,13 @@
           (sort-by (juxt :variable :iso :data-year))
           vec))))
 
-(defn write-stock
-  "iso,year,variable,value,known,data_year (year = known)."
-  [rows path]
-  (io/make-parents path)
-  (with-open [w (io/writer path)]
-    (.write w "iso,year,variable,value,known,data_year\n")
-    (doseq [{:keys [iso year variable value known data-year]} rows]
-      (.write w (str iso "," year "," variable "," (format "%.6f" (double value)) "," known "," data-year "\n")))))
+(def write-stock "iso,year,variable,value,known,data_year (year = known)." tbl/write-stock)
 
 (defn read-stock
   "{variable {iso (sorted-map data-year [known value])}} of a stock written
   by write-stock (or any stock with known and data_year columns)."
   [path]
-  (with-open [r (io/reader path)]
-    (let [[h & ls] (line-seq r)
-          ix (zipmap (str/split h #",") (range))]
-      (reduce (fn [acc l]
-                (let [f (str/split l #"," -1) g #(nth f (ix %))]
-                  (update-in acc [(g "variable") (g "iso")] (fnil assoc (sorted-map))
-                             (parse-long (g "data_year")) [(parse-long (g "known")) (parse-double (g "value"))])))
-              {} ls))))
+  (tbl/read-known-panel path "variable" "data_year"))
 
 (def inputs-path "data/derived/econ/divergence-inputs.csv")
 (def stock-path "data/derived/stocks/econ-divergence.csv")

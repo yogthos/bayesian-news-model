@@ -13,7 +13,8 @@
 
   Writes data/runs/<run>/coupling-<onsets>.txt and the stack's coefficients,
   fit on every resolved row, to coupling-<onsets>.edn."
-  (:require [augur.pool :as pl]
+  (:require [bnm.cli :as cli]
+            [augur.pool :as pl]
             [bnm.stat :as stat]
             [augur.score :as sc]
             [bnm.eval :as ev]
@@ -65,7 +66,7 @@
             (or (sc/matched-concordance (map (fn [[q a b y]] {:period q :p-model a :p-bench b :y y}) paired) 4) 0.5))))
 
 (defn -main [& args]
-  (let [{:keys [run onsets model target]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run onsets model target]} (cli/opts args)
         run (or run "v6-q") onsets (or onsets "onsets-live") model (or model "pool")
         ;; escalation (1.5x the last quarter), or a surge from a quiet base (bnm.eval/with-surges)
         surge? (= target "surge")

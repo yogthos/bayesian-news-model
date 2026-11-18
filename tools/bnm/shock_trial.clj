@@ -40,7 +40,8 @@
     jolt -A:tools -M -m bnm.shock-trial --test true --nulls 8   the watch-list rule v2, descriptive (bnm-82j.6)
     [--rebuild true] rebuilds data/derived/stocks/supply-shocks.csv from data/derived/shocks
     [--run t44-world-norel] the base; [--out path] in place of the mode's registered file"
-  (:require [augur.math :as m]
+  (:require [bnm.cli :as cli]
+            [augur.math :as m]
             [bnm.stat :as stat]
             [augur.score :as sc]
             [bnm.attribution :as at]
@@ -322,7 +323,7 @@
                  (if (seq vs) (/ (reduce + vs) (count vs)) 0.0)))))
 
 (defn parse-opts [args]
-  (let [o (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))]
+  (let [o (cli/opts args)]
     (assoc o :run (or (:run o) run)
            :reps (or (some-> (:reps o) parse-long) 1000) :seed seed :alpha 0.1 :block 2)))
 
@@ -337,7 +338,7 @@
 (defn -main [& args]
   (let [{:keys [design power test rebuild nulls run] :as opts} (parse-opts args)
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out (str s "\n"))))
+        say (cli/say-fn out)
         cats (kinds/catalogues)]
     (if power
       (do (wl/report-power say run cats [0.0 0.25 0.375 0.5 0.75 1.0] 100

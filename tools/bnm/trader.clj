@@ -21,7 +21,9 @@
 
   Reads data/raw/slow/market/ (scripts/fetch-slow.sh market); writes
   data/runs/<name>/trader.txt."
-  (:require [augur.calibrate :as pcal]
+  (:require [bnm.time :as tm]
+            [bnm.cli :as cli]
+            [augur.calibrate :as pcal]
             [augur.logit :as lgt]
             [augur.score :as sc]
             [bnm.named :as nm]
@@ -38,7 +40,7 @@
 
 (def dir "data/raw/slow/market/")
 
-(defn- month-of-date [s] (+ (* 12 (parse-long (subs s 0 4))) (dec (parse-long (subs s 5 7)))))
+(defn- month-of-date [s] (tm/month-index s))
 
 (defn read-csv-col
   "{month value} from a csv with a date in the first column and the value in
@@ -73,7 +75,7 @@
                     rest
                     (take-while #(re-matches #"\s*\d{6},.*" %))
                     (map #(map str/trim (str/split % #","))))
-          months (map #(let [d (first %)] (+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 4 6))))) rows)]
+          months (map #(let [d (first %)] (tm/month-index-compact d)) rows)]
       {:start (first months)
        :mkt (mapv #(/ (+ (parse-double (nth % 1)) (parse-double (nth % 4))) 100.0) rows)
        :rf (mapv #(/ (parse-double (nth % 4)) 100.0) rows)})))
@@ -314,7 +316,7 @@
         wt (fn [t] (inc (- t start)))
         targets {"20% within 12m" [12 0.2] "20% within 6m" [6 0.2] "10% within 6m" [6 0.1]}
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
+        say (cli/say-fn out)
         ;; months whose exposure is decided at their end: t earns t+1
         trade-months (fn [lo hi] (filter #(<= lo (quot % 12) hi) (butlast months)))
         returns (fn [ts] [(mapv #(mkt (- (inc %) start)) ts) (mapv #(rf (- (inc %) start)) ts)])
@@ -458,4 +460,4 @@
     (spit (str out-dir "/trader.txt") (str out))))
 
 (defn -main [& args]
-  (run (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))))
+  (run (cli/opts args)))

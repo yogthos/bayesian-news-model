@@ -29,7 +29,8 @@
   node without it in the averaging, as trials 43-45 nested links); the
   year and half-decade nodes read nothing new, and see it only through
   the quarters' states passed up."
-  (:require [augur.math :as m]
+  (:require [bnm.time :as tm]
+            [augur.math :as m]
             [bnm.stocks :as sk]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -39,7 +40,7 @@
 (defn month-of
   "\"2008-09-30\" -> 2008 * 12 + 8."
   ^long [s]
-  (+ (* 12 (parse-long (subs s 0 4))) (dec (parse-long (subs s 5 7)))))
+  (tm/month-index s))
 
 (defn read-series
   "{[unit var] series} from lines `unit var freq period-end available value`

@@ -48,7 +48,8 @@
       [--draws 200] [--boot 1000] [--block 5] [--seed 1] [--prior 1.0] [--power 1,1.2,1.35,1.5,2]
       [--power-draws 100] [--power-perms 50] [--out data/runs/sequencing/t5-dev]
     jolt -A:tools -M -m bnm.half-decade --mode test --confirm-registered yes [...]"
-  (:require [augur.logit :as lg]
+  (:require [bnm.cli :as cli]
+            [augur.logit :as lg]
             [augur.ftest :as ft]
             [augur.math :as m]
             [bnm.credit-run :as cr]
@@ -633,7 +634,7 @@
         {:keys [mode eras test-era]} opts
         out-base (or (:out opts) (str "data/runs/sequencing/t5-" (name mode)))
         text (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append text s) (.append text "\n")))]
+        say (cli/say-fn text)]
     (validate-eras! eras test-era)
     (when (and (= mode :test) (not (:confirm opts)))
       (throw (ex-info "the test era is read only after registration: pass --confirm-registered yes" {})))

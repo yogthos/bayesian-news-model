@@ -10,7 +10,8 @@
   1990 on.
 
     jolt -A:tools -M -m bnm.regime [--name regime-1]"
-  (:require [augur.score :as sc]
+  (:require [bnm.cli :as cli]
+            [augur.score :as sc]
             [bnm.trade :as tr]
             [bnm.trader :as td]
             [bnm.us-polecon :as upc]
@@ -70,7 +71,7 @@
                     {:t t :vals vals :raw (into {} (for [[k i] idx] [k (nth vals i)]))
                      :y (tr/drawdown-ahead? w (inc (- t start)) 12 0.2)}))
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
+        say (cli/say-fn out)
         fmt (fn [x] (if x (format "%.2f" (double x)) "  - "))
         table (for [k candidates]
                 (let [aucs (mapv (fn [[_ lo hi]] (era-auc rows k lo hi)) eras)]
@@ -104,4 +105,4 @@
       (spit (str dir "/regime.txt") (str out)))))
 
 (defn -main [& args]
-  (run (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))))
+  (run (cli/opts args)))

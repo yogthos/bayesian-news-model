@@ -20,7 +20,8 @@
   Prints the tests and writes data/runs/energy-pilot/score.txt, and the
   economies' energy states for the event lattice to
   data/derived/stocks/energy.csv (states)."
-  (:require [augur.math :as m]
+  (:require [bnm.cli :as cli]
+            [augur.math :as m]
             [augur.score :as sc]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -250,7 +251,7 @@
       row)))
 
 (defn -main [& args]
-  (let [{:keys [reps states-only]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [reps states-only]} (cli/opts args)
         reps (or (some-> reps parse-long) 400)
         _ (io/make-parents "data/derived/stocks/x")
         _ (with-open [w (io/writer "data/derived/stocks/energy.csv")]
@@ -260,7 +261,7 @@
         rs (rows)
         shocks [1974 1979 1990 2008]
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out (str s "\n"))))
+        say (cli/say-fn out {:flush false})
         ;; paired squared error, rows [period model bench outcome unit]
         pair (fn [rs ka kb two-way?] (sc/paired-loss-2way (pair-rows rs ka kb two-way?)
                                                           (fn [p y] (* (- p y) (- p y)))

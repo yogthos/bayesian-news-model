@@ -5,13 +5,14 @@
   every input in bnm.trader/all-input-names (blank when missing).
 
     jolt -A:tools -M -m bnm.trader-export [--name trader-inputs]"
-  (:require [bnm.paths]
+  (:require [bnm.cli :as cli]
+            [bnm.paths]
             [bnm.trader :as td]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
 (defn -main [& args]
-  (let [{:keys [name]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [name]} (cli/opts args)
         name (or name "trader-inputs")
         {:keys [fr months raw-inputs]} (td/setup)
         {:keys [start mkt rf]} fr

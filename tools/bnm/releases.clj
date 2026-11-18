@@ -6,10 +6,11 @@
   the data year less one) ran up to five years ahead of its releases; read
   through `read-year` it is read no later than published. Before a
   source's first tabulated release the fixed offset stands."
-  (:require [clojure.java.io :as io]
+  (:require [bnm.time :as tm]
+            [clojure.java.io :as io]
             [clojure.string :as str]))
 
-(defn- month-of [s] (+ (* 12 (parse-long (subs s 0 4))) (dec (parse-long (subs s 5 7)))))
+(defn- month-of [s] (tm/month-index s))
 
 (defn read-releases
   "{source [{:release :published (month) :last-year :last-month (month,

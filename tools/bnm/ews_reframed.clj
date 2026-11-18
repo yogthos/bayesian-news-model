@@ -38,7 +38,8 @@
 
     jolt -A:tools -M -m bnm.ews-reframed [--run t44-world-norel] [--from 1960] [--to 2002]
       [--k 3] [--draws 200] [--seed 1] [--out data/runs/sequencing/ews-t6-design.tsv]"
-  (:require [augur.logit :as lg]
+  (:require [bnm.cli :as cli]
+            [augur.logit :as lg]
             [augur.math :as m]
             [bnm.ews :as ews]
             [bnm.stat :refer [median]]
@@ -284,7 +285,7 @@
             {} (line-seq r))))
 
 (defn parse-opts [args]
-  (let [{:keys [run from to k draws seed out]} (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))]
+  (let [{:keys [run from to k draws seed out]} (cli/opts args)]
     {:run (or run "t44-world-norel")
      :from (or (some-> from parse-long) 1960)
      :to (or (some-> to parse-long) 2002)

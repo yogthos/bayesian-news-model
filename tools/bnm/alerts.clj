@@ -26,7 +26,8 @@
     threshold, the missed ones listed;
   - the world node, where the run has one: the same counts;
   - the fixed outliers of docs/CALIBRATION.md 10-13: mean p and caught."
-  (:require [augur.score :as sc]
+  (:require [bnm.cli :as cli]
+            [augur.score :as sc]
             [bnm.kinds :as kinds]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -236,7 +237,7 @@
 
 (defn -main [& args]
   (let [{:keys [run bench threshold from to episodes ratio reps scale] miss :miss-cost min-rows :min-rows}
-        (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+        (cli/opts args)
         miss-cost (or (some-> miss parse-double) 4.0)]
     (when-not run (throw (ex-info "bnm.alerts: --run is required" {})))
     (doseq [l (report {:run run :bench bench :miss-cost miss-cost

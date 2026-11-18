@@ -35,7 +35,8 @@
   runs the protocol on a run's country rows with a plain fit (each
   place's smoothed past rate) for every kind, and writes
   data/runs/<run>/dev-folds.txt."
-  (:require [augur.math :as m]
+  (:require [bnm.cli :as cli]
+            [augur.math :as m]
             [bnm.benchmarks :as bm]
             [bnm.kinds :as kinds]
             [bnm.lattice-banking :as lb]
@@ -145,7 +146,7 @@
         (bm/smoothed (count (filter :y rs)) (count rs) rate)))))
 
 (defn -main [& args]
-  (let [{:keys [run scale from to test-from k seed]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run scale from to test-from k seed]} (cli/opts args)
         run (or run "t48-world-norel")
         scale (keyword (or scale "year"))
         from (or (some-> from parse-long) 1960)
@@ -156,7 +157,7 @@
         {:keys [offset horizon]} (first (filter #(= scale (:name %)) lb/scales))
         cats (kinds/catalogues)
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out (str s "\n"))))
+        say (cli/say-fn out {:flush false})
         ks (sort (filter #(.exists (io/file (str "data/runs/" run "/" % "/forecasts.tsv"))) (keys kinds/tiers)))]
     (say (format "Development protocol (bnm.dev-folds) on %s, %s nodes' country rows, origins %d-%d; fit: each place's past rate." run (name scale) from to))
     (say (format "Rolling origin, test years %d-%d, gap = window + known-lag, global episodes kept on one side; naive: %d random folds (seed %d)." test-from to k seed))

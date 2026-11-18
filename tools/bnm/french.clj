@@ -1,7 +1,8 @@
 (ns bnm.french
   "Readers for Ken French's international country files (data/raw/slow/
   market/intl/*.Dat)."
-  (:require [clojure.string :as str]))
+  (:require [bnm.time :as tm]
+            [clojure.string :as str]))
 
 (defn- section
   "Lines after the first line matching `header`, up to the next blank."
@@ -20,7 +21,7 @@
         rets (into {} (for [l (section lines "Value-Weight Dollar Returns      All 4 Data Items Not Reqd")
                             :let [[d m] (str/split (str/trim l) #"\s+")]
                             :when (= 6 (count d))]
-                        [(+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 4 6))))
+                        [(tm/month-index-compact d)
                          (/ (parse-double m) 100.0)]))
         ratios (into {} (for [l (section lines "Ratios x 100")
                               :let [[y _ _ ep _ yld] (str/split (str/trim l) #"\s+")]]

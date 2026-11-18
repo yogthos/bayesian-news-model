@@ -23,7 +23,8 @@
   the children's p running above their outcomes, and the calibration
   columns tell the two apart where the countries are calibrated. Summaries by period of the origin: 1946-2002 and 2003-2022
   (development), 2023 on."
-  (:require [bnm.compose :as c]
+  (:require [bnm.cli :as cli]
+            [bnm.compose :as c]
             [bnm.geo :as geo]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -193,7 +194,7 @@
      (calibration-table "Calibration, 2003-2022, year scale: every node's mean p against its observed rate" (filter #(and (dev %) (= "year" (:scale %))) cal) [:kind :level]))))
 
 (defn -main [& args]
-  (let [{:keys [run kinds out]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run kinds out]} (cli/opts args)
         ks (if kinds (str/split kinds #",")
                (sort (for [f (.listFiles (io/file (str "data/runs/" run))) :when (.isDirectory f)] (.getName f))))
         lines (report run ks)]

@@ -60,7 +60,8 @@
   --from is the first origin year, --to the last outcome year (at lead h
   the last origin is to - h); --states a subset of `named` by name, over
   which the statistics and their null are computed."
-  (:require [augur.logit :as lg]
+  (:require [bnm.cli :as cli]
+            [augur.logit :as lg]
             [augur.math :as m]
             [bnm.kinds :as kinds]
             [bnm.lattice-banking :as lb]
@@ -207,7 +208,7 @@
   the entries of `named` given by --states (comma-separated names), all
   by default. An unknown name is an error."
   [args]
-  (let [{:keys [run from to draws seed out states]} (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
+  (let [{:keys [run from to draws seed out states]} (cli/opts args)
         by-name (into {} (for [st named] [(:name st) st]))
         picked (when states (mapv str/trim (str/split states #",")))]
     (when-let [bad (seq (remove by-name picked))]

@@ -28,7 +28,8 @@
   it: the power of the old and new tests, from no real outcome.
 
   Writes paired-vs-<bench>.txt (or power-vs-<bench>.txt) beside the run."
-  (:require [augur.math :as m]
+  (:require [bnm.cli :as cli]
+            [augur.math :as m]
             [bnm.stat :as stat]
             [augur.score :as sc]
             [bnm.anticipation :as an]
@@ -172,7 +173,7 @@
 (defn- fmt [{:keys [diff lo hi]}] (format "%+.5f [%+.5f %+.5f]%s" diff lo hi (if (pos? lo) " GAIN" "")))
 
 (defn -main [& args]
-  (let [{:keys [run bench models kinds reps sims tests scale from to alpha] betas-arg :simulate} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run bench models kinds reps sims tests scale from to alpha] betas-arg :simulate} (cli/opts args)
         dir (str "data/runs/" run)
         reps (or (some-> reps parse-long) 400)
         kinds (when kinds (set (str/split kinds #",")))
@@ -182,7 +183,7 @@
         all-models (sort (disj (set (for [[_ by-model] preds m (keys by-model)] m)) bench))
         models (if models (str/split models #",") all-models)
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out (str s "\n"))))]
+        say (cli/say-fn out {:flush false})]
     (cond
       ;; two lattice runs at one scale: --run model-run --bench bench-run --scale year
       scale

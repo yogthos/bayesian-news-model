@@ -51,3 +51,15 @@
 (defn year-of-day ^long [^long z] (first (civil-from-days z)))
 
 (defn year-start-day ^long [^long y] (days-from-civil y 1 1))
+
+(defn month-index
+  "year x 12 + month - 1 of a \"YYYY-MM...\" string (\"2008-09-30\" ->
+  2008 * 12 + 8)."
+  ^long [s]
+  (+ (* 12 (parse-long (subs s 0 4))) (dec (parse-long (subs s 5 7)))))
+
+(defn month-index-compact
+  "year x 12 + month - 1 of a \"YYYYMM...\" string (\"20080930\" ->
+  2008 * 12 + 8)."
+  ^long [s]
+  (+ (* 12 (parse-long (subs s 0 4))) (dec (parse-long (subs s 4 6)))))

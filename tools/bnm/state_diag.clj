@@ -16,7 +16,8 @@
     jolt -A:tools -M -m bnm.state-diag --run t44-world-norel [--k 2] [--to 2002]
       [--states data/derived/stocks/food.csv,data/derived/stocks/keen.csv,...]
       [--out data/runs/sequencing/states-t45.edn]"
-  (:require [bnm.states :as states]
+  (:require [bnm.cli :as cli]
+            [bnm.states :as states]
             [bnm.factors :as fac]
             [bnm.kinds :as kinds]
             [bnm.relation-diag :as rd]
@@ -64,7 +65,7 @@
             [p material-lag])))
 
 (defn -main [& args]
-  (let [{:keys [run to k states out]} (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
+  (let [{:keys [run to k states out]} (cli/opts args)
         run (or run "t44-world-norel")
         to (or (some-> to parse-long) 2002)
         k (or (some-> k parse-long) 2)

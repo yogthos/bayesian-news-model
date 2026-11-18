@@ -18,7 +18,9 @@
 
   Writes data/runs/<name>/normal.txt and forecasts-<setting>.tsv. The
   locked years (2023 on) are scored only with --confirm true."
-  (:require [augur.special :as sp]
+  (:require [bnm.time :as tm]
+            [bnm.cli :as cli]
+            [augur.special :as sp]
             [augur.ftest :as ft]
             [bnm.fstats :as fs]
             [augur.math :as m]
@@ -235,7 +237,7 @@
         rows (vec (for [t months :let [raw (raw-inputs t)]]
                     {:t t :x (vec1 (rec raw)) :y (tr/drawdown-ahead? w (inc (- t start)) 12 0.2)}))
         hazard (choose-hazard #(us/predictions rows 12 %1 %2 1940) #(quot % 12))
-        rv (daily-rv (wk/read-daily) #(+ (* 12 (parse-long (subs % 0 4))) (dec (parse-long (subs % 4 6)))))]
+        rv (daily-rv (wk/read-daily) #(tm/month-index-compact %))]
     {:name "US monthly" :periods 12 :har-lags [1 3 12] :tune [1950 1989] :from 1950
      :inputs (into monthly-inputs [:hazard :political-world :political-us])
      :ps (vec (for [t months
@@ -504,7 +506,7 @@
         _ (io/make-parents (str dir "/x"))
         pol (political-risk (or political "r6-mixties"))
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
+        say (cli/say-fn out)
         with-locked #(cond-> % (= confirm "true") (conj locked))
         us (vec (for [mk [monthly-setting weekly-setting]
                       :let [{:keys [ps inputs tune] :as s} (mk pol)
@@ -597,4 +599,4 @@
     (spit (str dir "/normal.txt") (str out))))
 
 (defn -main [& args]
-  (run (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))))
+  (run (cli/opts args)))

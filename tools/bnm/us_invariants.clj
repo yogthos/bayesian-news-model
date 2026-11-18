@@ -23,7 +23,8 @@
                           the displacement of the whole state), applied to the
                           same US stretches: what US history alone cannot teach,
                           since no US equity crash before 1990 came from credit"
-  (:require [bnm.invariants :as iv]
+  (:require [bnm.table :as tbl]
+            [bnm.invariants :as iv]
             [bnm.paths]
             [bnm.polecon :as pe]
             [bnm.stocks :as sk]
@@ -49,14 +50,6 @@
                            [(parse-long y) (mapv parse-double bs)]))
       (sorted-map))))
 
-(defn- read-monthly [path]
-  (with-open [r (io/reader path)]
-    (into {} (for [line (rest (line-seq r))
-                   :let [[d v] (str/split line #",")
-                         x (some-> v str/trim not-empty parse-double)]
-                   :when (and x (re-matches #"\d{4}-\d{2}.*" d))]
-               [(+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 5 7)))) x]))))
-
 (defn- read-vintages
   "{vintage {month log value}} from a scripts/rtdsm.py CSV, or nil."
   [path]
@@ -76,7 +69,7 @@
   Philadelphia Fed's vintages), not as revised since (docs/OPERATIONS.md)."
   [db pe10]
   (let [dir "data/raw/slow/market/"
-        rd #(read-monthly (str dir % ".csv"))
+        rd #(tbl/read-monthly (str dir % ".csv"))
         cpi (rd "CPIAUCNS") baa (rd "BAA") aaa (rd "AAA") oil (rd "WTISPLC")
         lgm (fn [m] (into {} (for [[k v] m :when (pos? v)] [k (Math/log v)])))
         lcpi (lgm cpi)

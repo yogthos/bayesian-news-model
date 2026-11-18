@@ -41,7 +41,8 @@
   (`per-year`), whatever the record's time unit, so stocks compare; a
   window is in years; :exhaustion is a date on the series' own axis. A
   missing input gives a nil value and a flag, never a zero."
-  (:require [bnm.engine :as eng]
+  (:require [bnm.table :as tbl]
+            [bnm.engine :as eng]
             [bnm.invariants :as iv]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
@@ -648,9 +649,4 @@
     {:records (mapv first rs)
      :series (into {} (for [[r o] rs] [(:id r) {:stock [o]}]))}))
 
-(defn read-csv-maps
-  "Rows of a plain CSV (no quoted commas) as maps keyed by the header."
-  [path]
-  (with-open [r (io/reader path)]
-    (let [[h & ls] (line-seq r) ks (mapv keyword (str/split h #","))]
-      (mapv #(zipmap ks (str/split % #"," -1)) ls))))
+(def read-csv-maps "Rows of a plain CSV (no quoted commas) as maps keyed by the header." tbl/read-csv-maps)
