@@ -2943,3 +2943,15 @@ t96-off's banking forecasts equal t80-base's byte for byte. Banking year nodes a
 - **t96-pp** (`:presence :per-place`, evidence once per origin): LOSS at 2007-09 (-0.00198), 2010-12 (-0.00271), 2013-19 (-0.00029), 2020-22 (-0.00005) and pooled (-0.00090 [-0.00157, -0.00037]); within-year AUC 0.482. Worse on every count.
 - **t96-all** (bank splice, per-place, long baseline 60, ρ 0): 2020-22 -0.00143 [-0.00154, -0.00133] LOSS, pooled +0.00053 [-0.00050, +0.00177]; pooled AUC 0.547, within-year 0.517.
 - **Verdict:** none adopted. The per-place averaging was the trace's reading ("the averaging does not weigh what its groups know"), and it is wrong or incomplete: taking the unseeing groups out of each place's mixture and tempering the evidence moves the weight among groups that all forecast badly; it does not let the credit groups carry the forecast. The plain logit on two credit inputs (AUC 0.70 on these rows, CALIBRATION "Against a reference that knows only that crises cluster") is still far ahead of every lattice variant tried (best within-year 0.71, pooled at most 0.58).
+
+## A theory forecast as banking's year offset: t97 (bnm-ris)
+
+Written 18 November 2026, before any run. The user's thesis, known priors as the base and the model learning the combinations: on banking's own rows a logit on two credit inputs ranks JST's countries at 0.70 within years where no lattice variant passes 0.58 pooled, and the year node has no offset (each of its 28 groups learns from the intercept). `--theory-offset true` (this commit, bnm.theory): the year node's offset is that logit, on the node's own standardized credit stretch and three-year credit growth (a missing value the mean), refit at each December origin on the rows whose outcomes are known by then; a subregion, region or the world takes the chance any member has a crisis. The quarter offsets are unchanged. On the testbed (5 seeds) the theory offset moves the log skill by under 0.006 either way (credit waves +0.0092 -> +0.0097, commodity bust +0.0125 -> +0.0128, partial coverage -0.0038 -> -0.0006, synchronized +0.0412 -> +0.0400, mixed channels -0.0121 -> -0.0177): there the plain logit and the lattice already capture about the same share; banking is where they part.
+
+Runs, banking only (other kinds from t80-base), one at a time:
+- **t97-off**: t80-base's command on this commit: banking byte for byte t80-base's.
+- **t97-theory**: `--theory-offset true`.
+- **t97-theory-rho0**: the same with banking's frailty at ρ 0.
+- **t97-theory-long-rho0**: the same with `--long-baseline 60` (the theory reads the long stretch too).
+
+Rule, fixed now: each against t80-base, banking year nodes: the fold rule and the alert table at 4:1. Reported beside it: pooled and within-year AUC (JST / outside), the clustering reference comparison, calibration by decile, and the theory offset alone scored on the same rows.
