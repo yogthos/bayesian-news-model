@@ -16,6 +16,7 @@
 
     jolt -A:tools -M -m bnm.food-run"
   (:require [bnm.food :as food]
+            [bnm.stat :as stat]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -94,15 +95,7 @@
                       {} (line-seq r)))]
     (update-vals acc (fn [ys] (into {} (for [[y xs] ys :when (= 12 (count xs))] [y (/ (reduce + xs) 12.0)]))))))
 
-(defn- corr [pairs]
-  (let [n (count pairs)]
-    (when (> n 2)
-      (let [xs (map first pairs) ys (map second pairs)
-            mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
-            sxy (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
-            sxx (reduce + (map #(* (- % mx) (- % mx)) xs))
-            syy (reduce + (map #(* (- % my) (- % my)) ys))]
-        (/ sxy (Math/sqrt (* sxx syy)))))))
+(defn- corr [pairs] (when (> (count pairs) 2) (stat/pearson (map first pairs) (map second pairs))))
 
 (defn- report [rows]
   (let [idx (into {} (map (juxt (juxt :iso :year :variable) :value)) rows)

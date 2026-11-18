@@ -73,7 +73,8 @@
   blind to it. For the same reason the downstream set's revision filter
   is on value share alone (:share-step): until the review of bnm-1pq.8 it
   used the combined step, which dropped 850780 from 2008-13 for the
-  tonnes jump at the 2007 revision.")
+  tonnes jump at the 2007 revision."
+  (:require [bnm.stat :as stat]))
 
 (def revisions
   "HS revision years: the first year each new edition is in force."
@@ -89,14 +90,7 @@
    :min-tonnes-years 6 ; years with known tonnes needed for a tonnes trend
    :rank-edition "HS92"})
 
-(defn median
-  "The median of `xs` (the mean of the middle two when even), nil if empty."
-  [xs]
-  (let [v (vec (sort xs)) n (count v)]
-    (when (pos? n)
-      (if (odd? n)
-        (double (v (quot n 2)))
-        (/ (+ (double (v (dec (quot n 2)))) (double (v (quot n 2)))) 2.0)))))
+(def median "The median of `xs` (the mean of the middle two when even), nil if empty." stat/median-double)
 
 (defn theil-sen
   "The Theil-Sen slope of points [[x y] ...]: the median of the slopes

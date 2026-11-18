@@ -41,6 +41,7 @@
     [--rebuild true] rebuilds data/derived/stocks/supply-shocks.csv from data/derived/shocks
     [--run t44-world-norel] the base; [--out path] in place of the mode's registered file"
   (:require [augur.math :as m]
+            [bnm.stat :as stat]
             [augur.score :as sc]
             [bnm.attribution :as at]
             [bnm.kinds :as kinds]
@@ -178,7 +179,7 @@
              [t [(reduce + 0.0 (map #(- (loss (get-in % [:p b]) (:y %)) (loss (get-in % [:p a]) (:y %))) rs)) (count rs)]])))
 
 (defn- log-loss ^double [p y] (let [p (max 1e-12 (min (- 1.0 1e-12) (double p)))] (- (Math/log (if y p (- 1.0 p))))))
-(defn- brier ^double [p y] (let [d (- (double p) (if y 1.0 0.0))] (* d d)))
+(def ^:private brier stat/brier-one)
 
 (defn evaluate
   "Every score of the scored rows `by-kind` ({kind rows with :p}), with

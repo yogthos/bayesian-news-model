@@ -23,7 +23,8 @@
   collinear duplicate) is dropped before the fit, so it cannot change the
   term."
   (:require [augur.dynamic :as d]
-            [augur.ftest :as ft]))
+            [augur.ftest :as ft]
+            [bnm.stat :as stat]))
 
 (defn independent-columns
   "The indices of `cols` (each a vector over the same rows, no nils) that
@@ -76,14 +77,6 @@
                         [{:x x :y true :w (* w share)} {:x x :y false :w (* w (- 1.0 share))}]))
                     rows))))
 
-(defn- corr [xs ys]
-  (let [n (count xs)]
-    (when (> n 2)
-      (let [mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
-            c (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
-            vx (reduce + (map #(let [d (- % mx)] (* d d)) xs))
-            vy (reduce + (map #(let [d (- % my)] (* d d)) ys))]
-        (when (and (pos? vx) (pos? vy)) (/ c (Math/sqrt (* vx vy))))))))
 
 (defn- ols
   "[a b] of y ~ a + b x."
@@ -118,8 +111,8 @@
     {:n (count rows)
      :errors online
      :n-online (count online)
-     :lead (corr (map :g rows) (map :r rows))
-     :concurrent (corr (map :w cw) (map :r cw))
+     :lead (stat/pearson-or-nil (map :g rows) (map :r rows))
+     :concurrent (stat/pearson-or-nil (map :w cw) (map :r cw))
      :online (mse first) :clim (mse second)
      :pass (boolean (and (>= (count online) (max 1 min-online)) (<= (mse first) (* ratio (mse second)))))}))
 

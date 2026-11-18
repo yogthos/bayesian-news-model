@@ -29,6 +29,7 @@
 
   Writes paired-vs-<bench>.txt (or power-vs-<bench>.txt) beside the run."
   (:require [augur.math :as m]
+            [bnm.stat :as stat]
             [augur.score :as sc]
             [bnm.anticipation :as an]
             [bnm.onset :as o]
@@ -39,7 +40,7 @@
 
 (def floor "Log-score floor on probabilities." 1e-4)
 
-(defn brier ^double [^double p y] (let [d (- p (if y 1.0 0.0))] (* d d)))
+(def brier "The squared error of `p` for the outcome `y`." stat/brier-one)
 
 (defn log-loss ^double [^double p y]
   (- (Math/log (Math/max floor (if y p (- 1.0 p))))))

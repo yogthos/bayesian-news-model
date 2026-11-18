@@ -39,6 +39,7 @@
 
   The frontier is the United States (Comin & Hobijn's benchmark)."
   (:require [bnm.geo :as geo]
+            [bnm.stat :as stat]
             [bnm.slow-train :as st]
             [bnm.technology :as tech]
             [clojure.java.io :as io]
@@ -163,14 +164,7 @@
 (defn- f1 [x] (if x (format "%7.1f" (double x)) "      -"))
 (defn- f2 [x] (if x (format "%7.2f" (double x)) "      -"))
 
-(defn- corr [pairs]
-  (let [n (count pairs)]
-    (when (> n 5)
-      (let [mx (/ (reduce + (map first pairs)) n) my (/ (reduce + (map second pairs)) n)
-            sxy (reduce + (map (fn [[x y]] (* (- x mx) (- y my))) pairs))
-            sxx (reduce + (map (fn [[x _]] (* (- x mx) (- x mx))) pairs))
-            syy (reduce + (map (fn [[_ y]] (* (- y my) (- y my))) pairs))]
-        (/ sxy (Math/sqrt (* sxx syy)))))))
+(defn- corr [pairs] (when (> (count pairs) 5) (stat/pearson (map first pairs) (map second pairs))))
 
 (defn report [rows store]
   (let [ix (index rows)

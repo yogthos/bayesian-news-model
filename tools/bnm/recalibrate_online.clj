@@ -77,6 +77,7 @@
       [--out data/runs/sequencing/recalibrate-online-design.tsv]
       [--out-run t44-world-norel-online]"
   (:require [augur.dynamic :as d]
+            [bnm.stat :as stat]
             [augur.math :as m]
             [bnm.kinds :as kinds]
             [bnm.lattice-banking :as lb]
@@ -207,9 +208,9 @@
 
 (defn- lg ^double [r p] (Math/log (if (:y r) p (- 1.0 p))))
 
-(defn mean-log [rows f] (/ (reduce + (map #(lg % (f %)) rows)) (max 1 (count rows))))
+(defn mean-log [rows f] (stat/rows-mean-log rows (map f rows)))
 
-(defn brier [rows f] (/ (reduce + (map #(Math/pow (- (yv %) (f %)) 2) rows)) (max 1 (count rows))))
+(defn brier [rows f] (stat/rows-brier rows (map f rows)))
 
 (defn top-recall
   "The share of onsets in the top 10% of rows by (f row) within each kind

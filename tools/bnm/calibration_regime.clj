@@ -55,6 +55,7 @@
       [--from 1960] [--to 2002] [--design-from 1960] [--design-to 2002]
       [--draws 200] [--seed 1] [--out data/runs/sequencing/calibration-t2-design.tsv]"
   (:require [augur.logit :as lg]
+            [bnm.stat :as stat]
             [augur.math :as m]
             [bnm.horizon-profile :as hp]
             [bnm.kinds :as kinds]
@@ -286,8 +287,8 @@
 
 ;; --- out of sample ------------------------------------------------------------------
 
-(defn- mean-log [rows ps] (/ (reduce + (map (fn [r p] (Math/log (if (:y r) p (- 1.0 p)))) rows ps)) (max 1 (count rows))))
-(defn- brier [rows ps] (/ (reduce + (map (fn [r p] (Math/pow (- (yv r) p) 2)) rows ps)) (max 1 (count rows))))
+(def ^:private mean-log stat/rows-mean-log)
+(def ^:private brier stat/rows-brier)
 
 (defn top-recall
   "The share of onsets in the top 10% of rows by `ps` within each kind and

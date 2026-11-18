@@ -32,6 +32,7 @@
   carried across the 2013/14 DMSP-VIIRS join (`splice-lights`,
   `sensor-flags`)."
   (:require [bnm.cells :as cells]
+            [bnm.stat :refer [median]]
             [bnm.csv :as csv]
             [bnm.stages :as stages]
             [clojure.java.io :as io]
@@ -145,10 +146,6 @@
         (str/starts-with? k "mine-") nil
         :else (some->> (tonnes u) (* capacity))))))
 
-(defn- median [xs]
-  (when (seq xs)
-    (let [v (vec (sort xs)) n (count v)]
-      (if (odd? n) (v (quot n 2)) (/ (+ (v (dec (quot n 2))) (v (quot n 2))) 2.0)))))
 
 (defn medians
   "{key median capacity} over the assets with one, for filling a missing

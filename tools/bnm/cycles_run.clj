@@ -51,6 +51,7 @@
   (options over bnm.cycles/run-defaults, :from 1950; :only reports
   without writing; :parallel runs the commodities in parallel)"
   (:require [bnm.cycles :as cy]
+            [bnm.stat :as stat]
             [bnm.food :as food]
             [bnm.named :as named]
             [bnm.slow-train :as st]
@@ -181,15 +182,7 @@
 
 (defn- mean [xs] (when (seq xs) (/ (reduce + 0.0 xs) (count xs))))
 
-(defn- corr [pairs]
-  (let [n (count pairs)]
-    (when (> n 2)
-      (let [xs (map first pairs) ys (map second pairs)
-            mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
-            sxy (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
-            sxx (reduce + (map #(* (- % mx) (- % mx)) xs))
-            syy (reduce + (map #(* (- % my) (- % my)) ys))]
-        (when (and (pos? sxx) (pos? syy)) (/ sxy (Math/sqrt (* sxx syy))))))))
+(defn- corr [pairs] (stat/pearson-or-nil (map first pairs) (map second pairs)))
 
 (defn agreement
   "{:n :from :to :corr :ratio} of two annual series ({data-year

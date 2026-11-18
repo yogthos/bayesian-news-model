@@ -49,6 +49,7 @@
       [--power-draws 100] [--power-perms 50] [--out data/runs/sequencing/t5-dev]
     jolt -A:tools -M -m bnm.half-decade --mode test --confirm-registered yes [...]"
   (:require [augur.logit :as lg]
+            [augur.ftest :as ft]
             [augur.math :as m]
             [bnm.credit-run :as cr]
             [bnm.macrohistory :as mh]
@@ -369,16 +370,7 @@
                                      (f (mapcat by (take n picked)))))))]
       [(m/quantile xs 0.05) (m/quantile xs 0.95)])))
 
-(defn holm
-  "Holm-adjusted p values, in the input's order."
-  [ps]
-  (let [n (count ps)
-        order (sort-by #(nth ps %) (range n))
-        adj (loop [[i & more] order k 0 run 0.0 acc {}]
-              (if (nil? i) acc
-                  (let [a (max run (min 1.0 (* (- n k) (double (nth ps i)))))]
-                    (recur more (inc k) a (assoc acc i a)))))]
-    (mapv adj (range n))))
+(def holm "Holm-adjusted p values, in the input's order." ft/holm-adjusted)
 
 (defn permuted-table
   "Each country's states read from another's whole series: `perm` maps a

@@ -19,7 +19,6 @@
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
-(defn- brier [ps ys] (/ (reduce + (map (fn [p y] (let [d (- p (if y 1.0 0.0))] (* d d))) ps ys)) (count ys)))
 
 (def surge {:protest "protest_surge" :violence "violence_surge"})
 
@@ -57,8 +56,8 @@
     (println "Brier skill against climatology (model, calibrated, stack) and AUC (model, stack), by stratum")
     (doseq [[[ch st] g] (sort-by (comp str key) (group-by key-of stacked))
             :let [ys (map :escalated g)
-                  bc (brier (map :p-clim g) ys)
-                  sk #(* 100 (- 1 (/ (brier (map % g) ys) bc)))]
+                  bc (sc/brier (map :p-clim g) ys)
+                  sk #(* 100 (- 1 (/ (sc/brier (map % g) ys) bc)))]
             :when (some true? ys)]
       (println (format "  %-16s %-6s n=%5d  BSS %+6.1f%% %+6.1f%% %+6.1f%%  auc %s %s"
                        (name ch) (name st) (count g) (sk :p-escalate) (sk :p-cal) (sk :p-stack)

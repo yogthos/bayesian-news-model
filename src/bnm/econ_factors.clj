@@ -66,7 +66,8 @@
     econ/<concept>      the posterior mean (units of the factor's SD over
                         the training panel)
     econ/<concept>-sd   its posterior SD (not for an index)
-    econ/<concept>-n    the number of indicators it used")
+    econ/<concept>-n    the number of indicators it used"
+  (:require [bnm.stat :refer [median]]))
 
 (def nfc-indicators
   "The corporate-behaviour measures of 8a: what non-financial firms do with
@@ -143,9 +144,6 @@
   [rows]
   (reduce (fn [m {:keys [iso year indicator value]}] (assoc-in m [[iso year] indicator] value)) {} rows))
 
-(defn- median [xs]
-  (let [v (vec (sort xs)) n (count v) h (quot n 2)]
-    (if (odd? n) (v h) (/ (+ (v (dec h)) (v h)) 2.0))))
 
 (defn- quantile
   "The p-quantile of the sorted vector `v` (linear interpolation)."

@@ -19,12 +19,13 @@
 
   Prints and writes data/runs/<run>/world-score.txt."
   (:require [augur.score :as sc]
+            [bnm.stat :as stat]
             [bnm.kinds :as kinds]
             [bnm.paired :as pd]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
-(defn- brier [p y] (let [d (- (double p) (if y 1.0 0.0))] (* d d)))
+(def ^:private brier stat/brier-one)
 (defn- log-loss [p y] (- (Math/log (Math/max 1e-4 (double (if y p (- 1.0 p)))))))
 
 (defn joint-rows

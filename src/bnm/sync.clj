@@ -8,12 +8,8 @@
   - a unit's departure from its own baseline: how far its channels'
     correlations and spreads now sit from what they were (single-sample
     DNB, Liu et al. 2017), which needs no history of onsets.
-  Series are vectors of numbers, oldest first.")
-
-(defn- mean [xs] (/ (reduce + xs) (double (count xs))))
-
-(defn- sd [xs]
-  (let [m (mean xs)] (Math/sqrt (/ (reduce + (map #(let [d (- % m)] (* d d)) xs)) (count xs)))))
+  Series are vectors of numbers, oldest first."
+  (:require [bnm.stat :refer [mean sd-pop]]))
 
 (defn corr
   "Pearson correlation, 0 when either series is flat."
@@ -29,7 +25,7 @@
   principal component: near 1 when all move together. Flat series are left
   out; nil with fewer than two."
   [series]
-  (let [zs (vec (for [s series :let [m (mean s) d (sd s)] :when (pos? d)] (mapv #(/ (- % m) d) s)))]
+  (let [zs (vec (for [s series :let [m (mean s) d (sd-pop s)] :when (pos? d)] (mapv #(/ (- % m) d) s)))]
     (when (>= (count zs) 2)
       (let [w (count (first zs))
             ;; the w x w Gram matrix has the cross-section's nonzero eigenvalues
@@ -55,7 +51,7 @@
   (when (>= (count members) 2)
     (let [inside (for [[i a] (map-indexed vector members) b (drop (inc i) members)] (Math/abs (corr a b)))
           across (for [a members b outsiders] (Math/abs (corr a b)))]
-      (/ (* (mean (map sd members)) (mean inside))
+      (/ (* (mean (map sd-pop members)) (mean inside))
          (+ 0.05 (if (seq across) (mean across) 0.0))))))
 
 (defn departure
@@ -77,5 +73,5 @@
                           (Math/abs (- (corr (col now a) (col now b)) (corr (col base a) (col base b))))))
                   0.0)
           spread (mean (for [j (range k)]
-                         (Math/log (/ (+ 1e-3 (sd (col now j))) (+ 1e-3 (sd (col base j)))))))]
+                         (Math/log (/ (+ 1e-3 (sd-pop (col now j))) (+ 1e-3 (sd-pop (col base j)))))))]
       [shift spread])))

@@ -78,6 +78,7 @@
       [--draws 200] [--seed 1] [--out data/runs/sequencing/interactions-t3-design.tsv]
       [--export data/runs/sequencing/t7-design-rows.tsv]"
   (:require [augur.logit :as lg]
+            [augur.ftest :as ft]
             [augur.math :as m]
             [bnm.calibration-regime :as cr]
             [bnm.geo :as geo]
@@ -330,16 +331,7 @@
 
 ;; --- the pair tests -------------------------------------------------------------
 
-(defn holm
-  "Holm-adjusted p values, in the input's order."
-  [ps]
-  (let [n (count ps)
-        order (sort-by #(nth ps %) (range n))
-        adj (loop [[i & more] order k 0 run 0.0 acc {}]
-              (if (nil? i) acc
-                  (let [a (max run (min 1.0 (* (- n k) (double (nth ps i)))))]
-                    (recur more (inc k) a (assoc acc i a)))))]
-    (mapv adj (range n))))
+(def holm "Holm-adjusted p values, in the input's order." ft/holm-adjusted)
 
 (defn pair-design
   "Rows {:kind :L :s :tr} with :x the recalibration then s and the

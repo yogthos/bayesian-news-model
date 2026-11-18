@@ -41,6 +41,7 @@
   (:require [augur.logit :as lg]
             [augur.math :as m]
             [bnm.ews :as ews]
+            [bnm.stat :refer [median]]
             [bnm.factors :as fac]
             [bnm.horizon-profile :as hp]
             [bnm.kinds :as kinds]
@@ -82,9 +83,6 @@
 
 ;; --- calm duration ---------------------------------------------------------------
 
-(defn- median [xs]
-  (let [v (vec (sort xs)) n (count v)]
-    (if (odd? n) (v (quot n 2)) (/ (+ (v (dec (quot n 2))) (v (quot n 2))) 2.0))))
 
 (defn running-median-dev
   "Each x less the median of the known values before it, nil where x is

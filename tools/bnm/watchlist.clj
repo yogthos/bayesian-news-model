@@ -48,6 +48,7 @@
             [augur.special :as sp]
             [bnm.benchmarks :as bm]
             [bnm.kinds :as kinds]
+            [bnm.stat :as stat]
             [bnm.paired :as pd]
             [bnm.relation-diag :as rd]
             [bnm.warm-up :as wu]
@@ -354,11 +355,7 @@
         mid
         (if (< (sp/t-cdf mid (double df)) p) (recur mid hi (inc i)) (recur lo mid (inc i)))))))
 
-(defn sd
-  "The sample standard deviation of `xs` (n - 1)."
-  [xs]
-  (let [n (count xs) mu (/ (reduce + xs) (double n))]
-    (Math/sqrt (/ (reduce + (map #(let [d (- % mu)] (* d d)) xs)) (dec n)))))
+(def sd "The sample standard deviation of `xs` (n - 1)." stat/sd)
 
 (defn null-test
   "The v2 decision for a candidate whose gain over the bench is `c`,

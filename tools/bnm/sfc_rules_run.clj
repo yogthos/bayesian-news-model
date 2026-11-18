@@ -45,6 +45,7 @@
   scripts/sfc-data.py holdout), the power simulation behind its bounds,
   the forecasts of every model at every row, and the verdicts."
   (:require [bnm.sfc :as sfc]
+            [bnm.stat :as stat]
             [bnm.sfc-analysis :as sa]
             [bnm.sfc-horizon-run :as h]
             [augur.math]
@@ -585,9 +586,8 @@
               :when (seq fs)]
           [iso fs])))
 
-(defn- med [xs]
-  (let [v (vec (sort (map double xs))) n (count v)]
-    (when (pos? n) (if (odd? n) (v (quot n 2)) (/ (+ (v (dec (quot n 2))) (v (quot n 2))) 2.0)))))
+
+(def ^:private med stat/median-double)
 
 (defn- flag-list
   "\"ISO (base 2031-2033, shocked 2031), ...\" for the flags of `kind`."

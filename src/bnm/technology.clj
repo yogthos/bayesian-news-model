@@ -60,6 +60,7 @@
                               productivity from catching up (negative:
                               falling behind)."
   (:require [bnm.assimilate :as asm]
+            [bnm.stat :refer [median]]
             [bnm.stockflow :as sf]
             [clojure.string :as str]))
 
@@ -272,9 +273,6 @@
                           va (double va) vb (double vb)]
                       (+ (double ta) (* (- tb ta) (/ (- x va) (- vb va))))))))))
 
-(defn- median [xs]
-  (let [v (vec (sort xs)) n (count v)]
-    (when (pos? n) (if (odd? n) (v (quot n 2)) (* 0.5 (+ (v (dec (quot n 2))) (v (quot n 2))))))))
 
 (defn lag
   "Years the country ([[t x]] known) is behind the frontier: the median

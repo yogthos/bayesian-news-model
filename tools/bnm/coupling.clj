@@ -14,6 +14,7 @@
   Writes data/runs/<run>/coupling-<onsets>.txt and the stack's coefficients,
   fit on every resolved row, to coupling-<onsets>.edn."
   (:require [augur.pool :as pl]
+            [bnm.stat :as stat]
             [augur.score :as sc]
             [bnm.eval :as ev]
             [clojure.java.io :as io]
@@ -42,11 +43,7 @@
                    :when (and (= w "w1") (= m model) (kinds k))]
                [[k u (parse-long q)] (parse-double p)]))))
 
-(defn- ll [rows]
-  (when (seq rows)
-    (/ (reduce + (for [[_ p y] rows :let [p (min (max (double p) 1e-6) (- 1.0 1e-6))]]
-                   (Math/log (if y p (- 1.0 p)))))
-       (double (count rows)))))
+(def ^:private ll stat/mean-log-score)
 
 (defn- neg-brier [rows]
   (when (seq rows) (- (sc/brier (map second rows) (map #(nth % 2) rows)))))

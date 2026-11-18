@@ -20,18 +20,15 @@
     correlation of Keilis-Borok and Soloviev; spatial early warnings).
 
   Settings are the literatures' defaults, fixed before any scored run.
-  Only quarters up to the row's are read.")
+  Only quarters up to the row's are read."
+  (:require [bnm.stat :refer [mean sd]]))
 
 (def names [:norm :breadth :max :resonance :trigger :dispersion :range-shift])
 
 (def ^:private windows [8 20 40])
 (def ^:private threshold 1.5)
 
-(defn- mean [xs] (/ (reduce + xs) (double (count xs))))
 
-(defn- sd [xs]
-  (let [mu (mean xs)]
-    (Math/sqrt (/ (reduce + (map #(let [d (- % mu)] (* d d)) xs)) (dec (count xs))))))
 
 (def ^:private sd-floor
   "The least spread a z-score divides by, on the log scale: a stream silent

@@ -83,6 +83,7 @@
             [augur.logit :as lgt]
             [augur.pool :as pl]
             [augur.score :as sc]
+            [bnm.stat :as stat]
             [augur.analog :as analog]
             [bnm.calm :as calm]
             [bnm.geo :as geo]
@@ -475,14 +476,7 @@
   [unit q]
   (< (mod (hash [unit q]) 100) 15))
 
-(defn- log-score
-  "Mean log probability of the outcomes."
-  [preds]
-  (when (seq preds)
-    (/ (reduce + (for [[_ p y] preds
-                       :let [p (Math/min (Math/max (double p) 1e-6) (- 1.0 1e-6))]]
-                   (Math/log (if y p (- 1.0 p)))))
-       (double (count preds)))))
+(def ^:private log-score "Mean log probability of the outcomes." stat/mean-log-score)
 
 (defn- in-years [preds lo hi] (filter #(<= lo (quot (first %) 4) hi) preds))
 

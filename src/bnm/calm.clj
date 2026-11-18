@@ -12,7 +12,8 @@
   - jump: the log share against its trailing mean;
   - var-jump: the log spread of the last 4 quarters against the 8 before.
   A quarter's share is shrunk toward the trailing mean by `pseudo` events,
-  so a handful says little.")
+  so a handful says little."
+  (:require [bnm.stat :refer [mean sd-pop]]))
 
 (def channels [["protest" "protest-did"] ["violence" "assault-did"] ["coercion" "coerce-did"]])
 
@@ -25,10 +26,7 @@
 
 (def ^:private eps 0.005)
 
-(defn- mean [xs] (/ (reduce + xs) (double (count xs))))
 
-(defn- sd [xs]
-  (let [m (mean xs)] (Math/sqrt (/ (reduce + (map #(let [d (- % m)] (* d d)) xs)) (count xs)))))
 
 (defn- channel-step
   "One channel's state after quarter q: {:shares [...] :spike q-or-nil} and
@@ -46,9 +44,9 @@
         mu (mean last8)]
     [{:shares (vec (take-last (inc window) shares)) :spike spike}
      [(if spike (Math/exp (- (/ (- q spike) 8.0))) 0.0)
-      (if (pos? mu) (/ (sd last8) mu) 0.0)
+      (if (pos? mu) (/ (sd-pop last8) mu) 0.0)
       (Math/log (/ (+ s eps) (+ m eps)))
-      (if (seq older) (Math/log (/ (+ (sd recent) eps) (+ (sd older) eps))) 0.0)]]))
+      (if (seq older) (Math/log (/ (+ (sd-pop recent) eps) (+ (sd-pop older) eps))) 0.0)]]))
 
 (defn features
   "{quarter double[]} from {quarter {type count}} (sorted by quarter), from

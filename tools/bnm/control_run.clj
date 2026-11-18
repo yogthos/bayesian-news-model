@@ -27,6 +27,7 @@
 
     jolt -A:tools -M -m bnm.control-run"
   (:require [bnm.control :as c]
+            [bnm.stat :as stat]
             [bnm.csv :as csv]
             [clojure.java.io :as io]))
 
@@ -83,13 +84,7 @@
           :let [s (c/equal-score fit x spec)] :when (and s (first (:ok s)))]
       [iso y (first (:f s))])))
 
-(defn- corr [ps]
-  (let [n (count ps) xs (map first ps) ys (map second ps)
-        mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
-        sxy (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
-        sxx (reduce + (map #(let [d (- % mx)] (* d d)) xs))
-        syy (reduce + (map #(let [d (- % my)] (* d d)) ys))]
-    (/ sxy (Math/sqrt (* sxx syy)))))
+(defn- corr [ps] (stat/pearson (map first ps) (map second ps)))
 
 (defn -main [& _]
   (let [rows (read-rows in-path)

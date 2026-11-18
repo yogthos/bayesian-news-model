@@ -26,15 +26,13 @@
   (:require [augur.math :as m]
             [bnm.engine :as eng]
             [bnm.modules.stocks :as ms]
+            [bnm.stat :refer [median]]
             [bnm.states :as states]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
 ;; -- the members' emits as one ------------------------------------------------------
 
-(defn- median [xs]
-  (let [xs (vec (sort xs)) n (count xs) h (quot n 2)]
-    (if (odd? n) (nth xs h) (/ (+ (nth xs (dec h)) (nth xs h)) 2.0))))
 
 (defn- spread [xs]
   (let [n (count xs) mu (/ (reduce + 0.0 xs) n)]
