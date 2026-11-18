@@ -178,10 +178,12 @@
 (defn holm
   "Holm-adjusted p values, in the order given, capped at 1."
   [ps]
-  (let [n (count ps)
-        order (sort-by #(nth ps %) (range n))
-        adj (reductions max (map-indexed (fn [r i] (min 1.0 (* (- n r) (nth ps i)))) order))]
-    (reduce (fn [v [i a]] (assoc v i a)) (vec ps) (map vector order adj))))
+  (if (empty? ps)
+    []
+    (let [n (count ps)
+          order (sort-by #(nth ps %) (range n))
+          adj (reductions max (map-indexed (fn [r i] (min 1.0 (* (- n r) (nth ps i)))) order))]
+      (reduce (fn [v [i a]] (assoc v i a)) (vec ps) (map vector order adj)))))
 
 (defn perm-p
   "One-sided permutation p of `obs` against `nulls` in the direction of

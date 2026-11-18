@@ -116,7 +116,8 @@
 (deftest holm-adjusts-in-order
   (is (= [0.04 0.06 0.06 0.5] (mapv #(/ (Math/round (* 1000 %)) 1000.0) (er/holm [0.01 0.03 0.02 0.5]))))
   (is (= [0.7] (er/holm [0.7])))
-  (is (= [1.0 1.0] (er/holm [0.6 0.7]))))
+  (is (= [1.0 1.0] (er/holm [0.6 0.7])))
+  (is (= [] (er/holm [])) "no p values: none adjusted, not a crash"))
 
 (deftest permutation-p-in-the-prior-direction
   (is (= (/ 1.0 5) (er/perm-p 2.0 [0.0 1.0 -1.0 0.5] 1)))
