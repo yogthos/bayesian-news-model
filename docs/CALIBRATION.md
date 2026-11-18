@@ -2923,3 +2923,15 @@ The combined forecast's within-JST AUC is 0.540-0.609 in every run (t65-gauges, 
 
 1. **The averaging does not weigh what the groups know.** In 1980-2002 the groups that read credit rank JST's countries at 0.70-0.73, the plain logit's level, and carry 0.15 each; bank equity (0.54), fiscal (0.51) and external (0.47) carry 0.51 between them. A group's weight is its evidence pooled over every country at the node, about 130, and the groups that read JST's dimensions differ from the intercept only at JST's 18: elsewhere their inputs are missing (the mean, 0), so their record there is the intercept's and the evidence that separates them is diluted by the rows they cannot see. The cross-sectional twin of the lock-out (bnm-1hu): a group should be judged where it has data.
 2. **The splice degrades the credit stretch from 2003.** Under --dated-credit the stretches group's within-JST AUC falls from 0.701 to 0.493 (the gauge follows the BIS's credit from all lenders, Spearman 0.58-0.83 with JST's bank loans' stretch); booms holds better (0.609). The BIS's bank credit (`read-bank-credit`, JST's concept) is the matching series for the splice.
+
+## The banking fixes together: t96 (bnm-ris)
+
+Written 18 November 2026, before any run. From "Where the banking signal is lost" and docs/TESTBED.md: (1) the splice degrades the credit stretch from 2003, `--splice-credit bank` splices JST's loans with the BIS's bank credit instead of all lenders' (approved by the user); (2) the averaging does not weigh what its groups know: `:presence :per-place` (a group with no input at a place out of that place's mixture, its record there the base's) with evidence counted once per origin (`:weighting {:rule :temper :power :per-place}`), since each period's evidence summed over about 130 countries' rows decides on small edges; (3) the ten-year baseline absorbs booms (`--long-baseline 60`); (4) the frailty's persistence sets the level in anti-phase (`:rhos [0.0]`). On the testbed (2) adds little where the groups learn little, so banking, where JST's groups rank at 0.70-0.73 within years, is its real test.
+
+Runs, banking only (other kinds from t80-base), one at a time:
+- **t96-off**: t80-base's command on this commit: banking byte for byte t80-base's.
+- **t96-bank**: `--splice-credit bank`.
+- **t96-pp**: `:presence :per-place` and `:weighting {:rule :temper :power :per-place}`.
+- **t96-all**: (1) to (4) together.
+
+Rule, fixed now: each against t80-base, banking year nodes: the fold rule and the alert table at 4:1. Reported beside it: pooled and within-year AUC (JST / outside), the clustering reference comparison, calibration by decile, and t96-all's group trace (`--trace-groups`).
