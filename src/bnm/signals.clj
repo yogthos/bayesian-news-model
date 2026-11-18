@@ -182,24 +182,63 @@
 
 (defn read-signal
   "Declaration `decl`'s value for `unit` at origin t from `db` ({[unit var]
-  series}, bnm.named/load-series), nil when unknown."
-  [db {:keys [var unit read stale times]} row-unit t]
+  series}, bnm.named/load-series), nil when unknown. :lag reads it as at
+  t less that many months (an exposure fixed before the shock)."
+  [db {:keys [var unit read stale times lag]} row-unit t]
   (let [u (if (or (nil? unit) (= :own unit)) row-unit unit)
-        x (some-> (db [u var]) (read-series read stale t))]
+        t' (if lag (- t (long lag)) t)
+        x (some-> (db [u var]) (read-series read stale t'))]
     (if (and x times)
       (some-> (read-signal db (assoc times :unit (or (:unit times) unit)) row-unit t) (* x))
       x)))
+
+(def ops
+  "The operators a signal expression may use."
+  #{:mul :minus :div :neg :min :sum-or-zero :mean-of :fn})
+
+(defn eval-signal
+  "A signal expression for `unit` at origin t: a read (a map, `read-signal`)
+  or [op & args]: :mul and :minus of two signals (nil if either is), :div
+  by a constant, :neg, :min with a constant, :sum-or-zero of two signals
+  (a missing one counts 0, nil when both are), :mean-of the known ones
+  among several (nil when none is), :fn (fn [db unit t]) for a quantity
+  across units (a world mean, a median)."
+  [db e unit t]
+  (if (map? e)
+    (read-signal db e unit t)
+    (let [[op & args] e
+          ev #(eval-signal db % unit t)]
+      (case op
+        :mul (let [[a b] (map ev args)] (when (and a b) (* (double a) (double b))))
+        :minus (let [[a b] (map ev args)] (when (and a b) (- (double a) (double b))))
+        :div (some-> (ev (first args)) (/ (second args)))
+        :neg (some-> (ev (first args)) -)
+        :min (some-> (ev (first args)) (Math/min (double (second args))))
+        :sum-or-zero (let [[a b] (map ev args)] (when (or a b) (+ (or a 0.0) (or b 0.0))))
+        :mean-of (let [xs (keep ev args)] (when (seq xs) (/ (reduce + xs) (count xs))))
+        :fn ((first args) db unit t)))))
+
+(defn- signal-of
+  "A declaration's expression: its :expr, or the declaration itself as a read."
+  [decl]
+  (or (:expr decl) decl))
 
 (defn- check-decls [decls]
   (let [names (map :name decls)]
     (when-not (apply distinct? names)
       (throw (ex-info "bnm.signals: declaration names must be unique" {:names names})))
     (doseq [{:keys [name var read times] :as d} decls]
-      (when-not (and name var)
-        (throw (ex-info "bnm.signals: a declaration needs :name and :var" {:decl d})))
-      (doseq [r (cons read (some-> times :read list))]
-        (when-not (contains? reads (first r))
-          (throw (ex-info (str "bnm.signals: unknown read " (first r)) {:decl d})))))))
+      (when-not (and name (or var (:expr d)))
+        (throw (ex-info "bnm.signals: a declaration needs :name and :var or :expr" {:decl d})))
+      (letfn [(walk [e]
+                (if (map? e)
+                  (doseq [r (cons (:read e) (some-> (:times e) :read list))]
+                    (when-not (contains? reads (first r))
+                      (throw (ex-info (str "bnm.signals: unknown read " (first r)) {:decl d}))))
+                  (do (when-not (contains? ops (first e))
+                        (throw (ex-info (str "bnm.signals: unknown operator " (first e)) {:decl d})))
+                      (when-not (= :fn (first e)) (doseq [a (rest e) :when (or (map? a) (vector? a))] (walk a))))))]
+        (walk (signal-of d))))))
 
 (defn assemble
   "A node's inputs from declarations: {:row (fn [unit t] vector) :names
@@ -208,7 +247,7 @@
   [db decls]
   (check-decls decls)
   (let [decls (vec decls)]
-    {:row (fn [unit t] (mapv #(read-signal db % unit t) decls))
+    {:row (fn [unit t] (mapv #(eval-signal db (signal-of %) unit t) decls))
      :names (mapv :name decls)
      :groups (reduce (fn [g [i {:keys [domain]}]] (if domain (update g domain (fnil conj []) i) g))
                      {} (map-indexed vector decls))

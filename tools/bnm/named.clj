@@ -209,31 +209,30 @@
 (defn financial
   "[names f]: f gives the financial inputs for a unit at month t, nils for missing."
   [db wc]
-  (let [names [:credit3 :hh-credit3 :credit-gap :dsr3 :house3 :rzone-hh :rzone-biz
-               :equity3 :runup2 :equity-vol :runup-x-vol :curve
-               :world-credit3 :vix :us-curve
+  (let [own (fn [v rd] {:var v :read rd :stale 30})
+        credit3 (own "finance/credit_gdp" [:change 36])
+        hh3 (own "finance/household_credit_gdp" [:change 36])
+        house3 (own "finance/real_house_prices" [:change 36])
+        equity3 (own "markets/share_prices" [:change 36])
+        runup2 (own "markets/share_prices" [:change 24])
+        vol {:var "markets/share_prices" :read [:volatility 12] :stale 6}
+        open [:div (own "trade/openness" [:value]) 100.0]
+        vix {:var "finance/vix" :unit "world" :read [:value] :stale 30}
+        us-curve {:var "finance/curve_10y3m" :unit "USA" :read [:value] :stale 30}
+        wc3 [:fn (fn [_ _ t] (wc t))]
+        decls [{:name :credit3 :expr credit3} {:name :hh-credit3 :expr hh3}
+               {:name :credit-gap :expr (own "finance/credit_gap" [:value])}
+               {:name :dsr3 :expr (own "finance/dsr_private" [:change 36])} {:name :house3 :expr house3}
+               {:name :rzone-hh :expr [:mul hh3 house3]} {:name :rzone-biz :expr [:mul credit3 equity3]}
+               {:name :equity3 :expr equity3} {:name :runup2 :expr runup2} {:name :equity-vol :expr vol}
+               {:name :runup-x-vol :expr [:mul runup2 vol]}
+               {:name :curve :expr [:minus (own "finance/yield_long" [:value]) (own "finance/rate_3m" [:value])]}
+               {:name :world-credit3 :expr wc3} {:name :vix :expr vix} {:name :us-curve :expr us-curve}
                ;; global conditions through exposure (Cesa-Bianchi et al. 2017)
-               :world-credit-x-open :vix-x-credit3 :us-curve-x-open]]
-    [names
-     (fn [unit t]
-       (let [g (getter db unit)
-             w (getter db "world")
-             us (getter db "USA")
-             credit3 (g "finance/credit_gdp" t 36)
-             hh3 (g "finance/household_credit_gdp" t 36)
-             house3 (g "finance/real_house_prices" t 36)
-             equity3 (g "markets/share_prices" t 36)
-             runup2 (g "markets/share_prices" t 24)
-             vol (some-> (db [unit "markets/share_prices"]) (sk/volatility t 12 {:stale 6}))
-             open (some-> (g "trade/openness" t) (/ 100.0))
-             vix (w "finance/vix" t)
-             us-curve (us "finance/curve_10y3m" t)]
-         [credit3 hh3 (g "finance/credit_gap" t) (g "finance/dsr_private" t 36) house3
-          (x* hh3 house3) (x* credit3 equity3)
-          equity3 runup2 vol (x* runup2 vol)
-          (minus (g "finance/yield_long" t) (g "finance/rate_3m" t))
-          (wc t) vix us-curve
-          (x* (wc t) open) (x* (some-> vix -) credit3) (x* us-curve open)]))]))
+               {:name :world-credit-x-open :expr [:mul wc3 open]} {:name :vix-x-credit3 :expr [:mul [:neg vix] credit3]}
+               {:name :us-curve-x-open :expr [:mul us-curve open]}]
+        {:keys [names row]} (sg/assemble db decls)]
+    [names row]))
 
 (defn political
   "[names f] for the political kinds."
@@ -377,29 +376,25 @@
   differ (Blair, Christensen & Rudkin 2021). Exposures are read two years
   back, fixed before the shock and past WDI's revisions (Ciccone 2018)."
   [db units months]
-  (let [names structure-names
-        lag 24
+  (let [lag 24
         median-yield (into {} (for [t months]
                                 [t (let [ys (sort (keep #(some-> (db [% "food/cereal_yield"]) (sk/value (- t lag) {:stale 30})) units))]
-                                     (when (seq ys) (nth ys (quot (count ys) 2))))]))]
-    [names
-     (fn [unit t]
-       (let [g (getter db unit)
-             w (getter db "world")
-             share #(some-> (g % (- t lag)) (/ 100.0))
-             food12 (w "food/price_index" t 12)
-             oil12 (w "energy/oil_brent" t 12)
-             metals12 (mean-of (keep #(w % t 12) ["commodities/copper" "commodities/aluminium" "commodities/nickel"]))
-             agri (share "economy/agriculture_share") manuf (share "economy/manufacturing_share")
-             metal-x (share "trade/metal_exports_share") food-x (share "food/exports_share")
-             rents (share "energy/resource_rents_gdp")
-             ;; yields are stored as logs: how far below the world's median
-             low-yield (when-let [y (g "food/cereal_yield" (- t lag))]
-                         (when-let [m (median-yield t)] (- m y)))]
-         [agri manuf (share "economy/services_share") (share "energy/fuel_exports_share") food-x metal-x
-          (share "technology/hightech_exports_share")
-          (x* food12 agri) (x* food12 food-x) (x* metals12 metal-x) (x* oil12 rents) (x* oil12 manuf)
-          (x* (x* food12 (share "food/imports_share")) low-yield)]))]))
+                                     (when (seq ys) (nth ys (quot (count ys) 2))))]))
+        share (fn [var] [:div {:var var :read [:value] :stale 30 :lag lag} 100.0])
+        world12 (fn [var] {:var var :unit "world" :read [:change 12] :stale 30})
+        food12 (world12 "food/price_index")
+        oil12 (world12 "energy/oil_brent")
+        metals12 (into [:mean-of] (map world12 ["commodities/copper" "commodities/aluminium" "commodities/nickel"]))
+        agri (share "economy/agriculture_share") manuf (share "economy/manufacturing_share")
+        metal-x (share "trade/metal_exports_share") food-x (share "food/exports_share")
+        rents (share "energy/resource_rents_gdp")
+        ;; yields are stored as logs: how far below the world's median
+        low-yield [:minus [:fn (fn [_ _ t] (median-yield t))] {:var "food/cereal_yield" :read [:value] :stale 30 :lag lag}]
+        exprs [agri manuf (share "economy/services_share") (share "energy/fuel_exports_share") food-x metal-x
+               (share "technology/hightech_exports_share")
+               [:mul food12 agri] [:mul food12 food-x] [:mul metals12 metal-x] [:mul oil12 rents] [:mul oil12 manuf]
+               [:mul [:mul food12 (share "food/imports_share")] low-yield]]]
+    [structure-names (:row (sg/assemble db (mapv (fn [n e] {:name n :expr e}) structure-names exprs)))]))
 
 (defn- quantiles-by-month
   "{month [q...]} of `f` (unit, month -> value or nil) over `units` at the
@@ -525,14 +520,16 @@
   banking crises where the primary sector is large (Eberhardt & Presbitero
   2021)."
   [db _units _months]
-  [tot-names
-   (fn [unit t]
-     (let [g (getter db unit)
-           tot12 (g "trade/commodity_tot" t 12)
-           vol (some-> (db [unit "trade/commodity_tot"]) (sk/volatility t 12 {:stale 6}))
-           primary (let [a (g "economy/agriculture_share" (- t 24)) r (g "energy/resource_rents_gdp" (- t 24))]
-                     (when (or a r) (/ (+ (or a 0.0) (or r 0.0)) 100.0)))]
-       [tot12 (g "trade/commodity_tot" t 3) (some-> tot12 (Math/min 0.0)) vol (x* vol primary)]))])
+  (let [tot12 {:var "trade/commodity_tot" :read [:change 12] :stale 30}
+        vol {:var "trade/commodity_tot" :read [:volatility 12] :stale 6}
+        primary [:div [:sum-or-zero {:var "economy/agriculture_share" :read [:value] :stale 30 :lag 24}
+                             {:var "energy/resource_rents_gdp" :read [:value] :stale 30 :lag 24}] 100.0]]
+    [tot-names
+     (:row (sg/assemble db [{:name :tot12 :expr tot12}
+                            {:name :tot3 :expr {:var "trade/commodity_tot" :read [:change 3] :stale 30}}
+                            {:name :tot12-fall :expr [:min tot12 0.0]}
+                            {:name :tot-vol :expr vol}
+                            {:name :tot-vol-x-primary :expr [:mul vol primary]}]))]))
 
 (def fx-names [:peg :falling :anchor-usd :anchor-euro :anchor-gbp :anchor-cny :anchor-rub :tot-vol-x-peg-x-primary])
 
@@ -543,16 +540,15 @@
   sector large, where commodity volatility rather than credit predicts
   banking crises (Eberhardt & Presbitero 2021)."
   [db _units _months]
-  [fx-names
-   (fn [unit t]
-     (let [g (getter db unit)
-           peg (g "finance/fx_peg" t)
-           vol (some-> (db [unit "trade/commodity_tot"]) (sk/volatility t 12 {:stale 6}))
-           primary (let [a (g "economy/agriculture_share" (- t 24)) r (g "energy/resource_rents_gdp" (- t 24))]
-                     (when (or a r) (/ (+ (or a 0.0) (or r 0.0)) 100.0)))]
-       [peg (g "finance/fx_falling" t) (g "finance/anchor_usd" t) (g "finance/anchor_euro" t)
-        (g "finance/anchor_gbp" t) (g "finance/anchor_cny" t) (g "finance/anchor_rub" t)
-        (x* vol (x* peg primary))]))])
+  (let [v (fn [var] {:var var :read [:value] :stale 30})
+        vol {:var "trade/commodity_tot" :read [:volatility 12] :stale 6}
+        primary [:div [:sum-or-zero {:var "economy/agriculture_share" :read [:value] :stale 30 :lag 24}
+                             {:var "energy/resource_rents_gdp" :read [:value] :stale 30 :lag 24}] 100.0]]
+    [fx-names
+     (:row (sg/assemble db (conj (mapv (fn [n var] {:name n :expr (v var)}) (pop fx-names)
+                                       ["finance/fx_peg" "finance/fx_falling" "finance/anchor_usd" "finance/anchor_euro"
+                                        "finance/anchor_gbp" "finance/anchor_cny" "finance/anchor_rub"])
+                                 {:name :tot-vol-x-peg-x-primary :expr [:mul vol [:mul (v "finance/fx_peg") primary]]})))]))
 
 (def market-calm-names [:vol-gap :vol-gap5])
 

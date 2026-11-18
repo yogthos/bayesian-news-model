@@ -72,3 +72,25 @@
       (is (thrown? Exception (sg/assemble db [{:name :a :var "x" :read [:value]} {:name :a :var "y" :read [:value]}])) "names unique")
       (is (thrown? Exception (sg/assemble db [{:name :a :var "x" :read [:median]}])) "known reads only")
       (is (thrown? Exception (sg/assemble db [{:name :a :read [:value]}])) "a source"))))
+
+(deftest expressions-over-reads
+  (let [ev (fn [e t] (sg/eval-signal db e "AAA" t))
+        c {:var "finance/credit" :read [:value]}
+        x {:var "trade/exports_share" :read [:value]}
+        t (dec-origin 2008)]
+    (is (= (* 70.0 0.5) (ev [:mul c x] t)))
+    (is (nil? (ev [:mul c {:var "nope" :read [:value]}] t)) "a missing factor: unknown")
+    (is (= (- 70.0 0.5) (ev [:minus c x] t)))
+    (is (= (/ 70.0 100.0) (ev [:div c 100.0] t)))
+    (is (= -70.0 (ev [:neg c] t)))
+    (is (= 0.0 (ev [:min c 0.0] t)))
+    (is (= 70.5 (ev [:sum-or-zero c x] t)))
+    (is (= 70.0 (ev [:sum-or-zero c {:var "nope" :read [:value]}] t)) "a missing part counts 0")
+    (is (nil? (ev [:sum-or-zero {:var "nope" :read [:value]} {:var "nope2" :read [:value]}] t)) "both missing: unknown")
+    (is (= (/ (+ 70.0 0.5) 2) (ev [:mean-of c x {:var "nope" :read [:value]}] t)) "the mean of the known ones")
+    (is (= 55.0 (ev (assoc c :lag 12) t)) "read a year back: Dec 2007's origin")
+    (is (= 42.0 (ev [:fn (fn [_db unit t'] (when (and (= "AAA" unit) (= t t')) 42.0))] t)))
+    (testing "a declaration may be an expression"
+      (let [{:keys [row names]} (sg/assemble db [{:name :e :expr [:mul c x]} {:name :c :var "finance/credit" :read [:value]}])]
+        (is (= [:e :c] names))
+        (is (= [35.0 70.0] (row "AAA" t)))))))
