@@ -2862,3 +2862,11 @@ Runs, banking only (other kinds from t80-base), one at a time:
 - **t94-long60-entry-rho0**: the same with banking's frailty at ρ 0.
 
 Rule, fixed now: each against t80-base, banking year nodes, the fold rule and the alert table at 4:1. Reported beside it: each against the one before it, pooled and within-year AUC (JST / outside), the level's correlation with the rate, calibration by decile.
+
+### t93 results (18 November 2026)
+
+Banking year nodes (`bnm.links --folds`; logs data/runs/logs/run-t93-*.txt):
+- **t93-entry** against t80-base: no fold moves past 0.0003 Brier (2013-19 +0.00001 [+0.00000, +0.00002], the rest within noise), pooled -0.00004 [-0.00013, +0.00003]: neutral, not a pooled gain. The late groups do enter (year country weights at 1990: distress 0.89, debt 0.05, sectoral 0.03; at 2006: stretches 0.55, booms 0.16, distress 0.08, sectoral 0.07, funding 0.06, household 0.05), so the lock-out is gone, but what they carry is about what the early groups carried. Pooled AUC 0.360, within-year 0.598.
+- **t93-entry-cov** against t93-entry: every fold within 0.00002: the coverage still adds nothing when it can enter (its group does not reach 0.03 of the weight at 1990, 2006 or 2015).
+- **t93-entry-cov-rho0** against t80-base: t88-rho0's pattern (2007-09 +0.00369 [+0.00018, +0.00691], 2010-12 +0.00254 [+0.00001, +0.00583], 2020-22 -0.00164 [-0.00186, -0.00143] LOSS); against t88-rho0, pooled -0.00017 [-0.00047, +0.00001], log -0.00113. Fails the fold rule. Dec 2006-07 p 0.051 and 0.050 (rates 0.169, 0.146).
+- **Verdict:** none adopted. Late entry is right in principle and removes the lock-out (bnm-1hu), but on banking it changes nothing worth a base change, and the coverage carries nothing through ten-year stretches. The testbed's finding (a ten-year baseline absorbs the boom) is the next test, t94.
