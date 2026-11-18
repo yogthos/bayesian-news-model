@@ -722,6 +722,27 @@
                           (every? (fn [x] (every? #(let [v (nth x %)] (or (nil? v) (zero? (double v)))) own)) xs))]
            g))))
 
+(defn presence-choice
+  "The spec's :presence (bnm-ris): nil, every live group in every place's
+  mixture, each group's record over every place; :per-place, a group with
+  no input at a place drops out of that place's mixture and its record
+  there is the base model's (`base-where-absent`)."
+  [spec]
+  (let [v (:presence spec)]
+    (when-not (contains? #{nil :per-place} v)
+      (throw (ex-info "bnm.lattice: :presence takes :per-place" {:presence v})))
+    v))
+
+(defn base-where-absent
+  "Each model's issued predictive `issued` ({group predictive}) with the
+  groups `absent` given the base model's: where a group has no input, what
+  it issued there is the base's, so its record differs from the base's
+  only where it can see."
+  [absent issued]
+  (if (and (seq absent) (contains? issued :base))
+    (reduce (fn [m g] (if (contains? m g) (assoc m g (issued :base)) m)) issued absent)
+    issued))
+
 (defn late-entry-choice
   "The spec's :late-entry (bnm-1hu): nil, a group's record runs from the
   node's start (its dormant periods as the intercept's); :prior, a group
@@ -1978,7 +1999,10 @@
                        ;; out of this period's forecasts, weight 0, the others renormalized;
                        ;; the averaging keeps its record, so it comes back when its source
                        ;; resumes
-                       out (dormant (layout spec scale level-ix) (get-in spec [:core scale]) (map :x seen))
+                       lay (layout spec scale level-ix)
+                       core (get-in spec [:core scale])
+                       out (dormant lay core (map :x seen))
+                       per-place? (= :per-place (presence-choice spec))
                        ;; :late-entry :prior (bnm-1hu): a group live for the first time at a
                        ;; node that has issued before enters at its prior share, not with the
                        ;; intercept-only record it carried while dormant
@@ -1992,7 +2016,12 @@
                        live (if (seq out) (assoc model :w (live-weights (d/weights model) out)) model)
                        state-of (when-not fo? (state-fn spec))
                        made (vec (for [{:keys [place x os] :as e} seen
-                                       :let [one? (= 1 (count os))
+                                       :let [;; :presence :per-place (bnm-ris): the groups with no
+                                             ;; input at this place drop out of its mixture, the
+                                             ;; others renormalized, as the node's dormant groups do
+                                             absent (when per-place? (dormant lay core [x]))
+                                             live (if (seq absent) (assoc live :w (live-weights (d/weights live) absent)) live)
+                                             one? (= 1 (count os))
                                              ;; the mean offset, learned from: the one whose
                                              ;; probability is the offsets' average
                                              o (if one? (second (first os)) (logit (reduce + (for [[w o] os] (* w (m/expit o))))))
@@ -2031,14 +2060,14 @@
                                           ;; the log odds of its mixed p with no spread (what
                                           ;; augur's issue-time score reads), its moments at the
                                           ;; mean offset beside it
-                                          :issued (if one?
+                                          :issued (base-where-absent absent (if one?
                                                     (d/issued model x o)
                                                     (into {} (for [[g mdl] (:models model)
                                                                    :let [pg (reduce + (for [[w o'] os] (* w (d/predict mdl x o'))))]]
                                                                [g (assoc (d/predictive mdl x o)
                                                                          :mean-offset (d/predictive mdl x o)
                                                                          :f (m/logit (Math/max 1e-300 (Math/min (- 1.0 1e-16) pg)))
-                                                                         :q 0.0)]))))))
+                                                                         :q 0.0)])))))))
                        st (if fo? st
                            (reduce (fn [st {:keys [place p stated tension strain resolved f q principal down ref frailty]}]
                                     (-> st

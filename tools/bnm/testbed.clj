@@ -40,7 +40,9 @@
    :mixed-channels {:active (fn [stocks y] (stocks (mod (quot y 20) (count stocks))))}
    :late-data {:active (constantly "credit") :published-from 60}
    :synchronized {:active (constantly "credit") :world-lambda 1.3}
-   :null {:active (constantly "credit") :strength 0.0 :wave-boost 0.0}})
+   :null {:active (constantly "credit") :strength 0.0 :wave-boost 0.0}
+   ;; the driving stock observed at 30% of countries (JST's share is 18 of 130)
+   :partial-coverage {:active (constantly "credit") :coverage 0.3}})
 
 (defn- student-t [g df]
   (let [z (m/normal! g)
@@ -67,7 +69,7 @@
   (let [{:keys [seed countries regions years stocks lag-months spell phi world-phi world-lambda noise-df noise-scale
                 base strength wave-boost refractory scenario] :as o} (merge defaults opts)
         sc (merge (scenarios scenario) (select-keys opts [:strength :wave-boost :world-lambda]))
-        {:keys [active fall published-from]} sc
+        {:keys [active fall published-from coverage]} sc
         strength (get sc :strength strength) wave-boost (get sc :wave-boost wave-boost)
         world-lambda (get sc :world-lambda world-lambda)
         g (m/rng seed)
@@ -87,7 +89,9 @@
                                                    (for [i (range years)
                                                          :when (or (nil? published-from) (not= k (active (vec stocks) 0)) (>= i published-from))]
                                                      [(+ epoch i) (+ (* 0.02 i) (get-in latent [c k i]) (* (scale c) 0.3 (student-t g noise-df)))]))]))]))
-        db (into {} (for [c cs k stocks :let [ys (get-in observed [c k])] :when (seq ys)]
+        covered (set (take (long (Math/round (* (or coverage 1.0) countries))) cs))
+        db (into {} (for [c cs k stocks :let [ys (get-in observed [c k])]
+                          :when (and (seq ys) (or (nil? coverage) (not= k (active (vec stocks) 0)) (covered c)))]
                       [[c k] (sk/series (for [[y x] ys] [(+ (* 12 y) 11) (+ (* 12 y) 11 lag-months) x]))]))
         hz (fn [c i recent?]
              (m/expit (+ base

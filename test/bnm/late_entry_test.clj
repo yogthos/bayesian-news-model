@@ -88,3 +88,27 @@
 
 (deftest the-option-is-checked
   (is (thrown? Exception (lt/run (assoc (spec (world 1)) :late-entry :equal :end 30)))))
+
+;; --- :presence :per-place (bnm-ris) ---
+
+(deftest a-group-that-cannot-see-a-place-issues-the-base's-there
+  (let [issued {:base {:f -3.0 :q 0.1} :credit {:f -1.0 :q 0.4} :fiscal {:f -2.5 :q 0.2}}]
+    (is (= {:base {:f -3.0 :q 0.1} :credit {:f -3.0 :q 0.1} :fiscal {:f -2.5 :q 0.2}}
+           (lt/base-where-absent #{:credit} issued)))
+    (is (= issued (lt/base-where-absent nil issued)) "nothing absent: as issued")
+    (is (= issued (lt/base-where-absent #{:missing} issued)) "a group the node does not average: as issued")))
+
+(deftest per-place-presence-is-an-option
+  (is (nil? (lt/presence-choice {})))
+  (is (= :per-place (lt/presence-choice {:presence :per-place})))
+  (is (thrown? Exception (lt/presence-choice {:presence :everywhere}))))
+
+(deftest per-place-presence-changes-nothing-at-the-first-origin
+  ;; before any group is live at one place and not another (the error-based
+  ;; groups read nothing until a place's first outcome is known), per-place
+  ;; weights are the node's
+  (let [w (world 11)
+        a (lt/run (spec w))
+        b (lt/run (assoc (spec w) :presence :per-place))]
+    (is (= (filter #(= 11 (:origin %)) (:forecasts a))
+           (filter #(= 11 (:origin %)) (:forecasts b))))))

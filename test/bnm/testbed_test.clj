@@ -58,3 +58,9 @@
     (is (every? #(contains? r %) [:auc :within-auc :level-r :brier :log-skill :oracle-log-skill :ece :alert-cost :constant-cost :molchan]))
     (is (<= 0.0 (:auc r) 1.0))
     (is (< (:oracle-log-skill r) 1.0))))
+
+(deftest partial-coverage-leaves-most-countries-without-the-driver
+  (let [w (tb/world {:seed 1 :scenario :partial-coverage})
+        has (count (filter #(get (:db w) [% "credit"]) (:countries w)))]
+    (is (< 10 has 25) has)
+    (is (= 60 (count (filter #(get (:db w) [% "house"]) (:countries w)))) "the other stocks everywhere")))
