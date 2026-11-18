@@ -2935,3 +2935,11 @@ Runs, banking only (other kinds from t80-base), one at a time:
 - **t96-all**: (1) to (4) together.
 
 Rule, fixed now: each against t80-base, banking year nodes: the fold rule and the alert table at 4:1. Reported beside it: pooled and within-year AUC (JST / outside), the clustering reference comparison, calibration by decile, and t96-all's group trace (`--trace-groups`).
+
+### t96 results (18 November 2026)
+
+t96-off's banking forecasts equal t80-base's byte for byte. Banking year nodes against t80-base:
+- **t96-bank** (`--splice-credit bank`): no fold lost, pooled +0.00010 [-0.00004, +0.00028], log +0.00049: neutral, not a pooled gain. Within-year AUC 0.655 (t80-base 0.641); within JST 2003-22 0.493 (0.577).
+- **t96-pp** (`:presence :per-place`, evidence once per origin): LOSS at 2007-09 (-0.00198), 2010-12 (-0.00271), 2013-19 (-0.00029), 2020-22 (-0.00005) and pooled (-0.00090 [-0.00157, -0.00037]); within-year AUC 0.482. Worse on every count.
+- **t96-all** (bank splice, per-place, long baseline 60, ρ 0): 2020-22 -0.00143 [-0.00154, -0.00133] LOSS, pooled +0.00053 [-0.00050, +0.00177]; pooled AUC 0.547, within-year 0.517.
+- **Verdict:** none adopted. The per-place averaging was the trace's reading ("the averaging does not weigh what its groups know"), and it is wrong or incomplete: taking the unseeing groups out of each place's mixture and tempering the evidence moves the weight among groups that all forecast badly; it does not let the credit groups carry the forecast. The plain logit on two credit inputs (AUC 0.70 on these rows, CALIBRATION "Against a reference that knows only that crises cluster") is still far ahead of every lattice variant tried (best within-year 0.71, pooled at most 0.58).
