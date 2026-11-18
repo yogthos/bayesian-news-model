@@ -169,3 +169,53 @@
         (let [[n0 f0] (nm/leading {})]
           (is (= names n0))
           (is (every? nil? (f0 "XXX" feb))))))))
+
+;; --fresh-inputs: WDI's annual series dated by the edition of the WDI
+;; Database Archives that first held each country's year
+;; (data/derived/wdi-first-published.tsv), not series.tsv's nine months
+
+(deftest fresh-inputs-wdi-is-not-read-before-its-first-edition
+  (let [rows (for [y [2006 2007 2008]] ["AAA" "economy/gdp_per_capita" (str y "-12-31") (str (inc y) "-09-30") (* 100.0 (- y 2005))])
+        f (java.io.File/createTempFile "bnm-series" ".tsv")
+        _ (spit f (apply str (for [[u v pe av x] rows] (str u "\t" v "\ta\t" pe "\t" av "\t" x "\n"))))
+        vars [{:name "economy/gdp_per_capita" :transform "log"}]
+        dec07 (+ 11 (* 12 2007)) apr09 (+ 3 (* 12 2009))
+        ;; 2007 first in the April 2009 edition, 2006 in September 2007's
+        fp {["AAA" "economy/gdp_per_capita"] {dec07 apr09 (+ 11 (* 12 2006)) (+ 8 (* 12 2007))}}
+        base (nm/load-series (.getPath f) vars {:vars #{"economy/gdp_per_capita"}})
+        late (nm/load-series (.getPath f) vars {:vars #{"economy/gdp_per_capita"} :first-published fp})
+        at (fn [db t] (some-> (db ["AAA" "economy/gdp_per_capita"]) (sk/value t)))
+        dec08 (+ 11 (* 12 2008))]
+    (is (= (Math/log 200.0) (at base dec08)) "the base: 2007 read at September 2008")
+    (is (= (Math/log 100.0) (at late dec08)) "2007 not before April 2009: 2006 is the newest")
+    (is (= (Math/log 200.0) (at late apr09)))
+    (is (nil? (at late (+ 7 (* 12 2007)))) "2006 not before September 2007")
+    (is (= (Math/log 300.0) (at late (+ 8 (* 12 2009)))) "a year the table lacks keeps series.tsv's date")
+    (is (= (map vec (sk/known (base ["AAA" "economy/gdp_per_capita"]) (* 12 2030)))
+           (map vec (sk/known (late ["AAA" "economy/gdp_per_capita"]) (* 12 2030))))
+        "the values are the same; only when they are read changes")))
+
+;; --wdi-editions: every WDI annual series (variables.tsv's source "World
+;; Bank WDI ...") read no earlier than the first archived edition that held
+;; its year (data/derived/wdi-editions.tsv): before 2005 a year came out in
+;; the April edition sixteen months on, not nine. Other sources unchanged.
+
+(deftest wdi-editions-no-wdi-year-before-its-edition
+  (let [rows (concat (for [y [2001 2002 2003]] ["AAA" "economy/inflation" (str y "-12-31") (str (inc y) "-09-30") (double y)])
+                     (for [y [2001 2002 2003]] ["AAA" "other/annual" (str y "-12-31") (str (inc y) "-09-30") (double y)]))
+        f (java.io.File/createTempFile "bnm-series" ".tsv")
+        _ (spit f (apply str (for [[u v pe av x] rows] (str u "\t" v "\ta\t" pe "\t" av "\t" x "\n"))))
+        vars [{:name "economy/inflation" :transform "id" :freq "a" :source "World Bank WDI FP.CPI.TOTL.ZG"}
+              {:name "other/annual" :transform "id" :freq "a" :source "Someone else"}]
+        eds {2002 (+ 3 (* 12 2004)) 2003 (+ 3 (* 12 2005))}
+        o {:vars #{"economy/inflation" "other/annual"}}
+        base (nm/load-series (.getPath f) vars o)
+        fixed (nm/load-series (.getPath f) vars (assoc o :wdi-editions eds))
+        at (fn [db v t] (some-> (db ["AAA" v]) (sk/value t)))
+        dec03 (+ 11 (* 12 2003)) dec04 (+ 11 (* 12 2004))]
+    (is (= 2002.0 (at base "economy/inflation" dec03)) "the base: 2002 at September 2003")
+    (is (= 2001.0 (at fixed "economy/inflation" dec03)) "2002 not before April 2004")
+    (is (= 2002.0 (at fixed "economy/inflation" dec04)) "2003 not before April 2005")
+    (is (= 2003.0 (at fixed "economy/inflation" (+ 3 (* 12 2005)))))
+    (is (= 2002.0 (at fixed "other/annual" dec03)) "not WDI: unchanged")
+    (is (= (nm/read-wdi-editions "test/bnm/wdi-editions-sample.tsv") {2002 (+ 3 (* 12 2004)) 2003 (+ 3 (* 12 2005))}))))

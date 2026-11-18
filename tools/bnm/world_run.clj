@@ -722,6 +722,28 @@
                 (at-risk cat-db (:food-outcomes opts) (:at-risk opts)))
       (= "true" (:catalogue-through opts)) catalogues-through)))
 
+(defn fresh-inputs-choice
+  "--fresh-inputs true: the political and economic kinds' year row reads
+  log GDP per head, growth3 and population growth carried past
+  Maddison's release by WDI's growth per head and population growth, each
+  WDI year at its first edition in the WDI Database Archives
+  (bnm.political-gauges/splice, docs/CALIBRATION.md \"Fresh inputs\").
+  Off by default."
+  [{:keys [fresh-inputs]}]
+  (when (and fresh-inputs (not (#{"true" "false"} fresh-inputs)))
+    (throw (ex-info (str "bnm.world-run: --fresh-inputs takes true or false, not " fresh-inputs) {})))
+  (= "true" fresh-inputs))
+
+(defn wdi-editions-choice
+  "--wdi-editions true: every WDI annual series read no earlier than the
+  first WDI Database Archives edition holding its year (bnm.named/
+  load-series :wdi-editions): series.tsv's nine months ran a year ahead
+  of publication at the Dec 2003-04 origins. Off by default."
+  [{:keys [wdi-editions]}]
+  (when (and wdi-editions (not (#{"true" "false"} wdi-editions)))
+    (throw (ex-info (str "bnm.world-run: --wdi-editions takes true or false, not " wdi-editions) {})))
+  (= "true" wdi-editions))
+
 (defn -main [& args]
   (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay leak-fixes clim-prior] :as opts}
         (options args)
@@ -755,7 +777,9 @@
                                                                :lead-std (lead-std-choice opts)
                                                                :dated-credit (dated-credit-choice opts)
                                                                :banking-gauges (banking-gauges-choice opts)
-                                                               :wide-credit (wide-credit-choice opts)})
+                                                               :wide-credit (wide-credit-choice opts)
+                                                               :fresh-inputs (fresh-inputs-choice opts)
+                                                               :wdi-editions (wdi-editions-choice opts)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)

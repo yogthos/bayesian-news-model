@@ -2328,3 +2328,141 @@ The runs showed no bugs.
 - **Alerts:** t82 is cheaper than t79-bis at 4:1 (+0.0008 [+0.0000, +0.0024]) through fewer false alarms, but catches nothing: 0 of 82 hits; 2006 and 2007 still missed.
 - **The 2006-08 miss is still the level.** The new inputs lift Hungary, Lithuania, Greece and Austria by 10-60%, from 0.02. Most onsets outside the panel are in countries without BIS data.
 - If credit beyond JST is wanted, `bank` is the form: JST's concept, no share guess, and better than all-lender credit at every fold. The option stays off by default.
+## 18. Fresh inputs: t72-fresh (bnm-1d8)
+
+§16 found that the growth-collapse year node's main model, `economy`, reads GDP per head and its three-year growth from Maddison at Maddison's releases (`--leak-fixes`), two to eight years behind the origin. WDI's growth per head is on disk and comes out within a year or two. This section audits every input for staleness, adds the fresher source where it measures the same quantity, and scores it.
+
+### Audit
+
+Age is months from the end of the data period to the December origin that reads it, at origins 2003-22: the median over countries and origins, with the range. The year row is bnm.political-gauges/year-row (every kind but banking crises; the half-decade reads six of its columns), the quarter rows bnm.named (political for conflict, wars, coups, protest, violence, growth, inflation and food; financial for currency, sovereign, fiscal and market crashes), the leading gauges bnm.named/leading. Session scratchpad: the ages from `nm/load-series` with `:real-lags` and from bnm.releases.
+
+| kind (scale) | group | input | source as read | age read | fresher on-disk source | its age | adopted |
+|---|---|---|---|---|---|---|---|
+| all but banking (year, half-decade) | economy | log GDP per head, growth3 | Maddison at its releases | 48 [24-96] | WDI NY.GDP.PCAP.KD (series.tsv economy/gdp_per_capita), dated by the WDI archives | 12 (24 at Dec 2003-04) | **yes**, growth spliced |
+| all but banking (year) | demography | population growth3 | Maddison at its releases | 48 [24-96] | WDI SP.POP.TOTL (people/population), archive-dated | 12 (24 at Dec 2003-04) | **yes**, growth spliced |
+| all but banking (year) | demography | urban growth5 | NMC urban/total population at releases to 2016, WDI urban share after | 72 [36-228] to 2018, then 12 | WDI SP.URB.TOTL.IN.ZS | 12 | no: national urban definitions, not NMC's cities of 100,000 |
+| all but banking (year) | military | soldiers per head, spending per soldier3 | NMC at its releases | 72 [36-228] | WDI MS.MIL.XPND.CD (spending only, raw, not in series.tsv) | 12 | no: no fresher personnel source on disk |
+| all but banking (year) | regime, violence, society, patronage | V-Dem | V-Dem, data year Y-1 | 12 | none | | |
+| all but banking (year) | demography | infant mortality, working-age share | WDI | 12 | none | | |
+| all but banking (year) | demography | tertiary enrolment5 | WDI (UIS) | 24 | none | | |
+| all but banking (year) | economy | inflation | WDI FP.CPI.TOTL.ZG (annual average) | 12 | BIS monthly CPI (62 units), FAOSTAT CPI (207) | 1, 9 | no: a twelve-month change at a month is not the annual average |
+| all but banking (year) | economy | food inflation | FAOSTAT | 9 | none | | |
+| all but banking (year) | inequality | top 10%, bottom 50% | WID at Y-2 | 24 | none | | |
+| all but banking (year) | fiscal | real spending growth, balance change | GMD 2026_09 at Y-2 | 24 | none (the WEO files in data/raw/slow/fiscal are 403 pages) | | no |
+| all but banking (year) | history, others, world | onsets | the catalogues at their known lag | the outcome's lag | | | |
+| growth, market crashes, food (year, quarter-lead) | leading | BAA12, US curve, VIX12, world food12 | FRED, IMF via FRED (`--real-lags`) | 0-2 | none | | |
+| political quarters | food, energy | food inflation, world food12, oil12, import shares | FAOSTAT, IMF, WDI | 9, 2, 0, 12 | none | | |
+| political quarters | economy | GDP growth | WDI NY.GDP.MKTP.KD.ZG | 12 [12-216] | quarterly GDP (OECD QNA, IMF QNEA; docs/GROWTH-QUARTERLY.md) | 2-4, 7-22 for about 20 countries | no: a four-quarter change is another quantity, and outside the OECD there is no record of when each quarter came out |
+| political quarters | economy | inflation | WDI FP.CPI.TOTL.ZG | 12 | BIS monthly CPI, FAOSTAT CPI | 1, 9 | no (as at the year) |
+| political quarters | fragility, demography | infant mortality, youth unemployment, population | WDI | 12 | none | | |
+| political quarters | climate | temperature, precipitation anomalies | series.tsv | 12 | none | | |
+| political quarters | events | protest, violence, coercion | GDELT | 0 | | | |
+| political quarters | political economy | profit rate, labour share | PWT at its releases (`--pwt-stale --lag-stale`) | 36 [24-48] | none | | |
+| political quarters | political economy | growth per head5 | WDI | 12 | none | | |
+| financial quarters | credit, assets, curve, global | BIS credit, house prices, debt service; share prices, yields, VIX, curve; WDI openness | BIS, OECD, FRED, WDI | 6, 6, 6; 1, 1, 0, 0; 12 | none | | |
+| banking (year, half-decade) | macrohistory, extended | JST row of Y-1; PWT at releases; WID, GDD, MV, EPWT at Y-1 | JST R6, PWT, ... | 12 (JST, see below), PWT 36 [24-48] | none | | |
+
+Only the two Maddison rows have a fresher source on disk that measures the same quantity. NMC is staler still (19 years at Dec 2003-04, when NMC 1.0's 1985 was the newest published), but no open personnel series is on disk to replace it.
+
+Two lookahead findings came out of the audit (the class of bnm-a1e and bnm-56c.23):
+
+1. **WDI at Dec 2003-04.** series.tsv dates every WDI year nine months after it ends. The WDI Database Archives (data/raw/wdi-archives) show that before 2005 a year first came out in the April edition sixteen months later: 2002 in April 2004, 2003 in April 2005. From September 2005 the September edition holds the year before, and nine months holds (2008 waited for October 2009, 2009 for December 2010), and from 2011 the June or July edition holds it. So at the Dec 2003 and Dec 2004 origins the WDI inputs are a year ahead of publication: 4,249 of the 4,906 WDI annual values series.tsv makes readable at Dec 2003 (4,261 of 4,941 at Dec 2004) were not out; none from Dec 2005. `--fresh-inputs` dates its two WDI series by the archives. The other WDI reads are fixed behind `--wdi-editions` (below), not scored here.
+2. **JST in the banking node.** bnm.lattice-banking reads the Macrohistory row of the year before the origin at every origin. JST's first release was 2016. Unlike PWT, Maddison and NMC, JST has no release dating. Dating it would leave the banking node without its main gauges before 2016, a model change rather than a hygiene fix: bead bnm-9vm, for the user's decision.
+
+### The fix
+
+`bnm.world-run --fresh-inputs true` (off by default). The year row's log GDP per head, growth3 and population growth3 are carried past Maddison's read year by WDI's growth per head (NY.GDP.PCAP.KD, series.tsv economy/gdp_per_capita) and population (SP.POP.TOTL, people/population), through the newest WDI year published by the origin (bnm.political-gauges/splice):
+
+- **Growth rates are spliced, not levels.** Each year after Maddison's read year adds WDI's log change for that year to Maddison's log level. The level stays in Maddison's 2011 PPP dollars; WDI's constant-2015-dollar level is never read. growth3 is the change over the three years to the newest spliced year, so it may span Maddison's years and WDI's. This is how the growth-collapse catalogue itself chains WDI on after Maddison (bnm.economic-events). Where Maddison has no value at its read year, or WDI nothing newer, the row is the base's.
+- **Each WDI year at its true publication.** scripts/wdi-first-published.py dates every country's year by the first edition of the WDI Database Archives that holds it (data/derived/wdi-first-published.tsv, 42,273 rows; 125 editions, April 2001 to July 2026). bnm.named/load-series `:first-published` makes a value unreadable before that month; bnm.lattice-political/year-row-opts reads the values known at the origin. An edition is dated by the later of its id's and its label's month, so the dating errs late. A year no fetched edition holds is dated after the first edition four years on, or after the last edition. The editions before 2001 hold no values under these series codes, so a year before the earliest edition that does (2002 for growth per head, 2001 for population) is dated to the April edition two years on: the sixteen months the 2002-2004 editions show. The training years matter here: read at series.tsv's nine months, the 1960-2000 rows would have used each year's figures a year before they came out (t72-fresh-v1 did, see below).
+- **What is read.** At Dec 2003 the newest WDI year is 2001 (the 2002 figures came out in April 2004), at Dec 2004 2002, and from Dec 2005 the year before the origin for 147-162 of the 169 countries with a Maddison anchor (the rest a year or more further back, where WDI lags). Maddison's read year is 2-8 years back (median 4). The 13 lattice countries without Maddison (BHS, BLZ, BRN, BTN, ERI, FJI, GUY, MDV, PNG, SLB, SOM, SUR, TLS) keep the base's missing value.
+
+`--wdi-editions true` (off by default; lookahead finding 1) reads every WDI annual series (variables.tsv's source "World Bank WDI ...") no earlier than the first archived edition holding its year for 100 countries or more (data/derived/wdi-editions.tsv: years to 2000 in the April edition two years on, 2002 in April 2004, 2003 in April 2005, 2004 in September 2005, then each September to 2008 in October 2009, 2009 in December 2010, then June or July). The archive's inflation series (FP.CPI.TOTL.ZG, eleven editions 2004-10 checked) comes out in the same editions. It is not part of t72-fresh.
+
+Tests:
+- bnm.political-gauges-test/fresh-inputs-carry-maddison-on-with-wdi-growth: WDI known through 2013 or 2012 against Maddison's 2010; the level stays Maddison's; nothing newer, or no Maddison anchor, gives the base's row; only the three columns change. It fails on the code before the change (5 assertions).
+- bnm.named-test/fresh-inputs-wdi-is-not-read-before-its-first-edition: a year is not readable before its first edition; a year the table lacks keeps series.tsv's date; the values are unchanged.
+- bnm.lattice-political-test/fresh-inputs-the-year-row-reads-wdi-as-published-at-the-origin: at Dec 2008 a year first published in April 2009 is not read; off, no :fresh.
+- bnm.named-test/wdi-editions-no-wdi-year-before-its-edition: WDI series only, by edition; other sources unchanged.
+- bnm.world-run-test/fresh-inputs-option, wdi-editions-option: true, false or absent; anything else refused.
+
+### Run: t72-fresh
+
+t71-stack's command plus `--fresh-inputs true`, at 1ebec06 (data/runs/t72-fresh/README.txt), for the twelve kinds that read the year row. Banking crises read no year row (bnm.lattice-banking builds its own), and without relations (and without `--clim-prior kinds`) the kinds of a world run do not read each other, so banking_crisis/ is copied from t71-stack. Logs: data/runs/logs/run-t72-fresh.log, score-t72-*.txt, alerts-t72-vs-t71.txt.
+
+**t72-fresh-v1, superseded.** The first run (d87e466, data/runs/t72-fresh-v1, logs `*-v1*`) dated only the years the archive holds; years to 2000 kept series.tsv's nine months, a year ahead of their publication. It scored +0.00045 [+0.00001, +0.00101] pooled against t71-stack, most of it market crashes (+0.0059 GAIN, 2003-06 +19.3 ×1000), and its growth node's economy model held 0.79-0.97 of the weight in 1985-95 against t71-stack's 0.37-0.88. With the training years dated (1ebec06) all of that goes: the year row in 1985-95 is then exactly t71-stack's (WDI's newest year at a December origin was the year before last, the year Maddison's fixed offset already read), the economy weights are identical to t71-stack's to 1999, and the market-crash gain is +0.00002. The v1 gain was the lookahead.
+
+**Reproduction with the option off.**
+- t71-stack's command for the same twelve kinds at 06b5f27 (t71-repro-fresh): forecasts, weights, preds and frailty identical to t71-stack's for every kind, 48 files (data/runs/logs/repro-t71-fresh.txt).
+- **2026-Q4-r1** byte for byte through `bnm.ledger/reproduce-issue!` at d87e466, the tools code of t72-fresh, `--wdi-editions` included (data/runs/logs/repro-r1-fresh.log, 8556 lines, forecasts sha bdb361c8…).
+- The suite is green: 1398 tests, 0 failures (data/runs/logs/suite-fresh2.log).
+
+**Year nodes, Brier** (+ = t72-fresh better, 90% intervals resampling countries and years):
+
+| fold | vs t71-stack | vs t53-noclim |
+|---|---|---|
+| 2003-06 | +0.0004 [-0.0003, +0.0011] | +0.0076 [+0.0048, +0.0103] |
+| 2007-09 | +0.0003 [-0.0003, +0.0008] | +0.0167 [-0.0042, +0.0257] |
+| 2010-12 | -0.0001 [-0.0003, +0.0002] | +0.0006 [-0.0031, +0.0038] |
+| 2013-19 | -0.0002 [-0.0004, +0.0001] | +0.0071 [+0.0027, +0.0112] |
+| 2020-22 | -0.0004 [-0.0009, +0.0001] | +0.0024 [-0.0036, +0.0075] |
+| pooled | -0.00001 [-0.00026, +0.00026] | +0.0062 [+0.0034, +0.0093] GAIN |
+
+Log pooled: +0.0001 [-0.0009, +0.0010] against t71-stack (2003-06 +0.0018 GAIN, 2020-22 -0.0023 [-0.0053, +0.0004]); +0.0178 [+0.0103, +0.0254] against t53-noclim (t71-stack's: +0.0177). **No fold's interval is below 0 against either bench**: the fold rule passes. On proper scores t72-fresh ties t71-stack.
+
+Per kind against t71-stack (bnm.world-score; Brier, log), every interval spanning 0:
+- growth collapses -0.00026 [-0.00087, +0.00038], log -0.0004 [-0.0036, +0.0032];
+- currency crises -0.00005, log -0.0008 [-0.0027, +0.0008];
+- inflation crises +0.00009, log +0.0012 [-0.0000, +0.0025]; sovereign defaults +0.00008, log +0.0005; violence surges +0.00005;
+- food price shocks +0.00005, market crashes +0.00002; the rest within ±0.00002.
+
+By fold (×1000; intervals in data/runs/logs/score-t72-kind-folds.txt; bold where the interval is wholly below 0):
+
+| kind | 2003-06 | 2007-09 | 2010-12 | 2013-19 | 2020-22 |
+|---|---|---|---|---|---|
+| growth collapses | +1.33 | **-1.87** | +0.52 | **-0.95** | +0.27 |
+| market crashes | +2.50 | -0.02 | -1.09 | -0.37 | **-1.42** |
+| currency crises | +0.46 | -0.01 | +0.20 | -0.31 | -0.45 |
+| fiscal consolidations | +0.04 | -0.05 | -0.06 | +0.01 | -0.10 |
+| coups | +0.06 | +0.08 | -0.11 | +0.11 | **-0.35** |
+| food price shocks | -0.00 | +5.12 | -0.18 | -0.48 | -3.27 |
+| inflation crises | +0.19 | +0.04 | +0.04 | +0.13 | -0.05 |
+| sovereign defaults | +0.27 | +0.16 | -0.02 | -0.00 | -0.00 |
+| violence surges | +0.00 | +0.00 | +0.00 | -0.00 | +0.32 |
+
+**The growth node** (score-t72-growth-diag.txt), t71-stack → t72-fresh:
+- within-origin AUC 0.544 → 0.512 (17 origins); pooled 0.634 → 0.632;
+- the spread of p within an origin falls: sd 0.011-0.014 → 0.002-0.004 at Dec 2006-08;
+- mean p against the realized rate: +0.34 → +0.35 at the same origin, +0.56 → +0.53 four origins back. The level still lags by about four years;
+- calibration: 2003-22 rate 0.118, mean p 0.092 → 0.090, Brier 0.0999 → 0.1002; 2007-08 p 0.119 → 0.117 (rate 0.219), Brier 0.1790 → 0.1816; 2018-19 p 0.138 in both (rate 0.580), Brier 0.4386 → 0.4403.
+
+The fresh growth3 is a different input. Across the 2654 scored rows it correlates with Maddison's growth3 at 0.43; Greece at Dec 2012 reads -1.86 sd against +0.38. As a raw ranker its within-origin AUC is 0.51 (lower growth, higher risk) against Maddison's 0.45: 0.63-0.76 at Dec 2006-09, 0.27-0.42 at Dec 2010-15, where the recoveries after 2009 rank the other way.
+
+**Alerts** (p ≥ 0.2, a miss costing 4; against t71-stack): pooled dcost +0.0033 [-0.0005, +0.0074], no kind's interval below 0. Market crashes +0.0263 [-0.0104, +0.0812] (false alarms 81.1% → 77.3%, hits 88.0% → 87.3%), food +0.0165, growth +0.0035 (hits 25.7% → 26.5%, false alarms 3.4% → 3.5%), fiscal +0.0020; conflict onsets -0.0030 [-0.0079, +0.0000], coups -0.0020. Episodes: the same 8 of 21 caught.
+
+**The outliers** (mean p at the December origin, rate in brackets), t71-stack → t72-fresh:
+- Growth: 2007 (0.235) 0.111 → 0.107; 2008 (0.202) 0.129 → 0.129; 2019 (0.571) 0.055 → 0.056. All missed.
+- Food: 2020 (0.493) 0.153 → 0.133, missed; 2021 (0.500) 0.227 → 0.224, caught.
+- Market crashes: 2006 (0.957) 0.382 → 0.371; 2007 0.542 → 0.543. Both caught.
+
+### Losses traced (PLAN principle 9)
+
+A replay of the growth kind with each run's options (session scratchpad fresh/replay.clj; its year forecasts equal both runs' at all 2864 rows, max |dp| 0) dumps the year country node's models at each December.
+
+1. **Growth collapses 2007-09 (-1.87 ×1000) and 2013-19 (-0.95): the economy model loses its weight because the fresh growth3 ranks the waves with the sign history taught.** The economy model reads log GDP per head, growth3, inflation and food inflation. In both runs it learns growth3 with a positive slope, a boom before a collapse: +0.15-0.16 with Maddison's growth3, +0.11-0.13 with the fresh one to 2010. That slope ranked the late-1990s collapses well with either input: the raw within-origin AUC of growth3 (higher, riskier) is 0.77-0.86 with Maddison's at Dec 1996-2000 and 0.49-0.76 with the fresh one. At Dec 2001-02 it is 0.45 and 0.63 with Maddison's and 0.22 and 0.09 with the fresh one: the countries that collapsed next had grown slowly. These rows resolve 42 months on, so from Dec 2003 the economy model holds 0.40-0.50 of the year country node's weight against 0.71-0.90, and 0.07-0.23 at Dec 2006-09 against 0.44-0.78. The rest goes to the base and world models. At Dec 2007-08 the node therefore reads less of log GDP per head, which ranked the 2009 wave (rich countries collapsed): within-origin AUC 0.72-0.75 → 0.65-0.67, sd(p) 0.011-0.013 → 0.002-0.003. The fresh growth3 ranks 2006-08 the wrong way for the learned slope too (0.24-0.37), while Maddison's 2001 figures were neutral (0.51-0.52). After the 2009 rows resolve the slope falls to +0.06-0.08 (Maddison's: +0.13-0.17), and at Dec 2017-21 the economy model holds 0.16-0.91 against 0.99-1.00, so the 2018-19 ranking reads less of the level too. Neither is a bug: the sign of recent growth before a collapse differs between the 1990s waves and 2009, and Maddison's stale growth3, nearly constant within an origin for years, carried no signal that could be wrong. The level the node issues is about the same (0.107 and 0.129 at Dec 2007-08, against 0.111 and 0.129).
+2. **Market crashes 2020-22 (-1.42).** The year country node's `down` model (the coarser scales and the region and world year nodes one origin back, whose gauges are means of the same year rows) holds 0-0.09 at Dec 2017-22 against 0.06-0.20, and `fiscal` 0.77-0.93 against 0.68-0.90. `fiscal` carries the VIX12 false alarms after 2020 (§17 loss 1): mean p 0.411 → 0.416 at Dec 2020 and 0.216 → 0.220 at Dec 2021, at rates of 0.081 and 0.085. The averaging's choice moved with the inputs; no bug.
+3. **Coups 2020-22 (-0.35).** The all-inputs model holds the node in both runs; its growth3 and population-growth3 coefficients (and the tensions on growth3) read the new columns. Mean p at Dec 2021 0.050 → 0.052 at a rate of 0.065, AUC 0.71 → 0.70. Small; no bug.
+
+Bugs found in this work:
+- **The fresh inputs' training years** (t72-fresh-v1, above): fixed in 1ebec06 before the scores reported here.
+- **WDI at Dec 2003-04** (lookahead finding 1): every WDI annual value series.tsv makes readable at those origins came out a year later. Fixed behind `--wdi-editions true` (70e9011), not scored. The same nine months also date WDI's training years before 2001, where the archive shows sixteen; `--wdi-editions` dates them too.
+- **JST in the banking node** (lookahead finding 2): bead bnm-9vm, for the user's decision.
+
+### Verdict
+
+- **The audit:** of every input of every kind, only the year row's GDP per head, growth3 and population growth have a fresher open source on disk that measures the same quantity. Maddison is read 24-96 months old (median 48); WDI's growth per head and population, dated by the WDI Database Archives, 12 months from Dec 2005 and 24 at Dec 2003-04.
+- **The fix** (`--fresh-inputs true`, off by default) reads them, with growth rates spliced on Maddison's level and each WDI year at its first archived edition. The base and the ledger reproduce byte for byte with it off.
+- **On the world it ties t71-stack:** pooled Brier -0.00001 [-0.00026, +0.00026], log +0.0001, no fold lost against t71-stack or t53-noclim, alerts +0.0033 [-0.0005, +0.0074], the same eight episodes caught.
+- **It does not make the growth node discriminate.** Within-origin AUC 0.544 → 0.512; the level still lags the waves by about four years. A current growth input does not help a model whose slope was learned on one kind of wave and is applied to another. The growth collapses that matter (2009, 2020) were not visible in the previous year's annual accounts.
+- **The lookaheads it uncovered matter more than the staleness.** WDI read at nine months before 2005 is a year early; in the fresh inputs' training years that lookahead alone made a pooled GAIN (t72-fresh-v1). `--wdi-editions` fixes it for every WDI series and should be scored before any base adopts a WDI input change.
+- **Adoption** is the user's decision. Every option stays off by default.

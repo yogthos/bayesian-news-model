@@ -795,11 +795,13 @@
   :flat, the world's leading gauges at the year node (bnm-cpv,
   `leading-names`); :wide-credit (with it), the same and house prices for
   the countries outside the panel (`wide-credit-values`; :bank, the credit
-  input from the BIS's bank credit)."
+  input from the BIS's bank credit); :wdi-editions, WDI's annual series by
+  their archived editions."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
-        db (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
+        db (nm/load-series "data/slow/series.tsv" variables
+                           (cond-> {:real-lags real-lags} wdi-editions (assoc :wdi-editions (nm/read-wdi-editions))))
         jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
         dated (when dated-credit (dated-credit-inputs db jst-rows))
         jst (into {} (for [r (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap) dated)]
