@@ -1938,3 +1938,195 @@ Bugs found: none in the runs. Two test defects found while writing them, both in
 - On the world it switches itself off at every node, so t83-regime **is** t80-base, and t83-regime-rate is the rate centring alone, which fails 2010-12 as in §19. Neither is accepted.
 - What it shows: a regime filtered from the gauges already in the frailty adds little beyond 5a's gauge mean, and a theory-sized loading on a regime probability cannot move a level by the 1.3-2 log odds the calm years and banking 2006-07 need. Banking, where nothing else reads the origin, is where it came nearest (+1.77 nats).
 - Next, to be designed and registered before any run: the level per regime from the data rather than one coefficient on π, e.g. each regime's own climatology (the node's resolved rate within origins the chain classed calm, and within stress), weighted by π at issue; and for banking, gauges of its own at the origin (world credit, house prices) for the chain to read. The option stays off by default; adoption is the user's decision.
+
+## Regime climatology: t84-rclim, t84-rclim-nc (bnm-56c.40, recursive step 5c)
+
+19 November 2026, branch regime-clim (from origin/regime ca042ca). The design is docs/RECURSIVE.md step 5c, committed (6965fd4) before any code or run. All three runs are at a32931f.
+
+### Design, in short
+
+- At each year node of market crashes, growth collapses, banking crises (financial chain) and food price shocks (food chain), the climatology is split by regime.
+- Each resolved row counts with weight π_o in the stress rate and 1 − π_o in the calm rate. π_o is the stress probability the 5b chain issued at the row's own origin: a forward filter, with no outcome and no hindsight.
+- Only rows of origins the chain had read are classed: financial from 1987, food from 1998.
+- Each regime's rate has a beta prior centred on the overall climatology, with the strength of one origin's rows. This is a unit-information prior: the origin is the unit of information about a common level.
+- The offset at t is logit(π_t r_s + (1 − π_t) r_c), the mixture taken in probability. It replaces `:clim-learn :current`'s overall rate. Pending rows are re-anchored at their own π_o.
+- It is in place from the first origin, with no price. With no classed rows it is the overall climatology exactly.
+- The frailty z is filtered against the reference predictive, so z explains departures from the regime rate.
+- To avoid counting the regime twice, 5a's gauge mean reads each family gauge net of its regime mean, g − sΔ(π − π̄).
+- It cannot be combined with 5b's δ.
+
+### Tests
+
+The tests:
+- regime_filter_test covers `pi-reader` (nil before the first gauge read, then 5b's π; no lookahead) and `emission-mean`.
+- lattice_test bnm-56c-40-rclim-* covers:
+  - the level: the mixture in probability, and the overall rate when no rows are classed;
+  - off unchanged;
+  - bad values refused: no `:clim-learn :current`, no `:offset`, together with `:regime`, a reader that is not a function;
+  - no lookahead: gauge and outcomes redrawn after year 30.
+- world_run_test bnm-56c-40-regime-clim-option covers the `--regime-clim` option.
+
+**No regime in the world.** Within the registered tolerance of `:clim-learn :current` (mean |Δp| < 0.005, late log within 0.002). Passes.
+
+**Two planted checks failed as written.** Both are kept, as known gaps the suite reports OPEN (`bnm.known-gap`).
+
+1. **Sharp precursor, banking's node (no frailty gauge).**
+   - Calm origins reach the calm rate: 0.195 at a rate of 0.169.
+   - Stress origins issue 0.42 at a rate of 0.524. The registered check was within 0.05. The frailty alone gives 0.231.
+   - The offset itself reaches 0.50, so the shortfall comes after it. The climatology is a marginal rate. The models add their ranking on the conditional scale, with one intercept (−0.19) learned mostly from calm rows.
+   - The regimes are 1.39 apart in marginal log odds but 2.0 apart in conditional log odds. The frailty's odds deflation takes another 0.15.
+2. **5b's noisy-gauge world, on 5a's stack.**
+   - Late log score −0.4958, against the stack's −0.4939. The registered check was "not worse".
+   - Without the gauge centring it scores −0.4919.
+   - In that world the within-regime part of the gauge is noise. The uncentred β·g was supplying part of the stress level that (1) misses.
+   - So the centring was also run without it (t84-rclim-nc). That choice was made on a planted result, not on a world score.
+
+**A test bug, found and fixed.** 5b's no-lookahead test compared `(lt/book a)` on run results. `lt/book` reads a state, so it returned nil on both sides and the book check could never fail. It now compares `(:book a)`, guards that the book is non-empty, and passes.
+
+**Known gaps.** Part 1 of this round restored 5b's first-written assertion ("on top of the gauge mean it does better still") as the known gap `bnm-56c-40-on-top-of-the-gauge-mean-known-gap-bnm-56c-40`. The rewritten "costs nothing" assertion stays as an additional check.
+- clojure.test has no expected-failure marker. So `bnm.known-gap/defgap` defines a plain function with `:known-gap` metadata, which holds its reason.
+- `run-tests` skips these functions. The runner runs them after the suite and prints each one OPEN, with its failing assertions.
+- A gap that passes is printed CLOSED and fails the suite, until it is made a deftest again.
+
+**Suite.** 1434 tests, 0 failures, 3 known gaps open (data/runs/logs/suite-t84.log).
+
+### Reproduction
+
+- **2026-Q4-r1** reproduces byte for byte through `reproduce-issue!` (8556 lines, sha bdb361c8…; data/runs/logs/repro-r1-rclim.log).
+- **t84-off** (t80-base's command with `--regime-clim false`, four kinds): forecasts, preds, weights and frailty equal t80-base's byte for byte.
+
+### Runs
+
+- **t84-rclim** = t80-base + `--regime-clim true`, for the four kinds it reaches. The other nine kinds are t80-base's, copied.
+- **t84-rclim-nc** = the same with `--regime-clim uncentred`: the gauge mean reads the gauges as read. Its banking is t84-rclim's, because banking reads no frailty gauge.
+
+### Scores against t80-base (year nodes, 90% intervals)
+
+| fold | t84-rclim Brier | t84-rclim log | t84-rclim-nc Brier | t84-rclim-nc log |
+|---|---|---|---|---|
+| 2003-06 | -0.00226 [-0.00653, +0.00199] | -0.00495 [-0.01483, +0.00464] | -0.00041 [-0.00165, +0.00099] | -0.00157 [-0.00430, +0.00259] |
+| 2007-09 | **-0.00625 [-0.00864, -0.00016] LOSS** | -0.01628 [-0.02149, -0.00376] | +0.00256 [-0.00186, +0.00406] | +0.00403 [-0.00621, +0.00770] |
+| 2010-12 | **-0.00148 [-0.00220, -0.00035] LOSS** | -0.00442 [-0.00617, -0.00103] | +0.00035 [-0.00042, +0.00105] | +0.00091 [-0.00186, +0.00337] |
+| 2013-19 | -0.00005 [-0.00061, +0.00072] | -0.00081 [-0.00195, +0.00068] | -0.00005 [-0.00187, +0.00123] | +0.00013 [-0.00475, +0.00363] |
+| 2020-22 | **-0.00129 [-0.00188, -0.00058] LOSS** | -0.00870 [-0.01216, -0.00413] | -0.00226 [-0.00505, +0.00044] | -0.00397 [-0.01194, +0.00428] |
+| pooled | **-0.00145 [-0.00268, -0.00024] LOSS** | -0.00483 [-0.00776, -0.00198] | -0.00021 [-0.00118, +0.00070] | -0.00054 [-0.00291, +0.00193] |
+
+By kind, Brier (`bnm.world-score`; score-t84-rclim-*.txt):
+
+| kind | t84-rclim | t84-rclim-nc |
+|---|---|---|
+| market crashes | -0.01369 [-0.02905, +0.00033] | -0.00329 [-0.01656, +0.00950] |
+| growth collapses | **-0.00277 [-0.00481, -0.00091]** | +0.00013 [-0.00263, +0.00377] |
+| food price shocks | -0.00188 [-0.00605, +0.00264] | +0.00088 [-0.00054, +0.00275] |
+| banking crises | **-0.00049 [-0.00084, -0.00013]** | **-0.00049 [-0.00084, -0.00013]** |
+
+### Alerts at 4:1 (`bnm.alerts`, alerts-t84-rclim*.txt)
+
+**t84-rclim**
+- Pooled cost 0.300 against 0.298, Δ -0.0020 [-0.0079, +0.0058].
+- Food is a significant loss, -0.0292 [-0.0646, -0.0007]: food 2021 falls to 0.179 and is missed.
+- Growth -0.0140 and market crashes +0.0175, neither significant.
+- 7 of 21 episodes caught, against 8.
+
+**t84-rclim-nc**
+- Pooled cost 0.288, Δ **+0.0099 [+0.0019, +0.0188] GAIN**.
+- The gain is all market crashes, +0.1328 [+0.0397, +0.2506]. False alarms fall from 81% to 61% of quiet rows, and hits from 88% to 84%.
+- The same 8 of 21 episodes are caught as by t80-base. Banking 2006-07, food 2020 and growth 2019 are still missed.
+
+### Calibration and outliers
+
+Country year node, December origins, mean p / Brier:
+
+| kind | span | rate | t80-base | t84-rclim | t84-rclim-nc |
+|---|---|---|---|---|---|
+| market crashes | 2003-22 | 0.178 | 0.304 / 0.1415 | 0.314 / 0.1552 | 0.310 / 0.1448 |
+| market crashes | 2006-07 | 0.957 | 0.463 / 0.2917 | 0.417 / 0.3333 | 0.512 / 0.2501 |
+| market crashes (calm) | 2010-12 | 0.080 | 0.237 / 0.1125 | 0.277 / 0.1273 | 0.221 / 0.1098 |
+| market crashes (calm) | 2013-19 | 0.088 | 0.292 / 0.1283 | 0.299 / 0.1274 | 0.277 / 0.1329 |
+| food | 2003-22 | 0.154 | 0.229 / 0.1449 | 0.226 / 0.1468 | 0.225 / 0.1440 |
+| food | 2010-12 | 0.060 | 0.224 / 0.0903 | 0.225 / 0.0906 | 0.218 / 0.0880 |
+| food (carried calm) | 2020-22 | 0.415 | 0.174 / 0.3040 | 0.139 / 0.3239 | 0.185 / 0.3001 |
+| growth | 2003-22 | 0.118 | 0.092 / 0.0999 | 0.089 / 0.1027 | 0.086 / 0.0998 |
+| growth (carried calm) | 2007-08 | 0.219 | 0.119 / 0.1790 | 0.069 / 0.1927 | 0.086 / 0.1873 |
+| growth | 2020-22 | 0.047 | 0.141 / 0.0590 | 0.144 / 0.0618 | 0.160 / 0.0671 |
+| banking | 2003-22 | 0.032 | 0.045 / 0.0322 | 0.052 / 0.0327 | = t84-rclim |
+| banking (carried calm) | 2006-07 | 0.158 | 0.024 / 0.1497 | 0.028 / 0.1487 | = t84-rclim |
+| banking | 2008-10 | 0.024 | 0.086 / 0.0285 | 0.097 / 0.0299 | = t84-rclim |
+
+| episode (rate) | t80-base | t84-rclim | t84-rclim-nc |
+|---|---|---|---|
+| food 2006 (0.418) | 0.547 | 0.535 | 0.547 |
+| food 2007 (0.313) | 0.310 | 0.296 | 0.310 |
+| food 2010 (0.114) | 0.264 | 0.252 | 0.269 |
+| food 2020 (0.493) | 0.153 | 0.112 | 0.140 |
+| food 2021 (0.500) | 0.227 | 0.179 | 0.266 |
+| market crashes 2006 (0.957) | 0.382 | 0.392 | 0.405 |
+| market crashes 2007 (0.957) | 0.542 | 0.442 | 0.618 |
+| growth 2007 (0.235) | 0.111 | 0.071 | 0.084 |
+| growth 2008 (0.202) | 0.129 | 0.067 | 0.087 |
+| growth 2019 (0.571) | 0.055 | 0.053 | 0.051 |
+| banking 2006 (0.169) | 0.025 | 0.028 | 0.028 |
+| banking 2007 (0.146) | 0.022 | 0.027 | 0.027 |
+
+### The regime rates the world gave
+
+Country year node, rows known by the origin. They were recomputed offline from forecasts.tsv and regime.tsv, and match the issued level in rclim.tsv to within the rows' resolution timing.
+
+| kind, origin (π) | overall | stress rate (weighted rows) | calm rate (weighted rows) | issued |
+|---|---|---|---|---|
+| market crashes, 2007 (0.99) | 0.252 | 0.344 (212) | 0.189 (317) | 0.344 |
+| market crashes, 2010 (0.00) | 0.315 | 0.483 (279) | 0.255 (346) | 0.260 |
+| market crashes, 2018 (0.96) | 0.258 | 0.452 (300) | 0.169 (630) | 0.429 |
+| banking, 2006 (0.36) | 0.050 | 0.088 (959) | 0.076 (1279) | 0.083 |
+| banking, 2007 (0.99) | 0.050 | 0.088 (976) | 0.074 (1392) | 0.085 |
+| growth, 2007 (0.99) | 0.056 | 0.065 (1227) | 0.033 (1702) | 0.065 |
+| food, 2020 (0.13) | 0.118 | 0.209 (444) | 0.096 (1942) | 0.113 |
+| food, 2021 (0.73) | 0.116 | 0.209 (445) | 0.096 (2090) | 0.163 |
+
+### Why: the losses traced (PLAN principle 9)
+
+1. **t84-rclim's fold losses (2007-09, 2010-12, 2020-22): the centring took away a level that the climatology did not give back.**
+   - At market crashes and growth, 5a's β·g was carrying the regime's level.
+   - In stress, the centring removes sΔ(1 − π̄) = 1.09 sd from each gauge. At market crashes' learned β (0.17, −0.44, 0.59) that is about 1.3 log odds. In calm it adds back the 0.40 sd that had been lowering the level.
+   - The climatology put back at most about +0.4 log odds (2007: 0.344 against an overall 0.252). At 2010 its calm rate (0.255) was above the realized 0.08.
+   - Results: market crashes 2007 fell 0.542 → 0.442, growth 2007-08 fell 0.12 → 0.07, food 2021 fell 0.227 → 0.179 (missed), and the calm years 2010-12 rose 0.237 → 0.277.
+   - Verdict: design. The centring is right only if the regime rates carry the level, and on this history they do not (see 2).
+   - Not a bug. The node's gauges match the chain's to 1e-14 (t80-base's frailty.tsv). The rates recomputed offline match the issued level.
+2. **The regime rates barely separate, because the classed history does not line up with the regimes.**
+   - **Market crashes.** The 2000-02 crashes fall in the windows of origins the chain read as calm (Dec 1999 π 0.06, Dec 2001 0.04). So the calm rate is 0.19-0.26, two to three times the calm years' 0.08. The calm years are calmer than calm history.
+   - **Banking.** The 1990s waves fall at origins classed calm (1991-94: the Nordic countries, Japan, Mexico) and at origins classed stress (1995-98: Asia). The two rates are 0.088 and 0.074-0.076.
+   - **Growth** separates (0.065 against 0.033), but both stay far below the 0.22 of 2007-08.
+   - **Food** separates most (0.209 against 0.096). But the chain reads Dec 2020 as calm (π 0.13), and at 2021 the mixture gives 0.163 at a rate of 0.50.
+   - Why: a gauge-classed regime predicts the next 24 months' rate poorly on this history. A stress reading often coincides with a crisis already under way and is followed by recovery (Dec 2008: π 1.00, window 2009-10). The soft weights then pull the two rates together.
+   - Verdict: approach. This is the data, not the code.
+3. **Banking's Brier loss (-0.00049, in both runs): the classed era's rate replaced the long history's.**
+   - Only rows from 1987 on are classed. Banking's rate since 1987 (0.075-0.088 in both regimes) is above its overall rate since 1870 (0.050).
+   - So the level rose in both regimes. 2008-10 went 0.086 → 0.097, with more false alarms after the crisis.
+   - The gain at 2006-07 is only +0.004 (0.024 → 0.028), at rates of 0.15-0.17.
+   - Verdict: design. Classing only post-1987 rows turns the regime climatology into a recent-era climatology wherever the recent era differs from the long one.
+4. **t84-rclim-nc: neutral on the fold rule; alerts gain at market crashes.**
+   - Uncentred, the climatology adds its small gap on top of β·g. That is the double count the design meant to remove. β is learned once per origin, so it is partly trimmed.
+   - Market crashes 2006-07 rise to 0.512 (2007: 0.618). The calm years 2013-19 fall 0.292 → 0.277, and false alarms fall at the 0.2 threshold.
+   - Growth 2020-22 rises 0.141 → 0.160: π is 0.61 and 0.64 at 2020 and 2022, the curve's false readings (5b's loss 1).
+   - Proper scores: no fold won or lost, and banking loses as in 3.
+5. **The two planted gaps** (marginal against conditional scale; centring in a noisy world) are the mechanism of 1 on a small scale. They stay open in the suite.
+
+Bugs found: the vacuous book check in 5b's no-lookahead test, fixed above. None in the runs.
+
+### Verdict
+
+- **t84-rclim, the registered design, is rejected.**
+  - It loses three of five folds, and pooled: Brier -0.00145 [-0.00268, -0.00024].
+  - Alerts at 4:1 do not improve (Δ -0.0020), and food 2021 is missed.
+- **t84-rclim-nc is neutral on proper scores, and not accepted.**
+  - Pooled Brier -0.00021 [-0.00118, +0.00070], no fold won or lost. Banking loses: -0.00049 [-0.00084, -0.00013].
+  - Its alert gain (+0.0099 [+0.0019, +0.0188], all from market crashes) comes from a variant chosen after the planted test.
+  - By the design's own argument, it counts the regime twice.
+- **What it shows.** On 1987-2022, the regime read from the gauges does not separate the outcome rates enough to set the level.
+  - The moves the gaps need (-1.3 log odds in the calm years, +2 at banking 2006-07) are not in the classed history.
+  - The calm years are calmer than calm history, and banking's history is as crisis-prone in calm as in stress.
+- **5b's finding stands, for a different reason.** There the loading capped the move. Here the data do not hold the move.
+- **Next, not run:**
+  - an anchor on the conditional scale (planted gap 1);
+  - for banking, gauges of its own at the origin (world credit, house prices), since the financial chain does not class banking's history.
+- The option stays off by default. Adoption is the user's decision.
