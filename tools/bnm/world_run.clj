@@ -707,6 +707,18 @@
   [opts]
   (flag-choice opts :dated-credit))
 
+(defn splice-credit-choice
+  "--splice-credit bank (bnm-ris): under --dated-credit, JST's bank loans
+  spliced with the BIS's bank credit (JST's concept) in place of its credit
+  from all lenders. Off by default; needs --dated-credit true."
+  [opts]
+  (when-let [v (:splice-credit opts)]
+    (when-not (= "bank" v)
+      (throw (ex-info (str "bnm.world-run: --splice-credit takes bank, not " v) {})))
+    (when-not (dated-credit-choice opts)
+      (throw (ex-info "bnm.world-run: --splice-credit bank needs --dated-credit true" {})))
+    :bank))
+
 (defn regime-choice
   "--regime true (bnm-56c.40, recursive step 5b): the world families'
   calm/stress chains set the year node's level through the frailty. Off by
@@ -931,6 +943,7 @@
                                                                :banking-gauges (banking-gauges-choice opts)
                                                                :banking-coverage (banking-coverage-choice opts)
                                                                :long-baseline (long-baseline-choice opts)
+                                                               :splice-credit (splice-credit-choice opts)
                                                                :wide-credit (wide-credit-choice opts)
                                                                :fresh-inputs (fresh-inputs-choice opts)
                                                                :wdi-editions (wdi-editions-choice opts)

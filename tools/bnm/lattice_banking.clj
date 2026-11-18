@@ -730,11 +730,14 @@
 
 (defn- jst-bis
   "{iso {:credit {year v} :mortgages {year v}}}: the BIS's credit to the
-  private non-financial sector and to households, December quarters."
-  [db isos]
-  (into {} (for [u isos]
-             [u {:credit (some-> (db [u "finance/credit_gdp"]) q4-annual)
-                 :mortgages (some-> (db [u "finance/household_credit_gdp"]) q4-annual)}])))
+  private non-financial sector and to households, December quarters;
+  with `bank` ({iso {year value}}, `read-bank-credit`; --splice-credit bank)
+  the BIS's bank credit, JST's concept, for the credit input."
+  ([db isos] (jst-bis db isos nil))
+  ([db isos bank]
+   (into {} (for [u isos]
+              [u {:credit (if bank (get bank u) (some-> (db [u "finance/credit_gdp"]) q4-annual))
+                  :mortgages (some-> (db [u "finance/household_credit_gdp"]) q4-annual)}]))))
 
 (defn dated-credit-inputs
   "{:from :values} for bnm.macrohistory/build's `dated`: the JST
@@ -742,8 +745,9 @@
   from the BIS (finance/credit_gdp, finance/household_credit_gdp), each
   year's December quarter, from `dated-from`."
   ([db jst-rows] (dated-credit-inputs db jst-rows nil))
-  ([db jst-rows win]
-   {:from dated-from :values (mh/dated-inputs jst-rows (jst-bis db (set (map :iso jst-rows))) dated-from (if win {:stretch win} {}))}))
+  ([db jst-rows win] (dated-credit-inputs db jst-rows win nil))
+  ([db jst-rows win bank]
+   {:from dated-from :values (mh/dated-inputs jst-rows (jst-bis db (set (map :iso jst-rows)) bank) dated-from (if win {:stretch win} {}))}))
 
 (defn wide-credit-values
   "--wide-credit: {[iso year] inputs} from `dated-from` for the countries
@@ -801,14 +805,14 @@
   their archived editions; :banking-coverage, the declared signals of
   `coverage-decls` at the year node."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables
                            (cond-> {:real-lags real-lags} wdi-editions (assoc :wdi-editions (nm/read-wdi-editions))))
         jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
         ;; --long-baseline N: the level stretches against N years (at least 10)
         win (when long-baseline [long-baseline 10])
-        dated (when dated-credit (dated-credit-inputs db jst-rows win))
+        dated (when dated-credit (dated-credit-inputs db jst-rows win (when (= :bank splice-credit) (read-bank-credit))))
         jst (into {} (for [r (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap) dated (when win {:stretch win}))]
                        [[(:iso r) (:year r)] r]))
         cat (cond-> (catalogue jst-rows) catalogue-through (assoc :unknown-past-through true))

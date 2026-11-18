@@ -73,6 +73,7 @@
             [bnm.late-entry-test]
             [bnm.testbed-test]
             [bnm.long-baseline-test]
+            [bnm.splice-credit-test]
             [bnm.lattice-smoke-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -216,6 +217,7 @@
     bnm.late-entry-test
     bnm.testbed-test
     bnm.long-baseline-test
+    bnm.splice-credit-test
     bnm.lattice-smoke-test
     bnm.political-gauges-test
     bnm.reconcile-test
