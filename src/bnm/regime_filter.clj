@@ -91,3 +91,28 @@
         pbar (stationary chain)
         m (zipmap os (map (fn [p] [(* f (- (double p) pbar)) (double p)]) ps))]
     (fn [t] (get m t))))
+
+(defn pi-reader
+  "(fn [t]) -> pi at each of `origins`, the stress probability filtered as
+  `reader`'s, but nil before the first origin at which any gauge was read
+  (and at any month not an origin): before it pi is the stationary law by
+  construction, not a reading (step 5c, the regime climatology: rows of
+  those origins are not classed). Computed once."
+  [chain origins drivers]
+  (let [os (vec (sort origins))
+        ys (mapv drivers os)
+        ps (path chain ys)
+        first-read (first (keep-indexed (fn [i y] (when (some some? y) i)) ys))
+        m (if first-read
+            (zipmap (subvec os first-read) (map double (subvec ps first-read)))
+            {})]
+    (fn [t] (get m t))))
+
+(defn emission-mean
+  "A gauge's mean given the stress probability `pi`, under the chain's
+  emission law, in the gauge's standardized units: s delta (pi - pbar),
+  `sign` s its theory sign (step 5c: the regime's part of a reading, which
+  the gauge mean then reads net of)."
+  ^double [chain sign pi]
+  (let [{:keys [pbar delta]} (emission chain)]
+    (* (double sign) (double delta) (- (double pi) (double pbar)))))

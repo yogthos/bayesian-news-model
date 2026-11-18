@@ -443,6 +443,14 @@
             :when (zero? (mod (- t 11) 12))
             [g wt] (sort-by key ws)]
       (.write w (str (name scale) "\t" (name level) "\t" (quot t 12) "\t" (if (namespace g) (str (namespace g) "/" (name g)) (name g)) "\t" wt "\n"))))
+  ;; under :regime-clim (step 5c): each year place's pi and the climatology's
+  ;; log odds as issued at each origin
+  (when-let [rows (seq (for [[[s place] byo] (sort-by key (:book r)) :when (= s :year)
+                             [o e] byo :when (:rclim e)
+                             :let [[pi lvl] (:rclim e)]]
+                         (str place "\t" (quot o 12) "\t" (if (nil? pi) "" pi) "\t" lvl "\n")))]
+    (with-open [w (io/writer (str dir "/rclim.tsv"))]
+      (doseq [row rows] (.write w ^String row))))
   ;; under bnm.lattice's :frailty: each node's common shock, filtered per origin
   (when-let [fr (:frailty r)]
     (with-open [w (io/writer (str dir "/frailty.tsv"))]
@@ -630,6 +638,42 @@
                                                 :prior prior}}))
                     sp)]))))
 
+(defn regime-clim-choice
+  "--regime-clim true (bnm-56c.40, recursive step 5c): the year node's
+  climatology by regime, each regime's resolved rate weighted by the chain's
+  pi at issue. Off by default; not with --regime true (the same signal
+  twice)."
+  [{:keys [regime regime-clim]}]
+  (when (and regime-clim (not (#{"true" "false"} regime-clim)))
+    (throw (ex-info (str "bnm.world-run: --regime-clim takes true or false, not " regime-clim) {})))
+  (when (and (= "true" regime-clim) (= "true" regime))
+    (throw (ex-info "bnm.world-run: --regime-clim true and --regime true read the same regime twice" {})))
+  (= "true" regime-clim))
+
+(defn with-regime-clim
+  "Each spec of `regime-sets` with :regime-clim at its year node, when `on?`:
+  the family chain's pi at the year origins, nil before its first gauge
+  read (bnm.regime-filter/pi-reader), and, where the year node's frailty
+  reads world gauges (--frailty-gauges), each one's regime mean at pi
+  (its theory sign in the family; 0 for a gauge outside it), which the
+  gauge mean reads net of. `lead-f` is bnm.named/leading's reader."
+  [specs on? lead-f]
+  (if-not on?
+    specs
+    (into {} (for [[k sp] specs]
+               [k (if-let [{:keys [chain gauges]} (regime-sets k)]
+                    (let [{:keys [per]} (first (filter #(= :year (:name %)) (:scales sp)))
+                          start (:start sp) end (:end sp)
+                          origins (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))
+                          at (rf/pi-reader chain origins (regime-drivers lead-f gauges start end))
+                          sign (zipmap gauges (:signs chain))
+                          fg (seq (get-in sp [:frailty :gauges :year]))]
+                      (assoc sp :regime-clim
+                             {:year (cond-> {:at at}
+                                      fg (assoc :gauge-mean (fn [t] (when-let [p (at t)]
+                                                                      (mapv #(if-let [s (sign %)] (rf/emission-mean chain s p) 0.0) fg)))))}))
+                    sp)]))))
+
 (defn options
   "The options of bnm.world-run `args`: {:out \"x\" ...}, values as given."
   [args]
@@ -687,6 +731,11 @@
                    (with-frailty-gauges (frailty-gauges-choice opts))
                    (with-regime (regime-choice opts)
                      (when (regime-choice opts)
+                       (second (nm/leading (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
+                                                           {:real-lags (real-lags-choice opts)})))))
+                   ;; step 5c: after --frailty-gauges, whose gauges it centres
+                   (with-regime-clim (regime-clim-choice opts)
+                     (when (regime-clim-choice opts)
                        (second (nm/leading (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
                                                            {:real-lags (real-lags-choice opts)}))))))
         books (atom {})
@@ -750,6 +799,11 @@
           (with-open [w (io/writer (str dir "/" k "/regime.tsv"))]
             (doseq [t (range (:start sp) (inc end)) :let [[x p] (at t)] :when p]
               (.write w (str (quot t 12) "\t" x "\t" p "\n")))))
+        ;; --regime-clim (step 5c): pi at the year origins the chain had read, year pi
+        (doseq [[k sp] specs :let [at (get-in sp [:regime-clim :year :at])] :when at]
+          (with-open [w (io/writer (str dir "/" k "/regime.tsv"))]
+            (doseq [t (range (:start sp) (inc end)) :let [p (at t)] :when p]
+              (.write w (str (quot t 12) "\t" p "\n")))))
         ;; --write-reference true: the reference's forecasts as a run of
         ;; their own, <out>-ref
         (when (= "true" (:write-reference opts))

@@ -964,6 +964,56 @@
   ^double [rp t]
   (double (or (first ((:at rp) t)) 0.0)))
 
+;; --- bnm-56c.40, recursive step 5c: the regime climatology ---
+
+(defn regime-clim-params
+  "The regime climatology at `scale` (docs/RECURSIVE.md step 5c): the spec's
+  {:regime-clim {scale {:at (fn [t]) -> pi or nil :gauge-mean (fn [t]) ->
+  [E[g_j | pi_t]] or nil}}}, pi the world family's stress probability as the
+  chain issued it at origin t (bnm.regime-filter/pi-reader), the gauge mean
+  in :frailty :gauges' order. {:at :gauge-mean}, or nil. It replaces the
+  climatology, so it needs one (an :offset, nil where it has nothing to
+  say) learned under :clim-learn :current; not with 5b's :regime (a second
+  copy of the same signal)."
+  [spec scale]
+  (when-let [{:keys [at gauge-mean] :as r} (get-in spec [:regime-clim scale])]
+    (when-not (and (fn? at) (or (nil? gauge-mean) (fn? gauge-mean)))
+      (throw (ex-info "bnm.lattice: :regime-clim takes {scale {:at (fn [t]) :gauge-mean (fn [t])}}" {:scale scale :regime-clim (dissoc r :at :gauge-mean)})))
+    (when-not (= :current (:clim-learn spec))
+      (throw (ex-info "bnm.lattice: :regime-clim needs :clim-learn :current" {:scale scale})))
+    (when-not (:offset spec)
+      (throw (ex-info "bnm.lattice: :regime-clim replaces the climatology: it needs an :offset" {:scale scale})))
+    (when (get-in spec [:regime scale])
+      (throw (ex-info "bnm.lattice: :regime-clim and :regime read the same regime twice" {:scale scale})))
+    {:at at :gauge-mean gauge-mean}))
+
+(defn regime-level
+  "The log odds of the regime climatology at stress probability `pi`:
+  logit(pi r_s + (1 - pi) r_c), the mixture in probability (the law of total
+  probability over the regimes). Each regime's rate is its rows' rate, each
+  row weighted by the pi it was issued at ({:s1 :s} the stress-weighted
+  onsets and rows, {:c1 :c} the calm), under a beta prior of strength `a`
+  rows centred on the node's overall rate `rbar`."
+  ^double [{:keys [s1 s c1 c]} rbar a pi]
+  (let [rbar (double rbar) a (double a) pi (double pi)
+        rs (/ (+ (double (or s1 0.0)) (* a rbar)) (+ (double (or s 0.0)) a))
+        rc (/ (+ (double (or c1 0.0)) (* a rbar)) (+ (double (or c 0.0)) a))]
+    (if (and (zero? (double (or s 0.0))) (zero? (double (or c 0.0))))
+      (logit rbar)
+      (logit (+ (* pi rs) (* (- 1.0 pi) rc))))))
+
+(defn- regime-counts
+  "The node's regime-classed counts after `ready` rows: each row with a pi
+  at issue (:rpi) adds pi to the stress side and 1 - pi to the calm; and
+  the origins seen, whose count sets the prior's strength."
+  [{:keys [s1 s c1 c origins] :or {s1 0.0 s 0.0 c1 0.0 c 0.0 origins #{}}} ready]
+  (reduce (fn [acc {:keys [rpi y origin]}]
+            (cond-> (update acc :origins conj origin)
+              rpi (-> (update :s + rpi) (update :c + (- 1.0 rpi))
+                      (update :s1 + (if y rpi 0.0)) (update :c1 + (if y (- 1.0 rpi) 0.0)))))
+          {:s1 s1 :s s :c1 c1 :c c :origins origins}
+          ready))
+
 (def hermite-fine
   "Twenty-point Gauss-Hermite for the standard normal: a frailty state of
   sd above 1 (bnm-02u, the wide grid), where five points err by up to 10%
@@ -1693,6 +1743,20 @@
                        ;; climatology as it stands once this period's outcomes are
                        ;; counted: what the node's forecasts at t are issued at
                        clim-now (clim-logit spec st k scale level ready)
+                       ;; bnm-56c.40 step 5c, :regime-clim: the climatology by regime, each
+                       ;; regime's rate from the rows of origins the chain classed (weighted by
+                       ;; the pi it issued there), shrunk to clim-now by one origin's rows
+                       rcp (regime-clim-params spec scale)
+                       rcounts (when rcp (regime-counts (get-in st [:rclim k]) ready))
+                       clim-at (if (and rcp clim-now)
+                                 (let [[_ n] (get-in st [:clim k] [0 0])
+                                       n (+ (long (or n 0)) (count ready))
+                                       o (count (:origins rcounts))
+                                       a (if (pos? o) (/ (double n) o) 0.0)
+                                       rbar (m/expit clim-now)]
+                                   (fn [pi] (if pi (regime-level rcounts rbar a pi) clim-now)))
+                                 (constantly clim-now))
+                       clim-t (if rcp (clim-at ((:at rcp) t)) clim-now)
                        ;; :frailty (recursive step 3b): the node's common shock, one per origin
                        fcfg (frailty-config spec)
                        rows (learning-rows (map #(cond-> (select-keys % [:x :y :o :os]) (:lp %) (assoc :issued (:lp %))
@@ -1710,7 +1774,8 @@
                                                    (:zcen %) (shift-shock (double (:zcen %)))
                                                    ;; bnm-56c.27: :clim-learn :current, a row issued at
                                                    ;; climatology is learned at the climatology current now
-                                                   (and (= :current (:clim-learn spec)) (:clim %)) (reanchor (- clim-now (:clim %))))
+                                                   ;; (step 5c: the regime climatology at the row's own pi as issued)
+                                                   (and (= :current (:clim-learn spec)) (:clim %)) (reanchor (- (if rcp (clim-at (:rpi %)) clim-now) (:clim %))))
                                                 ready)
                                            (= :mixture (:learn-offsets spec)))
                        ;; traced: each model's evidence, the log score of the outcomes it
@@ -1760,6 +1825,7 @@
                        ez (when (:exposure? fcfg) (standardized-exposures spec scale places t))
                        ;; climatology: the rate among this node's resolved outcomes
                        st (update-in st [:clim k] (fn [[n1 n]] [(+ (or n1 0) (count (filter :y ready))) (+ (or n 0) (count ready))]))
+                       st (if rcp (assoc-in st [:rclim k] rcounts) st)
                        _ (when (and (:clim-learn spec) (not= :current (:clim-learn spec)))
                            (throw (ex-info "bnm.lattice: :clim-learn takes :current" {:clim-learn (:clim-learn spec)})))
                        _ (when-not (#{:all :resolved} (:flow-std-from spec :all))
@@ -1773,8 +1839,8 @@
                        offset-of (if-let [f (when-not fo? (:offset spec))]
                                    (fn [place t] (if-let [o (f scale place t)]
                                                    {:o (double o)}
-                                                   {:o clim-now :clim clim-now}))
-                                   (if (and fo? clim-now) (constantly {:o clim-now :clim clim-now}) (constantly {:o 0.0})))
+                                                   {:o clim-t :clim clim-t}))
+                                   (if (and fo? clim-t) (constantly {:o clim-t :clim clim-t}) (constantly {:o 0.0})))
                        ;; :downscale: the offset from a coarser node's latest forecast for the
                        ;; place, issued before t, scaled to this window under a constant
                        ;; hazard (docs/DOWNSCALE.md); pooled in log odds with what is known
@@ -1857,7 +1923,12 @@
                        gt (when gp
                             (let [in (filter #((:target spec) scale (:place %) t) seen)
                                   in (if (seq in) in seen)]
-                              (mapv (fn [i] (/ (reduce + 0.0 (map #(double (nth (:x %) i)) in)) (count in))) (:ix gp))))
+                              (cond-> (mapv (fn [i] (/ (reduce + 0.0 (map #(double (nth (:x %) i)) in)) (count in))) (:ix gp))
+                                ;; step 5c: under the regime climatology each gauge's departure
+                                ;; from its regime mean, so the regime's level is counted once
+                                (:gauge-mean rcp) (as-> g (if-let [gm ((:gauge-mean rcp) t)]
+                                                            (mapv - g gm)
+                                                            g)))))
                        seen (if gp
                               (mapv (fn [e] (update e :x (fn [x] (reduce #(assoc %1 %2 0.0) x (:ix gp))))) seen)
                               seen)
@@ -1942,7 +2013,9 @@
                                                        ;; the common shock issued with (§1.2 :hazard :z :z-var)
                                                        frailty (assoc :z (:m frailty) :z-var (:v frailty))
                                                        ;; bnm-v1y: the gauges it was issued at
-                                                       (:g frailty) (assoc :zg (:g frailty)))))
+                                                       (:g frailty) (assoc :zg (:g frailty))
+                                                       ;; step 5c: pi and the regime climatology issued at
+                                                       rcp (assoc :rclim [((:at rcp) t) clim-t]))))
                                         (assoc-in [:tension [scale place]] tension)
                                         (cond-> resolved (update-in [:resets [scale place]] (fnil into []) resolved))))
                                   st made))
@@ -1975,6 +2048,8 @@
                                                                (= :issue-joint (:evidence-at spec)) (assoc :ist ist)
                                                                ;; bnm-56c.27: the climatology it was issued at
                                                                (and clim (:clim-learn spec)) (assoc :clim clim)
+                                                               ;; step 5c: the stress probability it was issued at
+                                                               rcp (assoc :rpi ((:at rcp) t))
                                                                ;; bnm-56c.22: the offsets issued over, learned at
                                                                (and (= :mixture (:learn-offsets spec)) (< 1 (count os))) (assoc :os os)
                                                                ;; :frailty: the origin, its shock as issued, each candidate's prior

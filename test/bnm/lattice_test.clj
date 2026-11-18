@@ -2547,7 +2547,7 @@
   (1.2 per sd). With `cut` (a year) the gauge and the outcomes from it on
   are redrawn from `seed2`. `extra` merged into the spec; under `:regime-on`
   the regime layer reads the gauge through bnm.regime-filter."
-  [{:keys [n seed seed2 d regime? cut yrs regime-on gauges? models]
+  [{:keys [n seed seed2 d regime? cut yrs regime-on gauges? models sharp? rclim clim?]
     :or {n 120 seed 5 d 2.0 regime? true yrs 60 gauges? true models #{:base :world :place}}} extra]
   (let [draw (fn [sd]
                (let [rg (m/rng sd)
@@ -2556,9 +2556,11 @@
                                                     (let [u (m/next-double! rg)]
                                                       (if (= 1 s) (if (< u 0.6) 1 0) (if (< u 0.15) 1 0)))))
                                         0 (range (dec yrs))))
-                     g (mapv (fn [s] (if regime?
-                                       (+ (if (= 1 s) (* (- 1.0 pbar) delta) (- (* pbar delta))) (* sw (m/normal! rg)))
-                                       (m/normal! rg)))
+                     g (mapv (fn [s] (cond
+                                       ;; step 5c: a sharp precursor, read as a sure regime
+                                       sharp? (+ (if (= 1 s) 3.0 -1.0) (* 0.1 (m/normal! rg)))
+                                       regime? (+ (if (= 1 s) (* (- 1.0 pbar) delta) (- (* pbar delta))) (* sw (m/normal! rg)))
+                                       :else (m/normal! rg)))
                              s)
                      e (vec (repeatedly yrs #(* 0.3 (m/normal! rg))))
                      u (vec (repeatedly (* n yrs) #(m/next-double! rg)))]
@@ -2573,8 +2575,9 @@
         y-of (fn [c y] (< (if (and cut (>= y cut)) ((:u b) (+ (* n y) (ix c))) ((:u a) (+ (* n y) (ix c))))
                           (m/expit (+ -1.8 (* d (pick :s y)) (pick :e y) (* 1.2 (r c))))))
         origins (range 11 (- (* 12 yrs) 12) 12)
-        reader (rf/reader chain1 origins (fn [t] [(pick :g (yr t))]) 1.0)]
-    (lt/run (merge {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
+        reader (rf/reader chain1 origins (fn [t] [(pick :g (yr t))]) 1.0)
+        pi-at (rf/pi-reader chain1 origins (fn [t] [(pick :g (yr t))]))]
+    (assoc (lt/run (merge {:scales [{:name :year :per 12 :horizon 12 :discount 0.998}]
                     :levels [[:country places]]
                     :parent {} :start 0 :end (- (* 12 yrs) 13) :forget 0.995
                     :target (fn [_ place t] {:y (y-of place (yr t)) :known-at (+ t 24)})
@@ -2590,7 +2593,12 @@
                     :frailty (cond-> {:rhos [0.0 0.5] :sds [0.0 0.25 0.5 1.0]}
                                gauges? (assoc :gauges {:year [:g]} :gauges-from :place))}
                    (when regime-on {:regime {:year {:at reader :prior [1.0 0.25]}}})
-                   extra))))
+                   ;; step 5c: the node's climatology (an :offset with nothing to say)
+                   (when (or clim? rclim) {:offset (fn [_ _ _] nil)})
+                   (when rclim {:regime-clim {:year (cond-> {:at pi-at}
+                                                      gauges? (assoc :gauge-mean (fn [t] (when-let [p (pi-at t)] [(rf/emission-mean chain1 1.0 p)]))))}})
+                   extra))
+           :pi-at pi-at)))
 
 (defn- regime-late-log [r] (log-score (filter #(>= (:origin %) 239) (:forecasts r))))
 
@@ -2657,9 +2665,10 @@
         a (regime-world (assoc w :cut 30 :seed2 91) {})
         b (regime-world (assoc w :cut 30 :seed2 92) {})
         before (fn [r] (filter #(< (:origin %) 359) (:forecasts r)))]
+    (is (seq (:book a)) "a run's book is its result's :book (lt/book reads a state)")
     (is (= (before a) (before b)))
-    (is (= (into {} (for [[k byo] (lt/book a)] [k (into {} (filter #(< (key %) 359) byo))]))
-           (into {} (for [[k byo] (lt/book b)] [k (into {} (filter #(< (key %) 359) byo))]))))
+    (is (= (into {} (for [[k byo] (:book a)] [k (into {} (filter #(< (key %) 359) byo))]))
+           (into {} (for [[k byo] (:book b)] [k (into {} (filter #(< (key %) 359) byo))]))))
     (is (not= (:forecasts a) (:forecasts b)))))
 
 (deftest bnm-56c-40-off-is-unchanged-and-bad-values-refused
@@ -2674,3 +2683,113 @@
       (is (thrown? clojure.lang.ExceptionInfo (regime-world (assoc w :regime-on true :gauges? false) extra)) why))
     (is (thrown? clojure.lang.ExceptionInfo
                  (regime-world (assoc w :gauges? false) {:regime {:year {:at (fn [_] nil) :prior [1.0]}}})))))
+;; --- bnm-56c.40, recursive step 5c: the regime climatology ---
+
+(deftest bnm-56c-40-rclim-the-level
+  ;; logit(pi r_s + (1 - pi) r_c), each regime's rate under a beta prior of
+  ;; strength a centred on the overall rate rbar
+  (let [rbar 0.2 a 10.0]
+    (testing "no regime-classed rows: the overall climatology, whatever pi"
+      (doseq [pi [0.0 0.3 1.0]]
+        (is (< (Math/abs (- (lt/regime-level {} rbar a pi) (m/logit rbar))) 1e-12))))
+    (let [cnt {:s1 30.0 :s 60.0 :c1 9.0 :c 90.0}
+          rs (/ (+ 30.0 (* a rbar)) (+ 60.0 a))
+          rc (/ (+ 9.0 (* a rbar)) (+ 90.0 a))]
+      (testing "the mixture is taken in probability"
+        (is (< (Math/abs (- (lt/regime-level cnt rbar a 1.0) (m/logit rs))) 1e-12))
+        (is (< (Math/abs (- (lt/regime-level cnt rbar a 0.0) (m/logit rc))) 1e-12))
+        (is (< (Math/abs (- (lt/regime-level cnt rbar a 0.4) (m/logit (+ (* 0.4 rs) (* 0.6 rc))))) 1e-12))))))
+
+(defn- late-by-regime
+  "Mean issued p and realized rate at late origins in stress (or calm), in
+  the world `w` (the chain as regime-world draws it)."
+  [r w stress?]
+  (by-regime r w stress?))
+
+(def ^:private rclim-sharp
+  "Step 5c's sharp-precursor world at banking's node (no frailty gauge):
+  [world, the climatology alone, the regime climatology]."
+  (delay (let [w {:sharp? true :gauges? false :models #{:base :place}}]
+           [w (regime-world (assoc w :clim? true) {}) (regime-world (assoc w :rclim true) {})])))
+
+(deftest bnm-56c-40-rclim-reaches-the-regime-rate-within-the-lag
+  ;; the level reaches each regime's rate at the origin; the frailty alone
+  ;; does not. The stress half is the known gap below
+  (let [[w off on] @rclim-sharp]
+    (let [[p1 rate] (late-by-regime on w false)]
+      (is (< (Math/abs (- p1 rate)) 0.05) [:on :calm p1 rate]))
+    (let [[p0 rate] (late-by-regime off w true)]
+      (is (> (Math/abs (- p0 rate)) 0.05) [:off :stress p0 rate]))))
+
+(kg/defgap bnm-56c-40-rclim-reaches-the-stress-rate-known-gap-bnm-56c-40
+  "bnm-56c.40 step 5c: in the sharp-precursor world the regime climatology
+  was to take stress origins to the stress rate (within 0.05 of 0.524). It
+  issues 0.42: the offset reaches 0.50, but the climatology is a marginal
+  rate and the models add their ranking on the conditional scale with one
+  intercept (-0.19), learned mostly from calm rows; the stress gap on the
+  conditional scale is 2.0 against 1.39 on the marginal. The frailty's odds
+  deflation takes another 0.15 log odds. docs/CALIBRATION.md 'Regime
+  climatology'. Open."
+  (let [[w _ on] @rclim-sharp
+        [p1 rate] (late-by-regime on w true)]
+    (is (< (Math/abs (- p1 rate)) 0.05) [:on :stress p1 rate])))
+
+(def ^:private rclim-noisy
+  "5b's noisy-gauge world on 5a's stack: [the stack, the regime climatology]."
+  (delay [(regime-world {:clim? true} {}) (regime-world {:rclim true} {})]))
+
+(deftest bnm-56c-40-rclim-on-the-gauge-mean
+  ;; the gauge mean reads the gauge's departure from its regime mean; the
+  ;; late log score against the stack is the known gap below
+  (let [[stack on] @rclim-noisy]
+    (testing "the gauge mean read at each origin is the gauge less E[g | pi]"
+      (let [bs (:book stack) bo (:book on)]
+        (doseq [t [119 239 359 479] :let [g (first (get-in bs [[:year "P0"] t :zg]))
+                                          gc (first (get-in bo [[:year "P0"] t :zg]))
+                                          pi ((:pi-at on) t)]]
+          (is (and g gc pi) t)
+          (is (< (Math/abs (- gc (- g (rf/emission-mean chain1 1.0 pi)))) 1e-12) [t g gc pi]))))))
+
+(kg/defgap bnm-56c-40-rclim-on-the-gauge-mean-known-gap-bnm-56c-40
+  "bnm-56c.40 step 5c: on 5a's stack in the noisy-gauge world the regime
+  climatology was to score no worse than the stack. Late log -0.4958
+  against -0.4939: the centred gauge mean carries only within-regime noise
+  here, and the uncentred one (-0.4919) was making up part of the stress
+  level the marginal climatology misses (the known gap above).
+  docs/CALIBRATION.md 'Regime climatology'. Open."
+  (let [[stack on] @rclim-noisy
+        [ls lr] (map regime-late-log [stack on])]
+    (is (>= lr ls) [lr ls])))
+
+(deftest bnm-56c-40-rclim-no-regime-is-the-climatology
+  ;; tolerance fixed in the design: mean |dp| under 0.005, late log within 0.002
+  (let [w {:regime? false :n 60}
+        off (regime-world (assoc w :clim? true) {})
+        on (regime-world (assoc w :rclim true) {})
+        late (fn [r] (filter #(>= (:origin %) 239) (:forecasts r)))
+        dps (map (fn [a b] (Math/abs (- (:p a) (:p b)))) (late off) (late on))]
+    (is (= (count (:forecasts off)) (count (:forecasts on))))
+    (is (< (/ (reduce + dps) (count dps)) 0.005) (/ (reduce + dps) (count dps)))
+    (is (< (Math/abs (- (regime-late-log on) (regime-late-log off))) 0.002) [(regime-late-log on) (regime-late-log off)])))
+
+(deftest bnm-56c-40-rclim-no-lookahead
+  (let [w {:n 40 :rclim true}
+        a (regime-world (assoc w :cut 30 :seed2 91) {})
+        b (regime-world (assoc w :cut 30 :seed2 92) {})
+        before (fn [r] (filter #(< (:origin %) 359) (:forecasts r)))]
+    (is (seq (:book a)) "a run's book is its result's :book (lt/book reads a state)")
+    (is (= (before a) (before b)))
+    (is (= (into {} (for [[k byo] (:book a)] [k (into {} (filter #(< (key %) 359) byo))]))
+           (into {} (for [[k byo] (:book b)] [k (into {} (filter #(< (key %) 359) byo))]))))
+    (is (not= (:forecasts a) (:forecasts b)))))
+
+(deftest bnm-56c-40-rclim-off-is-unchanged-and-bad-values-refused
+  (let [w {:n 30 :yrs 20 :clim? true}
+        at (fn [_] 0.5)]
+    (is (= (:forecasts (regime-world w {})) (:forecasts (regime-world w {:regime-clim nil}))))
+    (doseq [[extra why] [[{:clim-learn nil :regime-clim {:year {:at at}}} "needs :clim-learn :current"]
+                         [{:offset nil :regime-clim {:year {:at at}}} "needs a climatology to replace (an :offset)"]
+                         [{:regime-clim {:year {:at 3}}} "a reader"]
+                         [{:regime-clim {:year {:at at :gauge-mean 3}}} "a gauge-mean reader"]]]
+      (is (thrown? clojure.lang.ExceptionInfo (regime-world w extra)) why))
+    (is (thrown? clojure.lang.ExceptionInfo (regime-world (assoc w :regime-on true :rclim true) {})) "not with 5b's delta")))

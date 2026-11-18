@@ -74,3 +74,31 @@
       (let [[x pi] (r1 59)]
         (is (close? x (* (rf/window-factor rf/financial 2.0) (- pi (rf/stationary rf/financial))) 1e-12)))
       (is (nil? (r1 60))))))
+
+;; --- step 5c: the regime climatology reads pi, and centres the gauges on their regime mean ---
+
+(deftest bnm-56c-40-rclim-pi-reader
+  (let [origins (vec (range 11 600 12))
+        g (fn [t] (if (< t 200) [nil nil nil] [(Math/sin (* 0.37 t)) nil (Math/cos (* 0.11 t))]))
+        r (rf/pi-reader rf/financial origins g)
+        full (rf/reader rf/financial origins g 2.0)]
+    (testing "nil until the chain has read a gauge: before it pi is the stationary law, not a reading"
+      (is (every? nil? (map r (filter #(< % 200) origins))))
+      (is (nil? (r 60)) "an origin the node does not have"))
+    (testing "from the first gauge read on, the same pi as the reader's, at every origin after it"
+      (doseq [t origins :when (>= t 200)]
+        (is (= (second (full t)) (r t)) t)))
+    (testing "no lookahead"
+      (let [g2 (fn [t] (if (> t 400) [3.0 -3.0 3.0] (g t)))
+            r2 (rf/pi-reader rf/financial origins g2)]
+        (doseq [t origins :when (<= t 400)] (is (= (r t) (r2 t)) t))))))
+
+(deftest bnm-56c-40-rclim-emission-mean
+  ;; E[g | pi] = s delta (pi - pbar): the gauge's mean under the chain's
+  ;; emission given the stress probability, in its standardized units
+  (doseq [p [rf/financial rf/food]]
+    (let [{:keys [pbar delta]} (rf/emission p)]
+      (is (close? (rf/emission-mean p 1.0 pbar) 0.0 1e-12) "at the stationary law, the gauge's mean, 0")
+      (is (close? (rf/emission-mean p 1.0 1.0) (* (- 1.0 pbar) delta) 1e-12) "sure stress: the stress mean")
+      (is (close? (rf/emission-mean p 1.0 0.0) (- (* pbar delta)) 1e-12) "sure calm: the calm mean")
+      (is (close? (rf/emission-mean p -1.0 1.0) (- (* (- 1.0 pbar) delta)) 1e-12) "a gauge whose low reads stress"))))
