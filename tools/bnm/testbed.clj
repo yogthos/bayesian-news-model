@@ -206,12 +206,21 @@
 (defn- mean-ll [rows f]
   (/ (reduce + (map (fn [r] (let [p (Math/max 1e-9 (Math/min (- 1 1e-9) (f r)))] (Math/log (if (:y r) p (- 1.0 p))))) rows)) (count rows)))
 
+(def scored-share
+  "The share of a world's years scored, its last ones: the data are scored
+  over 2003-2022 after learning from 1870, so the testbed leaves the
+  model's warm-up out too."
+  0.4)
+
 (defn score
   "A run's year country forecasts scored against the outcomes and the
-  world's true hazard (the oracle)."
+  world's true hazard (the oracle), over the world's last `scored-share`
+  of years."
   [w result]
-  (let [rows (vec (for [{:keys [scale place origin p y]} (:forecasts result)
-                        :when (and (= :year scale) (some? y) (some #{place} (:countries w)))
+  (let [{:keys [years]} (merge defaults (:opts w))
+        from (+ epoch (long (Math/ceil (* (- 1.0 scored-share) years))))
+        rows (vec (for [{:keys [scale place origin p y]} (:forecasts result)
+                        :when (and (= :year scale) (some? y) (some #{place} (:countries w)) (>= (quot (inc origin) 12) from))
                         :let [yr (quot (inc origin) 12)
                               true-p (get-in w [:hazard [place yr]])]
                         ;; a window past the world's last year has no truth to score against
@@ -230,7 +239,8 @@
                                     (Math/abs (- (/ (reduce + (map :p b)) (count b)) (/ (count (filter :y b)) (double (count b))))))))
      :alert-cost (alert-cost rows 0.2 4.0)
      :constant-cost (min (* 4.0 rate) (- 1.0 rate))
-     :molchan (molchan-area rows)}))
+     :molchan (molchan-area rows)
+     :skill-share (let [o (- (mean-ll rows :true-p) clim)] (when (pos? o) (/ (- (mean-ll rows :p) clim) o)))}))
 
 (defn evaluate
   "World `opts`, run through the lattice with `:lattice` merged into its
@@ -246,7 +256,7 @@
                (:countries o) (assoc :countries (parse-long (:countries o)))
                (:years o) (assoc :years (parse-long (:years o)))
                (:set o) (assoc :lattice (edn/read-string (:set o))))
-        ks [:auc :within-auc :level-r :log-skill :oracle-log-skill :ece :alert-cost :constant-cost :molchan]
+        ks [:auc :oracle-auc :within-auc :level-r :log-skill :oracle-log-skill :skill-share :ece :alert-cost :constant-cost :molchan]
         results (vec (for [s seeds] (evaluate (assoc base :seed s))))]
     (println (str "scenario " (name (:scenario base)) ", seeds " (str/join "," seeds) (when (:lattice base) (str ", lattice " (pr-str (:lattice base))))))
     (doseq [k ks]

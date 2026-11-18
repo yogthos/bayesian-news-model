@@ -30,3 +30,13 @@ Per run: AUC pooled and within year; the yearly level's correlation with the rea
 ## How it is used
 
 A change is tried on the testbed first, registered with its expected effect per scenario, then registered and run on the data under the fold rule as before. The testbed never replaces the data's rule; it decides what is worth a data run.
+
+## First results (18 November 2026)
+
+Six scenarios x 3 seeds at full size (60 countries, 100 years) run in 39 seconds; scored over each world's last 40% of years (the data are scored after a century of learning too).
+
+- **The null world stays flat.** Log skill against climatology about 0, alert cost at the constant rule's. Its AUC (0.44) and level correlation (-0.26) look inverted, but the forecast is nearly constant (0.0287-0.0288 in every band of years since the last crisis): correlations of a flat p are noise, so the scores now need p's spread beside them. The band of countries that never had a crisis has the lowest rate there (0.014): conditioning on no past crisis selects calm draws. Banking's never-crisis countries show 3x the usual rate against that bias, so that finding stands.
+- **The lattice recovers little of a planted signal.** Credit waves: AUC 0.60 against the oracle's 0.80, log skill against climatology -0.010 (5 seeds), the oracle +0.12. The averaging is not the bottleneck: late entry, tempered weights (power 0.3) and faster forgetting (0.99) move nothing beyond the third decimal.
+- **Nor does a plain pooled logit on the same declared signals** (docs/studies/testbed_learnability.clj; fit on the first 60% of years, scored on the rest): 0-15% of the oracle's skill per row, the lattice in the same range and sometimes far below it (credit waves seed 2: -0.079 against the logit's -0.008). The signals, stretch against a ten-year window and the turn past 1, recover little of a latent turn from noisy annual observations. The oracle reads the latent state, so 100% is not reachable; a filtered estimate of the state is the research's answer (reports: state-space filtering, Kalman/DLM signal-to-noise).
+
+Next on the testbed: a filtered read (each stock's latent level by a Kalman filter, its stretch and turn on the filtered state), registered with its expected effect per scenario, then on the data.
