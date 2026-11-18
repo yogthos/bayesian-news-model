@@ -6,7 +6,7 @@ The gate (`bnm.metrics-gate`) is a ratchet against `metrics-baseline.edn`, the f
 - a near-duplicate pair of definitions (jolt-metrics' compression distance at or under 0.35);
 - a critical function (a complexity, length or nesting limit past its critical band);
 - an unused require or an unused private function;
-- a recurring pattern whose extraction would save at least 150 syntax nodes.
+- growth of more than 2% in the large recurring patterns' total saving (patterns whose extraction would save at least 150 syntax nodes). A pattern's text shifts as its uses come and go, so the gate holds the total, not the texts; new texts are listed for review.
 
 A finding is identified by its file and definition (a pattern by its text), never by line, so moving code is not new. Removing findings passes; the gate lists them so the baseline can be lowered.
 

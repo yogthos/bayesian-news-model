@@ -10,6 +10,7 @@
   (:require [augur.math :as m]
             [bnm.lattice :as lt]
             [bnm.signals :as sg]
+            [bnm.stat :as stat]
             [bnm.stocks :as sk]
             [clojure.edn :as edn]
             [clojure.string :as str]))
@@ -59,6 +60,73 @@
       (- (b (dec i)) 1.0)
       0.0)))
 
+(defn- settings
+  "The world's settings: the defaults, the scenario's, then the caller's."
+  [opts]
+  (let [o (merge defaults opts)
+        sc (merge (scenarios (:scenario o)) (select-keys opts [:strength :wave-boost :world-lambda]))]
+    (merge o (select-keys sc [:strength :wave-boost :world-lambda]) {:sc sc})))
+
+(defn- world-cycles
+  "Each stock's world cycle, AR(1) at :world-phi."
+  [g {:keys [stocks years world-phi]}]
+  (into {} (for [k stocks] [k (vec (reductions (fn [c _] (+ (* world-phi c) (* 0.45 (m/normal! g)))) 0.0 (range (dec years))))])))
+
+(defn- latent-paths
+  "Each country's latent stretch of each stock: AR(1) at :phi, moved by the
+  world cycle."
+  [g cs cycle {:keys [stocks years phi world-lambda]}]
+  (into {} (for [c cs]
+             [c (into {} (for [k stocks]
+                           [k (vec (reductions (fn [b i] (+ (* phi b) (* world-lambda (get-in cycle [k i])) (* 0.5 (m/normal! g))))
+                                               0.0 (range 1 years)))]))])))
+
+(defn- noise-scales
+  "Each country's own observation noise level, uniform over :noise-scale."
+  [g cs {[lo hi] :noise-scale}]
+  (into {} (for [c cs] [c (+ lo (* (- hi lo) (m/next-double! g)))])))
+
+(defn- observations
+  "{country {stock (sorted-map year x)}}: the latent path plus a slow trend
+  plus heavy-tailed noise at the country's own level; a scenario's
+  :published-from leaves the driving stock's early years out."
+  [g cs latent scale {:keys [stocks years noise-df sc]}]
+  (let [{:keys [active published-from]} sc
+        driver (active (vec stocks) 0)]
+    (into {} (for [c cs]
+               [c (into {} (for [k stocks]
+                             [k (into (sorted-map)
+                                      (for [i (range years)
+                                            :when (or (nil? published-from) (not= k driver) (>= i published-from))]
+                                        [(+ epoch i) (+ (* 0.02 i) (get-in latent [c k i]) (* (scale c) 0.3 (student-t g noise-df)))]))]))]))))
+
+(defn- publish
+  "The slow table's shape: each country's observed stocks as series, each
+  year's value published :lag-months after it ends; a scenario's
+  :coverage keeps the driving stock at that share of countries only."
+  [cs observed {:keys [stocks countries lag-months sc]}]
+  (let [{:keys [active coverage]} sc
+        driver (active (vec stocks) 0)
+        covered (set (take (long (Math/round (* (or coverage 1.0) countries))) cs))]
+    (into {} (for [c cs k stocks :let [ys (get-in observed [c k])]
+                   :when (and (seq ys) (or (nil? coverage) (not= k driver) (covered c)))]
+               [[c k] (sk/series (for [[y x] ys] [(+ (* 12 y) 11) (+ (* 12 y) 11 lag-months) x]))]))))
+
+(defn- draw-onsets
+  "[hazard onsets]: each country's yearly hazard (`hz` of country, year
+  index, a crisis in the last five years) and its onsets, none within the
+  spell after one."
+  [g cs hz {:keys [years spell]}]
+  (reduce (fn [[hazard onsets] c]
+            (loop [i 0 last nil hazard hazard os #{}]
+              (if (= i years)
+                [hazard (assoc onsets c os)]
+                (let [at-risk (or (nil? last) (>= (- i last) spell))
+                      p (hz c i (and last (<= (- i last) 5)))
+                      on (and at-risk (< (m/next-double! g) p))]
+                  (recur (inc i) (if on i last) (assoc hazard [c (+ epoch i)] p) (cond-> os on (conj (+ epoch i))))))))
+          [{} {}] cs))
+
 (defn world
   "A synthetic world (docs/TESTBED.md): {:countries :parent :db {[unit
   stock] series} :observed {unit {stock {year x}}} :latent :hazard {[unit
@@ -66,48 +134,24 @@
   `epoch`. The hazard of year y reads the turn at y - 2, the latest a
   December forecast can see through the publication lag."
   [opts]
-  (let [{:keys [seed countries regions years stocks lag-months spell phi world-phi world-lambda noise-df noise-scale
-                base strength wave-boost refractory scenario] :as o} (merge defaults opts)
-        sc (merge (scenarios scenario) (select-keys opts [:strength :wave-boost :world-lambda]))
-        {:keys [active fall published-from coverage]} sc
-        strength (get sc :strength strength) wave-boost (get sc :wave-boost wave-boost)
-        world-lambda (get sc :world-lambda world-lambda)
+  (let [{:keys [seed countries regions stocks base strength wave-boost refractory sc] :as o} (settings opts)
+        {:keys [active fall]} sc
         g (m/rng seed)
         cs (mapv #(format "c%03d" %) (range countries))
         rs (mapv #(str "r" %) (range regions))
         parent (merge (into {} (map-indexed (fn [i c] [c (rs (mod i regions))]) cs)) (zipmap rs (repeat "world")))
-        cycle (into {} (for [k stocks] [k (vec (reductions (fn [c _] (+ (* world-phi c) (* 0.45 (m/normal! g)))) 0.0 (range (dec years))))]))
-        waves (set (for [i (range years) :when (> (get-in cycle [(active (vec stocks) i) i]) 1.0)] i))
-        latent (into {} (for [c cs]
-                          [c (into {} (for [k stocks]
-                                        [k (vec (reductions (fn [b i] (+ (* phi b) (* world-lambda (get-in cycle [k i])) (* 0.5 (m/normal! g))))
-                                                            0.0 (range 1 years)))]))]))
-        scale (into {} (for [c cs] [c (+ (first noise-scale) (* (- (second noise-scale) (first noise-scale)) (m/next-double! g)))]))
-        observed (into {} (for [c cs]
-                            [c (into {} (for [k stocks]
-                                          [k (into (sorted-map)
-                                                   (for [i (range years)
-                                                         :when (or (nil? published-from) (not= k (active (vec stocks) 0)) (>= i published-from))]
-                                                     [(+ epoch i) (+ (* 0.02 i) (get-in latent [c k i]) (* (scale c) 0.3 (student-t g noise-df)))]))]))]))
-        covered (set (take (long (Math/round (* (or coverage 1.0) countries))) cs))
-        db (into {} (for [c cs k stocks :let [ys (get-in observed [c k])]
-                          :when (and (seq ys) (or (nil? coverage) (not= k (active (vec stocks) 0)) (covered c)))]
-                      [[c k] (sk/series (for [[y x] ys] [(+ (* 12 y) 11) (+ (* 12 y) 11 lag-months) x]))]))
+        cycle (world-cycles g o)
+        waves (set (for [i (range (:years o)) :when (> (get-in cycle [(active (vec stocks) i) i]) 1.0)] i))
+        latent (latent-paths g cs cycle o)
+        scale (noise-scales g cs o)
+        observed (observations g cs latent scale o)
         hz (fn [c i recent?]
              (m/expit (+ base
                          (* strength (turn (get-in latent [c (active (vec stocks) i)]) (- i 2) fall))
                          (if (waves i) wave-boost 0.0)
                          (if recent? refractory 0.0))))
-        [hazard onsets] (reduce (fn [[hazard onsets] c]
-                                  (loop [i 0 last nil hazard hazard os #{}]
-                                    (if (= i years)
-                                      [hazard (assoc onsets c os)]
-                                      (let [at-risk (or (nil? last) (>= (- i last) spell))
-                                            p (hz c i (and last (<= (- i last) 5)))
-                                            on (and at-risk (< (m/next-double! g) p))]
-                                        (recur (inc i) (if on i last) (assoc hazard [c (+ epoch i)] p) (cond-> os on (conj (+ epoch i))))))))
-                                [{} {}] cs)]
-    {:opts o :countries cs :regions rs :parent parent :db db :observed observed :latent latent
+        [hazard onsets] (draw-onsets g cs hz o)]
+    {:opts (dissoc o :sc) :countries cs :regions rs :parent parent :db (publish cs observed o) :observed observed :latent latent
      :hazard hazard :onsets onsets :waves (set (map #(+ epoch %) waves))}))
 
 (defn at-risk?
@@ -196,17 +240,15 @@
   [rows]
   (let [parts (for [[_ rs] (group-by :year rows) :let [a (count (filter :y rs)) b (- (count rs) a)] :when (and (pos? a) (pos? b))]
                 [(auc rs) (* a b)])]
-    (when (seq parts) (/ (reduce + (map #(* (first %) (second %)) parts)) (reduce + (map second parts))))))
+    (when (seq parts) (/ (reduce + (map #(apply * %) parts)) (reduce + (map second parts))))))
 
 (defn level-r
-  "The correlation of the yearly mean p with the yearly rate."
+  "The correlation of the yearly mean p with the yearly rate, nil when
+  either is flat."
   [rows]
-  (let [by (sort-by key (group-by :year rows))
-        mp (map (fn [[_ rs]] (/ (reduce + (map :p rs)) (count rs))) by)
-        rt (map (fn [[_ rs]] (/ (count (filter :y rs)) (double (count rs)))) by)
-        n (count mp) a (/ (reduce + mp) n) b (/ (reduce + rt) n)
-        sa (Math/sqrt (reduce + (map #(* (- % a) (- % a)) mp))) sb (Math/sqrt (reduce + (map #(* (- % b) (- % b)) rt)))]
-    (when (and (pos? sa) (pos? sb)) (/ (reduce + (map #(* (- %1 a) (- %2 b)) mp rt)) (* sa sb)))))
+  (let [by (sort-by key (group-by :year rows))]
+    (stat/pearson-or-nil (map (fn [[_ rs]] (stat/mean (map :p rs))) by)
+                         (map (fn [[_ rs]] (stat/mean (map #(if (:y %) 1.0 0.0) rs))) by))))
 
 (defn alert-cost
   "(misses x miss-cost + false alarms) / rows, alerting at p >= threshold."
@@ -227,7 +269,7 @@
         (/ (reduce + (map (fn [a b] (/ (+ a b) 2.0)) nu (rest nu))) n)))))
 
 (defn- mean-ll [rows f]
-  (/ (reduce + (map (fn [r] (let [p (Math/max 1e-9 (Math/min (- 1 1e-9) (f r)))] (Math/log (if (:y r) p (- 1.0 p))))) rows)) (count rows)))
+  (stat/mean (map (fn [r] (let [p (Math/max 1e-9 (Math/min (- 1 1e-9) (f r)))] (Math/log (if (:y r) p (- 1.0 p))))) rows)))
 
 (def scored-share
   "The share of a world's years scored, its last ones: the data are scored
@@ -254,17 +296,17 @@
         dec (let [s (vec (sort-by :p rows)) n (count s)] (for [i (range 10) :let [b (subvec s (quot (* i n) 10) (quot (* (inc i) n) 10))] :when (seq b)] b))]
     {:rows (count rows) :rate rate
      :auc (auc rows) :within-auc (within-year-auc rows) :level-r (level-r rows)
-     :brier (/ (reduce + (map #(let [d (- (if (:y %) 1.0 0.0) (:p %))] (* d d)) rows)) (count rows))
+     :brier (stat/mean (map #(let [d (- (if (:y %) 1.0 0.0) (:p %))] (* d d)) rows))
      :log-skill (- (mean-ll rows :p) clim)
      :oracle-log-skill (- (mean-ll rows :true-p) clim)
      :oracle-auc (auc (map #(assoc % :p (:true-p %)) rows))
      :ece (reduce + (for [b dec] (* (/ (count b) (double (count rows)))
-                                    (Math/abs (- (/ (reduce + (map :p b)) (count b)) (/ (count (filter :y b)) (double (count b))))))))
+                                    (Math/abs (- (stat/mean (map :p b)) (/ (count (filter :y b)) (double (count b))))))))
      :alert-cost (alert-cost rows 0.2 4.0)
      :constant-cost (min (* 4.0 rate) (- 1.0 rate))
      :molchan (molchan-area rows)
      ;; a flat forecast's correlations are noise: its spread beside them
-     :p-sd (let [mp (/ (reduce + (map :p rows)) (count rows))] (Math/sqrt (/ (reduce + (map #(let [d (- (:p %) mp)] (* d d)) rows)) (count rows))))
+     :p-sd (stat/sd-pop (map :p rows))
      :skill-share (let [o (- (mean-ll rows :true-p) clim)] (when (pos? o) (/ (- (mean-ll rows :p) clim) o)))}))
 
 (defn evaluate
@@ -288,4 +330,4 @@
     (println (str "scenario " (name (:scenario base)) ", signals " (name (:signals base :raw)) ", seeds " (str/join "," seeds) (when (:lattice base) (str ", lattice " (pr-str (:lattice base))))))
     (doseq [k ks]
       (let [xs (keep k results)]
-        (println (format "  %-17s mean %+.4f  [%s]" (name k) (/ (reduce + xs) (count xs)) (str/join " " (map #(format "%.3f" %) xs))))))))
+        (println (format "  %-17s mean %+.4f  [%s]" (name k) (stat/mean xs) (str/join " " (map #(format "%.3f" %) xs))))))))

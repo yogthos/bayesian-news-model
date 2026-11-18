@@ -39,6 +39,12 @@
         (is (= #{#{["src/c.clj" "z"] ["src/a.clj" "f"]}} (get-in c [:new :duplicates])))))
     (testing "a new critical function fails"
       (is (not (mg/pass? (mg/compare-ids base (mg/identities (update report :queue conj {:path "src/c.clj" :name "q" :severity :critical})))))))
+    (testing "a pattern's text is not its identity: a new one fails only when the duplication grows"
+      (let [shifted (assoc report :abstractions [{:pattern '(into {} (for [[?a ?b] ?c] ?d)) :uses 41 :saving 303}])]
+        (is (mg/pass? (mg/compare-ids base (mg/identities shifted))) "about the same saving, another text: passes")
+        (is (= #{"(into {} (for [[?a ?b] ?c] ?d))"} (get-in (mg/compare-ids base (mg/identities shifted)) [:new :abstractions])) "still listed")
+        (is (not (mg/pass? (mg/compare-ids base (mg/identities (update report :abstractions conj {:pattern '(+ ?a ?b ?c) :uses 30 :saving 200})))))
+            "the total saving up by more than 2%: fails")))
     (testing "removing findings passes and lists them, so the baseline can be lowered"
       (let [c (mg/compare-ids base (mg/identities (assoc report :duplicates [] :queue [])))]
         (is (mg/pass? c))
