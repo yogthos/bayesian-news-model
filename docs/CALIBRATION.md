@@ -2805,3 +2805,30 @@ Scripts in docs/studies/ (exploratory, written after seeing 2008: in-sample for 
 2. **A world turn on JST 1880-2016** (turn_study.py, turn_dims.py). The share of countries with credit stretched and house-price growth slowing leads the share starting a crisis in the next two years (r +0.23; +0.29 since 1950; 0.35 → 0.65 before 1990-92, 0.39 → 0.67 before 2007-08), where the count of recent crises carries nothing (+0.04). The same turn with every dimension weighed equally carries nothing (+0.00): the dimensions that matter differ, and an equal weighting drowns them.
 3. **Learned combinations, out of sample by era** (learn_combos*.clj; each era predicted from models fit on the years before it). 2000-2016: credit alone AUC 0.714, level r +0.76, log skill +0.045; credit plus every dimension's stretch and turn, slopes shared across eras with each era's deviation partially pooled (augur.hier/grouped-slopes), AUC 0.746, r +0.75, +0.040; the same with world aggregates of each dimension, AUC 0.620, r -0.10, -0.064. World-level weights learned from about ten waves invert the level out of sample (t85's failure again); country-level stocks aggregate to the level bottom-up; era pooling beats ridge and horseshoe; the learned combinations add ranking, not log score, over credit on JST's 18 countries.
 4. **Coverage** (t80-base and t88-rho0, banking year rows 2003-2022). JST's 18 countries (28 onsets): AUC 0.394 → 0.664, level r -0.15 → +0.30. The others (54 onsets, two thirds of them): AUC 0.356 → 0.441, level r -0.33 → -0.18. Where the stocks exist the approach works; most crises are where the node has none (the commodity and emerging-market waves of 2013-16).
+
+## Banking coverage from declared signals: t92 (bnm-7bh step 1)
+
+Written 18 November 2026, before any run. Chosen after "What sets the level" (two thirds of banking onsets outside JST's 18 countries, where the year node reads almost nothing) and t88: an in-sample choice, scored on every fold all the same.
+
+**Design.** `--banking-coverage true` appends to banking's year country row nine signals declared through bnm.signals (docs/SIGNALS.md), read point in time for every country, from series loaded only under the option (the off path reads the same database as before):
+
+| name | series, read | prior mean (sd 0.25) | why |
+|---|---|---|---|
+| :tot12 | trade/commodity_tot, change over 12 months | -0.2 | a terms-of-trade fall precedes commodity-bust crises |
+| :tot12-x-exporter | the same times fuel and metal export shares (two years back, /100) | -0.3 | the fall matters where commodities are the exports (Eberhardt & Presbitero 2021) |
+| :tot-vol12 | trade/commodity_tot, volatility over 12 months | +0.1 | volatility, not credit, predicts crises where the primary sector is large |
+| :reserves | debt/reserves_months, value | -0.2 | the buffer against a sudden stop |
+| :reserves12 | debt/reserves_months, change over 12 months | -0.2 | a draining buffer |
+| :ca-stretch | debt/current_account_gdp, stretch against its previous 10 published years (at least 6), capped at 5 | -0.2 | a widening deficit is the external side of a boom |
+| :pcredit-stretch | finance/private_credit_gdp (WDI), stretch as above, spread floored at 2% of the level | +0.3 | the credit boom, for every country (Schularick & Taylor 2012) |
+| :pcredit-turn | the same series, the turn (a stretch past 1 moving back) | +0.3 | the stretched stock meeting a turning flow (docs/INVARIANTS.md) |
+| :pcredit3 | finance/private_credit_gdp, change over 36 months | +0.2 | credit growth |
+
+They form one group, `:coverage`, at the year node, standardized by the node's own standardizer (pooled over countries and the origins before t), with the priors above by name. Nothing else changes.
+
+**Runs**, banking only (the other twelve kinds copied from t80-base), one at a time:
+- **t92-off**: t80-base's command on this branch: banking byte for byte t80-base's.
+- **t92-cov**: `--banking-coverage true`.
+- **t92-cov-rho0**: the same with banking's frailty at ρ 0 (`:frailty {:rhos [0.0]}`), t88-rho0 plus the coverage.
+
+**Rule, fixed now.** Against t80-base, banking year nodes: the fold rule (no fold lost with its 90% interval below zero, pooled Brier gain), and the alert table at 4:1. Reported beside it, not as the rule: t92-cov-rho0 against t88-rho0 (what the coverage adds to the neutral frailty), pooled and within-year AUC split JST / outside JST, and the yearly level's correlation with the rate.
