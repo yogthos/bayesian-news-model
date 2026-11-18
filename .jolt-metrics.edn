@@ -1,0 +1,3 @@
+;; jolt-metrics settings, shared by CI's gate and local runs (docs/METRICS.md)
+{:exclude ["scripts/**" "docs/**" "data/**" "research_notes/**" "reports/**"]
+ :test-paths ["test"]}

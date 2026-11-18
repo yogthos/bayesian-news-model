@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  JOLT_VERSION: v0.8.27
+  JOLT_METRICS_VERSION: v0.6.0
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jolt
+        run: ci/install-jolt.sh "$JOLT_VERSION" x86_64-linux
+      - name: Cache git dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gitlibs
+            ~/.jolt
+          key: deps-${{ runner.os }}-${{ hashFiles('deps.edn') }}
+      # data/ is not in git: the tests that read it skip themselves
+      - name: Tests
+        run: jolt -M:test
+
+  metrics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jolt
+        run: ci/install-jolt.sh "$JOLT_VERSION" x86_64-linux
+      - name: Install jolt-metrics
+        run: ci/install-jolt-metrics.sh "$JOLT_METRICS_VERSION" x86_64-linux
+      - name: Report
+        run: jolt-metrics . metrics-report.edn --format edn --no-git
+      - name: Gate against metrics-baseline.edn
+        run: jolt -A:tools -M -m bnm.metrics-gate metrics-report.edn
+      - name: Markdown report for review
+        if: always()
+        run: jolt-metrics . metrics-report.md --no-git --top 40
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: metrics-report
+          path: |
+            metrics-report.md
+            metrics-report.edn
