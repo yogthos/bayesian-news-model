@@ -2761,3 +2761,47 @@ Scores (bnm.links): `--runs` against the bench for the pooled year and quarter-l
 Rule, fixed now:
 1. **Leading gauges.** G = t80-base against t86-nolead, G_d = t86-ldelay against t86-nolead, pooled log, year and quarter-lead nodes each. If G's interval does not lie above zero at a scale, the gauges have no gain there to test, and that is the result at that scale. Where it does, the gain survives the delay if G_d ≥ G/2 and t86-ldelay loses no fold against t80-base with a 90% interval below zero. Otherwise the gain rests on the latest quarter and is flagged for review; nothing is removed without the user's decision.
 2. **Year rows.** No run without the year gauges exists for this base, so t86-ydelay is read against t80-base alone: a pooled log loss with its interval below zero, or a fold lost that way, means the year gauges' gain rests on the latest year's row, as s2 found for t50. The leak fixes date Maddison, NMC and PWT by release, so a loss here no longer points to those sources.
+
+## Banking's frailty out of phase: t88 (bnm-g5t.29)
+
+Written 18 November 2026, before any run.
+
+**The finding.** t80-base's banking year country node has a pooled AUC of 0.371 over 2003-2022 (82 onsets in 2558 rows), below chance, while its AUC within each December origin is 0.641. The ranking within a year is moderate; the level across years runs against the rate. It dates from the frailty: t53-noclim, without it, has a pooled AUC of 0.553 (within-year 0.625); t57-frailty, the first run with it, 0.374 (0.593), and every base since keeps that (t65-gauges 0.379, t71-stack 0.379, t80-base 0.371). The year node's frailty takes ρ 0.8, sd 1.0 at every origin from 2000. Its filtered state by origin: -1.3 to -1.6 at 2003-04, +1.6 at 2006-07, -0.5 to -1.1 at 2010-11. Each is known about two years after its origin, so the state issued at Dec 2006 carries 2003-04's calm and the one issued at 2009-11 carries the wave: with a lag near the waves' spacing, the persistent shock is in anti-phase. Mean issued p is 0.025 at Dec 2006 (rate 0.169) and IRL, DNK, SWE and BEL issue 0.20-0.29 at Dec 2009-10, when few new crises began.
+
+Checked and not the cause: crises under way. data/slow/events.tsv has no episode durations (its fifth column is the latest month an onset could be dated), so banking's at-risk set drops only a crisis's onset quarter. With the ESRB's end-of-crisis-management dates and Laeven-Valencia's end years, 162 of the 2558 rows are mid-crisis; without them t80-base's pooled AUC is 0.352 and within-year 0.628. A gap in the target, recorded (bnm bead to follow), not the inversion.
+
+Runs, banking only (`--kinds banking_crisis`; the other twelve kinds copied from t80-base, independent under `--without-relations`), at the integrate branch, one at a time:
+- **t88-off**: t80-base's command. Its banking forecasts must equal t80-base's byte for byte (the off path of every option merged into integrate).
+- **t88-rho0**: the same with banking's frailty at ρ 0 only (`:frailty {:rhos [0.0]}`): a common shock with no persistence carried across origins.
+- **t88-nofrail**: the same without a frailty at banking (`:frailty nil`).
+
+Rule, fixed now: against t80-base, banking year nodes, `bnm.links --folds` (no fold lost with its 90% interval below zero, pooled Brier gain) and the alert table at 4:1. Pooled and within-year AUC reported beside them, not as the rule. A run that passes is a candidate; adoption is the user's decision.
+
+### Results (18 November 2026)
+
+t88-off's banking forecasts equal t80-base's byte for byte: the integrate branch reproduces banking with every option off.
+
+Banking year nodes against t80-base (`bnm.links --folds`; logs data/runs/logs/score-t88-*.txt, alerts-t88-*-vs-t80-base.txt):
+
+| fold | t88-rho0 Brier | t88-nofrail Brier |
+|---|---|---|
+| 2003-06 | +0.00137 [-0.00124, +0.00504] | +0.00083 [-0.00166, +0.00432] |
+| 2007-09 | +0.00459 [+0.00082, +0.00912] GAIN | +0.00310 [-0.00024, +0.00623] |
+| 2010-12 | +0.00254 [+0.00002, +0.00583] GAIN | +0.00191 [-0.00040, +0.00483] |
+| 2013-19 | +0.00002 [-0.00042, +0.00054] | -0.00006 [-0.00053, +0.00049] |
+| 2020-22 | -0.00164 [-0.00183, -0.00145] LOSS | -0.00172 [-0.00196, -0.00149] LOSS |
+| pooled | +0.00107 [-0.00005, +0.00242] | +0.00062 [-0.00032, +0.00180] |
+
+- Pooled AUC: t80-base 0.371, t88-rho0 0.578, t88-nofrail 0.495; within-year 0.641, 0.629, 0.602.
+- Alert cost, banking: t80-base 0.132, t88-rho0 0.128 (+0.0035 [+0.0000, +0.0094]), t88-nofrail 0.129. Episodes caught: 0 of 2 in all three; mean p at Dec 2006-07 is 0.052 and 0.051 (rate 0.169, 0.146), against t80-base's 0.025 and 0.022.
+- **Verdict: both fail the fold rule** (2020-22, the calm years after COVID's exogenous rows are left out: a level near 0.05 where t80-base's carried calm issued lower). Not adopted.
+- **What it shows.** The persistence is what inverts the level: without it the pooled AUC goes from 0.37 to 0.58 and 2007-12 gain. But no variant lifts the level before the wave (0.05 at a rate of 0.17): with the frailty neutral, nothing in the node moves the level with the build-up. Removing the lagged carrier restores neutrality, not anticipation. The level needs a state built from the stocks and flows (the redesign proposed with this result: stretched stocks meeting turning flows, aggregated across countries, as the shock's mean, learned from 1870 with theory's signs).
+
+### What sets the level: four checks (18 November 2026, after t88)
+
+Scripts in docs/studies/ (exploratory, written after seeing 2008: in-sample for design, not a test).
+
+1. **The pattern is general** (kinds_level.py). The yearly mean p's correlation with the yearly rate, year country nodes 2003-2022, t53-noclim → t80-base: sovereign defaults -0.51 → -0.64, inflation -0.41 → -0.57, currency -0.50 → -0.47, coups -0.35 → -0.41, banking -0.19 → -0.32, war -0.24 → -0.28; market crashes -0.21 → +0.48, growth -0.40 → +0.34, food +0.10 → +0.34. The level runs against the rate wherever it is learned from outcomes (climatology, history counts, the frailty); the three kinds that track it read a state at the origin (the leading gauges). Within-year AUC is 0.73-0.88 at the political kinds: ranking is not the failure, timing is.
+2. **A world turn on JST 1880-2016** (turn_study.py, turn_dims.py). The share of countries with credit stretched and house-price growth slowing leads the share starting a crisis in the next two years (r +0.23; +0.29 since 1950; 0.35 → 0.65 before 1990-92, 0.39 → 0.67 before 2007-08), where the count of recent crises carries nothing (+0.04). The same turn with every dimension weighed equally carries nothing (+0.00): the dimensions that matter differ, and an equal weighting drowns them.
+3. **Learned combinations, out of sample by era** (learn_combos*.clj; each era predicted from models fit on the years before it). 2000-2016: credit alone AUC 0.714, level r +0.76, log skill +0.045; credit plus every dimension's stretch and turn, slopes shared across eras with each era's deviation partially pooled (augur.hier/grouped-slopes), AUC 0.746, r +0.75, +0.040; the same with world aggregates of each dimension, AUC 0.620, r -0.10, -0.064. World-level weights learned from about ten waves invert the level out of sample (t85's failure again); country-level stocks aggregate to the level bottom-up; era pooling beats ridge and horseshoe; the learned combinations add ranking, not log score, over credit on JST's 18 countries.
+4. **Coverage** (t80-base and t88-rho0, banking year rows 2003-2022). JST's 18 countries (28 onsets): AUC 0.394 → 0.664, level r -0.15 → +0.30. The others (54 onsets, two thirds of them): AUC 0.356 → 0.441, level r -0.33 → -0.18. Where the stocks exist the approach works; most crises are where the node has none (the commodity and emerging-market waves of 2013-16).
