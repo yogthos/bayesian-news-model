@@ -376,4 +376,9 @@
         (is (number? (at t)))
         (is (= [(rf/emission-mean rf/food 1.0 (at t))] (gm t))))
       (is (nil? (get-in out ["banking_crisis" :regime-clim :year :gauge-mean]))))
-    (is (= specs (wr/with-regime-clim specs false nil)))))
+    (is (= specs (wr/with-regime-clim specs false nil)))
+    (testing "--regime-clim uncentred (after the planted test, before any world run): the climatology, the gauge mean as read"
+      (is (= :uncentred (wr/regime-clim-choice {:regime-clim "uncentred"})))
+      (let [u (wr/with-regime-clim specs :uncentred lead-f)]
+        (is (fn? (get-in u ["market_crash" :regime-clim :year :at])))
+        (is (nil? (get-in u ["market_crash" :regime-clim :year :gauge-mean])))))))

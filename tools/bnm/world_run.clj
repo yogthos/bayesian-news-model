@@ -642,13 +642,16 @@
   "--regime-clim true (bnm-56c.40, recursive step 5c): the year node's
   climatology by regime, each regime's resolved rate weighted by the chain's
   pi at issue. Off by default; not with --regime true (the same signal
-  twice)."
+  twice). --regime-clim uncentred: the same with the frailty's gauge mean
+  reading the gauges as read, not net of their regime mean (added after the
+  planted test, before any world run: docs/CALIBRATION.md 'Regime
+  climatology'); :uncentred."
   [{:keys [regime regime-clim]}]
-  (when (and regime-clim (not (#{"true" "false"} regime-clim)))
-    (throw (ex-info (str "bnm.world-run: --regime-clim takes true or false, not " regime-clim) {})))
-  (when (and (= "true" regime-clim) (= "true" regime))
-    (throw (ex-info "bnm.world-run: --regime-clim true and --regime true read the same regime twice" {})))
-  (= "true" regime-clim))
+  (when (and regime-clim (not (#{"true" "false" "uncentred"} regime-clim)))
+    (throw (ex-info (str "bnm.world-run: --regime-clim takes true, uncentred or false, not " regime-clim) {})))
+  (when (and (#{"true" "uncentred"} regime-clim) (= "true" regime))
+    (throw (ex-info "bnm.world-run: --regime-clim and --regime true read the same regime twice" {})))
+  (case regime-clim "true" true "uncentred" :uncentred false))
 
 (defn with-regime-clim
   "Each spec of `regime-sets` with :regime-clim at its year node, when `on?`:
@@ -667,7 +670,7 @@
                           origins (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))
                           at (rf/pi-reader chain origins (regime-drivers lead-f gauges start end))
                           sign (zipmap gauges (:signs chain))
-                          fg (seq (get-in sp [:frailty :gauges :year]))]
+                          fg (when-not (= :uncentred on?) (seq (get-in sp [:frailty :gauges :year])))]
                       (assoc sp :regime-clim
                              {:year (cond-> {:at at}
                                       fg (assoc :gauge-mean (fn [t] (when-let [p (at t)]
