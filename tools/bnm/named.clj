@@ -27,6 +27,7 @@
             [bnm.geo :as geo]
             [bnm.mix :as mix]
             [bnm.ties :as ties]
+            [bnm.signals :as sg]
             [bnm.stocks :as sk]
             [bnm.sync :as sync]
             [clojure.java.io :as io]
@@ -294,6 +295,24 @@
    ;; old is a series that stopped
    "fao/food" 4 "fao/cereals" 4 "fao/oils" 4 "pinksheet/fertiliser" 4})
 
+(def leading-decls
+  "The leading gauges as declarations (docs/SIGNALS.md): series, whose,
+  read and staleness. Market quotes go stale after a quarter, the second
+  food set after four months, the rest after 30 (`getter`'s default)."
+  (let [us (fn [n v rd] {:name n :var v :unit "USA" :read rd :stale (get quote-stale v 30)})
+        wq (fn [n v rd] {:name n :var v :unit "world" :read rd :stale (get quote-stale v 30)})]
+    [(us :baa12 "finance/spread_baa" [:change 12])
+     (us :us-curve "finance/curve_10y3m" [:value])
+     (wq :vix12 "finance/vix" [:change 12])
+     {:name :world-food12 :var "food/price_index" :unit "world" :read [:change 12] :stale 30}
+     {:name :food12-x-imports :var "food/price_index" :unit "world" :read [:change 12] :stale 30
+      :times {:var "food/imports_share" :unit :own :read [:value] :stale 30}}
+     ;; the second food set (bnm-5rn), nil unless load-food2's series are in db
+     (wq :fert12 "pinksheet/fertiliser" [:change 12])
+     (wq :fpi6 "fao/food" [:change 6])
+     (wq :cereals6 "fao/cereals" [:change 6])
+     (wq :oils6 "fao/oils" [:change 6])]))
+
 (defn leading
   "[names f]: the leading gauges of docs/LEADING.md \"Priors\" (bnm-56c.36),
   each read point in time at its availability date: the 12-month change in
@@ -303,19 +322,11 @@
   reads them). Only market series that are not revised; the stress indexes
   are left out (estimated, revised every week). Then the second food set
   (bnm-5rn): the Pink Sheet fertilizer index over 12 months, the FAO food,
-  cereals and vegetable oils indices over 6 (`load-food2`)."
+  cereals and vegetable oils indices over 6 (`load-food2`). Read from
+  `leading-decls` (bnm.signals/assemble)."
   [db]
-  [leading-names
-   (fn [unit t]
-     (let [us (getter db "USA" quote-stale)
-           wq (getter db "world" quote-stale)
-           w (getter db "world")
-           g (getter db unit)
-           food12 (w "food/price_index" t 12)]
-       [(us "finance/spread_baa" t 12) (us "finance/curve_10y3m" t) (wq "finance/vix" t 12)
-        food12 (x* food12 (g "food/imports_share" t))
-        ;; the second food set (bnm-5rn), nil unless load-food2's series are in db
-        (wq "pinksheet/fertiliser" t 12) (wq "fao/food" t 6) (wq "fao/cereals" t 6) (wq "fao/oils" t 6)]))])
+  (let [{:keys [names row]} (sg/assemble db leading-decls)]
+    [names row]))
 
 (def core
   "The old industrial centres, whose capital's profitability the theory of
