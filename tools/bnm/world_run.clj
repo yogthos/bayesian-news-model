@@ -563,26 +563,42 @@
                                      "t48-world-norel) or --graph path (links; trial 43's is " graph-t43 ")")
                                 {})))))
 
+(defn- flag-choice
+  "The true/false option `k` of `opts`: true when \"true\", false when
+  \"false\" or absent, refused otherwise."
+  [opts k]
+  (let [v (get opts k)]
+    (when (and v (not (#{"true" "false"} v)))
+      (throw (ex-info (str "bnm.world-run: --" (name k) " takes true or false, not " v) {})))
+    (= "true" v)))
+
+(defn- enum-choice
+  "The option `k` of `opts` looked up in `table` (string -> value), false
+  when absent; a value outside it is refused, `takes` naming the ones
+  allowed."
+  [opts k table takes]
+  (let [v (get opts k)]
+    (when (and v (not (contains? table v)))
+      (throw (ex-info (str "bnm.world-run: --" (name k) " takes " takes ", not " v) {})))
+    (get table v false)))
+
 (defn leading-choice
   "--leading true (bnm-56c.36): the leading gauges of bnm.lattice-political/
   leading-sets; --leading-priors true needs it."
-  [{:keys [leading leading-priors]}]
+  [{:keys [leading leading-priors] :as opts}]
   (when (and (= "true" leading-priors) (not= "true" leading))
     (throw (ex-info "bnm.world-run: --leading-priors true sets the priors of --leading true's gauges" {})))
-  (when (and leading (not (#{"true" "false"} leading)))
-    (throw (ex-info (str "bnm.world-run: --leading takes true or false, not " leading) {})))
-  (= "true" leading))
+  (flag-choice opts :leading))
 
 (defn leading-food2-choice
   "--leading-food2 true (bnm-5rn): the second food set,
   bnm.lattice-political/food2-sets, with --leading-priors its priors.
   Needs --leading true; off by default."
-  [{:keys [leading leading-food2]}]
-  (when (and leading-food2 (not (#{"true" "false"} leading-food2)))
-    (throw (ex-info (str "bnm.world-run: --leading-food2 takes true or false, not " leading-food2) {})))
-  (when (and (= "true" leading-food2) (not= "true" leading))
-    (throw (ex-info "bnm.world-run: --leading-food2 true adds to --leading true's gauges" {})))
-  (= "true" leading-food2))
+  [{:keys [leading] :as opts}]
+  (let [on (flag-choice opts :leading-food2)]
+    (when (and on (not= "true" leading))
+      (throw (ex-info "bnm.world-run: --leading-food2 true adds to --leading true's gauges" {})))
+    on))
 
 (defn lead-std-choice
   "--lead-std history (bnm-11y): the leading gauges standardized against
@@ -599,12 +615,11 @@
   "--frailty-gauges true (bnm-v1y, recursive step 5a): the year node's
   world gauges set its frailty's mean, beta from their theory priors.
   Needs --leading true --leading-priors true; off by default."
-  [{:keys [leading leading-priors frailty-gauges]}]
-  (when (and frailty-gauges (not (#{"true" "false"} frailty-gauges)))
-    (throw (ex-info (str "bnm.world-run: --frailty-gauges takes true or false, not " frailty-gauges) {})))
-  (when (and (= "true" frailty-gauges) (not (and (= "true" leading) (= "true" leading-priors))))
-    (throw (ex-info "bnm.world-run: --frailty-gauges true moves --leading true's gauges, with --leading-priors true's priors" {})))
-  (= "true" frailty-gauges))
+  [{:keys [leading leading-priors] :as opts}]
+  (let [on (flag-choice opts :frailty-gauges)]
+    (when (and on (not (and (= "true" leading) (= "true" leading-priors))))
+      (throw (ex-info "bnm.world-run: --frailty-gauges true moves --leading true's gauges, with --leading-priors true's priors" {})))
+    on))
 
 (defn with-frailty-gauges
   "Each spec whose year node reads world gauges (bnm.lattice-political/
@@ -631,10 +646,8 @@
   "--real-lags true (bnm-a1e): every slow series read at its true
   publication date (bnm.named/real-lags), the IMF commodity prices two
   months after their month, not series.tsv's one. Off by default."
-  [{:keys [real-lags]}]
-  (when (and real-lags (not (#{"true" "false"} real-lags)))
-    (throw (ex-info (str "bnm.world-run: --real-lags takes true or false, not " real-lags) {})))
-  (= "true" real-lags))
+  [opts]
+  (flag-choice opts :real-lags))
 
 (defn banking-gauges-choice
   "--banking-gauges true|flat (bnm-cpv, docs/LEADING.md \"Banking gauges\"):
@@ -665,19 +678,15 @@
   mortgage and household credit inputs, and the displacement built from
   them, from the BIS's series from the December 2003 origin, each read once
   published (bnm.lattice-banking/dated-credit-inputs). Off by default."
-  [{:keys [dated-credit]}]
-  (when (and dated-credit (not (#{"true" "false"} dated-credit)))
-    (throw (ex-info (str "bnm.world-run: --dated-credit takes true or false, not " dated-credit) {})))
-  (= "true" dated-credit))
+  [opts]
+  (flag-choice opts :dated-credit))
 
 (defn regime-choice
   "--regime true (bnm-56c.40, recursive step 5b): the world families'
   calm/stress chains set the year node's level through the frailty. Off by
   default."
-  [{:keys [regime]}]
-  (when (and regime (not (#{"true" "false"} regime)))
-    (throw (ex-info (str "bnm.world-run: --regime takes true or false, not " regime) {})))
-  (= "true" regime))
+  [opts]
+  (flag-choice opts :regime))
 
 (def regime-sets
   "Each kind the regime layer reaches: its world family's chain and gauges
@@ -729,12 +738,11 @@
   reading the gauges as read, not net of their regime mean (added after the
   planted test, before any world run: docs/CALIBRATION.md 'Regime
   climatology'); :uncentred."
-  [{:keys [regime regime-clim]}]
-  (when (and regime-clim (not (#{"true" "false" "uncentred"} regime-clim)))
-    (throw (ex-info (str "bnm.world-run: --regime-clim takes true, uncentred or false, not " regime-clim) {})))
-  (when (and (#{"true" "uncentred"} regime-clim) (= "true" regime))
-    (throw (ex-info "bnm.world-run: --regime-clim and --regime true read the same regime twice" {})))
-  (case regime-clim "true" true "uncentred" :uncentred false))
+  [{:keys [regime regime-clim] :as opts}]
+  (let [on (enum-choice opts :regime-clim {"true" true "uncentred" :uncentred "false" false} "true, uncentred or false")]
+    (when (and on (= "true" regime))
+      (throw (ex-info "bnm.world-run: --regime-clim and --regime true read the same regime twice" {})))
+    on))
 
 (defn with-regime-clim
   "Each spec of `regime-sets` with :regime-clim at its year node, when `on?`:
@@ -768,11 +776,10 @@
   the BIS's bank credit (JST's concept) in place of all lenders'. Off by
   default."
   [{:keys [wide-credit] :as opts}]
-  (when (and wide-credit (not (#{"true" "false" "bank"} wide-credit)))
-    (throw (ex-info (str "bnm.world-run: --wide-credit takes true, bank or false, not " wide-credit) {})))
-  (when (and (#{"true" "bank"} wide-credit) (not (dated-credit-choice opts)))
-    (throw (ex-info (str "bnm.world-run: --wide-credit " wide-credit " needs --dated-credit true") {})))
-  (case wide-credit "true" true "bank" :bank false))
+  (let [on (enum-choice opts :wide-credit {"true" true "bank" :bank "false" false} "true, bank or false")]
+    (when (and on (not (dated-credit-choice opts)))
+      (throw (ex-info (str "bnm.world-run: --wide-credit " wide-credit " needs --dated-credit true") {})))
+    on))
 
 (defn options
   "The options of bnm.world-run `args`: {:out \"x\" ...}, values as given."
@@ -799,20 +806,16 @@
   WDI year at its first edition in the WDI Database Archives
   (bnm.political-gauges/splice, docs/CALIBRATION.md \"Fresh inputs\").
   Off by default."
-  [{:keys [fresh-inputs]}]
-  (when (and fresh-inputs (not (#{"true" "false"} fresh-inputs)))
-    (throw (ex-info (str "bnm.world-run: --fresh-inputs takes true or false, not " fresh-inputs) {})))
-  (= "true" fresh-inputs))
+  [opts]
+  (flag-choice opts :fresh-inputs))
 
 (defn wdi-editions-choice
   "--wdi-editions true: every WDI annual series read no earlier than the
   first WDI Database Archives edition holding its year (bnm.named/
   load-series :wdi-editions): series.tsv's nine months ran a year ahead
   of publication at the Dec 2003-04 origins. Off by default."
-  [{:keys [wdi-editions]}]
-  (when (and wdi-editions (not (#{"true" "false"} wdi-editions)))
-    (throw (ex-info (str "bnm.world-run: --wdi-editions takes true or false, not " wdi-editions) {})))
-  (= "true" wdi-editions))
+  [opts]
+  (flag-choice opts :wdi-editions))
 
 (defn next-quarter-choice
   "--next-quarter true (bnm-56c.38, recursive step 4b): the issuing
@@ -820,24 +823,22 @@
   whose catalogue for it is sub-annual (`nq-kinds`). It replaces the
   frailty-only quarter-now, so --fresh-frailty is refused beside it. Off
   by default."
-  [{:keys [next-quarter fresh-frailty]}]
-  (when (and next-quarter (not (#{"true" "false"} next-quarter)))
-    (throw (ex-info (str "bnm.world-run: --next-quarter takes true or false, not " next-quarter) {})))
-  (when (and (= "true" next-quarter) fresh-frailty)
-    (throw (ex-info "bnm.world-run: --next-quarter true replaces --fresh-frailty's quarter-now" {})))
-  (= "true" next-quarter))
+  [{:keys [fresh-frailty] :as opts}]
+  (let [on (flag-choice opts :next-quarter)]
+    (when (and on fresh-frailty)
+      (throw (ex-info "bnm.world-run: --next-quarter true replaces --fresh-frailty's quarter-now" {})))
+    on))
 
 (defn horizon-priors-choice
   "--horizon-priors true (bnm-56c.38): the leading gauges' priors at the
   next quarter its own (bnm.lattice-political/horizon-priors, docs/LEADING.md
   \"Priors at the next quarter\", in-sample for the choice). Needs
   --next-quarter true and --leading-priors true; off by default."
-  [{:keys [horizon-priors next-quarter leading-priors]}]
-  (when (and horizon-priors (not (#{"true" "false"} horizon-priors)))
-    (throw (ex-info (str "bnm.world-run: --horizon-priors takes true or false, not " horizon-priors) {})))
-  (when (and (= "true" horizon-priors) (not (and (= "true" next-quarter) (= "true" leading-priors))))
-    (throw (ex-info "bnm.world-run: --horizon-priors true sets the next quarter's priors: it needs --next-quarter true and --leading-priors true" {})))
-  (= "true" horizon-priors))
+  [{:keys [next-quarter leading-priors] :as opts}]
+  (let [on (flag-choice opts :horizon-priors)]
+    (when (and on (not (and (= "true" next-quarter) (= "true" leading-priors))))
+      (throw (ex-info "bnm.world-run: --horizon-priors true sets the next quarter's priors: it needs --next-quarter true and --leading-priors true" {})))
+    on))
 
 (defn nq-catalogues
   "The next-quarter scale's catalogues (recursive step 4b): the run's
