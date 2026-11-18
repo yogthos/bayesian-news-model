@@ -251,6 +251,8 @@
      :alert-cost (alert-cost rows 0.2 4.0)
      :constant-cost (min (* 4.0 rate) (- 1.0 rate))
      :molchan (molchan-area rows)
+     ;; a flat forecast's correlations are noise: its spread beside them
+     :p-sd (let [mp (/ (reduce + (map :p rows)) (count rows))] (Math/sqrt (/ (reduce + (map #(let [d (- (:p %) mp)] (* d d)) rows)) (count rows))))
      :skill-share (let [o (- (mean-ll rows :true-p) clim)] (when (pos? o) (/ (- (mean-ll rows :p) clim) o)))}))
 
 (defn evaluate
@@ -268,7 +270,7 @@
                (:years o) (assoc :years (parse-long (:years o)))
                (:signals o) (assoc :signals (keyword (:signals o)))
                (:set o) (assoc :lattice (edn/read-string (:set o))))
-        ks [:auc :oracle-auc :within-auc :level-r :log-skill :oracle-log-skill :skill-share :ece :alert-cost :constant-cost :molchan]
+        ks [:auc :oracle-auc :within-auc :level-r :p-sd :log-skill :oracle-log-skill :skill-share :ece :alert-cost :constant-cost :molchan]
         results (vec (for [s seeds] (evaluate (assoc base :seed s))))]
     (println (str "scenario " (name (:scenario base)) ", signals " (name (:signals base :raw)) ", seeds " (str/join "," seeds) (when (:lattice base) (str ", lattice " (pr-str (:lattice base))))))
     (doseq [k ks]
