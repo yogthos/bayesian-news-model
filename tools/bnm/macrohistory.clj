@@ -228,9 +228,10 @@
   opts (--wide-credit, countries outside the panel): :dims, the dimensions
   in place of `dated-dimensions` (with :house-prices, the log real index:
   its growth is the three-year log change, as JST's); :scale, the growth
-  ratio where a country has no JST series (`panel-scale`)."
+  ratio where a country has no JST series (`panel-scale`); :stretch
+  [window min] (--long-baseline), the level stretches' window."
   ([jst-rows bis from] (dated-inputs jst-rows bis from {}))
-  ([jst-rows bis from {:keys [dims scale]}]
+  ([jst-rows bis from {:keys [dims scale stretch]}]
   (let [jst-credit (jst-credit-of jst-rows)
         dims (or dims dated-dimensions)]
     (into {}
@@ -248,7 +249,7 @@
                 :let [i (- y 1870)
                       per (fn [f] (into {} (for [d dims] [d (f d)])))
                       d3 (fn [xs] (when (>= i 3) (when-let [a (get xs (- i 3))] (when-let [b (get xs i)] (- b a)))))]]
-            [[c y] {:specific (per #(iv/stretch (vecs %) i 10 6))
+            [[c y] {:specific (per #(iv/stretch (vecs %) i (first (or stretch [10 6])) (second (or stretch [10 6]))))
                     :short (per #(iv/stretch (vecs %) i 5 4))
                     :long (per #(iv/stretch (vecs %) i 20 12))
                     :flow (per #(iv/stretch (flows %) i 10 6))
@@ -263,15 +264,18 @@
   from that year on, each of `dated-dimensions`' transforms, and everything
   built from them (the displacement at three scales, the flows, the world's
   displacement), takes the BIS's value where it has one, JST's where its
-  series is too short."
-  [data & [intensity regimes gaps dated]]
-  (let [by-c (update-vals (group-by :iso data) with-derived)
+  series is too short. `opts` :stretch [window min] (--long-baseline): the
+  level stretches against that many years in place of [10 6]; the flows
+  keep ten years."
+  [data & [intensity regimes gaps dated opts]]
+  (let [[sw sn] (or (:stretch opts) [10 6])
+        by-c (update-vals (group-by :iso data) with-derived)
         ;; under `dated`, dimension k's transform `kind` for country c in yr
         sub (fn [c yr kind k v]
               (if-let [d (and dated (>= yr (:from dated)) (get-in (:values dated) [[c yr] kind k]))] d v))
         stretches (into {} (for [[c rows] by-c]
                              [c (let [series (into {} (for [[k f] dimensions] [k (mapv f rows)]))]
-                                  (mapv (fn [i] (into {} (for [[k _] dimensions] [k (sub c (:year (rows i)) :specific k (iv/stretch (series k) i 10 6))])))
+                                  (mapv (fn [i] (into {} (for [[k _] dimensions] [k (sub c (:year (rows i)) :specific k (iv/stretch (series k) i sw sn))])))
                                         (range (count rows))))]))
         ;; the same dimensions against the previous 5 and 20 years: displacement at three scales
         scaled (fn [window n kind]

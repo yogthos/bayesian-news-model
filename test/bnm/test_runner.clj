@@ -72,6 +72,7 @@
             [bnm.metrics-gate-test]
             [bnm.late-entry-test]
             [bnm.testbed-test]
+            [bnm.long-baseline-test]
             [bnm.lattice-smoke-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -214,6 +215,7 @@
     bnm.metrics-gate-test
     bnm.late-entry-test
     bnm.testbed-test
+    bnm.long-baseline-test
     bnm.lattice-smoke-test
     bnm.political-gauges-test
     bnm.reconcile-test

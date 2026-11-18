@@ -651,6 +651,18 @@
   [opts]
   (flag-choice opts :real-lags))
 
+(defn long-baseline-choice
+  "--long-baseline N (docs/TESTBED.md \"The baseline absorbs the boom\"):
+  banking's level stretches against N years (at least 10) in place of ten,
+  so a slow boom is not taken into its own baseline. N at least 11; off
+  by default."
+  [{:keys [long-baseline]}]
+  (when long-baseline
+    (let [n (parse-long long-baseline)]
+      (when-not (and n (> n 10))
+        (throw (ex-info (str "bnm.world-run: --long-baseline takes a number of years above 10, not " long-baseline) {})))
+      n)))
+
 (defn banking-coverage-choice
   "--banking-coverage true (bnm-7bh step 1, docs/CALIBRATION.md \"Banking
   coverage from declared signals\"): nine signals declared through
@@ -918,6 +930,7 @@
                                                                :dated-credit (dated-credit-choice opts)
                                                                :banking-gauges (banking-gauges-choice opts)
                                                                :banking-coverage (banking-coverage-choice opts)
+                                                               :long-baseline (long-baseline-choice opts)
                                                                :wide-credit (wide-credit-choice opts)
                                                                :fresh-inputs (fresh-inputs-choice opts)
                                                                :wdi-editions (wdi-editions-choice opts)
