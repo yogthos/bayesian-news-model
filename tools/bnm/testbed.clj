@@ -145,7 +145,15 @@
         start (* 12 epoch) end (+ (* 12 (+ epoch years -1)) 11)
         origins (range (+ start 11) (inc end) 12)
         table (into {} (for [t origins c countries] [[c t] (row c t)]))
-        std (sg/running-z (for [[[_ t] v] table] [t v]) {:count-by :values :min-exclusive 20 :stable true})
+        ;; :guard (docs/TESTBED.md, Farrington's down-weighted baseline): the
+        ;; standardizer's baseline leaves out country-years in or within two
+        ;; years after an onset, once known (24 months after their origin);
+        ;; a row's sample time is when it may enter the baseline
+        crisis-near? (fn [c y] (some #(<= 0 (- y %) 2) (get-in w [:onsets c] #{})))
+        samples (if (:guard opts)
+                  (for [[[c t] v] table :when (not (crisis-near? c (quot (inc t) 12)))] [(+ t 24) v])
+                  (for [[[_ t] v] table] [t v]))
+        std (sg/running-z samples {:count-by :values :min-exclusive 20 :stable true})
         members (fn [place] (cond (= "world" place) countries
                                   (some #{place} regions) (filter #(= place (parent %)) countries)
                                   :else [place]))
@@ -269,6 +277,7 @@
                (:countries o) (assoc :countries (parse-long (:countries o)))
                (:years o) (assoc :years (parse-long (:years o)))
                (:signals o) (assoc :signals (keyword (:signals o)))
+               (:guard o) (assoc :guard (= "true" (:guard o)))
                (:set o) (assoc :lattice (edn/read-string (:set o))))
         ks [:auc :oracle-auc :within-auc :level-r :p-sd :log-skill :oracle-log-skill :skill-share :ece :alert-cost :constant-cost :molchan]
         results (vec (for [s seeds] (evaluate (assoc base :seed s))))]
