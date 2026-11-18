@@ -1808,3 +1808,133 @@ The whole suite is green: 1403 tests, 0 failures.
 - **The 2006-08 miss does not come from JST's credit.** The level is set by the crisis process, and half the onsets are outside the panel.
 - **The cost** is post-crisis false alarms where the BIS's ratio rose as GDP fell (loss 1).
 - The inputs it gives are the agencies' own series, dated by their releases. Adoption is the user's decision; the option stays off by default.
+
+## Regime layer: t83-regime, t83-regime-rate (bnm-56c.40, recursive step 5b)
+
+18 November 2026, branch regime (origin/structure 099345d with origin/prob-mean merged, 84dba9a). The design is docs/RECURSIVE.md step 5b, committed (df4e9f8) before any code or run.
+
+### Design, in short
+
+- A hidden calm/stress chain per world family: financial (market crashes, growth collapses, banking crises; gauges `:baa12` +, `:us-curve` −, `:vix12` +) and food (food price shocks; `:world-food12` +). Filtered once per December origin (Hamilton's forward step) from the gauges read at the origin, standardized against their own history as known then. No outcome enters the chain.
+- Transitions from theory, fixed before any score: financial p_cc 0.85, p_ss 0.6 (stress about 2.5 years, calm 6-7: Claessens, Kose & Terrones; Reinhart & Rogoff; Kose, Sugawara & Terrones; Drehmann, Borio & Tsatsaronis), stationary stress share 0.27; food p_cc 0.9, p_ss 0.5 (Deaton & Laroque; Cashin, McDermott & Scott), 0.17. Emissions: the regimes two within-regime sds apart (Hamilton 1989's separation), placed so the mixture is a standardized gauge; the three financial gauges tempered to 1.5 gauges' worth (an assumed correlation of 0.5).
+- The level: the rows of origin t see z_t + β·g_t + δ x_t, x_t = f(π_t − π̄), f the chain's mean decay over the 24-month window (0.50 financial, 0.46 food). δ is a static state appended to 5a's [z β] (banking: [z δ]), prior N(1.0, 0.5²) at market crashes and banking, N(0.5, 0.5²) at growth and food, filtered jointly once per origin (augur `:shared`/`:load`). Candidates carrying δ (σ > 0 only) pay 2 nats, after those without, so the layer is off unless it earns it.
+- Built on prob-mean: the rate centring removes the odds deflation that was hiding the calm-year over-forecast (§19), the job the regime should do on purpose. So two runs: t83-regime (default centring) and t83-regime-rate (`:centre :rate`).
+
+### Tests
+
+- bnm.regime-filter (test/bnm/regime_filter_test.clj): the chains' stationary law and persistence, the window factor, the emissions make a standardized gauge, missing gauges leave the stationary law, the theory signs, accumulation in a calm and stickiness in a stress, saturation, tempering, and no lookahead in the reader.
+- lattice_test bnm-56c-40-*, a planted world of 120 places over 60 years, a chain with the financial transitions moving the level by 2 log odds, a gauge that is a noisy emission of it:
+  - (i) **where no gauge reads the level** (banking's case) the frailty alone does not move within the lag and the layer does: late log score −0.5186 → −0.4968; at stress origins mean p 0.197 → 0.248 (rate 0.524); δ chosen, learned 1.86. **On top of 5a's gauge mean the test as first written ("does better still") failed**: the regime candidates gained 1.24 nats over 40 origins, under the 2-nat price, and the forecasts were identical (−0.5002 both). Where the gauge is the regime's only emission, the linear gauge mean already carries the regime's level, and the chain's persistence (λ = 0.45) adds little. The test now asserts what the layer does there (costs nothing) and records the change; this is a result, not a loosened acceptance rule.
+  - (ii) a world without a regime: the layer stays off at every origin, forecasts equal to 1e-12;
+  - (iii) gauge and outcomes redrawn after year 30: every forecast and book entry before it unchanged;
+  - (iv) off unchanged, bad values refused (no frailty, `:prior :parent`, σ = 0 only, a level, a negative price, a bad prior).
+- Candidates with δ held at 0 (prior variance 1e-12) score as the ones without to 2e-12 nats: the vector path is the scalar one, so the layer's verdict is not a bookkeeping bug.
+- world_run_test bnm-56c-40-regime-option. Suite: 1423 tests, 0 failures (data/runs/logs/suite-t83.log).
+
+### Reproduction
+
+- **2026-Q4-r1** through `bnm.ledger/reproduce-issue!` on this code, byte for byte (forecasts sha bdb361c8…; data/runs/logs/repro-r1-regime.log).
+- **t80-base**: its command with `--regime false` for banking, market crashes and food (t83-off) gives forecasts, preds, weights and frailty identical byte for byte.
+
+### Runs
+
+- **t83-regime** = t80-base's command + `--regime true`, for the four kinds the option reaches; the other nine are t80-base's, copied (kinds independent under `--without-relations true`).
+- **t83-regime-rate** = t83-regime + `:frailty {:centre :rate}`, all 13 kinds.
+- **t83-diag-free**: a diagnostic, **chosen after seeing t83-regime's result and so in-sample**: the regime's price set to 0, four kinds. Not a candidate.
+
+**No node chose the layer, in either run.** frailty.tsv's rgain column (the best candidate with δ less the best without, before prices) at the year country node:
+
+| kind | t83-regime rgain (nats) | t83-regime-rate |
+|---|---|---|
+| banking crises | −0.54 (2000) → +1.07 (2007) → +1.77 (2011-17) → +1.14 (2022) | max +1.78 (2012) |
+| food price shocks | −0.19 to +0.43 | max +0.47 (2021) |
+| growth collapses | −0.75 (2003) to −0.13, +0.07 in 2018 only | max +0.31 |
+| market crashes | −0.92 (2003) to −0.05, +0.11 in 2017 only | max +0.08 |
+
+The world nodes gain under 0.7. So t83-regime's four kinds are t80-base's forecasts byte for byte, and t83-regime-rate is the rate centring alone on the new base.
+
+### Scores against t80-base (year nodes, 90% intervals)
+
+t83-regime: every fold +0.00000 [+0.00000, +0.00000] (score-t83-regime-folds.txt); alerts identical.
+
+t83-regime-rate (score-t83-rate-folds.txt, score-t83-rate-world.txt):
+
+| fold | Brier | log |
+|---|---|---|
+| 2003-06 | +0.00095 [-0.00143, +0.00308] | +0.00182 [-0.00374, +0.00687] |
+| 2007-09 | +0.00032 [-0.00034, +0.00070] | +0.00052 [-0.00123, +0.00242] |
+| 2010-12 | **-0.00149 [-0.00232, -0.00057] LOSS** | -0.00411 [-0.00653, -0.00132] |
+| 2013-19 | -0.00021 [-0.00058, +0.00032] | -0.00022 [-0.00164, +0.00169] |
+| 2020-22 | -0.00091 [-0.00241, +0.00053] | -0.00241 [-0.00730, +0.00251] |
+| pooled | -0.00020 [-0.00091, +0.00052] | -0.00060 [-0.00249, +0.00134] |
+
+By kind (Brier): market crashes -0.0021 [-0.0106, +0.0067], food -0.0020 [-0.0044, +0.0003], sovereign defaults -0.00018 [-0.00028, -0.00008] (LOSS), banking -0.00008, growth +0.0009, fiscal +0.0008. These are §19's t77-pmean numbers again, on the new base.
+
+### Alerts at 4:1 (`bnm.alerts`, alerts-t83-*.txt)
+
+- t83-regime: identical to t80-base (pooled cost 0.298, Δ +0.0000).
+- t83-regime-rate: pooled Δ -0.0030 [-0.0067, +0.0006]; market crashes -0.021, growth -0.013, food -0.010. 8 of 21 episodes caught, as t80-base. Banking 2006 (0.026 at a rate of 0.169) and 2007 (0.023 / 0.146), food 2020 (0.117 / 0.493), growth 2007, 2008 and 2019 still missed.
+
+### Calibration and outliers
+
+Country year, December origins, mean p / Brier (t83-regime = t80-base):
+
+| kind | span | rate | t80-base | t83-regime-rate | t83-diag-free (in-sample) |
+|---|---|---|---|---|---|
+| market crashes | 2003-22 | 0.178 | 0.304 / 0.1415 | 0.320 / 0.1436 | = t80 |
+| market crashes | 2006-07 | 0.957 | 0.463 / 0.2917 | 0.493 / 0.2605 | = t80 |
+| market crashes (calm) | 2010-12 | 0.080 | 0.237 / 0.1125 | 0.259 / 0.1220 | = t80 |
+| market crashes (calm) | 2013-19 | 0.088 | 0.292 / 0.1283 | 0.309 / 0.1371 | = t80 |
+| food | 2010-12 | 0.060 | 0.224 / 0.0903 | 0.236 / 0.0965 | 0.223 / 0.0899 |
+| food (carried calm) | 2020-22 | 0.415 | 0.174 / 0.3040 | 0.184 / 0.3068 | 0.167 / 0.3103 |
+| growth (carried calm) | 2007-08 | 0.219 | 0.119 / 0.1790 | 0.112 / 0.1816 | = t80 |
+| growth | 2020-22 | 0.047 | 0.141 / 0.0590 | 0.166 / 0.0659 | = t80 |
+| banking | 2003-22 | 0.032 | 0.045 / 0.0322 | 0.046 / 0.0323 | 0.045 / 0.0319 |
+| banking (carried calm) | 2006-07 | 0.158 | 0.024 / 0.1497 | 0.024 / 0.1494 | 0.027 / 0.1486 |
+| banking | 2008-10 | 0.024 | 0.086 / 0.0285 | 0.089 / 0.0289 | 0.081 / 0.0269 |
+
+| episode (rate) | t80-base | t83-regime-rate | t83-diag-free |
+|---|---|---|---|
+| food 2006 (0.418) | 0.547 | 0.552 | 0.547 |
+| food 2007 (0.313) | 0.310 | 0.308 | 0.310 |
+| food 2010 (0.114) | 0.264 | 0.262 | 0.264 |
+| food 2020 (0.493) | 0.153 | 0.117 | 0.121 |
+| food 2021 (0.500) | 0.227 | 0.269 | 0.239 |
+| market crashes 2006 (0.957) | 0.382 | 0.433 | = t80 |
+| market crashes 2007 (0.957) | 0.542 | 0.553 | = t80 |
+| growth 2007 (0.235) | 0.111 | 0.111 | = t80 |
+| growth 2008 (0.202) | 0.129 | 0.113 | = t80 |
+| growth 2019 (0.571) | 0.055 | 0.059 | = t80 |
+| banking 2006 (0.169) | 0.025 | 0.026 | 0.025 |
+| banking 2007 (0.146) | 0.022 | 0.023 | 0.030 |
+
+### The regime path (π, stress probability at the December origin; data/runs/t83-regime/*/regime.tsv)
+
+| | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| financial | 0.13 | 0.36 | 0.99 | 1.00 | 0.00 | 0.00 | 0.25 | 0.01 | 0.00 | 0.06 | 0.19 | 0.00 | 0.02 | 0.96 | 0.12 | 0.61 | 0.11 | 0.64 |
+| food | 0.05 | 0.36 | 0.91 | 0.02 | 0.01 | 0.58 | 0.11 | 0.03 | 0.00 | 0.01 | 0.00 | 0.04 | 0.02 | 0.01 | 0.01 | 0.13 | 0.73 | 0.26 |
+
+The chain reads the episodes the gauges read, and the same false ones: financial stress at 2018 (VIX12 +2.7 after the Q4 2018 fall) and 2022 (the curve), §17's loss 1 again. 2006 is read only as 0.36 (the curve at −1.9 alone). Food 2020 is 0.13 (food12 +0.65 sd at Dec 2020): the gauge had not yet moved. Earlier: financial stress 1988-90 (the curve), 1995-98, 2000; food 2002-03.
+
+### Why: the losses traced (PLAN principle 9)
+
+1. **Nothing was adopted because nothing earned its price.** Not a bug: candidates with δ ≡ 0 score as those without to 2e-12; the planted world finds the layer where it should.
+   - **Market crashes and growth collapses (gain negative throughout).** The chain is a function of the same gauges that 5a's β·g already reads at the year node, and with λ = 0.45 its memory is about a year. At these nodes δ x_t adds a second, nonlinear copy of β·g with its own uncertainty (prior sd 0.5): it pays for that variance at every origin and gains little where β·g already sits. The planted test showed the same (1.2 nats in 40 origins). Approach.
+   - **Banking (+1.77 at best, under 2).** No gauge reaches banking otherwise, so here the layer carries information: it gains about a nat when the 2007 origin resolves (π 0.99 before the 2008 wave) and climbs to +1.77 by 2011. It falls back after 2018 (π 0.96 and 2020-22's readings with no crises). Approach: the price is the design's, fixed in advance, and not changed after seeing this.
+   - **Food (≤ 0.47).** As at market crashes: `:world-food12` is already in the frailty's mean.
+2. **The registered loading is too small to move the gaps it was meant for.** This is the main finding, and it holds even in the diagnostic run where the price is 0 (in-sample):
+   - x = f(π − π̄) lies in [−f π̄, f(1 − π̄)] = [−0.14, +0.36] (financial), [−0.08, +0.38] (food). With δ near its theory prior (banking learned 0.78-0.86 in the diagnostic, food 0.5-0.8) the level moves by at most about −0.13 in a calm and +0.3 in a stress.
+   - The gaps are larger: market crashes 2010-12 issue 0.237 at a rate of 0.08 (about −1.3 log odds needed); banking 2006-07 0.024 at 0.158 (about +2); food 2020 0.153 at 0.493 (+1.7). In the diagnostic banking 2007 moves 0.022 → 0.030 and 2006 not at all (π 0.36, x +0.04).
+   - Verdict: **design, not bug.** δ's prior (1.0 for a window wholly in stress against one wholly calm) is about the size theory gives, but the loading multiplies it by f ≈ 0.5 and by π − π̄, which never exceeds 0.73. The chain carries the timing; nothing in the design lets the data set a level of the size the gaps need, except δ moving far from its prior, which at once per origin takes decades.
+3. **The carried calms.** Banking 2006: the chain itself reads 2006 as half calm (only the curve was in stress; spreads and the VIX were low), so no level can come from it then; 2007 is read as stress. Growth 2007-08: π 0.99 and 1.00, but growth's node gains nothing from δ beyond β·g (+1.43 and +1.71 already from 5a, §17). Food 2020: the chain reads calm (0.13) at Dec 2020; the gauge moved in 2021. These are limits of what the gauges read at the origin, not of the filter.
+4. **t83-regime-rate's losses (2010-12, sovereign defaults, the calm years).** The rate centring alone: §19's losses 1-3, the calm-year over-forecast the odds deflation had been masking, unchanged because the layer that was to take that job stayed off. No bug.
+
+Bugs found: none in the runs. Two test defects found while writing them, both in the planted harness (the last origin read one year past the drawn chain; the gauges' reference `:all` absent from the planted models), fixed before any result.
+
+### Verdict
+
+- The regime layer is built, tested and byte-identical when off (2026-Q4-r1 and t80-base reproduce). It does what the planted world asks where no gauge reads the level.
+- On the world it switches itself off at every node, so t83-regime **is** t80-base, and t83-regime-rate is the rate centring alone, which fails 2010-12 as in §19. Neither is accepted.
+- What it shows: a regime filtered from the gauges already in the frailty adds little beyond 5a's gauge mean, and a theory-sized loading on a regime probability cannot move a level by the 1.3-2 log odds the calm years and banking 2006-07 need. Banking, where nothing else reads the origin, is where it came nearest (+1.77 nats).
+- Next, to be designed and registered before any run: the level per regime from the data rather than one coefficient on π, e.g. each regime's own climatology (the node's resolved rate within origins the chain classed calm, and within stress), weighted by π at issue; and for banking, gauges of its own at the origin (world credit, house prices) for the chain to read. The option stays off by default; adoption is the user's decision.
