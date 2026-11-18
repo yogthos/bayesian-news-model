@@ -84,6 +84,8 @@
     (is (= (/ 70.0 100.0) (ev [:div c 100.0] t)))
     (is (= -70.0 (ev [:neg c] t)))
     (is (= 0.0 (ev [:min c 0.0] t)))
+    (is (= 70.0 (ev [:max c 0.0] t)))
+    (is (= 0.0 (ev [:max [:neg c] 0.0] t)))
     (is (= 70.5 (ev [:sum-or-zero c x] t)))
     (is (= 70.0 (ev [:sum-or-zero c {:var "nope" :read [:value]}] t)) "a missing part counts 0")
     (is (nil? (ev [:sum-or-zero {:var "nope" :read [:value]} {:var "nope2" :read [:value]}] t)) "both missing: unknown")

@@ -194,12 +194,12 @@
 
 (def ops
   "The operators a signal expression may use."
-  #{:mul :minus :div :neg :min :sum-or-zero :mean-of :fn})
+  #{:mul :minus :div :neg :min :max :sum-or-zero :mean-of :fn})
 
 (defn eval-signal
   "A signal expression for `unit` at origin t: a read (a map, `read-signal`)
   or [op & args]: :mul and :minus of two signals (nil if either is), :div
-  by a constant, :neg, :min with a constant, :sum-or-zero of two signals
+  by a constant, :neg, :min and :max with a constant, :sum-or-zero of two signals
   (a missing one counts 0, nil when both are), :mean-of the known ones
   among several (nil when none is), :fn (fn [db unit t]) for a quantity
   across units (a world mean, a median)."
@@ -214,6 +214,7 @@
         :div (some-> (ev (first args)) (/ (second args)))
         :neg (some-> (ev (first args)) -)
         :min (some-> (ev (first args)) (Math/min (double (second args))))
+        :max (some-> (ev (first args)) (Math/max (double (second args))))
         :sum-or-zero (let [[a b] (map ev args)] (when (or a b) (+ (or a 0.0) (or b 0.0))))
         :mean-of (let [xs (keep ev args)] (when (seq xs) (/ (reduce + xs) (count xs))))
         :fn ((first args) db unit t)))))

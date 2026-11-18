@@ -133,3 +133,70 @@
       (check :tot (ref-tot db) (nm/terms-of-trade db units months) nm/tot-names)
       (check :fx (ref-fx db) (nm/fx db units months) nm/fx-names)
       (check :structure (ref-structure db units months) (nm/structure db units months) nm/structure-names))))
+
+;; --- political, political-economy, institutions, youth ----------------------
+
+(defn- ref-political [db]
+  (fn [unit t]
+    (let [g (getter db unit)
+          w (getter db "world")
+          food12 (w "food/price_index" t 12)
+          oil12 (w "energy/oil_brent" t 12)
+          fragility (g "people/infant_mortality" t)]
+      [(g "food/food_inflation" t) food12 (x* food12 (g "food/imports_share" t)) (x* food12 fragility) fragility
+       (x* oil12 (g "energy/fuel_imports_share" t)) (x* oil12 (g "energy/fuel_exports_share" t))
+       (g "economy/gdp_growth" t) (g "economy/inflation" t) (g "people/youth_unemployment" t)
+       (g "people/population" t) (g "climate/temperature_anomaly" t) (g "climate/precipitation_anomaly" t)
+       (g "politics/protest" t 3) (g "politics/protest" t 12) (g "politics/violence" t 3)
+       (g "politics/violence" t 12) (g "politics/coercion" t 12)])))
+
+(defn- ref-political-economy [db units months {:keys [stale]}]
+  (let [world-growth (into {} (for [t months]
+                                [t (mean-of (keep #(some-> (db [% "economy/gdp_per_capita"]) (sk/change t 60 {:stale 30})) units))]))
+        core-profit (into {} (for [t months]
+                               [t (mean-of (keep #(some-> (db [% "economy/profit_rate"]) (sk/change t 36 {:stale (get stale "economy/profit_rate" 30)})) nm/core))]))]
+    (fn [unit t]
+      (let [g (getter db unit stale)
+            growth (g "economy/gdp_per_capita" t 60)
+            cp (core-profit t)
+            rents (some-> (g "energy/resource_rents_gdp" t) (/ 100.0))]
+        [(g "economy/profit_rate" t) (g "economy/profit_rate" t 36) (g "economy/labor_share" t 36)
+         (minus growth (world-growth t)) cp (x* rents (some-> cp -))]))))
+
+(defn- ref-institutions [db]
+  (fn [unit t]
+    (let [g (getter db unit)
+          w (getter db "world")
+          ge (g "state/government_effectiveness" (- t 12))
+          weak (when ge (Math/max 0.0 (- (double ge))))
+          oil (some-> (g "energy/oil_rents_gdp" (- t 24)) (/ 100.0))
+          mineral (some-> (g "energy/mineral_rents_gdp" (- t 24)) (/ 100.0))
+          oil12 (w "energy/oil_brent" t 12)
+          metals12 (mean-of (keep #(w % t 12) ["commodities/copper" "commodities/aluminium" "commodities/nickel"]))]
+      [ge (x* oil weak) (x* mineral weak) (x* oil12 (x* oil weak)) (x* metals12 (x* mineral weak))])))
+
+(defn- ref-youth [db]
+  (fn [unit t]
+    (let [g (getter db unit)
+          tert (some-> (g "people/tertiary_enrolment" (- t 24)) (/ 100.0))
+          tert5 (some-> (g "people/tertiary_enrolment" (- t 24) 60) (/ 100.0))
+          yu (some-> (g "people/youth_unemployment" (- t 12)) (/ 100.0))
+          urban (some-> (g "people/urban_share" (- t 12)) (/ 100.0))]
+      [tert tert5 (x* yu urban) (x* (some-> tert5 (Math/max 0.0)) (x* yu urban))])))
+
+(deftest the-political-builders-from-declarations
+  (if-not (.exists (io/file series-path))
+    (println "the-political-builders-from-declarations: no" series-path ", skipped")
+    (let [db (nm/load-series series-path (st/read-variables "data/slow/variables.tsv") {:real-lags true})
+          units (sort (distinct (map first (filter #(= "people/infant_mortality" (second %)) (keys db)))))
+          months (vec (range (+ (* 12 1985) 2) (* 12 2026) 3))
+          check (fn [label old [names new] expect-names]
+                  (is (= expect-names names) label)
+                  (doseq [u (cons "XXX" units) t months]
+                    (is (= (old u t) (new u t)) [label u t])))]
+      (is (< 50 (count units)))
+      (check :political (ref-political db) (nm/political db) (first (nm/political nil)))
+      (doseq [opts [{} {:stale nm/publication-stale} {:stale (merge nm/publication-stale (select-keys nm/lag-stale ["economy/profit_rate" "economy/labor_share"]))}]]
+        (check [:political-economy opts] (ref-political-economy db units months opts) (nm/political-economy db units months opts) nm/political-economy-names))
+      (check :institutions (ref-institutions db) (nm/institutions db units months) nm/institutions-names)
+      (check :youth (ref-youth db) (nm/youth db units months) nm/youth-names))))

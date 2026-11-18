@@ -237,22 +237,25 @@
 (defn political
   "[names f] for the political kinds."
   [db]
-  (let [names [:food-inflation :world-food12 :food12-x-imports :food12-x-fragility :fragility
-               :oil12-x-imports :oil12-x-exports :gdp-growth :inflation :youth-unemployment :population
-               :temperature :precipitation :protest3 :protest12 :violence3 :violence12 :coercion12]]
-    [names
-     (fn [unit t]
-       (let [g (getter db unit)
-             w (getter db "world")
-             food12 (w "food/price_index" t 12)
-             oil12 (w "energy/oil_brent" t 12)
-             fragility (g "people/infant_mortality" t)]
-         [(g "food/food_inflation" t) food12 (x* food12 (g "food/imports_share" t)) (x* food12 fragility) fragility
-          (x* oil12 (g "energy/fuel_imports_share" t)) (x* oil12 (g "energy/fuel_exports_share" t))
-          (g "economy/gdp_growth" t) (g "economy/inflation" t) (g "people/youth_unemployment" t)
-          (g "people/population" t) (g "climate/temperature_anomaly" t) (g "climate/precipitation_anomaly" t)
-          (g "politics/protest" t 3) (g "politics/protest" t 12) (g "politics/violence" t 3)
-          (g "politics/violence" t 12) (g "politics/coercion" t 12)]))]))
+  (let [own (fn [v rd] {:var v :read rd :stale 30})
+        val (fn [v] (own v [:value]))
+        world12 (fn [v] {:var v :unit "world" :read [:change 12] :stale 30})
+        food12 (world12 "food/price_index")
+        oil12 (world12 "energy/oil_brent")
+        fragility (val "people/infant_mortality")
+        decls [{:name :food-inflation :expr (val "food/food_inflation")} {:name :world-food12 :expr food12}
+               {:name :food12-x-imports :expr [:mul food12 (val "food/imports_share")]}
+               {:name :food12-x-fragility :expr [:mul food12 fragility]} {:name :fragility :expr fragility}
+               {:name :oil12-x-imports :expr [:mul oil12 (val "energy/fuel_imports_share")]}
+               {:name :oil12-x-exports :expr [:mul oil12 (val "energy/fuel_exports_share")]}
+               {:name :gdp-growth :expr (val "economy/gdp_growth")} {:name :inflation :expr (val "economy/inflation")}
+               {:name :youth-unemployment :expr (val "people/youth_unemployment")} {:name :population :expr (val "people/population")}
+               {:name :temperature :expr (val "climate/temperature_anomaly")} {:name :precipitation :expr (val "climate/precipitation_anomaly")}
+               {:name :protest3 :expr (own "politics/protest" [:change 3])} {:name :protest12 :expr (own "politics/protest" [:change 12])}
+               {:name :violence3 :expr (own "politics/violence" [:change 3])} {:name :violence12 :expr (own "politics/violence" [:change 12])}
+               {:name :coercion12 :expr (own "politics/coercion" [:change 12])}]
+        {:keys [names row]} (sg/assemble db decls)]
+    [names row]))
 
 (def leading-names
   "t65's leading gauges, then the second food set (bnm-5rn, read only
@@ -348,19 +351,16 @@
   lattice reads the default, bnm.onsets the override)."
   ([db units months] (political-economy db units months {}))
   ([db units months {:keys [stale]}]
-  (let [names political-economy-names
-        world-growth (into {} (for [t months]
+  (let [world-growth (into {} (for [t months]
                                 [t (mean-of (keep #(some-> (db [% "economy/gdp_per_capita"]) (sk/change t 60 {:stale 30})) units))]))
         core-profit (into {} (for [t months]
-                               [t (mean-of (keep #(some-> (db [% "economy/profit_rate"]) (sk/change t 36 {:stale (get stale "economy/profit_rate" 30)})) core))]))]
-    [names
-     (fn [unit t]
-       (let [g (getter db unit stale)
-             growth (g "economy/gdp_per_capita" t 60)
-             cp (core-profit t)
-             rents (some-> (g "energy/resource_rents_gdp" t) (/ 100.0))]
-         [(g "economy/profit_rate" t) (g "economy/profit_rate" t 36) (g "economy/labor_share" t 36)
-          (minus growth (world-growth t)) cp (x* rents (some-> cp -))]))])))
+                               [t (mean-of (keep #(some-> (db [% "economy/profit_rate"]) (sk/change t 36 {:stale (get stale "economy/profit_rate" 30)})) core))]))
+        own (fn [v rd] {:var v :read rd :stale (get stale v 30)})
+        cp [:fn (fn [_ _ t] (core-profit t))]
+        exprs [(own "economy/profit_rate" [:value]) (own "economy/profit_rate" [:change 36]) (own "economy/labor_share" [:change 36])
+               [:minus (own "economy/gdp_per_capita" [:change 60]) [:fn (fn [_ _ t] (world-growth t))]]
+               cp [:mul [:div (own "energy/resource_rents_gdp" [:value]) 100.0] [:neg cp]]]]
+    [political-economy-names (:row (sg/assemble db (mapv (fn [n e] {:name n :expr e}) political-economy-names exprs)))])))
 
 (def structure-names
   [:agriculture :manufacturing :services :fuel-exports :food-exports :metal-exports :hightech-exports
@@ -415,17 +415,15 @@
   resource: easily seized oil and minerals raise risk only where
   institutions are weak (Polterovich, Popov & Tonis 2007; Korotayev et al.)."
   [db _units _months]
-  [institutions-names
-   (fn [unit t]
-     (let [g (getter db unit)
-           w (getter db "world")
-           ge (g "state/government_effectiveness" (- t 12))
-           weak (when ge (Math/max 0.0 (- (double ge))))
-           oil (some-> (g "energy/oil_rents_gdp" (- t 24)) (/ 100.0))
-           mineral (some-> (g "energy/mineral_rents_gdp" (- t 24)) (/ 100.0))
-           oil12 (w "energy/oil_brent" t 12)
-           metals12 (mean-of (keep #(w % t 12) ["commodities/copper" "commodities/aluminium" "commodities/nickel"]))]
-       [ge (x* oil weak) (x* mineral weak) (x* oil12 (x* oil weak)) (x* metals12 (x* mineral weak))]))])
+  (let [share (fn [v lag] [:div {:var v :read [:value] :stale 30 :lag lag} 100.0])
+        ge {:var "state/government_effectiveness" :read [:value] :stale 30 :lag 12}
+        weak [:max [:neg ge] 0.0]
+        oil (share "energy/oil_rents_gdp" 24)
+        mineral (share "energy/mineral_rents_gdp" 24)
+        world12 (fn [v] {:var v :unit "world" :read [:change 12] :stale 30})
+        metals12 (into [:mean-of] (map world12 ["commodities/copper" "commodities/aluminium" "commodities/nickel"]))
+        exprs [ge [:mul oil weak] [:mul mineral weak] [:mul (world12 "energy/oil_brent") [:mul oil weak]] [:mul metals12 [:mul mineral weak]]]]
+    [institutions-names (:row (sg/assemble db (mapv (fn [n e] {:name n :expr e}) institutions-names exprs)))]))
 
 (def youth-names [:tertiary :tertiary5 :youth-unemployment-x-urban :educated-idle])
 
@@ -435,14 +433,11 @@
   tertiary enrolment, its five-year change, youth unemployment times the
   urban share, and all three together."
   [db _units _months]
-  [youth-names
-   (fn [unit t]
-     (let [g (getter db unit)
-           tert (some-> (g "people/tertiary_enrolment" (- t 24)) (/ 100.0))
-           tert5 (some-> (g "people/tertiary_enrolment" (- t 24) 60) (/ 100.0))
-           yu (some-> (g "people/youth_unemployment" (- t 12)) (/ 100.0))
-           urban (some-> (g "people/urban_share" (- t 12)) (/ 100.0))]
-       [tert tert5 (x* yu urban) (x* (some-> tert5 (Math/max 0.0)) (x* yu urban))]))])
+  (let [share (fn [v rd lag] [:div {:var v :read rd :stale 30 :lag lag} 100.0])
+        tert5 (share "people/tertiary_enrolment" [:change 60] 24)
+        yu-urban [:mul (share "people/youth_unemployment" [:value] 12) (share "people/urban_share" [:value] 12)]
+        exprs [(share "people/tertiary_enrolment" [:value] 24) tert5 yu-urban [:mul [:max tert5 0.0] yu-urban]]]
+    [youth-names (:row (sg/assemble db (mapv (fn [n e] {:name n :expr e}) youth-names exprs)))]))
 
 (def nonlinear-names [:log-income :income-above-low :income-above-high :gini :gini-above-median])
 
