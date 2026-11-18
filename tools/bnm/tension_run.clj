@@ -18,7 +18,8 @@
   year, known at the next origin). Countries only: the gazetteer's, and
   the historical states; WDI's aggregates left out, Kosovo as XKX (UVK's
   records read where XKX has none)."
-  (:require [bnm.geo :as geo]
+  (:require [bnm.time :as tm]
+            [bnm.geo :as geo]
             [bnm.political-gauges :as pg]
             [bnm.tension :as tn]
             [clojure.java.io :as io]
@@ -49,7 +50,7 @@
 
 (defn country-iso? [iso] (boolean (or (historical iso) (and (geo/country? iso) (not (some #{iso} (mapcat val aliases)))))))
 
-(defn- month-of ^long [s] (+ (* 12 (parse-long (subs s 0 4))) (dec (parse-long (subs s 5 7)))))
+(defn- month-of ^long [s] (tm/month-index s))
 
 (defn read-wdi
   "{var {iso {data-year [known-year value]}}} from the store, raw values,

@@ -58,6 +58,7 @@
   exposure-rows: a producer's exposure, its export share in the commodity
   group (latest known) times the group's price gap."
   (:require [bnm.assimilate :as as]
+            [bnm.stat :refer [median]]
             [bnm.stockflow :as sf]))
 
 ;; ---------------------------------------------------------------------------
@@ -305,10 +306,6 @@
   (let [c (count members)]
     (if (<= c n) members (vec (for [i (range n)] (members (quot (* i c) n)))))))
 
-(defn- median [xs]
-  (when (seq xs)
-    (let [v (vec (sort xs)) n (count v) h (quot n 2)]
-      (if (odd? n) (v h) (/ (+ (v (dec h)) (v h)) 2.0)))))
 
 (def ^:private traced [:price-gap :coverage-ratio :pipeline-ratio :capacity-gap :log-price :p-eq])
 

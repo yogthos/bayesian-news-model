@@ -18,13 +18,15 @@
                                         [--graph path] [--ews path] [--placebo run]
 
   Prints and writes data/runs/<run>/world-score.txt."
-  (:require [augur.score :as sc]
+  (:require [bnm.cli :as cli]
+            [augur.score :as sc]
+            [bnm.stat :as stat]
             [bnm.kinds :as kinds]
             [bnm.paired :as pd]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
-(defn- brier [p y] (let [d (- (double p) (if y 1.0 0.0))] (* d d)))
+(def ^:private brier stat/brier-one)
 (defn- log-loss [p y] (- (Math/log (Math/max 1e-4 (double (if y p (- 1.0 p)))))))
 
 (defn joint-rows
@@ -60,7 +62,7 @@
     (when (.exists (io/file f)) f)))
 
 (defn -main [& args]
-  (let [{:keys [run bench reps graph placebo ews states]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run bench reps graph placebo ews states]} (cli/opts args)
         reps (or (some-> reps parse-long) 400)
         all-ks (sort (filter #(.exists (io/file (str "data/runs/" run "/" % "/forecasts.tsv"))) (keys kinds/tiers)))
         ;; the kinds with any relation input: the graph's children and the kinds warned
@@ -68,7 +70,7 @@
         linked (when graph (linked-kinds (read-string (slurp graph)) (some-> ews slurp read-string) (some-> states slurp read-string)))
         ks (if linked (filter linked all-ks) all-ks)
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out (str s "\n"))))
+        say (cli/say-fn out {:flush false})
         fmt (fn [{:keys [diff lo hi]}] (format "%+.5f [%+.5f %+.5f]%s" diff lo hi (if (pos? lo) " GAIN" "")))
         {:keys [per-kind pooled]} (pd/world-pair run bench ks "year" 2003 2022 reps 0.1)]
     (say (format "1. %s against %s, year nodes on their own outcomes, origins 2003-2022" run bench))

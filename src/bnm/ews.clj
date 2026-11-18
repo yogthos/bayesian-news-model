@@ -11,9 +11,9 @@
   detrended points is biased low by about (1 + 4 rho)/n + 2/n: levels
   compare across places only roughly, trends within a place better."
   (:require [bnm.factors :as fac]
+            [bnm.stat :refer [mean]]
             [bnm.stocks :as sk]))
 
-(defn- mean [xs] (/ (reduce + xs) (double (count xs))))
 
 (defn- detrend
   "xs less their least-squares line."

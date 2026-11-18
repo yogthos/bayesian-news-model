@@ -12,7 +12,8 @@
   concentration at the snapshot only).
 
     jolt -A:tools -M -m bnm.material [--resolution 6]"
-  (:require [bnm.cells :as cells]
+  (:require [bnm.cli :as cli]
+            [bnm.cells :as cells]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -92,7 +93,7 @@
               :year (some-> (not-empty (g "commissioning_year")) parse-double Math/round long)})))))
 
 (defn -main [& args]
-  (let [{:keys [resolution]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [resolution]} (cli/opts args)
         res (or (some-> resolution parse-long) 6)
         ps (read-plants "data/raw/material/gppd/x/global_power_plant_database.csv")
         cs (cells ps res)

@@ -21,7 +21,8 @@
     jolt -A:tools -M -m bnm.fast-score --holm 0.01,0.2,0.04
 
   Writes data/runs/<run>/fast-score.txt."
-  (:require [augur.math :as m]
+  (:require [bnm.cli :as cli]
+            [augur.math :as m]
             [bnm.kinds :as kinds]
             [bnm.paired :as pd]
             [bnm.watchlist :as wl]
@@ -64,7 +65,7 @@
 (defn- fmt [{:keys [diff lo hi]}] (format "%+.5f [%+.5f %+.5f]" diff lo hi))
 
 (defn -main [& args]
-  (let [{:keys [run bench placebo holm] :as o} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))]
+  (let [{:keys [run bench placebo holm] :as o} (cli/opts args)]
     (if holm
       (let [ps (into {} (map-indexed (fn [i p] [(inc i) (parse-double p)]) (str/split holm #",")))]
         (doseq [[i r] (sort-by key (bnm.fast-score/holm ps 0.05))]
@@ -76,7 +77,7 @@
             cats (kinds/catalogues)
             kds (sort (keys kinds/tiers))
             out (StringBuilder.)
-            say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out (str s "\n"))))
+            say (cli/say-fn out)
             prim (fn [label a b f t]
                    (let [{:keys [diff lo hi p] r :run bb :bench} (primary a b kds cats (assoc opts :from f :to t))]
                      (say (format "   %s, origins %d-%d: recall %.3f vs %.3f, diff %+.3f [%+.3f %+.3f], one-sided p %.3f%s"

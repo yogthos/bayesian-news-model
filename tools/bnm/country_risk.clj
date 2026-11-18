@@ -15,7 +15,8 @@
   model alone, and twelve-month momentum (Asness, Moskowitz & Pedersen 2013).
 
     jolt -A:tools -M -m bnm.country-risk --preds events-1 [--model pool]"
-  (:require [bnm.named :as nm]
+  (:require [bnm.cli :as cli]
+            [bnm.named :as nm]
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
             [clojure.java.io :as io]
@@ -77,7 +78,7 @@
                     {:q q :unit u :ret (- p1 p0) :level s :change (when s-prev (- s s-prev))
                      :history h :momentum mom :fall fall}))
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
+        say (cli/say-fn out)
         evaluate
         (fn [label k sign lo hi]
           ;; sign: +1 when a higher value should mean higher returns
@@ -112,4 +113,4 @@
       (spit (str dir "/country-risk.txt") (str out)))))
 
 (defn -main [& args]
-  (run (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))))
+  (run (cli/opts args)))

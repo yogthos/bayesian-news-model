@@ -232,7 +232,6 @@
 
 ;; --- scores -------------------------------------------------------------------------------
 
-(defn- brier [ps ys] (/ (reduce + (map (fn [p y] (let [d (- p (if y 1.0 0.0))] (* d d))) ps ys)) (count ps)))
 
 (defn scores
   "AUC and Brier skill against the climatology (:p-clim, as
@@ -243,10 +242,10 @@
    (let [g (filterv #(= :quiet (:stratum %)) rows)
          ys (mapv #(boolean (:escalated %)) g)
          ps (mapv #(double (k %)) g)
-         bc (when (seq g) (brier (map :p-clim g) ys))]
+         bc (when (seq g) (sc/brier (map :p-clim g) ys))]
      {:n (count g) :positives (count (filter true? ys))
       :auc (when (seq g) (sc/auc ps ys))
-      :bss (when (and bc (pos? bc)) (- 1.0 (/ (brier ps ys) bc)))})))
+      :bss (when (and bc (pos? bc)) (- 1.0 (/ (sc/brier ps ys) bc)))})))
 
 (defn bootstrap
   "95% intervals [lo hi] of the differences a - b in AUC and Brier skill

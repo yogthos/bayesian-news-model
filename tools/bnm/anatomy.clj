@@ -21,6 +21,7 @@
 
   Writes data/runs/anatomy/anatomy.txt."
   (:require [bnm.lattice-banking :as lb]
+            [bnm.stat :as stat]
             [bnm.macrohistory :as mh]
             [bnm.named :as nm]
             [bnm.onsets :as on]
@@ -30,9 +31,7 @@
 
 (defn- mean [xs] (when (seq xs) (/ (reduce + xs) (double (count xs)))))
 
-(defn- sd [xs]
-  (when (> (count xs) 1)
-    (let [m (mean xs)] (Math/sqrt (/ (reduce + (map #(* (- % m) (- % m)) xs)) (dec (count xs)))))))
+(defn- sd [xs] (when (> (count xs) 1) (stat/sd xs)))
 
 (defn epoch
   "Superposed epochs of `series` ({unit {period value}}) around `crises`

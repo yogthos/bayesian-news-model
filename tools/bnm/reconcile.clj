@@ -11,7 +11,8 @@
   Writes data/runs/<run>-rec/: forecasts.tsv (the run's, its country
   quarter rows reconciled; those with no year forecast before them left
   out) and preds.tsv (model lattice), scored like any run."
-  (:require [bnm.lattice :as lt]
+  (:require [bnm.cli :as cli]
+            [bnm.lattice :as lt]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -35,7 +36,7 @@
       row)))
 
 (defn -main [& args]
-  (let [{:keys [run kind]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run kind]} (cli/opts args)
         dir (str "data/runs/" run)
         out-dir (str dir "-rec")
         kind (or kind "banking_crisis")

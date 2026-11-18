@@ -28,7 +28,8 @@
   difference at 0.10/26, this gauge alone in its cell): at each origin in
   [from, to] on the origins from 1950 whose rates were known by then, how
   many it passes, the first, and the last."
-  (:require [bnm.kinds :as kinds]
+  (:require [bnm.cli :as cli]
+            [bnm.kinds :as kinds]
             [bnm.lattice-political :as lp]
             [bnm.lattice-banking :as lb]
             [bnm.named :as nm]
@@ -56,7 +57,7 @@
                     :known-at (reduce max (map :known-at ys))}))))))
 
 (defn -main [& args]
-  (let [{:keys [kinds from to]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [kinds from to]} (cli/opts args)
         from (or (some-> from parse-long) 2003)
         to (or (some-> to parse-long) 2022)
         end (+ 11 (* 12 2025))

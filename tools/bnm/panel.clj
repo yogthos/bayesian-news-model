@@ -18,7 +18,8 @@
   are chosen on 1980-2004; 2005 on is held out.
 
     jolt -A:tools -M -m bnm.panel [--name panel] [--events v3-q]"
-  (:require [augur.score :as sc]
+  (:require [bnm.cli :as cli]
+            [augur.score :as sc]
             [bnm.named :as nm]
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
@@ -154,7 +155,7 @@
         _ (io/make-parents (str out-dir "/x"))
         {:keys [markets wealth rf months names targets rows]} (setup opts)
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
+        say (cli/say-fn out)
         in-years (fn [ps lo hi] (filter #(<= lo (quot (first %) 12) hi) ps))
         fmt (fn [x] (if x (format "%.3f" (double x)) "  -  "))
         ;; a portfolio holding each market equally, each switched on its own exposure
@@ -246,4 +247,4 @@
     (spit (str out-dir "/panel.txt") (str out))))
 
 (defn -main [& args]
-  (run (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))))
+  (run (cli/opts args)))

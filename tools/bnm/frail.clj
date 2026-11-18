@@ -10,7 +10,8 @@
     jolt -A:tools -M -m bnm.frail --run r3-pooled --models hedge,pool --out r3-frail
 
   Writes data/runs/<out>/preds.tsv: the run's rows and the frail ones."
-  (:require [bnm.onset :as o]
+  (:require [bnm.cli :as cli]
+            [bnm.onset :as o]
             [bnm.onsets :as on]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -18,7 +19,7 @@
 (def opts {:discount 0.8 :prior 5.0})
 
 (defn -main [& args]
-  (let [{:keys [run models out]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run models out]} (cli/opts args)
         models (set (str/split models #","))
         src (str "data/runs/" run "/preds.tsv")
         dir (str "data/runs/" out)

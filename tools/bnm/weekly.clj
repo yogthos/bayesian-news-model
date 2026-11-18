@@ -13,22 +13,14 @@
   on 1950-1989; 1990 on is held out.
 
     jolt -A:tools -M -m bnm.weekly [--name weekly]"
-  (:require [augur.logit :as lgt]
+  (:require [bnm.time :as tm]
+            [bnm.cli :as cli]
+            [augur.logit :as lgt]
             [augur.score :as sc]
             [bnm.trade :as tr]
             [bnm.trader :as us]
             [clojure.java.io :as io]
             [clojure.string :as str]))
-
-(defn- days-from-civil
-  "Days since 1970-01-01 (Hinnant's algorithm)."
-  ^long [^long y ^long m ^long d]
-  (let [y (if (<= m 2) (dec y) y)
-        era (quot (if (>= y 0) y (- y 399)) 400)
-        yoe (- y (* era 400))
-        doy (+ (quot (+ (* 153 (+ m (if (> m 2) -3 9))) 2) 5) (dec d))
-        doe (+ (* yoe 365) (quot yoe 4) (- (quot yoe 100)) doy)]
-    (+ (* era 146097) doe -719468)))
 
 (defn read-daily
   "[[yyyymmdd market-return bill-return]] from French's daily factors."
@@ -47,12 +39,12 @@
   :month the calendar month of the week's last day."
   [daily]
   (->> daily
-       (partition-by (fn [[d]] (quot (+ 3 (days-from-civil (parse-long (subs d 0 4)) (parse-long (subs d 4 6))
+       (partition-by (fn [[d]] (quot (+ 3 (tm/days-from-civil (parse-long (subs d 0 4)) (parse-long (subs d 4 6))
                                                          (parse-long (subs d 6 8))))
                                      7)))
        (mapv (fn [ds]
                (let [[d] (last ds)]
-                 {:month (+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 4 6))))
+                 {:month (tm/month-index-compact d)
                   :last-day d
                   :mkt (dec (reduce * (map #(+ 1.0 (second %)) ds)))
                   :rf (dec (reduce * (map #(+ 1.0 (nth % 2)) ds)))
@@ -109,7 +101,7 @@
         raw (mapv #(inputs wk w daily-before pe10 %) (range n))
         targets {"20% within 52w" [52 0.2] "20% within 26w" [26 0.2] "20% within 13w" [13 0.2] "10% within 13w" [13 0.1]}
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
+        say (cli/say-fn out)
         ;; exposure decided at week k's close earns week k+1
         weeks-in (fn [lo hi] (filter #(and (raw %) (< (inc %) n) (<= lo (year-of %) hi)) (range n)))
         strat (fn [ks ex] (tr/backtest (mapv #(:mkt (wk (inc %))) ks) (mapv #(:rf (wk (inc %))) ks)
@@ -190,4 +182,4 @@
     (spit (str out-dir "/weekly.txt") (str out))))
 
 (defn -main [& args]
-  (run (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))))
+  (run (cli/opts args)))

@@ -27,7 +27,8 @@
     jolt -A:tools -M -m bnm.power-audit [--run t44-world-norel] [--sims 200]
       [--oos-sims 100] [--reps 400] [--kinds a,b] [--types own,level,world]
       [--out data/runs/sequencing/power-audit.tsv]"
-  (:require [augur.math :as m]
+  (:require [bnm.cli :as cli]
+            [augur.math :as m]
             [bnm.factors :as fac]
             [bnm.kinds :as kinds]
             [bnm.paired :as pd]
@@ -328,7 +329,7 @@
 (defn- mean [xs] (if (seq xs) (/ (reduce + xs) (double (count xs))) 0.0))
 
 (defn -main [& args]
-  (let [{:keys [run sims oos-sims reps kinds types out]} (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
+  (let [{:keys [run sims oos-sims reps kinds types out]} (cli/opts args)
         run (or run "t44-world-norel")
         sims (or (some-> sims parse-long) 200)
         oos-sims (or (some-> oos-sims parse-long) 100)

@@ -76,7 +76,9 @@
       [--pool 0.5] [--lag 1] [--draws 1000] [--block 2] [--seed 1]
       [--out data/runs/sequencing/recalibrate-online-design.tsv]
       [--out-run t44-world-norel-online]"
-  (:require [augur.dynamic :as d]
+  (:require [bnm.cli :as cli]
+            [augur.dynamic :as d]
+            [bnm.stat :as stat]
             [augur.math :as m]
             [bnm.kinds :as kinds]
             [bnm.lattice-banking :as lb]
@@ -207,9 +209,9 @@
 
 (defn- lg ^double [r p] (Math/log (if (:y r) p (- 1.0 p))))
 
-(defn mean-log [rows f] (/ (reduce + (map #(lg % (f %)) rows)) (max 1 (count rows))))
+(defn mean-log [rows f] (stat/rows-mean-log rows (map f rows)))
 
-(defn brier [rows f] (/ (reduce + (map #(Math/pow (- (yv %) (f %)) 2) rows)) (max 1 (count rows))))
+(defn brier [rows f] (stat/rows-brier rows (map f rows)))
 
 (defn top-recall
   "The share of onsets in the top 10% of rows by (f row) within each kind
@@ -299,7 +301,7 @@
 ;; --- the run ------------------------------------------------------------------------
 
 (defn parse-opts [args]
-  (let [o (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
+  (let [o (cli/opts args)
         n (fn [k dflt] (or (some-> (o k) parse-long) dflt))
         x (fn [k dflt] (or (some-> (o k) parse-double) dflt))
         run (or (:run o) "t44-world-norel")]

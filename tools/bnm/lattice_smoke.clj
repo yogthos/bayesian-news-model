@@ -10,7 +10,8 @@
   With --kind, a political kind's lattice (bnm.lattice-political).
 
   Exits 1 when a check fails."
-  (:require [bnm.geo :as geo]
+  (:require [bnm.cli :as cli]
+            [bnm.geo :as geo]
             [bnm.lattice :as lt]
             [bnm.lattice-banking :as lb]
             [bnm.lattice-political :as lp]
@@ -175,7 +176,7 @@
     @fails))
 
 (defn -main [& args]
-  (let [{:keys [end without-at kind downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [end without-at kind downscale pool uncertainty]} (cli/opts args)
         end (or (some-> end parse-long) (+ (* 12 1999) 11))
         kind (or kind lb/kind)
         sp0 (if (not= kind lb/kind) (lp/build kind end "r6-at") (lb/build end "r6-at"))

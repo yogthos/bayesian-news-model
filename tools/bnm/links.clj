@@ -23,7 +23,8 @@
   same weighting without the group), 2003-2022, thirteen kinds; accepted
   when their mean is within 0.0003 of zero. The interval beside it is the
   watch-list rule v2's for a fresh draw (amendment A3)."
-  (:require [bnm.kinds :as kinds]
+  (:require [bnm.cli :as cli]
+            [bnm.kinds :as kinds]
             [bnm.paired :as pd]
             [bnm.watchlist :as wl]
             [clojure.java.io :as io]
@@ -129,7 +130,7 @@
             (if fast (format "  fast group %.3f" (/ (reduce + fast) (count fast))) ""))))
 
 (defn -main [& args]
-  (let [{:keys [runs bench kinds from to scales noise] fold-run :folds weight-runs :weights} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [runs bench kinds from to scales noise] fold-run :folds weight-runs :weights} (cli/opts args)
         ks (if kinds (str/split kinds #",") (sort (keys kinds/tiers)))
         from (or (some-> from parse-long) 2003)
         to (or (some-> to parse-long) 2022)]

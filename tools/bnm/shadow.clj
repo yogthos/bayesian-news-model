@@ -10,7 +10,8 @@
     jolt -A:tools -M -m bnm.shadow v6-q 20230126 [--source gdelt]
 
   Writes data/runs/<run>/shadow-<origin>.txt."
-  (:require [bnm.core :as core]
+  (:require [bnm.cli :as cli]
+            [bnm.core :as core]
             [bnm.eval :as ev]
             [bnm.live :as live]
             [bnm.series :as series]
@@ -58,7 +59,7 @@
                         [ch {:cover80 (- 1.0 below above) :below below :above above}]))}))
 
 (defn -main [run origin & args]
-  (let [{:keys [source]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [source]} (cli/opts args)
         dir (str "data/runs/" run)
         m (live/catch-up (start dir origin) (or source "gdelt"))
         rec (core/record m)

@@ -24,7 +24,8 @@
   world scores calm and busy world quarters apart.
 
   Reads data/runs/<run>/preds.tsv; writes anticipation.txt beside it."
-  (:require [augur.score :as sc]
+  (:require [bnm.cli :as cli]
+            [augur.score :as sc]
             [bnm.geo :as geo]
             [bnm.onset :as o]
             [bnm.onsets :as onsets]
@@ -102,7 +103,7 @@
     "region" (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u (first (geo/parents s))]))))
 
 (defn -main [& args]
-  (let [{:keys [run kinds bench level tests confirm split threads]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run kinds bench level tests confirm split threads]} (cli/opts args)
         threads (or (some-> threads parse-long) 4)
         ;; Bonferroni over the groups and models tried for the same cells
         alpha (/ 0.1 (double (or (some-> tests parse-long) 1)))

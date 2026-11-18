@@ -14,7 +14,8 @@
 
   Writes data/runs/<out>/preds.tsv, scored by bnm.anticipation (--bench mlpool:
   a member whose removal loses recall carries something the rest don't)."
-  (:require [bnm.onsets :as on]
+  (:require [bnm.cli :as cli]
+            [bnm.onsets :as on]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -40,7 +41,7 @@
           {} runs))
 
 (defn -main [& args]
-  (let [{:keys [runs out drop threads]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [runs out drop threads]} (cli/opts args)
         runs (str/split runs #",")
         drop? (set (when drop (str/split drop #",")))
         by-kw (read-runs runs drop?)

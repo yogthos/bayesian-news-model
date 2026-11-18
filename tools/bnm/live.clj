@@ -10,7 +10,8 @@
   probability, with the climatology and own history beside them.
 
     jolt -A:tools -M -m bnm.live [--from-run v6-q] [--source gdelt] [--n 15]"
-  (:require [bnm.core :as core]
+  (:require [bnm.cli :as cli]
+            [bnm.core :as core]
             [bnm.paths :as paths]
             [bnm.series :as series]
             [bnm.store :as store]
@@ -49,7 +50,7 @@
             (#'core/advance m newest)))))))
 
 (defn -main [& args]
-  (let [{:keys [from-run source n]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [from-run source n]} (cli/opts args)
         source (or source "gdelt")
         n (parse-long (or n "15"))
         [src m] (load-latest (or from-run "v6-q"))
@@ -58,7 +59,7 @@
         bin-days (get-in m [:config :bin-days])
         as-of (t/date-str (* (inc (long (:bin m))) bin-days))
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (.append out s) (.append out "\n")))]
+        say (cli/say-fn out {:flush false})]
     (io/make-parents model-path)
     (store/write-file m model-path)
     (say (str "Event model: "

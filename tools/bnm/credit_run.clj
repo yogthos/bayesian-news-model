@@ -27,6 +27,7 @@
   correlation with BIS's own published gap (finance/credit_gap, quarterly,
   its data year's mean) where both exist."
   (:require [bnm.keen :as keen]
+            [bnm.stat :as stat]
             [bnm.keen-run :as kr]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -127,12 +128,7 @@
           (.put acc k (conj (or (.get acc k) []) x)))))
     (into {} (for [[k xs] acc :when (= 4 (count xs))] [k (/ (reduce + xs) 4.0)]))))
 
-(defn- corr [ps]
-  (let [n (count ps) mx (/ (reduce + (map first ps)) n) my (/ (reduce + (map second ps)) n)
-        sxy (reduce + (map (fn [[x y]] (* (- x mx) (- y my))) ps))
-        sxx (reduce + (map (fn [[x _]] (* (- x mx) (- x mx))) ps))
-        syy (reduce + (map (fn [[_ y]] (* (- y my) (- y my))) ps))]
-    (/ sxy (Math/sqrt (* sxx syy)))))
+(defn- corr [ps] (stat/pearson (map first ps) (map second ps)))
 
 (defn -main [& args]
   (let [opts (apply hash-map args)

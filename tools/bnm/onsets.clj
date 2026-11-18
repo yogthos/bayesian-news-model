@@ -79,10 +79,12 @@
   Writes data/runs/<name>/onsets.txt, the out-of-sample predictions,
   preds.tsv (kind window model quarter unit p outcome), and the recorded
   rows, rows.tsv, which --rows reads back instead of running the slow layer."
-  (:require [augur.hier :as hier]
+  (:require [bnm.cli :as cli]
+            [augur.hier :as hier]
             [augur.logit :as lgt]
             [augur.pool :as pl]
             [augur.score :as sc]
+            [bnm.stat :as stat]
             [augur.analog :as analog]
             [bnm.calm :as calm]
             [bnm.geo :as geo]
@@ -475,14 +477,7 @@
   [unit q]
   (< (mod (hash [unit q]) 100) 15))
 
-(defn- log-score
-  "Mean log probability of the outcomes."
-  [preds]
-  (when (seq preds)
-    (/ (reduce + (for [[_ p y] preds
-                       :let [p (Math/min (Math/max (double p) 1e-6) (- 1.0 1e-6))]]
-                   (Math/log (if y p (- 1.0 p)))))
-       (double (count preds)))))
+(def ^:private log-score "Mean log probability of the outcomes." stat/mean-log-score)
 
 (defn- in-years [preds lo hi] (filter #(<= lo (quot (first %) 4) hi) preds))
 
@@ -865,7 +860,7 @@
         ;; the ESRB); share-price crashes only where there are share prices
         coverage {"market_crash" market-units}
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out s) (.append out "\n")))
+        say (cli/say-fn out)
         case-preds (atom {})
         preds-out (io/writer (str dir "/preds.tsv"))]
     (println (count rows) "country-quarters recorded")
@@ -928,4 +923,4 @@
     (spit (str dir "/onsets.txt") (str out))))
 
 (defn -main [& args]
-  (run (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))))
+  (run (cli/opts args)))

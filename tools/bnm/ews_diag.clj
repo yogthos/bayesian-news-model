@@ -11,7 +11,8 @@
 
   Prints the table and writes data/runs/<run>/ews-diag.tsv, and each
   kind's warning (choose) to data/runs/sequencing/ews-t44.edn."
-  (:require [bnm.ews :as ews]
+  (:require [bnm.cli :as cli]
+            [bnm.ews :as ews]
             [bnm.factors :as fac]
             [bnm.kinds :as kinds]
             [bnm.named :as nm]
@@ -50,7 +51,7 @@
     [(assoc r :x [1.0 (double a)]) (assoc r :x [1.0 (double b)])]))
 
 (defn -main [& args]
-  (let [{:keys [run to window ews-out]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run to window ews-out]} (cli/opts args)
         run (or run "t42-world-norel")
         to (or (some-> to parse-long) 2002)
         window (or (some-> window parse-long) 12)

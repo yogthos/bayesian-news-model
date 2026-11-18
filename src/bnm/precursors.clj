@@ -22,14 +22,13 @@
   Settings are the literatures' defaults, fixed before any scored run.
   Only quarters up to the row's are read. The z-scores and the summary are
   bnm.signals'."
-  (:require [bnm.signals :as sg]))
+  (:require [bnm.signals :as sg]
+            [bnm.stat :refer [mean]]))
 
 (def names [:norm :breadth :max :resonance :trigger :dispersion :range-shift])
 
 (def ^:private windows [8 20 40])
 (def ^:private threshold 1.5)
-
-(defn- mean [xs] (/ (reduce + xs) (double (count xs))))
 
 (def ^:private sd-floor
   "The least spread a z-score divides by, on the log scale: a stream silent

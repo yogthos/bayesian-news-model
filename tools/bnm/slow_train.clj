@@ -7,7 +7,9 @@
     jolt -A:tools -M -m bnm.slow-train [--from 1960] [--to 2026] [--name slow] [--config EDN]
 
   Writes data/runs/<name>/slow-report.txt."
-  (:require [bnm.slow :as slow]
+  (:require [bnm.time :as tm]
+            [bnm.cli :as cli]
+            [bnm.slow :as slow]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -23,7 +25,7 @@
 (defn month-of
   "\"2008-09-30\" -> 2008 * 12 + 8"
   ^long [s]
-  (+ (* 12 (parse-long (subs s 0 4))) (dec (parse-long (subs s 5 7)))))
+  (tm/month-index s))
 
 (defn month-str [^long m] (format "%04d-%02d" (quot m 12) (inc (rem m 12))))
 
@@ -92,4 +94,4 @@
     mdl))
 
 (defn -main [& args]
-  (run (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))))
+  (run (cli/opts args)))

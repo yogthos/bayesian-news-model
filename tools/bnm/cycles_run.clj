@@ -50,7 +50,9 @@
 
   (options over bnm.cycles/run-defaults, :from 1950; :only reports
   without writing; :parallel runs the commodities in parallel)"
-  (:require [bnm.cycles :as cy]
+  (:require [bnm.time :as tm]
+            [bnm.cycles :as cy]
+            [bnm.stat :as stat]
             [bnm.food :as food]
             [bnm.named :as named]
             [bnm.slow-train :as st]
@@ -130,7 +132,7 @@
                :let [[d x] (str/split l #"," -1)
                      x (some-> x str/trim not-empty parse-double)]
                :when (and x (re-matches #"\d{4}-\d{2}.*" d))
-               :let [m (+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 5 7))))]]
+               :let [m (tm/month-index d)]]
            [m (inc m) x]))))
 
 (defn read-wide-monthly-csv
@@ -147,7 +149,7 @@
                   (let [[d & xs] (str/split l #"," -1)]
                     (if-not (re-matches #"\d{4}-\d{2}" (str d))
                       acc
-                      (let [m (+ (* 12 (parse-long (subs d 0 4))) (dec (parse-long (subs d 5 7))))]
+                      (let [m (tm/month-index d)]
                         (reduce (fn [acc [c x]]
                                   (if-let [x (some-> x str/trim not-empty parse-double)]
                                     (update acc c (fnil conj []) [m (inc m) x])
@@ -181,15 +183,7 @@
 
 (defn- mean [xs] (when (seq xs) (/ (reduce + 0.0 xs) (count xs))))
 
-(defn- corr [pairs]
-  (let [n (count pairs)]
-    (when (> n 2)
-      (let [xs (map first pairs) ys (map second pairs)
-            mx (/ (reduce + xs) n) my (/ (reduce + ys) n)
-            sxy (reduce + (map #(* (- %1 mx) (- %2 my)) xs ys))
-            sxx (reduce + (map #(* (- % mx) (- % mx)) xs))
-            syy (reduce + (map #(* (- % my) (- % my)) ys))]
-        (when (and (pos? sxx) (pos? syy)) (/ sxy (Math/sqrt (* sxx syy))))))))
+(defn- corr [pairs] (stat/pearson-or-nil (map first pairs) (map second pairs)))
 
 (defn agreement
   "{:n :from :to :corr :ratio} of two annual series ({data-year

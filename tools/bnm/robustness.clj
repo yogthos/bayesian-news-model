@@ -67,7 +67,9 @@
 
   --from is the first scored origin and --to the last outcome year scored,
   as in bnm.attribution; no row whose window ends after --to is read."
-  (:require [augur.math :as m]
+  (:require [bnm.cli :as cli]
+            [augur.math :as m]
+            [bnm.stat :as stat]
             [bnm.attribution :as at]
             [bnm.kinds :as kinds]
             [bnm.lattice-banking :as lb]
@@ -346,7 +348,7 @@
                                            :eras (for [e eras] (assoc e :score (in-span (rows-by-kind kind) (set (:score e))))))))))
                     (for [kind (sort (keys rows-by-kind)) sp splits] [kind sp])))))
 
-(defn- brier ^double [^double p y] (let [d (- p (if y 1.0 0.0))] (* d d)))
+(def ^:private brier stat/brier-one)
 (defn- log-loss ^double [^double p y] (- (Math/log (Math/max 1e-12 (if y p (- 1.0 p))))))
 
 (defn- within
@@ -606,7 +608,7 @@
 ;; --- main -----------------------------------------------------------------------------------
 
 (defn parse-opts [args]
-  (let [o (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
+  (let [o (cli/opts args)
         n #(some-> (o %) parse-long)
         longs #(mapv parse-long (str/split % #","))
         fit-from (n :fit-from)]

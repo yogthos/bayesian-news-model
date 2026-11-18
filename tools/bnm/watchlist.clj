@@ -44,10 +44,12 @@
   --record runs the base table, every world trial on disk against its bench
   and placebo, and the power check, into
   data/runs/sequencing/watchlist-record.txt."
-  (:require [augur.math :as m]
+  (:require [bnm.cli :as cli]
+            [augur.math :as m]
             [augur.special :as sp]
             [bnm.benchmarks :as bm]
             [bnm.kinds :as kinds]
+            [bnm.stat :as stat]
             [bnm.paired :as pd]
             [bnm.relation-diag :as rd]
             [bnm.warm-up :as wu]
@@ -354,11 +356,7 @@
         mid
         (if (< (sp/t-cdf mid (double df)) p) (recur mid hi (inc i)) (recur lo mid (inc i)))))))
 
-(defn sd
-  "The sample standard deviation of `xs` (n - 1)."
-  [xs]
-  (let [n (count xs) mu (/ (reduce + xs) (double n))]
-    (Math/sqrt (/ (reduce + (map #(let [d (- % mu)] (* d d)) xs)) (dec n)))))
+(def sd "The sample standard deviation of `xs` (n - 1)." stat/sd)
 
 (defn null-test
   "The v2 decision for a candidate whose gain over the bench is `c`,
@@ -685,7 +683,7 @@
     {:draws draws :s s0}))
 
 (defn parse-opts [args]
-  (let [o (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))]
+  (let [o (cli/opts args)]
     (assoc o
            :from (or (some-> (:from o) parse-long) 2003)
            :to (or (some-> (:to o) parse-long) 2022)
@@ -706,7 +704,7 @@
         nulls (some-> nulls (str/split #","))
         cats (kinds/catalogues)
         out (StringBuilder.)
-        say (fn [& xs] (let [s (str/join " " xs)] (println s) (flush) (.append out (str s "\n"))))
+        say (cli/say-fn out)
         hdr #(say "Watch-list rescoring (bnm.watchlist): a record, not a test. Top-k lists by the year node's probability of"
                   "an onset in (t, t+2], hard = no onset of the kind in the ten years to the origin, ranked among themselves.")]
     (cond

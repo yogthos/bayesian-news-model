@@ -117,7 +117,8 @@
                                 0 when the exponential arm does
     tech-demand/<k>-slope       the exponential arm's slope
     tech-demand/state-year      the data year (bookkeeping)"
-  (:require [bnm.csv :as csv]
+  (:require [bnm.table :as tbl]
+            [bnm.csv :as csv]
             [bnm.recipes :as recipes]
             [bnm.technology :as tech]
             [clojure.java.io :as io]
@@ -581,8 +582,6 @@
 (defn write-csv
   "iso,year,variable,value (the year known)."
   [path rows]
-  (io/make-parents path)
-  (with-open [w (io/writer path)]
-    (.write w "iso,year,variable,value\n")
-    (doseq [{:keys [iso year variable value]} rows]
-      (.write w (str iso "," year "," variable "," (format "%.6g" (double value)) "\n")))))
+  (tbl/write-csv! path "iso,year,variable,value"
+                 (fn [{:keys [iso year variable value]}] (str iso "," year "," variable "," (format "%.6g" (double value))))
+                 rows))

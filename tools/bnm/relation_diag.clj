@@ -21,7 +21,8 @@
   Prints a table and writes data/runs/<run>/relation-diag.tsv, and the
   edges kept, each with its form (choose-form), to
   data/runs/sequencing/graph-t43.edn."
-  (:require [augur.logit :as lg]
+  (:require [bnm.cli :as cli]
+            [augur.logit :as lg]
             [augur.math :as m]
             [bnm.factors :as fac]
             [bnm.kinds :as kinds]
@@ -166,7 +167,7 @@
       (when (seq ok) (first (apply max-key second ok))))))
 
 (defn -main [& args]
-  (let [{:keys [run to graph-out]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))
+  (let [{:keys [run to graph-out]} (cli/opts args)
         run (or run "t42-world-norel")
         to (or (some-> to parse-long) 2002)
         cats (kinds/catalogues)

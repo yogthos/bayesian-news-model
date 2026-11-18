@@ -70,7 +70,9 @@
   --kinds limits the kinds (default all; a kind is scored in a split only
   if its fitted era has five onsets: protest and violence surges start in
   1979, so the design rotation cannot score them)."
-  (:require [augur.math :as m]
+  (:require [bnm.cli :as cli]
+            [augur.math :as m]
+            [bnm.stat :as stat]
             [bnm.horizon-profile :as hp]
             [bnm.kinds]
             [bnm.relation-diag :as rd]
@@ -464,7 +466,7 @@
                                 rs)))
                (group-by (juxt :kind :t :era) scored))))
 
-(defn- brier ^double [^double p y] (let [d (- p (if y 1.0 0.0))] (* d d)))
+(def ^:private brier stat/brier-one)
 (defn- log-loss ^double [^double p y] (- (Math/log (Math/max 1e-12 (if y p (- 1.0 p))))))
 (def ^:private losses {"log" log-loss "brier" brier})
 
@@ -600,7 +602,7 @@
   (node-rows (rd/read-year run kind) (wu/known-lag kind)))
 
 (defn parse-opts [args]
-  (let [o (into {} (for [[a v] (partition 2 args)] [(keyword (subs a 2)) v]))
+  (let [o (cli/opts args)
         n #(some-> (o %) parse-long)]
     {:run (or (o :run) "t44-world-norel")
      :from (or (n :from) 1960) :to (or (n :to) 2002) :split (or (n :split) 1980)
