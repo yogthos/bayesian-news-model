@@ -198,6 +198,72 @@
                      (Math/max -5.0 (Math/min 5.0 (/ (- x mu) sd)))))
                  0.0))))))))
 
+(defn history-standardizer
+  "bnm-11y, :lead-std :history: (fn [t v]) standardizing the leading
+  columns `v` (lead-f's entries at positions `ix`) against the gauges' own
+  values at every quarter end from month `from` (the node's start) to
+  `end` over `units`, each as known then, through the quarter ends before
+  t; capped at 5, 0 for a missing value. A column is read once it has 20
+  quarter ends of history: the node's standardizer counts rows, so a
+  world gauge, one value per origin repeated at every country, was
+  standardized against two or three origins."
+  [lead-f units ix from end]
+  (let [w (count ix)
+        ts (range (+ from (mod (- 2 from) 3)) (inc end) 3)
+        stats (loop [[t & more] ts n (double-array w) mu (double-array w) ss (double-array w) q (long-array w) acc (sorted-map)]
+                (if-not t
+                  acc
+                  (let [acc (assoc acc t [(aclone n) (aclone mu) (aclone ss) (aclone q)])
+                        seen (boolean-array w)]
+                    (doseq [u units :let [l (lead-f u t)]]
+                      (dotimes [j w]
+                        (when-let [x (nth l (nth ix j))]
+                          (aset seen j true)
+                          (aset n j (inc (aget n j)))
+                          (let [m0 (aget mu j) m1 (+ m0 (/ (- x m0) (aget n j)))]
+                            (aset mu j m1) (aset ss j (+ (aget ss j) (* (- x m0) (- x m1))))))))
+                    (dotimes [j w] (when (aget seen j) (aset q j (inc (aget q j)))))
+                    (recur more n mu ss q acc))))]
+    (fn [t v]
+      (let [[^doubles n ^doubles mu ^doubles ss ^longs q] (or (some-> (rsubseq stats <= t) first val)
+                                                              [(double-array w) (double-array w) (double-array w) (long-array w)])]
+        (vec (for [j (range w) :let [x (nth v j)]]
+               (if (and x (>= (aget q j) 20))
+                 (let [sd (Math/sqrt (/ (aget ss j) (aget n j)))]
+                   (if (> sd (Math/max 1e-9 (* 1e-8 (Math/abs (aget mu j)))))
+                     (Math/max -5.0 (Math/min 5.0 (/ (- x (aget mu j)) sd)))
+                     0.0))
+                 0.0)))))))
+
+(def leading-names
+  "--banking-gauges (bnm-cpv, docs/LEADING.md \"Banking gauges\"): the
+  year node's world gauges, bnm.named/leading's three US market gauges
+  and the world's three-year credit change (bnm.named/world-credit)."
+  [:baa12 :us-curve :vix12 :world-credit3])
+
+(defn leading-priors-for
+  "Each gauge's coefficient prior [mean variance] on its standardized
+  value: :theory, fixed before any run (docs/LEADING.md); :flat, the
+  node's default, mean 0 and variance 1."
+  [mode]
+  (case mode
+    :theory {:world-credit3 [0.4 0.0625] :baa12 [0.3 0.0625] :us-curve [-0.2 0.0625] :vix12 [0.2 0.0625]}
+    :flat (zipmap leading-names (repeat [0.0 1.0]))))
+
+(defn leading-row
+  "(fn [unit t]) giving `leading-names`' values at origin t: the first three
+  of bnm.named/leading's `lead-f`, then world credit `wc` ({month value})."
+  [lead-f wc]
+  (fn [u t] (conj (subvec (vec (lead-f u t)) 0 3) (get wc t))))
+
+(defn leading-wiring
+  "The year node's names (its `n-own` columns, then the gauges), the
+  gauges' group and their :named-prior under `mode`."
+  [n-own mode]
+  {:names (into (mapv #(keyword (str "banking-" %)) (range n-own)) leading-names)
+   :group (vec (range n-own (+ n-own (count leading-names))))
+   :named-prior (leading-priors-for mode)})
+
 (def quarter-groups
   "The financial inputs of bnm.named in groups (indices among them), and
   the OECD's house prices to incomes and to rents against their own ten
@@ -584,8 +650,11 @@
 
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit]}]
+  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges]}]
   (let [[_ fin] (nm/financial db wc)
+        ;; --banking-gauges (bnm-cpv): the world's leading gauges after the
+        ;; year node's own columns
+        lead (when banking-gauges (leading-row (second (nm/leading db)) wc))
         sub (into {} (for [u units :let [s (first (geo/parents u))] :when s] [u s]))
         reg (into {} (for [s (set (vals sub))] [s (first (geo/parents s))]))
         parent (merge sub reg (zipmap (set (vals reg)) (repeat "world")))
@@ -598,12 +667,24 @@
                                (quarter-stretch (get-in quarterly ["oecd_price_rent" u]) q)]))
         raw {:quarter-lead (fn [u t] (into (vec (fin u t)) (valuation u t)))
              :quarter-w2 (fn [u t] (into (vec (fin u t)) (valuation u t)))
-             :year (fn [u t] (year-raw jst ext cat u t {:dated-credit dated-credit}))
+             :year (if lead
+                     (fn [u t] (into (year-raw jst ext cat u t {:dated-credit dated-credit}) (lead u t)))
+                     (fn [u t] (year-raw jst ext cat u t {:dated-credit dated-credit})))
              :half-decade (fn [u t] (half-raw jst cat u t {:dated-credit dated-credit}))}
         ;; each scale's country gauges at its origins, then standardized by the past
         table (into {} (for [{:keys [name] :as s} scales]
                          [name (into {} (for [t (origins s) u countries] [[u t] ((raw name) u t)]))]))
         std (into {} (for [[name tb] table] [name (standardizer (for [[[_ t] v] tb] [t v]) gauge-std)]))
+        n-lead (count leading-names)
+        n-own (- (count (second (first (table :year)))) (if lead n-lead 0))
+        ;; the gauges against their own history (bnm-11y), the node's own
+        ;; columns as before
+        std (if lead
+              (let [own (standardizer (for [[[_ t] v] (table :year)] [t (subvec v 0 n-own)]) gauge-std)
+                    h (history-standardizer lead countries (vec (range n-lead)) start end)]
+                (assoc std :year (fn [t v] (into (own t (subvec v 0 n-own)) (h t (subvec v n-own))))))
+              std)
+        wiring (when lead (leading-wiring n-own banking-gauges))
         ;; what is known: named's forecast for the window, as log odds (from
         ;; 2000); an aggregate's, the chance any member has a crisis. nil
         ;; elsewhere, where the node starts from climatology
@@ -620,6 +701,7 @@
                      (apply mapv (fn [& xs] (/ (reduce + xs) (count xs))) vs)
                      (vec (repeat (count (second (first (table scale)))) 0.0)))))
         widths (into {} (for [[name tb] table] [name (count (second (first tb)))]))]
+    (cond->
     {:scales scales
      :levels [[:country countries]
               [:subregion (sort (set (vals sub)))]
@@ -636,7 +718,9 @@
                  (when (seq ys) {:y (boolean (some true? ys)) :known-at (+ hi known-lag)})))
      :gauges gauges
      :gauge-width widths
-     :gauge-groups {:quarter-lead quarter-groups :quarter-w2 quarter-groups :year year-groups :half-decade half-groups}
+     :gauge-groups {:quarter-lead quarter-groups :quarter-w2 quarter-groups
+                    :year (cond-> year-groups wiring (assoc :leading (:group wiring)))
+                    :half-decade half-groups}
      :shrink 0.1
      ;; theory's sign on the contradiction summaries: more strain, more
      ;; risk, held loosely enough for the data to revise
@@ -655,7 +739,8 @@
      :exposure-width 2
      :coupling 0.1
      :prior (fn [scale _level {:keys [groups]}]
-              (into {} (for [[g ixs] (get priors scale) [i mv] ixs] [(nth (groups g) i) mv])))}))
+              (into {} (for [[g ixs] (get priors scale) [i mv] ixs] [(nth (groups g) i) mv])))}
+      wiring (assoc :gauge-names {:year (:names wiring)} :named-prior {:year (:named-prior wiring)}))))
 
 (def dated-from
   "--dated-credit's first BIS year: the row the December 2003 origin reads."
@@ -680,9 +765,11 @@
   :stable, the gauges' standardizer without its flat-history cap (bnm-9fg);
   :real-lags, each slow series read at its true publication (bnm-a1e);
   :dated-credit, the credit-family inputs from the BIS from the December
-  2003 origin (bnm-9vm option A, `dated-from`)."
+  2003 origin (bnm-9vm option A, `dated-from`); :banking-gauges :theory or
+  :flat, the world's leading gauges at the year node (bnm-cpv,
+  `leading-names`)."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables {:real-lags real-lags})
         jst-rows (mh/read-jst "data/raw/slow/jst/jst.csv")
@@ -701,7 +788,8 @@
                                                                              :let [s (db [u "finance/household_credit_gdp"])] :when s]
                                                                          [u (q4-annual s)]))})))]
     (spec {:db db :wc wc :jst jst :ext ext :cat cat :units units :end end :regimes (mh/read-regimes)
-           :known (read-known known-run) :quarterly (read-quarterly) :gauge-std gauge-std :dated-credit dated}))))
+           :known (read-known known-run) :quarterly (read-quarterly) :gauge-std gauge-std :dated-credit dated
+           :banking-gauges banking-gauges}))))
 
 (defn -main [& args]
   (let [{:keys [out end without coupling known without-at downscale pool uncertainty]} (into {} (for [[k v] (partition 2 args)] [(keyword (subs k 2)) v]))

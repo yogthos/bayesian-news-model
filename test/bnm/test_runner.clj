@@ -60,6 +60,7 @@
             [bnm.cycles-test]
             [bnm.lattice-banking-test]
             [bnm.dated-credit-test]
+            [bnm.banking-gauges-test]
             [bnm.lattice-smoke-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -187,6 +188,7 @@
     bnm.cycles-test
     bnm.lattice-banking-test
     bnm.dated-credit-test
+    bnm.banking-gauges-test
     bnm.lattice-smoke-test
     bnm.political-gauges-test
     bnm.reconcile-test

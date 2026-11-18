@@ -62,7 +62,9 @@
   frailty's mean instead of entering its models; needs --leading-priors
   true and --set's :frailty), --dated-credit true (bnm-9vm option A:
   banking's credit-family inputs from the BIS from the December 2003
-  origin, bnm.lattice-banking/dated-credit-inputs),
+  origin, bnm.lattice-banking/dated-credit-inputs), --banking-gauges
+  true|flat (bnm-cpv: the world's leading gauges at banking's year node,
+  at theory's priors or the node's default ones),
   --write-reference true (also data/runs/<out>-ref, the forecasts with the
   reference state's p wherever a state is kept apart), --set '{...}' merged into every spec (:state-from :reference,
   :evidence-at :issue, :downscale-learn {:var 1.0}, :learn-offsets
@@ -565,6 +567,17 @@
     (throw (ex-info (str "bnm.world-run: --real-lags takes true or false, not " real-lags) {})))
   (= "true" real-lags))
 
+(defn banking-gauges-choice
+  "--banking-gauges true|flat (bnm-cpv, docs/LEADING.md \"Banking gauges\"):
+  the world's leading gauges at banking's year node, at theory's priors
+  (true) or the node's default ones (flat); nil, off, by default."
+  [{:keys [banking-gauges]}]
+  (case banking-gauges
+    (nil "false") nil
+    "true" :theory
+    "flat" :flat
+    (throw (ex-info (str "bnm.world-run: --banking-gauges takes true, flat or false, not " banking-gauges) {}))))
+
 (defn dated-credit-choice
   "--dated-credit true (bnm-9vm option A): the banking node's credit,
   mortgage and household credit inputs, and the displacement built from
@@ -622,7 +635,8 @@
                                                                :real-lags (real-lags-choice opts)
                                                                :leading-food2 (leading-food2-choice opts)
                                                                :lead-std (lead-std-choice opts)
-                                                               :dated-credit (dated-credit-choice opts)})
+                                                               :dated-credit (dated-credit-choice opts)
+                                                               :banking-gauges (banking-gauges-choice opts)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts)
