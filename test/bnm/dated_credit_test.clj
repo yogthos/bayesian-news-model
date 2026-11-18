@@ -39,6 +39,9 @@
 (deftest the-one-sided-gap-is-the-script-s
   ;; scripts/jst-credit-gap.py (statsmodels' hpfilter, lambda 1562.5) on
   ;; the Macrohistory panel's credit to GDP: the same filter in Clojure
+  (if-not (and (.exists (java.io.File. "data/raw/slow/jst/jst.csv"))
+               (.exists (java.io.File. "data/derived/jst-credit-gap.csv")))
+    (println "the-one-sided-gap-is-the-script-s: no data/raw/slow/jst/jst.csv or data/derived/jst-credit-gap.csv, skipped")
   (let [rows (filter #(= "USA" (:iso %)) (mh/read-jst "data/raw/slow/jst/jst.csv"))
         xs (sort (for [r rows :when (and (:tloans r) (:gdp r))] [(:year r) (* 100.0 (/ (:tloans r) (:gdp r)))]))
         ours (mh/one-sided-gaps xs)
@@ -46,7 +49,7 @@
                               :let [[iso y g] (str/split l #",")] :when (= "USA" iso)]
                           [(parse-long y) (parse-double g)]))]
     (is (= (set (keys theirs)) (set (keys ours))))
-    (is (every? (fn [[y g]] (< (Math/abs (- g (ours y))) 1e-6)) theirs))))
+    (is (every? (fn [[y g]] (< (Math/abs (- g (ours y))) 1e-6)) theirs)))))
 
 (deftest a-level-difference-cancels-at-the-splice
   ;; BIS total credit runs above JST's bank loans: a series at 1.7 times
