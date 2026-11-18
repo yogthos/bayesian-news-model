@@ -170,6 +170,25 @@ Real time: the FAO index was first published in 1996 and is backcast to 1990; in
 
 Result (t66-food, docs/CALIBRATION.md 15): the set does not pay. Food +0.0024 [-0.0036, +0.0088] against t66-fix. Fertilizer learned a negative slope from 2008, when it peaked after food. Dec 2020 rises to 0.161, still short of 0.2, and Dec 2021 falls to 0.126.
 
+### Banking gauges (bnm-cpv), behind `--banking-gauges true`
+
+Written 18 November 2026, before any run with these gauges. Banking's lattice (bnm.lattice-banking) has no `:gauge-names`, so `--leading` and `--frailty-gauges` never reached it: its year node reads its countries' own credit, asset and Macrohistory stretches and no world gauge read at the origin. Its level at Dec 2006 and Dec 2007 is about 0.02 against rates of 0.15-0.17 (CALIBRATION.md, "Banking credit beyond JST"). **The gauges were chosen after seeing that miss**, so a gain at 2007-09 is in-sample for the choice. The other four folds are not, and the priors are set from the literature and the rule above, not from banking's outcomes.
+
+The set: t65's three US market gauges, read as `bnm.named/leading` reads them, and the world's credit cycle, `:world-credit3`, the mean three-year change in credit to GDP over banking's countries (bnm.named/world-credit: BIS finance/credit_gdp, each read at its availability, six months after its quarter under `--real-lags`). All four are one value for the world, read the same at every country, so under `--frailty-gauges` they set the common shock's mean (the level) and do not rank places. They enter the year node as a `:leading` group after its own columns, standardized against their own history (`--lead-std history`, bnm-11y). The quarters already read world credit, the VIX and the curve in their `:global` group and are unchanged.
+
+Priors, by the rule of "The priors" (a direct, established mechanism about 0.5 per sd; a weaker or partly concurrent one 0.25-0.3; a US gauge read at every country about two thirds to a half of its US effect), sd 0.25 for all:
+
+| input | mean | sd | reasoning |
+|---|---|---|---|
+| `:world-credit3` | +0.4 | 0.25 | credit booms are the best single predictor of banking crises (Schularick & Taylor 2012; Jordà, Schularick & Taylor 2013), and crises come in waves after global credit booms (Bordo & Meissner 2016; Aldasoro, Avdjiev, Borio & Disyatat 2020). Direct, but the country's own credit is already in its row, so below 0.5 |
+| `:baa12` | +0.3 | 0.25 | a widening spread is a rise in the price of default risk and of bank funding (Gilchrist & Zakrajšek 2012), and spreads jump at the start of crises (Krishnamurthy & Muir 2017); transmitted abroad by the global financial cycle (Rey 2013). US gauge at every country: two thirds of +0.45 |
+| `:us-curve` | -0.2 | 0.25 | a flat or inverted curve squeezes the margin on maturity transformation (Borio, Gambacorta & Hofmann 2017) and precedes US recessions (Estrella & Mishkin 1998); weaker and US-centred |
+| `:vix12` | +0.2 | 0.25 | global risk aversion drives capital-flow stops and retrenchment (Forbes & Warnock 2012; Rey 2013); partly concurrent with stress already under way |
+
+The level of the BAA spread is not read, for the reason given above for crashes: its sign depends on the horizon.
+
+Runs, fixed before any of them: **t85-bgauges**, t80-base's command plus `--banking-gauges true`, banking only, the other twelve kinds t80-base's; **t85-bgauges-flat**, the same gauges at the node's default priors. Acceptance is the fold rule against t80-base (no fold of 2003-22 loses with its 90% interval below zero, and the pooled gain), with the alert table beside it. Off by default; the ledger's issues reproduce with their own commands.
+
 ## Indicators for food 2020-21 and growth 2020
 
 Research only, no model change (13 November 2026). Question: which indicators would have lifted the forecast to the alert threshold (p ≥ 0.2, the break-even when a miss costs four false alarms) at food price shocks from the December 2020 and 2021 origins (rates 0.493 and 0.500; t65-gauges issued 0.121 and 0.154) and at growth collapses from the December 2019 origin (rate 0.554; issued 0.078). Scripts in the session scratchpad (`ind/data.py`, `food.py`, `growth.py`, `pink2tsv.py`); outputs `ind/food18.txt`, `food9.txt`, `food18d.txt`, `growth.txt`.
