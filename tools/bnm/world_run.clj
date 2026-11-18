@@ -460,7 +460,7 @@
                        (when-let [b (:beta e)] (str "\t" (str/join "," b) "\t" (str/join "," (:beta-v e)) "\t" (str/join "," (:g e))))
                        ;; under --regime (bnm-56c.40): whether delta is chosen (it is
                        ;; beta's last) and the origin's regime loading x
-                       (when (contains? e :regime) (str "\tregime=" (:regime e) "\t" (:rx e)))
+                       (when (contains? e :regime) (str "\tregime=" (:regime e) "\t" (:rx e) "\trgain=" (:rgain e)))
                        "\n"))))))
 
 (defn world-of

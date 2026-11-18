@@ -1394,7 +1394,10 @@
                                                          ;; the gauges' loadings and the origin's gauges
                                                          (:b0 pick) (assoc :beta (:beta pick) :beta-v (:beta-v pick) :g (:g (first rows)))
                                                          ;; bnm-56c.40: whether delta is chosen (beta's last), the origin's x
-                                                         (some :regime cands) (assoc :regime (boolean (:regime pick)) :rx (last (:g (first rows)))))))))
+                                                         (some :regime cands) (assoc :regime (boolean (:regime pick)) :rx (last (:g (first rows)))
+                                                                                     ;; the best candidate with delta less the best without, before prices
+                                                                                     :rgain (- (double (apply max (map :score (filter :regime cands))))
+                                                                                               (double (apply max (map :score (remove :regime cands)))))))))))
           fr (sort-by key (group-by :origin (filter :informed ready))))))
 
 (defn frailty-prior
