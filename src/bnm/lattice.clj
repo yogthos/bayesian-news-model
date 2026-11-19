@@ -957,8 +957,8 @@
         (when (seq gs)
           (when-not (= :own prior)
             (throw (ex-info "bnm.lattice: :frailty :gauges goes with :prior :own" {:prior prior})))
-          (when (or (some pos? (map double level-sds)) (some pos? (map double exposure-sds)) (some pos? (map double regional-sds)))
-            (throw (ex-info "bnm.lattice: :frailty :gauges takes no level, slope or regional states" {:level-sds level-sds :exposure-sds exposure-sds :regional-sds regional-sds})))
+          (when (or (some pos? (map double level-sds)) (some pos? (map double exposure-sds)))
+            (throw (ex-info "bnm.lattice: :frailty :gauges takes no level or slope" {:level-sds level-sds :exposure-sds exposure-sds})))
           (when-not (some pos? (map double sds))
             (throw (ex-info "bnm.lattice: :frailty :gauges needs an sd above 0 in :sds" {:sds sds})))
           (when-not (keyword? (:gauges-from c))
@@ -1400,8 +1400,7 @@
 
 ;; --- the joint state [z (L) u_1 .. u_J r_1 .. r_G beta]: the slope on exposure
 ;; (bnm-56c.20.2), the regional states (bnm-56c.20.3), the gauges' loadings
-;; (bnm-v1y) and the regime's (bnm-56c.40). Regional states never go with the
-;; gauges or the regime (frailty-config refuses it).
+;; (bnm-v1y) and the regime's (bnm-56c.40), in that order.
 
 (defn- vec-cand?
   "Whether a candidate's state is a vector: a slope on exposure, regional
@@ -1599,21 +1598,18 @@
                   ci (chosen cands)
                   pick (nth cands ci)
                   ;; a slope candidate's z, level and u_j from its joint state
-                  pick (cond
-                         (or (:usd pick) (:rsd pick))
-                         (let [{:keys [mu P lsd nu]} (with-dims pick)
+                  pick (if (vec-cand? pick)
+                         (let [{:keys [mu P lsd nu nr b0]} (with-dims pick)
                                ul (if lsd 2 1)
-                               ue (+ ul (long nu))]
+                               ue (+ ul (long nu))
+                               re (+ ue (long nr))]
                            (cond-> (assoc pick :m (first mu) :v (get-in P [0 0]))
                              (:usd pick) (assoc :u (subvec mu ul ue) :u-v (mapv #(get-in P [% %]) (range ul ue)))
-                             (:rsd pick) (assoc :rs (subvec mu ue) :rs-v (mapv #(get-in P [% %]) (range ue (count mu))))
+                             (:rsd pick) (assoc :rs (subvec mu ue re) :rs-v (mapv #(get-in P [% %]) (range ue re)))
+                             ;; the gauges' loadings (bnm-v1y): after z and the regional states
+                             b0 (assoc :beta (subvec mu re) :beta-v (mapv #(get-in P [% %]) (range re (count mu))))
                              lsd (assoc :lm (mu 1) :lv (get-in P [1 1]))))
-                         ;; the gauges' loadings (bnm-v1y): z first, beta after
-                         (:b0 pick)
-                         (let [{:keys [mu P]} pick]
-                           (assoc pick :m (first mu) :v (get-in P [0 0])
-                                  :beta (subvec mu 1) :beta-v (mapv #(get-in P [% %]) (range 1 (count mu)))))
-                         :else pick)]
+                         pick)]
               (assoc fr :cands cands
                      :filtered (assoc (:filtered fr) s (cond-> (assoc (select-keys pick [:m :v :rho :sd])
                                                                  :scores (mapv :score cands))

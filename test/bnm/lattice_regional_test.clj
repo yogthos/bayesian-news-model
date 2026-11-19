@@ -325,3 +325,15 @@
     (is (< (Math/abs (- (:vz r) (+ 0.25 (* 1.0 (+ 0.36 0.16))))) 1e-12) "vz = sd^2 + rsd^2 |member|^2")
     (is (< (Math/abs (- (:m r) (+ 0.1 (* 0.6 0.2) (* -0.4 -0.3)))) 1e-12) "the state's mean as it is")
     (is (< (Math/abs (- (:h o) (* 0.5 (:vz r)))) 1e-12) "under :odds the same variance, halved, comes off the mean")))
+
+(deftest bnm-qg5-regional-states-go-with-the-gauges
+  ;; the base reads the world gauges into the frailty (--frailty-gauges):
+  ;; the joint state [z r_1 .. r_G beta] carries both
+  (let [fresh (#'lt/frailty-fresh {:grid [{:rho 0.5 :sd 0.5 :rsd 1.0 :price 4.0}] :width 0 :ng 2} false {:b0 [0.3] :bv [0.04]})
+        c (first (:cands fresh))]
+    (is (= [0.0 0.0 0.0 0.3] (:mu c)) "z, two regional states, then beta at its prior")
+    (is (= [0.25 1.0 1.0 0.04] (mapv #(get-in (:P c) [% %]) (range 4))))
+    (is (= [1.0 0.6 -0.4 2.0] (#'lt/slope-load c [] [0.6 -0.4] [2.0])) "1 on z, the memberships on r, the gauge on beta"))
+  (is (some? (lt/frailty-config {:levels [[:country ["a" "b"]] [:region ["G0" "G1"]] [:world ["W"]]]
+                                 :frailty {:gauges {:year [:g1]} :regional-sds [0.5]}}))
+      "accepted together"))
