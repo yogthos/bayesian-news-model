@@ -2991,3 +2991,10 @@ Runs, banking only (other kinds from t80-base), one at a time:
 - **t99-theory-twospeed**: the same with `--theory-offset true`.
 
 Rule, fixed now: each against t80-base, banking year nodes, the fold rule as amended 18 November and the alert table at 4:1; beside it pooled and within-year AUC, the 2006-07 level, and the 2020-22 level (mean p against the rate, the calm defect itself), with the level the grid chose by origin.
+
+### t99 results (18 November 2026)
+
+Banking year nodes against t80-base, the fold rule as amended:
+- **t99-twospeed**: 2007-09 +0.00283 [+0.00023, +0.00527]; 2020-22 (0 onsets, thin) -0.00068, a third of ρ 0's loss there (mean p 0.0378, t97-theory-rho0 about 0.054); pooled -0.00021 [-0.00136, +0.00120]: **fail** (no pooled gain). Pooled AUC 0.450, within-year 0.583; alert cost 0.130.
+- **t99-theory-twospeed**: 2007-09 +0.00382 [+0.00116, +0.00855]; 2010-12 (6 onsets) -0.00272 [-0.00559, -0.00021] LOSS; 2020-22 thin -0.00065 (mean p 0.0369); pooled -0.00038: **fail**. Within-year AUC 0.723 (the best yet), pooled 0.471; alert cost 0.133.
+- **Verdict:** none adopted. The slow level holds the calm down (2020-22 at 0.037 against ρ 0's 0.054, the testbed's result), but on banking it also carries the 1990s waves' level into 2003-06 and 2010-12: a random-walk level learned from lagged outcomes has the anti-phase's problem at a slower speed. The calm defect stays open (bnm-5lr); t97-theory-rho0 remains the best candidate and passes the amended rule.
