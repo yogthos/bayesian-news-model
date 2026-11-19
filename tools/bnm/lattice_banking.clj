@@ -765,15 +765,18 @@
         ;; --recession-hold (bnm-5lr): an origin's row year a recession
         recession? (when recession-growth
                      (let [r (recession-of recession-growth)] (fn [u t] (r u (row-year t dated-credit)))))
-        theory (when theory-offset
-                 (th/offsets {:places countries :origins (origins year-scale) :prior 1.0
-                              :inputs (theory-row (fn [u t] (when-let [v (get-in table [:year [u (if recession? (held-origin recession? u t) t)]])] ((std :year) t v)))
+        ;; the theory's inputs (fn [place origin]), kept in the spec for diagnosis
+        theory-inputs-of (when theory-offset
+                           (theory-row (fn [u t] (when-let [v (get-in table [:year [u (if recession? (held-origin recession? u t) t)]])] ((std :year) t v)))
                                                   countries theory-inputs (when theory-world theory-world-inputs)
                                                   (when world-db
                                                     (let [row (:row (sg/assemble world-db (for [[n e] theory-world-signals] {:name n :expr e})))
                                                           outside (remove panel countries)]
                                                       (for [i (range (count theory-world-signals))]
-                                                        (world-level (fn [u t] (nth (row u t) i)) outside (origins year-scale) 10)))))
+                                                        (world-level (fn [u t] (nth (row u t) i)) outside (origins year-scale) 10))))))
+        theory (when theory-offset
+                 (th/offsets {:places countries :origins (origins year-scale) :prior 1.0
+                              :inputs theory-inputs-of
                               :target year-target}))
         known-at (fn [scale place t]
                    (if (and theory (= :year scale))
@@ -792,6 +795,8 @@
         widths (into {} (for [[name tb] table] [name (count (second (first tb)))]))]
     (cond->
     {:scales scales
+     ;; --theory-offset: the offsets and their inputs, for diagnosis (bnm-5lr)
+     :theory (when theory {:offsets theory :inputs theory-inputs-of})
      :levels [[:country countries]
               [:subregion (sort (set (vals sub)))]
               [:region (sort (set (vals reg)))]
