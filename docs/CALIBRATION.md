@@ -3563,3 +3563,20 @@ Read with the oracle study (docs/studies/oracle_arms.clj on currency crises: the
 Written 19 November 2026, before any run, on t111-base. The theory layers read a missing input as the cross-country mean (z = 0), which says a country that does not report is average and discards that it was missing (reports/Crisis mechanisms data and signals.md). bnm.impute fills a missing input with the country's last value read at an earlier December origin, decayed toward its region's mean at the origin by half every 36 months (GRU-D's decay); with no earlier value, the region's mean (else every country's); and adds the share of the inputs missing, read before filling, as one more input. Expectation from the oracle study (A5 on currency crises' inputs, before this run): a small gain, AUC 0.634 -> 0.641.
 
 Run t114: t111-base's command with `--impute true` (sovereign defaults' and inflation crises' theories). The other eleven kinds must reproduce t111-base byte for byte. Rule: for each of the two kinds, against t111-base, the fold rule as amended and the alert table at 4:1; beside it level r and AUC. No changes after the result.
+
+## Information or extraction: the oracle study (bnm-yc2)
+
+19 November 2026, offline (docs/studies/oracle_arms.clj). Each economic kind's theory inputs (its own declared inputs, where it has them, and the global layer's twelve) refit at each December origin on t111-base's year country rows, pooled AUC 2003-2022:
+
+| kind | lattice | A0 logit | A2 no publication lag | A4 trees | A4s stumps | A5 filled + share missing |
+|---|---|---|---|---|---|---|
+| currency crises (18 inputs) | 0.693 | 0.634 | 0.691 | 0.687 | 0.694 | 0.641 |
+| inflation crises (17) | 0.732 | 0.626 | 0.715 | 0.726 | 0.730 | 0.667 |
+| sovereign defaults (17) | 0.589 | 0.521 | 0.504 | 0.588 | 0.575 | 0.545 |
+| banking crises (12, global only) | 0.550 | 0.480 | 0.502 | 0.488 | 0.445 | 0.509 |
+| growth collapses (12) | 0.634 | 0.480 | 0.571 | 0.429 | 0.421 | 0.482 |
+| fiscal consolidations (12) | 0.553 | 0.458 | 0.494 | 0.540 | 0.501 | 0.465 |
+| market crashes (12) | 0.755 | 0.577 | 0.519 | 0.510 | 0.600 | 0.605 |
+| food price shocks (12) | 0.664 | 0.582 | 0.542 | 0.569 | 0.553 | 0.531 |
+
+Read: (1) Where a kind has country inputs from its literature (currency, inflation, sovereign), the logit leaves 0.05-0.10 of AUC unextracted that per-input shapes recover (stumps match or beat depth-2 trees, so interactions add nothing here), and publication lags cost as much again for currency and inflation crises (A2). (2) The global layer alone barely ranks countries (0.42-0.60): it carries the level, not the ranking, which is what t113 found. (3) Filling missing inputs adds 0.01-0.04. A1 (final vintage) is not run: series.tsv holds one vintage. The levers, in order: per-input shapes with missing as its own category, then timelier country data (monthly where the annual series lag a year), then filling.
