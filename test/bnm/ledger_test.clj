@@ -128,13 +128,26 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t104-with-banking's-theory
+(deftest the-base-of-record-is-t111-with-two-kinds'-theories
+  ;; note to L1, 19 November 2026 (seventh): t104-base's command with the
+  ;; theory offsets of sovereign defaults and inflation crises
+  ;; (--kind-theory, docs/CALIBRATION.md t110, bnm-1dw)
+  (is (= "t111-base" lg/base))
+  (is (= "6ac298a0d84075e52a5e20533a4665895d7655447ff50e807fb73edf85eee72b" (lg/base-files "sovereign_default"))
+      "t110's sovereign defaults")
+  (is (= "c9c94f6fa06a8692e622ec446e6179c6e13d05509f3683a0cfa45c6cedf3b81f" (lg/base-files "inflation_crisis"))
+      "t110's inflation crises")
+  (is (= "854a4842451c809bf7f7f2978cc91a7187acc77613649f5aba907b011a9ae8bd" (lg/base-files "currency_crisis"))
+      "currency crises stay t104-base's: their theory failed")
+  (let [args (lg/command "ledger-x" 24323)]
+    (is (= "sovereign_default,inflation_crisis" (second (drop-while #(not= "--kind-theory" %) args))))))
+
+(deftest the-base-before-was-t104-with-banking's-theory
   ;; note to L1, 18 November 2026 (sixth): t80-base's command with banking's
   ;; theory offset reading the world's bank funding and reserves, the year
   ;; row's ratios held through recessions, and banking's frailty at rho 0
   ;; (docs/CALIBRATION.md t100-t104, bnm-ris, bnm-5lr). t80-base (fifth):
   ;; t71-stack's with the banking node's credit from the BIS (--dated-credit)
-  (is (= "t104-base" lg/base))
   (is (= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis"))
       "banking is t104-rows-rho0's, the only kind the options reach")
   (is (= "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442" (lg/base-files "conflict_onset"))

@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t104-base")
+(def base "t111-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -80,12 +80,13 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t104-base/<kind>/
-  forecasts.tsv (18 November 2026: t80-base's command with banking's
-  theory offset, its world funding and reserves, the year row's ratios
-  held through recessions and banking's frailty at rho 0; the sixth note
-  to L1), by SHA-256. Only banking moves (t104-rows-rho0's); the other
-  twelve are t80-base's, t71-stack's."
+  "The base of record's forecasts, data/runs/t111-base/<kind>/
+  forecasts.tsv (19 November 2026: t104-base's command with the theory
+  offsets of sovereign defaults and inflation crises, t110's; the seventh
+  note to L1), by SHA-256. t104-base (the sixth note): t80-base's command
+  with banking's theory offset, its world funding and reserves, the year
+  row's ratios held through recessions and banking's frailty at rho 0;
+  banking is t104-rows-rho0's, the other ten t80-base's, t71-stack's."
   {"banking_crisis" "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b"
    "conflict_onset" "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442"
    "coup" "7d9e32befa2d67f7ab67b08bae3d08b8b3938db257439337815065cc357a292d"
@@ -93,10 +94,10 @@
    "fiscal_consolidation" "778d9b2be42d12002307bf15111224b26ab7ec078c3b4c68c88f18a764d71620"
    "food_price_shock" "32a8c9c7a058a94c792bde3e94b8f6dc645ee33c833ec009dd4b6d12c7bc2fc3"
    "growth_collapse" "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c"
-   "inflation_crisis" "28d25338c8848c9507f6d86a4bec8ffa8af854648ee37da4fa62ebb3872be3c5"
+   "inflation_crisis" "c9c94f6fa06a8692e622ec446e6179c6e13d05509f3683a0cfa45c6cedf3b81f"
    "market_crash" "404f381fdb47e404bdb364044d554fd64b93d159e6a66552841348d5b1c2b1af"
    "protest_surge" "98f6a3d14855b3ba0f5eda59b4975de2a13e55b19d8963c36191e496a1dcd373"
-   "sovereign_default" "e6175b0a0cfa9ba6bc90f78c9efaf5f53a41d9776533c89c58ecdec8453e5d30"
+   "sovereign_default" "6ac298a0d84075e52a5e20533a4665895d7655447ff50e807fb73edf85eee72b"
    "violence_surge" "ea2c590835d306a47e3891ae0de3dfdd16b916f53391182079c075f7d2cc3e86"
    "war_onset" "25fafb6577491beb364e3809352ea2fb38bec4cc416b71596abba0f77e9c70b1"})
 
@@ -422,8 +423,9 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t104-base's (sixth note to L1):
-  t80-base's with banking's theory offset (--theory-offset, bnm-ris), its
+  "The base's bnm.world-run arguments, t111-base's (seventh note to L1):
+  t104-base's with the theory offsets of sovereign defaults and inflation
+  crises (--kind-theory, bnm-1dw). t104-base's (sixth note): t80-base's with banking's theory offset (--theory-offset, bnm-ris), its
   world funding and reserves (--theory-world true), the year row's ratios
   held through recessions (--recession-hold rows) and banking's frailty
   at rho 0 (--kind-set; bnm-5lr). t80-base's: t51b's command (the
@@ -450,6 +452,7 @@
    "--leading" "true" "--leading-priors" "true" "--real-lags" "true" "--at-risk" "catalogue"
    "--lead-std" "history" "--frailty-gauges" "true" "--dated-credit" "true"
    "--theory-offset" "true" "--theory-world" "true" "--recession-hold" "rows"
+   "--kind-theory" "sovereign_default,inflation_crisis"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
    "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}}}"])
 
