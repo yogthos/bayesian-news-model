@@ -181,7 +181,17 @@
   (let [choice (resolve 'bnm.world-run/impute-choice)]
     (is (false? (choice {})))
     (is (true? (choice {:impute "true" :kind-theory "sovereign_default"})))
+    (is (= #{"inflation_crisis"} (choice {:impute "inflation_crisis" :kind-theory "sovereign_default,inflation_crisis"}))
+        "t116: only the kinds named")
+    (is (thrown? Exception (choice {:impute "inflation_crisis"})) "nothing to fill without a theory layer")
+    (is (thrown? Exception (choice {:impute "coup" :kind-theory "inflation_crisis"})) "a kind no layer serves")
     (is (thrown? Exception (choice {:impute "true"})) "nothing to fill without a theory layer")))
+
+(deftest only-the-tables-a-layer-reads
+  ;; t116: the ledger's inputs are the files a run reads
+  (is (= ["data/slow/series.tsv"] (kt/paths-for #{"economy/inflation" "debt/reserves_months"})))
+  (is (= ["data/slow/series.tsv" "data/derived/global-monthly.tsv"] (kt/paths-for (kt/decl-vars kt/global))))
+  (is (= ["data/slow/series.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"] (kt/paths-for (kt/vars ["currency_crisis"])))))
 
 (deftest shapes-per-input
   ;; bnm-asp: each standardized input z as [z, max(0,z+1), max(0,z), max(0,z-1), missing]

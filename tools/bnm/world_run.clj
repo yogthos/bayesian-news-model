@@ -807,16 +807,21 @@
       (vec ks))))
 
 (defn impute-choice
-  "--impute true (bnm-s6m): the theory layers (--kind-theory,
+  "--impute true|kind,... (bnm-s6m): the theory layers (--kind-theory,
   --global-theory) fill missing inputs (bnm.impute) and read the share
-  missing; false without the flag."
+  missing: true for every layer's kinds, or the set of kinds named (t116:
+  inflation crises only); false without the flag."
   [{v :impute :as opts}]
-  (case v
-    nil false
-    "true" (if (or (:kind-theory opts) (:global-theory opts))
-             true
-             (throw (ex-info "bnm.world-run: --impute fills a theory layer's inputs: give --kind-theory or --global-theory" {})))
-    (throw (ex-info "bnm.world-run: --impute takes true" {:impute v}))))
+  (let [served (set (concat (some-> (:kind-theory opts) (str/split #",") (->> (map #(first (str/split % #":")))))
+                            (some-> (:global-theory opts) (str/split #","))))]
+    (cond
+      (nil? v) false
+      (empty? served) (throw (ex-info "bnm.world-run: --impute fills a theory layer's inputs: give --kind-theory or --global-theory" {}))
+      (= "true" v) true
+      :else (let [ks (set (str/split v #","))]
+              (doseq [k ks :when (not (served k))]
+                (throw (ex-info (str "bnm.world-run: --impute: no theory layer serves " k) {:kind k})))
+              ks))))
 
 (defn shapes-choice
   "--shapes true (bnm-asp): the kind theories read each input as
@@ -833,7 +838,7 @@
   read for `vars`, the slow table with its real lags."
   [vars real-lags]
   (let [vs (st/read-variables "data/slow/variables.tsv")]
-    (apply merge (for [p kt/series-paths]
+    (apply merge (for [p (kt/paths-for vars)]
                    (nm/load-series p vs (cond-> {:vars vars} (= p "data/slow/series.tsv") (assoc :real-lags real-lags)))))))
 
 (defn global-theory-choice

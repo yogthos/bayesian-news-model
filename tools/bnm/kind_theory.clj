@@ -64,6 +64,16 @@
   fast table's monthly exchange rates."
   ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"])
 
+(def ^:private path-prefix
+  {"data/derived/global-monthly.tsv" "global/" "data/derived/rer-annual.tsv" "derived/rer_" "data/fast/series.tsv" "fast/"})
+
+(defn paths-for
+  "The tables in `series-paths` holding any of `vars`: the slow table
+  always, the others only when a variable needs them (each is an input of
+  record, docs/LEDGER.md)."
+  [vars]
+  (filterv (fn [p] (if-let [pre (path-prefix p)] (some #(clojure.string/starts-with? % pre) vars) true)) series-paths))
+
 (def ^:private inflation
   "Inflation crises, fixed before any run (docs/CALIBRATION.md t110):
   high inflations follow inflation already running, the currency's fall
@@ -226,7 +236,7 @@
             (let [ds (or (decls k) (throw (ex-info (str "bnm.kind-theory: no theory declared for " k) {:kind k})))]
               (check-loaded ds db)
               (if (contains? acc k)
-                (update acc k with-theory (transformed ds (:row (sg/assemble db ds))) (count ds) {:add (contains? add k) :impute impute :shapes shapes})
+                (update acc k with-theory (transformed ds (:row (sg/assemble db ds))) (count ds) {:add (contains? add k) :impute (if (set? impute) (contains? impute k) impute) :shapes shapes})
                 acc)))
           specs kinds)))
 
@@ -243,6 +253,6 @@
     (reduce (fn [acc k]
               (when-not (global-kinds k)
                 (throw (ex-info (str "bnm.kind-theory: the global layer is for the economic kinds, not " k) {:kind k})))
-              (if (contains? acc k) (update acc k with-theory row (count global) {:add true :impute impute}) acc))
+              (if (contains? acc k) (update acc k with-theory row (count global) {:add true :impute (if (set? impute) (contains? impute k) impute)}) acc))
             specs kinds))))
 
