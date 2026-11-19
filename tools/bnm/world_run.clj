@@ -715,11 +715,16 @@
   (flag-choice opts :theory-offset))
 
 (defn theory-world-choice
-  "--theory-world true (bnm-5lr): with --theory-offset, the theory also
-  reads the world's bank funding (bnm.lattice-banking/theory-world-inputs).
-  Off by default."
-  [opts]
-  (flag-choice opts :theory-world))
+  "--theory-world (bnm-5lr), with --theory-offset: funding, the theory also
+  reads the panel's bank funding (bnm.lattice-banking/theory-world-inputs,
+  t100); true, that and the world signals outside the panel
+  (theory-world-signals: reserves). Off by default."
+  [{v :theory-world}]
+  (case v
+    nil false
+    "funding" :funding
+    "true" :all
+    (throw (ex-info (str "--theory-world: funding or true, not " v) {:value v}))))
 
 (defn splice-credit-choice
   "--splice-credit bank (bnm-ris): under --dated-credit, JST's bank loans

@@ -301,18 +301,49 @@
   precedes crises)."
   [[:world-loans-to-deposits (first (:funding year-groups))]])
 
+(def theory-world-signals
+  "--theory-world (bnm-5lr): declared signals (docs/SIGNALS.md) the theory
+  reads as their world mean over the countries outside the Macrohistory
+  panel, against its own past: foreign reserves in months of imports, the
+  emerging markets' self-insurance after 1998 (Gourinchas and Obstfeld
+  2012; Obstfeld, Shambaugh and Taylor 2010). Outside the panel the theory
+  had nothing else, and those countries sat at the pooled rate
+  (docs/studies/calm_em.py)."
+  [[:world-reserves {:var "debt/reserves_months" :read [:value] :stale 30}]])
+
+(defn world-level
+  "(fn [origin]) -> the mean of `value-of` (fn [unit origin]) over `units`
+  that have a value, standardized against the means at the earlier
+  `origins` (at least `min-n` of them); nil otherwise."
+  [value-of units origins min-n]
+  (let [mean-at (memoize (fn [t] (let [vs (keep #(value-of % t) units)]
+                                   (when (seq vs) (/ (reduce + vs) (double (count vs)))))))]
+    (memoize
+     (fn [t]
+       (when-let [x (mean-at t)]
+         (let [past (keep mean-at (filter #(< % t) origins))]
+           (when (>= (count past) min-n)
+             (let [m (/ (reduce + past) (double (count past)))
+                   sd (Math/sqrt (/ (reduce + (map #(Math/pow (- % m) 2) past)) (double (count past))))]
+               (when (pos? sd) (/ (- x m) sd))))))))))
+
 (defn theory-row
   "(fn [place origin]) -> the theory's inputs: `own`'s columns of the
   place's standardized row (`z-of` (fn [place origin]), nil for none),
   then each of `world`'s columns as its mean over `countries` that have it
-  at the origin (nil when none do)."
-  [z-of countries own world]
-  (let [world-at (memoize (fn [t] (vec (for [[_ i] world
-                                             :let [vs (keep #(some-> (z-of % t) (nth i nil)) countries)]]
-                                         (when (seq vs) (/ (reduce + vs) (double (count vs))))))))]
-    (fn [u t]
-      (when-let [z (z-of u t)]
-        (into (mapv #(nth z (second %)) own) (when (seq world) (world-at t)))))))
+  at the origin (nil when none do), then each of `extra` (fns of the
+  origin, `world-level`s)."
+  ([z-of countries own world] (theory-row z-of countries own world nil))
+  ([z-of countries own world extra]
+   (let [world-at (memoize (fn [t] (vec (for [[_ i] world
+                                              :let [vs (keep #(some-> (z-of % t) (nth i nil)) countries)]]
+                                          (when (seq vs) (/ (reduce + vs) (double (count vs))))))))]
+     (fn [u t]
+       (when-let [z (z-of u t)]
+         (-> (mapv #(nth z (second %)) own)
+             (into (when (seq world) (world-at t)))
+             (into (map #(% t) extra))))))))
+
 (defn- by-country-year
   "{iso {year value}} from rows, keeping non-nil values of (f row)."
   [rows iso-of year-of f]
@@ -661,7 +692,7 @@
 
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset theory-world]}]
+  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset theory-world world-db panel]}]
   (let [[_ fin] (nm/financial db wc)
         ;; --banking-gauges (bnm-cpv): the world's leading gauges after the
         ;; year node's own columns
@@ -712,7 +743,12 @@
         theory (when theory-offset
                  (th/offsets {:places countries :origins (origins year-scale) :prior 1.0
                               :inputs (theory-row (fn [u t] (when-let [v (get-in table [:year [u t]])] ((std :year) t v)))
-                                                  countries theory-inputs (when theory-world theory-world-inputs))
+                                                  countries theory-inputs (when theory-world theory-world-inputs)
+                                                  (when world-db
+                                                    (let [row (:row (sg/assemble world-db (for [[n e] theory-world-signals] {:name n :expr e})))
+                                                          outside (remove panel countries)]
+                                                      (for [i (range (count theory-world-signals))]
+                                                        (world-level (fn [u t] (nth (row u t) i)) outside (origins year-scale) 10)))))
                               :target year-target}))
         known-at (fn [scale place t]
                    (if (and theory (= :year scale))
@@ -880,6 +916,12 @@
            :banking-gauges banking-gauges
            :theory-offset theory-offset
            :theory-world theory-world
+           ;; --theory-world (bnm-5lr): the world signals' series, read as the rest are
+           :world-db (when (= :all theory-world)
+                       (nm/load-series "data/slow/series.tsv" variables
+                                       (cond-> {:real-lags real-lags :vars (set (map (comp :var second) theory-world-signals))}
+                                         wdi-editions (assoc :wdi-editions (nm/read-wdi-editions)))))
+           :panel (set (map :iso jst-rows))
            ;; --banking-coverage (bnm-7bh): its series alone, read as the rest are
            :coverage-db (when banking-coverage
                           (nm/load-series "data/slow/series.tsv" variables
