@@ -438,6 +438,7 @@
                (:guard o) (assoc :guard (= "true" (:guard o)))
                (:theory o) (assoc :theory (= "true" (:theory o)))
                (:blocs o) (assoc :blocs-mode (keyword (:blocs o)))
+               (:bloc-strength o) (assoc :bloc-strength (parse-double (:bloc-strength o)))
                (:set o) (assoc :lattice (edn/read-string (:set o))))
         ks [:auc :oracle-auc :within-auc :level-r :calm-excess :post-rupture-log-skill :p-sd :log-skill :oracle-log-skill :skill-share :ece :alert-cost :constant-cost :molchan]
         results (vec (for [s seeds] (evaluate (assoc base :seed s))))]
