@@ -3064,3 +3064,7 @@ t104-rows-rho0 against t80-base: 2003-06 +0.00073 [-0.00107, +0.00351]; 2007-09 
 Written 18 November 2026, before the run. t104-base gave up ranking within years: within-year AUC 0.657 in t101 (no hold), 0.575 in t104 (every ratio held through recessions, the theory's row too). The Dec 2022 spike came from the IMF debt group above all (trace above). `--recession-hold debt`: only the debt group's columns held (bnm.lattice-banking/held-columns-for), the credit stretches, booms and the theory's row as read.
 
 Run: **t105-debt-rho0**: t104-base's banking command with `--recession-hold debt`. Rule: against t104-base (the base of record), the fold rule as amended and the alert table at 4:1; beside it within-year and pooled AUC, the 2006-07 level, the 2020-22 level and the Dec 2022 panel forecasts.
+
+### t105 result (18 November 2026)
+
+t105-debt-rho0 against t104-base: every fold within noise but 2020-22 (0 onsets, thin) -0.00011 [-0.00023, -0.00002]; pooled +0.00001 [-0.00011, +0.00016], log -0.00000. Within-year AUC 0.619 (t104 0.575, t101 0.657), pooled 0.542; 2006-07 p 0.039, 0.025; Dec 2022 France 0.055, Japan 0.049, Switzerland 0.122; alert cost 0.129 (+0.0004). Holding only the debt group recovers about half the ranking t104 gave up, at no proper-score gain and a small cost in the calm. The pre-2008 rise does not come back: it went with the world reserves (t101's 2006 p 0.039), not the hold. Passes the amended rule on a point gain of +0.00001: no evidence for a base change; recorded, not proposed.
