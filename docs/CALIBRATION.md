@@ -3020,3 +3020,11 @@ Run, banking only: **t101-reserves-rho0**: t100's command with `--theory-world t
 ### t101 result (18 November 2026)
 
 t101-reserves-rho0 against t80-base: 2003-06 +0.00071 [-0.00084, +0.00313]; 2007-09 **+0.00279 [+0.00046, +0.00558]**; 2010-12 **+0.00333 [+0.00039, +0.00705]**; 2013-19 **+0.00053 [+0.00012, +0.00097]**; 2020-22 -0.00075 [-0.00202, +0.00027] (its interval now reaches zero); pooled **+0.00112 [+0.00027, +0.00218]**, log +0.01209 [+0.00439, +0.02203]. **The first banking candidate that passes the fold rule as it stood before the amendment**, and the first with a significant pooled gain. The level outside the panel: 2013-19 0.043 -> 0.034 (rate 0.029), 2020-22 0.041 -> 0.028 (t80-base 0.028). The panel's 2020-22 level stays high (0.047), the 2020 credit jump. The cost: the level falls everywhere, 2006-07 p 0.039 and 0.025 (t100 0.063 and 0.058), pooled AUC 0.555 (t100 0.635), alerts catch no onset row (t100 2.4%), alert cost 0.130 (t100 0.128).
+
+## The panel's 2020 credit jump: t102 (bnm-5lr)
+
+Written 18 November 2026, before the run; in-sample (2020 prompted it). In t101 the panel's 2020-22 level stays high (0.047) because of the Dec 2022 origin: France 0.274, Japan 0.293, Sweden 0.178, Switzerland 0.168 (0.03-0.11 the year before). That origin first reads the 2020 row (JST's lag), and the BIS's credit over GDP jumped in 2020: France 212 -> 240, Japan 161 -> 179, nominal GDP down about 5% while guaranteed loans rose. Part of the rise is the denominator, as in 2009. The ESRB's and the ECB's adjusted credit gaps take it out.
+
+`--credit-denominator smooth` (bnm.lattice-banking/gdp-fall-adjusted): under --dated-credit, the BIS's credit and household credit over GDP, in a year when nominal GDP fell (from WDI's real growth and inflation, as published), times 1 + that fall, the ratio over the year before's GDP. Credit's own growth stays: France's 2020 row becomes about 223 rather than 240, still above 212. So this tests the denominator's part only; the guaranteed loans' part has no series on disk.
+
+Run: **t102-denominator-rho0**: t101's command with `--credit-denominator smooth`. Rule: against t80-base, the fold rule as amended and the alert table at 4:1; beside it the 2020-22 level, panel and outside apart, the Dec 2022 panel forecasts, and against t101.

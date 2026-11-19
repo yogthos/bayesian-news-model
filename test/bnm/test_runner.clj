@@ -76,6 +76,7 @@
             [bnm.splice-credit-test]
             [bnm.theory-test]
             [bnm.theory-offset-test]
+            [bnm.credit-denominator-test]
             [bnm.lattice-smoke-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -222,6 +223,7 @@
     bnm.splice-credit-test
     bnm.theory-test
     bnm.theory-offset-test
+    bnm.credit-denominator-test
     bnm.lattice-smoke-test
     bnm.political-gauges-test
     bnm.reconcile-test

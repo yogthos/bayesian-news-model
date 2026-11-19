@@ -738,6 +738,18 @@
       (throw (ex-info "bnm.world-run: --splice-credit bank needs --dated-credit true" {})))
     :bank))
 
+(defn credit-denominator-choice
+  "--credit-denominator smooth (bnm-5lr): under --dated-credit, the BIS's
+  credit over GDP with a fall in nominal GDP taken out
+  (bnm.lattice-banking/gdp-fall-adjusted). Off by default."
+  [opts]
+  (when-let [v (:credit-denominator opts)]
+    (when-not (= "smooth" v)
+      (throw (ex-info (str "bnm.world-run: --credit-denominator takes smooth, not " v) {})))
+    (when-not (dated-credit-choice opts)
+      (throw (ex-info "bnm.world-run: --credit-denominator smooth needs --dated-credit true" {})))
+    :smooth))
+
 (defn regime-choice
   "--regime true (bnm-56c.40, recursive step 5b): the world families'
   calm/stress chains set the year node's level through the frailty. Off by
@@ -965,6 +977,7 @@
                                                                :splice-credit (splice-credit-choice opts)
                                                                :theory-offset (theory-offset-choice opts)
                                                                :theory-world (theory-world-choice opts)
+                                                               :credit-denominator (credit-denominator-choice opts)
                                                                :wide-credit (wide-credit-choice opts)
                                                                :fresh-inputs (fresh-inputs-choice opts)
                                                                :wdi-editions (wdi-editions-choice opts)
