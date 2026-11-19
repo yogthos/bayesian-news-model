@@ -274,12 +274,34 @@
                                [[(str k "-change") [:change 12]]])]
             {:name (keyword n) :var k :read rd :domain (keyword k)})))))
 
+(defn bloc-exposure
+  "bnm-58f: country c's published bloc exposure at origin t: the sum over
+  the powers of dependence x rupture x the western tie, as read then (0
+  where none is published)."
+  [w c t]
+  (let [row (:row (sg/assemble (:db w) (filter #(str/ends-with? (name (:name %)) "-x-west") (bloc-decls :alignment))))]
+    (reduce + 0.0 (keep identity (row c t)))))
+
+(defn known-base-logit
+  "The log odds of an onset among the country-years whose outcome is known
+  at origin t (a year after their window), every country pooled; the
+  scored world's base rate as a forecaster then knew it."
+  [w t]
+  (let [ys (for [c (:countries w) y (range epoch (- (quot (inc t) 12) 1)) :when (at-risk? w c y)]
+             (contains? (get-in w [:onsets c] #{}) y))
+        n (count ys) k (count (filter true? ys))]
+    (m/logit (/ (+ k 0.5) (+ n 1.0)))))
+
 (defn spec
   "A lattice spec over world `w`: a year scale over countries, regions and
   the world, the declared signals standardized by everything before each
   origin (bnm.signals/running-z), the target an onset in the year ahead
-  while the country is at risk, known a year after the window closes."
-  [w extra]
+  while the country is at risk, known a year after the window closes.
+  `topts` :bloc-theory k (bnm-58f): the offset adds k x the bloc exposure
+  (`bloc-exposure`) to the theory's forecast, or to the base rate known by
+  then, the lattice learning departures."
+  ([w extra] (spec w extra {}))
+  ([w extra topts]
   (let [{:keys [countries regions parent db opts]} w
         {:keys [years stocks]} (merge defaults opts)
         ds (into (decls stocks (:signals opts :raw)) (when-let [bm (:blocs-mode opts)] (bloc-decls bm)))
@@ -312,7 +334,13 @@
                        off (th/offsets {:places countries :origins origins :prior 1.0
                                         :inputs (fn [c t] (let [v (std t (table [c t]))] (mapv #(nth v %) ix)))
                                         :target (fn [c t] (target :year c t))})]
-                   (fn [_ place t] (th/any-of (keep #(get off [% t]) (members place))))))]
+                   (fn [_ place t] (th/any-of (keep #(get off [% t]) (members place))))))
+        bk (or (:bloc-theory topts) (:bloc-theory opts))
+        offset (if bk
+                 (let [base (memoize (fn [t] (known-base-logit w t)))
+                       own (fn [c t] (+ (or (when theory (theory :year c t)) (base t)) (* bk (bloc-exposure w c t))))]
+                   (fn [_ place t] (if (some #{place} countries) (own place t) (th/any-of (map #(own % t) (members place))))))
+                 theory)]
     (merge {:scales [{:name :year :per 12 :horizon 12 :discount 0.995}]
             :levels [[:country countries] [:region regions] [:world ["world"]]]
             :parent parent
@@ -324,8 +352,8 @@
                         (if (seq vs) (apply mapv (fn [& xs] (/ (reduce + xs) (count xs))) vs) (vec (repeat width 0.0)))))
             :gauge-width {:year width}
             :gauge-groups {:year groups}}
-           (when theory {:offset theory})
-           extra)))
+           (when offset {:offset offset})
+           extra))))
 
 ;; --- scores -------------------------------------------------------------------------
 
@@ -439,6 +467,7 @@
                (:theory o) (assoc :theory (= "true" (:theory o)))
                (:blocs o) (assoc :blocs-mode (keyword (:blocs o)))
                (:bloc-strength o) (assoc :bloc-strength (parse-double (:bloc-strength o)))
+               (:bloc-theory o) (assoc :bloc-theory (parse-double (:bloc-theory o)))
                (:set o) (assoc :lattice (edn/read-string (:set o))))
         ks [:auc :oracle-auc :within-auc :level-r :calm-excess :post-rupture-log-skill :p-sd :log-skill :oracle-log-skill :skill-share :ece :alert-cost :constant-cost :molchan]
         results (vec (for [s seeds] (evaluate (assoc base :seed s))))]

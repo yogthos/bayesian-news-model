@@ -107,3 +107,14 @@
     (is (not= (sk/value (get (:db w) [u "west-tie"]) (+ (* 12 (+ tb/epoch 50)) 11 6))
               (sk/value (get (:db w0) [u "west-tie"]) (+ (* 12 (+ tb/epoch 50)) 11 6)))
         "the published tie is another country's")))
+
+(deftest a-bloc-theory-adds-its-fixed-cost-to-the-offset
+  (let [w (tb/world (assoc bloc :blocs-mode :alignment))
+        [r g] (first (get-in w [:bloc :ruptures]))
+        t (+ (* 12 (+ tb/epoch r)) 11)
+        c (first (filter #(= "W" (get-in w [:bloc :blocs %])) (:countries w)))
+        off (fn [k] ((:offset (tb/spec w {} {:bloc-theory k})) :year c t))
+        x (tb/bloc-exposure w c t)]
+    (is (pos? x) "a western country after the rupture is exposed")
+    (is (< (Math/abs (- (- (off 3.0) (off 0.0)) (* 3.0 x))) 1e-9) "the offset moves by k x the published exposure")
+    (is (< (Math/abs (- (off 0.0) (tb/known-base-logit w t))) 1e-9) "k 0: the base rate known by then")))
