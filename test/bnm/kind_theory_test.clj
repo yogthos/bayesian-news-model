@@ -49,10 +49,35 @@
   (is (= [:external-debt :reserves :inflation :growth :us-rate-change24]
          (mapv :name (kt/decls "sovereign_default")))))
 
+(deftest declared-for-currency-and-inflation-crises
+  (is (= [:reserves :reer-change24 :current-account :inflation :external-debt :us-rate-change24]
+         (mapv :name (kt/decls "currency_crisis"))))
+  (is (= [:inflation :depreciation12 :government-debt-change24 :reserves :growth]
+         (mapv :name (kt/decls "inflation_crisis")))))
+
+(deftest the-declared-vars-are-loaded
+  (testing "every series a chosen kind declares, for load-series' :vars (bnm.named/vars lacks most)"
+    (is (= #{"debt/external_gni" "debt/reserves_months" "economy/inflation" "economy/gdp_growth" "finance/policy_rate"}
+           (kt/vars ["sovereign_default"])))
+    (is (contains? (kt/vars ["sovereign_default" "currency_crisis"]) "finance/reer")))
+  (testing "a declared series missing from the table refuses, rather than reading as the mean everywhere"
+    (let [db {["a1" "economy/inflation"] :s ["a1" "economy/gdp_growth"] :s}]
+      (is (thrown-with-msg? Exception #"debt/external_gni"
+                            (kt/with-kind-theory {"sovereign_default" sp} ["sovereign_default"] db))))))
+
+(deftest inflation-is-read-as-log1p
+  (let [ds [{:name :a :log1p true} {:name :b}]
+        f (kt/transformed ds (fn [u _] (when (= u "x") [300.0 300.0])))]
+    (is (= [(Math/log1p 3.0) 300.0] (f "x" 0)))
+    (is (= (Math/log1p -0.99) (first ((kt/transformed ds (fn [_ _] [-150.0 nil])) "x" 0))) "floored at -99%")
+    (is (= [nil nil] ((kt/transformed ds (fn [_ _] [nil nil])) "x" 0)))
+    (is (nil? (f "y" 0)))))
+
 (deftest the-flag-names-declared-kinds
   (require 'bnm.world-run)
   (let [choice (resolve 'bnm.world-run/kind-theory-choice)]
     (is (nil? (choice {})))
     (is (= ["sovereign_default"] (choice {:kind-theory "sovereign_default"})))
+    (is (= ["currency_crisis" "inflation_crisis"] (choice {:kind-theory "currency_crisis,inflation_crisis"})))
     (is (thrown? Exception (choice {:kind-theory "coup"})) "no theory declared")
     (is (thrown? Exception (choice {:kind-theory "banking_crisis"})) "banking has its own, --theory-offset")))

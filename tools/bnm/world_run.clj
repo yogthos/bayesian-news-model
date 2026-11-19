@@ -1067,7 +1067,7 @@
                    finer-where-fresh
                    (#(if-let [ks (kind-theory-choice opts)]
                        (kt/with-kind-theory % ks (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
-                                                                 {:real-lags (real-lags-choice opts)}))
+                                                                 {:real-lags (real-lags-choice opts) :vars (kt/vars ks)}))
                        %))
                    (with-bloc-theory (bloc-theory-choice opts)
                      (when (bloc-theory-choice opts)
