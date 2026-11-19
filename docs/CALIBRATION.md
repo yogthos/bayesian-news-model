@@ -2981,3 +2981,13 @@ Run, banking only: **t98-theory-rho05**: t97-theory-rho0's command with `:frailt
 t98-theory-rho05 against t80-base: 2007-09 +0.00467 [+0.00101, +0.01108] (log +0.04192), 2020-22 -0.00123 [-0.00163, -0.00089] LOSS, pooled +0.00071 [-0.00026, +0.00207]; pooled AUC 0.501, within-year 0.669; Dec 2006-07 p 0.048 and 0.046; alert cost 0.129 (+0.0023 [+0.0000, +0.0067]). The grid took ρ 0.5 at every December origin from 1990. The short memory gives back a third of the 2020-22 loss and part of the gain (pooled AUC 0.648 -> 0.501, the 2006 level 0.064 -> 0.048). Fails the fold rule (2020-22). Not adopted.
 
 **Where banking stands.** Every forecast that rises before the 2008 wave issues about the base rate (0.05) in 2020-22, when the catalogue has no onset, and loses that fold to t80-base, whose persistent frailty carried the 2010s' calm into it: the mechanism that inverts it before waves is the one that wins the calm fold. With the fold rule as it stands, no variant tried passes; t97-theory-rho0 is the best forecast by every other measure. Whether a fold with no onsets should be able to veto it is the rule's question, the user's to decide.
+
+## Two speeds: a slow era level without the wave memory, t99 (bnm-5lr)
+
+Written 18 November 2026, before any run. The user named the level's failure to fall in long calms a defect (PHASE-CHANGES, amendment of 18 November). The persistent frailty (ρ 0.8, sd 1) holds calm down only through the same carried memory that inverts it before waves; ρ 0 loses the memory and the calm with it. Two speeds: the transient shock at ρ 0 (no carried wave memory) plus the frailty's persistent level, a random walk with a small step (`:level-sds [0.0 0.05 0.1 0.2]`, chosen by the grid, filtered jointly with the transient; the existing t58 design). On the testbed's calm eras it removes ρ 0's excess (+0.0112 -> 0.0000) and keeps most of the skill (docs/TESTBED.md).
+
+Runs, banking only (other kinds from t80-base), one at a time:
+- **t99-twospeed**: t80-base's command with `:frailty {:rhos [0.0] :level-sds [0.0 0.05 0.1 0.2]}`.
+- **t99-theory-twospeed**: the same with `--theory-offset true`.
+
+Rule, fixed now: each against t80-base, banking year nodes, the fold rule as amended 18 November and the alert table at 4:1; beside it pooled and within-year AUC, the 2006-07 level, and the 2020-22 level (mean p against the rate, the calm defect itself), with the level the grid chose by origin.

@@ -43,6 +43,9 @@
    :late-data {:active (constantly "credit") :published-from 60}
    :synchronized {:active (constantly "credit") :world-lambda 1.3}
    :null {:active (constantly "credit") :strength 0.0 :wave-boost 0.0}
+   ;; bnm-5lr: decades-long calm and active eras (the 1950-72 calm, the 2010s)
+   ;; under the credit waves: the base rate moves by era
+   :eras {:active (constantly "credit") :era-shift 1.2 :era-years 25}
    ;; the driving stock observed at 30% of countries (JST's share is 18 of 130)
    :partial-coverage {:active (constantly "credit") :coverage 0.3}})
 
@@ -146,13 +149,17 @@
         latent (latent-paths g cs cycle o)
         scale (noise-scales g cs o)
         observed (observations g cs latent scale o)
+        ;; :eras: alternate calm and active eras of :era-years, the base moved
+        ;; down and up by half :era-shift
+        era (fn [i] (if-let [n (:era-years sc)] (* 0.5 (:era-shift sc) (if (even? (quot i n)) -1.0 1.0)) 0.0))
         hz (fn [c i recent?]
-             (m/expit (+ base
+             (m/expit (+ base (era i)
                          (* strength (turn (get-in latent [c (active (vec stocks) i)]) (- i 2) fall))
                          (if (waves i) wave-boost 0.0)
                          (if recent? refractory 0.0))))
         [hazard onsets] (draw-onsets g cs hz o)]
-    {:opts (dissoc o :sc) :countries cs :regions rs :parent parent :db (publish cs observed o) :observed observed :latent latent
+    {:opts (dissoc o :sc) :calm-years (set (for [i (range (:years o)) :when (neg? (era i))] (+ epoch i)))
+     :countries cs :regions rs :parent parent :db (publish cs observed o) :observed observed :latent latent
      :hazard hazard :onsets onsets :waves (set (map #(+ epoch %) waves))}))
 
 (defn at-risk?
@@ -317,6 +324,9 @@
      :alert-cost (alert-cost rows 0.2 4.0)
      :constant-cost (min (* 4.0 rate) (- 1.0 rate))
      :molchan (molchan-area rows)
+     ;; bnm-5lr: in the calm eras, how far the mean forecast sits above the rate
+     :calm-excess (let [cr (filter #(contains? (:calm-years w) (:year %)) rows)]
+                    (when (seq cr) (- (stat/mean (map :p cr)) (stat/mean (map #(if (:y %) 1.0 0.0) cr)))))
      ;; a flat forecast's correlations are noise: its spread beside them
      :p-sd (stat/sd-pop (map :p rows))
      :skill-share (let [o (- (mean-ll rows :true-p) clim)] (when (pos? o) (/ (- (mean-ll rows :p) clim) o)))}))
@@ -338,7 +348,7 @@
                (:guard o) (assoc :guard (= "true" (:guard o)))
                (:theory o) (assoc :theory (= "true" (:theory o)))
                (:set o) (assoc :lattice (edn/read-string (:set o))))
-        ks [:auc :oracle-auc :within-auc :level-r :p-sd :log-skill :oracle-log-skill :skill-share :ece :alert-cost :constant-cost :molchan]
+        ks [:auc :oracle-auc :within-auc :level-r :calm-excess :p-sd :log-skill :oracle-log-skill :skill-share :ece :alert-cost :constant-cost :molchan]
         results (vec (for [s seeds] (evaluate (assoc base :seed s))))]
     (println (str "scenario " (name (:scenario base)) ", signals " (name (:signals base :raw)) ", seeds " (str/join "," seeds) (when (:lattice base) (str ", lattice " (pr-str (:lattice base))))))
     (doseq [k ks]
