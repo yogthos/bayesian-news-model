@@ -48,3 +48,26 @@
   (testing "many likely members: finite, as the banking node's offsets are (p kept within 1e-6 of 0 and 1)"
     (is (< (Math/abs (th/any-of (repeat 60 (m/logit 0.6)))) 100.0))
     (is (< (Math/abs (- (th/any-of (repeat 60 (m/logit 0.6))) (m/logit (- 1.0 1e-6)))) 1e-9))))
+
+(deftest on-top-of-a-base-it-learns-the-departures
+  ;; t112: logit p = base + a + b.x, the base held fixed (augur.logit/fit's row offset)
+  (let [g (m/rng 4)
+        base (into {} (for [u places t origins] [[u t] (- (* 0.8 (m/normal! g)) 2.0)]))
+        x (into {} (for [u places t origins] [[u t] (m/normal! g)]))
+        y (into {} (for [k (keys x)] [k (< (m/next-double! g) (m/expit (+ (base k) (* 1.0 (x k)))))]))
+        tgt (fn [u t] {:y (y [u t]) :known-at (+ t 24)})
+        bf (fn [u t] (when (not= u "f") (base [u t])))
+        off (th/offsets {:places places :origins origins :inputs (fn [u t] [(x [u t])]) :target tgt :prior 1.0 :base bf})
+        t (origins 20)]
+    (testing "the fit holds the base as each row's offset, and adds it back"
+      (let [train (for [u places t' origins :when (and (bf u t') (<= (+ t' 24) t))]
+                    {:x (double-array [1.0 (x [u t'])]) :y (y [u t']) :w 1.0 :o (base [u t'])})
+            beta (lgt/fit train 2 {:prior 1.0})]
+        (is (< (Math/abs (- (m/logit (lgt/predict beta (double-array [1.0 (x ["c" t])]) (base ["c" t])))
+                            (get off ["c" t])))
+               1e-9))))
+    (testing "a place with no base neither trains it nor takes an offset"
+      (is (nil? (get off ["f" t]))))
+    (testing "the departure is linear in the input, the planted slope's sign"
+      (let [tl (peek origins) d (fn [u] (- (get off [u tl]) (base [u tl])))]
+        (is (= (sort-by #(x [% tl]) (remove #{"f"} places)) (sort-by d (remove #{"f"} places))))))))

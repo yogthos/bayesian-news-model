@@ -794,13 +794,23 @@
   Banking has its own (--theory-offset)."
   [{v :kind-theory}]
   (when v
-    (let [ks (str/split v #",")]
+    (let [ks (for [w (str/split v #",")]
+               (let [[k mode] (str/split w #":")]
+                 (when (and mode (not= "add" mode))
+                   (throw (ex-info (str "bnm.world-run: --kind-theory: " w ": the only mode is :add") {:kind w})))
+                 k))]
       (doseq [k ks]
         (when (= k lb/kind)
           (throw (ex-info "bnm.world-run: --kind-theory: banking crises take --theory-offset" {})))
         (when-not (kt/decls k)
           (throw (ex-info (str "bnm.world-run: --kind-theory: no theory declared for " k) {:kind k}))))
-      ks)))
+      (vec ks))))
+
+(defn kind-theory-add
+  "The kinds --kind-theory names as kind:add, their theory on top of the
+  year offset (t112)."
+  [{v :kind-theory}]
+  (set (for [w (some-> v (str/split #",")) :let [[k mode] (str/split w #":")] :when (= "add" mode)] k)))
 
 (defn with-bloc-theory
   "The named kinds' specs with :offset-add at the year scale (k is a
@@ -1067,7 +1077,8 @@
                    finer-where-fresh
                    (#(if-let [ks (kind-theory-choice opts)]
                        (kt/with-kind-theory % ks (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
-                                                                 {:real-lags (real-lags-choice opts) :vars (kt/vars ks)}))
+                                                                 {:real-lags (real-lags-choice opts) :vars (kt/vars ks)})
+                                           (kind-theory-add opts))
                        %))
                    (with-bloc-theory (bloc-theory-choice opts)
                      (when (bloc-theory-choice opts)

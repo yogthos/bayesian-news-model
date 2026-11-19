@@ -15,20 +15,26 @@
   {:y :known-at} or nil; `inputs` (fn [place origin]) -> vector, a nil
   entry the mean, 0), with prior precision `prior` (augur.logit/fit's),
   applied to the origin's inputs. An origin with no known outcome, or none
-  of either kind, has no offset."
-  [{:keys [places origins inputs target prior]}]
+  of either kind, has no offset. :base (fn [place origin]) -> log odds or
+  nil, optional: the fit holds it fixed as each row's offset and adds it
+  back, so the theory learns the departures from it; a row with no base
+  neither trains it nor takes an offset (t112)."
+  [{:keys [places origins inputs target prior base]}]
   (let [xs (into {} (for [u places t origins]
                       [[u t] (double-array (cons 1.0 (map #(double (or % 0.0)) (inputs u t))))]))
         k (alength ^doubles (val (first xs)))
-        rows (vec (for [u places t origins :let [tg (target u t)] :when tg]
-                    {:x (xs [u t]) :y (boolean (:y tg)) :w 1.0 :known-at (:known-at tg)}))]
+        bo (if base (fn [u t] (some-> (base u t) double)) (constantly 0.0))
+        rows (vec (for [u places t origins :let [tg (target u t) o (bo u t)] :when (and tg o)]
+                    {:x (xs [u t]) :y (boolean (:y tg)) :w 1.0 :o o :known-at (:known-at tg)}))]
     (into {}
           (for [t origins
                 :let [train (filter #(<= (:known-at %) t) rows)]
                 :when (and (some :y train) (some (complement :y) train))
                 :let [beta (lgt/fit train k {:prior prior})]
-                u places]
-            [[u t] (m/logit (lgt/predict beta (xs [u t])))]))))
+                u places
+                :let [o (bo u t)]
+                :when o]
+            [[u t] (m/logit (lgt/predict beta (xs [u t]) o))]))))
 
 (defn any-of
   "The log odds that any of several places has an onset, from each one's

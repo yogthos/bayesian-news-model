@@ -45,6 +45,25 @@
         (is (= (sort-by #(x [% tl]) countries) (sort-by #((:offset sp2) :year % tl) countries)))))
     (is (map? (:kind-theory sp2)) "kept for diagnosis")))
 
+(deftest on-top-of-the-offset
+  ;; t112: the theory refit holding the year offset fixed, offset' = offset + a + b.z
+  (let [base (fn [scale u t] (case scale :year (if (= u "b3") nil (- (* 0.1 (mod t 7)) 2.5)) :quarter -3.0 nil))
+        spb (assoc sp :offset base)
+        sp2 (kt/with-theory spb row 2 {:add true})
+        os (range 11 600 12)
+        z0 (th/place-z (fn [u t] (x [u t])) countries os 20)
+        off (th/offsets {:places countries :origins os :prior 1.0
+                         :inputs (fn [u t] [(z0 u t) nil])
+                         :target (fn [u t] ((:target sp) :year u t))
+                         :base (fn [u t] (base :year u t))})
+        t (nth os 30)]
+    (is (< (Math/abs (- (get off ["a1" t]) ((:offset sp2) :year "a1" t))) 1e-12))
+    (is (nil? ((:offset sp2) :year "b3" t)) "no known offset, none added")
+    (is (< (Math/abs (- (th/any-of [(off ["b1" t]) (off ["b2" t])]) ((:offset sp2) :year "B" t))) 1e-12))
+    (is (= -3.0 ((:offset sp2) :quarter "a1" t))))
+  (testing "a spec with no year offset to add to refuses"
+    (is (thrown-with-msg? Exception #"no year offset" (kt/with-theory sp row 2 {:add true})))))
+
 (deftest declared-for-sovereign-defaults
   (is (= [:external-debt :reserves :inflation :growth :us-rate-change24]
          (mapv :name (kt/decls "sovereign_default")))))
@@ -79,5 +98,9 @@
     (is (nil? (choice {})))
     (is (= ["sovereign_default"] (choice {:kind-theory "sovereign_default"})))
     (is (= ["currency_crisis" "inflation_crisis"] (choice {:kind-theory "currency_crisis,inflation_crisis"})))
+    (is (= ["sovereign_default" "currency_crisis"] (choice {:kind-theory "sovereign_default,currency_crisis:add"})))
+    (is (= #{"currency_crisis"} ((resolve 'bnm.world-run/kind-theory-add) {:kind-theory "sovereign_default,currency_crisis:add"})))
+    (is (= #{} ((resolve 'bnm.world-run/kind-theory-add) {:kind-theory "sovereign_default"})))
+    (is (thrown? Exception (choice {:kind-theory "currency_crisis:mix"})) "only :add")
     (is (thrown? Exception (choice {:kind-theory "coup"})) "no theory declared")
     (is (thrown? Exception (choice {:kind-theory "banking_crisis"})) "banking has its own, --theory-offset")))

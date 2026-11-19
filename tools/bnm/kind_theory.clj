@@ -84,31 +84,38 @@
   -> `width` raw inputs (nil for missing), each standardized by
   bnm.theory/place-z (at least 20 earlier values), the logit refit by
   bnm.theory/offsets on the spec's year target; an aggregate takes the
-  chance any member has one. Other scales keep the spec's offset."
-  [{:keys [scales levels start end target offset] :as sp} row width]
+  chance any member has one. Other scales keep the spec's offset.
+  opts :add true (t112): the theory on top of the year offset, refit
+  holding the country's offset fixed (bnm.theory/offsets :base)."
+  ([sp row width] (with-theory sp row width {}))
+  ([{:keys [scales levels start end target offset] :as sp} row width {:keys [add]}]
   (let [countries (second (first levels))
         per (:per (first (filter #(= :year (:name %)) scales)))
         os (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))
         zs (vec (for [i (range width)] (th/place-z (fn [u t] (nth (row u t) i)) countries os 20)))
         off (th/offsets {:places countries :origins os :prior 1.0
                          :inputs (fn [u t] (mapv #(% u t) zs))
-                         :target (fn [u t] (target :year u t))})
+                         :target (fn [u t] (target :year u t))
+                         :base (when add (fn [u t] (when offset (offset :year u t))))})
+        _ (when (and add (empty? off))
+            (throw (ex-info "bnm.kind-theory: :add, but the spec has no year offset to add to" {})))
         members (members-fn sp)]
     (assoc sp
            :offset (fn [scale place t]
                      (if (= :year scale)
                        (th/any-of (keep #(get off [% t]) (members place)))
                        (when offset (offset scale place t))))
-           :kind-theory {:offsets off :inputs (fn [u t] (mapv #(% u t) zs))})))
+           :kind-theory {:offsets off :inputs (fn [u t] (mapv #(% u t) zs)) :add (boolean add)}))))
 
 (defn with-kind-theory
   "The named kinds' specs with their declared theory (`decls`) read from
-  the slow table `db`."
-  [specs kinds db]
+  the slow table `db`; those in `add` on top of their offset (t112)."
+  ([specs kinds db] (with-kind-theory specs kinds db #{}))
+  ([specs kinds db add]
   (reduce (fn [acc k]
             (let [ds (or (decls k) (throw (ex-info (str "bnm.kind-theory: no theory declared for " k) {:kind k})))]
               (check-loaded ds db)
               (if (contains? acc k)
-                (update acc k with-theory (transformed ds (:row (sg/assemble db ds))) (count ds))
+                (update acc k with-theory (transformed ds (:row (sg/assemble db ds))) (count ds) {:add (contains? add k)})
                 acc)))
-          specs kinds))
+          specs kinds)))
