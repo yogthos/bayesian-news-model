@@ -738,6 +738,13 @@
       (throw (ex-info "bnm.world-run: --splice-credit bank needs --dated-credit true" {})))
     :bank))
 
+(defn recession-hold-choice
+  "--recession-hold true (bnm-5lr): with --theory-offset, the theory reads
+  credit from before a recession year (bnm.lattice-banking/held-origin).
+  Off by default."
+  [opts]
+  (flag-choice opts :recession-hold))
+
 (defn credit-denominator-choice
   "--credit-denominator smooth (bnm-5lr): under --dated-credit, the BIS's
   credit over GDP with a fall in nominal GDP taken out
@@ -978,6 +985,7 @@
                                                                :theory-offset (theory-offset-choice opts)
                                                                :theory-world (theory-world-choice opts)
                                                                :credit-denominator (credit-denominator-choice opts)
+                                                               :recession-hold (recession-hold-choice opts)
                                                                :wide-credit (wide-credit-choice opts)
                                                                :fresh-inputs (fresh-inputs-choice opts)
                                                                :wdi-editions (wdi-editions-choice opts)

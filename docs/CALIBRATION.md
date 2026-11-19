@@ -3028,3 +3028,13 @@ Written 18 November 2026, before the run; in-sample (2020 prompted it). In t101 
 `--credit-denominator smooth` (bnm.lattice-banking/gdp-fall-adjusted): under --dated-credit, the BIS's credit and household credit over GDP, in a year when nominal GDP fell (from WDI's real growth and inflation, as published), times 1 + that fall, the ratio over the year before's GDP. Credit's own growth stays: France's 2020 row becomes about 223 rather than 240, still above 212. So this tests the denominator's part only; the guaranteed loans' part has no series on disk.
 
 Run: **t102-denominator-rho0**: t101's command with `--credit-denominator smooth`. Rule: against t80-base, the fold rule as amended and the alert table at 4:1; beside it the 2020-22 level, panel and outside apart, the Dec 2022 panel forecasts, and against t101.
+
+### t102 result (18 November 2026)
+
+t102-denominator-rho0 equals t101 within noise (against t101 pooled -0.00000 [-0.00005, +0.00005]); Dec 2022 France 0.290, Japan 0.307. The denominator is not the cause. **The cause is the theory offset itself**: t80-base and t88-rho0 (no theory) issue 0.03-0.10 to these countries at Dec 2022, and every run with it 0.15-0.31 (t97 on). The theory reads the 2020 credit surge, mostly real guaranteed lending, as a boom. Not adopted.
+
+## Credit in a recession is not a boom: t103 (bnm-5lr)
+
+Written 18 November 2026, before the run; prompted by 2020, so in-sample there, but the rule covers every recession year in the history the theory is refit on (2009 and the 1970-2019 country recessions). The booms that precede crises are credit growing faster than output in an expansion; credit that grows while output falls is distress or policy lending (2009; 2020's guaranteed loans). `--recession-hold true` (bnm.lattice-banking/held-origin): at an origin whose row year saw real GDP fall (WDI, as published), the theory reads the row of the origin before, at most two years back. The lattice's groups are unchanged.
+
+Run: **t103-recession-rho0**: t101's command with `--recession-hold true`. Rule: against t80-base, the fold rule as amended and the alert table at 4:1; beside it the 2020-22 level, panel and outside apart, the Dec 2022 panel forecasts, the 2006-07 level, and against t101.

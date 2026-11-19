@@ -327,6 +327,28 @@
                    sd (Math/sqrt (/ (reduce + (map #(Math/pow (- % m) 2) past)) (double (count past))))]
                (when (pos? sd) (/ (- x m) sd))))))))))
 
+(def recession-hold-max
+  "--recession-hold: origins back the theory looks for a row that is not a
+  recession year."
+  2)
+
+(defn recession-of
+  "(fn [iso year]) -> whether real GDP fell that year (`growth`, {iso {year
+  percent}}); unknown is not."
+  [growth]
+  (fn [u y] (boolean (some-> (get-in growth [u y]) neg?))))
+
+(defn held-origin
+  "--recession-hold (bnm-5lr): the origin whose row the theory reads at t:
+  t, or while `recession?` (fn [unit origin]) holds there, the origin a
+  year before, at most `recession-hold-max` back. Credit that grows while
+  output falls is distress or policy lending (2009, 2020's guaranteed
+  loans), not the expansion's boom."
+  [recession? u t]
+  (loop [k 0]
+    (let [t' (- t (* 12 k))]
+      (if (and (< k recession-hold-max) (recession? u t')) (recur (inc k)) t'))))
+
 (defn theory-row
   "(fn [place origin]) -> the theory's inputs: `own`'s columns of the
   place's standardized row (`z-of` (fn [place origin]), nil for none),
@@ -692,7 +714,7 @@
 
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset theory-world world-db panel]}]
+  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset theory-world world-db panel recession-growth]}]
   (let [[_ fin] (nm/financial db wc)
         ;; --banking-gauges (bnm-cpv): the world's leading gauges after the
         ;; year node's own columns
@@ -740,9 +762,12 @@
         year-target (fn [u t] (let [{:keys [offset horizon]} year-scale
                                      lo (+ t offset) hi (+ t offset horizon)]
                                  (when-some [y (onset-in? cat u t lo hi)] {:y y :known-at (+ hi known-lag)})))
+        ;; --recession-hold (bnm-5lr): an origin's row year a recession
+        recession? (when recession-growth
+                     (let [r (recession-of recession-growth)] (fn [u t] (r u (row-year t dated-credit)))))
         theory (when theory-offset
                  (th/offsets {:places countries :origins (origins year-scale) :prior 1.0
-                              :inputs (theory-row (fn [u t] (when-let [v (get-in table [:year [u t]])] ((std :year) t v)))
+                              :inputs (theory-row (fn [u t] (when-let [v (get-in table [:year [u (if recession? (held-origin recession? u t) t)]])] ((std :year) t v)))
                                                   countries theory-inputs (when theory-world theory-world-inputs)
                                                   (when world-db
                                                     (let [row (:row (sg/assemble world-db (for [[n e] theory-world-signals] {:name n :expr e})))
@@ -907,7 +932,7 @@
   their archived editions; :banking-coverage, the declared signals of
   `coverage-decls` at the year node."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit theory-offset theory-world credit-denominator]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit theory-offset theory-world credit-denominator recession-hold]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables
                            (cond-> {:real-lags real-lags} wdi-editions (assoc :wdi-editions (nm/read-wdi-editions))))
@@ -915,6 +940,10 @@
         ;; --long-baseline N: the level stretches against N years (at least 10)
         win (when long-baseline [long-baseline 10])
         ;; --credit-denominator smooth (bnm-5lr): real growth and inflation, as published
+        gdb (when (or (= :smooth credit-denominator) recession-hold)
+              (nm/load-series "data/slow/series.tsv" variables
+                              (cond-> {:real-lags real-lags :vars #{"economy/gdp_growth" "economy/inflation"}}
+                                wdi-editions (assoc :wdi-editions (nm/read-wdi-editions)))))
         gdp (when (= :smooth credit-denominator)
               (let [gdb (nm/load-series "data/slow/series.tsv" variables
                                         (cond-> {:real-lags real-lags :vars #{"economy/gdp_growth" "economy/inflation"}}
@@ -950,6 +979,9 @@
                                        (cond-> {:real-lags real-lags :vars (set (map (comp :var second) theory-world-signals))}
                                          wdi-editions (assoc :wdi-editions (nm/read-wdi-editions)))))
            :panel (set (map :iso jst-rows))
+           ;; --recession-hold (bnm-5lr): real growth, as published
+           :recession-growth (when recession-hold
+                               (into {} (for [u units :let [g (some-> (gdb [u "economy/gdp_growth"]) q4-annual)] :when g] [u g])))
            ;; --banking-coverage (bnm-7bh): its series alone, read as the rest are
            :coverage-db (when banking-coverage
                           (nm/load-series "data/slow/series.tsv" variables

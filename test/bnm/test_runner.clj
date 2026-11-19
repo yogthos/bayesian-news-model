@@ -77,6 +77,7 @@
             [bnm.theory-test]
             [bnm.theory-offset-test]
             [bnm.credit-denominator-test]
+            [bnm.recession-hold-test]
             [bnm.lattice-smoke-test]
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
@@ -224,6 +225,7 @@
     bnm.theory-test
     bnm.theory-offset-test
     bnm.credit-denominator-test
+    bnm.recession-hold-test
     bnm.lattice-smoke-test
     bnm.political-gauges-test
     bnm.reconcile-test
