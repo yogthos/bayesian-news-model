@@ -714,6 +714,13 @@
   [opts]
   (flag-choice opts :theory-offset))
 
+(defn theory-world-choice
+  "--theory-world true (bnm-5lr): with --theory-offset, the theory also
+  reads the world's bank funding (bnm.lattice-banking/theory-world-inputs).
+  Off by default."
+  [opts]
+  (flag-choice opts :theory-world))
+
 (defn splice-credit-choice
   "--splice-credit bank (bnm-ris): under --dated-credit, JST's bank loans
   spliced with the BIS's bank credit (JST's concept) in place of its credit
@@ -952,6 +959,7 @@
                                                                :long-baseline (long-baseline-choice opts)
                                                                :splice-credit (splice-credit-choice opts)
                                                                :theory-offset (theory-offset-choice opts)
+                                                               :theory-world (theory-world-choice opts)
                                                                :wide-credit (wide-credit-choice opts)
                                                                :fresh-inputs (fresh-inputs-choice opts)
                                                                :wdi-editions (wdi-editions-choice opts)

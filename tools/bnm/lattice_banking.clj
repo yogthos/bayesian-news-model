@@ -290,6 +290,29 @@
   node's own rows, CALIBRATION 'Against a reference that knows only that
   crises cluster')."
   [[:credit (first (:stretches year-groups))] [:boom-credit3 (first (:booms year-groups))]])
+
+(def theory-world-inputs
+  "--theory-world (bnm-5lr): the year row's columns the theory reads as
+  their mean over the countries at the origin, the world's: banks'
+  loans-to-deposits against their own ten years. It rose into 2007 and
+  fell through the 2010s, the calm a level from lagged outcomes cannot
+  read without chasing the last era (docs/studies/calm_liquidity.py;
+  Jorda, Richter, Schularick and Taylor 2021: funding, not capital,
+  precedes crises)."
+  [[:world-loans-to-deposits (first (:funding year-groups))]])
+
+(defn theory-row
+  "(fn [place origin]) -> the theory's inputs: `own`'s columns of the
+  place's standardized row (`z-of` (fn [place origin]), nil for none),
+  then each of `world`'s columns as its mean over `countries` that have it
+  at the origin (nil when none do)."
+  [z-of countries own world]
+  (let [world-at (memoize (fn [t] (vec (for [[_ i] world
+                                             :let [vs (keep #(some-> (z-of % t) (nth i nil)) countries)]]
+                                         (when (seq vs) (/ (reduce + vs) (double (count vs))))))))]
+    (fn [u t]
+      (when-let [z (z-of u t)]
+        (into (mapv #(nth z (second %)) own) (when (seq world) (world-at t)))))))
 (defn- by-country-year
   "{iso {year value}} from rows, keeping non-nil values of (f row)."
   [rows iso-of year-of f]
@@ -638,7 +661,7 @@
 
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset]}]
+  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset theory-world]}]
   (let [[_ fin] (nm/financial db wc)
         ;; --banking-gauges (bnm-cpv): the world's leading gauges after the
         ;; year node's own columns
@@ -688,8 +711,8 @@
                                  (when-some [y (onset-in? cat u t lo hi)] {:y y :known-at (+ hi known-lag)})))
         theory (when theory-offset
                  (th/offsets {:places countries :origins (origins year-scale) :prior 1.0
-                              :inputs (fn [u t] (when-let [v (get-in table [:year [u t]])]
-                                                  (let [z ((std :year) t v)] (mapv #(nth z (second %)) theory-inputs))))
+                              :inputs (theory-row (fn [u t] (when-let [v (get-in table [:year [u t]])] ((std :year) t v)))
+                                                  countries theory-inputs (when theory-world theory-world-inputs))
                               :target year-target}))
         known-at (fn [scale place t]
                    (if (and theory (= :year scale))
@@ -828,7 +851,7 @@
   their archived editions; :banking-coverage, the declared signals of
   `coverage-decls` at the year node."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit theory-offset]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit theory-offset theory-world]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables
                            (cond-> {:real-lags real-lags} wdi-editions (assoc :wdi-editions (nm/read-wdi-editions))))
@@ -856,6 +879,7 @@
            :known (read-known known-run) :quarterly (read-quarterly) :gauge-std gauge-std :dated-credit dated
            :banking-gauges banking-gauges
            :theory-offset theory-offset
+           :theory-world theory-world
            ;; --banking-coverage (bnm-7bh): its series alone, read as the rest are
            :coverage-db (when banking-coverage
                           (nm/load-series "data/slow/series.tsv" variables
