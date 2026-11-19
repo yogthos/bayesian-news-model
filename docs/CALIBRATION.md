@@ -3454,3 +3454,11 @@ Written 19 November 2026, before any run, after the diagnosis above. The theory 
 Seen before registering, inputs only: Dec 2006 exposures are near 0 everywhere (bank equity rose in 2006), so t108 cannot change the Dec 2006 ranking; Dec 2007 Ireland 0.57, the UK 0.34, Belgium 0.33, Switzerland 0.28, the Netherlands 0.24 (Luxembourg 2.7); earlier non-zero years 1990 and 2001. The theory refits at each origin, so at Dec 2007 its slope comes from the 1978-2005 rows alone.
 
 Run t108: t104-base's command with `--theory-contagion true`. Rule: against t104-base, the fold rule as amended at banking and pooled, and the alert table at 4:1; beside it within-year AUC by origin (docs/studies/banking_rank_years.py), the Dec 2007 theory slope on the exposure, and the 2020-22 level.
+
+### Results (19 November 2026)
+
+Suite green (1590 tests); t108 took 20 minutes. Banking against t104-base: 2003-06 +0.00018, 2007-09 -0.00022 [-0.00077, +0.00020], 2010-12 -0.00008, 2013-19 +0.00001, 2020-22 +0.00001; pooled -0.00001 [-0.00011, +0.00011]: **fail** (no pooled gain). Alerts unchanged (no banking onset row caught; 2006 and 2007 episodes missed). Within-year AUC 0.574 -> 0.590, from 2005-06 and 2013-18; Dec 2007 0.565 -> 0.558, Dec 2008 0.795 -> 0.705.
+
+The theory's slope on the exposure (docs/studies/contagion_slope.clj; within an origin the offsets are linear in the inputs, so the per-country slopes are recovered exactly, the intercept and world terms not): -0.23 at Dec 2001, -0.31 at Dec 2006, -0.28 at Dec 2007, -0.47 at Dec 2008, +0.06 at Dec 2015. At Dec 2007 the theory marks the exposed countries down. Its only exposed history was 1990 and 2001, when the exposed reporters (Luxembourg, Switzerland, Belgium, the UK, the Netherlands) had no crisis in the next two years; refit on what was known, the input points the wrong way into 2008 and turns only after the 2008 rows resolve. Not adopted; `--theory-contagion` stays, off by default.
+
+Reading: exposure to stress abroad is a plausible channel that the point-in-time record cannot teach before the one episode it matters for. A prior on its sign (from theory, as the bloc offset's k was) would carry it into 2008, but it would be set knowing 2008, and the 2015 slope shows how little the record supports any size afterwards.
