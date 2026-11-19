@@ -62,5 +62,32 @@ def main(path):
         print("dep_russia < %.2f: %d of %d listed, %d of %d unlisted" % (cut, tp, len(pos), fp, len(neg)))
 
 
+def tie_check(annual, tiefile):
+    """2021 western_tie (scripts/alignment-tie.py) against the list, alone and with low dep_russia breaking ties."""
+    dep, tie = {}, {}
+    with open(annual, encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            if r["year"] == "2021" and r["var"] == "dep_russia":
+                dep[r["iso3"]] = float(r["value"])
+    with open(tiefile, encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            if r["year"] == "2021" and r["var"] == "western_tie":
+                tie[r["iso3"]] = float(r["value"])
+    both = sorted(set(dep) & set(tie) - {"RUS"})
+    pos = [i for i in both if i in UNFRIENDLY]
+    neg = [i for i in both if i not in UNFRIENDLY]
+    print("tie check: %d countries, %d listed, listed but missing: %s" % (len(both), len(pos), sorted(UNFRIENDLY - set(both))))
+    print("AUC, western_tie:            %.3f" % auc([tie[i] for i in pos], [tie[i] for i in neg]))
+    print("AUC, tie then low dep:       %.3f" % auc([tie[i] - dep[i] for i in pos], [tie[i] - dep[i] for i in neg]))
+    for t in (1.0, 0.5, 0.0):
+        lst = sorted(i for i in pos if tie[i] == t)
+        un = sorted(i for i in neg if tie[i] == t)
+        print("tie %.1f: listed %3d %s | unlisted %3d %s" % (t, len(lst), " ".join(lst) if len(lst) < 15 else "",
+                                                         len(un), " ".join(un) if len(un) < 20 else ""))
+
+
 if __name__ == "__main__":
-    main(sys.argv[1])
+    if len(sys.argv) > 2:
+        tie_check(sys.argv[1], sys.argv[2])
+    else:
+        main(sys.argv[1])

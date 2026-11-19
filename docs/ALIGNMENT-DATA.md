@@ -220,3 +220,11 @@ countries and 97 of 128 unlisted ones. On its own, 2021 dep_russia measures
 exposure to a rupture with Russia, not which side a country took. It may
 still help a crisis model: the listed countries with high dep_russia
 (the Baltics, Finland) are where the 2022-23 trade collapse was largest.
+
+## Western tie (bnm-58f, 19 November 2026, written before the check)
+
+scripts/alignment-tie.py builds `data/derived/alignment-tie.csv` (nato, eu, us_treaty, mnna, western_tie; known in their own year) from public treaty and membership dates alone: 1 for NATO, EU, or a US treaty ally outside NATO (ANZUS, Japan, South Korea, the Philippines, Thailand under the Manila Pact); 0.5 for a US major non-NATO ally; 0 otherwise. The Rio Treaty alone counts for nothing, which removes the OAS false positives of ATOP's pact. SIPRI arms shares were planned but are left out: the old CSV export redirects, there is no scripted download, and SIPRI's terms limit reuse.
+
+The check, fixed now: 2021's western_tie against Russia's March 2022 unfriendly list (scripts/alignment-check-2021.py), AUC alone and with low dep_russia as the tie-break. Expected misses, stated in advance: Singapore and Taiwan listed with tie 0 and 0.5; Thailand, the Philippines, Turkey, Hungary-style hedgers tied but (except Hungary, an EU member, so listed) unlisted. The check describes the measure; it does not tune it, and no date or weight above changes because of it.
+
+Result (19 November 2026): 185 countries with 2021 values, 43 listed (Taiwan missing from the trade data). AUC 0.938 for western_tie (ATOP pact: 0.74); low dep_russia as a tie-break lowers it to 0.923, so dependence stays an exposure, not a side. Misses as expected: tied but unlisted, the Philippines, Thailand and Turkey; listed with no tie, Switzerland, Singapore, San Marino and Ukraine (neutral or not yet allied states that sanctioned anyway). Major non-NATO allies split 1 listed (New Zealand) to 11 unlisted, so 0.5 is too high for them as a side marker; left as registered.
