@@ -2955,3 +2955,17 @@ Runs, banking only (other kinds from t80-base), one at a time:
 - **t97-theory-long-rho0**: the same with `--long-baseline 60` (the theory reads the long stretch too).
 
 Rule, fixed now: each against t80-base, banking year nodes: the fold rule and the alert table at 4:1. Reported beside it: pooled and within-year AUC (JST / outside), the clustering reference comparison, calibration by decile, and the theory offset alone scored on the same rows.
+
+### t97 results (18 November 2026)
+
+t97-off's banking forecasts equal t80-base's byte for byte. Banking year nodes against t80-base:
+
+| run | pooled Brier | fold lost | pooled AUC | within-year AUC | Dec 2006 p (rate 0.169) | alert cost (t80-base 0.132) |
+|---|---|---|---|---|---|---|
+| t97-theory | -0.00020 [-0.00085, +0.00030] | 2010-12 (-0.00183) | 0.385 | **0.704** | 0.026 | 0.131 |
+| t97-theory-rho0 | +0.00080 [-0.00062, +0.00262] | 2020-22 (-0.00181) | **0.648** | 0.654 | **0.064** | **0.128** (+0.0035 [+0.0000, +0.0110]) |
+| t97-theory-long-rho0 | +0.00077 [-0.00099, +0.00305] | 2020-22 (-0.00185) | **0.664** | 0.627 | **0.074** | 0.131 |
+
+- t97-theory-rho0 gains 2007-09 (+0.00594 [+0.00107, +0.01422], log +0.05084 [+0.00462, +0.11790]); its alerts catch 2.4% of onset rows (t80-base none) at a false-alarm rate of 0.3%. The best banking forecast so far by every measure but one: the level rises before the 2008 wave (0.064 and 0.058 at Dec 2006-07, against 0.026 and 0.023).
+- **The one loss is 2020-22, the same in every variant without the persistence** (t88-rho0 -0.00164, t93-entry-cov-rho0 -0.00164, t94 -0.00163, t96-all -0.00143, here -0.00181): a fold whose rate is about zero, where the persistent frailty's carried calm happened to issue lower.
+- **Verdict:** none passes the fold rule (2020-22). Not adopted.
