@@ -2969,3 +2969,9 @@ t97-off's banking forecasts equal t80-base's byte for byte. Banking year nodes a
 - t97-theory-rho0 gains 2007-09 (+0.00594 [+0.00107, +0.01422], log +0.05084 [+0.00462, +0.11790]); its alerts catch 2.4% of onset rows (t80-base none) at a false-alarm rate of 0.3%. The best banking forecast so far by every measure but one: the level rises before the 2008 wave (0.064 and 0.058 at Dec 2006-07, against 0.026 and 0.023).
 - **The one loss is 2020-22, the same in every variant without the persistence** (t88-rho0 -0.00164, t93-entry-cov-rho0 -0.00164, t94 -0.00163, t96-all -0.00143, here -0.00181): a fold whose rate is about zero, where the persistent frailty's carried calm happened to issue lower.
 - **Verdict:** none passes the fold rule (2020-22). Not adopted.
+
+## Theory offset with a short persistence: t98 (bnm-ris)
+
+Written 18 November 2026, before the run, and chosen after seeing t97: in-sample for 2020-22 and every fold, flagged as such. t97-theory-rho0 loses only 2020-22, a fold of almost no onsets (Lebanon 2019 is the only banking onset since 2019; Vietnam 2022 and Sri Lanka 2023 are borderline in Laeven-Valencia and left out, as always), where the persistent frailty's carried calm issued lower. Between ρ 0.8 (anti-phase, t80-base) and ρ 0 (no memory): the frailty's grid at banking's nodes restricted to ρ in {0, 0.5}, a year or two of memory.
+
+Run, banking only: **t98-theory-rho05**: t97-theory-rho0's command with `:frailty {:rhos [0.0 0.5]}`. Rule: against t80-base, the fold rule and the alert table at 4:1; beside it pooled and within-year AUC, the 2006-07 level, the frailty's chosen ρ by origin.
