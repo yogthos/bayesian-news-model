@@ -3419,3 +3419,18 @@ Kind and size, fixed now: growth collapses only, the year node (`:offset-add`, o
 The development folds see only the 2014 rupture (outcomes 2015-16); 2022's lands in 2023 on, which is locked. So t107 is a harm test, not a test of the idea: pass = the fold rule as amended does not fail at growth collapses against t104-base, and the alert table's growth row does not lose. The real test is the locked window.
 
 Run t107: t104-base's command with `--bloc-theory growth_collapse=8`.
+
+### Results (19 November 2026)
+
+Suite green (1584 tests); t107 took 15 minutes. Only growth collapses change, at 2013-19 and 2020-22.
+
+| fold | growth collapses, Brier vs t104-base | onsets |
+|---|---|---|
+| 2003-12 | 0 (no rupture) | 106 |
+| 2013-19 | −0.00274 [−0.00476, −0.00117] LOSS | 223 |
+| 2020-22 | −0.00242 [−0.00658, +0.00035] | 10 |
+| pooled | −0.00124 [−0.00228, −0.00039] LOSS | 339 |
+
+Verdict at growth collapses and pooled over the 13 kinds (−0.00010 [−0.00016, −0.00003]): fail. Alerts at 4:1: growth collapses' cost 0.399 against the base's 0.382, dcost −0.0164 [−0.0420, −0.0017] LOSS (t107 hits 23.0% of onset rows, false alarms 3.9%); pooled −0.0013 [−0.0030, −0.0001] LOSS. Episodes unchanged (2018 caught, 2007, 2008, 2019 missed by both).
+
+The harm test fails: the exposed countries did not have growth collapses in 2015-16, so k = 8 bought false alarms. The 2020-22 fold's 10 onsets are the Dec 2022 origin's rows, outcomes in 2023: the 2022 rupture is partly visible in development after all, and it costs there too (not significant). Not adopted. The code stays (`--bloc-theory`, off by default). Reading: k was set from a trade-loss size the outcomes do not show; whether a smaller k would be neutral is not tested (choosing it now would be fitting to 2015-16). The energy-input channel of 2022 is a different kind (inflation, input costs) and a different size; it cannot be tested before the locked window.
