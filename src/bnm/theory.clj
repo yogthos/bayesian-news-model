@@ -9,6 +9,24 @@
   (:require [augur.logit :as lgt]
             [augur.math :as m]))
 
+(defn- design [{:keys [places origins inputs target base]}]
+  (let [xs (into {} (for [u places t origins]
+                      [[u t] (double-array (cons 1.0 (map #(double (or % 0.0)) (inputs u t))))]))
+        bo (if base (fn [u t] (some-> (base u t) double)) (constantly 0.0))]
+    {:xs xs :bo bo :k (alength ^doubles (val (first xs)))
+     :rows (vec (for [u places t origins :let [tg (target u t) o (bo u t)] :when (and tg o)]
+                  {:x (xs [u t]) :y (boolean (:y tg)) :w 1.0 :o o :known-at (:known-at tg)}))}))
+
+(defn fits
+  "{origin coefficients}: `offsets`' logit at each origin (x[0] the
+  intercept's), for the origins it has one."
+  [{:keys [origins prior] :as args}]
+  (let [{:keys [rows k]} (design args)]
+    (into {} (for [t origins
+                   :let [train (filter #(<= (:known-at %) t) rows)]
+                   :when (and (some :y train) (some (complement :y) train))]
+               [t (lgt/fit train k {:prior prior})]))))
+
 (defn offsets
   "{[place origin] log odds}: at each origin, a logit fit on every earlier
   row whose outcome is known by it (`target` (fn [place origin]) ->
@@ -18,23 +36,11 @@
   of either kind, has no offset. :base (fn [place origin]) -> log odds or
   nil, optional: the fit holds it fixed as each row's offset and adds it
   back, so the theory learns the departures from it; a row with no base
-  neither trains it nor takes an offset (t112)."
-  [{:keys [places origins inputs target prior base]}]
-  (let [xs (into {} (for [u places t origins]
-                      [[u t] (double-array (cons 1.0 (map #(double (or % 0.0)) (inputs u t))))]))
-        k (alength ^doubles (val (first xs)))
-        bo (if base (fn [u t] (some-> (base u t) double)) (constantly 0.0))
-        rows (vec (for [u places t origins :let [tg (target u t) o (bo u t)] :when (and tg o)]
-                    {:x (xs [u t]) :y (boolean (:y tg)) :w 1.0 :o o :known-at (:known-at tg)}))]
-    (into {}
-          (for [t origins
-                :let [train (filter #(<= (:known-at %) t) rows)]
-                :when (and (some :y train) (some (complement :y) train))
-                :let [beta (lgt/fit train k {:prior prior})]
-                u places
-                :let [o (bo u t)]
-                :when o]
-            [[u t] (m/logit (lgt/predict beta (xs [u t]) o))]))))
+  neither trains it nor takes an offset."
+  [{:keys [places] :as args}]
+  (let [{:keys [xs bo]} (design args)]
+    (into {} (for [[t beta] (fits args) u places :let [o (bo u t)] :when o]
+               [[u t] (m/logit (lgt/predict beta (xs [u t]) o))]))))
 
 (defn any-of
   "The log odds that any of several places has an onset, from each one's

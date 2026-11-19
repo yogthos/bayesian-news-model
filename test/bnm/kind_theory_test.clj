@@ -2,7 +2,8 @@
   "bnm.kind-theory (bnm-1dw): a kind's year node reads a theory forecast
   from stocks and flows at the origin as its offset, refit on what is known
   (bnm.theory), as banking's does."
-  (:require [augur.math :as m]
+  (:require [augur.logit]
+            [augur.math :as m]
             [bnm.kind-theory :as kt]
             [bnm.theory :as th]
             [clojure.test :refer [deftest is testing]]))
@@ -45,24 +46,38 @@
         (is (= (sort-by #(x [% tl]) countries) (sort-by #((:offset sp2) :year % tl) countries)))))
     (is (map? (:kind-theory sp2)) "kept for diagnosis")))
 
-(deftest on-top-of-the-offset
-  ;; t112: the theory refit holding the year offset fixed, offset' = offset + a + b.z
-  (let [base (fn [scale u t] (case scale :year (if (= u "b3") nil (- (* 0.1 (mod t 7)) 2.5)) :quarter -3.0 nil))
-        spb (assoc sp :offset base)
-        sp2 (kt/with-theory spb row 2 {:add true})
+(deftest on-top-of-the-level
+  ;; t112 as amended: the theory refit as before, only its slopes b.z added
+  ;; to the year node's log odds (:offset-add); the level stays the lattice's
+  (let [sp2 (kt/with-theory sp row 2 {:add true})
         os (range 11 600 12)
         z0 (th/place-z (fn [u t] (x [u t])) countries os 20)
-        off (th/offsets {:places countries :origins os :prior 1.0
-                         :inputs (fn [u t] [(z0 u t) nil])
-                         :target (fn [u t] ((:target sp) :year u t))
-                         :base (fn [u t] (base :year u t))})
-        t (nth os 30)]
-    (is (< (Math/abs (- (get off ["a1" t]) ((:offset sp2) :year "a1" t))) 1e-12))
-    (is (nil? ((:offset sp2) :year "b3" t)) "no known offset, none added")
-    (is (< (Math/abs (- (th/any-of [(off ["b1" t]) (off ["b2" t])]) ((:offset sp2) :year "B" t))) 1e-12))
-    (is (= -3.0 ((:offset sp2) :quarter "a1" t))))
-  (testing "a spec with no year offset to add to refuses"
-    (is (thrown-with-msg? Exception #"no year offset" (kt/with-theory sp row 2 {:add true})))))
+        fits (th/fits {:places countries :origins os :prior 1.0
+                       :inputs (fn [u t] [(z0 u t) nil])
+                       :target (fn [u t] ((:target sp) :year u t))})
+        t (nth os 30)
+        b (get fits t)]
+    (is (some? b))
+    (testing "a country: the slopes times its inputs, no intercept"
+      (is (< (Math/abs (- (* (aget ^doubles b 1) (z0 "a1" t)) ((:offset-add sp2) :year "a1" t))) 1e-12)))
+    (testing "the offset is the spec's own, untouched"
+      (is (nil? ((:offset sp2) :year "a1" t)))
+      (is (= -3.0 ((:offset sp2) :quarter "a1" t))))
+    (testing "aggregates and other scales take nothing added"
+      (is (nil? ((:offset-add sp2) :year "B" t)))
+      (is (nil? ((:offset-add sp2) :quarter "a1" t))))
+    (testing "the planted sign: higher input, more added"
+      (let [tl (last os)]
+        (is (= (sort-by #(x [% tl]) countries) (sort-by #((:offset-add sp2) :year % tl) countries))))))
+  (testing "a spec that already adds to its offset refuses, rather than drop one"
+    (is (thrown? Exception (kt/with-theory (assoc sp :offset-add (fn [_ _ _] 0.1)) row 2 {:add true})))))
+
+(deftest fits-are-what-offsets-apply
+  (let [os (range 11 600 12)
+        args {:places countries :origins os :prior 1.0 :inputs (fn [u t] [(x [u t])])
+              :target (fn [u t] ((:target sp) :year u t))}
+        off (th/offsets args) fits (th/fits args) t (nth os 30)]
+    (is (< (Math/abs (- (get off ["a2" t]) (m/logit (augur.logit/predict (get fits t) (double-array [1.0 (x ["a2" t])]))))) 1e-12))))
 
 (deftest declared-for-sovereign-defaults
   (is (= [:external-debt :reserves :inflation :growth :us-rate-change24]

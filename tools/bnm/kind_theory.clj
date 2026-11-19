@@ -85,27 +85,37 @@
   bnm.theory/place-z (at least 20 earlier values), the logit refit by
   bnm.theory/offsets on the spec's year target; an aggregate takes the
   chance any member has one. Other scales keep the spec's offset.
-  opts :add true (t112): the theory on top of the year offset, refit
-  holding the country's offset fixed (bnm.theory/offsets :base)."
+  opts :add true (t112): the offset kept and only the theory's slopes,
+  b.z past the intercept, added to a country's year log odds through
+  :offset-add; the level stays the lattice's."
   ([sp row width] (with-theory sp row width {}))
   ([{:keys [scales levels start end target offset] :as sp} row width {:keys [add]}]
   (let [countries (second (first levels))
         per (:per (first (filter #(= :year (:name %)) scales)))
         os (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))
         zs (vec (for [i (range width)] (th/place-z (fn [u t] (nth (row u t) i)) countries os 20)))
-        off (th/offsets {:places countries :origins os :prior 1.0
-                         :inputs (fn [u t] (mapv #(% u t) zs))
-                         :target (fn [u t] (target :year u t))
-                         :base (when add (fn [u t] (when offset (offset :year u t))))})
-        _ (when (and add (empty? off))
-            (throw (ex-info "bnm.kind-theory: :add, but the spec has no year offset to add to" {})))
-        members (members-fn sp)]
-    (assoc sp
-           :offset (fn [scale place t]
-                     (if (= :year scale)
-                       (th/any-of (keep #(get off [% t]) (members place)))
-                       (when offset (offset scale place t))))
-           :kind-theory {:offsets off :inputs (fn [u t] (mapv #(% u t) zs)) :add (boolean add)}))))
+        inputs (fn [u t] (mapv #(% u t) zs))
+        args {:places countries :origins os :prior 1.0 :inputs inputs
+              :target (fn [u t] (target :year u t))}]
+    (if add
+      (let [_ (when (:offset-add sp)
+                (throw (ex-info "bnm.kind-theory: :add, but the spec already has an :offset-add" {})))
+            fits (th/fits args)
+            cs (set countries)]
+        (assoc sp
+               :offset-add (fn [scale place t]
+                             (when (and (= :year scale) (cs place))
+                               (when-let [^doubles b (get fits t)]
+                                 (reduce + 0.0 (map-indexed (fn [i z] (* (aget b (inc i)) (double (or z 0.0)))) (inputs place t))))))
+               :kind-theory {:fits fits :inputs inputs :add true}))
+      (let [off (th/offsets args)
+            members (members-fn sp)]
+        (assoc sp
+               :offset (fn [scale place t]
+                         (if (= :year scale)
+                           (th/any-of (keep #(get off [% t]) (members place)))
+                           (when offset (offset scale place t))))
+               :kind-theory {:offsets off :inputs inputs}))))))
 
 (defn with-kind-theory
   "The named kinds' specs with their declared theory (`decls`) read from
