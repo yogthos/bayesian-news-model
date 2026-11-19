@@ -2068,6 +2068,18 @@
                                                    {:o (double o)}
                                                    {:o clim-t :clim clim-t}))
                                    (if (and fo? clim-t) (constantly {:o clim-t :clim clim-t}) (constantly {:o 0.0})))
+                       ;; :offset-add (bnm-58f): a theory's log odds on top of the
+                       ;; offset, known or climatology; :clim stays the climatology
+                       ;; part, so :clim-learn re-anchors under the addition
+                       add (:offset-add spec)
+                       _ (when (and add (not (fn? add)))
+                           (throw (ex-info "bnm.lattice: :offset-add takes (fn [scale place origin]) -> log odds or nil" {:offset-add add})))
+                       _ (when (and add (get-in spec [:downscale scale]))
+                           (throw (ex-info "bnm.lattice: :offset-add does not go with :downscale" {:scale scale})))
+                       offset-of (if (and add (not fo?))
+                                   (fn [place t] (let [r (offset-of place t)]
+                                                   (if-let [a (add scale place t)] (update r :o + (double a)) r)))
+                                   offset-of)
                        ;; :downscale: the offset from a coarser node's latest forecast for the
                        ;; place, issued before t, scaled to this window under a constant
                        ;; hazard (docs/DOWNSCALE.md); pooled in log odds with what is known

@@ -112,7 +112,8 @@
   year end from 2003, for each edge and country, the simulated chances of
   each onset and of both within three years, from what the world had
   learned by then)."
-  (:require [bnm.cli :as cli]
+  (:require [bnm.blocs :as blocs]
+            [bnm.cli :as cli]
             [bnm.economic-events :as ee]
             [bnm.ews :as ews]
             [bnm.states :as states]
@@ -761,6 +762,31 @@
     "debt" :debt
     (throw (ex-info (str "--recession-hold: true, rows or debt, not " v) {:value v}))))
 
+(defn bloc-theory-choice
+  "--bloc-theory kind=k,... (bnm-58f): each named kind's year node adds k x
+  the bloc exposure (bnm.blocs) to its offset; nil without the flag."
+  [{v :bloc-theory}]
+  (when v
+    (into {} (for [pair (str/split v #",")
+                   :let [[kd k] (str/split pair #"=")
+                         k (some-> k parse-double)]]
+               (do (when-not k
+                     (throw (ex-info (str "--bloc-theory takes kind=k pairs, not " pair) {:value v})))
+                   (when-not (contains? kinds/tiers kd)
+                     (throw (ex-info (str "--bloc-theory: no kind " kd) {:value v})))
+                   [kd k])))))
+
+(defn with-bloc-theory
+  "The named kinds' specs with :offset-add at the year scale (k is a
+  year's: docs/ALIGNMENT-DATA.md, \"Bloc exposure offset\")."
+  [specs choice data]
+  (reduce-kv (fn [acc kd k]
+               (if (contains? acc kd)
+                 (let [f (blocs/offset-add data k)]
+                   (assoc-in acc [kd :offset-add] (fn [scale place t] (when (= :year scale) (f scale place t)))))
+                 acc))
+             specs (or choice {})))
+
 (defn credit-denominator-choice
   "--credit-denominator smooth (bnm-5lr): under --dated-credit, the BIS's
   credit over GDP with a fall in nominal GDP taken out
@@ -1012,6 +1038,9 @@
                                 :real-lags (real-lags-choice opts)}
                                end)
                    finer-where-fresh
+                   (with-bloc-theory (bloc-theory-choice opts)
+                     (when (bloc-theory-choice opts)
+                       (blocs/read-data "data/derived/alignment-annual.csv" "data/derived/alignment-tie.csv")))
                    (with-frailty-gauges (frailty-gauges-choice opts))
                    (with-regime (regime-choice opts)
                      (when (regime-choice opts)
