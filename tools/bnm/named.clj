@@ -719,7 +719,10 @@
 
 (defn load-un-agreement
   "{year {[a b] agreement}} (pairs sorted, ISO3) from Voeten's UN General
-  Assembly agreement scores (Harvard Dataverse doi:10.7910/DVN/LEJUQZ, CC0)."
+  Assembly agreement scores (Harvard Dataverse doi:10.7910/DVN/LEJUQZ, CC0):
+  the share of identical votes only. The file's ideal points are
+  re-estimated over all years in every release, not point in time, and are
+  not read (bnm-e69)."
   [path codes-path]
   (let [iso (load-cow-codes codes-path)]
     (with-open [r (io/reader path)]
@@ -731,15 +734,29 @@
                     acc)))
               {} (rest (line-seq r))))))
 
+(def un-release-quarter
+  "The quarter of the following year from which a General Assembly
+  session's agreement scores are known: Voeten's annual release comes
+  months after the September-December session (bnm-e69; the third quarter
+  a conservative reading of its usual mid-year release)."
+  2)
+
+(def un-max-stale
+  "Years past the newest released session the scores are carried before a
+  country has no UN partners (bnm-e69)."
+  2)
+
 (defn un-weights
   "A function of the quarter giving {country {partner weight}}: each
-  country's `k` partners that voted most like it in the UN General Assembly
-  the year before, weighted by agreement; past the data's last year, its
-  last year's."
+  country's `k` partners that voted most like it in the newest General
+  Assembly session released by then (`un-release-quarter`), weighted by
+  agreement; none before the first release or more than `un-max-stale`
+  years past the newest."
   [agreement k]
   (memoize
    (fn [q]
-     (let [year (min (dec (quot q 4)) (apply max (keys agreement)))
+     (let [wanted (- (quot q 4) (if (>= (mod q 4) un-release-quarter) 1 2))
+           year (some #(when (contains? agreement %) %) (range wanted (- wanted un-max-stale 1) -1))
            by (reduce-kv (fn [acc [a b] v] (-> acc (assoc-in [a b] v) (assoc-in [b a] v))) {} (get agreement year {}))]
        (into {} (for [[c ps] by
                       :let [top (take k (sort-by (comp - val) ps))

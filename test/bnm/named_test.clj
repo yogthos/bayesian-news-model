@@ -219,3 +219,18 @@
     (is (= 2003.0 (at fixed "economy/inflation" (+ 3 (* 12 2005)))))
     (is (= 2002.0 (at fixed "other/annual" dec03)) "not WDI: unchanged")
     (is (= (nm/read-wdi-editions "test/bnm/wdi-editions-sample.tsv") {2002 (+ 3 (* 12 2004)) 2003 (+ 3 (* 12 2005))}))))
+
+;; bnm-e69: UN agreement used only once published, and not past a staleness limit
+(deftest un-weights-are-point-in-time
+  (let [ag {2000 {["AAA" "BBB"] 0.9 ["AAA" "CCC"] 0.1}
+            2001 {["AAA" "BBB"] 0.2 ["AAA" "CCC"] 0.8}}
+        w (nm/un-weights ag 1)
+        q (fn [y qtr] (+ (* 4 y) qtr))]
+    (testing "a session's scores are known from the third quarter of the next year"
+      (is (= {} (w (q 2001 0))) "2000's not yet released, none earlier")
+      (is (= {"BBB" 1.0} (get (w (q 2001 2)) "AAA")) "2000's")
+      (is (= {"BBB" 1.0} (get (w (q 2002 1)) "AAA")) "still 2000's: 2001's comes in Q3")
+      (is (= {"CCC" 1.0} (get (w (q 2002 2)) "AAA")) "2001's"))
+    (testing "past the data, carried at most un-max-stale years"
+      (is (= {"CCC" 1.0} (get (w (q (+ 2002 nm/un-max-stale) 3)) "AAA")))
+      (is (= {} (w (q (+ 2003 nm/un-max-stale) 2)))))))
