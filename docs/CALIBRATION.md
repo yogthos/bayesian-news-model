@@ -3489,3 +3489,13 @@ Written 19 November 2026, before any run. Currency crises' and inflation crises'
 CPI inflation is read as log(1 + inflation/100), floored at -99%, in both, so the hyperinflations do not set the standardizer's spread; sovereign defaults keep t109's raw read, unchanged from its registration. Annual reads stale after 30 months, the monthly REER and US rate after 3, the quarterly government debt after 12.
 
 Run t110: t104-base's command with `--kind-theory sovereign_default,currency_crisis,inflation_crisis` (the kinds are built separately, so each kind's result is what it would be alone). Rule, for each of the three kinds separately: against t104-base, the fold rule as amended at that kind, and the alert table at 4:1; pooled over the 13 kinds beside it; and the yearly level's r against the rate and pooled and within-year AUC (kinds_level.py). A kind is a candidate for adoption only on its own verdict. No input or setting changes after the result.
+
+### Results (19 November 2026)
+
+Suite green (1596 tests); t110 took 20 minutes. Against t104-base, Brier by fold:
+
+- Sovereign defaults (t109 as registered, its five inputs read): 2003-06 (13 onsets) -0.00072 [-0.00160, +0.00002]; 2007-09 +0.00121 [+0.00056, +0.00199]; 2010-12 +0.00134 [+0.00071, +0.00212]; 2013-19 +0.00005; 2020-22 -0.00049; pooled +0.00022 [-0.00026, +0.00077]: **pass** (no fold lost, its interval touching 0 in 2003-06; pooled gain). Alerts dcost -0.0006 [-0.0069, +0.0065]; the 2018, 2019, 2021 episodes still missed. Level r -0.64 -> -0.43, pooled AUC 0.517 -> 0.589, within-year 0.653 -> 0.640.
+- Currency crises: 2003-06 +0.00129; 2007-09 +0.00006; 2010-12 +0.00029; 2013-19 +0.00017; 2020-22 -0.00267 [-0.01006, +0.00278]; pooled -0.00002 [-0.00134, +0.00101]: **fail** (no pooled gain). Alerts dcost -0.0016. Level r -0.47 -> -0.36, pooled AUC 0.693 -> 0.653, within-year 0.751 -> 0.737.
+- Inflation crises: 2003-06 +0.00072; 2007-09 +0.00039; 2010-12 -0.00016; 2013-19 +0.00007; 2020-22 -0.00017; pooled +0.00017 [-0.00028, +0.00078]: **pass** (no fold lost; pooled gain). Alerts dcost +0.0006. Level r -0.57 -> -0.40, pooled AUC 0.704 -> 0.732, within-year 0.819 -> 0.787.
+
+Pooled over the 13 kinds +0.00003 [-0.00008, +0.00014]: pass. Sovereign and inflation crises pass the rule; neither pooled gain is significant, and both lose some within-year ranking while the level moves toward the rate. Adoption is the user's decision; currency crises' theory is not a candidate.
