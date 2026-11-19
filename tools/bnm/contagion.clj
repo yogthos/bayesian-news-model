@@ -8,7 +8,8 @@
   origin's calendar year (Baron, Verner and Xiong's bank returns, market
   prices known at the year's end; a rise counts 0), over its GDP in US
   dollars (WDI, the latest released by t)."
-  (:require [clojure.java.io :as io]
+  (:require [bnm.theory :as th]
+            [clojure.java.io :as io]
             [clojure.string :as str]))
 
 (defn- month-of [date] (let [[y m] (str/split date #"-")] (+ (* 12 (parse-long y)) (dec (parse-long m)))))
@@ -50,22 +51,7 @@
       (/ (reduce + 0.0 (for [[cp v] cs :let [r (get-in returns [cp y])] :when (and r (neg? r))] (* v 1e6 (- r))))
          g))))
 
-(defn place-z
-  "(fn [place origin]) -> `raw`'s value standardized by the mean and sd of
-  every place's values at the earlier `origins` (at least `min-n`),
-  capped at 5; nil where raw is nil or the past too thin."
-  [raw places origins min-n]
-  (let [vals-at (memoize (fn [t] (vec (keep #(raw % t) places))))
-        os (vec (sort origins))]
-    (memoize
-     (fn [u t]
-       (when-let [x (raw u t)]
-         (let [past (mapcat vals-at (take-while #(< % t) os))
-               n (count past)]
-           (when (>= n min-n)
-             (let [m (/ (reduce + past) (double n))
-                   sd (Math/sqrt (/ (reduce + (map #(Math/pow (- % m) 2) past)) (double n)))]
-               (when (pos? sd) (Math/max -5.0 (Math/min 5.0 (/ (- x m) sd))))))))))))
+(def place-z "bnm.theory/place-z, kept for the callers here." th/place-z)
 
 (defn log-exposure
   "log(1 + exposure): the financial centres' claims run to several times

@@ -113,6 +113,7 @@
   each onset and of both within three years, from what the world had
   learned by then)."
   (:require [bnm.blocs :as blocs]
+            [bnm.kind-theory :as kt]
             [bnm.cli :as cli]
             [bnm.economic-events :as ee]
             [bnm.ews :as ews]
@@ -787,6 +788,20 @@
                      (throw (ex-info (str "--bloc-theory: no kind " kd) {:value v})))
                    [kd k])))))
 
+(defn kind-theory-choice
+  "--kind-theory kind,... (bnm-1dw): each kind's year node reads its
+  declared theory (bnm.kind-theory) as its offset; nil without the flag.
+  Banking has its own (--theory-offset)."
+  [{v :kind-theory}]
+  (when v
+    (let [ks (str/split v #",")]
+      (doseq [k ks]
+        (when (= k lb/kind)
+          (throw (ex-info "bnm.world-run: --kind-theory: banking crises take --theory-offset" {})))
+        (when-not (kt/decls k)
+          (throw (ex-info (str "bnm.world-run: --kind-theory: no theory declared for " k) {:kind k}))))
+      ks)))
+
 (defn with-bloc-theory
   "The named kinds' specs with :offset-add at the year scale (k is a
   year's: docs/ALIGNMENT-DATA.md, \"Bloc exposure offset\")."
@@ -1050,6 +1065,10 @@
                                 :real-lags (real-lags-choice opts)}
                                end)
                    finer-where-fresh
+                   (#(if-let [ks (kind-theory-choice opts)]
+                       (kt/with-kind-theory % ks (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
+                                                                 {:real-lags (real-lags-choice opts)}))
+                       %))
                    (with-bloc-theory (bloc-theory-choice opts)
                      (when (bloc-theory-choice opts)
                        (blocs/read-data "data/derived/alignment-annual.csv" "data/derived/alignment-tie.csv")))

@@ -38,3 +38,20 @@
   (when (seq logits)
     (let [p (- 1.0 (reduce * (map #(- 1.0 (m/expit %)) logits)))]
       (m/logit (Math/max 1e-6 (Math/min (- 1.0 1e-6) p))))))
+
+(defn place-z
+  "(fn [place origin]) -> `raw`'s value standardized by the mean and sd of
+  every place's values at the earlier `origins` (at least `min-n`),
+  capped at 5; nil where raw is nil or the past too thin."
+  [raw places origins min-n]
+  (let [vals-at (memoize (fn [t] (vec (keep #(raw % t) places))))
+        os (vec (sort origins))]
+    (memoize
+     (fn [u t]
+       (when-let [x (raw u t)]
+         (let [past (mapcat vals-at (take-while #(< % t) os))
+               n (count past)]
+           (when (>= n min-n)
+             (let [m (/ (reduce + past) (double n))
+                   sd (Math/sqrt (/ (reduce + (map #(Math/pow (- % m) 2) past)) (double n)))]
+               (when (pos? sd) (Math/max -5.0 (Math/min 5.0 (/ (- x m) sd))))))))))))

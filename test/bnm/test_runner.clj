@@ -83,6 +83,7 @@
             [bnm.blocs-test]
             [bnm.bloc-theory-test]
             [bnm.contagion-test]
+            [bnm.kind-theory-test]
             [bnm.kind-set-test]
             [bnm.lattice-smoke-test]
             [bnm.political-gauges-test]
@@ -237,6 +238,7 @@
     bnm.blocs-test
     bnm.bloc-theory-test
     bnm.contagion-test
+    bnm.kind-theory-test
     bnm.kind-set-test
     bnm.lattice-smoke-test
     bnm.political-gauges-test
