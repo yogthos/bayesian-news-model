@@ -3540,3 +3540,20 @@ Data: data/derived/global-monthly.tsv (scripts/global-monthly.py, from files alr
 Inputs (bnm.kind-theory/global): each driver's 6-month change at the origin (dollar, US policy rate, oil, food, Baa spread, VIX), and six channels times the country's exposure a year earlier: dollar x external debt % GNI, dollar x de facto peg, US rate x external debt, oil x net fuel exports (fuel exports less fuel imports, % of merchandise trade), food x food imports share, Baa spread x external debt. The layer is refit at each December origin as in t110 and only its slopes are added to the year node's log odds (`:offset-add`, as amended t112): the drivers move every country's level together, the channels move the exposed ones. Missing exposures read as the mean (step 2, bnm-s6m, takes that up).
 
 Run t113: t111-base's command with `--global-theory banking_crisis,currency_crisis,sovereign_default,inflation_crisis,growth_collapse,fiscal_consolidation,market_crash,food_price_shock`. The political kinds must reproduce t111-base byte for byte. Rule, for each of the eight kinds separately: against t111-base, the fold rule as amended and the alert table at 4:1; beside it the level's r and AUC (kinds_level.py) and, the report's own test, Brier in the wave years (origins 2013-2015 and 2019-2022). A kind is a candidate only on its own verdict. No changes after the result.
+
+### Results (19 November 2026)
+
+Suite green (1603 tests); t113 took 41 minutes; the five political kinds reproduce t111-base byte for byte. Against t111-base, pooled Brier 2003-2022 and the verdict per kind:
+
+- banking crises -0.00021 [-0.00069, +0.00022]: fail (no gain)
+- currency crises -0.00197 [-0.00501, +0.00068]: fail (2020-22 -0.00628 LOSS; 2013-19 +0.00198 [+0.00035, +0.00394])
+- sovereign defaults -0.00081 [-0.00206, +0.00005]: fail
+- inflation crises -0.00062 [-0.00336, +0.00113]: fail
+- growth collapses -0.00120: fail (2003-06 -0.00988 LOSS)
+- fiscal consolidations -0.00192: fail
+- **market crashes +0.00776 [-0.02190, +0.03387]: pass** (2013-19 +0.02959 [+0.01204, +0.05240]; 2003-06 -0.05801 [-0.14398, +0.02658] not a loss under the rule); alerts dcost +0.1942 [+0.0522, +0.3368] GAIN (cost 0.752 -> 0.558, false alarms 45%); pooled AUC 0.755 -> 0.715, within-year 0.488 -> 0.494
+- food price shocks -0.01302 [-0.02636, -0.00320]: fail (2010-12 LOSS, pooled LOSS)
+
+Wave-year Brier (the registered side test, + = t113 better): currency crises +0.00252 in 2013-15 and -0.00384 in 2019-22; growth collapses +0.00181 and -0.00579; market crashes +0.02546 and -0.00420; the others within +-0.002, food price shocks negative in both. The layer moves the level toward the rate (level r: currency -0.47 -> -0.17, sovereign -0.43 -> -0.29) but lowers the ranking almost everywhere (pooled AUC down for seven of eight kinds).
+
+Read with the oracle study (docs/studies/oracle_arms.clj on currency crises: the logit on these inputs 0.634, boosted trees 0.687, depth-1 stumps 0.694, the lattice 0.693): the information is there, but a linear slope on each input, with missing exposures read as the mean, does not extract it; shapes per input, with missing its own category, do. Market crashes are the one candidate; adoption is the user's decision.
