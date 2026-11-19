@@ -3388,3 +3388,24 @@ Runs, all 13 kinds, t104-base's command with:
 Banking's `--kind-set` frailty carries the same additions with its `:rhos [0.0]`.
 
 Rule: t106-regional against t106-rate (what the regional states add) and against t104-base (adoption): the fold rule as amended, pooled over the 13 kinds and per kind, and the alert table at 4:1.
+
+### Results (19 November 2026)
+
+Suite green before the run (1575 tests). t106-regional took 118 minutes (t104-base: 17).
+
+| fold | regional − rate | regional − base | rate − base |
+|---|---|---|---|
+| 2003-06 | −0.00096 LOSS | −0.00003 | +0.00093 |
+| 2007-09 | +0.00011 | +0.00043 | +0.00032 |
+| 2010-12 | −0.00117 LOSS | −0.00265 LOSS | −0.00148 LOSS |
+| 2013-19 | −0.00016 | −0.00037 | −0.00021 |
+| 2020-22 | −0.00177 LOSS | −0.00268 LOSS | −0.00091 |
+| pooled | −0.00065 [−0.00105, −0.00023] LOSS | −0.00084 [−0.00160, +0.00000] | −0.00020 [−0.00092, +0.00052] |
+
+Brier differences, + = the first run better. Verdict, every comparison: fail.
+
+Per kind against t104-base (Brier): regional loses at 9 of 13, most at market crashes (−0.00329), food price shocks (−0.00260) and fiscal consolidations (−0.00166); its only gains are conflict onsets (+0.00080), inflation (+0.00021), violence (+0.00011) and war (+0.00007), each within noise. Rate centring alone is neutral at most kinds and loses at food prices (−0.00201) and market crashes (−0.00210).
+
+Alerts at 4:1 against t104-base: pooled dcost −0.0073 [−0.0153, +0.0011]; growth collapses lose (−0.0349 [−0.0670, −0.0117]); banking catches 1.2% of onset rows, as the base does.
+
+Reading: rate centring stopped the regional sd absorbing intercepts (t64's failure) but the regional states still cost at every fold except 2007-09, and they cost most where the shared-shock story should help (food prices, market crashes are world shocks, which the world state already carries; a regional state adds variance without new information). Not adopted; neither is rate centring alone (it fails 2010-12). The port stays in the code, off by default.
