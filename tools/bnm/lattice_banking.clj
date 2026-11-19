@@ -343,7 +343,7 @@
   `r` (`recession-of`) at the row year (`row-year-of` (fn [origin])), and
   under `mode` :rows the year before too, which the extended columns read."
   [r row-year-of mode]
-  (fn [u t] (let [y (row-year-of t)] (boolean (or (r u y) (and (= :rows mode) (r u (dec y))))))))
+  (fn [u t] (let [y (row-year-of t)] (boolean (or (r u y) (and (#{:rows :debt} mode) (r u (dec y))))))))
 
 (defn held-origin
   "--recession-hold (bnm-5lr): the origin whose row the theory reads at t:
@@ -363,6 +363,19 @@
   stretches, the booms, household credit, the IMF's debt and wide credit."
   (vec (sort (distinct (concat (:stretches year-groups) (:booms year-groups) (:household year-groups)
                                (:debt year-groups) (:credit-wide year-groups))))))
+
+(defn held-columns-for
+  "The year row's columns `--recession-hold` holds for every group: rows,
+  the stocks over GDP (`recession-held-columns`); debt, the IMF debt
+  group's alone (the Dec 2022 spike's group); true, none (the theory's row
+  only)."
+  [mode]
+  (case mode :rows recession-held-columns :debt (:debt year-groups) nil))
+
+(defn theory-held?
+  "Whether `--recession-hold` holds the theory's row: true and rows."
+  [mode]
+  (boolean (#{true :rows} mode)))
 
 (defn hold-columns
   "The year table `tb` ({[unit origin] row}) with, where `recession?`
@@ -768,8 +781,8 @@
         recession? (when recession-growth
                      (recession-at (recession-of recession-growth) #(row-year % dated-credit) recession-mode))
         ;; --recession-hold rows (bnm-5lr): the year row's ratios held for every group
-        table (if (and recession? (= :rows recession-mode))
-                (update table :year hold-columns recession? recession-held-columns)
+        table (if-let [cols (when recession? (held-columns-for recession-mode))]
+                (update table :year hold-columns recession? cols)
                 table)
         std (into {} (for [[name tb] table] [name (standardizer (for [[[_ t] v] tb] [t v]) gauge-std)]))
         n-lead (count leading-names)
@@ -796,7 +809,7 @@
                                  (when-some [y (onset-in? cat u t lo hi)] {:y y :known-at (+ hi known-lag)})))
         ;; the theory's inputs (fn [place origin]), kept in the spec for diagnosis
         theory-inputs-of (when theory-offset
-                           (theory-row (fn [u t] (when-let [v (get-in table [:year [u (if recession? (held-origin recession? u t) t)]])] ((std :year) t v)))
+                           (theory-row (fn [u t] (when-let [v (get-in table [:year [u (if (and recession? (theory-held? recession-mode)) (held-origin recession? u t) t)]])] ((std :year) t v)))
                                                   countries theory-inputs (when theory-world theory-world-inputs)
                                                   (when world-db
                                                     (let [row (:row (sg/assemble world-db (for [[n e] theory-world-signals] {:name n :expr e})))

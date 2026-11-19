@@ -746,13 +746,15 @@
   "--recession-hold (bnm-5lr): true, with --theory-offset the theory reads
   credit from before a recession year (bnm.lattice-banking/held-origin,
   t103); rows, that and the year row's ratio columns held so for every
-  group (bnm.lattice-banking/recession-held-columns). Off by default."
+  group (bnm.lattice-banking/recession-held-columns); debt, the IMF debt
+  group's ratios alone, the theory's row as read. Off by default."
   [{v :recession-hold}]
   (case v
     nil false
     "true" true
     "rows" :rows
-    (throw (ex-info (str "--recession-hold: true or rows, not " v) {:value v}))))
+    "debt" :debt
+    (throw (ex-info (str "--recession-hold: true, rows or debt, not " v) {:value v}))))
 
 (defn credit-denominator-choice
   "--credit-denominator smooth (bnm-5lr): under --dated-credit, the BIS's

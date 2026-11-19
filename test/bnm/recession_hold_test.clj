@@ -58,3 +58,16 @@
     (is (false? ((lb/recession-at r ry true) "A" (+ 11 (* 12 2021)))) "the theory's rule: the row year alone")
     (is (true? ((lb/recession-at r ry true) "A" (+ 11 (* 12 2020)))))
     (is (false? ((lb/recession-at r ry :rows) "A" (+ 11 (* 12 2022)))))))
+
+;; --recession-hold debt: only the IMF debt group's ratios held (the Dec
+;; 2022 spike's group), the credit stretches and the theory's row as read
+(deftest the-debt-option
+  (is (= :debt (wr/recession-hold-choice {:recession-hold "debt"})))
+  (is (= (:debt lb/year-groups) (lb/held-columns-for :debt)))
+  (is (= lb/recession-held-columns (lb/held-columns-for :rows)))
+  (is (nil? (lb/held-columns-for true)) "t103: the theory's row only")
+  (is (false? (lb/theory-held? :debt)))
+  (is (true? (lb/theory-held? :rows)))
+  (is (true? (lb/theory-held? true)))
+  (let [r (lb/recession-of {"A" {2020 -7.4}})]
+    (is (true? ((lb/recession-at r #(quot % 12) :debt) "A" (+ 11 (* 12 2021)))) "the debt columns read the year before")))
