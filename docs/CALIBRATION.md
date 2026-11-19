@@ -3377,3 +3377,14 @@ Verdict:
   - the regional states stacked on t65-gauges, so the leading gauges meet a lock-free `:down`;
   - a slope on exposure inside the regional state, for inflation;
   - the grid's scores at growth's node, to see which origins carry z's ρ to 0.8.
+
+## Regional states on the current base: t106 (bnm-qg5)
+
+Written 19 November 2026, before any run. The regional shared states (docs/RECURSIVE.md step 3e; t61, t64) are ported onto the current frailty (b34318f; off by default, suite and golden snapshots unchanged). t64 lost under the odds centring, where the regional sd went to the grid's top and absorbed intercepts (bnm-56c.20.3.1 notes); `:centre :rate` (bnm-0fe) now counts the regional variance in each place's own shift. The grid, step 3e's second-round rule: regional sds {0.25, 0.5, 1} (no 0 at grouped nodes), their own persistence {0, 0.5, 0.8, 0.95}, at the region level; `:start :tie` (`:prior-predictive` goes with the odds centring).
+
+Runs, all 13 kinds, t104-base's command with:
+- **t106-rate**: `:centre :rate` in every kind's frailty (the control: rate centring is not in the base).
+- **t106-regional**: that and `:regional-sds [0.25 0.5 1.0] :regional-rhos [0.0 0.5 0.8 0.95] :regional-levels [:region]`.
+Banking's `--kind-set` frailty carries the same additions with its `:rhos [0.0]`.
+
+Rule: t106-regional against t106-rate (what the regional states add) and against t104-base (adoption): the fold rule as amended, pooled over the 13 kinds and per kind, and the alert table at 4:1.
