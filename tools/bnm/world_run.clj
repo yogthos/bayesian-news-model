@@ -806,6 +806,18 @@
           (throw (ex-info (str "bnm.world-run: --kind-theory: no theory declared for " k) {:kind k}))))
       (vec ks))))
 
+(defn impute-choice
+  "--impute true (bnm-s6m): the theory layers (--kind-theory,
+  --global-theory) fill missing inputs (bnm.impute) and read the share
+  missing; false without the flag."
+  [{v :impute :as opts}]
+  (case v
+    nil false
+    "true" (if (or (:kind-theory opts) (:global-theory opts))
+             true
+             (throw (ex-info "bnm.world-run: --impute fills a theory layer's inputs: give --kind-theory or --global-theory" {})))
+    (throw (ex-info "bnm.world-run: --impute takes true" {:impute v}))))
+
 (defn global-theory-choice
   "--global-theory kind,... (bnm-1ft): the global layer (bnm.kind-theory/
   global) on top of each named kind's year offset; nil without the flag."
@@ -1088,13 +1100,14 @@
                    (#(if-let [ks (kind-theory-choice opts)]
                        (kt/with-kind-theory % ks (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
                                                                  {:real-lags (real-lags-choice opts) :vars (kt/vars ks)})
-                                           (kind-theory-add opts))
+                                           (kind-theory-add opts) (impute-choice opts))
                        %))
                    (#(if-let [ks (global-theory-choice opts)]
                        (let [vs (st/read-variables "data/slow/variables.tsv")
                              gv (kt/decl-vars kt/global)]
                          (kt/with-global-theory % ks (merge (nm/load-series "data/slow/series.tsv" vs {:real-lags (real-lags-choice opts) :vars gv})
-                                                            (nm/load-series "data/derived/global-monthly.tsv" vs {:vars gv}))))
+                                                            (nm/load-series "data/derived/global-monthly.tsv" vs {:vars gv}))
+                                                (impute-choice opts)))
                        %))
                    (with-bloc-theory (bloc-theory-choice opts)
                      (when (bloc-theory-choice opts)

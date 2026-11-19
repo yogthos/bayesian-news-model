@@ -160,3 +160,19 @@
     (is (= ["currency_crisis" "banking_crisis"] (choice {:global-theory "currency_crisis,banking_crisis"})))
     (is (thrown? Exception (choice {:global-theory "coup"})) "economic kinds only")))
 
+
+(deftest missing-inputs-filled
+  ;; bnm-s6m: with :impute, the theory reads bnm.impute's filled inputs and
+  ;; the share missing, one column more
+  (let [sp2 (kt/with-theory sp (fn [u t] (if (= u "b2") [nil nil] [(x [u t]) nil])) 2 {:impute true})
+        t (nth (range 11 600 12) 30)]
+    (is (= 3 (count ((:inputs (:kind-theory sp2)) "a1" t))))
+    (is (some? (first ((:inputs (:kind-theory sp2)) "b2" t))) "b2's missing input filled from its peers")
+    (is (some? ((:offset sp2) :year "b2" t)))))
+
+(deftest the-impute-flag
+  (require 'bnm.world-run)
+  (let [choice (resolve 'bnm.world-run/impute-choice)]
+    (is (false? (choice {})))
+    (is (true? (choice {:impute "true" :kind-theory "sovereign_default"})))
+    (is (thrown? Exception (choice {:impute "true"})) "nothing to fill without a theory layer")))

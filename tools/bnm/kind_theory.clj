@@ -6,7 +6,8 @@
   (bnm.theory), its inputs standardized against every country's values at
   earlier origins. The level then comes from what is read at the origin,
   not from lagged outcomes (docs/INVARIANTS.md point 4)."
-  (:require [bnm.signals :as sg]
+  (:require [bnm.impute :as im]
+            [bnm.signals :as sg]
             [bnm.theory :as th]
             [clojure.string :as str]))
 
@@ -137,14 +138,18 @@
   bnm.theory/place-z (at least 20 earlier values), the logit refit by
   bnm.theory/offsets on the spec's year target; an aggregate takes the
   chance any member has one. Other scales keep the spec's offset.
-  opts :add true (t112): the offset kept and only the theory's slopes,
+  opts :impute true (bnm-s6m): missing inputs filled by bnm.impute (the
+  last value decayed toward the region's mean) with the share missing as
+  one more input. :add true (t112): the offset kept and only the theory's slopes,
   b.z past the intercept, added to a country's year log odds through
   :offset-add; the level stays the lattice's."
   ([sp row width] (with-theory sp row width {}))
-  ([{:keys [scales levels start end target offset] :as sp} row width {:keys [add]}]
+  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute]}]
   (let [countries (second (first levels))
         per (:per (first (filter #(= :year (:name %)) scales)))
         os (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))
+        ;; bnm-s6m: missing inputs filled (bnm.impute), the share missing a column more
+        [row width] (if impute [(im/impute row width countries (vec os) parent) (inc width)] [row width])
         zs (vec (for [i (range width)] (th/place-z (fn [u t] (nth (row u t) i)) countries os 20)))
         inputs (fn [u t] (mapv #(% u t) zs))
         args {:places countries :origins os :prior 1.0 :inputs inputs
@@ -173,12 +178,13 @@
   "The named kinds' specs with their declared theory (`decls`) read from
   the slow table `db`; those in `add` on top of their offset (t112)."
   ([specs kinds db] (with-kind-theory specs kinds db #{}))
-  ([specs kinds db add]
+  ([specs kinds db add] (with-kind-theory specs kinds db add false))
+  ([specs kinds db add impute]
   (reduce (fn [acc k]
             (let [ds (or (decls k) (throw (ex-info (str "bnm.kind-theory: no theory declared for " k) {:kind k})))]
               (check-loaded ds db)
               (if (contains? acc k)
-                (update acc k with-theory (transformed ds (:row (sg/assemble db ds))) (count ds) {:add (contains? add k)})
+                (update acc k with-theory (transformed ds (:row (sg/assemble db ds))) (count ds) {:add (contains? add k) :impute impute})
                 acc)))
           specs kinds)))
 
@@ -188,12 +194,13 @@
   drivers moving every country's level together and the interactions
   moving the exposed ones. Goes with a kind's own theory, which sets the
   offset."
-  [specs kinds db]
+  ([specs kinds db] (with-global-theory specs kinds db false))
+  ([specs kinds db impute]
   (check-loaded global db)
   (let [row (:row (sg/assemble db global))]
     (reduce (fn [acc k]
               (when-not (global-kinds k)
                 (throw (ex-info (str "bnm.kind-theory: the global layer is for the economic kinds, not " k) {:kind k})))
-              (if (contains? acc k) (update acc k with-theory row (count global) {:add true}) acc))
-            specs kinds)))
+              (if (contains? acc k) (update acc k with-theory row (count global) {:add true :impute impute}) acc))
+            specs kinds))))
 
