@@ -7,6 +7,10 @@
 ;;   A2 lag oracle: every value as if published at its period's end
 ;;   A3 coverage split: A0 on rows with every input read vs some missing
 ;;   A4 extraction oracle: boosted trees (augur.trees) on the same reads
+;;   A4s stumps (trees of depth 1): shapes for each input, no interactions
+;;       (reports/Signal combinations before phase transitions.md, test (a):
+;;       if stumps recover most of A4's gain over A0, the fix is the inputs'
+;;       shapes, not their products)
 ;;   A5 step 2: logit on bnm.impute's filled inputs and the share missing
 ;;   and t111-base's own p beside them.
 ;; A1 (final vintage) is not run: data/slow/series.tsv holds one vintage,
@@ -75,11 +79,12 @@
                                   b0 (when ok (lgt/fit tr0 (inc w) {:prior 1.0}))
                                   b2 (when ok (lgt/fit tr2 (inc w) {:prior 1.0}))
                                   b5 (when ok (lgt/fit tr5 (+ 2 w) {:prior 1.0}))
-                                  gb (when ok (trees/fit trt trees/defaults))]
+                                  gb (when ok (trees/fit trt trees/defaults))
+                                  gs (when ok (trees/fit trt (assoc trees/defaults :depth 1 :rounds 200)))]
                             :when ok
                             [[u t'] {:keys [y p]}] rows :when (= t t')]
                         {:y y :p p :a0 (lgt/predict b0 (xrow z0 u t)) :a2 (lgt/predict b2 (xrow z2 u t))
-                         :a5 (lgt/predict b5 (xrow z5 u t)) :a4 (trees/predict gb (nanrow u t))
+                         :a5 (lgt/predict b5 (xrow z5 u t)) :a4 (trees/predict gb (nanrow u t)) :a4s (trees/predict gs (nanrow u t))
                          :missing (boolean (some nil? (raw0 u t)))}))
           as (fn [k ps] (map #(assoc % :s (k %)) ps))]
       (println "==" kind (count ds) "inputs")
@@ -87,6 +92,7 @@
       (println "  A0 production         " (fmt (as :a0 scored)))
       (println "  A2 lag oracle         " (fmt (as :a2 scored)))
       (println "  A4 boosted trees      " (fmt (as :a4 scored)))
+      (println "  A4s stumps (depth 1)  " (fmt (as :a4s scored)))
       (println "  A5 imputed + missing  " (fmt (as :a5 scored)))
       (println "  A3 A0, all read       " (fmt (as :a0 (remove :missing scored))))
       (println "  A3 A0, some missing   " (fmt (as :a0 (filter :missing scored))))
