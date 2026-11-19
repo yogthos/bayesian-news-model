@@ -2074,8 +2074,6 @@
                        add (:offset-add spec)
                        _ (when (and add (not (fn? add)))
                            (throw (ex-info "bnm.lattice: :offset-add takes (fn [scale place origin]) -> log odds or nil" {:offset-add add})))
-                       _ (when (and add (get-in spec [:downscale scale]))
-                           (throw (ex-info "bnm.lattice: :offset-add does not go with :downscale" {:scale scale})))
                        offset-of (if (and add (not fo?))
                                    (fn [place t] (let [r (offset-of place t)]
                                                    (if-let [a (add scale place t)] (update r :o + (double a)) r)))
@@ -2102,7 +2100,11 @@
                                                 ;; left a Jensen gap (review of step 1)
                                                 om (if (= 1 (count os)) (second (first os)) (logit (reduce + (for [[w o] os] (* w (m/expit o))))))
                                                 down (- om (if known (* pool known) 0.0))]
-                                            {:os os :read (first (sh/reads r)) :down down
+                                            {:os (if-let [a (when (and add (not fo?)) (add scale place t))]
+                                                   ;; :offset-add on top of the offsets that came down
+                                                   (mapv (fn [[w o]] [w (+ o (double a))]) os)
+                                                   os)
+                                             :read (first (sh/reads r)) :down down
                                              ;; :downscale-learn's input: the offset less what is known
                                              :pool (when known (- om known))})
                                           (let [{:keys [o clim]} (offset-of place t)]

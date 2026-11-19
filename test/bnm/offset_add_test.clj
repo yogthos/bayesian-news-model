@@ -49,7 +49,23 @@
     (doseq [[[place t] o] add :when (= "b1" place)]
       (is (< (Math/abs (- o -0.5)) 1e-9)))))
 
-(deftest it-refuses-what-it-would-ignore
-  (is (thrown? Exception (lt/run (assoc (spec 5) :offset-add 1.0))))
-  (is (thrown? Exception (lt/run (assoc (spec 5) :offset-add (fn [_ _ _] 1.0)
-                                        :downscale {:year {:from :half-decade}})))))
+(deftest it-refuses-what-is-not-a-function
+  (is (thrown? Exception (lt/run (assoc (spec 5) :offset-add 1.0)))))
+
+(defn- os-at [r scale] (into {} (for [{s :scale :keys [place origin o]} (:trace r) :when (= s scale)] [[place origin] o])))
+
+(deftest the-added-log-odds-sit-on-what-came-down
+  ;; a downscaled row's offset: the log odds of the year forecast it read,
+  ;; carried to the quarter under a constant hazard, plus the addition
+  (let [sp (-> (spec 6)
+               (update :scales conj {:name :quarter :per 3 :horizon 3 :discount 0.99})
+               (assoc :gauge-width {:year 1 :quarter 1} :downscale {:quarter {:from :year}}))
+        r (lt/run (assoc sp :offset-add (fn [scale _ _] (when (= :quarter scale) 0.7))))
+        year-p (into {} (for [{:keys [scale place origin p]} (:forecasts r) :when (= :year scale)] [[place origin] p]))
+        down (for [{:keys [scale place reads o]} (:trace r) :when (= :quarter scale)
+                   :let [rd (first (filter #(= :downscale (:dir %)) reads))] :when rd]
+               [o (year-p [(:place rd) (:origin rd)])])]
+    (is (> (count down) 100))
+    (doseq [[o p] down
+            :let [q (- 1.0 (Math/pow (- 1.0 p) 0.25))]]
+      (is (< (Math/abs (- o (m/logit q) 0.7)) 1e-9)))))
