@@ -3470,3 +3470,9 @@ Written 19 November 2026, before any run. Sovereign defaults' yearly mean p runs
 Inputs, fixed now from the early-warning literature (Manasse and Roubini 2009; Reinhart and Rogoff 2009), each a declared signal (docs/SIGNALS.md) read point in time: external debt % GNI, reserves in months of imports, CPI inflation, GDP growth (each its latest value, stale after 30 months), and the global push, the US policy rate's change over 24 months (stale after 3). No default history: the lattice's groups already read it, and it is the lagged-outcome level this replaces.
 
 Run t109: t104-base's command with `--kind-theory sovereign_default`. Rule: against t104-base, the fold rule as amended at sovereign defaults and pooled over the 13 kinds, and the alert table at 4:1; beside it the yearly level's r against the rate and pooled and within-year AUC (kinds_level.py).
+
+### Results (19 November 2026)
+
+Suite green (1593 tests); t109 took 25 minutes. Sovereign defaults against t104-base: 2003-06 (13 onsets) -0.00072 [-0.00102, -0.00031] LOSS; 2007-09 +0.00018; 2010-12 +0.00003; 2013-19 +0.00019; 2020-22 -0.00012; pooled -0.00006 [-0.00044, +0.00036]: **fail** (a fold lost, no pooled gain). Pooled over the 13 kinds -0.00000: fail. Alerts unchanged (dcost +0.0000; the 2018, 2019 and 2021 episodes missed).
+
+Beside the rule: the yearly level's r against the rate -0.64 -> -0.47, pooled AUC 0.517 -> 0.574, within-year 0.653 -> 0.662. The stocks move the level the right way but not far enough, and they cost in 2003-06, where the refit carries the 1980s-90s default rates into the calm of the mid-2000s (US rates rose 2004-06 while defaults fell, so the global push read the wrong way there). Not adopted; `--kind-theory` stays, off by default. No input or setting changes after this result: a second try chosen from it would be fitted to these folds.
