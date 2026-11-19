@@ -439,18 +439,22 @@
   acceptance harness's extra world column, :seed, :strength; without
   :world-gauges the column alone, as the year's :world-gauges group);
   :set, an EDN map merged into every spec (a nil value removes its key);
+  :kind-set, an EDN map {kind map} merged after it into that kind's spec;
   :real-lags, the series read at their true publication (bnm-a1e)."
-  [specs {:keys [world-gauges world-once world-extra seed strength real-lags] set-edn :set :as opts} end]
+  [specs {:keys [world-gauges world-once world-extra seed strength real-lags] set-edn :set kind-set-edn :kind-set :as opts} end]
   (let [state (when world-gauges
                 (let [db (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv") {:real-lags real-lags})
                       units (set (filter #(= 3 (count %)) (map first (keys db))))]
                   (wg/load-state db units end {:real-lags real-lags})))
         exposure (when world-gauges (wg/exposure-from))
-        merge-set (fn [sp] (if set-edn
-                             (reduce-kv (fn [sp k v] (if (nil? v) (dissoc sp k) (assoc sp k v))) sp (read-string set-edn))
-                             sp))]
+        merge-map (fn [sp m] (reduce-kv (fn [sp k v] (if (nil? v) (dissoc sp k) (assoc sp k v))) sp m))
+        kind-sets (some-> kind-set-edn read-string)
+        ;; --kind-set: a kind's own map after --set's
+        merge-set (fn [k sp] (cond-> sp
+                               set-edn (merge-map (read-string set-edn))
+                               (get kind-sets k) (merge-map (get kind-sets k))))]
     (into {} (for [[k sp] specs]
-               [k (merge-set
+               [k (merge-set k
                    (if (or world-gauges world-extra)
                      (let [countries (filter #(= 3 (count %)) (keys (:parent sp)))
                            year-origins (filter #(zero? (mod (inc (- % (:start sp))) 12)) (range (:start sp) (inc end)))
@@ -997,7 +1001,7 @@
                                                                :lead-delay (lead-delay-choice opts)})
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
-                                :seed (:seed opts) :strength (:strength opts) :set (:set opts)
+                                :seed (:seed opts) :strength (:strength opts) :set (:set opts) :kind-set (:kind-set opts)
                                 :real-lags (real-lags-choice opts)}
                                end)
                    finer-where-fresh
