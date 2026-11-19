@@ -71,3 +71,22 @@
   (testing "shrinkage scales are read as the weights of a single model"
     (is (= {:scale/x 2.0 :scale/y 1.0} (links/node-weights {:all 1.0 :scale/x 2.0 :scale/y 1.0})))
     (is (= {:a 0.5 :b 0.5} (links/node-weights {:a 0.5 :b 0.5})))))
+
+;; --- the fold rule, amended 18 November 2026 (docs/PHASE-CHANGES.md):
+;; a fold with fewer than `min-fold-onsets` onsets cannot fail a candidate
+;; on its own; the pooled score must still gain
+
+(deftest a-thin-fold-cannot-veto
+  (let [f (fn [lo hi pos] {:brier {:diff (/ (+ lo hi) 2) :lo lo :hi hi} :pos pos})
+        ok {:pooled (f 0.0001 0.0010 82)}]
+    (testing "a loss in a fold with enough onsets fails"
+      (is (= :fail (:verdict (links/fold-verdict (assoc ok :folds [(f -0.002 -0.001 25) (f 0.0 0.001 29)]))))))
+    (testing "the same loss in a fold of 0 onsets does not, and is named"
+      (let [v (links/fold-verdict (assoc ok :folds [(f -0.002 -0.001 0) (f 0.0 0.001 29)]))]
+        (is (= :pass (:verdict v)))
+        (is (= 1 (count (:thin-losses v))))))
+    (testing "4 onsets is thin, 5 is not"
+      (is (= :pass (:verdict (links/fold-verdict (assoc ok :folds [(f -0.002 -0.001 4)])))))
+      (is (= :fail (:verdict (links/fold-verdict (assoc ok :folds [(f -0.002 -0.001 5)]))))))
+    (testing "the pooled score must still gain"
+      (is (= :fail (:verdict (links/fold-verdict {:pooled (f -0.0003 0.0001 82) :folds [(f 0.0 0.001 29)]})))))))

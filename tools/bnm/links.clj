@@ -53,13 +53,43 @@
         half (* (wl/t-quantile 0.95 (dec r)) s (Math/sqrt (+ 1.0 (/ 1.0 r))))]
     {:mean mu :sd s :lo (- mu half) :hi (+ mu half) :accept (<= (Math/abs mu) tolerance)}))
 
+(def min-fold-onsets
+  "The fold rule, amended 18 November 2026 (docs/PHASE-CHANGES.md): a fold
+  with fewer onsets than this, over the kinds scored, cannot fail a
+  candidate on its own (its loss shows, its rows stay in the pooled score).
+  With no onsets every row says the lower forecast won, whatever the skill,
+  and a handful says little more."
+  5)
+
+(defn fold-verdict
+  "{:verdict :pass|:fail :losses [...] :thin-losses [...]} of fold results
+  {:folds [{:brier {:diff :lo :hi} :pos onsets} ...] :pooled {:brier ...}}:
+  a candidate fails when a fold with at least `min-fold-onsets` onsets
+  loses (its interval below zero) or the pooled Brier does not gain (its
+  point estimate at or under zero)."
+  [{:keys [folds pooled]}]
+  (let [lost (filter #(neg? (get-in % [:brier :hi])) folds)
+        thin? #(< (long (:pos %)) min-fold-onsets)
+        losses (remove thin? lost)]
+    {:verdict (if (and (empty? losses) (pos? (get-in pooled [:brier :diff]))) :pass :fail)
+     :losses (vec losses) :thin-losses (vec (filter thin? lost))}))
+
 (defn fold-report
-  "Lines: `run` against `bench` at the year nodes, in each fold and pooled."
+  "Lines: `run` against `bench` at the year nodes, in each fold and pooled,
+  each fold's onsets beside it, then the verdict under the amended fold rule
+  (`fold-verdict`)."
   [run bench ks]
-  (for [[a b] (conj folds [2003 2022])
-        :let [{:keys [pooled]} (pd/world-pair run bench ks "year" a b 400 0.1)]]
-    (format "   %d-%d  Brier %s  log %s%s" a b (fmt pooled) (fmt (:log pooled))
-            (if (neg? (:hi pooled)) "  LOSS" ""))))
+  (let [res (vec (for [[a b] (conj folds [2003 2022])
+                       :let [{:keys [pooled per-kind]} (pd/world-pair run bench ks "year" a b 400 0.1)]]
+                   {:span [a b] :brier pooled :pos (reduce + 0 (map :pos (vals per-kind)))}))
+        v (fold-verdict {:folds (pop res) :pooled (peek res)})]
+    (concat
+     (for [{[a b] :span br :brier pos :pos} res]
+       (format "   %d-%d  Brier %s  log %s  onsets %d%s" a b (fmt br) (fmt (:log br)) pos
+               (cond (not (neg? (:hi br))) ""
+                     (and (not= [a b] [2003 2022]) (< pos min-fold-onsets)) (str "  LOSS (thin: under " min-fold-onsets " onsets, cannot veto)")
+                     :else "  LOSS")))
+     [(str "   verdict (fold rule as amended 18 Nov 2026): " (name (:verdict v)))])))
 
 (defn entropy
   "The weights' entropy over the log of their number: 1 even, 0 on one."

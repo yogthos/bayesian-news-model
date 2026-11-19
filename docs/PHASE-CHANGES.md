@@ -5313,3 +5313,13 @@ passed in 2013-2019.
   food price shocks on the hindsight test would read the future.
 
 Not adopted. No L1 note, no ledger change, no forecast.
+
+## Amendment to the fold rule, 18 November 2026: a thin fold cannot veto alone
+
+**Decided by the user after seeing t97** (docs/CALIBRATION.md "A theory forecast as banking's year offset"), so it is not blind to the candidate that prompted it: t97-theory-rho0 lost only banking's 2020-22 fold, which has no onsets (0 of 390 rows).
+
+**The amendment.** A development fold with fewer than 5 onsets, over the kinds scored, cannot fail a candidate on its own: its loss is shown and its rows stay in the pooled score, which must still gain. Every other part of the rule stands (no fold with at least 5 onsets lost with its 90% interval below zero; a pooled Brier gain). bnm.links/fold-verdict and `--folds`' report apply it (min-fold-onsets 5).
+
+**Why.** With no onsets every row's Brier is p², so a fold says only which forecast was lower; the interval, resampling countries and years, measures how consistent that gap is, not how surprising the outcomes are, and is "significant" whatever the skill. Banking 2020-22's 390 rows are three December origins of one world calm with overlapping two-year windows: one to three independent observations, not 390. The thinnest folds now (t80-base): banking 2020-22 0/390 and 2010-12 6/387, inflation 2007-09 3/481 and 2003-06 4/617, sovereign defaults 2007-09 5/512, growth collapses 2003-06 6/661, currency 2003-06 7/634.
+
+**What it does not excuse.** The zero-onset fold carries real information: at t97-theory-rho0's level (about 0.05) its 390 rows expect about 20 onsets, at t80-base's about 11, and none came. A forecast that does not hold its level down through a long calm is miscalibrated there; the user named it a defect to fix (bnm bead "the level does not fall in long calms"), not a fold to ignore.
