@@ -5,6 +5,8 @@
   (:require [augur.logit]
             [augur.math :as m]
             [bnm.kind-theory :as kt]
+            [bnm.signals]
+            [bnm.stocks]
             [bnm.theory :as th]
             [clojure.test :refer [deftest is testing]]))
 
@@ -119,3 +121,42 @@
     (is (thrown? Exception (choice {:kind-theory "currency_crisis:mix"})) "only :add")
     (is (thrown? Exception (choice {:kind-theory "coup"})) "no theory declared")
     (is (thrown? Exception (choice {:kind-theory "banking_crisis"})) "banking has its own, --theory-offset")))
+
+(deftest every-read-in-a-declaration-counts
+  ;; bnm-1ft: an interaction reads series inside :times and expressions;
+  ;; vars and the loaded check must see them, or they read nil (the mean)
+  (let [ds [{:name :a :var "w/x" :unit "world" :read [:change 6] :times {:var "c/e" :unit :own :read [:value]}}
+            {:name :b :expr [:mul {:var "w/y" :unit "world" :read [:change 6]}
+                             [:minus {:var "c/f" :read [:value]} {:var "c/g" :read [:value]}]]}]]
+    (is (= #{"w/x" "c/e" "w/y" "c/f" "c/g"} (kt/decl-vars ds)))
+    (is (thrown-with-msg? Exception #"c/g"
+                          (kt/check-loaded ds {["world" "w/x"] :s ["a1" "c/e"] :s ["world" "w/y"] :s ["a1" "c/f"] :s})))
+    (is (nil? (kt/check-loaded ds {["world" "w/x"] :s ["a1" "c/e"] :s ["world" "w/y"] :s ["a1" "c/f"] :s ["a1" "c/g"] :s})))))
+
+(deftest the-global-layer
+  (testing "six global drivers read at the origin, six of them times a country's exposure a year earlier"
+    (is (= [:usd6 :us-rate6 :oil6 :food6 :baa6 :vix6
+            :usd6-x-external-debt :usd6-x-peg :us-rate6-x-external-debt :oil6-x-net-fuel :food6-x-food-imports :baa6-x-external-debt]
+           (mapv :name kt/global)))
+    (is (every? #(contains? (kt/decl-vars kt/global) %)
+                ["global/usd_eer" "global/oil" "global/food" "global/baa_spread" "global/vix" "finance/policy_rate"
+                 "debt/external_gni" "finance/fx_peg" "energy/fuel_exports_share" "energy/fuel_imports_share" "food/imports_share"])))
+  (testing "an interaction is the world's 6-month change times the country's exposure 12 months back"
+    (let [st (fn [pairs] (bnm.stocks/series (for [[p v] pairs] [p p v])))
+          db {["world" "global/usd_eer"] (st [[100 1.0] [106 1.5]])
+              ["a1" "debt/external_gni"] (st [[90 40.0] [100 80.0]])}
+          d (first (filter #(= :usd6-x-external-debt (:name %)) kt/global))]
+      (is (< (Math/abs (- (* 0.5 40.0) (bnm.signals/eval-signal db (or (:expr d) d) "a1" 106))) 1e-12))))
+  (testing "it is added on top of each kind's offset, and goes with a kind's own theory"
+    (let [sp2 (kt/with-theory sp row 2)
+          sp3 (kt/with-theory sp2 row 2 {:add true})]
+      (is (fn? (:offset-add sp3)))
+      (is (= ((:offset sp2) :year "a1" 300) ((:offset sp3) :year "a1" 300))))))
+
+(deftest the-global-flag
+  (require 'bnm.world-run)
+  (let [choice (resolve 'bnm.world-run/global-theory-choice)]
+    (is (nil? (choice {})))
+    (is (= ["currency_crisis" "banking_crisis"] (choice {:global-theory "currency_crisis,banking_crisis"})))
+    (is (thrown? Exception (choice {:global-theory "coup"})) "economic kinds only")))
+

@@ -806,6 +806,16 @@
           (throw (ex-info (str "bnm.world-run: --kind-theory: no theory declared for " k) {:kind k}))))
       (vec ks))))
 
+(defn global-theory-choice
+  "--global-theory kind,... (bnm-1ft): the global layer (bnm.kind-theory/
+  global) on top of each named kind's year offset; nil without the flag."
+  [{v :global-theory}]
+  (when v
+    (let [ks (str/split v #",")]
+      (doseq [k ks :when (not (kt/global-kinds k))]
+        (throw (ex-info (str "bnm.world-run: --global-theory: the economic kinds only, not " k) {:kind k})))
+      ks)))
+
 (defn kind-theory-add
   "The kinds --kind-theory names as kind:add, their theory on top of the
   year offset (t112)."
@@ -1079,6 +1089,12 @@
                        (kt/with-kind-theory % ks (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
                                                                  {:real-lags (real-lags-choice opts) :vars (kt/vars ks)})
                                            (kind-theory-add opts))
+                       %))
+                   (#(if-let [ks (global-theory-choice opts)]
+                       (let [vs (st/read-variables "data/slow/variables.tsv")
+                             gv (kt/decl-vars kt/global)]
+                         (kt/with-global-theory % ks (merge (nm/load-series "data/slow/series.tsv" vs {:real-lags (real-lags-choice opts) :vars gv})
+                                                            (nm/load-series "data/derived/global-monthly.tsv" vs {:vars gv}))))
                        %))
                    (with-bloc-theory (bloc-theory-choice opts)
                      (when (bloc-theory-choice opts)

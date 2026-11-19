@@ -46,14 +46,63 @@
    {:name :reserves :var "debt/reserves_months" :read [:value] :stale 30}
    {:name :growth :var "economy/gdp_growth" :read [:value] :stale 30}])
 
+(defn- exposure [v] {:var v :unit :own :read [:value] :stale 30 :lag 12})
+(defn- world6 [v] {:var v :unit "world" :read [:change 6] :stale 3})
+(def ^:private us-rate6 {:var "finance/policy_rate" :unit "USA" :read [:change 6] :stale 3})
+
+(def global
+  "The global layer (bnm-1ft; reports/Crisis mechanisms data and signals.md,
+  fixed before any run, docs/CALIBRATION.md t113): the drivers that turn
+  country fragility into waves, each its 6-month change at the origin
+  (data/derived/global-monthly.tsv, scripts/global-monthly.py; the US
+  policy rate from data/slow/series.tsv), and each signed channel times the
+  country's exposure a year earlier (Obstfeld and Zhou 2022: dollar
+  liabilities and pegs; net fuel exports for oil; food imports for food;
+  external debt for US rates and risk spreads). Kept as separate signed
+  channels: the commodity channel hit exporters in 2014-15 and importers in
+  2022."
+  [(assoc (world6 "global/usd_eer") :name :usd6)
+   (assoc us-rate6 :name :us-rate6)
+   (assoc (world6 "global/oil") :name :oil6)
+   (assoc (world6 "global/food") :name :food6)
+   (assoc (world6 "global/baa_spread") :name :baa6)
+   (assoc (world6 "global/vix") :name :vix6)
+   (assoc (world6 "global/usd_eer") :name :usd6-x-external-debt :times (exposure "debt/external_gni"))
+   (assoc (world6 "global/usd_eer") :name :usd6-x-peg :times (exposure "finance/fx_peg"))
+   (assoc us-rate6 :name :us-rate6-x-external-debt :times (exposure "debt/external_gni"))
+   {:name :oil6-x-net-fuel :expr [:mul (world6 "global/oil")
+                                  [:minus (exposure "energy/fuel_exports_share") (exposure "energy/fuel_imports_share")]]}
+   (assoc (world6 "global/food") :name :food6-x-food-imports :times (exposure "food/imports_share"))
+   (assoc (world6 "global/baa_spread") :name :baa6-x-external-debt :times (exposure "debt/external_gni"))])
+
+(def global-kinds
+  "The kinds the global layer may serve: the economic ones."
+  #{"banking_crisis" "currency_crisis" "sovereign_default" "inflation_crisis" "growth_collapse"
+    "fiscal_consolidation" "market_crash" "food_price_shock"})
+
 (def ^:private by-kind {"sovereign_default" sovereign "currency_crisis" currency "inflation_crisis" inflation})
 
 (defn decls "A kind's theory signals, or nil." [kind] (get by-kind kind))
 
+(declare decl-vars)
+
 (defn vars
   "The series the named kinds declare, for bnm.named/load-series' :vars."
   [kinds]
-  (set (for [k kinds d (decls k) v (cons (:var d) (some-> (:times d) :var list)) :when v] v)))
+  (decl-vars (mapcat decls kinds)))
+
+(defn- reads
+  "Every read in a declaration: its own, its :times, and those inside an
+  :expr, each {:var :unit} (a :times with no :unit takes the outer one)."
+  [d]
+  (letfn [(walk [e outer]
+            (cond (map? e) (let [u (or (:unit e) outer)]
+                             (cons {:var (:var e) :unit u} (when-let [t (:times e)] (walk t u))))
+                  (vector? e) (when-not (= :fn (first e)) (mapcat #(walk % outer) (rest e)))
+                  :else nil))]
+    (filter :var (walk (or (:expr d) d) nil))))
+
+(defn decl-vars "The series declarations `ds` read." [ds] (set (map :var (mapcat reads ds))))
 
 (defn transformed
   "`row` with each :log1p declaration's entry read as log(1 + x/100), x a
@@ -64,12 +113,15 @@
     (when-let [r (row u t)]
       (mapv (fn [d x] (if (and x (:log1p d)) (Math/log1p (Math/max -0.99 (/ (double x) 100.0))) x)) ds r))))
 
-(defn- check-loaded [ds db]
+(defn check-loaded
+  "Throws naming every series `ds` read that the table `db` lacks (a fixed
+  unit's own series, or any unit's for :own)."
+  [ds db]
   (let [have (set (map second (keys db)))
         fixed (set (keys db))
-        missing (for [d ds :let [u (:unit d)]
-                      :when (if (string? u) (not (contains? fixed [u (:var d)])) (not (contains? have (:var d))))]
-                  (:var d))]
+        missing (distinct (for [{:keys [var unit]} (mapcat reads ds)
+                                :when (if (string? unit) (not (contains? fixed [unit var])) (not (contains? have var)))]
+                            var))]
     (when (seq missing)
       (throw (ex-info (str "bnm.kind-theory: declared series not loaded: " (str/join ", " missing)) {:missing missing})))))
 
@@ -129,3 +181,19 @@
                 (update acc k with-theory (transformed ds (:row (sg/assemble db ds))) (count ds) {:add (contains? add k)})
                 acc)))
           specs kinds)))
+
+(defn with-global-theory
+  "The named kinds' specs with the global layer (`global`) added on top of
+  their offset (with-theory :add): its slopes refit at each origin, the
+  drivers moving every country's level together and the interactions
+  moving the exposed ones. Goes with a kind's own theory, which sets the
+  offset."
+  [specs kinds db]
+  (check-loaded global db)
+  (let [row (:row (sg/assemble db global))]
+    (reduce (fn [acc k]
+              (when-not (global-kinds k)
+                (throw (ex-info (str "bnm.kind-theory: the global layer is for the economic kinds, not " k) {:kind k})))
+              (if (contains? acc k) (update acc k with-theory row (count global) {:add true}) acc))
+            specs kinds)))
+

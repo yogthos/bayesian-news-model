@@ -3530,3 +3530,13 @@ Written 19 November 2026, on t111-base, offline (no run; docs/studies/level_lag.
 4. A level held at the long-run known rate (each year's log odds shifted so its mean p is the rate of every row known by the origin) gains in some folds and loses in others for every kind; it is no fix.
 
 So there is no single mechanism wrong in the lattice: its level is as current as outcomes allow, and outcomes have little to say about the next wave. What moves a level in time is read at the origin, as t110's theories did for sovereign defaults and inflation crises, kind by kind, or common drivers read at the origin for many kinds at once.
+
+## The global layer: t113 (bnm-1ft)
+
+Written 19 November 2026, before any run, on the base of record t111-base, from reports/Crisis mechanisms data and signals.md (the year level learned from outcomes 3-4 years old cannot see a common shock; the drivers were priced monthly 0-24 months ahead; the commodity channel's sign differs between 2014-15 and 2022, so the channels are kept separate).
+
+Data: data/derived/global-monthly.tsv (scripts/global-monthly.py, from files already on disk): the BIS nominal narrow effective rate of the dollar (1964-), WTI (1946-), the Pink Sheet food index (1960-), Moody's Baa less the 10-year Treasury (1953-), the VIX (1990-), each available a month after its period; the US policy rate from data/slow/series.tsv.
+
+Inputs (bnm.kind-theory/global): each driver's 6-month change at the origin (dollar, US policy rate, oil, food, Baa spread, VIX), and six channels times the country's exposure a year earlier: dollar x external debt % GNI, dollar x de facto peg, US rate x external debt, oil x net fuel exports (fuel exports less fuel imports, % of merchandise trade), food x food imports share, Baa spread x external debt. The layer is refit at each December origin as in t110 and only its slopes are added to the year node's log odds (`:offset-add`, as amended t112): the drivers move every country's level together, the channels move the exposed ones. Missing exposures read as the mean (step 2, bnm-s6m, takes that up).
+
+Run t113: t111-base's command with `--global-theory banking_crisis,currency_crisis,sovereign_default,inflation_crisis,growth_collapse,fiscal_consolidation,market_crash,food_price_shock`. The political kinds must reproduce t111-base byte for byte. Rule, for each of the eight kinds separately: against t111-base, the fold rule as amended and the alert table at 4:1; beside it the level's r and AUC (kinds_level.py) and, the report's own test, Brier in the wave years (origins 2013-2015 and 2019-2022). A kind is a candidate only on its own verdict. No changes after the result.
