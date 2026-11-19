@@ -128,19 +128,17 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t80-with-dated-credit
-  ;; note to L1, 14 November 2026 (fifth): t71-stack's command with the
-  ;; banking node's credit inputs from the BIS, dated by its releases
-  ;; (--dated-credit, bnm-9vm option A; docs/CALIBRATION.md "Dated credit
-  ;; for banking"). t71-stack (fourth note): t65's command with the series
-  ;; at their true publication (bnm-a1e), rows at risk by the catalogue's
-  ;; rule (bnm-96j), the leading gauges standardized on their history
-  ;; (bnm-11y) and the year node's gauges moving frailty (bnm-v1y)
-  (is (= "t80-base" lg/base))
-  (is (= "c61913e67692325a7ee8ba2306e5a98353dc5ee9bfd286678cf30881eb3a65d3" (lg/base-files "banking_crisis"))
-      "banking is t79-bis's, the only kind the option reaches")
+(deftest the-base-of-record-is-t104-with-banking's-theory
+  ;; note to L1, 18 November 2026 (sixth): t80-base's command with banking's
+  ;; theory offset reading the world's bank funding and reserves, the year
+  ;; row's ratios held through recessions, and banking's frailty at rho 0
+  ;; (docs/CALIBRATION.md t100-t104, bnm-ris, bnm-5lr). t80-base (fifth):
+  ;; t71-stack's with the banking node's credit from the BIS (--dated-credit)
+  (is (= "t104-base" lg/base))
+  (is (= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis"))
+      "banking is t104-rows-rho0's, the only kind the options reach")
   (is (= "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442" (lg/base-files "conflict_onset"))
-      "the other twelve are t71-stack's")
+      "the other twelve are t80-base's (t71-stack's)")
   (is (= "r7-at-fx" lg/known))
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
@@ -156,6 +154,10 @@
     (is (= "history" (opt "--lead-std")))
     (is (= "true" (opt "--frailty-gauges")))
     (is (= "true" (opt "--dated-credit")))
+    (is (= "true" (opt "--theory-offset")))
+    (is (= "true" (opt "--theory-world")))
+    (is (= "rows" (opt "--recession-hold")))
+    (is (= {"banking_crisis" {:frailty {:rhos [0.0]}}} (read-string (opt "--kind-set"))))
     (is (nil? (opt "--clim-prior")) "bnm-56c.26 not adopted")
     (is (= {:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {}
             :discount-from :data :flow-std :stable :evidence-at :issue-joint}

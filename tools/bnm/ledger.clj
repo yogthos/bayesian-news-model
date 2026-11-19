@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t80-base")
+(def base "t104-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -80,12 +80,13 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t80-base/<kind>/
-  forecasts.tsv (14 November 2026: t71-stack's command with the banking
-  node's credit inputs from the BIS, dated by its releases, at 92f2e4b, on
-  t53-noclim's inputs; the fifth note to L1), by SHA-256. Only banking
-  moves (t79-bis's); the other twelve are t71-stack's."
-  {"banking_crisis" "c61913e67692325a7ee8ba2306e5a98353dc5ee9bfd286678cf30881eb3a65d3"
+  "The base of record's forecasts, data/runs/t104-base/<kind>/
+  forecasts.tsv (18 November 2026: t80-base's command with banking's
+  theory offset, its world funding and reserves, the year row's ratios
+  held through recessions and banking's frailty at rho 0; the sixth note
+  to L1), by SHA-256. Only banking moves (t104-rows-rho0's); the other
+  twelve are t80-base's, t71-stack's."
+  {"banking_crisis" "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b"
    "conflict_onset" "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442"
    "coup" "7d9e32befa2d67f7ab67b08bae3d08b8b3938db257439337815065cc357a292d"
    "currency_crisis" "854a4842451c809bf7f7f2978cc91a7187acc77613649f5aba907b011a9ae8bd"
@@ -421,7 +422,11 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t80-base's: t51b's command (the
+  "The base's bnm.world-run arguments, t104-base's (sixth note to L1):
+  t80-base's with banking's theory offset (--theory-offset, bnm-ris), its
+  world funding and reserves (--theory-world true), the year row's ratios
+  held through recessions (--recession-hold rows) and banking's frailty
+  at rho 0 (--kind-set; bnm-5lr). t80-base's: t51b's command (the
   leak fixes, bnm-56c.23; PWT at 36 months, bnm-h8d; learning at the
   offset mixture, bnm-56c.22) with the flows standardized from a node's
   first resolved outcome (:flow-std-from :resolved, bnm-56c.33), t57's
@@ -444,7 +449,9 @@
    "--leak-fixes" "true" "--pwt-stale" "true" "--lag-stale" "true" "--gauge-std" "stable"
    "--leading" "true" "--leading-priors" "true" "--real-lags" "true" "--at-risk" "catalogue"
    "--lead-std" "history" "--frailty-gauges" "true" "--dated-credit" "true"
-   "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"])
+   "--theory-offset" "true" "--theory-world" "true" "--recession-hold" "rows"
+   "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
+   "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}}}"])
 
 (defn command-line
   "The shell command a manifest records for bnm.world-run `args`; an

@@ -2,6 +2,8 @@
 
 ## State as of 2026-11-14 (branch `structure`)
 
+**The base of record is t104-base** (sixth note to amendment L1, 18 November 2026, docs/PHASE-CHANGES.md): t80-base's command with banking's theory offset, its world funding and reserves, the year row's ratios held through recessions and banking's frailty at ρ 0 (`--theory-offset true --theory-world true --recession-hold rows --kind-set '{"banking_crisis" {:frailty {:rhos [0.0]}}}'`; bnm.ledger/command). Only banking differs from t80-base, described below.
+
 **The base of record is t80-base** (fifth note to amendment L1, 14
 November, docs/PHASE-CHANGES.md): `bnm.world-run --out t80-base --without-relations true --known r7-at-fx --leak-fixes true --pwt-stale true --lag-stale true --gauge-std stable --leading true --leading-priors true --real-lags true --at-risk catalogue --lead-std history --frailty-gauges true --dated-credit true --set '{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}'`, on t53-noclim's inputs:
 t71-stack plus the banking node's credit inputs from the BIS, dated by
