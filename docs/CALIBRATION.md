@@ -3588,3 +3588,12 @@ Suite green (1608 tests); t114 took 30 minutes; the other eleven kinds reproduce
 - Sovereign defaults: fail (2010-12 -0.00032 [-0.00058, -0.00009] LOSS; pooled +0.00002). AUC 0.589 -> 0.595, within-year 0.640 -> 0.677; alerts dcost +0.0019.
 
 Inflation crises' filled inputs are a candidate; adoption is the user's decision.
+
+## Currency crises re-specified, and shapes per input: t115 (bnm-mn8, bnm-asp)
+
+Written 19 November 2026, before any run, on t111-base. Two changes from the diagnosis (reports/Crisis mechanisms data and signals.md; the oracle study; reports/Signal combinations before phase transitions.md):
+
+1. Currency crises' theory re-specified (bnm.kind-theory, `currency`; t110's list kept as `currency-t110`): overvaluation as a level, the real rate against the dollar (data/derived/rer-annual.tsv, scripts/rer-annual.py: WDI's average rate less cumulated CPI plus the US's, 191 countries, 1960-) stretched against its own last ten years (window 10, at least 6), and that times the de facto peg; momentum, the currency's 12-month fall (data/fast/series.tsv fast/fx, monthly, BIS); exchange-market pressure as its 3-month fall and the reserves' 12-month change; reserves, the current account, inflation (log1p), external debt, the US rate's 24-month change as in t110.
+2. Shapes per input (`--shapes true`): each standardized input enters as z, hinges max(0, z - k) at k = -1, 0, 1, and a flag that it was missing, so the fit can bend each response and read missing as its own category. In the oracle study on currency crises' t110 inputs and the global layer, this took the refit logit's pooled AUC from 0.634 to 0.742 (depth-1 stumps 0.694, the lattice 0.693); an offline result on the same folds, so the run is the test.
+
+Run t115: t111-base's command with `--kind-theory sovereign_default,inflation_crisis,currency_crisis --shapes true` (the shapes apply to all three theories). The other ten kinds must reproduce t111-base byte for byte. Rule, for each of the three kinds separately: against t111-base, the fold rule as amended and the alert table at 4:1; beside it level r, AUC and wave-year Brier. No changes after the result.

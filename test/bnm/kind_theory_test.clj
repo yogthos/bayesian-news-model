@@ -86,8 +86,14 @@
          (mapv :name (kt/decls "sovereign_default")))))
 
 (deftest declared-for-currency-and-inflation-crises
-  (is (= [:reserves :reer-change24 :current-account :inflation :external-debt :us-rate-change24]
+  ;; bnm-mn8 (t115): t110's list re-specified; t110's is kept as currency-t110
+  (is (= [:reserves :misalignment :misalignment-x-peg :momentum12 :depreciation3 :reserves12
+          :current-account :inflation :external-debt :us-rate-change24]
          (mapv :name (kt/decls "currency_crisis"))))
+  (is (= [:reserves :reer-change24 :current-account :inflation :external-debt :us-rate-change24]
+         (mapv :name @#'kt/currency-t110)))
+  (is (contains? (kt/vars ["currency_crisis"]) "derived/rer_usd"))
+  (is (contains? (kt/vars ["currency_crisis"]) "fast/fx"))
   (is (= [:inflation :depreciation12 :government-debt-change24 :reserves :growth]
          (mapv :name (kt/decls "inflation_crisis")))))
 
@@ -95,7 +101,7 @@
   (testing "every series a chosen kind declares, for load-series' :vars (bnm.named/vars lacks most)"
     (is (= #{"debt/external_gni" "debt/reserves_months" "economy/inflation" "economy/gdp_growth" "finance/policy_rate"}
            (kt/vars ["sovereign_default"])))
-    (is (contains? (kt/vars ["sovereign_default" "currency_crisis"]) "finance/reer")))
+    (is (contains? (kt/vars ["sovereign_default" "currency_crisis"]) "derived/rer_usd")))
   (testing "a declared series missing from the table refuses, rather than reading as the mean everywhere"
     (let [db {["a1" "economy/inflation"] :s ["a1" "economy/gdp_growth"] :s}]
       (is (thrown-with-msg? Exception #"debt/external_gni"
@@ -176,3 +182,26 @@
     (is (false? (choice {})))
     (is (true? (choice {:impute "true" :kind-theory "sovereign_default"})))
     (is (thrown? Exception (choice {:impute "true"})) "nothing to fill without a theory layer")))
+
+(deftest shapes-per-input
+  ;; bnm-asp: each standardized input z as [z, max(0,z+1), max(0,z), max(0,z-1), missing]
+  (is (= [0.5 1.5 0.5 0.0 0.0] (kt/shape 1.0 0.5)))
+  (is (= [-2.0 0.0 0.0 0.0 0.0] (kt/shape 1.0 -2.0)))
+  (is (= [0.0 1.0 0.0 0.0 1.0] (kt/shape nil nil)) "missing: z read as 0, the flag on")
+  (let [sp2 (kt/with-theory sp (fn [u t] (if (= u "b2") [nil nil] [(x [u t]) nil])) 2 {:shapes true})
+        t (nth (range 11 600 12) 30)]
+    (is (= 10 (count ((:inputs (:kind-theory sp2)) "a1" t))))
+    (is (= 1.0 (nth ((:inputs (:kind-theory sp2)) "b2" t) 4)) "b2's first input missing")
+    (is (some? ((:offset sp2) :year "a1" t)))))
+
+(deftest the-shapes-flag
+  (require 'bnm.world-run)
+  (let [choice (resolve 'bnm.world-run/shapes-choice)]
+    (is (false? (choice {})))
+    (is (true? (choice {:shapes "true" :kind-theory "currency_crisis"})))
+    (is (thrown? Exception (choice {:shapes "true"})))))
+
+(deftest the-tables-read
+  (is (= ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"]
+         kt/series-paths)))
+

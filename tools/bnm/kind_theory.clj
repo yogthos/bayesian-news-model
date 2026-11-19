@@ -23,7 +23,7 @@
    {:name :growth :var "economy/gdp_growth" :read [:value] :stale 30}
    {:name :us-rate-change24 :var "finance/policy_rate" :unit "USA" :read [:change 24] :stale 3}])
 
-(def ^:private currency
+(def ^:private currency-t110
   "Currency crises, fixed before any run (docs/CALIBRATION.md t110): the
   early-warning literature's leading indicators (Kaminsky, Lizondo and
   Reinhart 1998: reserves, real overvaluation, the current account,
@@ -34,6 +34,35 @@
    {:name :inflation :var "economy/inflation" :read [:value] :stale 30 :log1p true}
    {:name :external-debt :var "debt/external_gni" :read [:value] :stale 30}
    {:name :us-rate-change24 :var "finance/policy_rate" :unit "USA" :read [:change 24] :stale 3}])
+
+(def ^:private currency
+  "Currency crises re-specified (bnm-mn8, docs/CALIBRATION.md t115; reports/
+  Crisis mechanisms data and signals.md): t110's REER change fitted the
+  wrong sign, a change where theory names a level, with no regime term and
+  BIS coverage of 63 countries. Here overvaluation is a level, the real
+  rate against the dollar (data/derived/rer-annual.tsv, 191 countries)
+  stretched against its own last ten years, and times the de facto peg
+  (overvaluation bites under pegs); momentum (the currency's 12-month
+  fall, monthly) and exchange-market pressure (its 3-month fall, the
+  reserves' 12-month change) are their own inputs; reserves, the current
+  account, inflation, external debt and the US rate as before."
+  [{:name :reserves :var "debt/reserves_months" :read [:value] :stale 30}
+   {:name :misalignment :var "derived/rer_usd" :read [:stretch {:window 10 :min 6 :cap 5.0 :eps 1e-9}] :stale 30}
+   {:name :misalignment-x-peg :expr [:mul {:var "derived/rer_usd" :read [:stretch {:window 10 :min 6 :cap 5.0 :eps 1e-9}] :stale 30}
+                                     {:var "finance/fx_peg" :read [:value] :stale 30}]}
+   {:name :momentum12 :var "fast/fx" :read [:change 12] :stale 3}
+   {:name :depreciation3 :var "fast/fx" :read [:change 3] :stale 3}
+   {:name :reserves12 :var "debt/reserves_months" :read [:change 12] :stale 30}
+   {:name :current-account :var "debt/current_account_gdp" :read [:value] :stale 30}
+   {:name :inflation :var "economy/inflation" :read [:value] :stale 30 :log1p true}
+   {:name :external-debt :var "debt/external_gni" :read [:value] :stale 30}
+   {:name :us-rate-change24 :var "finance/policy_rate" :unit "USA" :read [:change 24] :stale 3}])
+
+(def series-paths
+  "The tables the theory layers read: the slow table, the global drivers
+  (scripts/global-monthly.py), the real rates (scripts/rer-annual.py), the
+  fast table's monthly exchange rates."
+  ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"])
 
 (def ^:private inflation
   "Inflation crises, fixed before any run (docs/CALIBRATION.md t110):
@@ -132,26 +161,38 @@
         anc (into {} (for [c countries] [c (ancestors c)]))]
     (memoize (fn [place] (if (= "world" place) countries (filter #(contains? (anc %) place) countries))))))
 
+(defn shape
+  "One input's shape columns (bnm-asp; the oracle study's A6): its
+  standardized value z (0 when missing) and hinges max(0, z - k) at
+  k = -1, 0, 1, so the fit can bend its response, and a flag that the raw
+  value `x` was missing, so missing is its own category."
+  [x z]
+  (let [v (double (or z 0.0))]
+    [v (max 0.0 (+ v 1.0)) (max 0.0 v) (max 0.0 (- v 1.0)) (if (nil? x) 1.0 0.0)]))
+
 (defn with-theory
   "`sp` with its year node's offset the theory's: `row` (fn [unit origin])
   -> `width` raw inputs (nil for missing), each standardized by
   bnm.theory/place-z (at least 20 earlier values), the logit refit by
   bnm.theory/offsets on the spec's year target; an aggregate takes the
   chance any member has one. Other scales keep the spec's offset.
-  opts :impute true (bnm-s6m): missing inputs filled by bnm.impute (the
+  opts :shapes true (bnm-asp): each input as `shape`'s five columns.
+  :impute true (bnm-s6m): missing inputs filled by bnm.impute (the
   last value decayed toward the region's mean) with the share missing as
   one more input. :add true (t112): the offset kept and only the theory's slopes,
   b.z past the intercept, added to a country's year log odds through
   :offset-add; the level stays the lattice's."
   ([sp row width] (with-theory sp row width {}))
-  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute]}]
+  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes]}]
   (let [countries (second (first levels))
         per (:per (first (filter #(= :year (:name %)) scales)))
         os (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))
         ;; bnm-s6m: missing inputs filled (bnm.impute), the share missing a column more
         [row width] (if impute [(im/impute row width countries (vec os) parent) (inc width)] [row width])
         zs (vec (for [i (range width)] (th/place-z (fn [u t] (nth (row u t) i)) countries os 20)))
-        inputs (fn [u t] (mapv #(% u t) zs))
+        inputs (if shapes
+                 (fn [u t] (let [r (row u t)] (vec (mapcat (fn [i z] (shape (some-> r (nth i)) (z u t))) (range width) zs))))
+                 (fn [u t] (mapv #(% u t) zs)))
         args {:places countries :origins os :prior 1.0 :inputs inputs
               :target (fn [u t] (target :year u t))}]
     (if add
@@ -179,12 +220,13 @@
   the slow table `db`; those in `add` on top of their offset (t112)."
   ([specs kinds db] (with-kind-theory specs kinds db #{}))
   ([specs kinds db add] (with-kind-theory specs kinds db add false))
-  ([specs kinds db add impute]
+  ([specs kinds db add impute] (with-kind-theory specs kinds db add impute false))
+  ([specs kinds db add impute shapes]
   (reduce (fn [acc k]
             (let [ds (or (decls k) (throw (ex-info (str "bnm.kind-theory: no theory declared for " k) {:kind k})))]
               (check-loaded ds db)
               (if (contains? acc k)
-                (update acc k with-theory (transformed ds (:row (sg/assemble db ds))) (count ds) {:add (contains? add k) :impute impute})
+                (update acc k with-theory (transformed ds (:row (sg/assemble db ds))) (count ds) {:add (contains? add k) :impute impute :shapes shapes})
                 acc)))
           specs kinds)))
 

@@ -11,6 +11,8 @@
 ;;       (reports/Signal combinations before phase transitions.md, test (a):
 ;;       if stumps recover most of A4's gain over A0, the fix is the inputs'
 ;;       shapes, not their products)
+;;   A6 shapes in the logit: each standardized input as z and hinges
+;;       max(0, z - k) at k = -1, 0, 1, plus a missing flag (bnm-asp)
 ;;   A5 step 2: logit on bnm.impute's filled inputs and the share missing
 ;;   and t111-base's own p beside them.
 ;; A1 (final vintage) is not run: data/slow/series.tsv holds one vintage,
@@ -69,6 +71,10 @@
           zs (fn [raw width] (let [z (vec (for [i (range width)] (th/place-z (fn [u t] (some-> (raw u t) (nth i))) countries os 20)))]
                                (fn [u t] (mapv #(% u t) z))))
           z0 (zs raw0 w) z2 (zs raw2 w) z5 (zs raw5 (inc w))
+          hinge (fn [u t] (let [r (raw0 u t) zz (z0 u t)]
+                            (double-array (cons 1.0 (mapcat (fn [x zv] (let [v (double (or zv 0.0))]
+                                                                         [v (max 0.0 (+ v 1.0)) (max 0.0 v) (max 0.0 (- v 1.0)) (if (nil? x) 1.0 0.0)]))
+                                                            (or r (repeat w nil)) zz)))))
           xrow (fn [z u t] (double-array (cons 1.0 (map #(double (or % 0.0)) (z u t)))))
           nanrow (fn [u t] (double-array (map #(if % (double %) Double/NaN) (or (raw0 u t) (repeat w nil)))))
           train-of (fn [f t] (vec (for [[[u t'] {:keys [y]}] rows :when (<= (+ t' 24) t)] {:x (f u t') :y y :w 1.0})))
@@ -79,12 +85,14 @@
                                   b0 (when ok (lgt/fit tr0 (inc w) {:prior 1.0}))
                                   b2 (when ok (lgt/fit tr2 (inc w) {:prior 1.0}))
                                   b5 (when ok (lgt/fit tr5 (+ 2 w) {:prior 1.0}))
+                                  trh (train-of hinge t)
+                                  bh (when ok (lgt/fit trh (inc (* 5 w)) {:prior 1.0}))
                                   gb (when ok (trees/fit trt trees/defaults))
                                   gs (when ok (trees/fit trt (assoc trees/defaults :depth 1 :rounds 200)))]
                             :when ok
                             [[u t'] {:keys [y p]}] rows :when (= t t')]
                         {:y y :p p :a0 (lgt/predict b0 (xrow z0 u t)) :a2 (lgt/predict b2 (xrow z2 u t))
-                         :a5 (lgt/predict b5 (xrow z5 u t)) :a4 (trees/predict gb (nanrow u t)) :a4s (trees/predict gs (nanrow u t))
+                         :a5 (lgt/predict b5 (xrow z5 u t)) :a6 (lgt/predict bh (hinge u t)) :a4 (trees/predict gb (nanrow u t)) :a4s (trees/predict gs (nanrow u t))
                          :missing (boolean (some nil? (raw0 u t)))}))
           as (fn [k ps] (map #(assoc % :s (k %)) ps))]
       (println "==" kind (count ds) "inputs")
@@ -94,6 +102,7 @@
       (println "  A4 boosted trees      " (fmt (as :a4 scored)))
       (println "  A4s stumps (depth 1)  " (fmt (as :a4s scored)))
       (println "  A5 imputed + missing  " (fmt (as :a5 scored)))
+      (println "  A6 hinges + missing   " (fmt (as :a6 scored)))
       (println "  A3 A0, all read       " (fmt (as :a0 (remove :missing scored))))
       (println "  A3 A0, some missing   " (fmt (as :a0 (filter :missing scored))))
       (println "  A3 lattice, all read  " (fmt (as :p (remove :missing scored))))

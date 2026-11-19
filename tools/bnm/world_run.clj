@@ -818,6 +818,24 @@
              (throw (ex-info "bnm.world-run: --impute fills a theory layer's inputs: give --kind-theory or --global-theory" {})))
     (throw (ex-info "bnm.world-run: --impute takes true" {:impute v}))))
 
+(defn shapes-choice
+  "--shapes true (bnm-asp): the kind theories read each input as
+  bnm.kind-theory/shape's columns; false without the flag."
+  [{v :shapes :as opts}]
+  (case v
+    nil false
+    "true" (if (:kind-theory opts) true
+               (throw (ex-info "bnm.world-run: --shapes shapes a kind theory's inputs: give --kind-theory" {})))
+    (throw (ex-info "bnm.world-run: --shapes takes true" {:shapes v}))))
+
+(defn- theory-db
+  "The theory layers' table: every path in bnm.kind-theory/series-paths,
+  read for `vars`, the slow table with its real lags."
+  [vars real-lags]
+  (let [vs (st/read-variables "data/slow/variables.tsv")]
+    (apply merge (for [p kt/series-paths]
+                   (nm/load-series p vs (cond-> {:vars vars} (= p "data/slow/series.tsv") (assoc :real-lags real-lags)))))))
+
 (defn global-theory-choice
   "--global-theory kind,... (bnm-1ft): the global layer (bnm.kind-theory/
   global) on top of each named kind's year offset; nil without the flag."
@@ -1098,16 +1116,11 @@
                                end)
                    finer-where-fresh
                    (#(if-let [ks (kind-theory-choice opts)]
-                       (kt/with-kind-theory % ks (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
-                                                                 {:real-lags (real-lags-choice opts) :vars (kt/vars ks)})
-                                           (kind-theory-add opts) (impute-choice opts))
+                       (kt/with-kind-theory % ks (theory-db (kt/vars ks) (real-lags-choice opts))
+                                           (kind-theory-add opts) (impute-choice opts) (shapes-choice opts))
                        %))
                    (#(if-let [ks (global-theory-choice opts)]
-                       (let [vs (st/read-variables "data/slow/variables.tsv")
-                             gv (kt/decl-vars kt/global)]
-                         (kt/with-global-theory % ks (merge (nm/load-series "data/slow/series.tsv" vs {:real-lags (real-lags-choice opts) :vars gv})
-                                                            (nm/load-series "data/derived/global-monthly.tsv" vs {:vars gv}))
-                                                (impute-choice opts)))
+                       (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts))
                        %))
                    (with-bloc-theory (bloc-theory-choice opts)
                      (when (bloc-theory-choice opts)
