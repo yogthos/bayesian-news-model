@@ -513,13 +513,18 @@
   (when-let [fr (:frailty r)]
     (with-open [w (io/writer (str dir "/frailty.tsv"))]
       (doseq [[[scale level] hist] (sort-by key fr)
-              [s {:keys [m v rho sd lsd usd cross] :as e}] hist]
+              [s {:keys [m v rho sd lsd usd rsd cross] :as e}] hist]
         ;; under :level-sds, the level's sd, state and variance as three more
         ;; columns; under :exposure-sds, the slope's sd and each column's
-        ;; loading (comma-separated, empty while no slope is chosen)
+        ;; loading (comma-separated, empty while no slope is chosen); under
+        ;; :regional-sds, the regional sd and each group's state
         (.write w (str (name scale) "\t" (name level) "\t" s "\t" m "\t" v "\t" rho "\t" sd
                        (when lsd (str "\t" lsd "\t" (:level e) "\t" (:level-v e)))
                        (when usd (str "\t" usd "\t" (str/join "," (:u e)) "\t" (str/join "," (:u-v e))))
+                       ;; under :regional-sds, the regional sd and each group=state
+                       (when rsd (str "\t" rsd "\t" (str/join "," (map #(str %1 "=" %2) (:r-groups e) (or (:rs e) (repeat 0.0))))
+                                      ;; with their own persistence, the regional rho
+                                      (when-let [q (:rrho e)] (str "\t" q))))
                        ;; under :prior :finer, the chosen kappa (0: the node's own prior)
                        (when cross (str "\t" cross))
                        ;; under :gauges (bnm-v1y), beta, its variance and the origin's gauges

@@ -831,6 +831,8 @@
   "The frailty's grid and reference when the spec's :frailty leaves them out."
   {:rhos [0.0 0.5 0.8 0.95] :sds [0.0 0.25 0.5 1.0] :from :base :prior :own :penalty 2.0
    :level-sds [0.0] :level-penalty 2.0 :exposure-sds [0.0] :exposure-penalty 2.0
+   :regional-sds [0.0] :regional-penalty 2.0 :regional-levels [:region] :regional-rhos nil
+   :start :tie
    :cross [0.0 0.5 1.0 1.5] :gauges-from :all})
 
 (def frailty-wide-sds
@@ -858,6 +860,22 @@
   persistence and a stationary sd chosen from the grid, a non-zero one
   paying :exposure-penalty nats (2.0). The place's shock is then z + u.e,
   filtered jointly once per origin. The default, [0.0], is no slope.
+  :regional-sds (bnm-56c.20.3) adds a shock per region inside the node:
+  one state r_g per group of its places at each of :regional-levels (the
+  spec's coarser levels, [:region] by default, membership up :parent),
+  AR(1) at a persistence of their own (:regional-rhos, persistences in
+  [0, 1), the frailty's :rhos when left out; :tied, z's own, as t61 ran),
+  their stationary sd chosen from the grid with it, a non-zero one paying
+  :regional-penalty nats (2.0). The place's shock is then z (+ u.e) + the
+  r_g of its groups, filtered jointly once per origin. The default, [0.0],
+  is none.
+  :start (bnm-93n) is what the node issues with before its frailty has
+  filtered an origin, when every candidate's score is 0: :tie (the
+  default), the grid's first candidate, sd 0, so the first origins are
+  issued and learned with no shared state; :prior-predictive, the grid's
+  prior predictive, its candidates weighted by exp(-price) and matched in
+  mean and variance (each state's variance the weighted mean of theirs).
+  It goes with :prior :own.
   :prior :finer with :source, a scale of the spec (bnm-56c.35, recursive
   step 4): every node at a scale coarser than the source issues with kappa
   times the source scale's state at its level (filtered before the node
@@ -888,6 +906,7 @@
     (when-not (map? f)
       (throw (ex-info "bnm.lattice: :frailty takes a map of :rhos :sds :from :prior" {:frailty f})))
     (when-let [bad (seq (remove #{:rhos :sds :from :prior :penalty :level-sds :level-penalty :exposure-sds :exposure-penalty
+                                  :regional-sds :regional-penalty :regional-levels :regional-rhos :start
                                   :source :cross :gauges :gauges-from :centre :regime-penalty} (keys f)))]
       (throw (ex-info (str "bnm.lattice: :frailty names no option " (vec bad)) {:frailty f})))
     (when-not (contains? #{nil :odds :rate} (:centre f))
@@ -898,7 +917,8 @@
     (when (and (keyword? (:sds f)) (not= :wide (:sds f)))
       (throw (ex-info "bnm.lattice: :frailty :sds takes sds of at least 0, or :wide" {:sds (:sds f)})))
     (let [c (cond-> (merge frailty-defaults f) (= :wide (:sds f)) (assoc :sds frailty-wide-sds))
-          {:keys [rhos sds from prior penalty level-sds level-penalty exposure-sds exposure-penalty source cross]} c
+          {:keys [rhos sds from prior penalty level-sds level-penalty exposure-sds exposure-penalty
+                  regional-sds regional-penalty regional-levels regional-rhos start source cross]} c
           nums? (fn [xs ok?] (and (sequential? xs) (seq xs) (every? #(and (number? %) (ok? (double %))) xs)))]
       (when-not (nums? rhos #(and (<= 0.0 %) (< % 1.0)))
         (throw (ex-info "bnm.lattice: :frailty :rhos takes persistences in [0, 1)" {:rhos rhos})))
@@ -919,8 +939,10 @@
             (throw (ex-info "bnm.lattice: :frailty :prior :finer takes a :source scale finer than another of the spec's" {:source source :scales names})))
           (when-not (nums? cross #(<= 0.0 %))
             (throw (ex-info "bnm.lattice: :frailty :cross takes coefficients of at least 0" {:cross cross})))
-          (when (or (some pos? (map double level-sds)) (some pos? (map double exposure-sds)))
-            (throw (ex-info "bnm.lattice: :frailty :prior :finer takes no level or slope" {:level-sds level-sds :exposure-sds exposure-sds})))))
+          (when (or (some pos? (map double level-sds)) (some pos? (map double exposure-sds))
+                    (some pos? (map double regional-sds)))
+            (throw (ex-info "bnm.lattice: :frailty :prior :finer takes no level, slope or regional states"
+                            {:level-sds level-sds :exposure-sds exposure-sds :regional-sds regional-sds})))))
       (when-not (nums? level-sds #(<= 0.0 %))
         (throw (ex-info "bnm.lattice: :frailty :level-sds takes sds of at least 0" {:level-sds level-sds})))
       (when-not (and (number? level-penalty) (<= 0.0 (double level-penalty)))
@@ -935,13 +957,32 @@
         (when (seq gs)
           (when-not (= :own prior)
             (throw (ex-info "bnm.lattice: :frailty :gauges goes with :prior :own" {:prior prior})))
-          (when (or (some pos? (map double level-sds)) (some pos? (map double exposure-sds)))
-            (throw (ex-info "bnm.lattice: :frailty :gauges takes no level or slope" {:level-sds level-sds :exposure-sds exposure-sds})))
+          (when (or (some pos? (map double level-sds)) (some pos? (map double exposure-sds)) (some pos? (map double regional-sds)))
+            (throw (ex-info "bnm.lattice: :frailty :gauges takes no level, slope or regional states" {:level-sds level-sds :exposure-sds exposure-sds :regional-sds regional-sds})))
           (when-not (some pos? (map double sds))
             (throw (ex-info "bnm.lattice: :frailty :gauges needs an sd above 0 in :sds" {:sds sds})))
           (when-not (keyword? (:gauges-from c))
             (throw (ex-info "bnm.lattice: :frailty :gauges-from names a model's group" {:gauges-from (:gauges-from c)})))))
-      (let [exposure? (boolean (some pos? (map double exposure-sds)))]
+      (when-not (nums? regional-sds #(<= 0.0 %))
+        (throw (ex-info "bnm.lattice: :frailty :regional-sds takes sds of at least 0" {:regional-sds regional-sds})))
+      (when-not (and (number? regional-penalty) (<= 0.0 (double regional-penalty)))
+        (throw (ex-info "bnm.lattice: :frailty :regional-penalty takes nats of at least 0" {:regional-penalty regional-penalty})))
+      (when-not (#{:tie :prior-predictive} start)
+        (throw (ex-info "bnm.lattice: :frailty :start takes :tie or :prior-predictive" {:start start})))
+      (when (and (= :prior-predictive start) (not= :own prior))
+        (throw (ex-info "bnm.lattice: :frailty :start :prior-predictive goes with :prior :own" {:prior prior})))
+      (when (and (= :prior-predictive start) (= :rate (:centre c)))
+        (throw (ex-info "bnm.lattice: :frailty :start :prior-predictive goes with :centre :odds" {:centre (:centre c)})))
+      (when-not (or (nil? regional-rhos) (= :tied regional-rhos) (nums? regional-rhos #(and (<= 0.0 %) (< % 1.0))))
+        (throw (ex-info "bnm.lattice: :frailty :regional-rhos takes persistences in [0, 1) or :tied" {:regional-rhos regional-rhos})))
+      (let [exposure? (boolean (some pos? (map double exposure-sds)))
+            regional? (boolean (some pos? (map double regional-sds)))
+            ;; the regional states' own persistences (bnm-56c.20.3): z's grid
+            ;; when left out; :tied, none of their own (z's, as t61 ran)
+            rrhos (when-not (= :tied regional-rhos) (sort (distinct (map double (or regional-rhos rhos)))))]
+        (when (and regional? (not (and (sequential? regional-levels) (seq regional-levels)
+                                       (every? (set (map first (:levels spec))) regional-levels))))
+          (throw (ex-info "bnm.lattice: :frailty :regional-levels names levels of the spec's :levels" {:regional-levels regional-levels})))
         (when (and exposure? (not (and (:exposure spec) (pos? (long (or (:exposure-width spec) 0))))))
           (throw (ex-info "bnm.lattice: :frailty :exposure-sds needs the spec's :exposure and :exposure-width" {:exposure-sds exposure-sds})))
         ;; the grid, no slope, no level and smallest sd first, so a tie keeps
@@ -949,14 +990,20 @@
         ;; with no slope no :usd, each computed as before the option existed
         (assoc c :level? (boolean (some pos? (map double level-sds)))
                :exposure? exposure?
+               :regional? regional?
                :width (when exposure? (long (:exposure-width spec)))
                :grid (vec (concat
-                           (for [u (sort (distinct (map double exposure-sds)))
+                           (for [rr (sort (distinct (map double regional-sds)))
+                                 ;; a regional candidate at each of its own persistences
+                                 rq (if (and (pos? rr) rrhos) rrhos [nil])
+                                 u (sort (distinct (map double exposure-sds)))
                                  l (sort (distinct (map double level-sds)))
                                  s (sort (distinct (map double sds))) r (sort (distinct (map double rhos)))]
                              (cond-> {:rho r :sd s :price (if (pos? s) (double penalty) 0.0)}
                                (pos? l) (-> (assoc :lsd l) (update :price + (double level-penalty)))
-                               (pos? u) (-> (assoc :usd u) (update :price + (double exposure-penalty)))))
+                               (pos? u) (-> (assoc :usd u) (update :price + (double exposure-penalty)))
+                               (pos? rr) (-> (assoc :rsd rr) (update :price + (double regional-penalty)))
+                               rq (assoc :rrho rq)))
                            ;; :prior :finer: the source's state times kappa, after the
                            ;; node's own candidates (kappa 0) so a tie keeps its own;
                            ;; its own persistence unused, rho 0
@@ -1082,6 +1129,56 @@
   [sd]
   (> (double (or sd 0.0)) 1.0))
 
+(defn- ancestor-at
+  "The place's ancestor in the set `at`, up the spec's :parent; nil without one."
+  [parent at place]
+  (loop [p (get parent place) seen #{}]
+    (cond (nil? p) nil
+          (at p) p
+          (seen p) nil
+          :else (recur (get parent p) (conj seen p)))))
+
+(defn frailty-node
+  "The frailty config at one node. Under :regional-sds, its regional groups
+  (:r-groups: at each of :regional-levels coarser than the node's level,
+  its places' ancestors there; a level with fewer than two among them is
+  left out, one group being z) and each place's loads on them (:member,
+  its membership centred across the node's places).
+  With no group each regional candidate becomes its sd_r = 0 twin, and the
+  node is the frailty without the option."
+  [fcfg spec level-ix places]
+  (if-not (:regional? fcfg)
+    fcfg
+    (let [levels (vec (:levels spec))
+          names (mapv first levels)
+          per-level (vec (for [l (:regional-levels fcfg)
+                               :let [li (first (keep-indexed #(when (= l %2) %1) names))]
+                               :when (> (long li) (long level-ix))
+                               :let [at (set (second (levels li)))
+                                     anc (into {} (for [p places] [p (ancestor-at (:parent spec) at p)]))
+                                     gs (vec (sort (distinct (keep val anc))))]
+                               :when (< 1 (count gs))]
+                           [gs anc]))
+          groups (vec (mapcat first per-level))
+          ;; each group's column, 1 in it and 0 out, centred across the node's
+          ;; places (less the group's share): the regional states move no
+          ;; place's mean against the node's level, so z stays the level and
+          ;; r the regional tilt, as the slope's standardized exposures do
+          n (double (count places))
+          member (into {} (for [p places]
+                            [p (vec (for [[gs anc] per-level
+                                          :let [share (frequencies (vals anc))]
+                                          g gs]
+                                      (- (if (= g (anc p)) 1.0 0.0) (/ (double (share g)) n))))]))]
+      (if (empty? groups)
+        ;; each regional candidate as its sd_r = 0 twin (already in the grid
+        ;; unless :regional-sds has no 0), in the grid's order
+        (update fcfg :grid (fn [g] (vec (distinct (map #(if (:rsd %)
+                                                          (-> (dissoc % :rsd :rrho) (update :price - (double (:regional-penalty fcfg))))
+                                                          %)
+                                                       g)))))
+        (assoc fcfg :r-groups groups :ng (count groups) :member member)))))
+
 (defn with-frailty
   "Offsets [[w o] ...] with a shared state z ~ N(m, v) added, by the
   five-point Hermite rule, or the twenty-point one when the state's :sd
@@ -1198,7 +1295,7 @@
             top (apply max terms)]
         (+ top (Math/log (reduce + (map #(Math/exp (- % top)) terms))))))))
 
-(declare slope-fresh)
+(declare slope-fresh vec-cand? with-dims)
 
 (defn- frailty-fresh
   "A node's frailty before its first resolved origin: one filter per
@@ -1206,11 +1303,12 @@
   that takes no finer source) the :prior :finer candidates are left out.
   With `gp` (`frailty-gauges`, bnm-v1y) each candidate carries beta, the
   gauges' loadings, at their theory prior (:b0 :bv), and those with an sd
-  of 0 are left out."
+  of 0 are left out. Under regional states (`frailty-node`'s :ng groups)
+  a candidate with :rsd carries one r_g per group."
   ([cfg] (frailty-fresh cfg false nil))
   ([cfg cross?] (frailty-fresh cfg cross? nil))
   ([cfg cross? gp] (frailty-fresh cfg cross? gp nil))
-  ([{:keys [grid width]} cross? gp rp]
+  ([{:keys [grid width ng]} cross? gp rp]
   (let [grid (cond->> (if cross? grid (vec (remove :cross grid)))
                gp (filterv #(pos? (double (:sd %)))))
         ;; bnm-56c.40, :regime: every candidate with an sd above 0 repeated
@@ -1220,26 +1318,21 @@
                (into grid (for [g grid :when (pos? (double (:sd g)))]
                             (-> g (assoc :regime true) (update :price + (double (:price rp))))))
                grid)]
-  {:cands (mapv (fn [{:keys [sd lsd usd regime] :as g}]
+  {:cands (mapv (fn [{:keys [sd lsd usd rsd regime] :as g}]
                   (cond
-                    ;; a slope on exposure or the gauges' loadings: the joint
-                    ;; state as a vector and its variance
-                    (or usd gp regime) (let [g (cond-> g
-                                                 gp (assoc :b0 (:b0 gp) :bv (:bv gp))
-                                                 regime (-> (update :b0 (fnil conj []) (:d0 rp))
-                                                            (update :bv (fnil conj []) (:dv rp))))]
-                                         (merge (assoc g :t nil :score 0.0) (slope-fresh g width)))
+                    ;; a slope on exposure, regional states or the gauges'
+                    ;; loadings: the joint state as a vector and its variance,
+                    ;; :nu slope and :nr regional dimensions
+                    (or usd rsd gp regime) (let [g (cond-> (assoc g :nu (if usd (long width) 0) :nr (if rsd (long ng) 0))
+                                                     gp (assoc :b0 (:b0 gp) :bv (:bv gp))
+                                                     regime (-> (update :b0 (fnil conj []) (:d0 rp))
+                                                                (update :bv (fnil conj []) (:dv rp))))]
+                                             (merge (assoc g :t nil :score 0.0) (slope-fresh g)))
                     :else (cond-> (assoc g :m 0.0 :v (* sd sd) :t nil :score 0.0)
                             ;; the level starts at 0, known: the base's level is the start
                             lsd (assoc :lm 0.0 :lv 0.0 :c 0.0))))
                 grid)
    :filtered (sorted-map)})))
-
-(defn- vec-cand?
-  "Whether a candidate's state is a vector: a slope on exposure or the
-  gauges' loadings (bnm-v1y)."
-  [c]
-  (boolean (or (:usd c) (:b0 c))))
 
 (defn- chosen
   "The index of the candidate with the best prequential score less its
@@ -1305,38 +1398,60 @@
          :lm (+ (double lm) (* kl d)) :lv (- (double lv) (* kl kl shrink))
          :c (- (double cv) (* kl kz shrink))})))))
 
-;; --- the slope on exposure (bnm-56c.20.2): the joint state [z (L) u_1 .. u_J] ---
+;; --- the joint state [z (L) u_1 .. u_J r_1 .. r_G beta]: the slope on exposure
+;; (bnm-56c.20.2), the regional states (bnm-56c.20.3), the gauges' loadings
+;; (bnm-v1y) and the regime's (bnm-56c.40). Regional states never go with the
+;; gauges or the regime (frailty-config refuses it).
+
+(defn- vec-cand?
+  "Whether a candidate's state is a vector: a slope on exposure, regional
+  states, or the gauges' loadings (bnm-v1y)."
+  [c]
+  (boolean (or (:usd c) (:rsd c) (:b0 c))))
+
+(defn- with-dims
+  "A vector candidate with its slope and regional dimensions, :nu and :nr;
+  a slope candidate built without them has every dimension past z, the
+  level and the loadings on the slope."
+  [{:keys [mu lsd usd nu nr b0] :as c}]
+  (let [nr (long (or nr 0))]
+    (assoc c :nr nr :nu (long (or nu (if usd (- (count mu) (if lsd 2 1) nr (count b0)) 0))))))
 
 (defn- slope-diag
-  "A slope candidate's per-dimension [factor noise] over h periods: z and
-  each u_j AR(1) at the candidate's rho (their stationary sds :sd and
-  :usd), the level, when there is one, a random walk, the gauges'
-  loadings (bnm-v1y) static."
-  [{:keys [rho sd lsd usd b0]} width h]
-  (let [rh (Math/pow (double rho) (double h))
-        ar (fn [s] [rh (* (double s) (double s) (- 1.0 (* rh rh)))])]
-    (vec (concat [(ar sd)]
+  "A vector candidate's per-dimension [factor noise] over h periods: z,
+  each u_j and each regional r_g AR(1) at the candidate's rho (their
+  stationary sds :sd, :usd and :rsd; the r_g at :rrho when the candidate
+  has its own), the level, when there is one, a random walk, the gauges'
+  loadings static."
+  [{:keys [rho rrho sd lsd usd rsd nu nr b0]} h]
+  (let [ar (fn [r s] (let [rh (Math/pow (double r) (double h))]
+                       [rh (* (double s) (double s) (- 1.0 (* rh rh)))]))]
+    (vec (concat [(ar rho sd)]
                  (when lsd [[1.0 (* (double lsd) (double lsd) (double h))]])
-                 (when usd (repeat width (ar usd)))
+                 (when usd (repeat (long (or nu 0)) (ar rho usd)))
+                 (when rsd (repeat (long (or nr 0)) (ar (or rrho rho) rsd)))
                  (repeat (count b0) [1.0 0.0])))))
 
 (defn- slope-fresh
-  "A slope candidate's joint state before anything is known: z and each
-  u_j at their stationary priors, the level at 0 known."
-  [{:keys [sd lsd usd b0 bv]} width]
-  (let [vs (vec (concat [(* (double sd) (double sd))] (when lsd [0.0]) (when usd (repeat width (* (double usd) (double usd))))
+  "A vector candidate's joint state before anything is known: z, each u_j
+  and each r_g at their stationary priors, the level at 0 known, the
+  loadings at their theory priors."
+  [{:keys [sd lsd usd rsd nu nr b0 bv]}]
+  (let [vs (vec (concat [(* (double sd) (double sd))] (when lsd [0.0])
+                        (when usd (repeat (long (or nu 0)) (* (double usd) (double usd))))
+                        (when rsd (repeat (long (or nr 0)) (* (double rsd) (double rsd))))
                         (map double bv)))
         d (count vs)]
     {:mu (vec (concat (repeat (- d (count b0)) 0.0) (map double b0)))
      :P (vec (for [i (range d)] (vec (for [j (range d)] (if (= i j) (vs i) 0.0)))))}))
 
 (defn- slope-ahead
-  "A slope candidate's joint state {:mu :P} run forward to origin t (as
+  "A vector candidate's joint state {:mu :P} run forward to origin t (as
   it starts before it has filtered anything)."
-  [{:keys [t mu P lsd b0] :as c} to per]
+  [{:keys [t mu P] :as c} to per]
   (if (nil? t)
     {:mu mu :P P}
-    (let [fq (slope-diag c (- (count mu) (if lsd 2 1) (count b0)) (Math/max 0.0 (/ (double (- to t)) per)))
+    (let [fq (slope-diag (with-dims c) (Math/max 0.0 (/ (double (- to t)) per)))
           f (mapv first fq)]
       {:mu (mapv * f mu)
        :P (vec (for [i (range (count f))]
@@ -1344,54 +1459,63 @@
                         (+ (* (f i) (f j) (double (get-in P [i j]))) (if (= i j) (second (fq i)) 0.0))))))})))
 
 (defn- slope-load
-  "The row's loading on a slope candidate's state: 1 on z (and the level),
-  its standardized exposures on the u_j, the origin's gauges `g` on beta
-  (bnm-v1y)."
-  ([c e] (slope-load c e nil))
-  ([{:keys [lsd b0]} e g]
-   ;; under :regime (bnm-56c.40) the origin's loadings are the gauges then
-   ;; the regime's x: a candidate without delta reads the gauges alone
-   (when (and b0 (not (<= (count b0) (count g) (inc (count b0)))))
-     (throw (ex-info "bnm.lattice: :frailty :gauges read at the wrong width" {:want (count b0) :got (count g)})))
-   (vec (concat [1.0] (when lsd [1.0]) (map double e) (when b0 (map double (take (count b0) g)))))))
+  "The row's loading on a vector candidate's state: 1 on z (and the
+  level), its standardized exposures on the u_j, its centred memberships
+  `member` on the r_g, the origin's gauges `gauges` on beta (bnm-v1y)."
+  ([c e] (slope-load c e nil nil))
+  ([{:keys [lsd nu nr b0] :as c} e member gauges]
+   (let [{:keys [nu nr]} (with-dims c)]
+     ;; under :regime (bnm-56c.40) the origin's loadings are the gauges then
+     ;; the regime's x: a candidate without delta reads the gauges alone
+     (when (and b0 (not (<= (count b0) (count gauges) (inc (count b0)))))
+       (throw (ex-info "bnm.lattice: :frailty :gauges read at the wrong width" {:want (count b0) :got (count gauges)})))
+     (vec (concat [1.0] (when lsd [1.0]) (when (pos? (long nu)) (map double e))
+                  (when (pos? (long nr)) (map double (or member (repeat nr 0.0))))
+                  (when b0 (map double (take (count b0) gauges))))))))
 
 (defn- slope-half
   "Half the stationary variance of the place's shift: what the shift
   applied is less than its state, so the expected rate multiplier is one
-  at every exposure."
-  ^double [{:keys [sd usd]} e]
-  (let [usd (double (or usd 0.0))]
-    (* 0.5 (+ (* (double sd) (double sd)) (* usd usd (reduce + 0.0 (map #(* (double %) (double %)) e)))))))
+  at every exposure and in every region."
+  ^double [{:keys [sd usd rsd] :as c} e member]
+  (let [{:keys [nu nr]} (if (:mu c) (with-dims c) c)
+        sq #(reduce + 0.0 (map (fn [x] (* (double x) (double x))) %))]
+    (* 0.5 (+ (* (double sd) (double sd))
+              (if (and usd (pos? (long (or nu (count e))))) (* (double usd) (double usd) (sq e)) 0.0)
+              (if (and rsd (pos? (long (or nr 0)))) (* (double rsd) (double rsd) (sq member)) 0.0)))))
 
 (defn frailty-at
   "The shock a place issues with under a frailty prior (`frailty-prior`'s)
-  and its standardized exposures e: {:m :v}, and with a slope the loading
-  :load and :h, the half variance taken from its mean. Without a slope the
-  node's prior as it is."
-  [{:keys [mu P cand g centre] :as zp} e]
-  (cond
-    (not mu) zp
-    ;; bnm-0fe, :centre :rate: the state as it is; beside it the part not
-    ;; centred (the level, the gauges' loadings: :rm :rv from the joint
-    ;; state) and the transient's stationary variance, sd^2 + usd^2 |e|^2
-    ;; (:vz), from which the row's own shift is solved (`rate-shift`)
-    (= :rate centre)
-    (let [a (slope-load cand e g)
-          n (count a)
-          quad (fn [ix] (reduce + 0.0 (for [i ix j ix] (* (a i) (a j) (double (get-in P [i j]))))))
-          rest-ix (vec (concat (when (:lsd cand) [1]) (range (- n (count (:b0 cand))) n)))]
-      {:m (reduce + 0.0 (map * a mu))
-       :v (quad (range n))
-       :rm (reduce + 0.0 (map #(* (a %) (double (mu %))) rest-ix))
-       :rv (quad rest-ix)
-       :vz (* 2.0 (slope-half cand e))
-       :load a :h 0.0})
-    :else
-    (let [a (slope-load cand e g)
-          h (slope-half cand e)]
-      {:m (- (reduce + 0.0 (map * a mu)) h)
-       :v (reduce + 0.0 (for [i (range (count a)) j (range (count a))] (* (a i) (a j) (double (get-in P [i j])))))
-       :load a :h h})))
+  and its standardized exposures e: {:m :v}, and with a vector state the
+  loading :load and :h, the half variance taken from its mean; `member`
+  the place's loads on the regional states (`frailty-node`'s :member).
+  Without a vector state the node's prior as it is."
+  ([zp e] (frailty-at zp e nil))
+  ([{:keys [mu P cand g centre] :as zp} e member]
+   (cond
+     (not mu) zp
+     ;; bnm-0fe, :centre :rate: the state as it is; beside it the part not
+     ;; centred (the level, the gauges' loadings: :rm :rv from the joint
+     ;; state) and the transient's stationary variance, sd^2 + usd^2 |e|^2
+     ;; + rsd^2 |member|^2 (:vz), from which the row's own shift is solved
+     ;; (`rate-shift`)
+     (= :rate centre)
+     (let [a (slope-load cand e member g)
+           n (count a)
+           quad (fn [ix] (reduce + 0.0 (for [i ix j ix] (* (a i) (a j) (double (get-in P [i j]))))))
+           rest-ix (vec (concat (when (:lsd cand) [1]) (range (- n (count (:b0 cand))) n)))]
+       {:m (reduce + 0.0 (map * a mu))
+        :v (quad (range n))
+        :rm (reduce + 0.0 (map #(* (a %) (double (mu %))) rest-ix))
+        :rv (quad rest-ix)
+        :vz (* 2.0 (slope-half cand e member))
+        :load a :h 0.0})
+     :else
+     (let [a (slope-load cand e member g)
+           h (slope-half cand e member)]
+       {:m (- (reduce + 0.0 (map * a mu)) h)
+        :v (reduce + 0.0 (for [i (range (count a)) j (range (count a))] (* (a i) (a j) (double (get-in P [i j])))))
+        :load a :h h}))))
 
 (defn- standardized-exposures
   "Each place's exposures, every column centred and scaled across the
@@ -1418,7 +1542,7 @@
   passed update the current state. Rows issued before the node had a
   resolved outcome are neither scored nor filtered: the base's miss there
   is its uninformed start (bnm-56c.26), not a common shock."
-  [{:keys [from level? exposure? prior centre]} fr ready per]
+  [{:keys [from level? exposure? regional? r-groups prior centre]} fr ready per]
   (let [rate? (= :rate centre)
         ;; bnm-0fe, :centre :rate: each row's own shift under a candidate, from
         ;; the :from model's predictive (the reference the state is filtered
@@ -1432,15 +1556,17 @@
                   cands (vec (map-indexed
                               (fn [i {:keys [t] :as c}]
                                 (if (vec-cand? c)
-                                  ;; a slope on exposure: each row loads [1 (1) e] on the joint
-                                  ;; state and sees it less its own half variance; scored under the
-                                  ;; prior issued, then filtered from the state run forward
+                                  ;; a vector state (slope, regional states, gauges): each row
+                                  ;; loads [1 (1) e member g] on the joint state and sees it less
+                                  ;; its own half variance; scored under the prior issued, then
+                                  ;; filtered from the state run forward
                                   (let [[pm pv] (nth (:zc (first rows)) i)
+                                        c (with-dims c)
                                         sobs (if rate?
-                                               (mapv (fn [o r] (let [{:keys [rm rv vz load]} (frailty-at {:mu pm :P pv :cand c :g (:g r) :centre :rate} (:e r))]
+                                               (mapv (fn [o r] (let [{:keys [rm rv vz load]} (frailty-at {:mu pm :P pv :cand c :g (:g r) :centre :rate} (:e r) (:rg r))]
                                                                  (assoc o :f (+ (double (:f o)) (cen (:f o) (:q o) rm rv vz (:sd c))) :load load)))
                                                      obs rows)
-                                               (mapv (fn [o r] (assoc o :f (- (double (:f o)) (slope-half c (:e r))) :load (slope-load c (:e r) (:g r)))) obs rows))
+                                               (mapv (fn [o r] (assoc o :f (- (double (:f o)) (slope-half c (:e r) (:rg r))) :load (slope-load c (:e r) (:rg r) (:g r)))) obs rows))
                                         ;; bnm-02u: above sd 1 every row of the origin loading alike
                                         ;; (the gauges' [1 g_t]), the marginal is one-dimensional in
                                         ;; the shift a.s, taken by quadrature (`shared-ll`)
@@ -1474,11 +1600,13 @@
                   pick (nth cands ci)
                   ;; a slope candidate's z, level and u_j from its joint state
                   pick (cond
-                         (:usd pick)
-                         (let [{:keys [mu P lsd]} pick
-                               ul (if lsd 2 1)]
-                           (cond-> (assoc pick :m (first mu) :v (get-in P [0 0])
-                                          :u (subvec mu ul) :u-v (mapv #(get-in P [% %]) (range ul (count mu))))
+                         (or (:usd pick) (:rsd pick))
+                         (let [{:keys [mu P lsd nu]} (with-dims pick)
+                               ul (if lsd 2 1)
+                               ue (+ ul (long nu))]
+                           (cond-> (assoc pick :m (first mu) :v (get-in P [0 0]))
+                             (:usd pick) (assoc :u (subvec mu ul ue) :u-v (mapv #(get-in P [% %]) (range ul ue)))
+                             (:rsd pick) (assoc :rs (subvec mu ue) :rs-v (mapv #(get-in P [% %]) (range ue (count mu))))
                              lsd (assoc :lm (mu 1) :lv (get-in P [1 1]))))
                          ;; the gauges' loadings (bnm-v1y): z first, beta after
                          (:b0 pick)
@@ -1496,6 +1624,9 @@
                                                                        :level-v (double (:lv pick 0.0)))
                                                          exposure? (assoc :usd (double (:usd pick 0.0))
                                                                           :u (:u pick) :u-v (:u-v pick))
+                                                         regional? (assoc :rsd (double (:rsd pick 0.0)) :r-groups r-groups
+                                                                          :rrho (some-> (:rrho pick) double)
+                                                                          :rs (:rs pick) :rs-v (:rs-v pick))
                                                          ;; the gauges' loadings and the origin's gauges
                                                          (:b0 pick) (assoc :beta (:beta pick) :beta-v (:beta-v pick) :g (:g (first rows)))
                                                          ;; bnm-56c.40: whether delta is chosen (beta's last), the origin's x
@@ -1504,6 +1635,35 @@
                                                                                      :rgain (- (double (apply max (map :score (filter :regime cands))))
                                                                                                (double (apply max (map :score (remove :regime cands)))))))))))
           fr (sort-by key (group-by :origin (filter :informed ready))))))
+
+(defn- start-mixture
+  "A node's frailty before it has filtered an origin, under :start
+  :prior-predictive (bnm-93n): the grid's prior predictive, each fresh
+  candidate weighted by exp(-price), matched in mean and variance. Every
+  fresh state is centred at 0 with a diagonal variance, so the match is a
+  state of the same form, each component's variance the weighted mean of
+  the candidates' (0 for a candidate without it), and the shift's half
+  variance the weighted mean of theirs. With a vector candidate among
+  them the state is the joint one, of the widest candidate's dimensions."
+  [cands zc]
+  (let [e (mapv #(Math/exp (- (double (:price % 0.0)))) cands)
+        tot (reduce + 0.0 e)
+        ws (mapv #(/ (double %) tot) e)
+        msq (fn [f] (reduce + 0.0 (map (fn [w c] (let [x (double (or (f c) 0.0))] (* w x x))) ws cands)))
+        sd2 (msq :sd)
+        pick (first cands)]
+    (if-not (some vec-cand? cands)
+      {:m (- (* 0.5 sd2)) :v sd2 :rho (:rho pick) :sd (Math/sqrt sd2) :zc zc}
+      (let [dims (map with-dims (filter vec-cand? cands))
+            nu (long (apply max (map :nu dims)))
+            nr (long (apply max (map :nr dims)))
+            lsd (some :lsd cands)
+            c (cond-> {:rho (:rho pick) :sd (Math/sqrt sd2) :nu nu :nr nr}
+                lsd (assoc :lsd lsd)
+                (pos? nu) (assoc :usd (Math/sqrt (msq :usd)))
+                (pos? nr) (assoc :rsd (Math/sqrt (msq :rsd))))
+            {:keys [mu P]} (slope-fresh c)]
+        {:mu mu :P P :cand c :rho (:rho c) :sd (:sd c) :zc zc}))))
 
 (defn frailty-prior
   "The frailty a node issues with at origin t: {:m :v :rho :sd} from the
@@ -1520,7 +1680,7 @@
   source's plus a part of its own); a candidate without kappa issues with
   the node's own."
   ([cfg fr parent-fr t per] (frailty-prior cfg fr parent-fr t per nil))
-  ([{:keys [prior centre]} fr parent-fr t per {:keys [src src-per] :as finer}]
+  ([{:keys [prior centre start]} fr parent-fr t per {:keys [src src-per] :as finer}]
   (let [{:keys [cands]} fr
         ;; bnm-0fe, :centre :rate: no half variance in the mean; a scalar
         ;; candidate's entry is [m v vz rm rv], vz its transient's stationary
@@ -1585,13 +1745,18 @@
                  cands)
         ci (chosen cands)
         pick (nth cands ci)]
-    (if (vec-cand? pick)
-      ;; with a slope the node's prior is the joint state; each place's shock
-      ;; is read from it with the place's exposures (`frailty-at`), and the
-      ;; origin's gauges (bnm-v1y)
+    (cond
+      ;; :start :prior-predictive: nothing filtered yet, the grid's prior predictive
+      (and (= :prior-predictive start) (every? #(nil? (:t %)) cands))
+      (start-mixture cands zc)
+      (vec-cand? pick)
+      ;; with a vector state (slope, regional states, gauges) the node's prior
+      ;; is the joint state; each place's shock is read from it with the
+      ;; place's exposures, groups and the origin's gauges (`frailty-at`)
       (let [[mu P] (nth zc ci)]
-        (cond-> {:mu mu :P P :cand (select-keys pick [:rho :sd :lsd :usd :b0 :regime]) :rho (:rho pick) :sd (:sd pick) :zc zc}
+        (cond-> {:mu mu :P P :cand (select-keys (with-dims pick) [:rho :rrho :sd :lsd :usd :rsd :nu :nr :b0 :regime]) :rho (:rho pick) :sd (:sd pick) :zc zc}
           rate? (assoc :centre :rate)))
+      :else
       (let [[m v vz rm rv] (nth zc ci)]
         (cond-> {:m m :v v :rho (:rho pick) :sd (:sd pick) :zc zc}
           (= :finer prior) (assoc :cross (double (:cross pick 0.0)))
@@ -1725,7 +1890,14 @@
    stationary variance (mean one at every exposure); filtered jointly
    with z once per origin, the rows learned jointly with the vector
    (augur's :shared with each row's :load), its sd chosen from the grid at
-   a price of :exposure-penalty nats; [0.0], the default, is no slope;
+   a price of :exposure-penalty nats; [0.0], the default, is no slope.
+   :regional-sds [0.0 ...] (bnm-56c.20.3) adds a state r_g per region
+   inside the node (the groups of its places at each of :regional-levels,
+   [:region] by default, from :parent), AR(1) at z's persistence; each
+   place loads on them by its membership centred across the node's
+   places, so z stays the level; filtered jointly once per origin, its sd
+   chosen from the grid at a price of :regional-penalty nats; [0.0], the
+   default, is none;
    none without,
    :without, groups dropped from the inputs altogether, :without-at
    {scale #{groups}} the same at one scale,
@@ -1815,7 +1987,7 @@
                                  (constantly clim-now))
                        clim-t (if rcp (clim-at ((:at rcp) t)) clim-now)
                        ;; :frailty (recursive step 3b): the node's common shock, one per origin
-                       fcfg (frailty-config spec)
+                       fcfg (some-> (frailty-config spec) (frailty-node spec level-ix places))
                        rows (learning-rows (map #(cond-> (select-keys % [:x :y :o :os]) (:lp %) (assoc :issued (:lp %))
                                                    ;; bnm-e1y, :evidence-at :issue-joint: the models as they
                                                    ;; issued the row, one value for the origin's rows
@@ -1880,6 +2052,8 @@
                                                   :src-per (:per (first (filter #(= src (:name %)) scales)))})))
                        ;; :exposure-sds: each place's exposures standardized across the node's places
                        ez (when (:exposure? fcfg) (standardized-exposures spec scale places t))
+                       ;; :regional-sds: each place's regional groups at this node
+                       rg (:member fcfg)
                        ;; climatology: the rate among this node's resolved outcomes
                        st (update-in st [:clim k] (fn [[n1 n]] [(+ (or n1 0) (count (filter :y ready))) (+ (or n 0) (count ready))]))
                        st (if rcp (assoc-in st [:rclim k] rcounts) st)
@@ -2027,7 +2201,7 @@
                                              o (if one? (second (first os)) (logit (reduce + (for [[w o] os] (* w (m/expit o))))))
                                              ;; with a slope on exposure, the place's own shock from the node's joint state
                                              zprior (if (:mu zprior)
-                                                      (merge (frailty-at zprior (get ez place)) (select-keys zprior [:zc :mu :P :g :sd]))
+                                                      (merge (frailty-at zprior (get ez place) (get rg place)) (select-keys zprior [:zc :mu :P :g :sd]))
                                                       zprior)
                                              ;; bnm-0fe, :centre :rate: the place's own shift c, so that at
                                              ;; the shock's stationary prior the forecast is the one issued
@@ -2046,7 +2220,7 @@
                                                              zprior (-> (update :f + (:m zprior)) (update :q + (:v zprior))))
                                              target ((:target spec) scale place t)]]
                                    (assoc e :o o :p p :target target :f pf :q pq :principal (when principal-of (principal-of x))
-                                          :frailty zprior :ez (when ez (get ez place))
+                                          :frailty zprior :ez (when ez (get ez place)) :rg (when rg (get rg place))
                                           ;; :state-from: the node's state, and the errors it feeds back,
                                           ;; from a fixed reference rather than the combination, which is
                                           ;; only issued (loop audit issue 1)
@@ -2113,7 +2287,7 @@
                                                            ;; the error fed back is the state's (the reference's p
                                                            ;; under :state-from); :lp each model's predictive at issue;
                                                            ;; :regime-at-issue a slot for the regime layer
-                                                           (for [{:keys [place x o os p target ref issued clim frailty ez]} made :when target
+                                                           (for [{:keys [place x o os p target ref issued clim frailty ez rg]} made :when target
                                                                  :let [ist (d/issue-state model)]]
                                                              (cond-> {:place place :origin t :x x :o o :p (if ref (:p ref) p) :y (:y target) :known-at (:known-at target)
                                                                       :regime-at-issue (when rp (second ((:at rp) t)))}
@@ -2138,6 +2312,7 @@
                                                                ez (assoc :e ez)
                                                                ;; bnm-v1y: the origin's gauges, loaded on beta
                                                                (:g frailty) (assoc :g (:g frailty))
+                                                               rg (assoc :rg rg)
                                                                (:load frailty) (assoc :shared [t (:mu frailty) (:P frailty)] :load (:load frailty) :zh (:h frailty))
                                                                ;; bnm-0fe: the place's own shift, learned in its offsets
                                                                (:vz frailty) (assoc :zcen (:c frailty)))))))]
