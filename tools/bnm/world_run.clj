@@ -724,6 +724,17 @@
   [opts]
   (flag-choice opts :theory-offset))
 
+(defn theory-contagion-choice
+  "--theory-contagion true (bnm-ris), with --theory-offset: the theory also
+  reads each country's exposure to bank-equity stress abroad (bnm.contagion:
+  BIS cross-border claims x the fall in each counterparty's bank equity,
+  over GDP). Off by default."
+  [opts]
+  (let [on (flag-choice opts :theory-contagion)]
+    (when (and on (not (theory-offset-choice opts)))
+      (throw (ex-info "bnm.world-run: --theory-contagion needs --theory-offset true" {})))
+    on))
+
 (defn theory-world-choice
   "--theory-world (bnm-5lr), with --theory-offset: funding, the theory also
   reads the panel's bank funding (bnm.lattice-banking/theory-world-inputs,
@@ -1026,6 +1037,7 @@
                                                                :splice-credit (splice-credit-choice opts)
                                                                :theory-offset (theory-offset-choice opts)
                                                                :theory-world (theory-world-choice opts)
+                                                               :theory-contagion (theory-contagion-choice opts)
                                                                :credit-denominator (credit-denominator-choice opts)
                                                                :recession-hold (recession-hold-choice opts)
                                                                :wide-credit (wide-credit-choice opts)

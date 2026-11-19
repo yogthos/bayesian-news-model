@@ -38,6 +38,7 @@
             [bnm.paths]
             [bnm.releases :as rel]
             [bnm.signals :as sg]
+            [bnm.contagion :as ct]
             [bnm.theory :as th]
             [bnm.slow-train :as st]
             [clojure.java.io :as io]
@@ -394,7 +395,8 @@
   at the origin (nil when none do), then each of `extra` (fns of the
   origin, `world-level`s)."
   ([z-of countries own world] (theory-row z-of countries own world nil))
-  ([z-of countries own world extra]
+  ([z-of countries own world extra] (theory-row z-of countries own world extra nil))
+  ([z-of countries own world extra per-place]
    (let [world-at (memoize (fn [t] (vec (for [[_ i] world
                                               :let [vs (keep #(some-> (z-of % t) (nth i nil)) countries)]]
                                           (when (seq vs) (/ (reduce + vs) (double (count vs))))))))]
@@ -402,7 +404,9 @@
        (when-let [z (z-of u t)]
          (-> (mapv #(nth z (second %)) own)
              (into (when (seq world) (world-at t)))
-             (into (map #(% t) extra))))))))
+             (into (map #(% t) extra))
+             ;; --theory-contagion: fns of the place and origin
+             (into (map #(% u t) per-place))))))))
 
 (defn- by-country-year
   "{iso {year value}} from rows, keeping non-nil values of (f row)."
@@ -752,7 +756,7 @@
 
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset theory-world world-db panel recession-growth recession-mode]}]
+  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset theory-world world-db panel recession-growth recession-mode contagion]}]
   (let [[_ fin] (nm/financial db wc)
         ;; --banking-gauges (bnm-cpv): the world's leading gauges after the
         ;; year node's own columns
@@ -815,7 +819,10 @@
                                                     (let [row (:row (sg/assemble world-db (for [[n e] theory-world-signals] {:name n :expr e})))
                                                           outside (remove panel countries)]
                                                       (for [i (range (count theory-world-signals))]
-                                                        (world-level (fn [u t] (nth (row u t) i)) outside (origins year-scale) 10))))))
+                                                        (world-level (fn [u t] (nth (row u t) i)) outside (origins year-scale) 10))))
+                                                  ;; --theory-contagion (bnm-ris): exposure to bank-equity stress abroad
+                                                  (when contagion
+                                                    [(ct/place-z (fn [u t] (ct/log-exposure contagion u t)) countries (origins year-scale) 20)])))
         theory (when theory-offset
                  (th/offsets {:places countries :origins (origins year-scale) :prior 1.0
                               :inputs theory-inputs-of
@@ -979,7 +986,7 @@
   their archived editions; :banking-coverage, the declared signals of
   `coverage-decls` at the year node."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit theory-offset theory-world credit-denominator recession-hold]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit theory-offset theory-world credit-denominator recession-hold theory-contagion]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables
                            (cond-> {:real-lags real-lags} wdi-editions (assoc :wdi-editions (nm/read-wdi-editions))))
@@ -1020,6 +1027,9 @@
            :banking-gauges banking-gauges
            :theory-offset theory-offset
            :theory-world theory-world
+           ;; --theory-contagion (bnm-ris): the claims, GDP and bank returns it reads
+           :contagion (when theory-contagion
+                        (ct/read-data "data/derived/lbs-claims.csv" "data/slow/series.tsv" "data/derived/lattice-annual.csv"))
            ;; --theory-world (bnm-5lr): the world signals' series, read as the rest are
            :world-db (when (= :all theory-world)
                        (nm/load-series "data/slow/series.tsv" variables

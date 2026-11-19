@@ -82,6 +82,7 @@
             [bnm.offset-add-test]
             [bnm.blocs-test]
             [bnm.bloc-theory-test]
+            [bnm.contagion-test]
             [bnm.kind-set-test]
             [bnm.lattice-smoke-test]
             [bnm.political-gauges-test]
@@ -235,6 +236,7 @@
     bnm.offset-add-test
     bnm.blocs-test
     bnm.bloc-theory-test
+    bnm.contagion-test
     bnm.kind-set-test
     bnm.lattice-smoke-test
     bnm.political-gauges-test
