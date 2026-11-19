@@ -338,6 +338,13 @@
   [growth]
   (fn [u y] (boolean (some-> (get-in growth [u y]) neg?))))
 
+(defn recession-at
+  "(fn [unit origin]) -> whether the origin's rows read a recession year:
+  `r` (`recession-of`) at the row year (`row-year-of` (fn [origin])), and
+  under `mode` :rows the year before too, which the extended columns read."
+  [r row-year-of mode]
+  (fn [u t] (let [y (row-year-of t)] (boolean (or (r u y) (and (= :rows mode) (r u (dec y))))))))
+
 (defn held-origin
   "--recession-hold (bnm-5lr): the origin whose row the theory reads at t:
   t, or while `recession?` (fn [unit origin]) holds there, the origin a
@@ -348,6 +355,24 @@
   (loop [k 0]
     (let [t' (- t (* 12 k))]
       (if (and (< k recession-hold-max) (recession? u t')) (recur (inc k)) t'))))
+
+(def recession-held-columns
+  "--recession-hold rows (bnm-5lr): the year row's stocks over GDP, which
+  a recession raises by shrinking GDP and by countercyclical borrowing
+  (2020: France's corporate debt 193 -> 217, government 98 -> 115): the
+  stretches, the booms, household credit, the IMF's debt and wide credit."
+  (vec (sort (distinct (concat (:stretches year-groups) (:booms year-groups) (:household year-groups)
+                               (:debt year-groups) (:credit-wide year-groups))))))
+
+(defn hold-columns
+  "The year table `tb` ({[unit origin] row}) with, where `recession?`
+  (fn [unit origin]) holds, the columns `idxs` taken from the origin a
+  year before (`held-origin`), when that row exists."
+  [tb recession? idxs]
+  (into {} (for [[[u t :as k] row] tb
+                 :let [t' (if (recession? u t) (held-origin recession? u t) t)
+                       src (when (not= t' t) (get tb [u t']))]]
+             [k (if (and row src) (reduce (fn [r i] (assoc r i (nth src i))) (vec row) idxs) row)])))
 
 (defn theory-row
   "(fn [place origin]) -> the theory's inputs: `own`'s columns of the
@@ -714,7 +739,7 @@
 
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset theory-world world-db panel recession-growth]}]
+  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset theory-world world-db panel recession-growth recession-mode]}]
   (let [[_ fin] (nm/financial db wc)
         ;; --banking-gauges (bnm-cpv): the world's leading gauges after the
         ;; year node's own columns
@@ -739,6 +764,13 @@
         ;; each scale's country gauges at its origins, then standardized by the past
         table (into {} (for [{:keys [name] :as s} scales]
                          [name (into {} (for [t (origins s) u countries] [[u t] ((raw name) u t)]))]))
+        ;; --recession-hold (bnm-5lr): an origin's row year a recession
+        recession? (when recession-growth
+                     (recession-at (recession-of recession-growth) #(row-year % dated-credit) recession-mode))
+        ;; --recession-hold rows (bnm-5lr): the year row's ratios held for every group
+        table (if (and recession? (= :rows recession-mode))
+                (update table :year hold-columns recession? recession-held-columns)
+                table)
         std (into {} (for [[name tb] table] [name (standardizer (for [[[_ t] v] tb] [t v]) gauge-std)]))
         n-lead (count leading-names)
         n-own (- (count (second (first (table :year)))) (if lead n-lead 0))
@@ -762,9 +794,6 @@
         year-target (fn [u t] (let [{:keys [offset horizon]} year-scale
                                      lo (+ t offset) hi (+ t offset horizon)]
                                  (when-some [y (onset-in? cat u t lo hi)] {:y y :known-at (+ hi known-lag)})))
-        ;; --recession-hold (bnm-5lr): an origin's row year a recession
-        recession? (when recession-growth
-                     (let [r (recession-of recession-growth)] (fn [u t] (r u (row-year t dated-credit)))))
         ;; the theory's inputs (fn [place origin]), kept in the spec for diagnosis
         theory-inputs-of (when theory-offset
                            (theory-row (fn [u t] (when-let [v (get-in table [:year [u (if recession? (held-origin recession? u t) t)]])] ((std :year) t v)))
@@ -985,6 +1014,7 @@
                                          wdi-editions (assoc :wdi-editions (nm/read-wdi-editions)))))
            :panel (set (map :iso jst-rows))
            ;; --recession-hold (bnm-5lr): real growth, as published
+           :recession-mode recession-hold
            :recession-growth (when recession-hold
                                (into {} (for [u units :let [g (some-> (gdb [u "economy/gdp_growth"]) q4-annual)] :when g] [u g])))
            ;; --banking-coverage (bnm-7bh): its series alone, read as the rest are

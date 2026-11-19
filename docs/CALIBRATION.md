@@ -3042,3 +3042,13 @@ Run: **t103-recession-rho0**: t101's command with `--recession-hold true`. Rule:
 ### t103 result (18 November 2026)
 
 t103-recession-rho0 against t80-base: 2007-09 +0.00282 [+0.00048, +0.00557], 2010-12 +0.00339 [+0.00043, +0.00714], 2013-19 +0.00054 [+0.00010, +0.00100], 2020-22 -0.00065 [-0.00175, +0.00026], pooled **+0.00115 [+0.00027, +0.00223]**: passes, the original rule too. Against t101 within noise (pooled +0.00003 [-0.00003, +0.00010]); Dec 2022 France 0.251, Japan 0.268 (t101 0.274, 0.293). The hold barely moves the spike, and the theory's own forecast shows why (docs/studies/theory_diag.clj): France's offset at Dec 2022 is 0.043, Japan's 0.040 (0.02-0.05 for every panel country 2018-23). **The spike is the lattice's groups' departure from the offset, not the offset**; a group trace follows. Not adopted alone.
+
+### The group behind the spike (18 November 2026)
+
+A group trace of t103 (`--trace-groups`; t103-trace) at Dec 2021 -> Dec 2022: France's averaged log odds -3.59 -> -0.01, Japan's -3.97 -> +0.15, Germany's -4.23 -> -1.40, carried by the **debt** group (the IMF's household, corporate and public debt over GDP: France -2.70 -> +0.12, Japan -3.92 -> +0.32, Germany -4.48 -> -1.98), with smaller rises in turn, exposure, production and stretches. The Dec 2022 origin first reads the 2020 debt (the extended columns read the year before the row): France's household 75 -> 82, corporate 193 -> 217, government 98 -> 115, at the cap against a calm decade.
+
+## Recession rows held for every group: t104 (bnm-5lr)
+
+Written 18 November 2026, before the run; in-sample for 2020, the rule covering every recession year. t103 held only the theory's row. `--recession-hold rows`: the year row's stocks over GDP (the stretches, booms, household, debt and wide-credit columns; bnm.lattice-banking/recession-held-columns) at an origin whose rows read a recession year are taken from the origin a year before (at most two back), for every group, before the gauges are standardized; a recession year is falling real GDP (WDI, as published) in the row year or the year before, which the extended columns read (recession-at). `--recession-hold true` keeps t103's rule.
+
+Run: **t104-rows-rho0**: t101's command with `--recession-hold rows` (and the group trace). Rule: against t80-base, the fold rule as amended and the alert table at 4:1; beside it the 2020-22 level, the Dec 2022 panel forecasts, the 2006-07 level and against t101.
