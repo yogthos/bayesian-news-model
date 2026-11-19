@@ -3580,3 +3580,11 @@ Run t114: t111-base's command with `--impute true` (sovereign defaults' and infl
 | food price shocks (12) | 0.664 | 0.582 | 0.542 | 0.569 | 0.553 | 0.531 |
 
 Read: (1) Where a kind has country inputs from its literature (currency, inflation, sovereign), the logit leaves 0.05-0.10 of AUC unextracted that per-input shapes recover (stumps match or beat depth-2 trees, so interactions add nothing here), and publication lags cost as much again for currency and inflation crises (A2). (2) The global layer alone barely ranks countries (0.42-0.60): it carries the level, not the ranking, which is what t113 found. (3) Filling missing inputs adds 0.01-0.04. A1 (final vintage) is not run: series.tsv holds one vintage. The levers, in order: per-input shapes with missing as its own category, then timelier country data (monthly where the annual series lag a year), then filling.
+
+### Results (19 November 2026)
+
+Suite green (1608 tests); t114 took 30 minutes; the other eleven kinds reproduce t111-base byte for byte. Against t111-base:
+- **Inflation crises: pass.** Pooled +0.00013 [-0.00022, +0.00045], no fold lost (2020-22 -0.00010 the only negative); pooled AUC 0.732 -> 0.774, within-year 0.787 -> 0.847, level r -0.40 -> -0.45; alerts dcost -0.0013 [-0.0075, +0.0029].
+- Sovereign defaults: fail (2010-12 -0.00032 [-0.00058, -0.00009] LOSS; pooled +0.00002). AUC 0.589 -> 0.595, within-year 0.640 -> 0.677; alerts dcost +0.0019.
+
+Inflation crises' filled inputs are a candidate; adoption is the user's decision.
