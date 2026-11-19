@@ -33,6 +33,7 @@
    :strength 1.2          ; per unit of the planted turn
    :wave-boost 0.8        ; added in a world wave's years
    :refractory 0.0        ; added in the five years after the country's own crisis
+   :bloc-strength 3.0     ; :bloc-rupture: log odds per unit of dependence x western tie after a rupture
    :scenario :credit-waves})
 
 (def scenarios
@@ -47,7 +48,13 @@
    ;; under the credit waves: the base rate moves by era
    :eras {:active (constantly "credit") :era-shift 1.2 :era-years 25}
    ;; the driving stock observed at 30% of countries (JST's share is 18 of 130)
-   :partial-coverage {:active (constantly "credit") :coverage 0.3}})
+   :partial-coverage {:active (constantly "credit") :coverage 0.3}
+   ;; bnm-58f: blocs under the great powers; after a rupture at a power the
+   ;; countries that depend on it and are tied to the west (so cut ties) pay
+   ;; (the 2022 sanctions: Europe's energy against China's)
+   :bloc-rupture {:active (constantly "credit") :blocs true}
+   ;; the same world with no bloc cost: the bloc signals must read nothing
+   :bloc-null {:active (constantly "credit") :blocs true :bloc-strength 0.0}})
 
 (defn- student-t [g df]
   (let [z (m/normal! g)
@@ -68,8 +75,80 @@
   "The world's settings: the defaults, the scenario's, then the caller's."
   [opts]
   (let [o (merge defaults opts)
-        sc (merge (scenarios (:scenario o)) (select-keys opts [:strength :wave-boost :world-lambda]))]
-    (merge o (select-keys sc [:strength :wave-boost :world-lambda]) {:sc sc})))
+        sc (merge (scenarios (:scenario o)) (select-keys opts [:strength :wave-boost :world-lambda :bloc-strength]))]
+    (merge o (select-keys sc [:strength :wave-boost :world-lambda :bloc-strength]) {:sc sc})))
+
+(defn mean [xs] (stat/mean xs))
+
+(def powers "The great powers a rupture can hit, besides the west." ["R" "C"])
+
+(defn- clip01 [x] (Math/max 0.0 (Math/min 1.0 x)))
+
+(defn- bloc-structure
+  "bnm-58f: each country's bloc (W, R, C or N, non-aligned), its tie to the
+  west by year (security ties: pacts, troops, arms; mean by bloc, slow
+  noise), its trade dependence on each power by year (trade freely with a
+  power is the R and C blocs' mark), and the ruptures [year-index power].
+  Its own random stream, so the other draws are the scenario's without it."
+  [seed cs years]
+  (let [g (m/rng (+ 104729 seed))
+        u #(m/next-double! g)
+        blocs (into {} (for [c cs :let [x (u)]] [c (cond (< x 0.3) "W" (< x 0.45) "R" (< x 0.7) "C" :else "N")]))
+        tie-mean {"W" 0.8 "N" 0.35 "R" 0.05 "C" 0.1}
+        path (fn [m0] (vec (reductions (fn [x _] (clip01 (+ m0 (* 0.9 (- x m0)) (* 0.05 (m/normal! g))))) m0 (range (dec years)))))
+        dep0 (fn [b p] (let [x (u)]
+                         (case [b p]
+                           ["W" "R"] (+ 0.02 (* 0.35 x x)) ["W" "C"] (+ 0.05 (* 0.25 x))
+                           ["R" "R"] (+ 0.3 (* 0.3 x)) ["R" "C"] (+ 0.15 (* 0.2 x))
+                           ["C" "R"] (* 0.1 x) ["C" "C"] (+ 0.35 (* 0.3 x))
+                           ["N" "R"] (+ 0.05 (* 0.2 x)) ["N" "C"] (+ 0.1 (* 0.25 x)))))
+        west-tie (into {} (for [c cs] [c (path (tie-mean (blocs c)))]))
+        dependence (into {} (for [c cs] [c (into {} (for [p powers] [p (path (dep0 (blocs c) p))]))]))]
+    {:blocs blocs :west-tie west-tie :dependence dependence
+     :ruptures (vec (for [[f p] [[0.3 "R"] [0.5 "C"] [0.72 "R"] [0.88 "C"]]] [(long (* f years)) p]))}))
+
+(defn- bloc-term
+  "The log odds a rupture adds in year index i: for each rupture at r one
+  or two years before, strength x dependence on its power x the western
+  tie, both of the year before the rupture (what a forecast then knew)."
+  [{:keys [ruptures dependence west-tie]} strength c i]
+  (reduce + 0.0 (for [[r p] ruptures :when (#{(dec i) (- i 2)} r) :when (pos? r)]
+                  (* strength (get-in dependence [c p (dec r)]) (get-in west-tie [c (dec r)])))))
+
+(defn bloc-free-hazard
+  "World `w`'s hazard of `c` in `year` without the bloc term."
+  [w c year]
+  (m/expit (- (m/logit (get-in w [:hazard [c year]])) (get-in w [:bloc :term [c year]] 0.0))))
+
+(defn- bloc-series
+  "The bloc world's published series: each power's dependence and the
+  western tie (with noise) a year's :lag-months late, each power's rupture
+  (1 in the rupture's year and the next) at once; :alignment-placebo
+  publishes another country's tie (a fixed shuffle)."
+  [seed cs {:keys [blocs west-tie dependence ruptures]} {:keys [years lag-months blocs-mode]}]
+  (let [g (m/rng (+ 15485863 seed))
+        noisy (into {} (for [c cs] [c (mapv #(clip01 (+ % (* 0.1 (m/normal! g)))) (west-tie c))]))
+        perm (if (= :alignment-placebo blocs-mode)
+               (let [h (m/rng (+ 7 seed))] (zipmap cs (map second (sort-by first (for [c cs] [(m/next-double! h) c])))))
+               (zipmap cs cs))
+        yearly (fn [xs lag] (sk/series (for [i (range years)] [(+ (* 12 (+ epoch i)) 11) (+ (* 12 (+ epoch i)) 11 lag) (double (xs i))])))
+        rupt (into {} (for [p powers] [p (vec (for [i (range years)] (if (some (fn [[r q]] (and (= q p) (#{i (dec i)} r))) ruptures) 1.0 0.0)))]))]
+    (into {} (concat
+              (for [c cs p powers] [[c (str "dep-" p)] (yearly (get-in dependence [c p]) lag-months)])
+              (for [c cs] [[c "west-tie"] (yearly (noisy (perm c)) lag-months)])
+              (for [c cs p powers] [[c (str "rupture-" p)] (yearly (rupt p) 0)])))))
+
+(defn bloc-decls
+  "bnm-58f: the bloc signals by mode: :dependence, each power's dependence
+  times its rupture; :alignment, that and the same times the western tie
+  (the cost falls on the dependent who cut ties); :alignment-placebo, the
+  alignment's names over a shuffled tie."
+  [mode]
+  (let [v (fn [k] {:var k :read [:value]})
+        dep-x (fn [p] [:mul (v (str "dep-" p)) (v (str "rupture-" p))])]
+    (vec (concat (for [p powers] {:name (keyword (str "dep-" p "-x-rupture")) :expr (dep-x p) :domain :bloc})
+                 (when (#{:alignment :alignment-placebo} mode)
+                   (for [p powers] {:name (keyword (str "dep-" p "-x-rupture-x-west")) :expr [:mul (dep-x p) (v "west-tie")] :domain :bloc}))))))
 
 (defn- world-cycles
   "Each stock's world cycle, AR(1) at :world-phi."
@@ -149,6 +228,7 @@
         latent (latent-paths g cs cycle o)
         scale (noise-scales g cs o)
         observed (observations g cs latent scale o)
+        bl (when (:blocs sc) (bloc-structure seed cs (:years o)))
         ;; :eras: alternate calm and active eras of :era-years, the base moved
         ;; down and up by half :era-shift
         era (fn [i] (if-let [n (:era-years sc)] (* 0.5 (:era-shift sc) (if (even? (quot i n)) -1.0 1.0)) 0.0))
@@ -156,11 +236,17 @@
              (m/expit (+ base (era i)
                          (* strength (turn (get-in latent [c (active (vec stocks) i)]) (- i 2) fall))
                          (if (waves i) wave-boost 0.0)
-                         (if recent? refractory 0.0))))
+                         (if recent? refractory 0.0)
+                         (if bl (bloc-term bl (:bloc-strength o) c i) 0.0))))
         [hazard onsets] (draw-onsets g cs hz o)]
     {:opts (dissoc o :sc) :calm-years (set (for [i (range (:years o)) :when (neg? (era i))] (+ epoch i)))
-     :countries cs :regions rs :parent parent :db (publish cs observed o) :observed observed :latent latent
-     :hazard hazard :onsets onsets :waves (set (map #(+ epoch %) waves))}))
+     :countries cs :regions rs :parent parent
+     :db (cond-> (publish cs observed o) bl (merge (bloc-series seed cs bl o)))
+     :observed observed :latent latent
+     :hazard hazard :onsets onsets :waves (set (map #(+ epoch %) waves))
+     :bloc (when bl (assoc bl :term (into {} (for [c cs i (range (:years o)) :let [x (bloc-term bl (:bloc-strength o) c i)] :when (not (zero? x))]
+                                               [[c (+ epoch i)] x]))
+                       :rupture-years (set (for [[r _] (:ruptures bl) k [1 2]] (+ epoch r k)))))}))
 
 (defn at-risk?
   "Whether `unit` could start a crisis in `year`: no onset within the spell before it."
@@ -196,7 +282,7 @@
   [w extra]
   (let [{:keys [countries regions parent db opts]} w
         {:keys [years stocks]} (merge defaults opts)
-        ds (decls stocks (:signals opts :raw))
+        ds (into (decls stocks (:signals opts :raw)) (when-let [bm (:blocs-mode opts)] (bloc-decls bm)))
         {:keys [row groups]} (sg/assemble db ds)
         start (* 12 epoch) end (+ (* 12 (+ epoch years -1)) 11)
         origins (range (+ start 11) (inc end) 12)
@@ -327,6 +413,10 @@
      ;; bnm-5lr: in the calm eras, how far the mean forecast sits above the rate
      :calm-excess (let [cr (filter #(contains? (:calm-years w) (:year %)) rows)]
                     (when (seq cr) (- (stat/mean (map :p cr)) (stat/mean (map #(if (:y %) 1.0 0.0) cr)))))
+     ;; bnm-58f: skill in the two years after each rupture
+     :post-rupture-log-skill (when-let [ry (get-in w [:bloc :rupture-years])]
+                               (let [rr (filter #(contains? ry (:year %)) rows)]
+                                 (when (seq rr) (- (mean-ll rr :p) (mean-ll rr (constantly rate))))))
      ;; a flat forecast's correlations are noise: its spread beside them
      :p-sd (stat/sd-pop (map :p rows))
      :skill-share (let [o (- (mean-ll rows :true-p) clim)] (when (pos? o) (/ (- (mean-ll rows :p) clim) o)))}))
@@ -347,10 +437,11 @@
                (:signals o) (assoc :signals (keyword (:signals o)))
                (:guard o) (assoc :guard (= "true" (:guard o)))
                (:theory o) (assoc :theory (= "true" (:theory o)))
+               (:blocs o) (assoc :blocs-mode (keyword (:blocs o)))
                (:set o) (assoc :lattice (edn/read-string (:set o))))
-        ks [:auc :oracle-auc :within-auc :level-r :calm-excess :p-sd :log-skill :oracle-log-skill :skill-share :ece :alert-cost :constant-cost :molchan]
+        ks [:auc :oracle-auc :within-auc :level-r :calm-excess :post-rupture-log-skill :p-sd :log-skill :oracle-log-skill :skill-share :ece :alert-cost :constant-cost :molchan]
         results (vec (for [s seeds] (evaluate (assoc base :seed s))))]
-    (println (str "scenario " (name (:scenario base)) ", signals " (name (:signals base :raw)) ", seeds " (str/join "," seeds) (when (:lattice base) (str ", lattice " (pr-str (:lattice base))))))
+    (println (str "scenario " (name (:scenario base)) ", signals " (name (:signals base :raw)) (when (:blocs-mode base) (str ", blocs " (name (:blocs-mode base)))) ", seeds " (str/join "," seeds) (when (:lattice base) (str ", lattice " (pr-str (:lattice base))))))
     (doseq [k ks]
       (let [xs (keep k results)]
         (println (format "  %-17s mean %+.4f  [%s]" (name k) (stat/mean xs) (str/join " " (map #(format "%.3f" %) xs))))))))

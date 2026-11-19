@@ -1,7 +1,7 @@
 (ns bnm.testbed-test
   "docs/TESTBED.md: the synthetic crisis world, its lattice spec and its
   scores."
-  (:require [augur.math]
+  (:require [augur.math :as m]
             [bnm.stocks :as sk]
             [bnm.testbed :as tb]
             [clojure.test :refer [deftest is testing]]))
@@ -64,3 +64,46 @@
         has (count (filter #(get (:db w) [% "credit"]) (:countries w)))]
     (is (< 10 has 25) has)
     (is (= 60 (count (filter #(get (:db w) [% "house"]) (:countries w)))) "the other stocks everywhere")))
+
+;; --- bnm-58f: the bloc-rupture world (docs/TESTBED.md) ---------------------------
+
+(def bloc {:seed 5 :countries 40 :regions 4 :years 100 :scenario :bloc-rupture})
+
+(deftest the-bloc-world-plants-the-cost-on-the-aligned-dependent
+  (let [w (tb/world bloc)
+        {:keys [blocs ruptures dependence west-tie]} (:bloc w)]
+    (is (= (:onsets w) (:onsets (tb/world bloc))) "reproducible")
+    (is (seq ruptures) "ruptures at set years")
+    (is (= #{"W" "R" "C" "N"} (set (vals blocs))))
+    (testing "after a rupture at a power, the hazard rises with dependence on it times the western tie, and not for its own bloc"
+      (let [[r g] (first ruptures)
+            y (+ tb/epoch r 1)
+            lift (fn [c] (- (m/logit (get-in w [:hazard [c y]])) (m/logit (get-in w [:hazard [c (+ tb/epoch r -3)]]))))
+            west (filter #(= "W" (blocs %)) (:countries w))
+            own (filter #(= g (blocs %)) (:countries w))
+            expected (fn [c] (* (:bloc-strength tb/defaults) (get-in dependence [c g (+ r -1)]) (get-in west-tie [c (+ r -1)])))]
+        (is (every? #(< (Math/abs (- (expected %) (- (m/logit (get-in w [:hazard [% y]])) (m/logit (tb/bloc-free-hazard w % y))))) 1e-9) (:countries w))
+            "the bloc term is exactly strength x dependence x tie, read the year before")
+        (let [per-dep (fn [cs] (tb/mean (map #(get-in west-tie [% (+ r -1)]) cs)))]
+          (is (> (per-dep west) (* 5 (per-dep own))) "per unit of dependence (the tie) the west pays, the power's own bloc hardly"))))
+    (testing "the published signals: dependence and the tie a year late, the rupture at once"
+      (let [u (first (:countries w)) [r g] (first ruptures)]
+        (is (some? (get (:db w) [u (str "dep-" g)])))
+        (is (some? (get (:db w) [u "west-tie"])))
+        (is (= 1.0 (sk/value (get (:db w) [u (str "rupture-" g)]) (+ (* 12 (+ tb/epoch r)) 11))) "known the December of the rupture")))))
+
+(deftest bloc-signals-by-mode
+  (let [names (fn [mode] (set (map :name (tb/bloc-decls mode))))]
+    (is (= #{:dep-R-x-rupture :dep-C-x-rupture} (names :dependence)))
+    (is (= #{:dep-R-x-rupture :dep-C-x-rupture :dep-R-x-rupture-x-west :dep-C-x-rupture-x-west} (names :alignment)))
+    (is (= (names :alignment) (names :alignment-placebo)) "the placebo reads the same names, the tie shuffled")
+    (is (every? #(= :bloc (:domain %)) (tb/bloc-decls :alignment)))))
+
+(deftest the-placebo-shuffles-the-tie-across-countries
+  (let [w (tb/world (assoc bloc :blocs-mode :alignment-placebo))
+        w0 (tb/world (assoc bloc :blocs-mode :alignment))
+        u (first (:countries w))]
+    (is (= (:onsets w) (:onsets w0)) "the same world")
+    (is (not= (sk/value (get (:db w) [u "west-tie"]) (+ (* 12 (+ tb/epoch 50)) 11 6))
+              (sk/value (get (:db w0) [u "west-tie"]) (+ (* 12 (+ tb/epoch 50)) 11 6)))
+        "the published tie is another country's")))
