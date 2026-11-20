@@ -3752,3 +3752,5 @@ Results, 20 November 2026 (suite 1636 tests, 0 failures; run 46 min). The other 
 | wave Brier 2013-15 / 2019-22 | +0.00771 / -0.00529 |
 
 Held tighter, the drivers improve everything but two folds: more crashes caught with fewer false alarms, better ranking, a pooled gain. The losses are in 2010-12 and 2020-22, the years after a large driver move (2008-09, 2020), where the drivers' slopes, now smaller, under-react. Under the amended fold rule a fold with 5 or more onsets vetoes, so it fails; the layer as adopted (t113) stays.
+
+Under the fold rule as amended 20 November 2026 (docs/PHASE-CHANGES.md, decided by the user after this result): pooled Brier +0.00223, alerts dcost +0.0777 and AUC +0.028 all gain, so t124 **passes by dominance**, its 2010-12 and 2020-22 losses named. Adoption is the user's.

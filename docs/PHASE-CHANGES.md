@@ -5375,3 +5375,15 @@ Not adopted. No L1 note, no ledger change, no forecast.
 - *The score* (fiscal consolidation year nodes, 2003-2022, + = better than t119-base): pooled +0.00884 [+0.00258, +0.01456], 801 onsets, gains in four folds and -0.00103 in 2020-22 (inside noise); alerts dcost +0.0414 [-0.0368, +0.1227]; pooled AUC 0.553 -> 0.642, within-year 0.524 -> 0.632; level r +0.25 -> +0.28.
 - *Caveats.* Government debt reaches 40-58 countries and the spread 33; elsewhere those inputs fall to their missing flags. The 2019-22 wave year is slightly worse (-0.00162).
 - *Reproduction.* The command run to a fresh directory (data/runs/t120-base, 40 minutes, 20 November 2026) gives t120's fiscal consolidation forecasts.tsv and t119-base's other twelve, growth collapses and banking included, byte for byte (ledger tests green, 36).
+
+## Amendment to the fold rule, 20 November 2026: dominance overrides a fold loss
+
+**Decided by the user after seeing t124** (docs/CALIBRATION.md, the market-crash global layer with its world drivers held tighter), so it is not blind to the candidate that prompted it: t124 gained on pooled Brier, the alert cost and AUC but lost two folds of 9 onsets each (2010-12, 2020-22).
+
+**The amendment.** A candidate that fails the fold rule as amended 18 November passes when it gains on all three of: pooled Brier (2003-2022, the point estimate above zero), the alert cost at 4:1 (bnm.alerts' dcost above zero) and pooled AUC at the year country nodes (docs/studies/kinds_level.py, above the bench's). Its fold losses are shown and named in its record. A pass under the fold rule stands as before. bnm.links/dominance-verdict applies it; `--folds`' report names it under a failed verdict. Adoption stays the user's decision, kind by kind.
+
+**Why.** The three measures answer different questions (calibration on average, the decisions taken at the user's 4:1 cost, ranking), and a candidate better on all three is better on what the forecasts are used for, even where a fold or two of a few years goes the other way. A fold loss of a few onsets in the years after a large common shock can come from one world event.
+
+**What it does not excuse.** No interval is required on the three measures, so a dominance pass can rest on gains within noise (t124's pooled Brier interval and alert interval both cross zero). A fold loss with its interval below zero is still a real loss in those years and is reported with the verdict.
+
+**Earlier failures it would pass** (checked from docs/CALIBRATION.md the same day): t114's sovereign defaults on filled inputs (pooled +0.00002, alerts dcost +0.0019, AUC 0.589 -> 0.595; lost 2010-12), a candidate for the user to consider afresh against the current base. t98-theory-rho05 (banking; pooled +0.00071, dcost +0.0023; the bench's AUC not recorded) and t75 (the frailty grid; AUC not recorded) cannot be settled from the record and are superseded by later bases.

@@ -90,3 +90,25 @@
       (is (= :fail (:verdict (links/fold-verdict (assoc ok :folds [(f -0.002 -0.001 5)]))))))
     (testing "the pooled score must still gain"
       (is (= :fail (:verdict (links/fold-verdict {:pooled (f -0.0003 0.0001 82) :folds [(f 0.0 0.001 29)]})))))))
+
+;; --- amendment of 20 November 2026 (docs/PHASE-CHANGES.md): a fold loss
+;; does not veto a candidate that gains on pooled Brier, the alert cost at
+;; 4:1 and pooled AUC together (each point estimate above zero)
+
+(deftest dominance-overrides-a-fold-loss
+  (let [f (fn [lo hi pos] {:brier {:diff (/ (+ lo hi) 2) :lo lo :hi hi} :pos pos})
+        lost (links/fold-verdict {:pooled (f -0.0076 0.0140 142) :folds [(f -0.0274 -0.0087 9) (f -0.0156 -0.0011 9)]})]
+    (is (= :fail (:verdict lost)) "t124's fold verdict")
+    (testing "pooled Brier, alert cost and AUC all gain: pass, the losses named"
+      (let [v (links/dominance-verdict lost {:pooled 0.00223 :dcost 0.0777 :auc-gain 0.028})]
+        (is (= :pass (:verdict v)))
+        (is (= :dominance (:by v)))
+        (is (= 2 (count (:losses v))))))
+    (testing "any one of the three not gaining: the fold rule stands"
+      (is (= :fail (:verdict (links/dominance-verdict lost {:pooled 0.00223 :dcost 0.0777 :auc-gain -0.001}))))
+      (is (= :fail (:verdict (links/dominance-verdict lost {:pooled 0.00223 :dcost 0.0 :auc-gain 0.028}))))
+      (is (= :fail (:verdict (links/dominance-verdict lost {:pooled -0.0001 :dcost 0.0777 :auc-gain 0.028})))))
+    (testing "a fold-rule pass stays a pass"
+      (let [ok (links/fold-verdict {:pooled (f 0.0001 0.0010 82) :folds [(f 0.0 0.001 29)]})]
+        (is (= :pass (:verdict (links/dominance-verdict ok {:pooled 0.0005 :dcost -0.01 :auc-gain -0.01}))))
+        (is (= :folds (:by (links/dominance-verdict ok {:pooled 0.0005 :dcost -0.01 :auc-gain -0.01}))))))))

@@ -74,6 +74,18 @@
     {:verdict (if (and (empty? losses) (pos? (get-in pooled [:brier :diff]))) :pass :fail)
      :losses (vec losses) :thin-losses (vec (filter thin? lost))}))
 
+(defn dominance-verdict
+  "The fold rule as amended 20 November 2026 (docs/PHASE-CHANGES.md):
+  `fv`, a `fold-verdict`, stands unless it failed and the candidate gains
+  on all three of pooled Brier, the alert cost at 4:1 (bnm.alerts' dcost)
+  and pooled AUC (docs/studies/kinds_level.py), each point estimate above
+  zero; then it passes by dominance, its fold losses kept and named."
+  [fv {:keys [pooled dcost auc-gain]}]
+  (cond
+    (= :pass (:verdict fv)) (assoc fv :by :folds)
+    (every? #(pos? (double %)) [pooled dcost auc-gain]) (assoc fv :verdict :pass :by :dominance)
+    :else (assoc fv :by :folds)))
+
 (defn fold-report
   "Lines: `run` against `bench` at the year nodes, in each fold and pooled,
   each fold's onsets beside it, then the verdict under the amended fold rule
@@ -89,7 +101,8 @@
                (cond (not (neg? (:hi br))) ""
                      (and (not= [a b] [2003 2022]) (< pos min-fold-onsets)) (str "  LOSS (thin: under " min-fold-onsets " onsets, cannot veto)")
                      :else "  LOSS")))
-     [(str "   verdict (fold rule as amended 18 Nov 2026): " (name (:verdict v)))])))
+     [(str "   verdict (fold rule as amended 18 Nov 2026): " (name (:verdict v))
+           (when (= :fail (:verdict v)) "; a fold loss is overridden if pooled Brier, alert cost and AUC all gain (dominance-verdict, 20 Nov 2026)"))])))
 
 (defn entropy
   "The weights' entropy over the log of their number: 1 even, 0 on one."
