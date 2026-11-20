@@ -3754,3 +3754,9 @@ Results, 20 November 2026 (suite 1636 tests, 0 failures; run 46 min). The other 
 Held tighter, the drivers improve everything but two folds: more crashes caught with fewer false alarms, better ranking, a pooled gain. The losses are in 2010-12 and 2020-22, the years after a large driver move (2008-09, 2020), where the drivers' slopes, now smaller, under-react. Under the amended fold rule a fold with 5 or more onsets vetoes, so it fails; the layer as adopted (t113) stays.
 
 Under the fold rule as amended 20 November 2026 (docs/PHASE-CHANGES.md, decided by the user after this result): pooled Brier +0.00223, alerts dcost +0.0777 and AUC +0.028 all gain, so t124 **passes by dominance**, its 2010-12 and 2020-22 losses named. Adoption is the user's.
+
+## Sovereign defaults on filled inputs, rerun on the current base: t125 (bnm-s6m)
+
+Written 20 November 2026, before any run, on t124-base, at the user's request. t114 ran sovereign defaults' theory on filled inputs (bnm.impute: the last value decayed toward the region's mean, and the share missing) against t111-base and failed the fold rule (2010-12 lost) while gaining on pooled Brier (+0.00002), alerts (dcost +0.0019) and AUC (0.589 -> 0.595), so it is the one earlier failure that passes under the dominance amendment of this day. The base has moved since (sovereign defaults keep t111's theory, but inflation crises, currency crises and others around them changed), so it is rerun rather than read from t114.
+
+Run t125: t124-base's command with `--out t125 --impute inflation_crisis,sovereign_default`. The other twelve kinds must reproduce t124-base byte for byte. Rule: against t124-base, the fold rule as amended 18 November and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it level r and wave-year Brier. Adoption is the user's. No changes after the result.
