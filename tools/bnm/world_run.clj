@@ -824,14 +824,19 @@
               ks))))
 
 (defn shapes-choice
-  "--shapes true (bnm-asp): the kind theories read each input as
-  bnm.kind-theory/shape's columns; false without the flag."
+  "--shapes true|kind,... (bnm-asp): the kind theories read each input as
+  bnm.kind-theory/shape's columns: true for all, or the set of kinds named;
+  false without the flag."
   [{v :shapes :as opts}]
-  (case v
-    nil false
-    "true" (if (:kind-theory opts) true
-               (throw (ex-info "bnm.world-run: --shapes shapes a kind theory's inputs: give --kind-theory" {})))
-    (throw (ex-info "bnm.world-run: --shapes takes true" {:shapes v}))))
+  (let [served (set (some-> (:kind-theory opts) (str/split #",") (->> (map #(first (str/split % #":"))))))]
+    (cond
+      (nil? v) false
+      (empty? served) (throw (ex-info "bnm.world-run: --shapes shapes a kind theory's inputs: give --kind-theory" {}))
+      (= "true" v) true
+      :else (let [ks (set (str/split v #","))]
+              (doseq [k ks :when (not (served k))]
+                (throw (ex-info (str "bnm.world-run: --shapes: no kind theory for " k) {:kind k})))
+              ks))))
 
 (defn- theory-db
   "The theory layers' table: every path in bnm.kind-theory/series-paths,

@@ -209,6 +209,8 @@
   (let [choice (resolve 'bnm.world-run/shapes-choice)]
     (is (false? (choice {})))
     (is (true? (choice {:shapes "true" :kind-theory "currency_crisis"})))
+    (is (= #{"currency_crisis"} (choice {:shapes "currency_crisis" :kind-theory "inflation_crisis,currency_crisis"})))
+    (is (thrown? Exception (choice {:shapes "coup" :kind-theory "currency_crisis"})))
     (is (thrown? Exception (choice {:shapes "true"})))))
 
 (deftest the-tables-read

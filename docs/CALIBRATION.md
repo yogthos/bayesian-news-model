@@ -3599,3 +3599,12 @@ Written 19 November 2026, before any run, on t111-base. Two changes from the dia
 Offline, before the run, the same arm on inflation crises' inputs and the global layer gave 0.626 -> 0.724 (lattice 0.732) and on sovereign defaults' 0.521 -> 0.587 (lattice 0.589).
 
 Run t115: t111-base's command with `--kind-theory sovereign_default,inflation_crisis,currency_crisis --shapes true` (the shapes apply to all three theories). The other ten kinds must reproduce t111-base byte for byte. Rule, for each of the three kinds separately: against t111-base, the fold rule as amended and the alert table at 4:1; beside it level r, AUC and wave-year Brier. No changes after the result.
+
+### Results (19 November 2026)
+
+Suite green (1611 tests); t115 took 33 minutes; the other ten kinds reproduce t111-base byte for byte. Against t111-base:
+- **Currency crises (re-specified, shaped): pass.** 2003-06 +0.00351 [+0.00217, +0.00479]; 2007-09 -0.00226; 2010-12 -0.00314; 2013-19 +0.00220 [+0.00012, +0.00485]; 2020-22 +0.00224; pooled +0.00097 [-0.00104, +0.00292]. Pooled AUC 0.693 -> 0.774, within-year 0.751 -> 0.767, level r -0.47 -> +0.10. Wave years +0.00295 (2013-15) and +0.00182 (2019-22). Alerts dcost -0.0064 [-0.0232, +0.0099] (hits 9.4%, false alarms 1.5%).
+- Inflation crises (shaped): pass, pooled +0.00035 [-0.00035, +0.00106], no fold lost; AUC 0.732 -> 0.725, within-year 0.787 -> 0.741, level r -0.40 -> -0.21; alerts -0.0003. t114's filled inputs (adopted) rank better (AUC 0.774, within-year 0.847) at a smaller Brier gain (+0.00013).
+- Sovereign defaults (shaped): fail, pooled -0.00013 [-0.00107, +0.00077], no fold lost; AUC 0.589 -> 0.632, within-year 0.640 -> 0.695, level r -0.43 -> -0.26.
+
+Currency crises' re-specified, shaped theory is a candidate; adoption is the user's decision. The level bug is gone for currency crises (r +0.10).

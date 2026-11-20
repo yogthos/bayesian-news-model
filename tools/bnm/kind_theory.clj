@@ -236,7 +236,7 @@
             (let [ds (or (decls k) (throw (ex-info (str "bnm.kind-theory: no theory declared for " k) {:kind k})))]
               (check-loaded ds db)
               (if (contains? acc k)
-                (update acc k with-theory (transformed ds (:row (sg/assemble db ds))) (count ds) {:add (contains? add k) :impute (if (set? impute) (contains? impute k) impute) :shapes shapes})
+                (update acc k with-theory (transformed ds (:row (sg/assemble db ds))) (count ds) {:add (contains? add k) :impute (if (set? impute) (contains? impute k) impute) :shapes (if (set? shapes) (contains? shapes k) shapes)})
                 acc)))
           specs kinds)))
 
