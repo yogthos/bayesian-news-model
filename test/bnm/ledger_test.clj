@@ -128,22 +128,27 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t116-with-the-global-layer-and-filled-inputs
+(deftest the-base-of-record-is-t118-with-fresher-inflation-reads
+  ;; note to L1, 19 November 2026 (ninth): t116-base's command with
+  ;; inflation crises' theory on the freshest inflation read (t117)
+  (is (= "t118-base" lg/base))
+  (is (= "d5f9ba93199f0028ec4a98706a486cab25ac684d2961767d4e00964def634aa4" (lg/base-files "inflation_crisis")) "t117's inflation crises")
+  (is (= "sovereign_default,inflation_crisis@monthly,currency_crisis"
+         (second (drop-while #(not= "--kind-theory" %) (lg/command "ledger-x" 24323))))))
+
+(deftest the-base-before-was-t116-with-the-global-layer-and-filled-inputs
   ;; note to L1, 19 November 2026 (eighth): t111-base's command with the
   ;; global layer for market crashes (--global-theory, t113) and inflation
   ;; crises' theory reading filled inputs (--impute, t114), and currency
   ;; crises' re-specified, shaped theory (--shapes, t115)
-  (is (= "t116-base" lg/base))
   (is (= "fec3f60f1738a3787a09b8c058a954f02d6a11126807775e41d0d10542bbc105" (lg/base-files "currency_crisis")) "t115's currency crises")
   (is (some #{"data/derived/rer-annual.tsv"} lg/inputs))
   (is (some #{"data/fast/series.tsv"} lg/inputs))
   (is (= "b93e9f952d9c1312d6c11ce7d9c593e23e34633f4b2932ff00bd8dff01f1a36e" (lg/base-files "market_crash")) "t113's market crashes")
-  (is (= "c940b3714cf43ee41ef351633a0bbf3ed6df0e0d147d22839cca6e323840a287" (lg/base-files "inflation_crisis")) "t114's inflation crises")
   (is (= "6ac298a0d84075e52a5e20533a4665895d7655447ff50e807fb73edf85eee72b" (lg/base-files "sovereign_default")) "t111's")
   (is (some #{"data/derived/global-monthly.tsv"} lg/inputs) "the global drivers are an input of record")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
-    (is (= "sovereign_default,inflation_crisis,currency_crisis" (opt "--kind-theory")))
     (is (= "currency_crisis" (opt "--shapes")))
     (is (= "market_crash" (opt "--global-theory")))
     (is (= "inflation_crisis" (opt "--impute")))))

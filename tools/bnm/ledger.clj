@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t116-base")
+(def base "t118-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -81,8 +81,10 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t116-base/<kind>/
-  forecasts.tsv (19 November 2026: t111-base's command with the global
+  "The base of record's forecasts, data/runs/t118-base/<kind>/
+  forecasts.tsv (19 November 2026, the ninth note to L1: t116-base's
+  command with inflation crises' theory on the freshest inflation read,
+  t117's). t116-base (19 November 2026: t111-base's command with the global
   layer for market crashes, t113's, inflation crises' theory on filled
   inputs, t114's, and currency crises' re-specified, shaped theory, t115's;
   the eighth note to L1), by SHA-256. t111-base (the
@@ -98,7 +100,7 @@
    "fiscal_consolidation" "778d9b2be42d12002307bf15111224b26ab7ec078c3b4c68c88f18a764d71620"
    "food_price_shock" "32a8c9c7a058a94c792bde3e94b8f6dc645ee33c833ec009dd4b6d12c7bc2fc3"
    "growth_collapse" "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c"
-   "inflation_crisis" "c940b3714cf43ee41ef351633a0bbf3ed6df0e0d147d22839cca6e323840a287"
+   "inflation_crisis" "d5f9ba93199f0028ec4a98706a486cab25ac684d2961767d4e00964def634aa4"
    "market_crash" "b93e9f952d9c1312d6c11ce7d9c593e23e34633f4b2932ff00bd8dff01f1a36e"
    "protest_surge" "98f6a3d14855b3ba0f5eda59b4975de2a13e55b19d8963c36191e496a1dcd373"
    "sovereign_default" "6ac298a0d84075e52a5e20533a4665895d7655447ff50e807fb73edf85eee72b"
@@ -430,7 +432,10 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t116-base's (eighth note to L1):
+  "The base's bnm.world-run arguments, t118-base's (ninth note to L1):
+  t116-base's with inflation crises' theory on the freshest inflation
+  read (--kind-theory inflation_crisis@monthly, t117). t116-base's (eighth
+  note):
   t111-base's with the global layer for market crashes (--global-theory,
   bnm-1ft), inflation crises' theory on filled inputs (--impute,
   bnm-s6m) and currency crises' re-specified theory with shaped inputs
@@ -463,7 +468,7 @@
    "--leading" "true" "--leading-priors" "true" "--real-lags" "true" "--at-risk" "catalogue"
    "--lead-std" "history" "--frailty-gauges" "true" "--dated-credit" "true"
    "--theory-offset" "true" "--theory-world" "true" "--recession-hold" "rows"
-   "--kind-theory" "sovereign_default,inflation_crisis,currency_crisis" "--shapes" "currency_crisis"
+   "--kind-theory" "sovereign_default,inflation_crisis@monthly,currency_crisis" "--shapes" "currency_crisis"
    "--global-theory" "market_crash" "--impute" "inflation_crisis"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
    "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}}}"])
