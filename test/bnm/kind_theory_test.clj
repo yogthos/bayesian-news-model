@@ -166,6 +166,20 @@
     (is (= ["currency_crisis" "banking_crisis"] (choice {:global-theory "currency_crisis,banking_crisis"})))
     (is (thrown? Exception (choice {:global-theory "coup"})) "economic kinds only")))
 
+(deftest the-global-shapes-flag
+  (require 'bnm.world-run)
+  (let [choice (resolve 'bnm.world-run/global-shapes-choice)]
+    (is (= #{} (choice {})))
+    (is (= #{"market_crash"} (choice {:global-shapes "market_crash" :global-theory "market_crash,currency_crisis"})))
+    (is (thrown? Exception (choice {:global-shapes "market_crash"})))))
+
+(deftest variant-flags
+  (require 'bnm.world-run)
+  (let [choice (resolve 'bnm.world-run/kind-theory-choice)]
+    (is (= ["inflation_crisis@monthly" "currency_crisis@partners"] (choice {:kind-theory "inflation_crisis@monthly,currency_crisis@partners"})))
+    (is (thrown? Exception (choice {:kind-theory "inflation_crisis@nope"})))
+    (is (= #{"inflation_crisis"} ((resolve 'bnm.world-run/impute-choice) {:impute "inflation_crisis" :kind-theory "inflation_crisis@monthly"})))))
+
 
 (deftest missing-inputs-filled
   ;; bnm-s6m: with :impute, the theory reads bnm.impute's filled inputs and
@@ -214,6 +228,50 @@
     (is (thrown? Exception (choice {:shapes "true"})))))
 
 (deftest the-tables-read
-  (is (= ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"]
+  (is (= ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"
+          "data/derived/trade-partners.tsv"]
          kt/series-paths)))
 
+
+(deftest variants-keep-the-base-lists
+  ;; t117: new lists under kind@variant, so the base's command keeps reading
+  ;; the lists it was adopted with
+  (is (= "inflation_crisis" (kt/kind-of "inflation_crisis@monthly")))
+  (is (= "coup" (kt/kind-of "coup")))
+  (is (= [:inflation :depreciation12 :government-debt-change24 :reserves :growth]
+         (mapv :name (kt/decls "inflation_crisis@monthly"))))
+  (is (= (conj (mapv :name (kt/decls "currency_crisis")) :partner-falls)
+         (mapv :name (kt/decls "currency_crisis@partners"))))
+  (is (every? (kt/vars ["inflation_crisis@monthly"]) ["economy/inflation_monthly" "economy/cpi_general" "economy/inflation" "fast/fx"]))
+  (is (every? (kt/vars ["currency_crisis@partners"]) ["trade/export_share_ru" "trade/export_share_cn" "trade/export_share_eu" "fast/fx"])))
+
+(deftest the-freshest-inflation
+  (let [st (fn [pairs] (bnm.stocks/series (for [[p a v] pairs] [p a v])))
+        bis {["a1" "economy/inflation_monthly"] (st [[100 101 50.0]])}
+        fao {["a1" "economy/cpi_general"] (st [[80 90 1.0] [92 102 1.4]])}
+        wdi {["a1" "economy/inflation"] (st [[95 104 30.0]])}]
+    (testing "BIS's monthly year-on-year first, as log(1 + x/100)"
+      (is (< (Math/abs (- (Math/log 1.5) (kt/fresh-inflation (merge bis fao wdi) "a1" 105))) 1e-12)))
+    (testing "else FAOSTAT's 12-month change in the log index"
+      (is (< (Math/abs (- 0.4 (kt/fresh-inflation (merge fao wdi) "a1" 105))) 1e-12)))
+    (testing "else WDI's annual"
+      (is (< (Math/abs (- (Math/log 1.3) (kt/fresh-inflation wdi "a1" 105))) 1e-12)))
+    (is (nil? (kt/fresh-inflation {} "a1" 105)))))
+
+(deftest partner-falls
+  ;; each partner's 12-month fall against the dollar (0 for a rise), times the
+  ;; country's export share to it a year before
+  (let [st (fn [pairs] (bnm.stocks/series (for [[p v] pairs] [p p v])))
+        db {["RUS" "fast/fx"] (st [[100 3.5] [112 4.2]])
+            ["CHN" "fast/fx"] (st [[100 1.9] [112 1.85]])
+            ["DEU" "fast/fx"] (st [[100 -0.3] [112 -0.2]])
+            ["KAZ" "trade/export_share_ru"] (st [[95 0.1]])
+            ["KAZ" "trade/export_share_cn"] (st [[95 0.2]])
+            ["KAZ" "trade/export_share_eu"] (st [[95 0.5]])}]
+    (is (< (Math/abs (- (+ (* 0.1 0.7) (* 0.2 0.0) (* 0.5 0.1)) (kt/partner-falls db "KAZ" 112))) 1e-9))
+    (is (nil? (kt/partner-falls db "XXX" 112)) "no shares known: nil")))
+
+(deftest shaped-global-layer
+  (let [out (get (kt/with-global-theory-row {"market_crash" sp} ["market_crash"] (fn [u t] (vec (repeat 12 (x [u t])))) {:shapes #{"market_crash"}}) "market_crash")]
+    (is (fn? (:offset-add out)))
+    (is (= 60 (count ((:inputs (:kind-theory out)) "a1" 371))) "twelve inputs, five columns each")))

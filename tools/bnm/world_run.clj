@@ -800,7 +800,7 @@
                    (throw (ex-info (str "bnm.world-run: --kind-theory: " w ": the only mode is :add") {:kind w})))
                  k))]
       (doseq [k ks]
-        (when (= k lb/kind)
+        (when (= (kt/kind-of k) lb/kind)
           (throw (ex-info "bnm.world-run: --kind-theory: banking crises take --theory-offset" {})))
         (when-not (kt/decls k)
           (throw (ex-info (str "bnm.world-run: --kind-theory: no theory declared for " k) {:kind k}))))
@@ -812,7 +812,7 @@
   missing: true for every layer's kinds, or the set of kinds named (t116:
   inflation crises only); false without the flag."
   [{v :impute :as opts}]
-  (let [served (set (concat (some-> (:kind-theory opts) (str/split #",") (->> (map #(first (str/split % #":")))))
+  (let [served (set (concat (some-> (:kind-theory opts) (str/split #",") (->> (map #(kt/kind-of (first (str/split % #":"))))))
                             (some-> (:global-theory opts) (str/split #","))))]
     (cond
       (nil? v) false
@@ -828,7 +828,7 @@
   bnm.kind-theory/shape's columns: true for all, or the set of kinds named;
   false without the flag."
   [{v :shapes :as opts}]
-  (let [served (set (some-> (:kind-theory opts) (str/split #",") (->> (map #(first (str/split % #":"))))))]
+  (let [served (set (some-> (:kind-theory opts) (str/split #",") (->> (map #(kt/kind-of (first (str/split % #":")))))))]
     (cond
       (nil? v) false
       (empty? served) (throw (ex-info "bnm.world-run: --shapes shapes a kind theory's inputs: give --kind-theory" {}))
@@ -846,6 +846,17 @@
     (apply merge (for [p (kt/paths-for vars)]
                    (nm/load-series p vs (cond-> {:vars vars} (= p "data/slow/series.tsv") (assoc :real-lags real-lags)))))))
 
+(defn global-shapes-choice
+  "--global-shapes kind,... (t117): the global layer's inputs shaped
+  (bnm.kind-theory/shape) for the kinds named; #{} without the flag."
+  [{v :global-shapes g :global-theory}]
+  (if-not v
+    #{}
+    (let [ks (set (str/split v #",")) served (set (some-> g (str/split #",")))]
+      (doseq [k ks :when (not (served k))]
+        (throw (ex-info (str "bnm.world-run: --global-shapes: the global layer does not serve " k) {:kind k})))
+      ks)))
+
 (defn global-theory-choice
   "--global-theory kind,... (bnm-1ft): the global layer (bnm.kind-theory/
   global) on top of each named kind's year offset; nil without the flag."
@@ -860,7 +871,7 @@
   "The kinds --kind-theory names as kind:add, their theory on top of the
   year offset (t112)."
   [{v :kind-theory}]
-  (set (for [w (some-> v (str/split #",")) :let [[k mode] (str/split w #":")] :when (= "add" mode)] k)))
+  (set (for [w (some-> v (str/split #",")) :let [[k mode] (str/split w #":")] :when (= "add" mode)] (kt/kind-of k))))
 
 (defn with-bloc-theory
   "The named kinds' specs with :offset-add at the year scale (k is a
@@ -1130,7 +1141,7 @@
                                            (kind-theory-add opts) (impute-choice opts) (shapes-choice opts))
                        %))
                    (#(if-let [ks (global-theory-choice opts)]
-                       (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts))
+                       (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts) (global-shapes-choice opts))
                        %))
                    (with-bloc-theory (bloc-theory-choice opts)
                      (when (bloc-theory-choice opts)

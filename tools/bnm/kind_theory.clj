@@ -62,10 +62,12 @@
   "The tables the theory layers read: the slow table, the global drivers
   (scripts/global-monthly.py), the real rates (scripts/rer-annual.py), the
   fast table's monthly exchange rates."
-  ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"])
+  ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"
+   "data/derived/trade-partners.tsv"])
 
 (def ^:private path-prefix
-  {"data/derived/global-monthly.tsv" "global/" "data/derived/rer-annual.tsv" "derived/rer_" "data/fast/series.tsv" "fast/"})
+  {"data/derived/global-monthly.tsv" "global/" "data/derived/rer-annual.tsv" "derived/rer_" "data/fast/series.tsv" "fast/"
+   "data/derived/trade-partners.tsv" "trade/export_share_"})
 
 (defn paths-for
   "The tables in `series-paths` holding any of `vars`: the slow table
@@ -120,7 +122,61 @@
   #{"banking_crisis" "currency_crisis" "sovereign_default" "inflation_crisis" "growth_collapse"
     "fiscal_consolidation" "market_crash" "food_price_shock"})
 
-(def ^:private by-kind {"sovereign_default" sovereign "currency_crisis" currency "inflation_crisis" inflation})
+(defn kind-of "A theory's kind: the name before any @variant." [k] (first (str/split k #"@")))
+
+(def ^:private bis-inflation {:var "economy/inflation_monthly" :read [:value] :stale 6})
+(def ^:private fao-cpi12 {:var "economy/cpi_general" :read [:change 12] :stale 18})
+(def ^:private wdi-inflation {:var "economy/inflation" :read [:value] :stale 30})
+
+(defn fresh-inflation
+  "Consumer price inflation as log(1 + x/100), the freshest read at t
+  (t117): BIS's monthly year-on-year (62 countries, a month behind), else
+  FAOSTAT's 12-month change in the log index (207 countries from 2000,
+  about nine months behind), else WDI's annual (about 21 months stale by
+  December). Nil when none is known."
+  [db u t]
+  (let [rd #(sg/read-signal db % u t)]
+    (if-let [x (rd bis-inflation)]
+      (Math/log1p (Math/max -0.99 (/ (double x) 100.0)))
+      (or (rd fao-cpi12)
+          (some-> (rd wdi-inflation) double (/ 100.0) (Math/max -0.99) Math/log1p)))))
+
+(def ^:private partners
+  "The trade partners whose currency falls are read (t117): Russia, China,
+  the euro area (DEU's fast/fx carries the euro from 1999)."
+  {"trade/export_share_ru" "RUS" "trade/export_share_cn" "CHN" "trade/export_share_eu" "DEU"})
+
+(defn partner-falls
+  "Trade-weighted contagion (t117; Glick and Rose 1999): the sum over
+  partners of the country's export share to each a year before times the
+  partner currency's 12-month fall against the dollar (0 for a rise); nil
+  when no share is known."
+  [db u t]
+  (let [terms (for [[sv pu] partners
+                    :let [w (sg/read-signal db {:var sv :read [:value] :stale 30 :lag 12} u t)]
+                    :when w]
+                (* w (Math/max 0.0 (double (or (sg/read-signal db {:var "fast/fx" :unit pu :read [:change 12] :stale 3} u t) 0.0)))))]
+    (when (seq terms) (reduce + terms))))
+
+(def ^:private inflation-monthly
+  "Inflation crises with timelier reads (t117): inflation the freshest of
+  BIS, FAOSTAT and WDI (`fresh-inflation`), the currency's 12-month fall
+  monthly (fast/fx) in place of WDI's annual average rate; the rest as
+  `inflation`."
+  [{:name :inflation :expr [:fn fresh-inflation] :reads [bis-inflation fao-cpi12 wdi-inflation]}
+   {:name :depreciation12 :var "fast/fx" :read [:change 12] :stale 3}
+   {:name :government-debt-change24 :var "debt/government_credit_gdp" :read [:change 24] :stale 12}
+   {:name :reserves :var "debt/reserves_months" :read [:value] :stale 30}
+   {:name :growth :var "economy/gdp_growth" :read [:value] :stale 30}])
+
+(def ^:private currency-partners
+  "Currency crises as t115's list plus trade-weighted partner falls (t117)."
+  (conj currency {:name :partner-falls :expr [:fn partner-falls]
+                  :reads (into [{:var "fast/fx" :unit "RUS"} {:var "fast/fx" :unit "CHN"} {:var "fast/fx" :unit "DEU"}]
+                               (for [sv (keys partners)] {:var sv}))}))
+
+(def ^:private by-kind {"sovereign_default" sovereign "currency_crisis" currency "inflation_crisis" inflation
+                        "inflation_crisis@monthly" inflation-monthly "currency_crisis@partners" currency-partners})
 
 (defn decls "A kind's theory signals, or nil." [kind] (get by-kind kind))
 
@@ -140,7 +196,7 @@
                              (cons {:var (:var e) :unit u} (when-let [t (:times e)] (walk t u))))
                   (vector? e) (when-not (= :fn (first e)) (mapcat #(walk % outer) (rest e)))
                   :else nil))]
-    (filter :var (walk (or (:expr d) d) nil))))
+    (filter :var (concat (walk (or (:expr d) d) nil) (mapcat #(walk % nil) (:reads d))))))
 
 (defn decl-vars "The series declarations `ds` read." [ds] (set (map :var (mapcat reads ds))))
 
@@ -235,24 +291,36 @@
   (reduce (fn [acc k]
             (let [ds (or (decls k) (throw (ex-info (str "bnm.kind-theory: no theory declared for " k) {:kind k})))]
               (check-loaded ds db)
-              (if (contains? acc k)
-                (update acc k with-theory (transformed ds (:row (sg/assemble db ds))) (count ds) {:add (contains? add k) :impute (if (set? impute) (contains? impute k) impute) :shapes (if (set? shapes) (contains? shapes k) shapes)})
-                acc)))
+              (let [kd (kind-of k)]
+                (if (contains? acc kd)
+                  (update acc kd with-theory (transformed ds (:row (sg/assemble db ds))) (count ds)
+                          {:add (contains? add kd) :impute (if (set? impute) (contains? impute kd) impute)
+                           :shapes (if (set? shapes) (contains? shapes kd) shapes)})
+                  acc))))
           specs kinds)))
+
+(defn with-global-theory-row
+  "`with-global-theory`'s core on a given row: opts :impute and :shapes,
+  each true or a set of kinds."
+  [specs kinds row {:keys [impute shapes]}]
+  (let [on (fn [o k] (if (set? o) (contains? o k) (boolean o)))]
+    (reduce (fn [acc k]
+              (when-not (global-kinds k)
+                (throw (ex-info (str "bnm.kind-theory: the global layer is for the economic kinds, not " k) {:kind k})))
+              (if (contains? acc k)
+                (update acc k with-theory row (count global) {:add true :impute (on impute k) :shapes (on shapes k)})
+                acc))
+            specs kinds)))
 
 (defn with-global-theory
   "The named kinds' specs with the global layer (`global`) added on top of
   their offset (with-theory :add): its slopes refit at each origin, the
   drivers moving every country's level together and the interactions
   moving the exposed ones. Goes with a kind's own theory, which sets the
-  offset."
+  offset. impute and shapes: true, false or a set of kinds."
   ([specs kinds db] (with-global-theory specs kinds db false))
-  ([specs kinds db impute]
-  (check-loaded global db)
-  (let [row (:row (sg/assemble db global))]
-    (reduce (fn [acc k]
-              (when-not (global-kinds k)
-                (throw (ex-info (str "bnm.kind-theory: the global layer is for the economic kinds, not " k) {:kind k})))
-              (if (contains? acc k) (update acc k with-theory row (count global) {:add true :impute (if (set? impute) (contains? impute k) impute)}) acc))
-            specs kinds))))
+  ([specs kinds db impute] (with-global-theory specs kinds db impute false))
+  ([specs kinds db impute shapes]
+   (check-loaded global db)
+   (with-global-theory-row specs kinds (:row (sg/assemble db global)) {:impute impute :shapes shapes})))
 
