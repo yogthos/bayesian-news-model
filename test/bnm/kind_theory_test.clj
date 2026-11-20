@@ -285,6 +285,25 @@
     (is (false? (:raw (:kind-theory plain))))
     (is (fn? (:offset-add out)))))
 
+(deftest stronger-priors-on-the-world-drivers
+  ;; t124: the global layer's six world drivers (no exposure) at a higher
+  ;; precision, the six channels at the default
+  (is (= [10.0 10.0 10.0 10.0 10.0 10.0 1.0 1.0 1.0 1.0 1.0 1.0] (kt/driver-penalties 10.0)))
+  (is (= [1.0 10.0 10.0 10.0 10.0 10.0 1.0 1.0 1.0 1.0 1.0] (kt/column-penalties [10.0 1.0] {:shapes true})) "intercept, then five columns per input")
+  (is (= [1.0 10.0 1.0 1.0] (kt/column-penalties [10.0 1.0] {:impute true})) "the share missing at the default")
+  (let [row (fn [u t] (vec (repeat 12 (x [u t]))))
+        out (get (kt/with-global-theory-row {"market_crash" sp} ["market_crash"] row {:driver-precision 10.0}) "market_crash")]
+    (is (= (into [1.0] (kt/driver-penalties 10.0)) (:penalties (:kind-theory out))))
+    (is (fn? (:offset-add out)))))
+
+(deftest the-driver-precision-flag
+  (require 'bnm.world-run)
+  (let [choice (resolve 'bnm.world-run/global-driver-precision-choice)]
+    (is (nil? (choice {})))
+    (is (= 10.0 (choice {:global-driver-precision "10" :global-theory "market_crash"})))
+    (is (thrown? Exception (choice {:global-driver-precision "10"})))
+    (is (thrown? Exception (choice {:global-driver-precision "0" :global-theory "market_crash"})))))
+
 (deftest the-global-raw-prior-flag
   (require 'bnm.world-run)
   (let [choice (resolve 'bnm.world-run/global-raw-prior-choice)]

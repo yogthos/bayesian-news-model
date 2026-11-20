@@ -887,6 +887,17 @@
         (throw (ex-info (str "bnm.world-run: --global-raw-prior: the global layer does not serve " k) {:kind k})))
       ks)))
 
+(defn global-driver-precision-choice
+  "--global-driver-precision p (t124): the global layer's six world
+  drivers fit at p times the default prior precision, the channels at the
+  default; nil without the flag."
+  [{v :global-driver-precision g :global-theory}]
+  (when v
+    (when-not g (throw (ex-info "bnm.world-run: --global-driver-precision needs --global-theory" {})))
+    (let [p (Double/parseDouble v)]
+      (when-not (pos? p) (throw (ex-info "bnm.world-run: --global-driver-precision must be positive" {:p p})))
+      p)))
+
 (defn global-theory-choice
   "--global-theory kind,... (bnm-1ft): the global layer (bnm.kind-theory/
   global) on top of each named kind's year offset; nil without the flag."
@@ -1171,7 +1182,7 @@
                                            (kind-theory-add opts) (impute-choice opts) (shapes-choice opts) (raw-prior-choice opts))
                        %))
                    (#(if-let [ks (global-theory-choice opts)]
-                       (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts) (global-shapes-choice opts) (global-raw-prior-choice opts))
+                       (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts) (global-shapes-choice opts) (global-raw-prior-choice opts) (global-driver-precision-choice opts))
                        %))
                    (with-bloc-theory (bloc-theory-choice opts)
                      (when (bloc-theory-choice opts)

@@ -3733,3 +3733,9 @@ Results, 20 November 2026 (suite 1633 tests, 0 failures; run 39 min). The other 
 | wave Brier 2013-15 / 2019-22 | -0.01664 / -0.02047 |
 
 The premise failed: the false alarms rose, not fell. The layer's inputs are already standardized (bnm.theory/place-z) before the fit, so their own scale is about the z scale, and where the training rows spread wider than 1 a prior on that scale is weaker than the default, not stronger. The layer as adopted (t113) stays.
+
+## The market-crash global layer with its world drivers held tighter: t124 (bnm-1ft)
+
+Written 20 November 2026, before any run, on the base of record t120-base, at the user's request after t123, and informed by t113, t117 and t123 (so a pass carries that look). t123's raw-scale priors weakened the layer's priors, since its inputs are already standardized, and false alarms rose from 45% to 69%. Here the prior on the six world drivers (the 6-month changes of the dollar, the US policy rate, oil, food, the Baa spread and the VIX), which vary only across origins and so rest on a few dozen distinct values, is made ten times as precise (prior sd about 0.32 in log odds per sd of the driver); the six channels (each driver times a country's exposure) keep the default precision 1.0. Linear, unshaped, as adopted in t113 (`--global-driver-precision 10`: bnm.kind-theory/driver-penalties, augur.logit/fit's :penalties). One value, fixed before the run; no second value is tried on this result.
+
+Run t124: t120-base's command with `--out t124 --global-driver-precision 10`. The other twelve kinds must reproduce t120-base byte for byte. Rule, as t120's: against t120-base, the fold rule as amended and the alert table at 4:1 (false-alarm rate reported); beside it level r, AUC and wave-year Brier. Adoption is the user's. No changes after the result.

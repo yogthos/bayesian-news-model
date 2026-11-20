@@ -366,6 +366,20 @@
   (let [v (double (or z 0.0))]
     [v (max 0.0 (+ v 1.0)) (max 0.0 v) (max 0.0 (- v 1.0)) (if (nil? x) 1.0 0.0)]))
 
+(defn column-penalties
+  "The fit's precision multipliers (bnm.theory/fits :penalties) from one
+  per raw input: the intercept's 1 first, each input's repeated over its
+  five shape columns when shaped, and the share missing at 1 when imputed."
+  [per-input {:keys [shapes impute]}]
+  (let [ps (cond-> (vec per-input) impute (conj 1.0))]
+    (into [1.0] (mapcat #(repeat (if shapes 5 1) (double %)) ps))))
+
+(defn driver-penalties
+  "The global layer's multipliers, one per input (t124): `p` for a world
+  driver (no exposure), 1 for a channel times an exposure."
+  [p]
+  (mapv #(if (or (:times %) (:expr %)) 1.0 (double p)) global))
+
 (defn with-theory
   "`sp` with its year node's offset the theory's: `row` (fn [unit origin])
   -> `width` raw inputs (nil for missing), each standardized by
@@ -378,19 +392,21 @@
   one more input. :add true (t112): the offset kept and only the theory's slopes,
   b.z past the intercept, added to a country's year log odds through
   :offset-add; the level stays the lattice's. :raw true (t121): the
-  slopes' priors on each column's own scale (bnm.theory/fits)."
+  slopes' priors on each column's own scale (bnm.theory/fits).
+  :penalties (t124): a precision multiplier per raw input."
   ([sp row width] (with-theory sp row width {}))
-  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw]}]
+  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw penalties]}]
   (let [countries (second (first levels))
         per (:per (first (filter #(= :year (:name %)) scales)))
         os (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))
         ;; bnm-s6m: missing inputs filled (bnm.impute), the share missing a column more
+        pens (when penalties (column-penalties penalties {:shapes shapes :impute impute}))
         [row width] (if impute [(im/impute row width countries (vec os) parent) (inc width)] [row width])
         zs (vec (for [i (range width)] (th/place-z (fn [u t] (nth (row u t) i)) countries os 20)))
         inputs (if shapes
                  (fn [u t] (let [r (row u t)] (vec (mapcat (fn [i z] (shape (some-> r (nth i)) (z u t))) (range width) zs))))
                  (fn [u t] (mapv #(% u t) zs)))
-        args {:places countries :origins os :prior 1.0 :inputs inputs :raw (boolean raw)
+        args {:places countries :origins os :prior 1.0 :inputs inputs :raw (boolean raw) :penalties pens
               :target (fn [u t] (target :year u t))}]
     (if add
       (let [_ (when (:offset-add sp)
@@ -402,7 +418,7 @@
                              (when (and (= :year scale) (cs place))
                                (when-let [^doubles b (get fits t)]
                                  (reduce + 0.0 (map-indexed (fn [i z] (* (aget b (inc i)) (double (or z 0.0)))) (inputs place t))))))
-               :kind-theory {:fits fits :inputs inputs :add true :raw (boolean raw)}))
+               :kind-theory {:fits fits :inputs inputs :add true :raw (boolean raw) :penalties pens}))
       (let [off (th/offsets args)
             members (members-fn sp)]
         (assoc sp
@@ -410,7 +426,7 @@
                          (if (= :year scale)
                            (th/any-of (keep #(get off [% t]) (members place)))
                            (when offset (offset scale place t))))
-               :kind-theory {:offsets off :inputs inputs :raw (boolean raw)}))))))
+               :kind-theory {:offsets off :inputs inputs :raw (boolean raw) :penalties pens}))))))
 
 (defn with-own-inputs
   "[row width] for a spec whose year node already reads a theory
@@ -453,14 +469,16 @@
 
 (defn with-global-theory-row
   "`with-global-theory`'s core on a given row: opts :impute, :shapes and
-  :raw (raw-scale priors, t123), each true or a set of kinds."
-  [specs kinds row {:keys [impute shapes raw]}]
+  :raw (raw-scale priors, t123), each true or a set of kinds;
+  :driver-precision (t124), the world drivers' precision multiplier."
+  [specs kinds row {:keys [impute shapes raw driver-precision]}]
   (let [on (fn [o k] (if (set? o) (contains? o k) (boolean o)))]
     (reduce (fn [acc k]
               (when-not (global-kinds k)
                 (throw (ex-info (str "bnm.kind-theory: the global layer is for the economic kinds, not " k) {:kind k})))
               (if (contains? acc k)
-                (update acc k with-theory row (count global) {:add true :impute (on impute k) :shapes (on shapes k) :raw (on raw k)})
+                (update acc k with-theory row (count global) (cond-> {:add true :impute (on impute k) :shapes (on shapes k) :raw (on raw k)}
+                                                         driver-precision (assoc :penalties (driver-penalties driver-precision))))
                 acc))
             specs kinds)))
 
@@ -473,7 +491,8 @@
   ([specs kinds db] (with-global-theory specs kinds db false))
   ([specs kinds db impute] (with-global-theory specs kinds db impute false))
   ([specs kinds db impute shapes] (with-global-theory specs kinds db impute shapes false))
-  ([specs kinds db impute shapes raw]
+  ([specs kinds db impute shapes raw] (with-global-theory specs kinds db impute shapes raw nil))
+  ([specs kinds db impute shapes raw driver-precision]
    (check-loaded global db)
-   (with-global-theory-row specs kinds (:row (sg/assemble db global)) {:impute impute :shapes shapes :raw raw})))
+   (with-global-theory-row specs kinds (:row (sg/assemble db global)) {:impute impute :shapes shapes :raw raw :driver-precision driver-precision})))
 

@@ -87,3 +87,14 @@
     (is (= (vec (lgt/fit train 3 {:prior 1.0 :raw #{1 2}})) (vec b1)) "augur's :raw on every slope")
     (is (< (Math/abs (aget ^doubles b1 2)) (Math/abs (aget ^doubles b0 2))) "the sparse column's slope is held nearer zero")
     (is (= (vec b0) (vec (get (th/fits (assoc args :raw false)) t))) "without it, as before")))
+
+(deftest per-slope-precision
+  ;; t124: :penalties, one precision multiplier per column (x[0] the
+  ;; intercept's, ignored), passed to augur.logit/fit
+  (let [w (world 3)
+        args {:places places :origins origins :inputs (inputs w) :target (target w) :prior 1.0}
+        t (peek origins)
+        b0 (get (th/fits args) t)
+        b1 (get (th/fits (assoc args :penalties [1.0 1000.0])) t)]
+    (is (< (Math/abs (aget ^doubles b1 1)) (* 0.5 (Math/abs (aget ^doubles b0 1)))) "a strong prior holds the slope toward zero")
+    (is (= (vec b0) (vec (get (th/fits (assoc args :penalties [1.0 1.0])) t))) "multipliers of 1: as before")))
