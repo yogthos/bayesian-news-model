@@ -128,13 +128,25 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t118-with-fresher-inflation-reads
+(deftest the-base-of-record-is-t119-with-the-coup-theory
+  ;; note to L1, 20 November 2026 (tenth): t118-base's command with coups'
+  ;; shaped theory (t119); war onsets' theory, which failed, left out
+  (is (= "t119-base" lg/base))
+  (is (= "ec86c1a3afc93bf2aaf44e9c3a1aaa41c06868ab00a5a362970eddbff2c72f13" (lg/base-files "coup")) "t119's coups")
+  (is (= "25fafb6577491beb364e3809352ea2fb38bec4cc416b71596abba0f77e9c70b1" (lg/base-files "war_onset")) "war onsets unchanged")
+  (is (= "f6aa7491f6d6da849e1d97e227c0d3c621aed64e617352520b38f8d1bdf274b6" (lg/base-inputs "data/derived/onset-history.tsv")))
+  (is (some #{"data/derived/onset-history.tsv"} lg/inputs))
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "sovereign_default,inflation_crisis@monthly,currency_crisis,coup" (opt "--kind-theory")))
+    (is (= "currency_crisis,coup" (opt "--shapes")))))
+
+(deftest the-base-before-was-t118-with-fresher-inflation-reads
   ;; note to L1, 19 November 2026 (ninth): t116-base's command with
   ;; inflation crises' theory on the freshest inflation read (t117)
-  (is (= "t118-base" lg/base))
   (is (= "d5f9ba93199f0028ec4a98706a486cab25ac684d2961767d4e00964def634aa4" (lg/base-files "inflation_crisis")) "t117's inflation crises")
-  (is (= "sovereign_default,inflation_crisis@monthly,currency_crisis"
-         (second (drop-while #(not= "--kind-theory" %) (lg/command "ledger-x" 24323))))))
+  (is (str/starts-with? (second (drop-while #(not= "--kind-theory" %) (lg/command "ledger-x" 24323)))
+                        "sovereign_default,inflation_crisis@monthly,currency_crisis")))
 
 (deftest the-base-before-was-t116-with-the-global-layer-and-filled-inputs
   ;; note to L1, 19 November 2026 (eighth): t111-base's command with the
@@ -149,7 +161,7 @@
   (is (some #{"data/derived/global-monthly.tsv"} lg/inputs) "the global drivers are an input of record")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
-    (is (= "currency_crisis" (opt "--shapes")))
+    (is (str/starts-with? (opt "--shapes") "currency_crisis"))
     (is (= "market_crash" (opt "--global-theory")))
     (is (= "inflation_crisis" (opt "--impute")))))
 

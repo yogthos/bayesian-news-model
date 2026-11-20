@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t118-base")
+(def base "t119-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -74,6 +74,7 @@
   household_credit_gdp)."
   ["data/derived/econ-coverage.csv" "data/derived/econ-events.csv" "data/derived/fiscal.csv"
    "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"
+   "data/derived/onset-history.tsv"
    "data/derived/jst-credit-gap.csv" "data/derived/lattice-annual.csv" "data/derived/lattice-quarterly.csv"
    "data/derived/political-annual.csv" "data/derived/political-long.csv" "data/derived/political-states.csv"
    "data/raw/slow/jst/jst.csv" "data/raw/slow/kaopen/kaopen.csv" "data/raw/slow/pwt/pwt110-full.csv"
@@ -81,8 +82,10 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t118-base/<kind>/
-  forecasts.tsv (19 November 2026, the ninth note to L1: t116-base's
+  "The base of record's forecasts, data/runs/t119-base/<kind>/
+  forecasts.tsv (20 November 2026, the tenth note to L1: t118-base's
+  command with coups' shaped theory, t119's; war onsets' left out).
+  t118-base (19 November 2026, the ninth note to L1: t116-base's
   command with inflation crises' theory on the freshest inflation read,
   t117's). t116-base (19 November 2026: t111-base's command with the global
   layer for market crashes, t113's, inflation crises' theory on filled
@@ -95,7 +98,7 @@
   banking is t104-rows-rho0's, the other ten t80-base's, t71-stack's."
   {"banking_crisis" "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b"
    "conflict_onset" "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442"
-   "coup" "7d9e32befa2d67f7ab67b08bae3d08b8b3938db257439337815065cc357a292d"
+   "coup" "ec86c1a3afc93bf2aaf44e9c3a1aaa41c06868ab00a5a362970eddbff2c72f13"
    "currency_crisis" "fec3f60f1738a3787a09b8c058a954f02d6a11126807775e41d0d10542bbc105"
    "fiscal_consolidation" "778d9b2be42d12002307bf15111224b26ab7ec078c3b4c68c88f18a764d71620"
    "food_price_shock" "32a8c9c7a058a94c792bde3e94b8f6dc645ee33c833ec009dd4b6d12c7bc2fc3"
@@ -120,6 +123,7 @@
    "data/derived/lattice-quarterly.csv" "6d90af49651238dd955526ea825a65796bcc30cf8f4aaaa8ec1d8630173a4923"
    "data/derived/global-monthly.tsv" "73eea048a95a237ec0bae3b9146cd2c8a502249995b6ada28dc0efa17ec37444"
    "data/derived/rer-annual.tsv" "55897b6656b92272fdcc1e943782fe9c4a2a468643fb8ec8829aec270b9d8ed0"
+   "data/derived/onset-history.tsv" "f6aa7491f6d6da849e1d97e227c0d3c621aed64e617352520b38f8d1bdf274b6"
    "data/fast/series.tsv" "26dd587a4336b833b4bde8c50d75b6e210bb7a8d989c01c423362024b458a970"
    "data/derived/political-annual.csv" "8bc657fcc49bd69d52382a8237ad1f98f2ccb7237aa992a2551b243fd4108591"
    "data/derived/political-long.csv" "06a537c9f442aea6e1010a9ec7614ab44483b4917c5b283474704cad4f877563"
@@ -432,7 +436,10 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t118-base's (ninth note to L1):
+  "The base's bnm.world-run arguments, t119-base's (tenth note to L1):
+  t118-base's with coups' theory on onset history, regional coups and
+  their literature's inputs, shaped (--kind-theory coup --shapes coup,
+  t119). t118-base's (ninth note to L1):
   t116-base's with inflation crises' theory on the freshest inflation
   read (--kind-theory inflation_crisis@monthly, t117). t116-base's (eighth
   note):
@@ -468,7 +475,7 @@
    "--leading" "true" "--leading-priors" "true" "--real-lags" "true" "--at-risk" "catalogue"
    "--lead-std" "history" "--frailty-gauges" "true" "--dated-credit" "true"
    "--theory-offset" "true" "--theory-world" "true" "--recession-hold" "rows"
-   "--kind-theory" "sovereign_default,inflation_crisis@monthly,currency_crisis" "--shapes" "currency_crisis"
+   "--kind-theory" "sovereign_default,inflation_crisis@monthly,currency_crisis,coup" "--shapes" "currency_crisis,coup"
    "--global-theory" "market_crash" "--impute" "inflation_crisis"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
    "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}}}"])
