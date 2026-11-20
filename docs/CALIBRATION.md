@@ -3701,3 +3701,22 @@ Written 20 November 2026, before any run, on the base of record t120-base (growt
 - Every slope's prior on its input's own scale (`--raw-prior growth_collapse`, precision 1.0).
 
 Run t122: t120-base's command with `--out t122 --kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation,growth_collapse --raw-prior growth_collapse` (--shapes unchanged, so growth unshaped). The other twelve kinds must reproduce t120-base byte for byte. Rule, as t120's: against t120-base, the fold rule as amended and the alert table at 4:1; beside it level r, AUC and wave-year Brier. Adoption is the user's. No changes after the result.
+
+Results, 20 November 2026 (run 46 min; code unchanged since t121's green suite). The other twelve kinds reproduce t120-base byte for byte. **Fail.**
+
+| | t122 against t120-base |
+|---|---|
+| pooled Brier gain [95%] | -0.00102 [-0.00418 +0.00299], 339 onsets |
+| folds | -0.00676 (2003-06, LOSS, 6 onsets), +0.00252 (2007-09), -0.00332 (2010-12, LOSS), +0.00316 (2013-19), -0.00802 (2020-22) |
+| alerts dcost at 4:1 | -0.0318 [-0.0583 -0.0122] LOSS |
+| AUC pooled / within-year | 0.634 -> 0.603 / 0.609 -> 0.646 |
+| level r | +0.34 -> +0.23 |
+| wave Brier 2013-15 / 2019-22 | -0.00007 / -0.00618 |
+
+The treatment shrinks t120's loss twelvefold (-0.0120 to -0.0010) and lifts the within-year ranking (0.609 -> 0.646), but the level gets worse and the 2019-22 wave is still missed: as with banking, the inputs separate countries a little within a year and do not tell the years apart.
+
+## The market-crash global layer on raw-scale priors: t123 (bnm-1ft)
+
+Written 20 November 2026, before any run, on the base of record t120-base, informed by t113, t117, t121 and t122 (so a pass carries that look). The global layer was adopted for market crashes on t113's alert gain (dcost +0.194), with false alarms at 45% and pooled AUC 0.755 -> 0.715. Shaping it (t117) overfit (2007-09 -0.205). Raw-scale priors stopped the refit's breakdown in t121 and shrank t122's loss twelvefold, so the tuning tried is that alone: the layer's twelve linear slopes for market crashes fit with every prior on its input's own scale (`--global-raw-prior market_crash`, precision 1.0). Its six world drivers vary only across origins, so standardized across country rows their spread rests on a few dozen distinct values and the prior on them is weak; on their own scale they are held nearer zero, which should lower false alarms and keep the alert gain where the drivers carry signal.
+
+Run t123: t120-base's command with `--out t123 --global-raw-prior market_crash`. The other twelve kinds must reproduce t120-base byte for byte. Rule, as t120's: against t120-base, the fold rule as amended and the alert table at 4:1 (false-alarm rate reported); beside it level r, AUC and wave-year Brier. Adoption is the user's. No changes after the result.
