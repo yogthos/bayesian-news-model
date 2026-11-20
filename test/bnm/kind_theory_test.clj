@@ -276,6 +276,22 @@
     (is (fn? (:offset-add out)))
     (is (= 60 (count ((:inputs (:kind-theory out)) "a1" 371))) "twelve inputs, five columns each")))
 
+(deftest raw-prior-global-layer
+  ;; --global-raw-prior: the global layer's slopes on raw-scale priors (t121's treatment)
+  (let [row (fn [u t] (vec (repeat 12 (x [u t]))))
+        out (get (kt/with-global-theory-row {"market_crash" sp} ["market_crash"] row {:raw #{"market_crash"}}) "market_crash")
+        plain (get (kt/with-global-theory-row {"market_crash" sp} ["market_crash"] row {}) "market_crash")]
+    (is (true? (:raw (:kind-theory out))))
+    (is (false? (:raw (:kind-theory plain))))
+    (is (fn? (:offset-add out)))))
+
+(deftest the-global-raw-prior-flag
+  (require 'bnm.world-run)
+  (let [choice (resolve 'bnm.world-run/global-raw-prior-choice)]
+    (is (= #{} (choice {})))
+    (is (= #{"market_crash"} (choice {:global-raw-prior "market_crash" :global-theory "market_crash"})))
+    (is (thrown? Exception (choice {:global-raw-prior "market_crash"})))))
+
 (deftest declared-for-coups-and-war
   ;; gap 1 (t119): coups and war onsets from their literature, shaped
   (is (= [:coup-since :coup-count10 :regional-coups3 :growth :inflation :military-executive

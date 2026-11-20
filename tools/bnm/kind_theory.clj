@@ -452,15 +452,15 @@
           specs kinds)))
 
 (defn with-global-theory-row
-  "`with-global-theory`'s core on a given row: opts :impute and :shapes,
-  each true or a set of kinds."
-  [specs kinds row {:keys [impute shapes]}]
+  "`with-global-theory`'s core on a given row: opts :impute, :shapes and
+  :raw (raw-scale priors, t123), each true or a set of kinds."
+  [specs kinds row {:keys [impute shapes raw]}]
   (let [on (fn [o k] (if (set? o) (contains? o k) (boolean o)))]
     (reduce (fn [acc k]
               (when-not (global-kinds k)
                 (throw (ex-info (str "bnm.kind-theory: the global layer is for the economic kinds, not " k) {:kind k})))
               (if (contains? acc k)
-                (update acc k with-theory row (count global) {:add true :impute (on impute k) :shapes (on shapes k)})
+                (update acc k with-theory row (count global) {:add true :impute (on impute k) :shapes (on shapes k) :raw (on raw k)})
                 acc))
             specs kinds)))
 
@@ -469,10 +469,11 @@
   their offset (with-theory :add): its slopes refit at each origin, the
   drivers moving every country's level together and the interactions
   moving the exposed ones. Goes with a kind's own theory, which sets the
-  offset. impute and shapes: true, false or a set of kinds."
+  offset. impute, shapes and raw: true, false or a set of kinds."
   ([specs kinds db] (with-global-theory specs kinds db false))
   ([specs kinds db impute] (with-global-theory specs kinds db impute false))
-  ([specs kinds db impute shapes]
+  ([specs kinds db impute shapes] (with-global-theory specs kinds db impute shapes false))
+  ([specs kinds db impute shapes raw]
    (check-loaded global db)
-   (with-global-theory-row specs kinds (:row (sg/assemble db global)) {:impute impute :shapes shapes})))
+   (with-global-theory-row specs kinds (:row (sg/assemble db global)) {:impute impute :shapes shapes :raw raw})))
 

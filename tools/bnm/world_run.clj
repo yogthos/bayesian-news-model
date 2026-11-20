@@ -875,6 +875,18 @@
         (throw (ex-info (str "bnm.world-run: --global-shapes: the global layer does not serve " k) {:kind k})))
       ks)))
 
+(defn global-raw-prior-choice
+  "--global-raw-prior kind,... (t123): the global layer's slopes for the
+  kinds named fit on priors on each input's own scale (bnm.theory/fits
+  :raw); #{} without the flag."
+  [{v :global-raw-prior g :global-theory}]
+  (if-not v
+    #{}
+    (let [ks (set (str/split v #",")) served (set (some-> g (str/split #",")))]
+      (doseq [k ks :when (not (served k))]
+        (throw (ex-info (str "bnm.world-run: --global-raw-prior: the global layer does not serve " k) {:kind k})))
+      ks)))
+
 (defn global-theory-choice
   "--global-theory kind,... (bnm-1ft): the global layer (bnm.kind-theory/
   global) on top of each named kind's year offset; nil without the flag."
@@ -1159,7 +1171,7 @@
                                            (kind-theory-add opts) (impute-choice opts) (shapes-choice opts) (raw-prior-choice opts))
                        %))
                    (#(if-let [ks (global-theory-choice opts)]
-                       (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts) (global-shapes-choice opts))
+                       (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts) (global-shapes-choice opts) (global-raw-prior-choice opts))
                        %))
                    (with-bloc-theory (bloc-theory-choice opts)
                      (when (bloc-theory-choice opts)
