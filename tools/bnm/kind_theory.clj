@@ -6,7 +6,8 @@
   (bnm.theory), its inputs standardized against every country's values at
   earlier origins. The level then comes from what is read at the origin,
   not from lagged outcomes (docs/INVARIANTS.md point 4)."
-  (:require [bnm.impute :as im]
+  (:require [bnm.geo :as geo]
+            [bnm.impute :as im]
             [bnm.signals :as sg]
             [bnm.theory :as th]
             [clojure.string :as str]))
@@ -63,11 +64,11 @@
   (scripts/global-monthly.py), the real rates (scripts/rer-annual.py), the
   fast table's monthly exchange rates."
   ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"
-   "data/derived/trade-partners.tsv"])
+   "data/derived/trade-partners.tsv" "data/derived/onset-history.tsv"])
 
 (def ^:private path-prefix
   {"data/derived/global-monthly.tsv" "global/" "data/derived/rer-annual.tsv" "derived/rer_" "data/fast/series.tsv" "fast/"
-   "data/derived/trade-partners.tsv" "trade/export_share_"})
+   "data/derived/trade-partners.tsv" "trade/export_share_" "data/derived/onset-history.tsv" "history/"})
 
 (defn paths-for
   "The tables in `series-paths` holding any of `vars`: the slow table
@@ -175,8 +176,62 @@
                   :reads (into [{:var "fast/fx" :unit "RUS"} {:var "fast/fx" :unit "CHN"} {:var "fast/fx" :unit "DEU"}]
                                (for [sv (keys partners)] {:var sv}))}))
 
+(defn regional-mean
+  "(fn [db u t]) the mean of `var` (its latest value) over the other
+  countries of u's subregion (bnm.geo) that have it at t; nil when none."
+  [var]
+  (let [units (memoize (fn [db] (vec (distinct (for [[u v] (keys db) :when (= v var)] u)))))
+        sub (memoize (fn [u] (first (geo/parents u))))]
+    (fn [db u t]
+      (let [s (sub u)
+            xs (keep #(when (and (not= % u) s (= s (sub %))) (sg/read-signal db {:var var :read [:value] :stale 12} % t)) (units db))]
+        (when (seq xs) (/ (reduce + xs) (count xs)))))))
+
+(defn- hist [k n] {:var (str "history/" k "_" n) :read [:value] :stale 12})
+
+(def ^:private coup
+  "Coups (gap 1, docs/CALIBRATION.md t119): the IMF's coup model (2024) and
+  Powell and Thyne: the country's coup history (years since the last, the
+  count in ten years), the region's coups in three years (Bell and Powell:
+  unsanctioned coups erode the norm against them), growth and inflation
+  (growth 1-2 points lower the year before, inflation rising), the
+  military's role in the executive, electoral democracy (shaped, so the
+  middle can carry the risk), protest and its 6-month change (CoupCast:
+  protests near power), infant mortality."
+  [(assoc (hist "coup" "since") :name :coup-since)
+   (assoc (hist "coup" "count10") :name :coup-count10)
+   {:name :regional-coups3 :expr [:fn (regional-mean "history/coup_count3")] :reads [(hist "coup" "count3")]}
+   {:name :growth :var "economy/gdp_growth" :read [:value] :stale 30}
+   {:name :inflation :expr [:fn fresh-inflation] :reads [bis-inflation fao-cpi12 wdi-inflation]}
+   {:name :military-executive :var "regime/military_executive" :read [:value] :stale 30}
+   {:name :electoral-democracy :var "regime/electoral_democracy" :read [:value] :stale 30}
+   {:name :protest :var "politics/protest" :read [:value] :stale 3}
+   {:name :protest-change6 :var "politics/protest" :read [:change 6] :stale 3}
+   {:name :infant-mortality :var "people/infant_mortality" :read [:value] :stale 30}])
+
+(def ^:private war
+  "War onsets (gap 1, t119): history (years since the last war and the last
+  armed-conflict onset), the region's conflict onsets in three years,
+  military spending and its rise, electoral democracy, hostile rhetoric and
+  its acceleration (GDELT verbal conflict, the one documented leading
+  indicator, news-based), violence's 6-month change, the world's
+  geopolitical risk (Caldara and Iacoviello, newspapers) over 6 months,
+  infant mortality."
+  [(assoc (hist "war_onset" "since") :name :war-since)
+   (assoc (hist "conflict_onset" "since") :name :conflict-since)
+   {:name :regional-conflict3 :expr [:fn (regional-mean "history/conflict_onset_count3")] :reads [(hist "conflict_onset" "count3")]}
+   {:name :military-gdp :var "state/military_gdp" :read [:value] :stale 30}
+   {:name :military-change24 :var "state/military_gdp" :read [:change 24] :stale 30}
+   {:name :electoral-democracy :var "regime/electoral_democracy" :read [:value] :stale 30}
+   {:name :verbal-conflict :var "politics/verbal_conflict" :read [:value] :stale 3}
+   {:name :verbal-conflict-change6 :var "politics/verbal_conflict" :read [:change 6] :stale 3}
+   {:name :violence-change6 :var "politics/violence" :read [:change 6] :stale 3}
+   {:name :world-risk6 :var "politics/geopolitical_risk" :unit "world" :read [:change 6] :stale 3}
+   {:name :infant-mortality :var "people/infant_mortality" :read [:value] :stale 30}])
+
 (def ^:private by-kind {"sovereign_default" sovereign "currency_crisis" currency "inflation_crisis" inflation
-                        "inflation_crisis@monthly" inflation-monthly "currency_crisis@partners" currency-partners})
+                        "inflation_crisis@monthly" inflation-monthly "currency_crisis@partners" currency-partners
+                        "coup" coup "war_onset" war})
 
 (defn decls "A kind's theory signals, or nil." [kind] (get by-kind kind))
 

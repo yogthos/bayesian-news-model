@@ -3631,3 +3631,14 @@ Suite green (1619 tests); t117 took 28 minutes; the other ten kinds reproduce t1
 - Market crashes, shaped global layer: fail. Pooled -0.01010 [-0.05053, +0.02277], 2007-09 -0.20541 [-0.28998, +0.03562]; AUC 0.715 -> 0.729, within-year 0.494 -> 0.538, wave years +0.01711 and +0.02743. Not adopted.
 
 Inflation crises' fresher reads are a candidate (the level now tracks the rate, at some cost in ranking within years); adoption is the user's decision.
+
+## Coups and war onsets from their literature, shaped: t119 (gap 1)
+
+Written 19 November 2026, before any run, on the base of record t118-base. Coups (level r -0.41) and war onsets (-0.28) are the kinds whose level still runs against the rate and that have no theory (reports/Signal combinations before phase transitions.md; reports/Crisis mechanisms data and signals.md).
+
+Onset history as a country input: data/derived/onset-history.tsv (scripts/onset-history.py, from data/slow/events.tsv): at each December, the years since the country's last known onset (60 when none) and the known onsets in three and ten years, an onset counted once its catalogue would publish it (the onset month plus the known-lag: coups 3 months, conflict and war onsets 18). This is the country's own history, which ranks countries, not the outcome-learned level the theory replaces.
+
+- Coups (`coup`): years since the last coup, coups in ten years, the subregion's other countries' mean coups in three years (bnm.geo; Bell and Powell's eroding norm), growth, the freshest inflation (t117's read), the military's role in the executive (V-Dem), electoral democracy (shaped, so the middle can carry the risk), GDELT protest and its 6-month change, infant mortality.
+- War onsets (`war_onset`): years since the last war and since the last armed-conflict onset, the subregion's mean conflict onsets in three years, military spending % GDP and its 24-month change, electoral democracy, GDELT hostile rhetoric (verbal conflict) and its 6-month change, violence's 6-month change, the world's geopolitical risk index's 6-month change, infant mortality.
+
+Both as each kind's year offset (as currency crises', t115), every input shaped. Run t119: t118-base's command with `--kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup,war_onset --shapes currency_crisis,coup,war_onset`. The other eleven kinds must reproduce t118-base byte for byte. Rule, for each of the two kinds separately: against t118-base, the fold rule as amended and the alert table at 4:1; beside it level r, AUC and wave-year Brier. No changes after the result.

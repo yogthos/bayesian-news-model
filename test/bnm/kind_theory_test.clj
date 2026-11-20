@@ -125,7 +125,7 @@
     (is (= #{"currency_crisis"} ((resolve 'bnm.world-run/kind-theory-add) {:kind-theory "sovereign_default,currency_crisis:add"})))
     (is (= #{} ((resolve 'bnm.world-run/kind-theory-add) {:kind-theory "sovereign_default"})))
     (is (thrown? Exception (choice {:kind-theory "currency_crisis:mix"})) "only :add")
-    (is (thrown? Exception (choice {:kind-theory "coup"})) "no theory declared")
+    (is (thrown? Exception (choice {:kind-theory "protest_surge"})) "no theory declared")
     (is (thrown? Exception (choice {:kind-theory "banking_crisis"})) "banking has its own, --theory-offset")))
 
 (deftest every-read-in-a-declaration-counts
@@ -229,7 +229,7 @@
 
 (deftest the-tables-read
   (is (= ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"
-          "data/derived/trade-partners.tsv"]
+          "data/derived/trade-partners.tsv" "data/derived/onset-history.tsv"]
          kt/series-paths)))
 
 
@@ -275,3 +275,22 @@
   (let [out (get (kt/with-global-theory-row {"market_crash" sp} ["market_crash"] (fn [u t] (vec (repeat 12 (x [u t])))) {:shapes #{"market_crash"}}) "market_crash")]
     (is (fn? (:offset-add out)))
     (is (= 60 (count ((:inputs (:kind-theory out)) "a1" 371))) "twelve inputs, five columns each")))
+
+(deftest declared-for-coups-and-war
+  ;; gap 1 (t119): coups and war onsets from their literature, shaped
+  (is (= [:coup-since :coup-count10 :regional-coups3 :growth :inflation :military-executive
+          :electoral-democracy :protest :protest-change6 :infant-mortality]
+         (mapv :name (kt/decls "coup"))))
+  (is (= [:war-since :conflict-since :regional-conflict3 :military-gdp :military-change24
+          :electoral-democracy :verbal-conflict :verbal-conflict-change6 :violence-change6 :world-risk6 :infant-mortality]
+         (mapv :name (kt/decls "war_onset"))))
+  (is (every? (kt/vars ["coup" "war_onset"]) ["history/coup_since" "history/coup_count3" "history/conflict_onset_count3"
+                                              "politics/verbal_conflict" "politics/geopolitical_risk"]))
+  (is (= "data/derived/onset-history.tsv" (some #{"data/derived/onset-history.tsv"} (kt/paths-for (kt/vars ["coup"]))))))
+
+(deftest regional-means
+  ;; the mean of the other countries in the subregion (bnm.geo) at t
+  (let [st (fn [v] (bnm.stocks/series [[100 100 v]]))
+        db {["MLI" "history/coup_count3"] (st 3.0) ["NER" "history/coup_count3"] (st 1.0)
+            ["BFA" "history/coup_count3"] (st 2.0) ["FRA" "history/coup_count3"] (st 0.0)}]
+    (is (= 1.5 ((kt/regional-mean "history/coup_count3") db "MLI" 105)) "Niger and Burkina Faso, not France, not Mali itself")))
