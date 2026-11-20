@@ -19,13 +19,15 @@
 
 (defn fits
   "{origin coefficients}: `offsets`' logit at each origin (x[0] the
-  intercept's), for the origins it has one."
-  [{:keys [origins prior] :as args}]
+  intercept's), for the origins it has one. :raw true (t121): every
+  slope's prior on its input's own scale (augur.logit/fit's :raw), so a
+  sparse column is held near zero."
+  [{:keys [origins prior raw] :as args}]
   (let [{:keys [rows k]} (design args)]
     (into {} (for [t origins
                    :let [train (filter #(<= (:known-at %) t) rows)]
                    :when (and (some :y train) (some (complement :y) train))]
-               [t (lgt/fit train k {:prior prior})]))))
+               [t (lgt/fit train k (cond-> {:prior prior} raw (assoc :raw (set (range 1 k)))))]))))
 
 (defn offsets
   "{[place origin] log odds}: at each origin, a logit fit on every earlier

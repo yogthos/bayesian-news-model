@@ -842,6 +842,20 @@
                 (throw (ex-info (str "bnm.world-run: --shapes: no kind theory for " k) {:kind k})))
               ks))))
 
+(defn raw-prior-choice
+  "--raw-prior kind,... (t121): those kind theories fit with every slope's
+  prior on its input's own scale (bnm.theory/fits :raw); false without
+  the flag."
+  [{v :raw-prior :as opts}]
+  (let [served (set (some-> (:kind-theory opts) (str/split #",") (->> (map #(kt/kind-of (first (str/split % #":")))))))]
+    (cond
+      (nil? v) false
+      (empty? served) (throw (ex-info "bnm.world-run: --raw-prior sets a kind theory's priors: give --kind-theory" {}))
+      :else (let [ks (set (str/split v #","))]
+              (doseq [k ks :when (not (served k))]
+                (throw (ex-info (str "bnm.world-run: --raw-prior: no kind theory for " k) {:kind k})))
+              ks))))
+
 (defn- theory-db
   "The theory layers' table: every path in bnm.kind-theory/series-paths,
   read for `vars`, the slow table with its real lags."
@@ -1142,7 +1156,7 @@
                    finer-where-fresh
                    (#(if-let [ks (kind-theory-choice opts)]
                        (kt/with-kind-theory % ks (theory-db (kt/vars ks) (real-lags-choice opts))
-                                           (kind-theory-add opts) (impute-choice opts) (shapes-choice opts))
+                                           (kind-theory-add opts) (impute-choice opts) (shapes-choice opts) (raw-prior-choice opts))
                        %))
                    (#(if-let [ks (global-theory-choice opts)]
                        (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts) (global-shapes-choice opts))

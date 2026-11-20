@@ -71,3 +71,19 @@
     (testing "the departure is linear in the input, the planted slope's sign"
       (let [tl (peek origins) d (fn [u] (- (get off [u tl]) (base [u tl])))]
         (is (= (sort-by #(x [% tl]) (remove #{"f"} places)) (sort-by d (remove #{"f"} places))))))))
+
+(deftest raw-priors-hold-sparse-columns
+  ;; t121: :raw true puts every slope's prior on its input's own scale
+  ;; (augur.logit/fit's :raw), so a column present in a handful of rows
+  ;; (0 elsewhere, the mean) is held near zero until outcomes accumulate
+  (let [w (world 2)
+        sparse (fn [u t] [(get (:x w) [u t]) (when (and (= u "a") (< t 120)) 3.0)])
+        args {:places places :origins origins :inputs sparse :target (target w) :prior 1.0}
+        t (peek origins)
+        b0 (get (th/fits args) t)
+        b1 (get (th/fits (assoc args :raw true)) t)
+        train (for [u places t' origins :let [tg ((target w) u t')] :when (and tg (<= (:known-at tg) t))]
+                {:x (double-array (cons 1.0 (map #(double (or % 0.0)) (sparse u t')))) :y (:y tg) :w 1.0})]
+    (is (= (vec (lgt/fit train 3 {:prior 1.0 :raw #{1 2}})) (vec b1)) "augur's :raw on every slope")
+    (is (< (Math/abs (aget ^doubles b1 2)) (Math/abs (aget ^doubles b0 2))) "the sparse column's slope is held nearer zero")
+    (is (= (vec b0) (vec (get (th/fits (assoc args :raw false)) t))) "without it, as before")))

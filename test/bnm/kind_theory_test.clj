@@ -334,6 +334,28 @@
         (is (= 10 (count ((:inputs (:kind-theory out)) "a1" 371))) "two inputs, five columns each")
         (is (some? ((:offset out) :year "a1" 371)))))))
 
+(deftest raw-priors-per-kind
+  ;; t121: --raw-prior kind,... fits that kind's theory with its priors on
+  ;; each input's own scale
+  (let [sp2 (kt/with-theory sp (fn [u t] [(x [u t]) (when (= u "a1") 2.0)]) 2 {:raw true})]
+    (is (true? (:raw (:kind-theory sp2))))
+    (is (some? ((:offset sp2) :year "a1" 371))))
+  (let [bsp (assoc sp :theory {:inputs (fn [u t] [(x [u t])]) :width 1})]
+    (with-redefs [kt/decls (fn [k] (when (= k "banking_crisis@literature") [{:name :q :var "q/q" :read [:value]}]))
+                  kt/check-loaded (fn [_ _] nil)
+                  bnm.signals/assemble (fn [_ _] {:row (fn [u t] [(x [u t])])})]
+      (let [out (get (kt/with-kind-theory {"banking_crisis" bsp} ["banking_crisis@literature"] {} #{} false false #{"banking_crisis"}) "banking_crisis")]
+        (is (true? (:raw (:kind-theory out))))
+        (is (= 2 (count ((:inputs (:kind-theory out)) "a1" 371))) "unshaped: one column per input, no missing flags")))))
+
+(deftest the-raw-prior-flag
+  (require 'bnm.world-run)
+  (let [choice (resolve 'bnm.world-run/raw-prior-choice)]
+    (is (false? (choice {})))
+    (is (= #{"banking_crisis"} (choice {:raw-prior "banking_crisis" :kind-theory "coup,banking_crisis@literature" :theory-offset "true"})))
+    (is (thrown? Exception (choice {:raw-prior "coup" :kind-theory "currency_crisis"})))
+    (is (thrown? Exception (choice {:raw-prior "coup"})))))
+
 (deftest the-flag-takes-bankings-variant
   (require 'bnm.world-run)
   (let [choice (resolve 'bnm.world-run/kind-theory-choice)]

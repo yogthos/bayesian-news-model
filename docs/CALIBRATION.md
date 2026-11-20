@@ -3670,3 +3670,12 @@ Results, 20 November 2026 (suite 1627 tests, 0 failures; run 60 min). The other 
 | banking_crisis@literature | fail | -0.00880 [-0.02211 -0.00060], 82 onsets; losses 2010-12, 2013-19 | -0.0422 [-0.1170 +0.0055] | 0.550 → 0.326 / 0.575 → 0.374 | -0.03 → -0.13 | -0.00196 / -0.00076 |
 
 Fiscal consolidations pass. Growth collapses and banking crises fail; banking's ranking falls below chance, which an unbiased refit should not do even when it adds nothing, so it is examined before any further banking candidate.
+
+## Banking's literature theory without missing flags, on raw-scale priors: t121
+
+Written 20 November 2026, before any run, on the base of record t120-base (banking unchanged from t119-base: pooled AUC 0.550, within-year 0.575, level r -0.03). This candidate is informed by t120's failure, so a pass carries that look. t120's banking theory ranked below chance (0.326) for two reasons seen year by year (bd bnm-1dw): the refit, about 60 shaped columns, blew up after the 2007-09 wave (2010 origin mean p 0.36 against 0.03); and the literature's inputs (debt service, house prices, the short rate) exist almost only for advanced economies, whose crises dominated 2007-09, so the missing flags learned that no data means safe and the 2012-18 crises in data-poor countries went to the bottom.
+
+- The same inputs as t120's `banking_crisis@literature` (--theory-offset's four, then the eight from the literature), unshaped: one standardized column each, a missing input read as 0, the mean, so it moves no country and there are no missing flags (12 columns, not 60).
+- Every slope's prior on its input's own scale (`--raw-prior banking_crisis`: bnm.theory/fits passes augur.logit/fit's :raw on every slope, precision 1.0). Standardized, a column present in a few countries has a small spread and so a weak prior; on its own scale it is held near zero until outcomes accumulate.
+
+Run t121: t120-base's command with `--out t121 --kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation,banking_crisis@literature --raw-prior banking_crisis` (--shapes unchanged, so banking unshaped). The other twelve kinds must reproduce t120-base byte for byte. Rule, as t120's: against t120-base, the fold rule as amended and the alert table at 4:1; beside it level r, AUC and wave-year Brier. Adoption is the user's. No changes after the result.

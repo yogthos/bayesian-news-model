@@ -377,9 +377,10 @@
   last value decayed toward the region's mean) with the share missing as
   one more input. :add true (t112): the offset kept and only the theory's slopes,
   b.z past the intercept, added to a country's year log odds through
-  :offset-add; the level stays the lattice's."
+  :offset-add; the level stays the lattice's. :raw true (t121): the
+  slopes' priors on each column's own scale (bnm.theory/fits)."
   ([sp row width] (with-theory sp row width {}))
-  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes]}]
+  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw]}]
   (let [countries (second (first levels))
         per (:per (first (filter #(= :year (:name %)) scales)))
         os (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))
@@ -389,7 +390,7 @@
         inputs (if shapes
                  (fn [u t] (let [r (row u t)] (vec (mapcat (fn [i z] (shape (some-> r (nth i)) (z u t))) (range width) zs))))
                  (fn [u t] (mapv #(% u t) zs)))
-        args {:places countries :origins os :prior 1.0 :inputs inputs
+        args {:places countries :origins os :prior 1.0 :inputs inputs :raw (boolean raw)
               :target (fn [u t] (target :year u t))}]
     (if add
       (let [_ (when (:offset-add sp)
@@ -401,7 +402,7 @@
                              (when (and (= :year scale) (cs place))
                                (when-let [^doubles b (get fits t)]
                                  (reduce + 0.0 (map-indexed (fn [i z] (* (aget b (inc i)) (double (or z 0.0)))) (inputs place t))))))
-               :kind-theory {:fits fits :inputs inputs :add true}))
+               :kind-theory {:fits fits :inputs inputs :add true :raw (boolean raw)}))
       (let [off (th/offsets args)
             members (members-fn sp)]
         (assoc sp
@@ -409,7 +410,7 @@
                          (if (= :year scale)
                            (th/any-of (keep #(get off [% t]) (members place)))
                            (when offset (offset scale place t))))
-               :kind-theory {:offsets off :inputs inputs}))))))
+               :kind-theory {:offsets off :inputs inputs :raw (boolean raw)}))))))
 
 (defn with-own-inputs
   "[row width] for a spec whose year node already reads a theory
@@ -432,7 +433,8 @@
   ([specs kinds db] (with-kind-theory specs kinds db #{}))
   ([specs kinds db add] (with-kind-theory specs kinds db add false))
   ([specs kinds db add impute] (with-kind-theory specs kinds db add impute false))
-  ([specs kinds db add impute shapes]
+  ([specs kinds db add impute shapes] (with-kind-theory specs kinds db add impute shapes false))
+  ([specs kinds db add impute shapes raw]
   (reduce (fn [acc k]
             (let [ds (or (decls k) (throw (ex-info (str "bnm.kind-theory: no theory declared for " k) {:kind k})))]
               (check-loaded ds db)
@@ -444,7 +446,8 @@
                         [row width] (if (= "banking_crisis" kd) (with-own-inputs sp row (count ds)) [row (count ds)])]
                     (assoc acc kd (with-theory sp row width
                                     {:add (contains? add kd) :impute (if (set? impute) (contains? impute kd) impute)
-                                     :shapes (if (set? shapes) (contains? shapes kd) shapes)})))
+                                     :shapes (if (set? shapes) (contains? shapes kd) shapes)
+                                     :raw (if (set? raw) (contains? raw kd) raw)})))
                   acc))))
           specs kinds)))
 
