@@ -3608,3 +3608,7 @@ Suite green (1611 tests); t115 took 33 minutes; the other ten kinds reproduce t1
 - Sovereign defaults (shaped): fail, pooled -0.00013 [-0.00107, +0.00077], no fold lost; AUC 0.589 -> 0.632, within-year 0.640 -> 0.695, level r -0.43 -> -0.26.
 
 Currency crises' re-specified, shaped theory is a candidate; adoption is the user's decision. The level bug is gone for currency crises (r +0.10).
+
+## Breadth on top of shapes: declined offline (bnm-asp)
+
+19 November 2026 (docs/studies/oracle_arms.clj, arm A7): the shapes arm plus graded breadth (the share of a kind's standardized inputs past |z| 1 and past 2, and the largest |z|), refit at each origin on t111-base's rows. Currency crises (re-specified inputs and the global layer, 22 inputs): AUC 0.728 -> 0.721, Brier 0.03432 -> 0.03476. Inflation crises: 0.724 -> 0.718, 0.01250 -> 0.01284. Once each input can bend, a count of stretched inputs adds nothing: the logit already compounds several moderate deviations (reports/Signal combinations before phase transitions.md). Not run in the world.
