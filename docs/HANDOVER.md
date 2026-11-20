@@ -2,7 +2,9 @@
 
 ## State as of 2026-11-14 (branch `structure`)
 
-**The base of record is t118-base** (ninth note to amendment L1, 19 November 2026): t116-base's command with inflation crises' theory on the freshest inflation read (`--kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis`).
+**The base of record is t119-base** (tenth note to amendment L1, 20 November 2026): t118-base's command with coups' shaped theory (`--kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup --shapes currency_crisis,coup`); war onsets' theory failed (t119) and is left out.
+
+**Before it, t118-base** (ninth note to amendment L1, 19 November 2026): t116-base's command with inflation crises' theory on the freshest inflation read (`--kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis`).
 
 **Before it, t116-base** (eighth note to amendment L1, 19 November 2026, docs/PHASE-CHANGES.md): t111-base's command with the global layer for market crashes, inflation crises' theory on filled inputs and currency crises' re-specified, shaped theory (`--kind-theory sovereign_default,inflation_crisis,currency_crisis --shapes currency_crisis --global-theory market_crash --impute inflation_crisis`; bnm.ledger/command). Three tables are new inputs: data/derived/global-monthly.tsv, data/derived/rer-annual.tsv, data/fast/series.tsv.
 
