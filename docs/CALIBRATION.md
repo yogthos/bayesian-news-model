@@ -3660,3 +3660,13 @@ Written 20 November 2026, before any run, on the base of record t119-base. The t
 - Banking crises (`banking_crisis@literature`): --theory-offset's own inputs (credit stretch, 3-year credit boom, the world's loans to deposits and reserves) and after them the private debt service ratio against its own 40 quarters, real house prices' 3-year change and its product with credit's 3-year change (the R-zone), WDI's private credit's 3-year change, the 3-month rate's 12-month change, the spread's 6-month change, the current account, the currency's 12-month fall; refit together as the year node's offset (bnm.kind-theory/with-own-inputs). Bank equity drawdowns have no country series here and are left out.
 
 Each as its kind's year offset, every input shaped. Run t120: t119-base's command with `--kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation,growth_collapse,banking_crisis@literature --shapes currency_crisis,coup,fiscal_consolidation,growth_collapse,banking_crisis`. The other ten kinds must reproduce t119-base byte for byte. Rule, for each of the three kinds separately: against t119-base, the fold rule as amended and the alert table at 4:1; beside it level r, AUC and wave-year Brier. Adoption kind by kind, as coups' was. No changes after the result.
+
+Results, 20 November 2026 (suite 1627 tests, 0 failures; run 60 min). The other ten kinds reproduce t119-base byte for byte.
+
+| kind | verdict | pooled Brier gain [95%] | alerts dcost at 4:1 | AUC pooled / within-year | level r | wave Brier 2013-15 / 2019-22 |
+|---|---|---|---|---|---|---|
+| fiscal_consolidation | pass | +0.00884 [+0.00258 +0.01456], 801 onsets; folds +, +, +, +, -0.00103 (2020-22) | +0.0414 [-0.0368 +0.1227] | 0.553 → 0.642 / 0.524 → 0.632 | +0.25 → +0.28 | +0.01775 / -0.00162 |
+| growth_collapse | fail | -0.01200 [-0.02149 -0.00445], 339 onsets; losses 2003-06, 2010-12, 2020-22 | -0.1173 [-0.2024 -0.0464] LOSS | 0.634 → 0.552 / 0.609 → 0.481 | +0.34 → +0.12 | -0.00395 / -0.00385 |
+| banking_crisis@literature | fail | -0.00880 [-0.02211 -0.00060], 82 onsets; losses 2010-12, 2013-19 | -0.0422 [-0.1170 +0.0055] | 0.550 → 0.326 / 0.575 → 0.374 | -0.03 → -0.13 | -0.00196 / -0.00076 |
+
+Fiscal consolidations pass. Growth collapses and banking crises fail; banking's ranking falls below chance, which an unbiased refit should not do even when it adds nothing, so it is examined before any further banking candidate.
