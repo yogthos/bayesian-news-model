@@ -128,18 +128,32 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t119-with-the-coup-theory
+(deftest the-base-of-record-is-t120-with-the-fiscal-theory
+  ;; note to L1, 20 November 2026 (eleventh): t119-base's command with
+  ;; fiscal consolidations' shaped theory (t120); growth collapses' and
+  ;; banking's, which failed, left out
+  (is (= "t120-base" lg/base))
+  (is (= "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d" (lg/base-files "fiscal_consolidation")) "t120's fiscal consolidations")
+  (is (= "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c" (lg/base-files "growth_collapse")) "growth collapses unchanged")
+  (is (= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis")) "banking unchanged")
+  (is (= "a9f63ae68d5a32dc6da723da1de8f1591576a620ba5750379c12f546444f960b" (lg/base-inputs "data/derived/fiscal-series.tsv")))
+  (is (some #{"data/derived/fiscal-series.tsv"} lg/inputs))
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation" (opt "--kind-theory")))
+    (is (= "currency_crisis,coup,fiscal_consolidation" (opt "--shapes")))))
+
+(deftest the-base-before-was-t119-with-the-coup-theory
   ;; note to L1, 20 November 2026 (tenth): t118-base's command with coups'
   ;; shaped theory (t119); war onsets' theory, which failed, left out
-  (is (= "t119-base" lg/base))
   (is (= "ec86c1a3afc93bf2aaf44e9c3a1aaa41c06868ab00a5a362970eddbff2c72f13" (lg/base-files "coup")) "t119's coups")
   (is (= "25fafb6577491beb364e3809352ea2fb38bec4cc416b71596abba0f77e9c70b1" (lg/base-files "war_onset")) "war onsets unchanged")
   (is (= "f6aa7491f6d6da849e1d97e227c0d3c621aed64e617352520b38f8d1bdf274b6" (lg/base-inputs "data/derived/onset-history.tsv")))
   (is (some #{"data/derived/onset-history.tsv"} lg/inputs))
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
-    (is (= "sovereign_default,inflation_crisis@monthly,currency_crisis,coup" (opt "--kind-theory")))
-    (is (= "currency_crisis,coup" (opt "--shapes")))))
+    (is (str/starts-with? (opt "--kind-theory") "sovereign_default,inflation_crisis@monthly,currency_crisis,coup"))
+    (is (str/starts-with? (opt "--shapes") "currency_crisis,coup"))))
 
 (deftest the-base-before-was-t118-with-fresher-inflation-reads
   ;; note to L1, 19 November 2026 (ninth): t116-base's command with
