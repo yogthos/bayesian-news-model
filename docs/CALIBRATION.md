@@ -3642,3 +3642,11 @@ Onset history as a country input: data/derived/onset-history.tsv (scripts/onset-
 - War onsets (`war_onset`): years since the last war and since the last armed-conflict onset, the subregion's mean conflict onsets in three years, military spending % GDP and its 24-month change, electoral democracy, GDELT hostile rhetoric (verbal conflict) and its 6-month change, violence's 6-month change, the world's geopolitical risk index's 6-month change, infant mortality.
 
 Both as each kind's year offset (as currency crises', t115), every input shaped. Run t119: t118-base's command with `--kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup,war_onset --shapes currency_crisis,coup,war_onset`. The other eleven kinds must reproduce t118-base byte for byte. Rule, for each of the two kinds separately: against t118-base, the fold rule as amended and the alert table at 4:1; beside it level r, AUC and wave-year Brier. No changes after the result.
+
+### Results (19 November 2026)
+
+Suite green (1622 tests); t119 took 46 minutes; the other eleven kinds reproduce t118-base byte for byte. Against t118-base:
+- **Coups: pass.** 2003-06 -0.00175; 2007-09 +0.00114; 2010-12 -0.00034; 2013-19 +0.00172 [+0.00048, +0.00291]; 2020-22 +0.00130; pooled +0.00057 [-0.00065, +0.00176]; no fold a loss. Alerts dcost +0.0144 [-0.0014, +0.0313] (hit 7.6%, false alarms 2.1%); level r -0.41 -> -0.38; pooled AUC 0.764 -> 0.759, within-year 0.780 -> 0.777; wave years +0.00167 and +0.00117.
+- War onsets: fail. Pooled Brier -0.00039 [-0.00186, +0.00094] (log +0.00426); 2013-19 -0.00102, 2020-22 -0.00071; alerts dcost -0.0065 [-0.0221, +0.0088]; AUC 0.866 -> 0.872; level r -0.28 -> -0.42. Not adopted.
+
+Coups are a candidate: the gain is in probabilities and alerts, not in ranking, and the level still runs against the rate. Adoption is the user's decision.
