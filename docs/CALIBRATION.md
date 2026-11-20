@@ -3679,3 +3679,16 @@ Written 20 November 2026, before any run, on the base of record t120-base (banki
 - Every slope's prior on its input's own scale (`--raw-prior banking_crisis`: bnm.theory/fits passes augur.logit/fit's :raw on every slope, precision 1.0). Standardized, a column present in a few countries has a small spread and so a weak prior; on its own scale it is held near zero until outcomes accumulate.
 
 Run t121: t120-base's command with `--out t121 --kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation,banking_crisis@literature --raw-prior banking_crisis` (--shapes unchanged, so banking unshaped). The other twelve kinds must reproduce t120-base byte for byte. Rule, as t120's: against t120-base, the fold rule as amended and the alert table at 4:1; beside it level r, AUC and wave-year Brier. Adoption is the user's. No changes after the result.
+
+Results, 20 November 2026 (suite 1631 tests, 0 failures; run 93 min). The other twelve kinds reproduce t120-base byte for byte. **Fail.**
+
+| | t121 against t120-base |
+|---|---|
+| pooled Brier gain [95%] | -0.00056 [-0.00125 +0.00027], 82 onsets |
+| folds | +0.00052 (2003-06), -0.00041 (2007-09), +0.00013 (2010-12), -0.00104 (2013-19, LOSS), -0.00171 (2020-22, thin) |
+| alerts dcost at 4:1 | -0.0016 [-0.0071 +0.0077] |
+| AUC pooled / within-year | 0.550 -> 0.540 / 0.575 -> 0.575 |
+| level r | -0.03 -> -0.23 |
+| wave Brier 2013-15 / 2019-22 | -0.00081 / -0.00143 |
+
+The fix removes t120's breakdown (ranking back at chance-plus rather than below it, no 2010 blow-up) but adds nothing: the literature's inputs, where they exist, do not separate banking onsets better than the base theory, and the level runs further against the rate.
