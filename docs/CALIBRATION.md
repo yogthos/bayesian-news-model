@@ -3692,3 +3692,12 @@ Results, 20 November 2026 (suite 1631 tests, 0 failures; run 93 min). The other 
 | wave Brier 2013-15 / 2019-22 | -0.00081 / -0.00143 |
 
 The fix removes t120's breakdown (ranking back at chance-plus rather than below it, no 2010 blow-up) but adds nothing: the literature's inputs, where they exist, do not separate banking onsets better than the base theory, and the level runs further against the rate.
+
+## Growth collapses' literature theory without missing flags, on raw-scale priors: t122
+
+Written 20 November 2026, before any run, on the base of record t120-base (growth collapses unchanged from t119-base: pooled AUC 0.634, within-year 0.609, level r +0.34). Informed by t120 and t121, so a pass carries that look. t120's shaped growth theory (13 inputs, 65 columns) lost in three folds and fell to AUC 0.552; t121's treatment removed banking's breakdown. The same treatment here:
+
+- t120's 13 `growth_collapse` inputs, unshaped: one standardized column each, a missing input read as 0, the mean, no missing flags (13 columns, not 65).
+- Every slope's prior on its input's own scale (`--raw-prior growth_collapse`, precision 1.0).
+
+Run t122: t120-base's command with `--out t122 --kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation,growth_collapse --raw-prior growth_collapse` (--shapes unchanged, so growth unshaped). The other twelve kinds must reproduce t120-base byte for byte. Rule, as t120's: against t120-base, the fold rule as amended and the alert table at 4:1; beside it level r, AUC and wave-year Brier. Adoption is the user's. No changes after the result.
