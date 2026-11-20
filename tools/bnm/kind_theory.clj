@@ -64,11 +64,12 @@
   (scripts/global-monthly.py), the real rates (scripts/rer-annual.py), the
   fast table's monthly exchange rates."
   ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"
-   "data/derived/trade-partners.tsv" "data/derived/onset-history.tsv"])
+   "data/derived/trade-partners.tsv" "data/derived/onset-history.tsv" "data/derived/fiscal-series.tsv"])
 
 (def ^:private path-prefix
   {"data/derived/global-monthly.tsv" "global/" "data/derived/rer-annual.tsv" "derived/rer_" "data/fast/series.tsv" "fast/"
-   "data/derived/trade-partners.tsv" "trade/export_share_" "data/derived/onset-history.tsv" "history/"})
+   "data/derived/trade-partners.tsv" "trade/export_share_" "data/derived/onset-history.tsv" "history/"
+   "data/derived/fiscal-series.tsv" "fiscal/"})
 
 (defn paths-for
   "The tables in `series-paths` holding any of `vars`: the slow table
@@ -229,9 +230,83 @@
    {:name :world-risk6 :var "politics/geopolitical_risk" :unit "world" :read [:change 6] :stale 3}
    {:name :infant-mortality :var "people/infant_mortality" :read [:value] :stale 30}])
 
+(def ^:private us-rate-change24 {:name :us-rate-change24 :var "finance/policy_rate" :unit "USA" :read [:change 24] :stale 3})
+
+(def ^:private fiscal
+  "Fiscal consolidations (gap 2, docs/CALIBRATION.md t120; reports/Crisis
+  mechanisms data and signals.md: debt and financing needs the stock,
+  a spread jump, a new mandate or a programme the trigger). The balance and
+  its last change, spending's change (the catalogue's rule: the balance up
+  1.5 points and spending down one, Alesina and Ardagna), government debt
+  and its rise (Bohn's response of the balance to debt), the 10-year
+  spread over the US and its 6-month change (market pressure; 33
+  countries), an election in the last year (a new mandate front-loads
+  cuts; Alesina, Perotti and Tavares), growth, inflation, the US rate's
+  rise and external debt. GMD's balance and spending from data/derived/
+  fiscal-series.tsv (scripts/fiscal-series.py)."
+  [{:name :balance :var "fiscal/balance_gdp" :read [:value] :stale 30}
+   {:name :balance-change12 :var "fiscal/balance_gdp" :read [:change 12] :stale 30}
+   {:name :expenditure-change12 :var "fiscal/expenditure_gdp" :read [:change 12] :stale 30}
+   {:name :government-debt :var "debt/government_gdp" :read [:value] :stale 30}
+   {:name :government-debt-change24 :var "debt/government_gdp" :read [:change 24] :stale 30}
+   {:name :spread :var "fast/spread" :read [:value] :stale 3}
+   {:name :spread-change6 :var "fast/spread" :read [:change 6] :stale 3}
+   {:name :election-legislative :var "regime/election_legislative" :read [:value] :stale 24}
+   {:name :election-presidential :var "regime/election_presidential" :read [:value] :stale 24}
+   {:name :growth :var "economy/gdp_growth" :read [:value] :stale 30}
+   {:name :inflation :expr [:fn fresh-inflation] :reads [bis-inflation fao-cpi12 wdi-inflation]}
+   us-rate-change24
+   {:name :external-debt :var "debt/external_gni" :read [:value] :stale 30}])
+
+(def ^:private growth
+  "Growth collapses (gap 2, t120; reports/Crisis mechanisms data and
+  signals.md: external shocks that arrive in late GDP data). The commodity
+  terms of trade's fall over 12 and 24 months (the IMF's index weighted by
+  net exports to GDP, so dependence is already in it), commodity exports'
+  share (fuel plus ores and metals, a year before), reserves, the 3-year
+  credit boom, external debt and the current account (the sudden stop's
+  stock), the currency's 12-month fall, conflict history and the region's
+  conflict onsets, growth, inflation and the US rate's rise."
+  [{:name :tot-change12 :var "trade/commodity_tot" :read [:change 12] :stale 9}
+   {:name :tot-change24 :var "trade/commodity_tot" :read [:change 24] :stale 9}
+   {:name :commodity-exports :expr [:sum-or-zero (exposure "energy/fuel_exports_share") (exposure "trade/metal_exports_share")]}
+   {:name :reserves :var "debt/reserves_months" :read [:value] :stale 30}
+   {:name :private-credit-change36 :var "finance/private_credit_gdp" :read [:change 36] :stale 30}
+   {:name :external-debt :var "debt/external_gni" :read [:value] :stale 30}
+   {:name :current-account :var "debt/current_account_gdp" :read [:value] :stale 30}
+   {:name :fx-momentum12 :var "fast/fx" :read [:change 12] :stale 3}
+   (assoc (hist "conflict_onset" "since") :name :conflict-since)
+   {:name :regional-conflict3 :expr [:fn (regional-mean "history/conflict_onset_count3")] :reads [(hist "conflict_onset" "count3")]}
+   {:name :growth :var "economy/gdp_growth" :read [:value] :stale 30}
+   {:name :inflation :expr [:fn fresh-inflation] :reads [bis-inflation fao-cpi12 wdi-inflation]}
+   us-rate-change24])
+
+(def ^:private banking-literature
+  "Banking crises (gap 2, t120): added to --theory-offset's own inputs (the
+  credit stretch, the 3-year credit boom, the world's loans to deposits and
+  reserves; `with-own-inputs`), the research's: the private debt service
+  ratio against its own ten years (Drehmann and Juselius: the best 1-2 year
+  indicator), real house prices' 3-year rise and its product with the
+  3-year credit rise (Greenwood, Hanson, Shleifer and Sorensen's R-zone),
+  WDI's 3-year private credit rise (186 countries, beyond the BIS's 43),
+  the short rate's 12-month rise (the trigger), the sovereign spread's
+  6-month change (the doom loop), the current account and the currency's
+  12-month fall (twin crises). Bank equity's drawdown has no country
+  series here and is left out."
+  [{:name :dsr-gap :var "finance/dsr_private" :read [:stretch {:window 40 :min 20 :cap 5.0 :eps 1e-9}] :stale 12}
+   {:name :house-boom36 :var "finance/real_house_prices" :read [:change 36] :stale 12}
+   {:name :credit-x-house :expr [:mul {:var "finance/credit_gdp" :read [:change 36] :stale 12}
+                                 {:var "finance/real_house_prices" :read [:change 36] :stale 12}]}
+   {:name :private-credit-change36 :var "finance/private_credit_gdp" :read [:change 36] :stale 30}
+   {:name :short-rate-change12 :var "finance/rate_3m" :read [:change 12] :stale 3}
+   {:name :spread-change6 :var "fast/spread" :read [:change 6] :stale 3}
+   {:name :current-account :var "debt/current_account_gdp" :read [:value] :stale 30}
+   {:name :fx-momentum12 :var "fast/fx" :read [:change 12] :stale 3}])
+
 (def ^:private by-kind {"sovereign_default" sovereign "currency_crisis" currency "inflation_crisis" inflation
                         "inflation_crisis@monthly" inflation-monthly "currency_crisis@partners" currency-partners
-                        "coup" coup "war_onset" war})
+                        "coup" coup "war_onset" war "fiscal_consolidation" fiscal "growth_collapse" growth
+                        "banking_crisis@literature" banking-literature})
 
 (defn decls "A kind's theory signals, or nil." [kind] (get by-kind kind))
 
@@ -336,6 +411,21 @@
                            (when offset (offset scale place t))))
                :kind-theory {:offsets off :inputs inputs}))))))
 
+(defn with-own-inputs
+  "[row width] for a spec whose year node already reads a theory
+  (banking's --theory-offset, its :theory {:inputs :width}): that theory's
+  inputs first (nil each where it has none), then `row`'s `width`."
+  [sp row width]
+  (let [{own :inputs w :width} (:theory sp)]
+    (when-not (and own w)
+      (throw (ex-info "bnm.kind-theory: no theory to extend (banking's needs --theory-offset)" {})))
+    [(fn [u t] (let [o (own u t) r (row u t)]
+                 (when (and o (not= w (count o)))
+                   (throw (ex-info "bnm.kind-theory: the theory's inputs are not its recorded width" {:width w :got (count o)})))
+                 (when (or o r)
+                   (into (if o (vec o) (vec (repeat w nil))) (or r (repeat width nil))))))
+     (+ w width)]))
+
 (defn with-kind-theory
   "The named kinds' specs with their declared theory (`decls`) read from
   the slow table `db`; those in `add` on top of their offset (t112)."
@@ -348,9 +438,13 @@
               (check-loaded ds db)
               (let [kd (kind-of k)]
                 (if (contains? acc kd)
-                  (update acc kd with-theory (transformed ds (:row (sg/assemble db ds))) (count ds)
-                          {:add (contains? add kd) :impute (if (set? impute) (contains? impute kd) impute)
-                           :shapes (if (set? shapes) (contains? shapes kd) shapes)})
+                  (let [sp (get acc kd)
+                        row (transformed ds (:row (sg/assemble db ds)))
+                        ;; banking's variant extends --theory-offset's theory
+                        [row width] (if (= "banking_crisis" kd) (with-own-inputs sp row (count ds)) [row (count ds)])]
+                    (assoc acc kd (with-theory sp row width
+                                    {:add (contains? add kd) :impute (if (set? impute) (contains? impute kd) impute)
+                                     :shapes (if (set? shapes) (contains? shapes kd) shapes)})))
                   acc))))
           specs kinds)))
 

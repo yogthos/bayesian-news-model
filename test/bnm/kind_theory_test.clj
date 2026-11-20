@@ -126,7 +126,7 @@
     (is (= #{} ((resolve 'bnm.world-run/kind-theory-add) {:kind-theory "sovereign_default"})))
     (is (thrown? Exception (choice {:kind-theory "currency_crisis:mix"})) "only :add")
     (is (thrown? Exception (choice {:kind-theory "protest_surge"})) "no theory declared")
-    (is (thrown? Exception (choice {:kind-theory "banking_crisis"})) "banking has its own, --theory-offset")))
+    (is (thrown? Exception (choice {:kind-theory "banking_crisis" :theory-offset "true"})) "banking has its own, --theory-offset")))
 
 (deftest every-read-in-a-declaration-counts
   ;; bnm-1ft: an interaction reads series inside :times and expressions;
@@ -229,7 +229,7 @@
 
 (deftest the-tables-read
   (is (= ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"
-          "data/derived/trade-partners.tsv" "data/derived/onset-history.tsv"]
+          "data/derived/trade-partners.tsv" "data/derived/onset-history.tsv" "data/derived/fiscal-series.tsv"]
          kt/series-paths)))
 
 
@@ -294,3 +294,49 @@
         db {["MLI" "history/coup_count3"] (st 3.0) ["NER" "history/coup_count3"] (st 1.0)
             ["BFA" "history/coup_count3"] (st 2.0) ["FRA" "history/coup_count3"] (st 0.0)}]
     (is (= 1.5 ((kt/regional-mean "history/coup_count3") db "MLI" 105)) "Niger and Burkina Faso, not France, not Mali itself")))
+
+(deftest declared-for-gap-2
+  ;; gap 2 (t120): fiscal consolidations, growth collapses, banking's own
+  ;; theory with the literature's inputs added
+  (is (= [:balance :balance-change12 :expenditure-change12 :government-debt :government-debt-change24
+          :spread :spread-change6 :election-legislative :election-presidential :growth :inflation
+          :us-rate-change24 :external-debt]
+         (mapv :name (kt/decls "fiscal_consolidation"))))
+  (is (= [:tot-change12 :tot-change24 :commodity-exports :reserves :private-credit-change36 :external-debt
+          :current-account :fx-momentum12 :conflict-since :regional-conflict3 :growth :inflation :us-rate-change24]
+         (mapv :name (kt/decls "growth_collapse"))))
+  (is (= [:dsr-gap :house-boom36 :credit-x-house :private-credit-change36 :short-rate-change12
+          :spread-change6 :current-account :fx-momentum12]
+         (mapv :name (kt/decls "banking_crisis@literature"))))
+  (is (nil? (kt/decls "banking_crisis")) "banking's base theory stays --theory-offset's")
+  (is (every? (kt/vars ["fiscal_consolidation"]) ["fiscal/balance_gdp" "fiscal/expenditure_gdp" "fast/spread"]))
+  (is (some #{"data/derived/fiscal-series.tsv"} (kt/paths-for (kt/vars ["fiscal_consolidation"]))))
+  (is (not (some #{"data/derived/fiscal-series.tsv"} (kt/paths-for (kt/vars ["growth_collapse"])))))
+  (is (= "data/derived/fiscal-series.tsv" (last kt/series-paths))))
+
+(deftest banking-keeps-its-own-inputs
+  ;; banking_crisis@literature: the --theory-offset theory's inputs first,
+  ;; then the declared ones, all refit (and shaped) together
+  (let [own (fn [u t] (when-not (= u "b3") [(x [u t]) 0.5]))
+        bsp (assoc sp :theory {:inputs own :width 2})
+        [r w] (kt/with-own-inputs bsp (fn [u t] [(- (x [u t])) nil]) 2)
+        t 371]
+    (is (= 4 w))
+    (is (= [(x ["a1" t]) 0.5 (- (x ["a1" t])) nil] (r "a1" t)))
+    (is (= [nil nil (- (x ["b3" t])) nil] (r "b3" t)) "no own row: its inputs missing")
+    (is (thrown? Exception (kt/with-own-inputs sp (fn [_ _] [1.0]) 1)) "a spec without a theory to extend refuses"))
+  (let [bsp (assoc sp :theory {:inputs (fn [u t] [(x [u t])]) :width 1})
+        db {}]
+    (with-redefs [kt/decls (fn [k] (when (= k "banking_crisis@literature") [{:name :q :var "q/q" :read [:value]}]))
+                  kt/check-loaded (fn [_ _] nil)
+                  bnm.signals/assemble (fn [_ _] {:row (fn [u t] [(x [u t])])})]
+      (let [out (get (kt/with-kind-theory {"banking_crisis" bsp} ["banking_crisis@literature"] db #{} false #{"banking_crisis"}) "banking_crisis")]
+        (is (= 10 (count ((:inputs (:kind-theory out)) "a1" 371))) "two inputs, five columns each")
+        (is (some? ((:offset out) :year "a1" 371)))))))
+
+(deftest the-flag-takes-bankings-variant
+  (require 'bnm.world-run)
+  (let [choice (resolve 'bnm.world-run/kind-theory-choice)]
+    (is (= ["banking_crisis@literature"] (choice {:kind-theory "banking_crisis@literature" :theory-offset "true"})))
+    (is (thrown? Exception (choice {:kind-theory "banking_crisis@literature"})) "it extends --theory-offset's theory")
+    (is (thrown? Exception (choice {:kind-theory "banking_crisis@literature:add" :theory-offset "true"})) "replace only")))

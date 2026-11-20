@@ -792,16 +792,20 @@
   "--kind-theory kind,... (bnm-1dw): each kind's year node reads its
   declared theory (bnm.kind-theory) as its offset; nil without the flag.
   Banking has its own (--theory-offset)."
-  [{v :kind-theory}]
+  [{v :kind-theory :as opts}]
   (when v
     (let [ks (for [w (str/split v #",")]
                (let [[k mode] (str/split w #":")]
+                 (when (and mode (= lb/kind (kt/kind-of k)))
+                   (throw (ex-info "bnm.world-run: --kind-theory: banking's variant replaces the offset; no :add" {:kind w})))
                  (when (and mode (not= "add" mode))
                    (throw (ex-info (str "bnm.world-run: --kind-theory: " w ": the only mode is :add") {:kind w})))
                  k))]
       (doseq [k ks]
+        ;; banking's variants extend --theory-offset's theory (t120), replacing its offset
         (when (= (kt/kind-of k) lb/kind)
-          (throw (ex-info "bnm.world-run: --kind-theory: banking crises take --theory-offset" {})))
+          (when (or (= k lb/kind) (not (theory-offset-choice opts)))
+            (throw (ex-info "bnm.world-run: --kind-theory: banking crises take --theory-offset, and a variant extends it" {}))))
         (when-not (kt/decls k)
           (throw (ex-info (str "bnm.world-run: --kind-theory: no theory declared for " k) {:kind k}))))
       (vec ks))))

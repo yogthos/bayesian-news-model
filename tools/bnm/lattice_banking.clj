@@ -388,6 +388,13 @@
                        src (when (not= t' t) (get tb [u t']))]]
              [k (if (and row src) (reduce (fn [r i] (assoc r i (nth src i))) (vec row) idxs) row)])))
 
+(defn theory-width
+  "How many inputs `theory-row` gives: the own columns, the world means
+  (--theory-world), the world levels (with a world table) and contagion."
+  [{:keys [theory-world world-db contagion]}]
+  (+ (count theory-inputs) (if theory-world (count theory-world-inputs) 0)
+     (if world-db (count theory-world-signals) 0) (if contagion 1 0)))
+
 (defn theory-row
   "(fn [place origin]) -> the theory's inputs: `own`'s columns of the
   place's standardized row (`z-of` (fn [place origin]), nil for none),
@@ -845,7 +852,8 @@
     (cond->
     {:scales scales
      ;; --theory-offset: the offsets and their inputs, for diagnosis (bnm-5lr)
-     :theory (when theory {:offsets theory :inputs theory-inputs-of})
+     :theory (when theory {:offsets theory :inputs theory-inputs-of
+                           :width (theory-width {:theory-world theory-world :world-db world-db :contagion contagion})})
      :levels [[:country countries]
               [:subregion (sort (set (vals sub)))]
               [:region (sort (set (vals reg)))]

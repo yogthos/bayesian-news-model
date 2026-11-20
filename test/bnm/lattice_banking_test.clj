@@ -99,3 +99,9 @@
     (is (false? (lead (assoc rule :grid [3 2]) (+ (* 12 2003) 11))) "a quarter-end catalogue can")
     (is (nil? (lead (assoc rule :barred {"AAA" #{(* 12 2004)}}) (+ (* 12 2003) 8)))
         "January 2004 barred (inflation: 2003 was in a run), the window's only January")))
+
+(deftest the-theorys-width
+  ;; t120: banking's variant appends its inputs after the theory's own
+  (is (= 2 (lb/theory-width {})))
+  (is (= 4 (lb/theory-width {:theory-world true :world-db {}})))
+  (is (= 5 (lb/theory-width {:theory-world true :world-db {} :contagion {}}))))
