@@ -3720,3 +3720,16 @@ The treatment shrinks t120's loss twelvefold (-0.0120 to -0.0010) and lifts the 
 Written 20 November 2026, before any run, on the base of record t120-base, informed by t113, t117, t121 and t122 (so a pass carries that look). The global layer was adopted for market crashes on t113's alert gain (dcost +0.194), with false alarms at 45% and pooled AUC 0.755 -> 0.715. Shaping it (t117) overfit (2007-09 -0.205). Raw-scale priors stopped the refit's breakdown in t121 and shrank t122's loss twelvefold, so the tuning tried is that alone: the layer's twelve linear slopes for market crashes fit with every prior on its input's own scale (`--global-raw-prior market_crash`, precision 1.0). Its six world drivers vary only across origins, so standardized across country rows their spread rests on a few dozen distinct values and the prior on them is weak; on their own scale they are held nearer zero, which should lower false alarms and keep the alert gain where the drivers carry signal.
 
 Run t123: t120-base's command with `--out t123 --global-raw-prior market_crash`. The other twelve kinds must reproduce t120-base byte for byte. Rule, as t120's: against t120-base, the fold rule as amended and the alert table at 4:1 (false-alarm rate reported); beside it level r, AUC and wave-year Brier. Adoption is the user's. No changes after the result.
+
+Results, 20 November 2026 (suite 1633 tests, 0 failures; run 39 min). The other twelve kinds reproduce t120-base byte for byte. **Fail.**
+
+| | t123 against t120-base |
+|---|---|
+| pooled Brier gain [95%] | -0.01296 [-0.02807 +0.00820], 142 onsets |
+| folds | -0.00320 (2003-06), +0.01410 [+0.00076 +0.02001] (2007-09), -0.01446 (2010-12, LOSS), -0.01692 (2013-19, LOSS), -0.02877 (2020-22, LOSS) |
+| alerts at 4:1 | false alarms 69.4% (t113's layer: 45%), cost 0.660 against 0.558, dcost -0.1028 [-0.2348 +0.0274] |
+| AUC pooled / within-year | 0.715 -> 0.721 / 0.494 -> 0.476 |
+| level r | +0.50 -> +0.50 |
+| wave Brier 2013-15 / 2019-22 | -0.01664 / -0.02047 |
+
+The premise failed: the false alarms rose, not fell. The layer's inputs are already standardized (bnm.theory/place-z) before the fit, so their own scale is about the z scale, and where the training rows spread wider than 1 a prior on that scale is weaker than the default, not stronger. The layer as adopted (t113) stays.
