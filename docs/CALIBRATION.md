@@ -3622,3 +3622,12 @@ Written 19 November 2026, before any run, on the base of record t116-base. Three
 3. Market crashes, the tuning the user asked for, chosen from the evidence before this run, not from t113's folds: the global layer's twelve inputs shaped (`--global-shapes market_crash`: z, three hinges, a missing flag each), since a linear slope per input left most of the information unextracted wherever it was tested (oracle study, t115).
 
 Run t117: t116-base's command with `--kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis@partners --global-shapes market_crash`. The other ten kinds must reproduce t116-base byte for byte. Rule, for each of the three kinds separately: against t116-base, the fold rule as amended and the alert table at 4:1; beside it level r, AUC and wave-year Brier. No changes after the result.
+
+### Results (19 November 2026)
+
+Suite green (1619 tests); t117 took 28 minutes; the other ten kinds reproduce t116-base byte for byte. Against t116-base:
+- **Inflation crises, fresher reads: pass.** 2003-06 +0.00197; 2007-09 +0.00100 [+0.00026, +0.00185]; 2010-12 -0.00002; 2013-19 +0.00004; 2020-22 -0.00053; pooled +0.00047 [-0.00020, +0.00119]. Level r -0.45 -> +0.63; alerts dcost +0.0035 [+0.0000, +0.0081] (no false alarms); pooled AUC 0.774 -> 0.751, within-year 0.847 -> 0.756; wave years -0.00029 and -0.00059.
+- Currency crises with partner falls: fail. 2003-06 -0.00186 LOSS, 2007-09 -0.00695 LOSS, pooled -0.00140 [-0.00293, -0.00002] LOSS; 2013-19 +0.00092 [+0.00020, +0.00190] (the rouble years) is the one gain. Not adopted.
+- Market crashes, shaped global layer: fail. Pooled -0.01010 [-0.05053, +0.02277], 2007-09 -0.20541 [-0.28998, +0.03562]; AUC 0.715 -> 0.729, within-year 0.494 -> 0.538, wave years +0.01711 and +0.02743. Not adopted.
+
+Inflation crises' fresher reads are a candidate (the level now tracks the rate, at some cost in ranking within years); adoption is the user's decision.
