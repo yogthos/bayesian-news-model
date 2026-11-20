@@ -3739,3 +3739,16 @@ The premise failed: the false alarms rose, not fell. The layer's inputs are alre
 Written 20 November 2026, before any run, on the base of record t120-base, at the user's request after t123, and informed by t113, t117 and t123 (so a pass carries that look). t123's raw-scale priors weakened the layer's priors, since its inputs are already standardized, and false alarms rose from 45% to 69%. Here the prior on the six world drivers (the 6-month changes of the dollar, the US policy rate, oil, food, the Baa spread and the VIX), which vary only across origins and so rest on a few dozen distinct values, is made ten times as precise (prior sd about 0.32 in log odds per sd of the driver); the six channels (each driver times a country's exposure) keep the default precision 1.0. Linear, unshaped, as adopted in t113 (`--global-driver-precision 10`: bnm.kind-theory/driver-penalties, augur.logit/fit's :penalties). One value, fixed before the run; no second value is tried on this result.
 
 Run t124: t120-base's command with `--out t124 --global-driver-precision 10`. The other twelve kinds must reproduce t120-base byte for byte. Rule, as t120's: against t120-base, the fold rule as amended and the alert table at 4:1 (false-alarm rate reported); beside it level r, AUC and wave-year Brier. Adoption is the user's. No changes after the result.
+
+Results, 20 November 2026 (suite 1636 tests, 0 failures; run 46 min). The other twelve kinds reproduce t120-base byte for byte. **Fail** under the rule: two folds with 9 onsets each lost.
+
+| | t124 against t120-base |
+|---|---|
+| pooled Brier gain [95%] | +0.00223 [-0.00764 +0.01400], 142 onsets |
+| folds | +0.01933 (2003-06), +0.00334 (2007-09), -0.01697 [-0.02744 -0.00874] (2010-12, LOSS, 9 onsets), +0.00339 (2013-19), -0.00793 [-0.01555 -0.00108] (2020-22, LOSS, 9 onsets) |
+| alerts at 4:1 | hit 73.9% -> 81.7%, false alarms 45.3% -> 42.5%, cost 0.558 -> 0.480, dcost +0.0777 [-0.0302 +0.1800] |
+| AUC pooled / within-year | 0.715 -> 0.743 / 0.494 -> 0.543 |
+| level r | +0.50 -> +0.53 |
+| wave Brier 2013-15 / 2019-22 | +0.00771 / -0.00529 |
+
+Held tighter, the drivers improve everything but two folds: more crashes caught with fewer false alarms, better ranking, a pooled gain. The losses are in 2010-12 and 2020-22, the years after a large driver move (2008-09, 2020), where the drivers' slopes, now smaller, under-react. Under the amended fold rule a fold with 5 or more onsets vetoes, so it fails; the layer as adopted (t113) stays.
