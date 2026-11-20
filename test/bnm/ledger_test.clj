@@ -154,10 +154,9 @@
   ;; (--kind-theory, docs/CALIBRATION.md t110, bnm-1dw)
   (is (= "6ac298a0d84075e52a5e20533a4665895d7655447ff50e807fb73edf85eee72b" (lg/base-files "sovereign_default"))
       "t110's sovereign defaults")
-  (is (= "854a4842451c809bf7f7f2978cc91a7187acc77613649f5aba907b011a9ae8bd" (lg/base-files "currency_crisis"))
-      "currency crises stay t104-base's: their theory failed")
   (let [args (lg/command "ledger-x" 24323)]
-    (is (= "sovereign_default,inflation_crisis" (second (drop-while #(not= "--kind-theory" %) args))))))
+    (is (str/starts-with? (second (drop-while #(not= "--kind-theory" %) args)) "sovereign_default,inflation_crisis")
+        "t111's two theories stay in the command")))
 
 (deftest the-base-before-was-t104-with-banking's-theory
   ;; note to L1, 18 November 2026 (sixth): t80-base's command with banking's

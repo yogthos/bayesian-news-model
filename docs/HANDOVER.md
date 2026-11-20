@@ -2,7 +2,9 @@
 
 ## State as of 2026-11-14 (branch `structure`)
 
-**The base of record is t111-base** (seventh note to amendment L1, 19 November 2026, docs/PHASE-CHANGES.md): t104-base's command with the theory offsets of sovereign defaults and inflation crises (`--kind-theory sovereign_default,inflation_crisis`; docs/CALIBRATION.md t110; bnm.ledger/command). Only those two kinds differ from t104-base. Currency crises' theory failed (docs/studies/currency_theory.clj: the theory alone ranks at AUC 0.650 against the lagged offset's 0.693, since it reads no crisis history).
+**The base of record is t116-base** (eighth note to amendment L1, 19 November 2026, docs/PHASE-CHANGES.md): t111-base's command with the global layer for market crashes, inflation crises' theory on filled inputs and currency crises' re-specified, shaped theory (`--kind-theory sovereign_default,inflation_crisis,currency_crisis --shapes currency_crisis --global-theory market_crash --impute inflation_crisis`; bnm.ledger/command). Three tables are new inputs: data/derived/global-monthly.tsv, data/derived/rer-annual.tsv, data/fast/series.tsv.
+
+**Before it, t111-base** (seventh note to amendment L1, 19 November 2026, docs/PHASE-CHANGES.md): t104-base's command with the theory offsets of sovereign defaults and inflation crises (`--kind-theory sovereign_default,inflation_crisis`; docs/CALIBRATION.md t110; bnm.ledger/command). Only those two kinds differ from t104-base. Currency crises' theory failed (docs/studies/currency_theory.clj: the theory alone ranks at AUC 0.650 against the lagged offset's 0.693, since it reads no crisis history).
 
 **Before it, t104-base** (sixth note to amendment L1, 18 November 2026, docs/PHASE-CHANGES.md): t80-base's command with banking's theory offset, its world funding and reserves, the year row's ratios held through recessions and banking's frailty at ρ 0 (`--theory-offset true --theory-world true --recession-hold rows --kind-set '{"banking_crisis" {:frailty {:rhos [0.0]}}}'`; bnm.ledger/command). Only banking differs from t80-base, described below.
 
