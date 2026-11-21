@@ -128,11 +128,21 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t124-with-tighter-driver-priors
+(deftest the-base-of-record-is-t125-with-sovereign-defaults-on-filled-inputs
+  ;; note to L1, 20 November 2026 (thirteenth): t124-base's command with
+  ;; sovereign defaults' theory on filled inputs (t125, a pass by dominance)
+  (is (= "t125-base" lg/base))
+  (is (= "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111" (lg/base-files "sovereign_default")) "t125's sovereign defaults")
+  (is (= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "market crashes unchanged")
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "inflation_crisis,sovereign_default" (opt "--impute")))))
+
+(deftest the-base-before-was-t124-with-tighter-driver-priors
   ;; note to L1, 20 November 2026 (twelfth): t120-base's command with the
   ;; market-crash global layer's world drivers at 10x prior precision
   ;; (t124, a pass by dominance under the fold rule as amended that day)
-  (is (= "t124-base" lg/base))
+  (is (str/starts-with? lg/base "t1"))
   (is (= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "t124's market crashes")
   (is (= "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d" (lg/base-files "fiscal_consolidation")) "fiscal unchanged")
   (let [args (lg/command "ledger-x" 24323)
@@ -182,20 +192,20 @@
   (is (some #{"data/derived/rer-annual.tsv"} lg/inputs))
   (is (some #{"data/fast/series.tsv"} lg/inputs))
   (is (not= "b93e9f952d9c1312d6c11ce7d9c593e23e34633f4b2932ff00bd8dff01f1a36e" (lg/base-files "market_crash")) "t113's market crashes, replaced by t124's (twelfth note)")
-  (is (= "6ac298a0d84075e52a5e20533a4665895d7655447ff50e807fb73edf85eee72b" (lg/base-files "sovereign_default")) "t111's")
+  (is (not= "6ac298a0d84075e52a5e20533a4665895d7655447ff50e807fb73edf85eee72b" (lg/base-files "sovereign_default")) "t111's, replaced by t125's (thirteenth note)")
   (is (some #{"data/derived/global-monthly.tsv"} lg/inputs) "the global drivers are an input of record")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (str/starts-with? (opt "--shapes") "currency_crisis"))
     (is (= "market_crash" (opt "--global-theory")))
-    (is (= "inflation_crisis" (opt "--impute")))))
+    (is (str/starts-with? (opt "--impute") "inflation_crisis"))))
 
 (deftest the-base-before-was-t111-with-two-kinds'-theories
   ;; note to L1, 19 November 2026 (seventh): t104-base's command with the
   ;; theory offsets of sovereign defaults and inflation crises
   ;; (--kind-theory, docs/CALIBRATION.md t110, bnm-1dw)
-  (is (= "6ac298a0d84075e52a5e20533a4665895d7655447ff50e807fb73edf85eee72b" (lg/base-files "sovereign_default"))
-      "t110's sovereign defaults")
+  (is (not= "6ac298a0d84075e52a5e20533a4665895d7655447ff50e807fb73edf85eee72b" (lg/base-files "sovereign_default"))
+      "t110's sovereign defaults, replaced by t125's (thirteenth note)")
   (let [args (lg/command "ledger-x" 24323)]
     (is (str/starts-with? (second (drop-while #(not= "--kind-theory" %) args)) "sovereign_default,inflation_crisis")
         "t111's two theories stay in the command")))

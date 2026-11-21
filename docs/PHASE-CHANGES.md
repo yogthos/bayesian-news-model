@@ -5383,6 +5383,12 @@ Not adopted. No L1 note, no ledger change, no forecast.
 - *Caveats.* It loses 2010-12 (-0.01697 [-0.02744, -0.00874]) and 2020-22 (-0.00793 [-0.01555, -0.00108]), 9 onsets each, the years after the large driver moves of 2008-09 and 2020. The pooled Brier and alert intervals both cross zero. Its design followed t113, t117 and t123 on the same folds.
 - *Reproduction.* The command run to a fresh directory (data/runs/t124-base, 48 minutes, 20 November 2026) gives t124's market crash forecasts.tsv and t120-base's other twelve byte for byte (ledger tests green, 37).
 
+**Thirteenth note to amendment L1, 20 November 2026** (bead bnm-s6m; decided by the user the same day; written before any issue is made on it, L1 itself unchanged). The base of record is **t125-base**, not t124-base: t124-base's command with `--out t125-base --impute inflation_crisis,sovereign_default`, on t124-base's inputs. Wherever L1 or the earlier notes name t124 (or earlier) as the base, read t125. The next issue (2027-Q1) runs this command (bnm.ledger/command, with `--end`).
+
+- *What changed.* Sovereign defaults only (docs/CALIBRATION.md t125): their theory's inputs are filled (bnm.impute: the last value decayed toward the region's mean, and the share missing), as inflation crises' have been since t116.
+- *The score* (sovereign default year nodes, 2003-2022, + = better than t124-base): pooled +0.00002 [-0.00020, +0.00022]; alerts at 4:1 cost 0.129 -> 0.127, dcost +0.0019 [-0.0025, +0.0066], no alerts fire in either; pooled AUC 0.589 -> 0.595, within-year 0.640 -> 0.677; level r -0.43 -> -0.50. Passes by dominance under the fold rule as amended 20 November, the amendment decided before this run.
+- *Caveats.* It loses 2010-12 (-0.00032 [-0.00058, -0.00009], 10 onsets). Every interval crosses zero; the gain is the smallest the rule admits, in calibration below the alert threshold. The wave episodes of 2018, 2019 and 2021 stay missed. The result repeats t114's (on t111-base) to the digit.
+
 ## Amendment to the fold rule, 20 November 2026: dominance overrides a fold loss
 
 **Decided by the user after seeing t124** (docs/CALIBRATION.md, the market-crash global layer with its world drivers held tighter), so it is not blind to the candidate that prompted it: t124 gained on pooled Brier, the alert cost and AUC but lost two folds of 9 onsets each (2010-12, 2020-22).
