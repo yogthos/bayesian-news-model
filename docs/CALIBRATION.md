@@ -3815,3 +3815,21 @@ Run t127: t125-base's command with `--out t127 --banking-spans true`. The other 
 ### The first run was void (21 November 2026)
 
 It reproduced t125-base byte for byte, banking included (2558 rows both). The flag reached only world-run's run-catalogues, and banking's lattice never reads that: bnm.lattice-banking/build makes its own catalogue from the JST rows. Fixed with tests (lb/run-catalogue applies the spans inside build; world-run/spec-opts, the options map pulled out of -main, carries :banking-spans to build-specs). Banking's own catalogue now holds 195 busy country-years 2003-22, against 42. The design above is unchanged; t127 reruns under it.
+
+### Results (21 November 2026)
+
+Rerun with the fix, 41 min; the other twelve kinds reproduce t125-base byte for byte. Banking's rows fall from 2558 to 2405 and its onsets from 82 to 81 (one onset fell inside an earlier crisis's span).
+
+| fold | Brier gain [95%] | log gain [95%] | onsets |
+|---|---|---|---|
+| 2003-2006 | +0.00017 [-0.00039 +0.00097] | +0.00126 [-0.00375 +0.00879] | 29 |
+| 2007-2009 | -0.00004 [-0.00101 +0.00090] | +0.00057 [-0.00956 +0.01111] | 24 |
+| 2010-2012 | -0.00066 [-0.00107 -0.00004] | -0.00841 [-0.01335 -0.00072] | 6, LOSS |
+| 2013-2019 | -0.00006 [-0.00018 +0.00011] | -0.00053 [-0.00202 +0.00192] | 22 |
+| 2020-2022 | -0.00015 [-0.00021 -0.00009] | -0.00192 [-0.00252 -0.00122] | 0, loss (thin, no veto) |
+| pooled | -0.00011 [-0.00034 +0.00012] | -0.00132 [-0.00387 +0.00138] | 81 |
+
+- Alerts at 4:1: no alerts in either run (cost 0.135 both, dcost +0.0000); the two missed episodes, 2006 and 2007, stay missed (mean p 0.049 and 0.032).
+- On t127's rows: pooled AUC 0.535 against t125-base's 0.550, within-year 0.546 against 0.579, level r +0.01 against -0.02. Wave-year Brier: 2013-15 +0.00008 (18 onsets), 2019-22 -0.00014.
+
+Verdict: fail. The 2010-12 fold (6 onsets) loses, and dominance does not hold: pooled Brier and AUC both lose on their points and the alert cost is unchanged. Taking the mid-crisis years out of the target does not lift banking's ranking on its own: the rows left out were not where t125-base's forecasts went wrong. t125-base stays the base; the flag stays, off by default, for a theory run on the spanned target.
