@@ -3864,3 +3864,39 @@ Written 21 November 2026, before any run, on t125-base, at the user's request af
 - `banking_crisis@aftermath` (bnm.kind-theory/aftermath-decls): t128's `@boom-bust` columns with NPLs, their 12-month change, capital and liquidity read as 0 within eight years of the country's last onset in banking's catalogue, and a fourteenth column flagging those years, so the fit learns the aftermath's own level. Eight years is Reinhart and Rogoff's (2014) mean time to recover pre-crisis income across 100 systemic crises, chosen before any run; onsets only, which are known when they happen (the spans' ends are dated after the fact). Checked on the flag alone: on at Equatorial Guinea 2021, Ukraine 2020, Cyprus 2018, Ireland 2015, Sweden 2012; off at Greece 2020 (its catalogue onset is 2008), Kazakhstan 2012, Ghana 2015.
 
 Run t129: t128's command with `--out t129` and `banking_crisis@aftermath` in place of `@boom-bust`. The other twelve kinds must reproduce t125-base byte for byte. Rule: against t125-base, the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC by `kinds_level.py --on t129`); beside it t129 against t128 (the same rows, the aftermath's own worth), within-year AUC, level r, wave-year Brier, t126's onsets at their origins and the highest forecasts. Adoption is the user's. No changes after the result.
+
+### Results (21 November 2026)
+
+Suite green (1646 tests). 45 min; the other twelve kinds reproduce t125-base byte for byte. **Fail** against t125-base, by the folds and by dominance; against t128 (the same rows) it passes the fold rule but not dominance.
+
+| | against t125-base | against t128 (same rows) |
+|---|---|---|
+| pooled Brier gain [95%] | -0.00152 [-0.00260, -0.00055], LOSS | +0.00016 [-0.00095, +0.00217] |
+| folds | -0.00094, -0.00211, +0.00006, -0.00266 (2013-19, LOSS), -0.00067 (2020-22, no onsets) | +0.00008, -0.00009, -0.00007, -0.00137, +0.00406 |
+| alerts dcost at 4:1 | -0.0054 [-0.0116, -0.0008], LOSS | +0.0025 [-0.0017, +0.0083] |
+| AUC pooled / within-year, level r | 0.550 / 0.579, -0.02 -> 0.394 / 0.504, -0.38 | 0.412 / 0.461, -0.53 -> same |
+| wave Brier 2013-15 / 2019-22 | -0.00302 / -0.00075 | |
+
+The aftermath gate takes back t128's 2020-22 false alarms (+0.00406 there) and lifts within-year AUC, but pooled AUC falls further and the 2013-19 fold loses to the base. The bank-health and commodity theory still ranks worse than t125-base's. t125-base stays the base. Not looked at further; no changes after the result.
+
+## Rank 0 of the aftermath plan: risk by years since the last onset (21 November 2026)
+
+No model change; reports/Crisis aftermath and trend reversal.md, at the user's request to implement its plan. docs/studies/aftermath_strata.py (its tests) buckets t125-base's year country rows, December origins 2003-2022, by whole years since the kind's last catalogue onset (world-run's run-catalogues under --at-risk catalogue; banking's lb/catalogue), with each bucket's mean p against its onset rate.
+
+| kind | 0-1 yr p / rate | 2-4 | 5-8 | 9+ | never |
+|---|---|---|---|---|---|
+| banking | 0.043 / 0.023 | 0.047 / 0.022 | 0.038 / 0.021 | 0.036 / 0.029 | 0.037 / **0.095** |
+| conflict onset | 0.253 / **0.352** | 0.240 / 0.267 | 0.165 / 0.225 | 0.059 / 0.049 | 0.036 / 0.007 |
+| coup | 0.153 / **0.241** | 0.128 / 0.120 | 0.117 / 0.059 | 0.057 / 0.045 | 0.019 / 0.017 |
+| currency | (none) | 0.094 / **0.188** | 0.077 / 0.086 | 0.060 / 0.037 | 0.037 / 0.008 |
+| fiscal consolidation | **0.254** / 0.130 | 0.285 / 0.327 | 0.274 / 0.311 | 0.255 / 0.254 | 0.281 / 0.262 |
+| food price shock | 0.284 / 0.256 | 0.258 / 0.209 | 0.131 / 0.115 | 0.143 / 0.236 | **0.250** / 0.130 |
+| growth collapse | (none) | 0.100 / 0.068 | 0.095 / 0.057 | 0.092 / **0.140** | 0.090 / 0.085 |
+| inflation crisis | 0.008 / **0.100** | 0.007 / **0.152** | 0.005 / 0.014 | 0.004 / 0.018 | 0.003 / 0.008 |
+| market crash | 0.198 / 0.133 | 0.269 / 0.196 | 0.282 / 0.238 | **0.308** / 0.093 | (6 rows) |
+| protest surge | 0.267 / 0.208 | 0.212 / 0.202 | 0.126 / 0.093 | 0.049 / 0.045 | 0.018 / 0.010 |
+| sovereign default | **0.111** / 0.059 | 0.110 / 0.126 | 0.095 / 0.069 | 0.055 / 0.029 | 0.039 / 0.023 |
+| violence surge | 0.207 / 0.208 | 0.177 / 0.160 | 0.132 / 0.131 | 0.075 / 0.062 | 0.052 / 0.018 |
+| war onset | 0.210 / 0.222 | 0.180 / 0.130 | 0.127 / 0.121 | 0.031 / 0.023 | 0.019 / 0.005 |
+
+Rows per bucket run from 10 (inflation 0-1) to 2417; read shapes, not points. Two directions, as the report expected: recurrence the base under-forecasts just after an onset (conflict, coups and currency crises at 2-4 years about double the forecast, inflation crises ten to twenty times), and a refractory year it over-forecasts (fiscal consolidation and sovereign default in the year after one, banking across 0-8 years). Every political kind and currency crises over-forecast countries that never had one; banking under-forecasts them by more than half (0.037 against 0.095): banking's first crises are its misses. One mechanism with a learned sign fits both directions, the report's rank 3, own-kind onset kernels; the bank-health gate (t129) addressed only banking's refractory side.
