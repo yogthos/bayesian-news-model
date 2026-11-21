@@ -61,3 +61,22 @@
   (is (not (:banking-spans (wr/spec-opts {} {}))))
   (is (true? (:leak-fixes (wr/spec-opts {:leak-fixes "true"} {}))))
   (is (= #{"coup"} (:fresh-frailty (wr/spec-opts {} {:fresh #{"coup"}})))))
+
+(deftest the-aftermath-layer's-kinds
+  ;; --aftermath (reports/Crisis aftermath and trend reversal.md, rank 3)
+  (is (nil? (wr/aftermath-choice {} ["coup" "war_onset"])))
+  (is (= ["coup" "war_onset"] (wr/aftermath-choice {:aftermath "all"} ["coup" "war_onset"])))
+  (is (= ["coup"] (wr/aftermath-choice {:aftermath "coup"} ["coup" "war_onset"])))
+  (is (= [(str "bnm.world-run: --aftermath names a kind not run: nope") {}]
+         (refusal #(wr/aftermath-choice % ["coup"]) {:aftermath "coup,nope"}))))
+
+(deftest the-aftermath-layer-reads-every-kind's-onsets
+  (let [cats {"coup" {:onsets {"A" (sorted-set 100 160)}} "war_onset" {:onsets {"A" (sorted-set 150)}}}]
+    (is (= {"coup" {"A" [100 160]} "war_onset" {"A" [150]}} (wr/catalogue-onsets cats)))
+    (let [sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A"]]] :start 0 :end 23
+              :target (constantly nil) :offset (constantly nil)}
+          out (wr/with-aftermath {"coup" sp "war_onset" sp} ["coup"] cats)]
+      (is (contains? (out "coup") :aftermath))
+      (is (not (contains? (out "war_onset") :aftermath)) "only the kinds named")
+      (is (= sp (out "war_onset"))))
+    (is (= {"coup" 1} (wr/with-aftermath {"coup" 1} nil cats)) "off: the specs as they were")))

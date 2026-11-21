@@ -122,6 +122,7 @@
             [bnm.kinds :as kinds]
             [bnm.lattice :as lt]
             [bnm.lattice-banking :as lb]
+            [bnm.aftermath :as af]
             [bnm.lattice-political :as lp]
             [bnm.lattice-smoke :as smoke]
             [bnm.regime-filter :as rf]
@@ -1124,6 +1125,37 @@
   [nq ks]
   (set (filter #(and (not= % lb/kind) (some-> (nq %) sub-annual?)) ks)))
 
+(defn aftermath-choice
+  "--aftermath all or kinds (reports/Crisis aftermath and trend reversal.md,
+  rank 3): the kinds among those run (`ks`) whose year node learns what
+  past onsets, its own and the other kinds', do to the next one
+  (bnm.aftermath). nil when off; a kind not run is refused."
+  [{:keys [aftermath]} ks]
+  (when aftermath
+    (if (= "all" aftermath)
+      (vec ks)
+      (let [named (str/split aftermath #",")
+            bad (remove (set ks) named)]
+        (when (seq bad)
+          (throw (ex-info (str "bnm.world-run: --aftermath names a kind not run: " (str/join "," bad)) {})))
+        named))))
+
+(defn catalogue-onsets
+  "{kind {unit [month ...]}} of the run's catalogues `cats`."
+  [cats]
+  (into {} (for [[k c] cats] [k (into {} (for [[u ms] (:onsets c)] [u (vec ms)]))])))
+
+(defn with-aftermath
+  "`specs` with bnm.aftermath's layer at `ks` (`aftermath-choice`), its
+  kernels over every catalogue kind's onsets in `cats`; the specs as they
+  were when `ks` is nil."
+  [specs ks cats]
+  (if-not ks
+    specs
+    (let [ons (catalogue-onsets cats)
+          kinds (sort (keys cats))]
+      (reduce (fn [acc k] (update acc k af/with-aftermath (af/kernel-row ons k kinds))) specs ks))))
+
 (defn spec-opts
   "build-specs' options from the run's `opts`, with the fresh frailty kinds
   (`fresh`) and the next-quarter scale's kinds and catalogues (`nq`,
@@ -1213,7 +1245,9 @@
                    (with-regime-clim (regime-clim-choice opts)
                      (when (regime-clim-choice opts)
                        (second (nm/leading (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
-                                                           {:real-lags (real-lags-choice opts)}))))))
+                                                           {:real-lags (real-lags-choice opts)})))))
+                   ;; last, so no later step replaces its :offset-add
+                   (with-aftermath (aftermath-choice opts ks) cats))
         books (atom {})
         ;; each kind's resolved counts by node, as of the month (--clim-prior kinds)
         clims (atom {})
