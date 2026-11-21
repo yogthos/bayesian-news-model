@@ -128,11 +128,22 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t120-with-the-fiscal-theory
+(deftest the-base-of-record-is-t124-with-tighter-driver-priors
+  ;; note to L1, 20 November 2026 (twelfth): t120-base's command with the
+  ;; market-crash global layer's world drivers at 10x prior precision
+  ;; (t124, a pass by dominance under the fold rule as amended that day)
+  (is (= "t124-base" lg/base))
+  (is (= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "t124's market crashes")
+  (is (= "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d" (lg/base-files "fiscal_consolidation")) "fiscal unchanged")
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "market_crash" (opt "--global-theory")))
+    (is (= "10" (opt "--global-driver-precision")))))
+
+(deftest the-base-before-was-t120-with-the-fiscal-theory
   ;; note to L1, 20 November 2026 (eleventh): t119-base's command with
   ;; fiscal consolidations' shaped theory (t120); growth collapses' and
   ;; banking's, which failed, left out
-  (is (= "t120-base" lg/base))
   (is (= "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d" (lg/base-files "fiscal_consolidation")) "t120's fiscal consolidations")
   (is (= "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c" (lg/base-files "growth_collapse")) "growth collapses unchanged")
   (is (= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis")) "banking unchanged")
@@ -170,7 +181,7 @@
   (is (= "fec3f60f1738a3787a09b8c058a954f02d6a11126807775e41d0d10542bbc105" (lg/base-files "currency_crisis")) "t115's currency crises")
   (is (some #{"data/derived/rer-annual.tsv"} lg/inputs))
   (is (some #{"data/fast/series.tsv"} lg/inputs))
-  (is (= "b93e9f952d9c1312d6c11ce7d9c593e23e34633f4b2932ff00bd8dff01f1a36e" (lg/base-files "market_crash")) "t113's market crashes")
+  (is (not= "b93e9f952d9c1312d6c11ce7d9c593e23e34633f4b2932ff00bd8dff01f1a36e" (lg/base-files "market_crash")) "t113's market crashes, replaced by t124's (twelfth note)")
   (is (= "6ac298a0d84075e52a5e20533a4665895d7655447ff50e807fb73edf85eee72b" (lg/base-files "sovereign_default")) "t111's")
   (is (some #{"data/derived/global-monthly.tsv"} lg/inputs) "the global drivers are an input of record")
   (let [args (lg/command "ledger-x" 24323)

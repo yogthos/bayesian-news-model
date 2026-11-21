@@ -5376,6 +5376,13 @@ Not adopted. No L1 note, no ledger change, no forecast.
 - *Caveats.* Government debt reaches 40-58 countries and the spread 33; elsewhere those inputs fall to their missing flags. The 2019-22 wave year is slightly worse (-0.00162).
 - *Reproduction.* The command run to a fresh directory (data/runs/t120-base, 40 minutes, 20 November 2026) gives t120's fiscal consolidation forecasts.tsv and t119-base's other twelve, growth collapses and banking included, byte for byte (ledger tests green, 36).
 
+**Twelfth note to amendment L1, 20 November 2026** (bead bnm-1ft; decided by the user the same day; written before any issue is made on it, L1 itself unchanged). The base of record is **t124-base**, not t120-base: t120-base's command with `--out t124-base --global-driver-precision 10`, on t120-base's inputs. Wherever L1 or the earlier notes name t120 (or earlier) as the base, read t124. The next issue (2027-Q1) runs this command (bnm.ledger/command, with `--end`).
+
+- *What changed.* Market crashes only (docs/CALIBRATION.md t124): the global layer's six world drivers (the 6-month changes of the dollar, the US policy rate, oil, food, the Baa spread and the VIX) are fit at ten times the default prior precision; the six channels times a country's exposure keep the default. The layer stays linear, its slopes added to the year log odds as adopted in t113.
+- *The score* (market crash year nodes, 2003-2022, + = better than t120-base): pooled +0.00223 [-0.00764, +0.01400]; alerts at 4:1 hit 73.9% -> 81.7%, false alarms 45.3% -> 42.5%, cost 0.558 -> 0.480, dcost +0.0777 [-0.0302, +0.1800]; pooled AUC 0.715 -> 0.743, within-year 0.494 -> 0.543; level r +0.50 -> +0.53. Passes by dominance under the fold rule as amended this day (below), decided after this result.
+- *Caveats.* It loses 2010-12 (-0.01697 [-0.02744, -0.00874]) and 2020-22 (-0.00793 [-0.01555, -0.00108]), 9 onsets each, the years after the large driver moves of 2008-09 and 2020. The pooled Brier and alert intervals both cross zero. Its design followed t113, t117 and t123 on the same folds.
+- *Reproduction.* The command run to a fresh directory (data/runs/t124-base, 48 minutes, 20 November 2026) gives t124's market crash forecasts.tsv and t120-base's other twelve byte for byte (ledger tests green, 37).
+
 ## Amendment to the fold rule, 20 November 2026: dominance overrides a fold loss
 
 **Decided by the user after seeing t124** (docs/CALIBRATION.md, the market-crash global layer with its world drivers held tighter), so it is not blind to the candidate that prompted it: t124 gained on pooled Brier, the alert cost and AUC but lost two folds of 9 onsets each (2010-12, 2020-22).

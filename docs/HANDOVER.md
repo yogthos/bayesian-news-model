@@ -2,7 +2,9 @@
 
 ## State as of 2026-11-14 (branch `structure`)
 
-**The base of record is t120-base** (eleventh note to amendment L1, 20 November 2026): t119-base's command with fiscal consolidations' shaped theory (`--kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation --shapes currency_crisis,coup,fiscal_consolidation`), reading data/derived/fiscal-series.tsv; growth collapses' and banking's theories failed (t120) and are left out.
+**The base of record is t124-base** (twelfth note to amendment L1, 20 November 2026): t120-base's command with the market-crash global layer's world drivers at ten times the prior precision (`--global-driver-precision 10`); it passed by dominance under the fold rule as amended the same day (docs/PHASE-CHANGES.md).
+
+**Before it, t120-base** (eleventh note to amendment L1, 20 November 2026): t119-base's command with fiscal consolidations' shaped theory (`--kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation --shapes currency_crisis,coup,fiscal_consolidation`), reading data/derived/fiscal-series.tsv; growth collapses' and banking's theories failed (t120) and are left out.
 
 **Before it, t119-base** (tenth note to amendment L1, 20 November 2026): t118-base's command with coups' shaped theory (`--kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup --shapes currency_crisis,coup`); war onsets' theory failed (t119) and is left out.
 

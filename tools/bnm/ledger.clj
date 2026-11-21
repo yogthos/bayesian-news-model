@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t120-base")
+(def base "t124-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -82,8 +82,11 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t120-base/<kind>/
-  forecasts.tsv (20 November 2026, the eleventh note to L1: t119-base's
+  "The base of record's forecasts, data/runs/t124-base/<kind>/
+  forecasts.tsv (20 November 2026, the twelfth note to L1: t120-base's
+  command with the market-crash global layer's world drivers at ten times
+  the prior precision, t124's). t120-base (20 November 2026, the eleventh
+  note to L1: t119-base's
   command with fiscal consolidations' shaped theory, t120's; growth
   collapses' and banking's left out). t119-base (20 November 2026, the
   tenth note to L1: t118-base's
@@ -107,7 +110,7 @@
    "food_price_shock" "32a8c9c7a058a94c792bde3e94b8f6dc645ee33c833ec009dd4b6d12c7bc2fc3"
    "growth_collapse" "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c"
    "inflation_crisis" "d5f9ba93199f0028ec4a98706a486cab25ac684d2961767d4e00964def634aa4"
-   "market_crash" "b93e9f952d9c1312d6c11ce7d9c593e23e34633f4b2932ff00bd8dff01f1a36e"
+   "market_crash" "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42"
    "protest_surge" "98f6a3d14855b3ba0f5eda59b4975de2a13e55b19d8963c36191e496a1dcd373"
    "sovereign_default" "6ac298a0d84075e52a5e20533a4665895d7655447ff50e807fb73edf85eee72b"
    "violence_surge" "ea2c590835d306a47e3891ae0de3dfdd16b916f53391182079c075f7d2cc3e86"
@@ -440,7 +443,10 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t120-base's (eleventh note to L1):
+  "The base's bnm.world-run arguments, t124-base's (twelfth note to L1):
+  t120-base's with the global layer's six world drivers for market
+  crashes at ten times the default prior precision
+  (--global-driver-precision 10, t124). t120-base's (eleventh note to L1):
   t119-base's with fiscal consolidations' theory on the government's
   balance, debt, spread, elections and their literature's other inputs,
   shaped (--kind-theory fiscal_consolidation --shapes fiscal_consolidation,
@@ -484,7 +490,7 @@
    "--lead-std" "history" "--frailty-gauges" "true" "--dated-credit" "true"
    "--theory-offset" "true" "--theory-world" "true" "--recession-hold" "rows"
    "--kind-theory" "sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation" "--shapes" "currency_crisis,coup,fiscal_consolidation"
-   "--global-theory" "market_crash" "--impute" "inflation_crisis"
+   "--global-theory" "market_crash" "--global-driver-precision" "10" "--impute" "inflation_crisis"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
    "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}}}"])
 
