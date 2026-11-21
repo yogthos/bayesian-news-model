@@ -2,7 +2,7 @@
   "bnm.signals, the shared transforms of stocks and flows: each must equal,
   to the bit, the copies it replaces (kept here as references, verbatim
   from before the refactor, bnm-cnf.4)."
-  (:require [bnm.signals :as sg]
+  (:require [bnm.signals :as sg] [bnm.stocks]
             [clojure.test :refer [deftest is testing]]))
 
 ;; --- the copies replaced, verbatim -------------------------------------------
@@ -186,3 +186,11 @@
               new (sg/history-standardizer lead units [0 2 3] from 150 missing)
               v [71.0 0.5 33.0]]
           (is (= (old t v) (new t v)) [missing from t]))))))
+
+(deftest a-declaration-reads-a-drawdown
+  ;; bnm-g5t.29: [:drawdown n], the fall from the n months' peak
+  (let [s (bnm.stocks/series (for [p (range 0 61)] [p (inc p) (double (if (<= p 40) p (- 80 p)))]))
+        db {["AGO" "trade/commodity_tot"] s}]
+    (is (contains? sg/reads :drawdown))
+    (is (= 10.0 (sg/read-signal db {:var "trade/commodity_tot" :read [:drawdown 24] :stale 9} "AGO" 51)))
+    (is (nil? (sg/read-signal db {:var "trade/commodity_tot" :read [:drawdown 24] :stale 9} "AGO" 75)))))

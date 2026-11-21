@@ -323,10 +323,25 @@
    {:name :fx-momentum12 :var "fast/fx" :read [:change 12] :stale 3}
    {:name :private-credit-change36 :var "finance/private_credit_gdp" :read [:change 36] :stale 30}])
 
+(def ^:private banking-boom-bust
+  "Banking crises (bnm-g5t.29): t126's inputs with the commodity terms of
+  trade read as a boom and a bust apart. t126's one symmetric change fitted
+  a rise as the risk (the 2003-08 booms before crises), so the 2014-15 fall
+  read as safety for the exporters. The boom: the 36-month rise read a year
+  before the origin; the bust: the fall from the 24 months' peak
+  (bnm.stocks/drawdown), 0 when at or above it."
+  (into [] (mapcat (fn [{:keys [name] :as d}]
+                     (case name
+                       :tot-change12 [{:name :tot-boom36 :var "trade/commodity_tot" :read [:change 36] :lag 12 :stale 9}]
+                       :tot-change24 [{:name :tot-bust24 :var "trade/commodity_tot" :read [:drawdown 24] :stale 9}]
+                       [d])))
+        banking-banks))
+
 (def ^:private by-kind {"sovereign_default" sovereign "currency_crisis" currency "inflation_crisis" inflation
                         "inflation_crisis@monthly" inflation-monthly "currency_crisis@partners" currency-partners
                         "coup" coup "war_onset" war "fiscal_consolidation" fiscal "growth_collapse" growth
-                        "banking_crisis@literature" banking-literature "banking_crisis@banks" banking-banks})
+                        "banking_crisis@literature" banking-literature "banking_crisis@banks" banking-banks
+                        "banking_crisis@boom-bust" banking-boom-bust})
 
 (defn decls "A kind's theory signals, or nil." [kind] (get by-kind kind))
 

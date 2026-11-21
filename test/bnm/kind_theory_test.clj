@@ -350,6 +350,17 @@
   (is (= [:npl :npl-change12 :capital :liquidity :tot-change12 :tot-change24 :reserves-change12
           :fx-momentum12 :private-credit-change36]
          (mapv :name (kt/decls "banking_crisis@banks"))) "t126: bank health and the commodity bust")
+  ;; bnm-g5t.29: the commodity terms of trade read as a boom a year before
+  ;; and a bust from its peak, not one symmetric change
+  (let [bb (kt/decls "banking_crisis@boom-bust")
+        by (into {} (map (juxt :name identity) bb))]
+    (is (= [:npl :npl-change12 :capital :liquidity :tot-boom36 :tot-bust24 :reserves-change12
+            :fx-momentum12 :private-credit-change36]
+           (mapv :name bb)))
+    (is (= {:var "trade/commodity_tot" :read [:change 36] :lag 12 :stale 9} (dissoc (by :tot-boom36) :name)))
+    (is (= {:var "trade/commodity_tot" :read [:drawdown 24] :stale 9} (dissoc (by :tot-bust24) :name)))
+    (is (= (remove (comp #{:tot-change12 :tot-change24} :name) (kt/decls "banking_crisis@banks"))
+           (remove (comp #{:tot-boom36 :tot-bust24} :name) bb)) "the rest as t126's"))
   (is (every? (kt/vars ["banking_crisis@banks"]) ["banks/npl" "banks/capital_assets" "banks/liquid_reserves" "trade/commodity_tot"]))
   (is (some #{"data/derived/banking-series.tsv"} (kt/paths-for (kt/vars ["banking_crisis@banks"]))))
   (is (not (some #{"data/derived/banking-series.tsv"} (kt/paths-for (kt/vars ["fiscal_consolidation"])))))

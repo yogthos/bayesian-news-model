@@ -104,6 +104,25 @@
            (let [mu (/ (reduce + ds) n)]
              (Math/sqrt (/ (reduce + (map #(let [d (- % mu)] (* d d)) ds)) n)))))))))
 
+(defn drawdown
+  "The highest value in the `months` up to the latest known one, that
+  period included, minus the latest: how far a series has fallen from its
+  recent peak, 0 at or above it (bnm-g5t.29, a bust read apart from a
+  boom)."
+  ([s t months] (drawdown s t months nil))
+  ([s ^long t ^long months {:keys [stale]}]
+   (let [s (as-of s t)
+         i (latest s t stale)]
+     (when (>= i 0)
+       (let [^longs ps (:period s)
+             ^doubles vs (:value s)
+             from (- (aget ps i) months)
+             hi (loop [k i hi (aget vs i)]
+                  (if (and (>= k 0) (>= (aget ps k) from))
+                    (recur (dec k) (Math/max hi (aget vs k)))
+                    hi))]
+         (- hi (aget vs i)))))))
+
 (defn known
   "[period value] of every value published by t, oldest first."
   [s ^long t]

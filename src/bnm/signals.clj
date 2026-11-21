@@ -155,7 +155,7 @@
 
 (def reads
   "The reads a declaration may name."
-  #{:value :change :volatility :stretch :turn :filtered})
+  #{:value :change :volatility :drawdown :stretch :turn :filtered})
 
 (defn kalman-level
   "The causal local-level Kalman filter's estimates of a series' level
@@ -206,6 +206,7 @@
     :value (sk/value s t {:stale stale})
     :change (sk/change s t (long arg) {:stale stale})
     :volatility (sk/volatility s t (long arg) {:stale stale})
+    :drawdown (sk/drawdown s t (long arg) {:stale stale})
     (:stretch :turn :filtered)
     (let [known (sk/known s t)
           ;; [:filtered [:stretch opts]]: the read on the Kalman-filtered path

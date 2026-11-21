@@ -31,6 +31,18 @@
     (is (= 0.0 (sk/volatility flat 50 12)))
     (is (> (sk/volatility zigzag 50 12) 1.5))))
 
+(deftest measures-drawdown-from-the-window's-peak
+  ;; bnm-g5t.29: a bust as its own input, the fall from the highest value
+  ;; in the window to the latest, 0 at or above it
+  (let [peak (monthly 0 60 #(if (<= % 40) (double %) (- 80.0 %)))]
+    (is (= 10.0 (sk/drawdown peak 51 24)) "peak 40 at 40, latest 30 at 50")
+    (is (= 0.0 (sk/drawdown peak 41 24)) "at the peak")
+    (is (= 0.0 (sk/drawdown (monthly 0 60 identity) 50 24)) "rising: no drawdown")
+    (is (= 10.0 (sk/drawdown peak 51 10)) "the peak at exactly the window's start counts")
+    (is (= 9.0 (sk/drawdown peak 51 9)) "a peak before the window does not")
+    (is (nil? (sk/drawdown peak 0 24)) "nothing published")
+    (is (nil? (sk/drawdown peak 75 24 {:stale 12})) "stale")))
+
 (deftest known-history-and-its-turns
   ;; yearly values dated December, available the March after
   (let [s (sk/series (for [[y v] [[2000 1.0] [2004 1.0] [2008 1.0] [2009 0.0] [2010 0.0]]]
