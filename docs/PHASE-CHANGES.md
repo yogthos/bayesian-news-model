@@ -5388,6 +5388,7 @@ Not adopted. No L1 note, no ledger change, no forecast.
 - *What changed.* Sovereign defaults only (docs/CALIBRATION.md t125): their theory's inputs are filled (bnm.impute: the last value decayed toward the region's mean, and the share missing), as inflation crises' have been since t116.
 - *The score* (sovereign default year nodes, 2003-2022, + = better than t124-base): pooled +0.00002 [-0.00020, +0.00022]; alerts at 4:1 cost 0.129 -> 0.127, dcost +0.0019 [-0.0025, +0.0066], no alerts fire in either; pooled AUC 0.589 -> 0.595, within-year 0.640 -> 0.677; level r -0.43 -> -0.50. Passes by dominance under the fold rule as amended 20 November, the amendment decided before this run.
 - *Caveats.* It loses 2010-12 (-0.00032 [-0.00058, -0.00009], 10 onsets). Every interval crosses zero; the gain is the smallest the rule admits, in calibration below the alert threshold. The wave episodes of 2018, 2019 and 2021 stay missed. The result repeats t114's (on t111-base) to the digit.
+- *Reproduction.* The command run to a fresh directory (data/runs/t125-base, 41 minutes, 20 November 2026) gives t125's sovereign default forecasts.tsv and t124-base's other twelve byte for byte (ledger tests green, 38).
 
 ## Amendment to the fold rule, 20 November 2026: dominance overrides a fold loss
 
