@@ -3842,3 +3842,17 @@ Written 21 November 2026, before any run, on t125-base, at the user's request af
 - `banking_crisis@boom-bust` (bnm.kind-theory): t126's thirteen columns with the two changes replaced by the boom, the 36-month change read a year before the origin, and the bust, the drawdown from the 24 months' peak. As read at December origins (log points): Congo boom 11, bust 11 at 2014, -7 and 36 at 2015; Angola 8, 8 and -5, 28; Ghana and the US near 0 throughout.
 
 Run t128: t125-base's command with `--out t128 --kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation,banking_crisis@boom-bust --raw-prior banking_crisis --banking-spans true` (t121's treatment, as t126). The other twelve kinds must reproduce t125-base byte for byte. Scored on t128's rows (the spanned target). Rule: against t125-base, the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC by `kinds_level.py --on t128`); beside it t128 against t127 (the same rows, so the theory's own worth), within-year AUC, level r, wave-year Brier and t126's thirteen onsets at their origins. Adoption is the user's. No changes after the result.
+
+### Results (21 November 2026)
+
+Suite green (1645 tests). 46 min; the other twelve kinds reproduce t125-base byte for byte. Banking on t128's rows: 2405, 81 onsets. **Fail**, by the folds and by dominance, against t125-base and against t127.
+
+| | against t125-base | against t127 (same rows) |
+|---|---|---|
+| pooled Brier gain [95%] | -0.00168 [-0.00346, -0.00026], LOSS | -0.00157 [-0.00341, -0.00011], LOSS |
+| folds | -0.00102 (2003-06), -0.00202 (2007-09, LOSS), +0.00013 (2010-12), -0.00129 (2013-19), -0.00473 (2020-22, no onsets) | -0.00119, -0.00198, +0.00079, -0.00122, -0.00459 |
+| alerts dcost at 4:1 | -0.0079 [-0.0144, -0.0030], LOSS (false alarms 0.8%, no hits) | same |
+| AUC pooled / within-year, level r | 0.550 / 0.579, -0.02 -> 0.412 / 0.461, -0.53 | 0.535 / 0.546, +0.01 -> same |
+| wave Brier 2013-15 / 2019-22 | -0.00033 / -0.00433 | |
+
+t126's onsets at their origins (t125-base -> t128): Kazakhstan 2012 0.034 -> 0.077, Ukraine 2012 0.034 -> 0.075, Ghana 2015 0.032 -> 0.052, Azerbaijan 2013 0.038 -> 0.050, São Tomé 2014 0.035 -> 0.041, Angola 2014 0.035 -> 0.039, Moldova 2012 0.034 -> 0.038 rise; Lebanon 2017 0.033 -> 0.030, Chad 2013 0.038 -> 0.027, Congo 2015 0.032 -> 0.023, Equatorial Guinea 2013 0.038 -> 0.021, Tajikistan 2014 0.035 -> 0.014 fall. Against t126 the oil exporters fall less (Congo 0.005 -> 0.023, Equatorial Guinea 0.004 -> 0.021), but still below the base. The highest forecasts are no longer inside crises but just after them, or in the 2020-22 bust years with no onsets: Equatorial Guinea 2021-22 0.78 and 0.75, Ukraine 2020 0.43, Cyprus 2018 0.42, Greece 2020 0.37, Ireland 2015 0.22. The spans end with crisis management, but NPLs stay high for years after, and are published two to four years late, so the bank-health inputs mark a crisis's aftermath as risk. That, not the commodity sign, is what puts t126 and t128 below chance. Not looked at further; no changes after the result. t125-base stays the base.
