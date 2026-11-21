@@ -419,3 +419,31 @@
     (is (= ["coup" "banking_crisis@banks"] (choice {:kind-theory "coup,banking_crisis@banks" :theory-offset "true"})) "t126")
     (is (thrown? Exception (choice {:kind-theory "banking_crisis@literature"})) "it extends --theory-offset's theory")
     (is (thrown? Exception (choice {:kind-theory "banking_crisis@literature:add" :theory-offset "true"})) "replace only")))
+
+(deftest banking's-aftermath-is-not-risk
+  ;; t128: NPLs stay high for years after a crisis and come out late, so the
+  ;; bank-health inputs read the aftermath as risk. Within eight years of an
+  ;; onset (Reinhart and Rogoff 2014, the recovery's length) they read 0
+  ;; and a flag carries the aftermath; onsets alone, known when they happen
+  (let [irl08 (+ (* 12 2008) 8)
+        decls (kt/aftermath-decls {"IRL" #{irl08}})
+        by (into {} (map (juxt :name identity) decls))
+        npl (bnm.stocks/series (for [y (range 2000 2021)] [(+ (* 12 y) 11) (+ (* 12 y) 14) 10.0]))
+        db {["IRL" "banks/npl"] npl ["FRA" "banks/npl"] npl}
+        ev (fn [n u y] (bnm.signals/eval-signal db (:expr (by n)) u (+ (* 12 y) 11)))]
+    (is (= [:npl :npl-change12 :capital :liquidity :tot-boom36 :tot-bust24 :reserves-change12
+            :fx-momentum12 :private-credit-change36 :post-crisis]
+           (mapv :name decls)))
+    (is (= 1.0 (ev :post-crisis "IRL" 2012)))
+    (is (= 0.0 (ev :post-crisis "IRL" 2007)) "before the onset")
+    (is (= 0.0 (ev :post-crisis "IRL" 2016)) "Dec 2016 is 99 months on: past eight years")
+    (is (= 1.0 (ev :post-crisis "IRL" 2015)) "Dec 2015, 87 months on: within")
+    (is (= 0.0 (ev :post-crisis "FRA" 2012)) "no onset")
+    (is (= 0.0 (ev :npl "IRL" 2012)) "the aftermath's NPLs read 0")
+    (is (= 10.0 (ev :npl "IRL" 2017)))
+    (is (= 10.0 (ev :npl "FRA" 2012)))
+    (is (= (by :tot-bust24) (first (filter #(= :tot-bust24 (:name %)) (kt/decls "banking_crisis@boom-bust")))) "the rest as t128's")
+    (is (= [:npl :npl-change12 :capital :liquidity :tot-boom36 :tot-bust24 :reserves-change12
+            :fx-momentum12 :private-credit-change36 :post-crisis]
+           (mapv :name (kt/decls "banking_crisis@aftermath"))))
+    (is (every? (kt/vars ["banking_crisis@aftermath"]) ["banks/npl" "banks/capital_assets" "trade/commodity_tot"]))))

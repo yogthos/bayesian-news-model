@@ -8,6 +8,8 @@
   not from lagged outcomes (docs/INVARIANTS.md point 4)."
   (:require [bnm.geo :as geo]
             [bnm.impute :as im]
+            [bnm.lattice-banking :as lb]
+            [bnm.macrohistory :as mh]
             [bnm.signals :as sg]
             [bnm.theory :as th]
             [clojure.string :as str]))
@@ -337,11 +339,42 @@
                        [d])))
         banking-banks))
 
+(def aftermath-months
+  "How long a banking crisis's aftermath lasts from its onset: eight years,
+  Reinhart and Rogoff's (2014) mean time to recover pre-crisis income
+  across 100 systemic crises."
+  96)
+
+(defn aftermath-decls
+  "Banking crises (t129): `banking-boom-bust` with the bank-health inputs
+  (NPLs, their change, capital, liquidity) read as 0 within
+  `aftermath-months` of an onset in `onsets` (fn [unit] -> its onset
+  months; a {unit #{month}} map does), and a flag
+  for those months. t128's highest forecasts fell just after crises: NPLs
+  stay high for years after one and are published late. Onsets only, known
+  when they happen (the spans' ends are dated after the fact)."
+  [onsets]
+  (let [post? (fn [u t] (boolean (some #(and (<= % t) (< (- t %) aftermath-months)) (onsets u))))
+        health #{:npl :npl-change12 :capital :liquidity}]
+    (conj (mapv (fn [{:keys [name] :as d}]
+                  (if (health name)
+                    {:name name :expr [:mul (dissoc d :name) [:fn (fn [_ u t] (if (post? u t) 0.0 1.0))]]}
+                    d))
+                banking-boom-bust)
+          {:name :post-crisis :expr [:fn (fn [_ u t] (if (post? u t) 1.0 0.0))]})))
+
+(def ^:private banking-onsets
+  (delay (:onsets (lb/catalogue (mh/read-jst "data/raw/slow/jst/jst.csv")))))
+
+(def ^:private banking-aftermath
+  (aftermath-decls (fn [u] (get @banking-onsets u))))
+
 (def ^:private by-kind {"sovereign_default" sovereign "currency_crisis" currency "inflation_crisis" inflation
                         "inflation_crisis@monthly" inflation-monthly "currency_crisis@partners" currency-partners
                         "coup" coup "war_onset" war "fiscal_consolidation" fiscal "growth_collapse" growth
                         "banking_crisis@literature" banking-literature "banking_crisis@banks" banking-banks
-                        "banking_crisis@boom-bust" banking-boom-bust})
+                        "banking_crisis@boom-bust" banking-boom-bust
+                        "banking_crisis@aftermath" banking-aftermath})
 
 (defn decls "A kind's theory signals, or nil." [kind] (get by-kind kind))
 
