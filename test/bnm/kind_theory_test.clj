@@ -229,8 +229,12 @@
 
 (deftest the-tables-read
   (is (= ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"
-          "data/derived/trade-partners.tsv" "data/derived/onset-history.tsv" "data/derived/fiscal-series.tsv"]
-         kt/series-paths)))
+          "data/derived/trade-partners.tsv" "data/derived/onset-history.tsv" "data/derived/fiscal-series.tsv"
+          "data/derived/banking-series.tsv"]
+         kt/series-paths))
+  (is (not (some #{"data/derived/banking-series.tsv"}
+                 (kt/paths-for (kt/vars ["sovereign_default" "inflation_crisis@monthly" "currency_crisis" "coup" "fiscal_consolidation"]))))
+      "the base's kinds do not read t126's table"))
 
 
 (deftest variants-keep-the-base-lists
@@ -343,11 +347,17 @@
   (is (= [:dsr-gap :house-boom36 :credit-x-house :private-credit-change36 :short-rate-change12
           :spread-change6 :current-account :fx-momentum12]
          (mapv :name (kt/decls "banking_crisis@literature"))))
+  (is (= [:npl :npl-change12 :capital :liquidity :tot-change12 :tot-change24 :reserves-change12
+          :fx-momentum12 :private-credit-change36]
+         (mapv :name (kt/decls "banking_crisis@banks"))) "t126: bank health and the commodity bust")
+  (is (every? (kt/vars ["banking_crisis@banks"]) ["banks/npl" "banks/capital_assets" "banks/liquid_reserves" "trade/commodity_tot"]))
+  (is (some #{"data/derived/banking-series.tsv"} (kt/paths-for (kt/vars ["banking_crisis@banks"]))))
+  (is (not (some #{"data/derived/banking-series.tsv"} (kt/paths-for (kt/vars ["fiscal_consolidation"])))))
   (is (nil? (kt/decls "banking_crisis")) "banking's base theory stays --theory-offset's")
   (is (every? (kt/vars ["fiscal_consolidation"]) ["fiscal/balance_gdp" "fiscal/expenditure_gdp" "fast/spread"]))
   (is (some #{"data/derived/fiscal-series.tsv"} (kt/paths-for (kt/vars ["fiscal_consolidation"]))))
   (is (not (some #{"data/derived/fiscal-series.tsv"} (kt/paths-for (kt/vars ["growth_collapse"])))))
-  (is (= "data/derived/fiscal-series.tsv" (last kt/series-paths))))
+  (is (= "data/derived/banking-series.tsv" (last kt/series-paths))))
 
 (deftest banking-keeps-its-own-inputs
   ;; banking_crisis@literature: the --theory-offset theory's inputs first,
@@ -395,5 +405,6 @@
   (require 'bnm.world-run)
   (let [choice (resolve 'bnm.world-run/kind-theory-choice)]
     (is (= ["banking_crisis@literature"] (choice {:kind-theory "banking_crisis@literature" :theory-offset "true"})))
+    (is (= ["coup" "banking_crisis@banks"] (choice {:kind-theory "coup,banking_crisis@banks" :theory-offset "true"})) "t126")
     (is (thrown? Exception (choice {:kind-theory "banking_crisis@literature"})) "it extends --theory-offset's theory")
     (is (thrown? Exception (choice {:kind-theory "banking_crisis@literature:add" :theory-offset "true"})) "replace only")))

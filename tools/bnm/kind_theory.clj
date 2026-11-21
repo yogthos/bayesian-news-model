@@ -64,12 +64,13 @@
   (scripts/global-monthly.py), the real rates (scripts/rer-annual.py), the
   fast table's monthly exchange rates."
   ["data/slow/series.tsv" "data/derived/global-monthly.tsv" "data/derived/rer-annual.tsv" "data/fast/series.tsv"
-   "data/derived/trade-partners.tsv" "data/derived/onset-history.tsv" "data/derived/fiscal-series.tsv"])
+   "data/derived/trade-partners.tsv" "data/derived/onset-history.tsv" "data/derived/fiscal-series.tsv"
+   "data/derived/banking-series.tsv"])
 
 (def ^:private path-prefix
   {"data/derived/global-monthly.tsv" "global/" "data/derived/rer-annual.tsv" "derived/rer_" "data/fast/series.tsv" "fast/"
    "data/derived/trade-partners.tsv" "trade/export_share_" "data/derived/onset-history.tsv" "history/"
-   "data/derived/fiscal-series.tsv" "fiscal/"})
+   "data/derived/fiscal-series.tsv" "fiscal/" "data/derived/banking-series.tsv" "banks/"})
 
 (defn paths-for
   "The tables in `series-paths` holding any of `vars`: the slow table
@@ -303,10 +304,29 @@
    {:name :current-account :var "debt/current_account_gdp" :read [:value] :stale 30}
    {:name :fx-momentum12 :var "fast/fx" :read [:change 12] :stale 3}])
 
+(def ^:private banking-banks
+  "Banking crises (t126, bnm-ris): added to --theory-offset's own inputs
+  (`with-own-inputs`), the banks' health where the literature's inputs are
+  absent (WDI's NPLs, capital and liquid reserves, data/derived/
+  banking-series.tsv, each year known at its first WDI edition) and the
+  commodity bust that turned exporters' banking crises in 2014-16 (the
+  country's commodity terms of trade, weighted by net exports to GDP, over
+  12 and 24 months; reserves' and the currency's fall after it), with the
+  credit boom before it (WDI's private credit, 186 countries)."
+  [{:name :npl :var "banks/npl" :read [:value] :stale 36}
+   {:name :npl-change12 :var "banks/npl" :read [:change 12] :stale 36}
+   {:name :capital :var "banks/capital_assets" :read [:value] :stale 36}
+   {:name :liquidity :var "banks/liquid_reserves" :read [:value] :stale 36}
+   {:name :tot-change12 :var "trade/commodity_tot" :read [:change 12] :stale 9}
+   {:name :tot-change24 :var "trade/commodity_tot" :read [:change 24] :stale 9}
+   {:name :reserves-change12 :var "debt/reserves_months" :read [:change 12] :stale 30}
+   {:name :fx-momentum12 :var "fast/fx" :read [:change 12] :stale 3}
+   {:name :private-credit-change36 :var "finance/private_credit_gdp" :read [:change 36] :stale 30}])
+
 (def ^:private by-kind {"sovereign_default" sovereign "currency_crisis" currency "inflation_crisis" inflation
                         "inflation_crisis@monthly" inflation-monthly "currency_crisis@partners" currency-partners
                         "coup" coup "war_onset" war "fiscal_consolidation" fiscal "growth_collapse" growth
-                        "banking_crisis@literature" banking-literature})
+                        "banking_crisis@literature" banking-literature "banking_crisis@banks" banking-banks})
 
 (defn decls "A kind's theory signals, or nil." [kind] (get by-kind kind))
 
