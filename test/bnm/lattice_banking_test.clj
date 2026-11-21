@@ -105,3 +105,24 @@
   (is (= 2 (lb/theory-width {})))
   (is (= 4 (lb/theory-width {:theory-world true :world-db {}})))
   (is (= 5 (lb/theory-width {:theory-world true :world-db {} :contagion {}}))))
+
+(deftest a-crisis-is-busy-through-its-span
+  ;; bnm-suj: events.tsv keeps onsets only, so :busy held the onset quarter
+  ;; and the years inside a crisis stayed at risk; data/derived/
+  ;; banking-spans.tsv carries each crisis's end
+  (let [f (java.io.File/createTempFile "spans" ".tsv")]
+    (spit f "IRL\t2008-09\t2013-12\tESRB\nGRC\t2010-05\t2010-05\tESRB\n")
+    (is (= {"IRL" [[(+ (* 12 2008) 8) (+ (* 12 2013) 11)]] "GRC" [[(+ (* 12 2010) 4) (+ (* 12 2010) 4)]]}
+           (lb/read-spans (str f)))))
+  (let [irl08 (+ (* 12 2008) 8)
+        cat {:onsets {"IRL" (sorted-set irl08)} :busy {"IRL" (sorted-set irl08 (inc irl08) (+ 2 irl08))}
+             :from {"IRL" 0} :through {"IRL" (* 12 2030)}}
+        spanned (lb/with-spans cat {"IRL" [[irl08 (+ (* 12 2013) 11)]] "XXX" [[0 5]]})
+        t (+ (* 12 2011) 11)]
+    (is (= (set (range irl08 (inc (+ (* 12 2013) 11)))) (set (get-in spanned [:busy "IRL"]))))
+    (is (nil? (get-in spanned [:busy "XXX"])) "a country outside the catalogue stays out")
+    (is (false? (#'lb/onset-in? cat "IRL" t t (+ t 24))) "before: 2012 is at risk mid-crisis")
+    (is (nil? (#'lb/onset-in? spanned "IRL" t t (+ t 24))) "after: not at risk")
+    (let [t2 (+ (* 12 2014) 11)]
+      (is (false? (#'lb/onset-in? spanned "IRL" t2 t2 (+ t2 24))) "at risk again a year after the end"))
+    (is (= (lb/with-spans cat {}) cat))))

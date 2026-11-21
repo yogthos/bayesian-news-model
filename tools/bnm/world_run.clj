@@ -655,6 +655,14 @@
                           (assoc-in sp [:frailty :gauges :quarter-next] (vec ns)))
                       sp))]))))
 
+(defn banking-spans-choice
+  "--banking-spans true (bnm-suj): banking crises busy from onset to end
+  (data/derived/banking-spans.tsv, bnm.lattice-banking/with-spans), so the
+  years inside a crisis are not rows at risk. Changes the target. Off by
+  default."
+  [opts]
+  (flag-choice opts :banking-spans))
+
 (defn real-lags-choice
   "--real-lags true (bnm-a1e): every slow series read at its true
   publication date (bnm.named/real-lags), the IMF commodity prices two
@@ -1053,7 +1061,8 @@
                 ;; bnm-56c.38: the merge of growth-q left this out of run-catalogues
                 (growth-outcomes (:growth-outcomes opts) #(ee/quarterly-growth % cat-db))
                 (at-risk cat-db (:food-outcomes opts) (:at-risk opts) (:growth-outcomes opts)))
-      (= "true" (:catalogue-through opts)) catalogues-through)))
+      (= "true" (:catalogue-through opts)) catalogues-through
+      (banking-spans-choice opts) (update lb/kind lb/with-spans (lb/read-spans lb/spans-path)))))
 
 (defn fresh-inputs-choice
   "--fresh-inputs true: the political and economic kinds' year row reads

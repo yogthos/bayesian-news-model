@@ -1,21 +1,34 @@
 """Per kind, year country nodes, December origins 2003-2022: pooled and
 within-year AUC, and how the yearly mean p tracks the yearly rate (Pearson
 r of the 20 yearly pairs), for each run given; and the frailty's chosen rho
-at the year country node. python3 -I kinds_level.py <repo> run1 run2 ..."""
+at the year country node. python3 -I kinds_level.py <repo> [--on RUN] run1 run2 ...
+With --on RUN, every run is read on RUN's resolved rows (place and origin)
+with RUN's outcomes: a candidate that changes the rows at risk (t127,
+--banking-spans) is compared with the bench on the same rows."""
 import sys, os, bisect, math
 from collections import defaultdict, Counter
 
 repo, runs = sys.argv[1], sys.argv[2:]
+on = None
+if runs[:1] == ["--on"]:
+    on, runs = runs[1], runs[2:]
 
-def rows_of(run, kind):
-    out = []
+def keyed(run, kind):
+    out = {}
     for line in open(os.path.join(repo, "data/runs", run, kind, "forecasts.tsv")):
         s, place, o, p, y = line.rstrip("\n").split("\t")
         o = int(o)
         if s != "year" or len(place) != 3 or y not in ("true", "false") or o % 12 != 11 or not (2003 <= o // 12 <= 2022):
             continue
-        out.append((o // 12, float(p), y == "true"))
+        out[(place, o)] = (float(p), y == "true")
     return out
+
+def rows_of(run, kind):
+    rs = keyed(run, kind)
+    if on:
+        base = keyed(on, kind)
+        return [(o // 12, rs[k][0], y) for k, (_, y) in base.items() if k in rs for o in [k[1]]]
+    return [(k[1] // 12, p, y) for k, (p, y) in rs.items()]
 
 def auc(ps):
     pos = [p for p, y in ps if y]; neg = sorted(p for p, y in ps if not y)

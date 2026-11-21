@@ -108,6 +108,33 @@
      :from (into {} (for [u units] [u (cond (rr-units u) (* 12 1800) (jst-units u) (* 12 1870) :else modern)]))
      :through (into {} (for [u units] [u (max (* 3 (inc cov-q)) (if (rr-units u) (* 12 2017) 0) (if (jst-units u) (* 12 2021) 0))]))}))
 
+;; bnm-suj: each crisis's span, onset to end (scripts/banking-spans.py)
+(def spans-path "data/derived/banking-spans.tsv")
+
+(defn read-spans
+  "{iso [[from to] ...]} in months from a spans table (iso, from YYYY-MM,
+  to YYYY-MM, source)."
+  [path]
+  (let [m (fn [s] (let [[y mo] (str/split s #"-")] (+ (* 12 (parse-long y)) (dec (parse-long mo)))))]
+    (with-open [r (io/reader path)]
+      (reduce (fn [acc line]
+                (let [[iso a b] (str/split line #"\t")]
+                  (update acc iso (fnil conj []) [(m a) (m b)])))
+              {} (doall (remove str/blank? (line-seq r)))))))
+
+(defn with-spans
+  "The catalogue `cat` with each crisis busy from its start to its end
+  (`read-spans`), for the units it covers: the years inside a crisis are
+  not at risk of a new one (world-run --banking-spans, bnm-suj)."
+  [cat spans]
+  (update cat :busy
+          (fn [busy]
+            (reduce-kv (fn [b u ss]
+                         (if (contains? b u)
+                           (update b u into (mapcat (fn [[a z]] (range a (inc z))) ss))
+                           b))
+                       busy spans))))
+
 (defn possible-onset?
   "Whether the catalogue's rule could date an onset of `unit` in months
   (lo, hi] (bnm-96j, world-run --at-risk catalogue): a month on its :grid

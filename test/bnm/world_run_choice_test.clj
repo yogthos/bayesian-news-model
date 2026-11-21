@@ -8,7 +8,8 @@
 
 (deftest flags
   (doseq [[f k] [[wr/real-lags-choice :real-lags] [wr/dated-credit-choice :dated-credit] [wr/regime-choice :regime]
-                 [wr/fresh-inputs-choice :fresh-inputs] [wr/wdi-editions-choice :wdi-editions]]]
+                 [wr/fresh-inputs-choice :fresh-inputs] [wr/wdi-editions-choice :wdi-editions]
+                 [wr/banking-spans-choice :banking-spans]]]
     (is (false? (f {})))
     (is (false? (f {k "false"})))
     (is (false? (f {k false})) "a false value is absent")
@@ -44,3 +45,11 @@
          (refusal wr/wide-credit-choice {:wide-credit "bank"})))
   (is (= ["bnm.world-run: --wide-credit takes true, bank or false, not all" {}]
          (refusal wr/wide-credit-choice {:wide-credit "all"}))))
+
+(deftest banking-spans-reach-the-run's-catalogue
+  ;; bnm-suj: with the flag, Ireland's 2012 (ESRB: 2008-09 to 2013-12) is busy
+  (when (.exists (java.io.File. "data/derived/banking-spans.tsv"))
+    (let [irl12 (+ (* 12 2012) 5)
+          busy (fn [opts] (contains? (get-in (wr/run-catalogues opts) ["banking_crisis" :busy "IRL"]) irl12))]
+      (is (false? (busy {})))
+      (is (true? (busy {:banking-spans "true"}))))))
