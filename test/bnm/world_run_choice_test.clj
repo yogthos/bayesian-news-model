@@ -53,3 +53,11 @@
           busy (fn [opts] (contains? (get-in (wr/run-catalogues opts) ["banking_crisis" :busy "IRL"]) irl12))]
       (is (false? (busy {})))
       (is (true? (busy {:banking-spans "true"}))))))
+
+(deftest banking-spans-reach-the-spec-options
+  ;; t127: the flag changed only run-catalogues' cats, which banking's
+  ;; lattice never reads (lb/build makes its own); it must reach build-specs
+  (is (true? (:banking-spans (wr/spec-opts {:banking-spans "true"} {}))))
+  (is (not (:banking-spans (wr/spec-opts {} {}))))
+  (is (true? (:leak-fixes (wr/spec-opts {:leak-fixes "true"} {}))))
+  (is (= #{"coup"} (:fresh-frailty (wr/spec-opts {} {:fresh #{"coup"}})))))

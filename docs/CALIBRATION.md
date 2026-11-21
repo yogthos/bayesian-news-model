@@ -3811,3 +3811,7 @@ Written 21 November 2026, before any run, on t125-base, at the user's request af
 - `--banking-spans true` (bnm.lattice-banking/with-spans): every month of a span busy, so a year node whose origin falls in a crisis, or within a year of its last month, is not at risk.
 
 Run t127: t125-base's command with `--out t127 --banking-spans true`. The other twelve kinds must reproduce t125-base byte for byte. Scored on t127's rows and outcomes, the bench read on the same rows (bnm.links and bnm.alerts pair so already; AUC and level r by `kinds_level.py --on t127`, added for this). Rule: against t125-base, the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r and wave-year Brier. Adoption is the user's: it changes what banking forecasts mean (a new crisis, not one under way). No changes after the result.
+
+### The first run was void (21 November 2026)
+
+It reproduced t125-base byte for byte, banking included (2558 rows both). The flag reached only world-run's run-catalogues, and banking's lattice never reads that: bnm.lattice-banking/build makes its own catalogue from the JST rows. Fixed with tests (lb/run-catalogue applies the spans inside build; world-run/spec-opts, the options map pulled out of -main, carries :banking-spans to build-specs). Banking's own catalogue now holds 195 busy country-years 2003-22, against 42. The design above is unchanged; t127 reruns under it.

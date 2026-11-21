@@ -1124,8 +1124,43 @@
   [nq ks]
   (set (filter #(and (not= % lb/kind) (some-> (nq %) sub-annual?)) ks)))
 
+(defn spec-opts
+  "build-specs' options from the run's `opts`, with the fresh frailty kinds
+  (`fresh`) and the next-quarter scale's kinds and catalogues (`nq`,
+  `nq-cats`)."
+  [{:keys [pwt-stale catalogue-through year-delay leak-fixes] :as opts} {:keys [fresh nq nq-cats]}]
+  {:pwt-stale (= "true" pwt-stale)
+   :lag-stale (= "true" (:lag-stale opts))
+   :gauge-std (some-> (:gauge-std opts) keyword)
+   :catalogue-through (= "true" catalogue-through)
+   :year-delay (some-> year-delay parse-long)
+   :leak-fixes (= "true" leak-fixes)
+   :fresh-frailty fresh
+   :next-quarter nq :nq-cats nq-cats
+   :horizon-priors (horizon-priors-choice opts)
+   :leading (leading-choice opts)
+   :leading-priors (= "true" (:leading-priors opts))
+   :real-lags (real-lags-choice opts)
+   :leading-food2 (leading-food2-choice opts)
+   :lead-std (lead-std-choice opts)
+   :dated-credit (dated-credit-choice opts)
+   :banking-gauges (banking-gauges-choice opts)
+   :banking-coverage (banking-coverage-choice opts)
+   :banking-spans (banking-spans-choice opts)
+   :long-baseline (long-baseline-choice opts)
+   :splice-credit (splice-credit-choice opts)
+   :theory-offset (theory-offset-choice opts)
+   :theory-world (theory-world-choice opts)
+   :theory-contagion (theory-contagion-choice opts)
+   :credit-denominator (credit-denominator-choice opts)
+   :recession-hold (recession-hold-choice opts)
+   :wide-credit (wide-credit-choice opts)
+   :fresh-inputs (fresh-inputs-choice opts)
+   :wdi-editions (wdi-editions-choice opts)
+   :lead-delay (lead-delay-choice opts)})
+
 (defn -main [& args]
-  (let [{:keys [out end kinds without-relations smoke graph placebo ews states pwt-stale catalogue-through world-gauges year-delay leak-fixes clim-prior] :as opts}
+  (let [{:keys [out end kinds without-relations smoke graph placebo ews states catalogue-through world-gauges clim-prior] :as opts}
         (options args)
         graph (:graph (model-choice opts))
         out (or out "world")
@@ -1152,34 +1187,7 @@
         nq (if nq-cats (nq-kinds nq-cats ks) #{})
         _ (when (seq nq) (println "  the next-quarter scale at" (str/join "," (sort nq))))
         _ (println "building" (count ks) "kinds" (if (seq fresh) (str "; the fresh frailty scale at " (str/join "," (sort fresh))) ""))
-        specs0 (-> (build-specs ks end cats (known-run opts) {:pwt-stale (= "true" pwt-stale)
-                                                               :lag-stale (= "true" (:lag-stale opts))
-                                                               :gauge-std (some-> (:gauge-std opts) keyword)
-                                                               :catalogue-through (= "true" catalogue-through)
-                                                               :year-delay (some-> year-delay parse-long)
-                                                               :leak-fixes (= "true" leak-fixes)
-                                                               :fresh-frailty fresh
-                                                               :next-quarter nq :nq-cats nq-cats
-                                                               :horizon-priors (horizon-priors-choice opts)
-                                                               :leading (leading-choice opts)
-                                                               :leading-priors (= "true" (:leading-priors opts))
-                                                               :real-lags (real-lags-choice opts)
-                                                               :leading-food2 (leading-food2-choice opts)
-                                                               :lead-std (lead-std-choice opts)
-                                                               :dated-credit (dated-credit-choice opts)
-                                                               :banking-gauges (banking-gauges-choice opts)
-                                                               :banking-coverage (banking-coverage-choice opts)
-                                                               :long-baseline (long-baseline-choice opts)
-                                                               :splice-credit (splice-credit-choice opts)
-                                                               :theory-offset (theory-offset-choice opts)
-                                                               :theory-world (theory-world-choice opts)
-                                                               :theory-contagion (theory-contagion-choice opts)
-                                                               :credit-denominator (credit-denominator-choice opts)
-                                                               :recession-hold (recession-hold-choice opts)
-                                                               :wide-credit (wide-credit-choice opts)
-                                                               :fresh-inputs (fresh-inputs-choice opts)
-                                                               :wdi-editions (wdi-editions-choice opts)
-                                                               :lead-delay (lead-delay-choice opts)})
+        specs0 (-> (build-specs ks end cats (known-run opts) (spec-opts opts {:fresh fresh :nq nq :nq-cats nq-cats}))
                    (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
                                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
                                 :seed (:seed opts) :strength (:strength opts) :set (:set opts) :kind-set (:kind-set opts)

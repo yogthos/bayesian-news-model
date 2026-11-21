@@ -135,6 +135,15 @@
                            b))
                        busy spans))))
 
+(defn run-catalogue
+  "The catalogue `cat` as a run reads it: :catalogue-through, its uncovered
+  tail unknown (loop audit Test 7); :banking-spans, a `read-spans` map,
+  each crisis busy to its end (bnm-suj)."
+  [cat {:keys [catalogue-through banking-spans]}]
+  (cond-> cat
+    catalogue-through (assoc :unknown-past-through true)
+    banking-spans (with-spans banking-spans)))
+
 (defn possible-onset?
   "Whether the catalogue's rule could date an onset of `unit` in months
   (lo, hi] (bnm-96j, world-run --at-risk catalogue): a month on its :grid
@@ -1019,9 +1028,10 @@
   the countries outside the panel (`wide-credit-values`; :bank, the credit
   input from the BIS's bank credit); :wdi-editions, WDI's annual series by
   their archived editions; :banking-coverage, the declared signals of
-  `coverage-decls` at the year node."
+  `coverage-decls` at the year node; :banking-spans, each crisis busy to its
+  end (`spans-path`, bnm-suj)."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit theory-offset theory-world credit-denominator recession-hold theory-contagion]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit theory-offset theory-world credit-denominator recession-hold theory-contagion banking-spans]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables
                            (cond-> {:real-lags real-lags} wdi-editions (assoc :wdi-editions (nm/read-wdi-editions))))
@@ -1043,7 +1053,8 @@
         dated (when dated-credit (dated-credit-inputs db jst-rows win (when (= :bank splice-credit) (read-bank-credit)) gdp))
         jst (into {} (for [r (mh/build jst-rows (mh/read-intensity nil) (mh/read-regimes) (mh/read-credit-gap) dated (when win {:stretch win}))]
                        [[(:iso r) (:year r)] r]))
-        cat (cond-> (catalogue jst-rows) catalogue-through (assoc :unknown-past-through true))
+        cat (run-catalogue (catalogue jst-rows) {:catalogue-through catalogue-through
+                                                 :banking-spans (when banking-spans (read-spans spans-path))})
         units (set (filter #(first (geo/parents %)) (keys (:onsets cat))))
         dated (cond-> dated (and dated wide-credit)
                 (update :values merge (wide-credit-values db jst-rows units (if (= :bank wide-credit) {:bank (read-bank-credit)} {}))))

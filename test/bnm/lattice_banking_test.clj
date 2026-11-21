@@ -126,3 +126,14 @@
     (let [t2 (+ (* 12 2014) 11)]
       (is (false? (#'lb/onset-in? spanned "IRL" t2 t2 (+ t2 24))) "at risk again a year after the end"))
     (is (= (lb/with-spans cat {}) cat))))
+
+(deftest the-lattice's-own-catalogue-takes-the-spans
+  ;; t127 ran identical to t125-base: build makes its own catalogue from the
+  ;; JST rows, so the spans must reach it there, not only the run's cats
+  (let [irl08 (+ (* 12 2008) 8)
+        cat {:onsets {"IRL" (sorted-set irl08)} :busy {"IRL" (sorted-set irl08)}
+             :from {"IRL" 0} :through {"IRL" (* 12 2030)}}
+        spans {"IRL" [[irl08 (+ (* 12 2013) 11)]]}]
+    (is (= cat (lb/run-catalogue cat {})))
+    (is (true? (:unknown-past-through (lb/run-catalogue cat {:catalogue-through true}))))
+    (is (= (lb/with-spans cat spans) (lb/run-catalogue cat {:banking-spans spans})))))
