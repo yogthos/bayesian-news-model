@@ -3787,3 +3787,18 @@ Written 21 November 2026, before any run, on the base of record t125-base (banki
 - t121's treatment: unshaped, a missing input read as the mean (no missing flags, so no data does not read as safe), every slope's prior on its input's own scale (`--raw-prior banking_crisis`).
 
 Run t126: t125-base's command with `--out t126 --kind-theory sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation,banking_crisis@banks --raw-prior banking_crisis`. The other twelve kinds must reproduce t125-base byte for byte. Rule: against t125-base, the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it level r, within-year AUC, wave-year Brier and the thirteen onsets above at their origins. Adoption is the user's. No changes after the result.
+
+### Results (21 November 2026)
+
+Suite green (1639 tests; scripts/banking-series-test.py OK). The other twelve kinds reproduce t125-base byte for byte. **Fail**, by the folds and by dominance.
+
+| | t126 against t125-base |
+|---|---|
+| pooled Brier gain [95%] | -0.00131 [-0.00245, -0.00042], 82 onsets, LOSS |
+| folds | -0.00072 (2003-06), -0.00171 (2007-09, LOSS), -0.00126 (2010-12), -0.00183 (2013-19, LOSS), -0.00056 (2020-22, no onsets) |
+| alerts dcost at 4:1 | -0.0059 [-0.0121, -0.0016], LOSS |
+| AUC pooled / within-year | 0.550 -> 0.378 / 0.575 -> 0.469 |
+| level r | -0.03 -> -0.37 |
+| wave Brier 2013-15 / 2019-22 | -0.00102 / -0.00067 |
+
+The thirteen onsets at their origins (t125-base -> t126): Kazakhstan 2012 0.038 -> 0.087, Ukraine 2012 0.038 -> 0.051, Azerbaijan 2013 0.035 -> 0.049, Ghana 2015 0.035 -> 0.064, Lebanon 2017 0.033 -> 0.037 rise; Moldova 2012 -> 0.021, Equatorial Guinea 2013 -> 0.004, Chad 2013 -> 0.027, Angola 2014 -> 0.026, São Tomé 2014 -> 0.031, Tajikistan 2014 -> 0.016, Congo 2015 -> 0.005 fall (Guinea-Bissau 2012 not at risk in this read). The four with high NPLs in time rise, Moldova excepted; the oil exporters (Equatorial Guinea, Congo, Angola, Chad) fall, the commodity bust read the wrong way. The ranking goes below chance because the highest p fall on countries already in or just past a crisis: 2010 Denmark 0.42, Ireland 0.22, Sweden 0.19, Spain 0.15; 2016 Cyprus 0.48, Greece 0.41, Ukraine 0.41. High NPLs follow a crisis, and the banking catalogue has no durations (bd bnm-suj: at-risk drops only the onset quarter), so years inside a crisis are rows at risk without an onset, and the inputs that mark a crisis under way score as false alarms. Not looked at further; no changes after the result.
