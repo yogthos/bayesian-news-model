@@ -3760,3 +3760,20 @@ Under the fold rule as amended 20 November 2026 (docs/PHASE-CHANGES.md, decided 
 Written 20 November 2026, before any run, on t124-base, at the user's request. t114 ran sovereign defaults' theory on filled inputs (bnm.impute: the last value decayed toward the region's mean, and the share missing) against t111-base and failed the fold rule (2010-12 lost) while gaining on pooled Brier (+0.00002), alerts (dcost +0.0019) and AUC (0.589 -> 0.595), so it is the one earlier failure that passes under the dominance amendment of this day. The base has moved since (sovereign defaults keep t111's theory, but inflation crises, currency crises and others around them changed), so it is rerun rather than read from t114.
 
 Run t125: t124-base's command with `--out t125 --impute inflation_crisis,sovereign_default`. The other twelve kinds must reproduce t124-base byte for byte. Rule: against t124-base, the fold rule as amended 18 November and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it level r and wave-year Brier. Adoption is the user's. No changes after the result.
+
+### Results (20 November 2026)
+
+Suite green (1638 tests). The other twelve kinds reproduce t124-base byte for byte. Sovereign defaults against t124-base:
+
+| fold | Brier gain | onsets |
+|---|---|---|
+| 2003-06 | +0.00005 [-0.00044, +0.00061] | 13 |
+| 2007-09 | -0.00018 [-0.00039, +0.00002] | 5 (no veto) |
+| 2010-12 | -0.00032 [-0.00058, -0.00009] | 10, LOSS |
+| 2013-19 | +0.00013 [-0.00021, +0.00047] | 53 |
+| 2020-22 | +0.00044 [-0.00006, +0.00106] | 20 |
+| pooled | +0.00002 [-0.00020, +0.00022] | 101 |
+
+Fold rule: fail (2010-12). Alerts at 4:1: cost 0.127 vs 0.129, dcost +0.0019 [-0.0025, +0.0066]; no alerts fire either way (hit 0%, FA 0.2%), so the gain is in calibration of a below-threshold kind, and the three wave episodes (2018, 2019, 2021) stay missed. AUC 0.589 -> 0.595, within-year AUC 0.640 -> 0.677, level r -0.43 -> -0.50 (worse). Wave Brier: 2013-15 -0.00014, 2019-22 +0.00048. The numbers match t114's to the digit: the base's changes elsewhere do not reach sovereign defaults.
+
+Under the fold rule as amended 20 November 2026: pooled Brier +0.00002, dcost +0.0019 and AUC +0.006 all gain on their point estimates, so t125 **passes by dominance**, its 2010-12 loss named. Every interval straddles zero; the gain is the smallest the rule admits. Adoption is the user's.
