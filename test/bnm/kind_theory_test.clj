@@ -72,7 +72,10 @@
       (let [tl (last os)]
         (is (= (sort-by #(x [% tl]) countries) (sort-by #((:offset-add sp2) :year % tl) countries))))))
   (testing "a spec that already adds to its offset refuses, rather than drop one"
-    (is (thrown? Exception (kt/with-theory (assoc sp :offset-add (fn [_ _ _] 0.1)) row 2 {:add true})))))
+    (is (thrown? Exception (kt/with-theory (assoc sp :offset-add (fn [_ _ _] 0.1)) row 2 {:add true}))))
+  (testing "shapes refused: their columns are not centred, and with the intercept dropped every row lifts (t133 audit)"
+    (is (= "bnm.kind-theory: :add takes no :shapes: the shape columns are not centred, so the dropped intercept lifts every row"
+           (try (kt/with-theory sp row 2 {:add true :shapes true}) nil (catch clojure.lang.ExceptionInfo e (ex-message e)))))))
 
 (deftest fits-are-what-offsets-apply
   (let [os (range 11 600 12)
@@ -276,9 +279,10 @@
     (is (nil? (kt/partner-falls db "XXX" 112)) "no shares known: nil")))
 
 (deftest shaped-global-layer
-  (let [out (get (kt/with-global-theory-row {"market_crash" sp} ["market_crash"] (fn [u t] (vec (repeat 12 (x [u t])))) {:shapes #{"market_crash"}}) "market_crash")]
-    (is (fn? (:offset-add out)))
-    (is (= 60 (count ((:inputs (:kind-theory out)) "a1" 371))) "twelve inputs, five columns each")))
+  ;; --global-shapes: the global layer adds through :add, which refuses
+  ;; shapes since the t133 audit (uncentred columns, intercept dropped)
+  (is (thrown-with-msg? clojure.lang.ExceptionInfo #":add takes no :shapes"
+        (kt/with-global-theory-row {"market_crash" sp} ["market_crash"] (fn [u t] (vec (repeat 12 (x [u t])))) {:shapes #{"market_crash"}}))))
 
 (deftest raw-prior-global-layer
   ;; --global-raw-prior: the global layer's slopes on raw-scale priors (t121's treatment)

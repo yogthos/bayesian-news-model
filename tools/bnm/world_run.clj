@@ -925,12 +925,18 @@
 
 (defn with-bloc-theory
   "The named kinds' specs with :offset-add at the year scale (k is a
-  year's: docs/ALIGNMENT-DATA.md, \"Bloc exposure offset\")."
+  year's: docs/ALIGNMENT-DATA.md, \"Bloc exposure offset\"), summed with
+  an :offset-add already there."
   [specs choice data]
   (reduce-kv (fn [acc kd k]
                (if (contains? acc kd)
-                 (let [f (blocs/offset-add data k)]
-                   (assoc-in acc [kd :offset-add] (fn [scale place t] (when (= :year scale) (f scale place t)))))
+                 (let [f (blocs/offset-add data k)
+                       prev (get-in acc [kd :offset-add])]
+                   (assoc-in acc [kd :offset-add]
+                             (fn [scale place t]
+                               (let [o (when prev (prev scale place t))
+                                     a (when (= :year scale) (f scale place t))]
+                                 (if (and o a) (+ o a) (or a o))))))
                  acc))
              specs (or choice {})))
 
@@ -1125,83 +1131,32 @@
   [nq ks]
   (set (filter #(and (not= % lb/kind) (some-> (nq %) sub-annual?)) ks)))
 
-(defn aftermath-choice
-  "--aftermath all or kinds (reports/Crisis aftermath and trend reversal.md,
-  rank 3): the kinds among those run (`ks`) whose year node learns what
-  past onsets, its own and the other kinds', do to the next one
-  (bnm.aftermath). nil when off; a kind not run is refused."
-  [{:keys [aftermath]} ks]
-  (when aftermath
-    (if (= "all" aftermath)
-      (vec ks)
-      (let [named (str/split aftermath #",")
-            bad (remove (set ks) named)]
-        (when (seq bad)
-          (throw (ex-info (str "bnm.world-run: --aftermath names a kind not run: " (str/join "," bad)) {})))
-        named))))
+(defn withdrawn-check
+  "Refuses the withdrawn options: --aftermath and --aftermath-net (t130,
+  t132) fit onset kernels beside the year node, from onsets before their
+  catalogue's publication lag, the fit's intercept dropped and, where the
+  node had no year offset, without its base (docs/CALIBRATION.md t132,
+  t133). --aftermath-gauges replaces them."
+  [opts]
+  (doseq [flag [:aftermath :aftermath-net] :when (get opts flag)]
+    (throw (ex-info (str "bnm.world-run: --" (name flag) " is withdrawn: its kernels read onsets before their publication lag (docs/CALIBRATION.md t133); use --aftermath-gauges") {}))))
 
 (defn catalogue-onsets
   "{kind {unit [month ...]}} of the run's catalogues `cats`."
   [cats]
   (into {} (for [[k c] cats] [k (into {} (for [[u ms] (:onsets c)] [u (vec ms)]))])))
 
-(defn with-aftermath
-  "`specs` with bnm.aftermath's layer at `ks` (`aftermath-choice`), its
-  kernels over every catalogue kind's onsets in `cats`; the specs as they
-  were when `ks` is nil."
-  [specs ks cats]
-  (if-not ks
-    specs
-    (let [ons (catalogue-onsets cats)
-          kinds (sort (keys cats))]
-      (reduce (fn [acc k] (update acc k af/with-aftermath (af/kernel-row ons k kinds))) specs ks))))
-
-(defn aftermath-net-choice
-  "--aftermath-net kinds (docs/CALIBRATION.md t132): the kinds among those
-  run (`ks`) whose year node learns bnm.aftermath's kernels net of the
-  world's onsets (af/net-row). nil when off; a kind not run, or one
-  --aftermath also names, is refused."
-  [{:keys [aftermath aftermath-net] :as opts} ks]
-  (when aftermath-net
-    (let [named (str/split aftermath-net #",")
-          bad (remove (set ks) named)
-          both (filter (set (aftermath-choice opts ks)) named)]
-      (when (seq bad)
-        (throw (ex-info (str "bnm.world-run: --aftermath-net names a kind not run: " (str/join "," bad)) {})))
-      (when (seq both)
-        (throw (ex-info (str "bnm.world-run: --aftermath and --aftermath-net both name " (str/join "," both)) {})))
-      named)))
-
-(defn with-aftermath-net
-  "`specs` with bnm.aftermath's layer at `ks` (`aftermath-net-choice`) on
-  the kernels net of the world's onsets, the world the spec's countries;
-  the specs as they were when `ks` is nil."
-  [specs ks cats]
-  (if-not ks
-    specs
-    (let [ons (catalogue-onsets cats)
-          kinds (sort (keys cats))]
-      (reduce (fn [acc k]
-                (let [countries (second (first (:levels (acc k))))]
-                  (update acc k af/with-aftermath (af/net-row ons k kinds countries))))
-              specs ks))))
-
 (defn aftermath-gauges-choice
   "--aftermath-gauges all or kinds (docs/CALIBRATION.md t133): the kinds
   among those run (`ks`) whose year node reads bnm.aftermath's kernels of
   known onsets as a gauge group of its own (af/with-gauges). nil when off;
-  a kind not run, or one --aftermath or --aftermath-net also names, is
-  refused: the node would read the same onsets twice."
-  [{:keys [aftermath-gauges] :as opts} ks]
+  a kind not run is refused."
+  [{:keys [aftermath-gauges]} ks]
   (when aftermath-gauges
     (let [named (if (= "all" aftermath-gauges) (vec ks) (str/split aftermath-gauges #","))
           bad (remove (set ks) named)]
       (when (seq bad)
         (throw (ex-info (str "bnm.world-run: --aftermath-gauges names a kind not run: " (str/join "," bad)) {})))
-      (doseq [[flag other] [["--aftermath" (aftermath-choice opts ks)]
-                            ["--aftermath-net" (when (:aftermath-net opts) (str/split (:aftermath-net opts) #","))]]]
-        (when-let [both (seq (filter (set other) named))]
-          (throw (ex-info (str "bnm.world-run: --aftermath-gauges and " flag " both name " (str/join "," both)) {}))))
       named)))
 
 (defn with-aftermath-gauges
@@ -1260,6 +1215,7 @@
   layer -main applies after it, in order (the last, bnm.aftermath's).
   Out of -main so one kind's spec can be built and read without a run."
   [opts ks end cats {:keys [fresh nq nq-cats]}]
+  (withdrawn-check opts)
   (-> (build-specs ks end cats (known-run opts) (spec-opts opts {:fresh fresh :nq nq :nq-cats nq-cats}))
     (with-step2 {:world-gauges (= "true" (:world-gauges opts)) :world-once (= "true" (:world-once opts))
                  :world-extra (:world-extra opts) :world-gate (:world-gate opts)
@@ -1287,14 +1243,13 @@
       (when (regime-clim-choice opts)
         (second (nm/leading (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
                                             {:real-lags (real-lags-choice opts)})))))
-    ;; last, so no later step replaces its :offset-add
-    (with-aftermath (aftermath-choice opts ks) cats)
-    (with-aftermath-net (aftermath-net-choice opts ks) cats)
+    ;; last: its gauges wrap whatever gauges the earlier steps left
     (with-aftermath-gauges (aftermath-gauges-choice opts ks) cats (some-> (:gauge-std opts) keyword))))
 
 (defn -main [& args]
   (let [{:keys [out end kinds without-relations smoke graph placebo ews states catalogue-through world-gauges clim-prior] :as opts}
         (options args)
+        _ (withdrawn-check opts)
         graph (:graph (model-choice opts))
         out (or out "world")
         dir (str "data/runs/" out)

@@ -1,3 +1,5 @@
+;; Runs at commit 8e3c563: bnm.aftermath's kernel-row, net-row and the
+;; --aftermath layers were withdrawn after it (docs/CALIBRATION.md t133).
 ;; t132 diagnosis 2: which kinds' layer fits alone (no year offset), and do
 ;; the kernels help as departures from the forecast the run issued?
 ;; Usage: jolt -Sdeps '{:paths ["src" "resources" "test" "tools"]}' issued.clj bench kind...

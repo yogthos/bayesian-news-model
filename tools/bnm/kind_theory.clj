@@ -464,6 +464,8 @@
   :penalties (t124): a precision multiplier per raw input."
   ([sp row width] (with-theory sp row width {}))
   ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw penalties]}]
+  (when (and add shapes)
+    (throw (ex-info "bnm.kind-theory: :add takes no :shapes: the shape columns are not centred, so the dropped intercept lifts every row" {})))
   (let [countries (second (first levels))
         per (:per (first (filter #(= :year (:name %)) scales)))
         os (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))

@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t131-base")
+(def base "t125-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -82,12 +82,8 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t131-base/<kind>/
-  forecasts.tsv (21 November 2026, the fourteenth note to L1: t125-base's
-  command with the learned onset kernels at conflict onsets, coups,
-  fiscal consolidations, inflation crises, sovereign defaults and war
-  onsets, t130's; the other seven t125-base's).
-  t125-base (20 November 2026, the thirteenth note to L1: t124-base's
+  "The base of record's forecasts, data/runs/t125-base/<kind>/
+  forecasts.tsv (20 November 2026, the thirteenth note to L1: t124-base's
   command with sovereign defaults' theory on filled inputs, t125's).
   t124-base (20 November 2026, the twelfth note to L1: t120-base's
   command with the market-crash global layer's world drivers at ten times
@@ -109,18 +105,18 @@
   row's ratios held through recessions and banking's frailty at rho 0;
   banking is t104-rows-rho0's, the other ten t80-base's, t71-stack's."
   {"banking_crisis" "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b"
-   "conflict_onset" "6fd92049185bc23add791411f3637c3b9243d361a57c9f5a00dc96f076a55040"
-   "coup" "35e0a38dcdb3ea22665dbb7315b2d02ffa4bf94d04b9abe873ff5aef6a2bdf55"
+   "conflict_onset" "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442"
+   "coup" "ec86c1a3afc93bf2aaf44e9c3a1aaa41c06868ab00a5a362970eddbff2c72f13"
    "currency_crisis" "fec3f60f1738a3787a09b8c058a954f02d6a11126807775e41d0d10542bbc105"
-   "fiscal_consolidation" "7def94f77658dbc41f990dfa17430df57a23810898158b3f741b72534b8fbc50"
+   "fiscal_consolidation" "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d"
    "food_price_shock" "32a8c9c7a058a94c792bde3e94b8f6dc645ee33c833ec009dd4b6d12c7bc2fc3"
    "growth_collapse" "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c"
-   "inflation_crisis" "2c29445568d7651f8ea010c9ea022ecb0c097fa8f1d65efbe764cc2defdaedec"
+   "inflation_crisis" "d5f9ba93199f0028ec4a98706a486cab25ac684d2961767d4e00964def634aa4"
    "market_crash" "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42"
    "protest_surge" "98f6a3d14855b3ba0f5eda59b4975de2a13e55b19d8963c36191e496a1dcd373"
-   "sovereign_default" "a3aed4c9014230d3c17d3e98b4ea1735cdaa6b560b7ef947990c6578c3df1e3e"
+   "sovereign_default" "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111"
    "violence_surge" "ea2c590835d306a47e3891ae0de3dfdd16b916f53391182079c075f7d2cc3e86"
-   "war_onset" "80724e905658b6add6a2a781e4990771f8d08ac945f4914d48de6d98b4254614"})
+   "war_onset" "25fafb6577491beb364e3809352ea2fb38bec4cc416b71596abba0f77e9c70b1"})
 
 (def base-inputs
   "The SHA-256 of every input t80-base was built on (t53-noclim's,
@@ -449,11 +445,7 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t131-base's (fourteenth note to L1):
-  t125-base's with each of six kinds' year node learning what past onsets,
-  its own and the other kinds', do to the next one (--aftermath
-  conflict_onset,coup,fiscal_consolidation,inflation_crisis,
-  sovereign_default,war_onset, t130). t125-base's (thirteenth note to L1):
+  "The base's bnm.world-run arguments, t125-base's (thirteenth note to L1):
   t124-base's with sovereign defaults' theory on filled inputs (--impute
   inflation_crisis,sovereign_default, t125). t124-base's (twelfth note to L1):
   t120-base's with the global layer's six world drivers for market
@@ -503,7 +495,6 @@
    "--theory-offset" "true" "--theory-world" "true" "--recession-hold" "rows"
    "--kind-theory" "sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation" "--shapes" "currency_crisis,coup,fiscal_consolidation"
    "--global-theory" "market_crash" "--global-driver-precision" "10" "--impute" "inflation_crisis,sovereign_default"
-   "--aftermath" "conflict_onset,coup,fiscal_consolidation,inflation_crisis,sovereign_default,war_onset"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
    "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}}}"])
 

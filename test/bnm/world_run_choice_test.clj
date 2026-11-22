@@ -62,42 +62,14 @@
   (is (true? (:leak-fixes (wr/spec-opts {:leak-fixes "true"} {}))))
   (is (= #{"coup"} (:fresh-frailty (wr/spec-opts {} {:fresh #{"coup"}})))))
 
-(deftest the-aftermath-layer's-kinds
-  ;; --aftermath (reports/Crisis aftermath and trend reversal.md, rank 3)
-  (is (nil? (wr/aftermath-choice {} ["coup" "war_onset"])))
-  (is (= ["coup" "war_onset"] (wr/aftermath-choice {:aftermath "all"} ["coup" "war_onset"])))
-  (is (= ["coup"] (wr/aftermath-choice {:aftermath "coup"} ["coup" "war_onset"])))
-  (is (= [(str "bnm.world-run: --aftermath names a kind not run: nope") {}]
-         (refusal #(wr/aftermath-choice % ["coup"]) {:aftermath "coup,nope"}))))
-
-(deftest the-aftermath-layer-reads-every-kind's-onsets
-  (let [cats {"coup" {:onsets {"A" (sorted-set 100 160)}} "war_onset" {:onsets {"A" (sorted-set 150)}}}]
-    (is (= {"coup" {"A" [100 160]} "war_onset" {"A" [150]}} (wr/catalogue-onsets cats)))
-    (let [sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A"]]] :start 0 :end 23
-              :target (constantly nil) :offset (constantly nil)}
-          out (wr/with-aftermath {"coup" sp "war_onset" sp} ["coup"] cats)]
-      (is (contains? (out "coup") :aftermath))
-      (is (not (contains? (out "war_onset") :aftermath)) "only the kinds named")
-      (is (= sp (out "war_onset"))))
-    (is (= {"coup" 1} (wr/with-aftermath {"coup" 1} nil cats)) "off: the specs as they were")))
-
-(deftest the-net-aftermath-layer's-kinds
-  ;; --aftermath-net (t132): the kernels net of the world's onsets
-  (is (nil? (wr/aftermath-net-choice {} ["coup" "food_price_shock"])))
-  (is (= ["food_price_shock"] (wr/aftermath-net-choice {:aftermath-net "food_price_shock"} ["coup" "food_price_shock"])))
-  (is (= ["bnm.world-run: --aftermath-net names a kind not run: nope" {}]
-         (refusal #(wr/aftermath-net-choice % ["coup"]) {:aftermath-net "nope"})))
-  (is (= ["bnm.world-run: --aftermath and --aftermath-net both name coup" {}]
-         (refusal #(wr/aftermath-net-choice % ["coup"]) {:aftermath "coup" :aftermath-net "coup"}))))
-
-(deftest the-net-layer-reads-the-spec's-countries
-  (let [cats {"coup" {:onsets {"A" (sorted-set 100)}} "food" {:onsets {"A" (sorted-set 100)}}}
-        sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]]] :start 0 :end 23
-            :target (constantly nil) :offset (constantly nil)}
-        out (wr/with-aftermath-net {"coup" sp "food" sp} ["food"] cats)]
-    (is (contains? (out "food") :aftermath))
-    (is (= sp (out "coup")))
-    (is (= {"coup" 1} (wr/with-aftermath-net {"coup" 1} nil cats)))))
+(deftest the-fitted-aftermath-layers-are-withdrawn
+  ;; t133: --aftermath and --aftermath-net read onsets before their
+  ;; publication lag, dropped the fit's intercept and fit without the
+  ;; node's base; --aftermath-gauges replaces them
+  (is (nil? (wr/withdrawn-check {})))
+  (doseq [flag [:aftermath :aftermath-net]]
+    (is (= [(str "bnm.world-run: --" (name flag) " is withdrawn: its kernels read onsets before their publication lag (docs/CALIBRATION.md t133); use --aftermath-gauges") {}]
+           (refusal wr/withdrawn-check {flag "coup"})))))
 
 (deftest the-node's-aftermath-gauges
   ;; --aftermath-gauges (t133): the kernels as the year node's gauges
@@ -105,10 +77,7 @@
   (is (= ["coup" "war_onset"] (wr/aftermath-gauges-choice {:aftermath-gauges "all"} ["coup" "war_onset"])))
   (is (= ["bnm.world-run: --aftermath-gauges names a kind not run: nope" {}]
          (refusal #(wr/aftermath-gauges-choice % ["coup"]) {:aftermath-gauges "nope"})))
-  (is (= ["bnm.world-run: --aftermath-gauges and --aftermath both name coup" {}]
-         (refusal #(wr/aftermath-gauges-choice % ["coup"]) {:aftermath "coup" :aftermath-gauges "coup"})))
-  (is (= ["bnm.world-run: --aftermath-gauges and --aftermath-net both name coup" {}]
-         (refusal #(wr/aftermath-gauges-choice % ["coup"]) {:aftermath-net "coup" :aftermath-gauges "all"}))))
+  (is (= ["coup"] (wr/aftermath-gauges-choice {:aftermath-gauges "coup"} ["coup" "war_onset"]))))
 
 (deftest the-node's-gauges-take-each-catalogue's-lag
   (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}
