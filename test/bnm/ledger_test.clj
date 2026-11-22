@@ -128,18 +128,30 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
+(deftest the-base-of-record-is-t133-with-growth-collapses'-onset-gauges
+  ;; sixteenth note to L1, 22 November 2026: t125-base's command with the
+  ;; onset kernels from known onsets as year-node gauges at growth
+  ;; collapses only (t133, a pass by dominance)
+  (is (= "t133-base" lg/base))
+  (is (= "2a6ff8f0ed9c14c6ec94be0e2157d0b1df7559dc0c7b3cd3bed3a6744105d421" (lg/base-files "growth_collapse")) "t133's growth collapses")
+  (is (= "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111" (lg/base-files "sovereign_default")) "sovereign defaults t125-base's")
+  (is (= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "market crashes unchanged")
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "growth_collapse" (opt "--aftermath-gauges")))))
+
 (deftest t131-base-is-withdrawn
   ;; fifteenth note to L1, 22 November 2026: t131-base's onset kernels read
   ;; onsets before their catalogues' publication lag (docs/CALIBRATION.md
-  ;; t133); the base of record is t125-base again
-  (is (= "t125-base" lg/base))
+  ;; t133); the base of record was t125-base again
+  (is (not= "t131-base" lg/base))
   (is (not-any? #{"--aftermath" "--aftermath-net"} (lg/command "ledger-x" 24323)))
   (is (= "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442" (lg/base-files "conflict_onset")) "t125-base's, not t130's"))
 
-(deftest the-base-of-record-is-t125-with-sovereign-defaults-on-filled-inputs
+(deftest the-base-before-was-t125-with-sovereign-defaults-on-filled-inputs
   ;; note to L1, 20 November 2026 (thirteenth): t124-base's command with
   ;; sovereign defaults' theory on filled inputs (t125, a pass by dominance)
-  (is (= "t125-base" lg/base))
+  (is (str/starts-with? lg/base "t1"))
   (is (= "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111" (lg/base-files "sovereign_default")) "t125's sovereign defaults")
   (is (= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "market crashes unchanged")
   (let [args (lg/command "ledger-x" 24323)
@@ -163,7 +175,7 @@
   ;; fiscal consolidations' shaped theory (t120); growth collapses' and
   ;; banking's, which failed, left out
   (is (= "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d" (lg/base-files "fiscal_consolidation")) "t120's fiscal consolidations")
-  (is (= "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c" (lg/base-files "growth_collapse")) "growth collapses unchanged")
+  (is (not= "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c" (lg/base-files "growth_collapse")) "growth collapses unchanged, then t133's (sixteenth note)")
   (is (= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis")) "banking unchanged")
   (is (= "a9f63ae68d5a32dc6da723da1de8f1591576a620ba5750379c12f546444f960b" (lg/base-inputs "data/derived/fiscal-series.tsv")))
   (is (some #{"data/derived/fiscal-series.tsv"} lg/inputs))

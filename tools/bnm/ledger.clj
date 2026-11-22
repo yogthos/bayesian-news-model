@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t125-base")
+(def base "t133-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -82,8 +82,11 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t125-base/<kind>/
-  forecasts.tsv (20 November 2026, the thirteenth note to L1: t124-base's
+  "The base of record's forecasts, data/runs/t133-base/<kind>/
+  forecasts.tsv (22 November 2026, the sixteenth note to L1: t125-base's
+  command with the onset kernels from known onsets as year-node gauges at
+  growth collapses, t133's; the other twelve t125-base's).
+  t125-base (20 November 2026, the thirteenth note to L1: t124-base's
   command with sovereign defaults' theory on filled inputs, t125's).
   t124-base (20 November 2026, the twelfth note to L1: t120-base's
   command with the market-crash global layer's world drivers at ten times
@@ -110,7 +113,7 @@
    "currency_crisis" "fec3f60f1738a3787a09b8c058a954f02d6a11126807775e41d0d10542bbc105"
    "fiscal_consolidation" "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d"
    "food_price_shock" "32a8c9c7a058a94c792bde3e94b8f6dc645ee33c833ec009dd4b6d12c7bc2fc3"
-   "growth_collapse" "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c"
+   "growth_collapse" "2a6ff8f0ed9c14c6ec94be0e2157d0b1df7559dc0c7b3cd3bed3a6744105d421"
    "inflation_crisis" "d5f9ba93199f0028ec4a98706a486cab25ac684d2961767d4e00964def634aa4"
    "market_crash" "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42"
    "protest_surge" "98f6a3d14855b3ba0f5eda59b4975de2a13e55b19d8963c36191e496a1dcd373"
@@ -445,7 +448,10 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t125-base's (thirteenth note to L1):
+  "The base's bnm.world-run arguments, t133-base's (sixteenth note to L1):
+  t125-base's with growth collapses' year node reading the onset kernels,
+  its own and the other kinds', from onsets known by each origin
+  (--aftermath-gauges growth_collapse, t133). t125-base's (thirteenth note to L1):
   t124-base's with sovereign defaults' theory on filled inputs (--impute
   inflation_crisis,sovereign_default, t125). t124-base's (twelfth note to L1):
   t120-base's with the global layer's six world drivers for market
@@ -495,6 +501,7 @@
    "--theory-offset" "true" "--theory-world" "true" "--recession-hold" "rows"
    "--kind-theory" "sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation" "--shapes" "currency_crisis,coup,fiscal_consolidation"
    "--global-theory" "market_crash" "--global-driver-precision" "10" "--impute" "inflation_crisis,sovereign_default"
+   "--aftermath-gauges" "growth_collapse"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
    "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}}}"])
 

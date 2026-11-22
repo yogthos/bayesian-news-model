@@ -2,7 +2,9 @@
 
 ## State as of 2026-11-14 (branch `structure`)
 
-**The base of record is t125-base** (fifteenth note to amendment L1, 22 November 2026, which withdraws the fourteenth): t131-base's onset kernels read onsets before their catalogues' publication lag, and `--aftermath`/`--aftermath-net` are withdrawn. Their replacement, the kernels as year-node gauges from known onsets (`--aftermath-gauges`), is t133 (docs/CALIBRATION.md).
+**The base of record is t133-base** (sixteenth note to amendment L1, 22 November 2026): t125-base's command with the onset kernels from known onsets as year-node gauges at growth collapses only (`--aftermath-gauges growth_collapse`); it passed by dominance (docs/CALIBRATION.md t133). The other passes (sovereign defaults, violence; coups and protest unchanged) were left out. Next: the market-crash global layer fix, t134 (bnm-ozw).
+
+**Before it, t125-base again** (fifteenth note to amendment L1, 22 November 2026, which withdraws the fourteenth): t131-base's onset kernels read onsets before their catalogues' publication lag, and `--aftermath`/`--aftermath-net` are withdrawn. Their replacement, the kernels as year-node gauges from known onsets (`--aftermath-gauges`), is t133 (docs/CALIBRATION.md).
 
 **t125-base** (thirteenth note to amendment L1, 20 November 2026): t124-base's command with sovereign defaults' theory on filled inputs (`--impute inflation_crisis,sovereign_default`); it passed by dominance (docs/CALIBRATION.md t125).
 
