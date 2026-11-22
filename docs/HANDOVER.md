@@ -2,7 +2,9 @@
 
 ## State as of 2026-11-14 (branch `structure`)
 
-**The base of record is t125-base** (thirteenth note to amendment L1, 20 November 2026): t124-base's command with sovereign defaults' theory on filled inputs (`--impute inflation_crisis,sovereign_default`); it passed by dominance (docs/CALIBRATION.md t125).
+**The base of record is t131-base** (fourteenth note to amendment L1, 21 November 2026): t125-base's command with learned onset kernels at six kinds (`--aftermath conflict_onset,coup,fiscal_consolidation,inflation_crisis,sovereign_default,war_onset`, bnm.aftermath); each passed the fold rule (docs/CALIBRATION.md t130). The global-wave kinds (food, market crashes, protest), banking, currency, growth and violence failed; next is the kernels net of the world's onsets (bnm-igb).
+
+**Before it, t125-base** (thirteenth note to amendment L1, 20 November 2026): t124-base's command with sovereign defaults' theory on filled inputs (`--impute inflation_crisis,sovereign_default`); it passed by dominance (docs/CALIBRATION.md t125).
 
 **Before it, t124-base** (twelfth note to amendment L1, 20 November 2026): t120-base's command with the market-crash global layer's world drivers at ten times the prior precision (`--global-driver-precision 10`); it passed by dominance under the fold rule as amended the same day (docs/PHASE-CHANGES.md).
 
