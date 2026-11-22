@@ -12,7 +12,8 @@
   The slopes are fit as departures from the log odds the year node already
   has (its offset plus any :offset-add, bnm.theory/fits :base), refit at
   each origin on the rows known by then, and added through :offset-add."
-  (:require [bnm.theory :as th]))
+  (:require [bnm.signals :as sg]
+            [bnm.theory :as th]))
 
 (def width "Columns of `kernel-row`." 4)
 
@@ -57,6 +58,63 @@
          (- (kernel own t slow-months) ws)
          wf
          (reduce + 0.0 (map #(kernel (get-in onsets [% u]) t fast-months) others))]))))
+
+(defn known-row
+  "(fn [unit origin]) -> [own fast - world fast, own slow - world slow,
+  world fast, others fast], as net-row, over the onsets known at the
+  origin: an onset dated m is known at m plus its kind's publication lag
+  (`lags`, {kind months}), the rule the year node's own history gauges
+  read (docs/CALIBRATION.md t133)."
+  [onsets lags kind kinds countries]
+  (let [known (fn [k ms t] (let [c (- t (get lags k 0))] (filter #(<= % c) ms)))
+        others (remove #{kind} kinds)
+        n (double (count countries))
+        world (memoize (fn [t h] (/ (reduce + 0.0 (map #(kernel (known kind (get-in onsets [kind %]) t) t h) countries)) n)))]
+    (fn [u t]
+      (let [own (known kind (get-in onsets [kind u]) t)
+            wf (world t fast-months)
+            ws (world t slow-months)]
+        [(- (kernel own t fast-months) wf)
+         (- (kernel own t slow-months) ws)
+         wf
+         (reduce + 0.0 (map #(kernel (known % (get-in onsets [% u]) t) t fast-months) others))]))))
+
+(def added-names "The year gauges `with-gauges` adds." [:own-fast-net :own-slow-net :world-fast :others-fast])
+
+(defn with-gauges
+  "`sp` with `row`'s columns (`known-row`) after its year node's gauges, a
+  gauge group of their own (:aftermath), so the node fits them with the
+  rest: each averaged model with its own intercept, against the node's own
+  outcomes, beside its history, frailty and climatology, the averaging
+  weighting the group by what it adds (t133). Standardized as the node's
+  gauges are (bnm.signals/running-z on the countries' values at earlier
+  origins, `gauge-std` :stable or nil); an aggregate reads its countries'
+  mean. A spec without named year groups keeps its gauges as one group."
+  [{:keys [scales levels parent start end gauges gauge-width gauge-groups gauge-names] :as sp} row gauge-std]
+  (let [countries (second (first levels))
+        per (:per (first (filter #(= :year (:name %)) scales)))
+        os (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))
+        std (sg/running-z (for [t os u countries] [t (row u t)])
+                          {:count-by :values :min-exclusive 20 :stable (= :stable gauge-std)})
+        cs (set countries)
+        ancestors (fn [u] (take-while some? (iterate #(get parent %) u)))
+        members (memoize (fn [place] (if (cs place) [place] (filter #(some #{place} (ancestors %)) countries))))
+        z (memoize (fn [u t] (std t (row u t))))
+        w (get gauge-width :year 0)
+        add (vec (range w (+ w (count added-names))))
+        groups (or (:year gauge-groups) {:gauges (vec (range w))})]
+    (cond-> (assoc sp
+                   :gauges (fn [scale place t]
+                             (let [g (gauges scale place t)]
+                               (if (= :year scale)
+                                 (let [vs (map #(z % t) (members place))]
+                                   (into (vec g) (if (seq vs)
+                                                   (apply mapv (fn [& xs] (/ (reduce + xs) (count xs))) vs)
+                                                   (repeat (count add) 0.0))))
+                                 g)))
+                   :gauge-width (assoc gauge-width :year (+ w (count add)))
+                   :gauge-groups (assoc gauge-groups :year (assoc groups :aftermath add)))
+      (get gauge-names :year) (update-in [:gauge-names :year] #(into (vec %) added-names)))))
 
 (defn- year-base
   "(fn [unit origin]) -> the year node's log odds before this layer, nil

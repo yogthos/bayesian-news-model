@@ -1186,6 +1186,40 @@
                   (update acc k af/with-aftermath (af/net-row ons k kinds countries))))
               specs ks))))
 
+(defn aftermath-gauges-choice
+  "--aftermath-gauges all or kinds (docs/CALIBRATION.md t133): the kinds
+  among those run (`ks`) whose year node reads bnm.aftermath's kernels of
+  known onsets as a gauge group of its own (af/with-gauges). nil when off;
+  a kind not run, or one --aftermath or --aftermath-net also names, is
+  refused: the node would read the same onsets twice."
+  [{:keys [aftermath-gauges] :as opts} ks]
+  (when aftermath-gauges
+    (let [named (if (= "all" aftermath-gauges) (vec ks) (str/split aftermath-gauges #","))
+          bad (remove (set ks) named)]
+      (when (seq bad)
+        (throw (ex-info (str "bnm.world-run: --aftermath-gauges names a kind not run: " (str/join "," bad)) {})))
+      (doseq [[flag other] [["--aftermath" (aftermath-choice opts ks)]
+                            ["--aftermath-net" (when (:aftermath-net opts) (str/split (:aftermath-net opts) #","))]]]
+        (when-let [both (seq (filter (set other) named))]
+          (throw (ex-info (str "bnm.world-run: --aftermath-gauges and " flag " both name " (str/join "," both)) {}))))
+      named)))
+
+(defn with-aftermath-gauges
+  "`specs` with bnm.aftermath's kernels as the year gauges of `ks`
+  (`aftermath-gauges-choice`), each kind's onsets known after its
+  catalogue's :known-lag; the specs as they were when `ks` is nil."
+  ([specs ks cats] (with-aftermath-gauges specs ks cats :stable))
+  ([specs ks cats gauge-std]
+   (if-not ks
+     specs
+     (let [ons (catalogue-onsets cats)
+           lags (into {} (for [[k c] cats] [k (:known-lag c 0)]))
+           kinds (sort (keys cats))]
+       (reduce (fn [acc k]
+                 (let [countries (second (first (:levels (acc k))))]
+                   (update acc k af/with-gauges (af/known-row ons lags k kinds countries) gauge-std)))
+               specs ks)))))
+
 (defn spec-opts
   "build-specs' options from the run's `opts`, with the fresh frailty kinds
   (`fresh`) and the next-quarter scale's kinds and catalogues (`nq`,
@@ -1255,7 +1289,8 @@
                                             {:real-lags (real-lags-choice opts)})))))
     ;; last, so no later step replaces its :offset-add
     (with-aftermath (aftermath-choice opts ks) cats)
-    (with-aftermath-net (aftermath-net-choice opts ks) cats)))
+    (with-aftermath-net (aftermath-net-choice opts ks) cats)
+    (with-aftermath-gauges (aftermath-gauges-choice opts ks) cats (some-> (:gauge-std opts) keyword))))
 
 (defn -main [& args]
   (let [{:keys [out end kinds without-relations smoke graph placebo ews states catalogue-through world-gauges clim-prior] :as opts}

@@ -98,3 +98,24 @@
     (is (contains? (out "food") :aftermath))
     (is (= sp (out "coup")))
     (is (= {"coup" 1} (wr/with-aftermath-net {"coup" 1} nil cats)))))
+
+(deftest the-node's-aftermath-gauges
+  ;; --aftermath-gauges (t133): the kernels as the year node's gauges
+  (is (nil? (wr/aftermath-gauges-choice {} ["coup"])))
+  (is (= ["coup" "war_onset"] (wr/aftermath-gauges-choice {:aftermath-gauges "all"} ["coup" "war_onset"])))
+  (is (= ["bnm.world-run: --aftermath-gauges names a kind not run: nope" {}]
+         (refusal #(wr/aftermath-gauges-choice % ["coup"]) {:aftermath-gauges "nope"})))
+  (is (= ["bnm.world-run: --aftermath-gauges and --aftermath both name coup" {}]
+         (refusal #(wr/aftermath-gauges-choice % ["coup"]) {:aftermath "coup" :aftermath-gauges "coup"})))
+  (is (= ["bnm.world-run: --aftermath-gauges and --aftermath-net both name coup" {}]
+         (refusal #(wr/aftermath-gauges-choice % ["coup"]) {:aftermath-net "coup" :aftermath-gauges "all"}))))
+
+(deftest the-node's-gauges-take-each-catalogue's-lag
+  (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}
+        sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]
+            :parent {"A" "world" "B" "world"} :start 0 :end 23
+            :gauges (fn [_ _ _] [0.0]) :gauge-width {:year 1}}
+        out (wr/with-aftermath-gauges {"coup" sp "food" sp} ["food"] cats)]
+    (is (= 5 (get-in out ["food" :gauge-width :year])))
+    (is (= sp (out "coup")))
+    (is (= {"coup" 1} (wr/with-aftermath-gauges {"coup" 1} nil cats)))))
