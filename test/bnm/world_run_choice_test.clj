@@ -80,3 +80,21 @@
       (is (not (contains? (out "war_onset") :aftermath)) "only the kinds named")
       (is (= sp (out "war_onset"))))
     (is (= {"coup" 1} (wr/with-aftermath {"coup" 1} nil cats)) "off: the specs as they were")))
+
+(deftest the-net-aftermath-layer's-kinds
+  ;; --aftermath-net (t132): the kernels net of the world's onsets
+  (is (nil? (wr/aftermath-net-choice {} ["coup" "food_price_shock"])))
+  (is (= ["food_price_shock"] (wr/aftermath-net-choice {:aftermath-net "food_price_shock"} ["coup" "food_price_shock"])))
+  (is (= ["bnm.world-run: --aftermath-net names a kind not run: nope" {}]
+         (refusal #(wr/aftermath-net-choice % ["coup"]) {:aftermath-net "nope"})))
+  (is (= ["bnm.world-run: --aftermath and --aftermath-net both name coup" {}]
+         (refusal #(wr/aftermath-net-choice % ["coup"]) {:aftermath "coup" :aftermath-net "coup"}))))
+
+(deftest the-net-layer-reads-the-spec's-countries
+  (let [cats {"coup" {:onsets {"A" (sorted-set 100)}} "food" {:onsets {"A" (sorted-set 100)}}}
+        sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]]] :start 0 :end 23
+            :target (constantly nil) :offset (constantly nil)}
+        out (wr/with-aftermath-net {"coup" sp "food" sp} ["food"] cats)]
+    (is (contains? (out "food") :aftermath))
+    (is (= sp (out "coup")))
+    (is (= {"coup" 1} (wr/with-aftermath-net {"coup" 1} nil cats)))))

@@ -74,3 +74,25 @@
         (is (close? ((:offset-add both) :year "u1" t)
                     (+ 0.25 (reduce + (map * (rest (vec b)) x)))))
         (is (not= (vec (get-in alone [:aftermath :fits t])) (vec b)))))))
+
+(deftest the-kernels-net-of-the-world's-wave
+  ;; t132: for kinds that come in global waves, a country's own onset is
+  ;; mostly the world's; the own kernels are taken net of the countries'
+  ;; mean and the mean is a column of its own; no ever flag
+  (let [ons {"food" {"A" [100] "B" [100] "C" [40]} "coup" {"A" [150]}}
+        row (af/net-row ons "food" ["coup" "food"] ["A" "B" "C" "D"])
+        k (fn [d h] (Math/pow 0.5 (/ d h)))
+        wf (/ (+ (k 72 12.0) (k 72 12.0) (k 132 12.0)) 4)
+        ws (/ (+ (k 72 48.0) (k 72 48.0) (k 132 48.0)) 4)]
+    (let [[f s w o] (row "A" 172)]
+      (is (close? f (- (k 72 12.0) wf)))
+      (is (close? s (- (k 72 48.0) ws)))
+      (is (close? w wf) "the world's onsets per country, fast")
+      (is (close? o (k 22 12.0))))
+    (let [[f s w o] (row "D" 172)]
+      (is (close? f (- wf)) "a country with none sits below a wave it missed")
+      (is (close? s (- ws)))
+      (is (close? w wf))
+      (is (= 0.0 o)))
+    (is (= [0.0 0.0 0.0 0.0] (row "A" 39)) "nothing known before the first onset")
+    (is (= af/width (count (row "A" 172))))))

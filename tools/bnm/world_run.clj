@@ -1156,6 +1156,36 @@
           kinds (sort (keys cats))]
       (reduce (fn [acc k] (update acc k af/with-aftermath (af/kernel-row ons k kinds))) specs ks))))
 
+(defn aftermath-net-choice
+  "--aftermath-net kinds (docs/CALIBRATION.md t132): the kinds among those
+  run (`ks`) whose year node learns bnm.aftermath's kernels net of the
+  world's onsets (af/net-row). nil when off; a kind not run, or one
+  --aftermath also names, is refused."
+  [{:keys [aftermath aftermath-net] :as opts} ks]
+  (when aftermath-net
+    (let [named (str/split aftermath-net #",")
+          bad (remove (set ks) named)
+          both (filter (set (aftermath-choice opts ks)) named)]
+      (when (seq bad)
+        (throw (ex-info (str "bnm.world-run: --aftermath-net names a kind not run: " (str/join "," bad)) {})))
+      (when (seq both)
+        (throw (ex-info (str "bnm.world-run: --aftermath and --aftermath-net both name " (str/join "," both)) {})))
+      named)))
+
+(defn with-aftermath-net
+  "`specs` with bnm.aftermath's layer at `ks` (`aftermath-net-choice`) on
+  the kernels net of the world's onsets, the world the spec's countries;
+  the specs as they were when `ks` is nil."
+  [specs ks cats]
+  (if-not ks
+    specs
+    (let [ons (catalogue-onsets cats)
+          kinds (sort (keys cats))]
+      (reduce (fn [acc k]
+                (let [countries (second (first (:levels (acc k))))]
+                  (update acc k af/with-aftermath (af/net-row ons k kinds countries))))
+              specs ks))))
+
 (defn spec-opts
   "build-specs' options from the run's `opts`, with the fresh frailty kinds
   (`fresh`) and the next-quarter scale's kinds and catalogues (`nq`,
@@ -1247,7 +1277,8 @@
                        (second (nm/leading (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
                                                            {:real-lags (real-lags-choice opts)})))))
                    ;; last, so no later step replaces its :offset-add
-                   (with-aftermath (aftermath-choice opts ks) cats))
+                   (with-aftermath (aftermath-choice opts ks) cats)
+                   (with-aftermath-net (aftermath-net-choice opts ks) cats))
         books (atom {})
         ;; each kind's resolved counts by node, as of the month (--clim-prior kinds)
         clims (atom {})

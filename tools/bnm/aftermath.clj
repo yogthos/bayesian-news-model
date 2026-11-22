@@ -36,6 +36,28 @@
          (if (some #(<= % t) own) 1.0 0.0)
          (reduce + 0.0 (map #(kernel (get-in onsets [% u]) t fast-months) others))]))))
 
+(defn net-row
+  "(fn [unit origin]) -> [own fast - world fast, own slow - world slow,
+  world fast, others fast], the world's kernels the mean of `countries`'
+  own-kind kernels (docs/CALIBRATION.md t132). For kinds that come in
+  global waves (food prices, market crashes, protest) a country's own
+  onset is mostly the world's; net of the mean, the own columns say what
+  is the country's, and the world's column what the wave does to the
+  next. No ever flag: a country with no onset in the catalogue is not
+  read as safe."
+  [onsets kind kinds countries]
+  (let [others (remove #{kind} kinds)
+        n (double (count countries))
+        world (memoize (fn [t h] (/ (reduce + 0.0 (map #(kernel (get-in onsets [kind %]) t h) countries)) n)))]
+    (fn [u t]
+      (let [own (get-in onsets [kind u])
+            wf (world t fast-months)
+            ws (world t slow-months)]
+        [(- (kernel own t fast-months) wf)
+         (- (kernel own t slow-months) ws)
+         wf
+         (reduce + 0.0 (map #(kernel (get-in onsets [% u]) t fast-months) others))]))))
+
 (defn- year-base
   "(fn [unit origin]) -> the year node's log odds before this layer, nil
   where the spec has no year offset there."
