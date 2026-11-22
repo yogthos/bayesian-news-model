@@ -123,6 +123,8 @@
             [bnm.lattice :as lt]
             [bnm.lattice-banking :as lb]
             [bnm.aftermath :as af]
+            [bnm.year-gauges :as yg]
+            [bnm.signals :as sg]
             [bnm.lattice-political :as lp]
             [bnm.lattice-smoke :as smoke]
             [bnm.regime-filter :as rf]
@@ -1159,6 +1161,34 @@
         (throw (ex-info (str "bnm.world-run: --aftermath-gauges names a kind not run: " (str/join "," bad)) {})))
       named)))
 
+(defn global-gauges-choice
+  "--global-gauges kind,... (docs/CALIBRATION.md t134): the kinds among
+  those run (`ks`) whose year node reads the global layer's inputs
+  (bnm.kind-theory/global) as a gauge group of its own; nil when off. The
+  economic kinds only, and not a kind --global-theory also serves."
+  [{v :global-gauges g :global-theory} ks]
+  (when v
+    (let [named (str/split v #",")
+          theory (set (some-> g (str/split #",")))]
+      (doseq [k named :when (not (kt/global-kinds k))]
+        (throw (ex-info (str "bnm.world-run: --global-gauges: the economic kinds only, not " k) {:kind k})))
+      (when-let [bad (seq (remove (set ks) named))]
+        (throw (ex-info (str "bnm.world-run: --global-gauges names a kind not run: " (str/join "," bad)) {})))
+      (doseq [k named :when (theory k)]
+        (throw (ex-info (str "bnm.world-run: --global-gauges and --global-theory both read the global inputs at " k) {:kind k})))
+      named)))
+
+(defn with-global-gauges
+  "`specs` with `row`'s `width` columns (the global layer's inputs) as
+  the year gauge group :global of `ks` (`global-gauges-choice`), named
+  after bnm.kind-theory/global's declarations when `width` is theirs; the
+  specs as they were when `ks` is nil."
+  [specs ks row width gauge-std]
+  (if-not ks
+    specs
+    (let [names (if (= width (count kt/global)) (mapv :name kt/global) (mapv #(keyword (str "global" %)) (range width)))]
+      (reduce (fn [acc k] (update acc k yg/with-group row width :global names gauge-std)) specs ks))))
+
 (defn with-aftermath-gauges
   "`specs` with bnm.aftermath's kernels as the year gauges of `ks`
   (`aftermath-gauges-choice`), each kind's onsets known after its
@@ -1212,7 +1242,7 @@
 
 (defn pipeline-specs
   "The run's specs for kinds `ks` through `end`: build-specs and every
-  layer -main applies after it, in order (the last, bnm.aftermath's).
+  layer -main applies after it, in order (the last, the year gauge groups).
   Out of -main so one kind's spec can be built and read without a run."
   [opts ks end cats {:keys [fresh nq nq-cats]}]
   (withdrawn-check opts)
@@ -1244,7 +1274,11 @@
         (second (nm/leading (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
                                             {:real-lags (real-lags-choice opts)})))))
     ;; last: its gauges wrap whatever gauges the earlier steps left
-    (with-aftermath-gauges (aftermath-gauges-choice opts ks) cats (some-> (:gauge-std opts) keyword))))
+    (with-aftermath-gauges (aftermath-gauges-choice opts ks) cats (some-> (:gauge-std opts) keyword))
+    (#(if-let [gks (global-gauges-choice opts ks)]
+        (with-global-gauges % gks (:row (sg/assemble (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) kt/global))
+          (count kt/global) (some-> (:gauge-std opts) keyword))
+        %))))
 
 (defn -main [& args]
   (let [{:keys [out end kinds without-relations smoke graph placebo ews states catalogue-through world-gauges clim-prior] :as opts}

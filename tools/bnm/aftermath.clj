@@ -15,7 +15,7 @@
 
   t130-t132's layer, fit beside the node and added through :offset-add,
   is withdrawn (bnm.world-run/withdrawn-check)."
-  (:require [bnm.signals :as sg]))
+  (:require [bnm.year-gauges :as yg]))
 
 (def ^:private fast-months 12.0)
 (def ^:private slow-months 48.0)
@@ -49,35 +49,7 @@
 
 (defn with-gauges
   "`sp` with `row`'s columns (`known-row`) after its year node's gauges, a
-  gauge group of their own (:aftermath), so the node fits them with the
-  rest: each averaged model with its own intercept, against the node's own
-  outcomes, beside its history, frailty and climatology, the averaging
-  weighting the group by what it adds (t133). Standardized as the node's
-  gauges are (bnm.signals/running-z on the countries' values at earlier
-  origins, `gauge-std` :stable or nil); an aggregate reads its countries'
-  mean. A spec without named year groups keeps its gauges as one group."
-  [{:keys [scales levels parent start end gauges gauge-width gauge-groups gauge-names] :as sp} row gauge-std]
-  (let [countries (second (first levels))
-        per (:per (first (filter #(= :year (:name %)) scales)))
-        os (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))
-        std (sg/running-z (for [t os u countries] [t (row u t)])
-                          {:count-by :values :min-exclusive 20 :stable (= :stable gauge-std)})
-        cs (set countries)
-        ancestors (fn [u] (take-while some? (iterate #(get parent %) u)))
-        members (memoize (fn [place] (if (cs place) [place] (filter #(some #{place} (ancestors %)) countries))))
-        z (memoize (fn [u t] (std t (row u t))))
-        w (get gauge-width :year 0)
-        add (vec (range w (+ w (count added-names))))
-        groups (or (:year gauge-groups) {:gauges (vec (range w))})]
-    (cond-> (assoc sp
-                   :gauges (fn [scale place t]
-                             (let [g (gauges scale place t)]
-                               (if (= :year scale)
-                                 (let [vs (map #(z % t) (members place))]
-                                   (into (vec g) (if (seq vs)
-                                                   (apply mapv (fn [& xs] (/ (reduce + xs) (count xs))) vs)
-                                                   (repeat (count add) 0.0))))
-                                 g)))
-                   :gauge-width (assoc gauge-width :year (+ w (count add)))
-                   :gauge-groups (assoc gauge-groups :year (assoc groups :aftermath add)))
-      (get gauge-names :year) (update-in [:gauge-names :year] #(into (vec %) added-names)))))
+  gauge group of their own (:aftermath; bnm.year-gauges/with-group), so
+  the node fits them with the rest (t133). `gauge-std` :stable or nil."
+  [sp row gauge-std]
+  (yg/with-group sp row (count added-names) :aftermath added-names gauge-std))

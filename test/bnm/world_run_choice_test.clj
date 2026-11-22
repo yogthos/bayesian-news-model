@@ -79,6 +79,27 @@
          (refusal #(wr/aftermath-gauges-choice % ["coup"]) {:aftermath-gauges "nope"})))
   (is (= ["coup"] (wr/aftermath-gauges-choice {:aftermath-gauges "coup"} ["coup" "war_onset"]))))
 
+(deftest the-global-drivers-as-the-node's-gauges
+  ;; --global-gauges (t134): the global layer's inputs as year gauges
+  (is (nil? (wr/global-gauges-choice {} ["market_crash"])))
+  (is (= ["market_crash"] (wr/global-gauges-choice {:global-gauges "market_crash"} ["market_crash" "coup"])))
+  (is (= ["bnm.world-run: --global-gauges: the economic kinds only, not coup" {:kind "coup"}]
+         (refusal #(wr/global-gauges-choice % ["coup"]) {:global-gauges "coup"})))
+  (is (= ["bnm.world-run: --global-gauges names a kind not run: market_crash" {}]
+         (refusal #(wr/global-gauges-choice % ["coup"]) {:global-gauges "market_crash"})))
+  (is (= ["bnm.world-run: --global-gauges and --global-theory both read the global inputs at market_crash" {:kind "market_crash"}]
+         (refusal #(wr/global-gauges-choice % ["market_crash"]) {:global-gauges "market_crash" :global-theory "market_crash"}))))
+
+(deftest the-global-gauges-join-the-named-kinds
+  (let [sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]
+            :parent {"A" "world" "B" "world"} :start 0 :end 23
+            :gauges (fn [_ _ _] [0.0]) :gauge-width {:year 1}}
+        out (wr/with-global-gauges {"market_crash" sp "coup" sp} ["market_crash"] (fn [_ _] [1.0 nil]) 2 :stable)]
+    (is (= 3 (get-in out ["market_crash" :gauge-width :year])))
+    (is (= [1 2] (get-in out ["market_crash" :gauge-groups :year :global])))
+    (is (= sp (out "coup")))
+    (is (= {"coup" 1} (wr/with-global-gauges {"coup" 1} nil nil 0 :stable)))))
+
 (deftest the-node's-gauges-take-each-catalogue's-lag
   (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}
         sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]
