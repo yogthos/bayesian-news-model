@@ -3942,3 +3942,21 @@ Written 22 November 2026, before any run, on t131-base (the fourteenth note to L
 - `--aftermath-net kinds` (world-run), after `--aftermath`; a kind both name is refused. The six kinds on `--aftermath` are untouched.
 
 Run t132: t131-base's command with `--out t132 --aftermath-net banking_crisis,currency_crisis,food_price_shock,growth_collapse,market_crash,protest_surge,violence_surge`, the seven kinds t130 failed. The other six should match t131-base byte for byte. Rule, kind by kind against t131-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r and rank 0's table for t132. Adoption is the user's, kind by kind. No changes after the result.
+
+### Results (22 November 2026)
+
+Suite green (1651 tests). 41 min. The six kinds on `--aftermath` match t131-base byte for byte. Kind by kind against t131-base (pooled Brier gain [95%]; fold rule; pooled AUC; alert dcost at 4:1):
+
+| kind | Brier gain | folds | AUC pooled | dcost | verdict |
+|---|---|---|---|---|---|
+| banking | -0.00032 [-0.00078, +0.00004] | 2013-19 loss | 0.550 -> 0.454 | -0.0016 | fail |
+| currency crisis | -0.00096 [-0.00223, +0.00013] | 2003-06, 2007-09 losses | 0.774 -> 0.767 | -0.0067 | fail |
+| food price shock | -0.00564 [-0.01081, -0.00143] | 2010-12, 2020-22 losses | 0.638 -> 0.625 | -0.0024 | fail |
+| growth collapse | -0.00331 [-0.01012, +0.00089] | 2020-22 loss | 0.634 -> 0.625 | -0.0255 | fail |
+| market crash | -0.00244 [-0.01176, +0.00856] | 2020-22 loss | 0.743 -> 0.746 | -0.0602 | fail |
+| protest surge | -0.00492 [-0.00829, -0.00243] | 2013-19 loss | 0.785 -> 0.815 | -0.0252 | fail |
+| violence surge | -0.00069 [-0.00239, +0.00107] | pooled loss | 0.719 -> 0.733 | -0.0050 | fail |
+
+All seven fail; every pooled Brier and every alert cost is worse. Food price shocks and market crashes lose less than at t130 (-0.0204 and -0.0144 there); protest about the same.
+
+Rank 0's table shows why: the forecasts rise in every band, those with no onset included (protest never 0.018 -> 0.026 against 0.010, 9+ 0.049 -> 0.079 against 0.045; currency never 0.037 -> 0.046 against 0.008; growth every band up by about 0.01-0.02; banking 0-1 and 2-4 up). The layer adds the fitted slopes and drops the fitted intercept (as bnm.theory's :add mode does for its theory columns). That is harmless only where every column is zero for a country with no history; the world's column here is never zero, so a positive slope on it, fit together with a negative intercept, lifts every row once the intercept is dropped. t130's kernels are zero without history, but its protest and food rows also rose in every band, so the same drop may have cost the global-wave kinds there. The next candidate keeps the intercept (or centres the columns) for this layer; it changes the six adopted kinds too, so it is a candidate of its own. No changes after the result.
