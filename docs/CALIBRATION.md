@@ -3984,3 +3984,27 @@ Written 22 November 2026, before any run, at the user's request to move the kern
 Amended the same day, before t133 had run (a first start was stopped during the test suite, at the user's question whether the problems found should be fixed first): `--aftermath` and `--aftermath-net` are withdrawn (refused, bnm.world-run/withdrawn-check) and the base of record is t125-base again (the fifteenth note to L1). Two latent defects from the audit are fixed; neither is in t125-base's command: bloc theory now sums with an :offset-add already there instead of replacing it, and bnm.kind-theory/with-theory refuses :add with :shapes (so `--global-shapes` is refused). The market-crash global layer, in the base, is left for its own candidate (t134), so that t133's market-crash verdict reads one change.
 
 Run t133: t125-base's command with `--out t133 --aftermath-gauges all`. Every kind changes. Rule, kind by kind against t125-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r and rank 0's table. Reported beside: each kind against t131-base. Adoption is the user's, kind by kind. No changes after the result.
+
+### Results (22 November 2026)
+
+Suite green (1651 tests), committed e7fa84d before the run. 57 min. Kind by kind against t125-base (pooled Brier gain [95%]; fold rule; pooled AUC; alert dcost at 4:1):
+
+| kind | Brier gain | folds | AUC pooled | dcost | verdict |
+|---|---|---|---|---|---|
+| banking | -0.00000 | pooled loss (2020-22 thin) | 0.550 -> 0.550 | +0.0000 | fail (no change) |
+| conflict onset | -0.00001 [-0.00038, +0.00028] | pooled loss | 0.842 -> 0.843 | -0.0018 | fail |
+| coup | +0.00000 | pass | 0.759 -> 0.759 | +0.0000 | pass (no change) |
+| currency crisis | -0.00006 [-0.00013, +0.00002] | 2007-09, 2010-12 losses | 0.774 -> 0.773 | -0.0006 | fail |
+| fiscal consolidation | -0.00272 [-0.01059, +0.00365] | pooled loss | 0.642 -> 0.630 | -0.0146 | fail |
+| food price shock | -0.00458 [-0.01080, +0.00020] | 2020-22 loss | 0.638 -> 0.606 | -0.0433 | fail |
+| growth collapse | +0.00096 [-0.00001, +0.00235] | 2020-22 loss | 0.634 -> 0.643 | +0.0017 | pass by dominance |
+| inflation crisis | -0.00000 | pooled loss | 0.751 -> 0.754 | +0.0000 | fail (no change) |
+| market crash | -0.00626 [-0.01610, +0.00346] | pooled loss | 0.743 -> 0.709 | -0.0952 | fail |
+| protest surge | +0.00000 | pass | 0.785 -> 0.785 | +0.0000 | pass (no change) |
+| sovereign default | +0.00042 [-0.00002, +0.00092] | pass | 0.595 -> 0.604 | -0.0009 | pass |
+| violence surge | +0.00002 [-0.00024, +0.00030] | pass | 0.719 -> 0.718 | -0.0006 | pass |
+| war onset | -0.00004 [-0.00027, +0.00018] | pooled loss | 0.866 -> 0.870 | +0.0003 | fail |
+
+Pooled over kinds the alert cost is worse (-0.0119 [-0.0213, -0.0029]), nearly all of it market crashes, food price shocks and fiscal consolidations. Five kinds pass: growth collapses by dominance (pooled Brier, alert cost and AUC all gain, the 2020-22 fold lost), sovereign defaults and violence surges on the fold rule, coups and protest surges with forecasts unchanged to five places. At banking, coups, inflation and protest the averaging gives the group no weight; the look-ahead-free kernels say nothing the node does not. Sovereign defaults gain on Brier and pooled AUC but lose within-year AUC (0.677 -> 0.668) and alert cost (no episode caught either way); violence surges' gains are within noise.
+
+Rank 0's table: the in-node kernels do not lift the no-history rows (the t132 defect is gone; currency never 0.037 -> 0.037, protest never 0.018 -> 0.018). The losses come from the wave kinds: food price shocks fall in the 9+ band (0.143 -> 0.083 against a rate of 0.236) and fiscal consolidations rise in every band (0-1: 0.254 -> 0.289 against 0.130), so the kernels read a recent wave as a reason to expect less (food) or more (fiscal) than followed. Against t131-base, whose six passes owed their gains in part to the look-ahead, t133 gives back the AUC at inflation (0.853 -> 0.754), fiscal (0.660 -> 0.630), coups (0.772 -> 0.759) and defaults (0.626 -> 0.604): that much of t130's evidence came from onsets not yet published.
