@@ -4017,3 +4017,19 @@ Written 22 November 2026, before any run, at the user's word after t133 was adop
 - `--global-gauges kinds` (world-run): the global layer's twelve inputs, read as `--global-theory` reads them (bnm.kind-theory/global, at their real lags), as the year gauge group :global. Refused beside `--global-theory` for the same kind, and outside the economic kinds. `--global-driver-precision` has no counterpart: the node's gauges take the node's priors.
 
 Run t134: t133-base's command with `--out t134`, `--global-theory market_crash --global-driver-precision 10` taken out and `--global-gauges market_crash` put in. Only market crashes change; the other twelve kinds must match t133-base byte for byte (checked). Rule, market crashes against t133-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r and rank 0's table. Adoption is the user's. No changes after the result.
+
+### Results (22 November 2026)
+
+Suite green (1654 tests), committed c1f6d0f before the run. 43 min. The other twelve kinds match t133-base byte for byte (growth collapses included, so bnm.year-gauges changes nothing at the aftermath gauges). Market crashes against t133-base:
+
+| measure | t133-base | t134 |
+|---|---|---|
+| pooled Brier gain (2003-2022) | | -0.00995 [-0.02969, +0.01075] |
+| folds | | 2013-19 loss (-0.03435 [-0.05711, -0.01675], 28 onsets); 2007-09 -0.07219 |
+| pooled AUC | 0.743 | 0.746 |
+| within-year AUC | 0.543 | 0.490 |
+| level r | +0.53 | +0.48 |
+| alert cost (4:1) | 0.480 | 0.721; dcost -0.2406 [-0.4063, -0.1006] |
+| false alarms in calm years | 55.3% (t133) | 76.1% |
+
+Fail: a fold loss, and pooled Brier and the alert cost both worse. Rank 0's table: without the layer the forecasts rise in every band but the six never rows (0-1: 0.198 -> 0.220 against a rate of 0.133; 9+: 0.308 -> 0.333 against 0.093). So the layer was not what lifted market crashes above their rate: it pulled them down, and the node over-forecasts on its own. The t133 audit's reading (that the dropped intercept lifts every row) holds for uncentred columns; the global layer's columns are standardized per place (bnm.theory/place-z), so the dropped intercept costs little there, and its tighter driver priors (t124) do work the node's gauges, at the node's priors, do not. The layer stays in the base. The over-forecast at market crashes is the node's and is open.
