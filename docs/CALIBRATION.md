@@ -3909,3 +3909,27 @@ Written 21 November 2026, before any run, on t125-base, at the user's request to
 - `--aftermath all` (world-run), the last step of the spec pipeline, over every catalogue kind's onsets (run-catalogues).
 
 Run t130: t125-base's command with `--out t130 --aftermath all`. Every kind changes. Rule, kind by kind against t125-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r and rank 0's table for t130 (mean p against rate by years since the last onset: the gaps should close). Adoption is the user's, kind by kind. No changes after the result.
+
+### Results (21 November 2026)
+
+Suite green (1648 tests). 43 min. Kind by kind against t125-base (pooled Brier gain [95%]; fold rule; pooled AUC; alert dcost at 4:1):
+
+| kind | Brier gain | folds | AUC pooled (within) | dcost | verdict |
+|---|---|---|---|---|---|
+| conflict onset | +0.00017 [-0.00231, +0.00289] | no loss | 0.842 -> 0.852 (0.851 -> 0.863) | +0.0103 | **pass** |
+| coup | +0.00044 [+0.00014, +0.00082] | no loss | 0.759 -> 0.772 (0.777 -> 0.779) | -0.0020 | **pass** |
+| fiscal consolidation | +0.00235 [-0.00019, +0.00497] | no loss | 0.642 -> 0.660 (0.632 -> 0.644) | +0.0139 | **pass** |
+| inflation crisis | +0.00074 [-0.00036, +0.00228] | 2007-09 loss, 3 onsets (thin) | 0.751 -> 0.853 (0.756 -> 0.860) | +0.0035 | **pass** |
+| sovereign default | +0.00033 [-0.00021, +0.00088] | no loss | 0.595 -> 0.626 (0.677 -> 0.639) | -0.0016 | **pass** |
+| war onset | +0.00024 [-0.00040, +0.00107] | no loss | 0.866 -> 0.858 (0.878 -> 0.868) | +0.0050 | **pass** |
+| growth collapse | +0.00126 [-0.00057, +0.00311] | 2020-22 loss (10 onsets) | 0.634 -> 0.686 (0.609 -> 0.510) | -0.0119 | fail |
+| currency crisis | -0.00023 [-0.00121, +0.00070] | 2007-09 loss | 0.774 -> 0.759 | -0.0019 | fail |
+| banking | -0.00020 [-0.00075, +0.00022] | pooled loss | 0.550 -> 0.483 | +0.0012 | fail |
+| violence surge | -0.00086 [-0.00303, +0.00165] | pooled loss | 0.719 -> 0.730 | -0.0065 | fail |
+| protest surge | -0.00526 [-0.00866, -0.00252] | 2013-19 loss | 0.785 -> 0.817 | -0.0314 | fail |
+| market crash | -0.01444 [-0.02229, -0.00645] | 2010-12, 2013-19 losses | 0.743 -> 0.694 | -0.1654 | fail |
+| food price shock | -0.02041 [-0.03750, -0.00658] | 2007-09, 2010-12 (-0.098), 2013-19 losses | 0.638 -> 0.589 | -0.0501 | fail |
+
+Rank 0's table on t130 (mean p against rate by years since the last onset) shows where the kernels worked and where they over-reached. Recurrence gaps close: conflict 0-1 years 0.253 -> 0.328 against 0.352, inflation 0-1 0.008 -> 0.046 against 0.100, the refractory year 0.254 -> 0.201 against 0.130 at fiscal consolidations and 0.111 -> 0.097 against 0.059 at defaults. Protest surges over-shoot in every band (2-4 years 0.355 against 0.202; 9+ 0.101 against 0.045), food price shocks after one (2-4 years 0.429 against 0.209), and market crashes 9+ stay far above (0.319 against 0.093). The failures are the kinds that come in global waves (food, crashes, protest in 2011 and 2019): a country's own past onset there is mostly the world's last wave, and the kernel reads it as the country's own pressure. The report said world factors belong in the background; these kinds need the kernels net of the world's onsets. Banking's first crises (never: rate 0.095) fall further (0.037 -> 0.020): the ever flag reads no past crisis as safety.
+
+Six kinds pass, by the fold rule and by AUC at all but war onset (pooled AUC -0.008 there, Brier and alerts gain). The layer acts per kind through its own :offset-add, and with --without-relations each kind's forecasts read no other kind's, so adopting a subset (`--aftermath conflict_onset,coup,fiscal_consolidation,inflation_crisis,sovereign_default,war_onset`) should reproduce those kinds' t130 forecasts and leave the rest as t125-base; the adoption's rebuild checks that byte for byte. Adoption is the user's, kind by kind. No changes after the result.
