@@ -1221,6 +1221,42 @@
    :wdi-editions (wdi-editions-choice opts)
    :lead-delay (lead-delay-choice opts)})
 
+(defn pipeline-specs
+  "The run's specs for kinds `ks` through `end`: build-specs and every
+  layer -main applies after it, in order (the last, bnm.aftermath's).
+  Out of -main so one kind's spec can be built and read without a run."
+  [opts ks end cats {:keys [fresh nq nq-cats]}]
+  (-> (build-specs ks end cats (known-run opts) (spec-opts opts {:fresh fresh :nq nq :nq-cats nq-cats}))
+    (with-step2 {:world-gauges (= "true" (:world-gauges opts)) :world-once (= "true" (:world-once opts))
+                 :world-extra (:world-extra opts) :world-gate (:world-gate opts)
+                 :seed (:seed opts) :strength (:strength opts) :set (:set opts) :kind-set (:kind-set opts)
+                 :real-lags (real-lags-choice opts)}
+                end)
+    finer-where-fresh
+    (#(if-let [ks (kind-theory-choice opts)]
+        (kt/with-kind-theory % ks (theory-db (kt/vars ks) (real-lags-choice opts))
+                            (kind-theory-add opts) (impute-choice opts) (shapes-choice opts) (raw-prior-choice opts))
+        %))
+    (#(if-let [ks (global-theory-choice opts)]
+        (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts) (global-shapes-choice opts) (global-raw-prior-choice opts) (global-driver-precision-choice opts))
+        %))
+    (with-bloc-theory (bloc-theory-choice opts)
+      (when (bloc-theory-choice opts)
+        (blocs/read-data "data/derived/alignment-annual.csv" "data/derived/alignment-tie.csv")))
+    (with-frailty-gauges (frailty-gauges-choice opts))
+    (with-regime (regime-choice opts)
+      (when (regime-choice opts)
+        (second (nm/leading (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
+                                            {:real-lags (real-lags-choice opts)})))))
+    ;; step 5c: after --frailty-gauges, whose gauges it centres
+    (with-regime-clim (regime-clim-choice opts)
+      (when (regime-clim-choice opts)
+        (second (nm/leading (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
+                                            {:real-lags (real-lags-choice opts)})))))
+    ;; last, so no later step replaces its :offset-add
+    (with-aftermath (aftermath-choice opts ks) cats)
+    (with-aftermath-net (aftermath-net-choice opts ks) cats)))
+
 (defn -main [& args]
   (let [{:keys [out end kinds without-relations smoke graph placebo ews states catalogue-through world-gauges clim-prior] :as opts}
         (options args)
@@ -1249,36 +1285,7 @@
         nq (if nq-cats (nq-kinds nq-cats ks) #{})
         _ (when (seq nq) (println "  the next-quarter scale at" (str/join "," (sort nq))))
         _ (println "building" (count ks) "kinds" (if (seq fresh) (str "; the fresh frailty scale at " (str/join "," (sort fresh))) ""))
-        specs0 (-> (build-specs ks end cats (known-run opts) (spec-opts opts {:fresh fresh :nq nq :nq-cats nq-cats}))
-                   (with-step2 {:world-gauges (= "true" world-gauges) :world-once (= "true" (:world-once opts))
-                                :world-extra (:world-extra opts) :world-gate (:world-gate opts)
-                                :seed (:seed opts) :strength (:strength opts) :set (:set opts) :kind-set (:kind-set opts)
-                                :real-lags (real-lags-choice opts)}
-                               end)
-                   finer-where-fresh
-                   (#(if-let [ks (kind-theory-choice opts)]
-                       (kt/with-kind-theory % ks (theory-db (kt/vars ks) (real-lags-choice opts))
-                                           (kind-theory-add opts) (impute-choice opts) (shapes-choice opts) (raw-prior-choice opts))
-                       %))
-                   (#(if-let [ks (global-theory-choice opts)]
-                       (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts) (global-shapes-choice opts) (global-raw-prior-choice opts) (global-driver-precision-choice opts))
-                       %))
-                   (with-bloc-theory (bloc-theory-choice opts)
-                     (when (bloc-theory-choice opts)
-                       (blocs/read-data "data/derived/alignment-annual.csv" "data/derived/alignment-tie.csv")))
-                   (with-frailty-gauges (frailty-gauges-choice opts))
-                   (with-regime (regime-choice opts)
-                     (when (regime-choice opts)
-                       (second (nm/leading (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
-                                                           {:real-lags (real-lags-choice opts)})))))
-                   ;; step 5c: after --frailty-gauges, whose gauges it centres
-                   (with-regime-clim (regime-clim-choice opts)
-                     (when (regime-clim-choice opts)
-                       (second (nm/leading (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
-                                                           {:real-lags (real-lags-choice opts)})))))
-                   ;; last, so no later step replaces its :offset-add
-                   (with-aftermath (aftermath-choice opts ks) cats)
-                   (with-aftermath-net (aftermath-net-choice opts ks) cats))
+        specs0 (pipeline-specs opts ks end cats {:fresh fresh :nq nq :nq-cats nq-cats})
         books (atom {})
         ;; each kind's resolved counts by node, as of the month (--clim-prior kinds)
         clims (atom {})
