@@ -2,7 +2,9 @@
 
 ## State as of 2026-11-14 (branch `structure`)
 
-**The base of record is t133-base** (sixteenth note to amendment L1, 22 November 2026): t125-base's command with the onset kernels from known onsets as year-node gauges at growth collapses only (`--aftermath-gauges growth_collapse`); it passed by dominance (docs/CALIBRATION.md t133). The other passes (sovereign defaults, violence; coups and protest unchanged) were left out. Next: the market-crash global layer fix, t134 (bnm-ozw).
+**The base of record is t136-base** (seventeenth note to amendment L1, 22 November 2026): t133-base's command with market crashes' quarter nodes reading the world's stress by its direction (`--direction-gauges market_crash --direction-at quarter-lead,quarter-w2`); it passed the fold rule (docs/CALIBRATION.md t136). t134 (the global layer as gauges) and t135 (direction at the year node) failed.
+
+**Before it, t133-base** (sixteenth note to amendment L1, 22 November 2026): t125-base's command with the onset kernels from known onsets as year-node gauges at growth collapses only (`--aftermath-gauges growth_collapse`); it passed by dominance (docs/CALIBRATION.md t133). The other passes (sovereign defaults, violence; coups and protest unchanged) were left out.
 
 **Before it, t125-base again** (fifteenth note to amendment L1, 22 November 2026, which withdraws the fourteenth): t131-base's onset kernels read onsets before their catalogues' publication lag, and `--aftermath`/`--aftermath-net` are withdrawn. Their replacement, the kernels as year-node gauges from known onsets (`--aftermath-gauges`), is t133 (docs/CALIBRATION.md).
 

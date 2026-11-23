@@ -128,14 +128,27 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t133-with-growth-collapses'-onset-gauges
+(deftest the-base-of-record-is-t136-with-market-crashes'-direction-gauges
+  ;; seventeenth note to L1, 22 November 2026: t133-base's command with
+  ;; the world's stress by its direction in market crashes' quarter nodes
+  ;; (t136, a pass on the fold rule)
+  (is (= "t136-base" lg/base))
+  (is (= "4c85afea2f6881c3303b9f48f506ea0f907c518e2a6f1d12025e8321a3432e69" (lg/base-files "market_crash")) "t136's market crashes")
+  (is (= "2a6ff8f0ed9c14c6ec94be0e2157d0b1df7559dc0c7b3cd3bed3a6744105d421" (lg/base-files "growth_collapse")) "growth collapses t133-base's")
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "market_crash" (opt "--direction-gauges")))
+    (is (= "quarter-lead,quarter-w2" (opt "--direction-at")))
+    (is (= "market_crash" (opt "--global-theory")) "the global layer stays (t134)")))
+
+(deftest the-base-before-was-t133-with-growth-collapses'-onset-gauges
   ;; sixteenth note to L1, 22 November 2026: t125-base's command with the
   ;; onset kernels from known onsets as year-node gauges at growth
   ;; collapses only (t133, a pass by dominance)
-  (is (= "t133-base" lg/base))
+  (is (str/starts-with? lg/base "t1"))
   (is (= "2a6ff8f0ed9c14c6ec94be0e2157d0b1df7559dc0c7b3cd3bed3a6744105d421" (lg/base-files "growth_collapse")) "t133's growth collapses")
   (is (= "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111" (lg/base-files "sovereign_default")) "sovereign defaults t125-base's")
-  (is (= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "market crashes unchanged")
+  (is (not= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "market crashes unchanged, then t136's (seventeenth note)")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (= "growth_collapse" (opt "--aftermath-gauges")))))
@@ -153,7 +166,7 @@
   ;; sovereign defaults' theory on filled inputs (t125, a pass by dominance)
   (is (str/starts-with? lg/base "t1"))
   (is (= "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111" (lg/base-files "sovereign_default")) "t125's sovereign defaults")
-  (is (= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "market crashes unchanged")
+  (is (not= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "market crashes unchanged, then t136's (seventeenth note)")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (= "inflation_crisis,sovereign_default" (opt "--impute")))))
@@ -163,7 +176,7 @@
   ;; market-crash global layer's world drivers at 10x prior precision
   ;; (t124, a pass by dominance under the fold rule as amended that day)
   (is (str/starts-with? lg/base "t1"))
-  (is (= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "t124's market crashes")
+  (is (not= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "t124's market crashes, replaced by t136's (seventeenth note)")
   (is (= "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d" (lg/base-files "fiscal_consolidation")) "fiscal unchanged")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
