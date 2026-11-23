@@ -1237,6 +1237,16 @@
       (when-not (pos? p) (throw (ex-info "bnm.world-run: --theory-decay-precision must be positive" {:p p})))
       p)))
 
+(defn theory-decay-level-choice
+  "--theory-decay-level true|false (t139): whether the theory reads the
+  decay itself beside its stocks times it; true by default (t137's)."
+  [{v :theory-decay-level g :theory-decay}]
+  (if-not v
+    true
+    (do (when-not g (throw (ex-info "bnm.world-run: --theory-decay-level needs --theory-decay" {})))
+        (case v "true" true "false" false
+          (throw (ex-info (str "bnm.world-run: --theory-decay-level takes true or false, not " v) {}))))))
+
 (def ^:private decay-half-months
   "t137: the decay's half-life, four years, so eight years after an onset
   (the old gate's length, Reinhart and Rogoff's) it reads a quarter."
@@ -1321,7 +1331,7 @@
                             (kind-theory-add opts) (impute-choice opts) (shapes-choice opts) (raw-prior-choice opts)
                             (into {} (for [k (theory-decay-choice opts)]
                                        [k (onset-decay (:onsets (cats k)) (:known-lag (cats k) 0))]))
-                            (theory-decay-precision-choice opts))
+                            (theory-decay-precision-choice opts) (theory-decay-level-choice opts))
         %))
     (#(if-let [ks (global-theory-choice opts)]
         (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts) (global-shapes-choice opts) (global-raw-prior-choice opts) (global-driver-precision-choice opts))

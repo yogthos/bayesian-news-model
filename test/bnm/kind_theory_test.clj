@@ -493,3 +493,18 @@
     (is (= (into (vec (repeat 11 1.0)) [1.0 10.0]) (pen {:shapes true :decay {:d d :levels [0] :precision 10.0}})))
     (is (= [1.0 1.0 1.0 1.0 1.0 10.0 10.0] (pen {:impute true :decay {:d d :levels [0 1] :precision 10.0}}))
         "the share missing, then d, then two interactions")))
+
+(deftest the-decay's-interactions-without-its-level
+  ;; t139: :level false leaves out the decay column, so the node's history
+  ;; gauges keep the aftermath's level; the stocks times d stay
+  (let [d (fn [u t] (if (= u "a1") 0.5 0.0))
+        os (range 11 600 12)
+        z0 (th/place-z (fn [u t] (x [u t])) countries os 20)
+        t (nth os 30)
+        sp2 (kt/with-theory sp row 2 {:decay {:d d :levels [0] :level false}})
+        in (:inputs (:kind-theory sp2))]
+    (is (= 3 (count (in "a1" t))))
+    (is (< (Math/abs (- (* 0.5 (z0 "a1" t)) (nth (in "a1" t) 2))) 1e-12))
+    (is (some? ((:offset sp2) :year "a1" t)))
+    (is (= [1.0 1.0 1.0 10.0]
+           (:penalties (:kind-theory (kt/with-theory sp row 2 {:decay {:d d :levels [0] :level false :precision 10.0}})))))))

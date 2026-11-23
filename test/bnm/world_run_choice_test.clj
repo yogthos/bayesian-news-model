@@ -141,6 +141,16 @@
   (is (= ["bnm.world-run: --theory-decay-precision must be positive" {:p 0.0}]
          (refusal wr/theory-decay-precision-choice {:theory-decay "coup" :theory-decay-precision "0"}))))
 
+(deftest the-decay's-level
+  ;; --theory-decay-level (t139): true by default (t137's)
+  (is (true? (wr/theory-decay-level-choice {})))
+  (is (true? (wr/theory-decay-level-choice {:theory-decay "coup" :theory-decay-level "true"})))
+  (is (false? (wr/theory-decay-level-choice {:theory-decay "coup" :theory-decay-level "false"})))
+  (is (= ["bnm.world-run: --theory-decay-level needs --theory-decay" {}]
+         (refusal wr/theory-decay-level-choice {:theory-decay-level "false"})))
+  (is (= ["bnm.world-run: --theory-decay-level takes true or false, not no" {}]
+         (refusal wr/theory-decay-level-choice {:theory-decay "coup" :theory-decay-level "no"}))))
+
 (deftest the-node's-gauges-take-each-catalogue's-lag
   (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}
         sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]

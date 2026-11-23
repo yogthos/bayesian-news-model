@@ -4158,3 +4158,12 @@ No run; t137's inputs refit. docs/studies/currency/decay_contrib.clj and offset_
 3. **The year node quadruples it.** The offset loses 0.003 of AUC, the issued forecast 0.013. The currency year node already reads time since the last onset (its history gauges: since-last, own10, own30), so the decay's level, put into the offset, is counted twice: the double-counting t132's diagnosis found for its fitted layer, here inside the theory.
 
 Candidate for a registered run: the decay's interactions without its main effect (the node's history gauges keep the level), at currency crises and the kinds that failed; or the decay as year-node gauges beside the history group (t133's design), not in the theory.
+
+## The decay's interactions without its level: t139 (bnm-7ny, aftermath plan ranks 1-2)
+
+Written 23 November 2026, before any run, at the user's word after the second currency diagnosis. There the decay's main effect, put into the theory's offset, moved currency crises' long-quiet band down as a whole while the year node already reads time since the last onset through its history gauges (since-last, own10, own30): the level counted twice, the node turning the offset's -0.003 of AUC into -0.013.
+
+- with-theory :decay :level false: no d column, only each stock times d, so the aftermath's level is left to the node's history gauges and the theory says only how a stock's slope changes after an onset (rank 2 proper).
+- `--theory-decay-level true|false` (world-run), true by default (t137's), so t137-base is unchanged.
+
+Run t139: t137-base's command with `--out t139`, `--theory-decay sovereign_default,currency_crisis,inflation_crisis,fiscal_consolidation,coup` and `--theory-decay-level false` (no `--theory-decay-precision`). Those five kinds change; the other eight must match t137-base byte for byte (checked). Rule, kind by kind against t137-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r and rank 0's table; for currency crises, sovereign defaults and fiscal consolidations also against t137 (the level's own effect), with docs/studies/currency/auc_change.py for currency crises' bands. Coups and inflation crises are scored for whether they keep t137's gains without the level. Adoption is the user's, kind by kind. No changes after the result.
