@@ -1203,6 +1203,15 @@
         (throw (ex-info (str "bnm.world-run: --direction-gauges names a kind not run: " (str/join "," bad)) {})))
       named)))
 
+(defn direction-at-choice
+  "--direction-at scale,... (t136): the nodes that read --direction-gauges,
+  [:year] by default (t135's)."
+  [{v :direction-at g :direction-gauges}]
+  (if-not v
+    [:year]
+    (do (when-not g (throw (ex-info "bnm.world-run: --direction-at needs --direction-gauges" {})))
+        (mapv keyword (str/split v #",")))))
+
 (defn with-aftermath-gauges
   "`specs` with bnm.aftermath's kernels as the year gauges of `ks`
   (`aftermath-gauges-choice`), each kind's onsets known after its
@@ -1296,9 +1305,9 @@
     (#(if-let [dks (direction-gauges-choice opts ks)]
         (let [[names row] (nm/direction (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
                                                         {:real-lags (real-lags-choice opts)}))]
-          (reduce (fn [acc k] (update acc k yg/with-group row (count names) :direction names
-                                      (some-> (:gauge-std opts) keyword) {:every 1 :min-periods 20}))
-                  % dks))
+          (reduce (fn [acc [k sc]] (update acc k yg/with-scale-group sc row (count names) :direction names
+                                           (some-> (:gauge-std opts) keyword) {:every 1 :min-periods 20}))
+                  % (for [k dks sc (direction-at-choice opts)] [k sc])))
         %))))
 
 (defn -main [& args]

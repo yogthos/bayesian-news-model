@@ -51,3 +51,18 @@
     (is (not= 0.0 (nth ((:gauges sp) :year "A" 35) 2)) "35 months seen")
     (is (= 0.0 (nth ((:gauges (yg/with-group (gauge-spec) row 1 :d [:p] :stable)) :year "A" 35) 2))
         "by rows at year origins, 3 origins of 2 countries are too few")))
+
+(deftest a-row-joins-a-quarter-node-too
+  ;; t136: the group at another scale; the year's gauges untouched
+  (let [row (fn [_ t] [(Math/sin (double t))])
+        sp (yg/with-scale-group (gauge-spec) :quarter row 1 :d [:p] :stable {:every 1 :min-periods 20})]
+    (is (= 2 (get-in sp [:gauge-width :quarter])))
+    (is (= 2 (get-in sp [:gauge-width :year])) "the year untouched")
+    (is (= {:gauges [0] :d [1]} (get-in sp [:gauge-groups :quarter])))
+    (is (= {:a [0] :b [1]} (get-in sp [:gauge-groups :year])))
+    (is (= [1.0 2.0] ((:gauges sp) :year "A" 1199)))
+    (let [g ((:gauges sp) :quarter "A" 1199)]
+      (is (= 3.0 (first g)))
+      (is (not= 0.0 (second g))))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"no scale"
+                          (yg/with-scale-group (gauge-spec) :half row 1 :d [:p] :stable {:every 1 :min-periods 20})))))

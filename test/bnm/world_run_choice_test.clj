@@ -109,6 +109,13 @@
   (is (= ["bnm.world-run: --direction-gauges names a kind not run: growth_collapse" {}]
          (refusal #(wr/direction-gauges-choice % ["market_crash"]) {:direction-gauges "growth_collapse"}))))
 
+(deftest the-direction-gauges'-scales
+  ;; --direction-at (t136): the scales that read them, the year by default
+  (is (= [:year] (wr/direction-at-choice {})))
+  (is (= [:quarter-lead :quarter-w2] (wr/direction-at-choice {:direction-at "quarter-lead,quarter-w2" :direction-gauges "market_crash"})))
+  (is (= ["bnm.world-run: --direction-at needs --direction-gauges" {}]
+         (refusal wr/direction-at-choice {:direction-at "quarter-lead"}))))
+
 (deftest the-node's-gauges-take-each-catalogue's-lag
   (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}
         sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]
