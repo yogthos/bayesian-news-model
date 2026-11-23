@@ -132,6 +132,15 @@
     (is (< (Math/abs (- (Math/pow 0.5 (/ 18 48.0)) (d "A" 218))) 1e-12) "then the latest known")
     (is (= 0.0 (d "B" 300)) "never")))
 
+(deftest the-decay's-interaction-precision
+  ;; --theory-decay-precision (t138)
+  (is (nil? (wr/theory-decay-precision-choice {})))
+  (is (= 10.0 (wr/theory-decay-precision-choice {:theory-decay "coup" :theory-decay-precision "10"})))
+  (is (= ["bnm.world-run: --theory-decay-precision needs --theory-decay" {}]
+         (refusal wr/theory-decay-precision-choice {:theory-decay-precision "10"})))
+  (is (= ["bnm.world-run: --theory-decay-precision must be positive" {:p 0.0}]
+         (refusal wr/theory-decay-precision-choice {:theory-decay "coup" :theory-decay-precision "0"}))))
+
 (deftest the-node's-gauges-take-each-catalogue's-lag
   (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}
         sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]

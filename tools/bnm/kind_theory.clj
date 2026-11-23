@@ -486,7 +486,9 @@
   inputs, d (the decay since the kind's last known onset, 0 when none) and
   each listed input's standardized value times d, so the slope on a legacy
   stock changes with time since the onset (a non-proportional hazard) and
-  the aftermath has its own level."
+  the aftermath has its own level. :precision p (t138): the interactions'
+  prior precision p times the default's, so a few post-onset rows cannot
+  give them a large slope; d and the inputs at the default."
   ([sp row width] (with-theory sp row width {}))
   ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw penalties decay]}]
   (when (and add decay)
@@ -497,7 +499,9 @@
         per (:per (first (filter #(= :year (:name %)) scales)))
         os (filter #(zero? (mod (inc (- % start)) per)) (range start (inc end)))
         ;; bnm-s6m: missing inputs filled (bnm.impute), the share missing a column more
-        pens (when penalties (column-penalties penalties {:shapes shapes :impute impute}))
+        pens (cond penalties (column-penalties penalties {:shapes shapes :impute impute})
+                   ;; t138: the decay's interactions held tighter, all else at the default
+                   (:precision decay) (column-penalties (repeat width 1.0) {:shapes shapes :impute impute}))
         [row width] (if impute [(im/impute row width countries (vec os) parent) (inc width)] [row width])
         zs (vec (for [i (range width)] (th/place-z (fn [u t] (nth (row u t) i)) countries os 20)))
         inputs (if shapes
@@ -507,7 +511,9 @@
                  (fn [u t] (let [dv (double (or (d u t) 0.0))]
                              (into (inputs u t) (cons dv (map #(* dv (double (or ((zs %) u t) 0.0))) levels)))))
                  inputs)
-        pens (if (and pens decay) (into pens (repeat (inc (count (:levels decay))) 1.0)) pens)
+        pens (if (and pens decay)
+               (into (conj pens 1.0) (repeat (count (:levels decay)) (double (or (:precision decay) 1.0))))
+               pens)
         args {:places countries :origins os :prior 1.0 :inputs inputs :raw (boolean raw) :penalties pens
               :target (fn [u t] (target :year u t))}]
     (if add
@@ -553,7 +559,8 @@
   ([specs kinds db add impute] (with-kind-theory specs kinds db add impute false))
   ([specs kinds db add impute shapes] (with-kind-theory specs kinds db add impute shapes false))
   ([specs kinds db add impute shapes raw] (with-kind-theory specs kinds db add impute shapes raw nil))
-  ([specs kinds db add impute shapes raw decay]
+  ([specs kinds db add impute shapes raw decay] (with-kind-theory specs kinds db add impute shapes raw decay nil))
+  ([specs kinds db add impute shapes raw decay decay-precision]
   (reduce (fn [acc k]
             (let [ds (or (decls k) (throw (ex-info (str "bnm.kind-theory: no theory declared for " k) {:kind k})))]
               (check-loaded ds db)
@@ -567,7 +574,9 @@
                                     {:add (contains? add kd) :impute (if (set? impute) (contains? impute kd) impute)
                                      :shapes (if (set? shapes) (contains? shapes kd) shapes)
                                      :raw (if (set? raw) (contains? raw kd) raw)
-                                     :decay (when-let [d (get decay kd)] {:d d :levels (decay-levels k)})})))
+                                     :decay (when-let [d (get decay kd)]
+                                              (cond-> {:d d :levels (decay-levels k)}
+                                                decay-precision (assoc :precision decay-precision)))})))
                   acc))))
           specs kinds)))
 

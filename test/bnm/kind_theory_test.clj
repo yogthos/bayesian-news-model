@@ -482,3 +482,14 @@
   (is (= [0 1 2] (kt/decay-levels "sovereign_default")))
   (is (= [0] (kt/decay-levels "inflation_crisis@monthly")))
   (is (nil? (kt/decay-levels "war_onset"))))
+
+(deftest the-decay's-interactions-held-tighter
+  ;; t138: the stock-times-decay columns at a higher prior precision, the
+  ;; decay itself and the inputs at the default; none without :precision
+  (let [d (fn [u t] (if (= u "a1") 0.5 0.0))
+        pen #(:penalties (:kind-theory (kt/with-theory sp row 2 %)))]
+    (is (nil? (pen {:decay {:d d :levels [0]}})) "t137's: no penalties")
+    (is (= [1.0 1.0 1.0 1.0 10.0] (pen {:decay {:d d :levels [0] :precision 10.0}})))
+    (is (= (into (vec (repeat 11 1.0)) [1.0 10.0]) (pen {:shapes true :decay {:d d :levels [0] :precision 10.0}})))
+    (is (= [1.0 1.0 1.0 1.0 1.0 10.0 10.0] (pen {:impute true :decay {:d d :levels [0 1] :precision 10.0}}))
+        "the share missing, then d, then two interactions")))
