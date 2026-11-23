@@ -41,3 +41,13 @@
 (deftest the-names-must-match-the-width
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"names"
                         (yg/with-group (gauge-spec) (constantly [0.0]) 1 :g [:p :q] :stable))))
+
+(deftest a-world-column-can-be-standardized-on-its-months
+  ;; t135: one value per origin, repeated at every country; counted by
+  ;; months seen, sampled every month, not by rows at year origins
+  (let [row (fn [_ t] [(Math/sin (double t))])
+        sp (yg/with-group (gauge-spec) row 1 :d [:p] :stable {:every 1 :min-periods 20})]
+    (is (= 0.0 (nth ((:gauges sp) :year "A" 11) 2)) "11 months seen")
+    (is (not= 0.0 (nth ((:gauges sp) :year "A" 35) 2)) "35 months seen")
+    (is (= 0.0 (nth ((:gauges (yg/with-group (gauge-spec) row 1 :d [:p] :stable)) :year "A" 35) 2))
+        "by rows at year origins, 3 origins of 2 countries are too few")))

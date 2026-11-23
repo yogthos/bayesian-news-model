@@ -330,6 +330,25 @@
   (let [{:keys [names row]} (sg/assemble db leading-decls)]
     [names row]))
 
+(def direction-decls
+  "t135 (docs/CALIBRATION.md): the world's stress read by its direction,
+  from the series the leading gauges read (the US Baa-Treasury spread, the
+  log VIX): how far each sits below its 12-month peak (bnm.stocks/drawdown;
+  0 at the peak, large once a spike has passed) and its 3-month change.
+  After a crash wave the 12-month changes still read stress; these say
+  whether it is building or receding. Quotes stale after a quarter."
+  (let [d (fn [n u v rd] {:name n :var v :unit u :read rd :stale (get quote-stale v 30)})]
+    [(d :baa-off-peak12 "USA" "finance/spread_baa" [:drawdown 12])
+     (d :vix-off-peak12 "world" "finance/vix" [:drawdown 12])
+     (d :baa3 "USA" "finance/spread_baa" [:change 3])
+     (d :vix3 "world" "finance/vix" [:change 3])]))
+
+(defn direction
+  "[names f]: `direction-decls` read point in time (bnm.signals/assemble)."
+  [db]
+  (let [{:keys [names row]} (sg/assemble db direction-decls)]
+    [names row]))
+
 (def core
   "The old industrial centres, whose capital's profitability the theory of
   imperialism ties to pressure on resource-rich peripheries."

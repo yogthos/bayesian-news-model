@@ -1189,6 +1189,20 @@
     (let [names (if (= width (count kt/global)) (mapv :name kt/global) (mapv #(keyword (str "global" %)) (range width)))]
       (reduce (fn [acc k] (update acc k yg/with-group row width :global names gauge-std)) specs ks))))
 
+(defn direction-gauges-choice
+  "--direction-gauges kind,... (docs/CALIBRATION.md t135): the kinds among
+  those run (`ks`) whose year node reads the world's stress by its
+  direction (bnm.named/direction) as a gauge group of its own; nil when
+  off. Only kinds whose year node reads BAA and the VIX (--leading)."
+  [{v :direction-gauges} ks]
+  (when v
+    (let [named (str/split v #",")]
+      (doseq [k named :when (not (every? (set (get-in lp/leading-sets [k :year])) [:baa12 :vix12]))]
+        (throw (ex-info (str "bnm.world-run: --direction-gauges: only kinds whose year node reads BAA and the VIX, not " k) {:kind k})))
+      (when-let [bad (seq (remove (set ks) named))]
+        (throw (ex-info (str "bnm.world-run: --direction-gauges names a kind not run: " (str/join "," bad)) {})))
+      named)))
+
 (defn with-aftermath-gauges
   "`specs` with bnm.aftermath's kernels as the year gauges of `ks`
   (`aftermath-gauges-choice`), each kind's onsets known after its
@@ -1278,6 +1292,13 @@
     (#(if-let [gks (global-gauges-choice opts ks)]
         (with-global-gauges % gks (:row (sg/assemble (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) kt/global))
           (count kt/global) (some-> (:gauge-std opts) keyword))
+        %))
+    (#(if-let [dks (direction-gauges-choice opts ks)]
+        (let [[names row] (nm/direction (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
+                                                        {:real-lags (real-lags-choice opts)}))]
+          (reduce (fn [acc k] (update acc k yg/with-group row (count names) :direction names
+                                      (some-> (:gauge-std opts) keyword) {:every 1 :min-periods 20}))
+                  % dks))
         %))))
 
 (defn -main [& args]

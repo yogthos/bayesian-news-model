@@ -234,3 +234,18 @@
     (testing "past the data, carried at most un-max-stale years"
       (is (= {"CCC" 1.0} (get (w (q (+ 2002 nm/un-max-stale) 3)) "AAA")))
       (is (= {} (w (q (+ 2003 nm/un-max-stale) 2)))))))
+
+;; t135: the world's stress read by its direction (docs/CALIBRATION.md t135)
+
+(deftest t135-direction-gauges-read-stress-past-its-peak
+  (let [spread (fn [t] (cond (< t 100) 1.0 (< t 106) (+ 1.0 (- t 99)) :else (max 2.0 (- 7.0 (* 0.5 (- t 105))))))
+        db {["USA" "finance/spread_baa"] (monthly 60 130 0 spread)
+            ["world" "finance/vix"] (monthly 60 130 0 (constantly 3.0))}
+        [names f] (nm/direction db)
+        at (fn [t] (zipmap names (f "XXX" t)))]
+    (is (= [:baa-off-peak12 :vix-off-peak12 :baa3 :vix3] names))
+    (is (= 0.0 (:baa-off-peak12 (at 105))) "at its peak")
+    (is (< (Math/abs (- 2.5 (:baa-off-peak12 (at 110)))) 1e-9) "7 at 105, 4.5 at 110")
+    (is (< (Math/abs (- -1.5 (:baa3 (at 110)))) 1e-9))
+    (is (= 0.0 (:vix-off-peak12 (at 110))))
+    (is (nil? (:baa3 (at 200))) "a quote a quarter stale is a stopped series")))

@@ -100,6 +100,15 @@
     (is (= sp (out "coup")))
     (is (= {"coup" 1} (wr/with-global-gauges {"coup" 1} nil nil 0 :stable)))))
 
+(deftest the-world's-stress-by-its-direction
+  ;; --direction-gauges (t135): kinds whose year node reads BAA and the VIX
+  (is (nil? (wr/direction-gauges-choice {} ["market_crash"])))
+  (is (= ["market_crash"] (wr/direction-gauges-choice {:direction-gauges "market_crash"} ["market_crash" "coup"])))
+  (is (= ["bnm.world-run: --direction-gauges: only kinds whose year node reads BAA and the VIX, not coup" {:kind "coup"}]
+         (refusal #(wr/direction-gauges-choice % ["coup"]) {:direction-gauges "coup"})))
+  (is (= ["bnm.world-run: --direction-gauges names a kind not run: growth_collapse" {}]
+         (refusal #(wr/direction-gauges-choice % ["market_crash"]) {:direction-gauges "growth_collapse"}))))
+
 (deftest the-node's-gauges-take-each-catalogue's-lag
   (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}
         sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]
