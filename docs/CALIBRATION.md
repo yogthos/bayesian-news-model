@@ -4099,3 +4099,19 @@ Written 23 November 2026, before any run, at the user's word to take up the afte
 - Not covered: banking (its base theory, --theory-offset, is built elsewhere and reads no bank-health stocks since t129 failed) and the eight kinds without a theory, whose stocks are year-node gauges; a later run if this one shows the idea works.
 
 Run t137: t136-base's command with `--out t137 --theory-decay sovereign_default,currency_crisis,inflation_crisis,fiscal_consolidation,coup`. Only those five kinds change; the other eight must match t136-base byte for byte (checked). Rule, kind by kind against t136-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r and rank 0's table, read for the plan's test: does the post-onset stratum improve without loss where there was no recent onset? Adoption is the user's, kind by kind. No changes after the result.
+
+### Results (23 November 2026)
+
+Suite green (1661 tests), committed 0e90f30 before the run. 45 min. The eight other kinds match t136-base byte for byte. Kind by kind against t136-base (pooled Brier gain [95%]; folds; pooled AUC; within-year AUC; alert dcost at 4:1):
+
+| kind | Brier gain | folds | AUC pooled | within | dcost | verdict |
+|---|---|---|---|---|---|---|
+| coup | +0.00053 [-0.00012, +0.00128] (log +0.00371 [+0.00072, +0.00817]) | pass | 0.759 -> 0.781 | 0.777 -> 0.789 | +0.0032 | pass (and all three gain) |
+| currency crisis | +0.00011 [-0.00079, +0.00095] | pass | 0.774 -> 0.761 | 0.767 -> 0.748 | +0.0025 | pass |
+| fiscal consolidation | -0.00092 [-0.00182, +0.00001] | pooled loss | 0.642 -> 0.635 | 0.632 -> 0.626 | -0.0115 | fail |
+| inflation crisis | +0.00000 [-0.00012, +0.00013] (log +0.00095) | 2003-06 loss, 4 onsets, cannot veto | 0.751 -> 0.792 | 0.756 -> 0.828 | +0.0000 | pass |
+| sovereign default | -0.00024 [-0.00093, +0.00048] | 2020-22 loss (-0.00270 [-0.00593, -0.00027]) | 0.595 -> 0.563 | 0.677 -> 0.611 | -0.0078 [-0.0148, -0.0019] | fail |
+
+The plan's test, rank 0's table (post-onset bands improve, no loss where there was no recent onset): coups' 0-1 year forecast rises 0.153 -> 0.224 against a rate of 0.241, the 5-8 band falls toward its rate, never unchanged (0.019 / 0.017). Inflation crises' 0-1 and 2-4 bands rise about threefold (0.008 -> 0.028 against 0.100; 0.007 -> 0.021 against 0.152), 9+ and never fall slightly toward their rates; still far under, and no alert fires either way. Currency crises' 9+ and never bands fall toward their rates (0.060 -> 0.049 against 0.037; 0.037 -> 0.034 against 0.008), 2-4 unchanged, but ranking falls. Sovereign defaults go the wrong way: the refractory year rank 0 found gets worse (0-1: 0.111 -> 0.217 against 0.059), so the decay reads a default's aftermath as more risk, and the 2020-22 fold and the alert cost lose. Fiscal consolidations' 0-1 band barely moves (0.254 -> 0.260 against 0.130).
+
+So the recurrence side of rank 0 is learned where it was large (coups, inflation crises); the refractory side is not (sovereign defaults, fiscal consolidations): a single decay, fit with the theory's other slopes, takes the recurrence sign.
