@@ -4070,3 +4070,20 @@ Written 22 November 2026, before any run, at the user's word after t135. t135 pu
 - Smoke spec: quarter-lead's groups gain :direction [20-23], quarter-w2's [18-21]; at December 2020 quarter-w2 reads BAA 1.57 and the VIX 2.73 sd below their peaks.
 
 Run t136: t133-base's command with `--out t136 --direction-gauges market_crash --direction-at quarter-lead,quarter-w2`. Only market crashes change; the other twelve must match t133-base byte for byte (checked). Rule, market crashes against t133-base at the year nodes: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r, rank 0's table, the post-wave origins' mean p against their rate, and the quarter nodes' calibration by era (docs/studies/market_crash/mc_scales.py). Adoption is the user's. No changes after the result.
+
+### Results (22 November 2026)
+
+Suite green (1657 tests), committed 04fb931 before the run. 64 min. The other twelve kinds match t133-base byte for byte. Market crashes against t133-base at the year nodes:
+
+| measure | t133-base | t136 |
+|---|---|---|
+| pooled Brier gain (2003-2022) | | +0.00565 [-0.00109, +0.01450] |
+| folds | | 2003-06 -0.00192, 2007-09 +0.00145, 2010-12 +0.00054, 2013-19 +0.00431, 2020-22 +0.02596; no loss |
+| pooled AUC | 0.743 | 0.743 |
+| within-year AUC | 0.543 | 0.536 |
+| level r | +0.53 | +0.57 |
+| alert cost (4:1) | 0.480 | 0.492; dcost -0.0125 [-0.0458, +0.0365] |
+| post-wave origins (p; rate) | 2011 0.377, 2020 0.554 | 2011 0.384, 2020 0.443 (0.029; 0.081) |
+| 2010-22 mean p (rate 0.082) | 0.231 | 0.220 |
+
+Pass on the fold rule. Every interval crosses zero; the alert cost is worse (hits 80.3%, false alarms in calm years 42.8%) and within-year AUC falls slightly, so the gain is in calibration, not in ranking or decisions. The quarter nodes are better calibrated after 2010 (quarter-w2's mean p over its rate 1.92 -> 1.47, quarter-lead's 1.22 -> 1.07; 2003-09 unchanged), and December 2020's forecast falls by a fifth, but 2011's does not move and the year node still over-forecasts by 2.7 times. Quarter-w2 shifts weight from :global to the all-inputs model, which holds the direction gauges (2011 :global 0.66, all 0.34; 2020 0.45 and 0.48); the :direction group alone takes almost none. 2018's near-wave falls too (0.484 -> 0.407 against 0.213).
