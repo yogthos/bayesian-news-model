@@ -4167,3 +4167,19 @@ Written 23 November 2026, before any run, at the user's word after the second cu
 - `--theory-decay-level true|false` (world-run), true by default (t137's), so t137-base is unchanged.
 
 Run t139: t137-base's command with `--out t139`, `--theory-decay sovereign_default,currency_crisis,inflation_crisis,fiscal_consolidation,coup` and `--theory-decay-level false` (no `--theory-decay-precision`). Those five kinds change; the other eight must match t137-base byte for byte (checked). Rule, kind by kind against t137-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r and rank 0's table; for currency crises, sovereign defaults and fiscal consolidations also against t137 (the level's own effect), with docs/studies/currency/auc_change.py for currency crises' bands. Coups and inflation crises are scored for whether they keep t137's gains without the level. Adoption is the user's, kind by kind. No changes after the result.
+
+### Results (23 November 2026)
+
+Suite green (1666 tests), committed 49659e0 before the run. 42 min. The eight other kinds match t137-base byte for byte. Against t137-base (pooled Brier gain; verdict; pooled / within-year AUC, t137-base -> t139; alert dcost):
+
+| kind | Brier gain | verdict | AUC | dcost |
+|---|---|---|---|---|
+| coup | -0.00056 [-0.00129, +0.00005] (log -0.00382 [-0.00778, -0.00091]) | fail | 0.781 / 0.789 -> 0.759 / 0.779 | -0.0049 |
+| currency crisis | -0.00010 [-0.00076, +0.00054] | fail | 0.774 / 0.767 -> 0.758 / 0.747 | +0.0022 |
+| fiscal consolidation | -0.00067; 2010-12 LOSS | fail | 0.642 / 0.632 -> 0.638 / 0.627 | -0.0031 |
+| inflation crisis | +0.00001 [-0.00010, +0.00014] | pass | 0.792 / 0.828 -> 0.763 / 0.770 | +0.0000 |
+| sovereign default | -0.00012 [-0.00051, +0.00011] | fail | 0.595 / 0.677 -> 0.569 / 0.658 | +0.0009 |
+
+Against t137 (the level's own effect): currency crises -0.00021, 2003-06 LOSS (7 onsets); fiscal consolidations +0.00024, pass; sovereign defaults +0.00012, pass, alert cost +0.0087 [+0.0031, +0.0155].
+
+Without the level, the gains t137 brought go: coups' 0-1 year forecast falls back 0.224 -> 0.156 against a rate of 0.241, inflation crises' 0-1 0.028 -> 0.006 against 0.100, and both lose most of t137's AUC. So at coups and inflation crises the decay's level was the useful part, not double counting. And currency crises still lose AUC without it (0.774 -> 0.758; the 9+ band's onset rows -0.0145): the second diagnosis's reading, that the level counted twice was the cause, is refuted too. What ranks currency crises in long-quiet countries lower under the decay is not found; the theory's offset barely changes its ranking (0.764 -> 0.762 in t137), so it lies in how the year node learns on the changed offset. t137-base stays the base. Nothing to adopt (inflation crises pass on Brier but lose AUC, 0.828 -> 0.770 within years).
