@@ -4187,3 +4187,18 @@ Without the level, the gains t137 brought go: coups' 0-1 year forecast falls bac
 ### Diagnosis after t139: currency crises' year node (23 November 2026, bead bnm-7ny)
 
 No run. The currency year node's averaging puts 0.92-1.00 of its weight on its contradiction group in both t137-base and t137 (weights.tsv, 2003-2018; regime takes 0.43-0.98 in 2018-22 in t137-base, 0.43 in 2022 in t137), so the choice of model does not change. The node adds +0.010 of AUC on top of the theory's offset in t137-base (offset 0.764, issued 0.774) and none in t137 (0.762, 0.761): the loss is in what the contradiction model makes of the changed offset. That group is built on the place's own state, which carries the offset, against its region's (bnm.lattice: the gap, its positive and negative parts accumulated at 0.7 and reset when an onset becomes known). One reading, that the decay raises a region through its recently hit members so that its long-quiet countries look below it before a regional wave, is not borne out at the offsets (docs/studies/currency/offset_change.clj, the country's offset minus any-of its region's): the 9+ band's onset rows' gap barely moves (-2.552 -> -2.567) while its quiet rows' falls (-2.936 -> -3.057), which should help their ranking, not hurt it. Three readings refuted (the reserves interaction, the level counted twice, the regional gap). The node's own states and its models' slopes are not written by a run, so going further needs the lattice to export them. Parked.
+
+### Diagnosis, the year node row by row: the averaging, not a model (23 November 2026, bead bnm-7ny)
+
+No run of the world. bnm.lattice now takes `:tap` (fn [row]), called with each issued row (inputs, mean offset, each model's log odds, the weights) and changing nothing (bnm.lattice-test/a-tap-sees-each-issued-row-and-changes-nothing). docs/studies/currency/node_tap.clj runs the currency kind alone on the base command, with and without the decay; its issued year forecasts match the world runs' forecasts.tsv exactly (3,400 rows, largest difference 0.0). docs/studies/currency/node_tap.py reads the rows.
+
+Over the 3,149 country rows at December origins 2003-2022 (AUC; t137-base's currency, then t137's):
+
+| | offset | contradiction model | regime model | mean weight on contradiction |
+|---|---|---|---|---|
+| t137-base | 0.764 | 0.760 | 0.793 | 0.77 |
+| t137 | 0.762 | 0.766 | 0.791 | 0.94 |
+
+**No model ranks worse; the averaging weights move.** The contradiction model ranks slightly better with the decay, the regime model the same, and the regime model ranks best throughout (2013-2022: 0.857 against 0.828 either way). In t137-base the averaging hands the year node to the regime model from 2018 (its weight 0.46 in 2018, 0.82 in 2019, 0.95-0.98 in 2020-22); in t137 it stays with the contradiction model (0.01, 0.04, 0.13, 0.29, 0.43). The weights follow each model's predictive log score, and the contradiction model, whose inputs are built on the place's own state and so carry the offset, scores better once the offset holds the decay, keeping its weight. Most of 2013-2022's onsets then go through the weaker ranker. The earlier readings (the reserves interaction, the level counted twice, the regional gap) were each about the offset or the contradiction inputs; the cause is a level above, in the evidence the averaging weighs.
+
+So the decay is not wrong for currency crises; it delays the year node's move to the model that ranks their recent crises best. What would address it is the averaging's own behaviour (how fast weights move between models, or scoring on ranking as well), not the theory: a lattice question for every kind, not a fix to fold into currency crises' theory.

@@ -2916,3 +2916,17 @@
                (lt/run {:scales [{:name :q :per 3 :horizon 3 :leaf true :frailty-only true} {:name :year :per 12 :horizon 12}]
                         :levels [[:country ["P0"]]] :parent {} :start 0 :end 30 :frailty {}
                         :target (fn [_ _ _] nil) :gauges (fn [_ _ _] []) :gauge-width {}}))))
+
+(deftest a-tap-sees-each-issued-row-and-changes-nothing
+  ;; bnm-7ny: :tap (fn [row]) is called once per issued row with its inputs,
+  ;; mean offset, each model's log odds and the weights, for diagnosis; the
+  ;; run is the same with or without it
+  (let [taps (atom [])
+        a (lt/run (spec (world 5)))
+        b (lt/run (assoc (spec (world 5)) :tap #(swap! taps conj %)))
+        e (first (filter #(= :year (:scale %)) @taps))]
+    (is (= (:forecasts a) (:forecasts b)))
+    (is (= (count (filter #(= :year (:scale %)) (:forecasts b))) (count (filter #(= :year (:scale %)) @taps))))
+    (is (every? #(contains? e %) [:scale :level :place :t :x :o :f :w]))
+    (is (contains? (:f e) :all))
+    (is (< (Math/abs (- 1.0 (reduce + (vals (:w e))))) 1e-9))))
