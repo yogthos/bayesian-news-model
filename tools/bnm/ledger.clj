@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t136-base")
+(def base "t137-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -82,8 +82,11 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t136-base/<kind>/
-  forecasts.tsv (22 November 2026, the seventeenth note to L1: t133-base's
+  "The base of record's forecasts, data/runs/t137-base/<kind>/
+  forecasts.tsv (23 November 2026, the eighteenth note to L1: t136-base's
+  command with coups' and inflation crises' theory stocks read against
+  time since the last known onset, t137's; the other eleven t136-base's).
+  t136-base (22 November 2026, the seventeenth note to L1: t133-base's
   command with the world's stress by its direction in market crashes'
   quarter nodes, t136's; the other twelve t133-base's).
   t133-base (22 November 2026, the sixteenth note to L1: t125-base's
@@ -112,12 +115,12 @@
   banking is t104-rows-rho0's, the other ten t80-base's, t71-stack's."
   {"banking_crisis" "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b"
    "conflict_onset" "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442"
-   "coup" "ec86c1a3afc93bf2aaf44e9c3a1aaa41c06868ab00a5a362970eddbff2c72f13"
+   "coup" "ae0ab8ce83321e0b36aac3897fb74875816116aea8af237b3304974ef46cb420"
    "currency_crisis" "fec3f60f1738a3787a09b8c058a954f02d6a11126807775e41d0d10542bbc105"
    "fiscal_consolidation" "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d"
    "food_price_shock" "32a8c9c7a058a94c792bde3e94b8f6dc645ee33c833ec009dd4b6d12c7bc2fc3"
    "growth_collapse" "2a6ff8f0ed9c14c6ec94be0e2157d0b1df7559dc0c7b3cd3bed3a6744105d421"
-   "inflation_crisis" "d5f9ba93199f0028ec4a98706a486cab25ac684d2961767d4e00964def634aa4"
+   "inflation_crisis" "7882321e27116b1c13e39e3c02e72cbec622f59c2179ce013792232df2cce904"
    "market_crash" "4c85afea2f6881c3303b9f48f506ea0f907c518e2a6f1d12025e8321a3432e69"
    "protest_surge" "98f6a3d14855b3ba0f5eda59b4975de2a13e55b19d8963c36191e496a1dcd373"
    "sovereign_default" "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111"
@@ -451,7 +454,10 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t136-base's (seventeenth note to L1):
+  "The base's bnm.world-run arguments, t137-base's (eighteenth note to L1):
+  t136-base's with coups' and inflation crises' theories reading their
+  legacy stocks against time since the kind's last known onset
+  (--theory-decay coup,inflation_crisis, t137). t136-base's (seventeenth note to L1):
   t133-base's with market crashes' quarter nodes reading the world's
   stress by its direction, the Baa spread and the VIX below their 12-month
   peaks and their 3-month changes (--direction-gauges market_crash
@@ -510,6 +516,7 @@
    "--global-theory" "market_crash" "--global-driver-precision" "10" "--impute" "inflation_crisis,sovereign_default"
    "--aftermath-gauges" "growth_collapse"
    "--direction-gauges" "market_crash" "--direction-at" "quarter-lead,quarter-w2"
+   "--theory-decay" "coup,inflation_crisis"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
    "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}}}"])
 

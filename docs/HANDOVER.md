@@ -2,7 +2,9 @@
 
 ## State as of 2026-11-14 (branch `structure`)
 
-**The base of record is t136-base** (seventeenth note to amendment L1, 22 November 2026): t133-base's command with market crashes' quarter nodes reading the world's stress by its direction (`--direction-gauges market_crash --direction-at quarter-lead,quarter-w2`); it passed the fold rule (docs/CALIBRATION.md t136). t134 (the global layer as gauges) and t135 (direction at the year node) failed.
+**The base of record is t137-base** (eighteenth note to amendment L1, 23 November 2026): t136-base's command with coups' and inflation crises' theory stocks read against time since the last known onset (`--theory-decay coup,inflation_crisis`); each passed the fold rule (docs/CALIBRATION.md t137). Open: currency crises passed t137 on Brier but lost AUC (bead to diagnose).
+
+**Before it, t136-base** (seventeenth note to amendment L1, 22 November 2026): t133-base's command with market crashes' quarter nodes reading the world's stress by its direction (`--direction-gauges market_crash --direction-at quarter-lead,quarter-w2`); it passed the fold rule (docs/CALIBRATION.md t136). t134 (the global layer as gauges) and t135 (direction at the year node) failed.
 
 **Before it, t133-base** (sixteenth note to amendment L1, 22 November 2026): t125-base's command with the onset kernels from known onsets as year-node gauges at growth collapses only (`--aftermath-gauges growth_collapse`); it passed by dominance (docs/CALIBRATION.md t133). The other passes (sovereign defaults, violence; coups and protest unchanged) were left out.
 
