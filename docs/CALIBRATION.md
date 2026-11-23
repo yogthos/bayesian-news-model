@@ -4134,3 +4134,17 @@ Written 23 November 2026, before any run, at the user's word after the currency 
 - `--theory-decay-precision p` (world-run). p = 10, fixed before any run as t124's precision for the global layer's world drivers was: the interactions' prior sd falls from 1 to about 0.32 per sd of the stock.
 
 Run t138: t137-base's command with `--out t138`, `--theory-decay sovereign_default,currency_crisis,inflation_crisis,fiscal_consolidation,coup` and `--theory-decay-precision 10`. Those five kinds change; the other eight must match t137-base byte for byte (checked). Rule, kind by kind against t137-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r and rank 0's table; and, for currency crises, sovereign defaults and fiscal consolidations, against t137 too (the precision's own effect), with docs/studies/currency/auc_change.py for currency crises' 9+ band. Coups and inflation crises (already t137's) are scored for whether the tighter prior costs them. Adoption is the user's, kind by kind. No changes after the result.
+
+### Results (23 November 2026)
+
+Suite green (1664 tests), committed ad5aa34 before the run. 40 min. The eight other kinds match t137-base byte for byte. The tighter prior barely moves anything:
+
+| kind | against t137-base: Brier gain; verdict | against t137 (the precision's own effect) | AUC pooled / within (t137 -> t138) |
+|---|---|---|---|
+| coup | -0.00000; 2020-22 -0.00001 flagged LOSS; fail | the same rows: -0.00000 | 0.781 / 0.789 -> 0.781 / 0.789 |
+| currency crisis | +0.00002 [-0.00078, +0.00076]; pass | -0.00009; 2003-06 LOSS (7 onsets) | 0.761 / 0.748 -> 0.761 / 0.751 |
+| fiscal consolidation | -0.00080 [-0.00180, +0.00025]; fail | +0.00011; pass | 0.635 / 0.626 -> 0.636 / 0.626 |
+| inflation crisis | -0.00000; fail (no gain) | -0.00000 | 0.792 / 0.828 -> 0.792 / 0.827 |
+| sovereign default | -0.00024; 2020-22 LOSS; fail | +0.00000 | 0.563 / 0.611 -> 0.563 / 0.610 |
+
+Currency crises' 9+ band still carries the AUC loss (onset rows -0.0175, as in t137). Refitting the currency theory with the precision (docs/studies/currency/slopes.clj t138): reserves × decay +2.03 -> +1.97, the other columns within 0.01. So the diagnosis's reading that the slope came from a few dozen post-onset rows was wrong: the theory is fit at each origin on every row known by then, back to the catalogue's start, with many post-onset rows, and a prior sd of 0.32 does not move a slope the data hold at 2. The reserves interaction is in the data (pre-2003), and whether it is what ranks the 9+ onsets lower is not shown; the four-year tail remains the candidate. Nothing to adopt: t138 changes the adopted kinds by nothing that matters and fixes none of the others.

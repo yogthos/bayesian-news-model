@@ -1,5 +1,5 @@
 ;; bnm-7ny: currency crises' theory slopes with and without t137's decay.
-;; Usage: jolt -Sdeps '{:paths ["src" "resources" "test" "tools"]}' docs/studies/currency/slopes.clj
+;; Usage: jolt -Sdeps '{:paths ["src" "resources" "test" "tools"]}' docs/studies/currency/slopes.clj [t138]
 ;; Builds the currency spec both ways (bnm.world-run/pipeline-specs on the
 ;; base command), refits the theory as bnm.kind-theory/with-theory does
 ;; (bnm.theory/fits) and prints the slopes on each input's z column (shape
@@ -13,7 +13,9 @@
         ks ["growth_collapse" "market_crash" k]]
     (get (wr/pipeline-specs opts ks lg/base-end cats {:fresh (wr/fresh-kinds (:fresh-frailty opts) ks cats) :nq #{}}) k)))
 (def names (mapv :name (kt/decls k)))
-(doseq [[label extra] [["t136-base" []] ["t137" ["--theory-decay" "currency_crisis"]]]]
+(doseq [[label extra] (case (first *command-line-args*)
+                        "t138" [["t138" ["--theory-decay" "currency_crisis" "--theory-decay-precision" "10"]]]
+                        [["t136-base" []] ["t137" ["--theory-decay" "currency_crisis"]]])]
   (let [{:keys [scales levels start end target kind-theory]} (spec extra)
         countries (second (first levels))
         os (filter #(zero? (mod (inc (- % start)) 12)) (range start (inc end)))
