@@ -128,18 +128,30 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t137-with-coups'-and-inflation's-stocks-decaying
+(deftest the-base-of-record-is-t140-with-currency-crises'-decay-and-memory
+  ;; nineteenth note to L1, 23 November 2026: t137-base's command with
+  ;; currency crises' theory stocks decaying and their averaging's memory at
+  ;; a ten-year half-life (t140, a pass on the fold rule)
+  (is (= "t140-base" lg/base))
+  (is (= "e5cf1d125c978744c7bd6df9f8432ebd709f1fff6dfed27e2ba057825c5c1ead" (lg/base-files "currency_crisis")) "t140's currency crises")
+  (is (= "ae0ab8ce83321e0b36aac3897fb74875816116aea8af237b3304974ef46cb420" (lg/base-files "coup")) "coups t137-base's")
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "coup,inflation_crisis,currency_crisis" (opt "--theory-decay")))
+    (is (= {"banking_crisis" {:frailty {:rhos [0.0]}} "currency_crisis" {:forget-half-life 10}} (read-string (opt "--kind-set"))))))
+
+(deftest the-base-before-was-t137-with-coups'-and-inflation's-stocks-decaying
   ;; eighteenth note to L1, 23 November 2026: t136-base's command with
   ;; coups' and inflation crises' theory stocks read against time since
   ;; the last known onset (t137, each a pass on the fold rule)
-  (is (= "t137-base" lg/base))
+  (is (str/starts-with? lg/base "t1"))
   (is (= "ae0ab8ce83321e0b36aac3897fb74875816116aea8af237b3304974ef46cb420" (lg/base-files "coup")) "t137's coups")
   (is (= "7882321e27116b1c13e39e3c02e72cbec622f59c2179ce013792232df2cce904" (lg/base-files "inflation_crisis")) "t137's inflation crises")
   (is (= "4c85afea2f6881c3303b9f48f506ea0f907c518e2a6f1d12025e8321a3432e69" (lg/base-files "market_crash")) "market crashes t136-base's")
   (is (= "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111" (lg/base-files "sovereign_default")) "sovereign defaults unchanged (failed t137)")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
-    (is (= "coup,inflation_crisis" (opt "--theory-decay")))))
+    (is (re-find #"^coup,inflation_crisis" (opt "--theory-decay")))))
 
 (deftest the-base-before-was-t136-with-market-crashes'-direction-gauges
   ;; seventeenth note to L1, 22 November 2026: t133-base's command with
@@ -234,7 +246,7 @@
   ;; global layer for market crashes (--global-theory, t113) and inflation
   ;; crises' theory reading filled inputs (--impute, t114), and currency
   ;; crises' re-specified, shaped theory (--shapes, t115)
-  (is (= "fec3f60f1738a3787a09b8c058a954f02d6a11126807775e41d0d10542bbc105" (lg/base-files "currency_crisis")) "t115's currency crises")
+  (is (not= "fec3f60f1738a3787a09b8c058a954f02d6a11126807775e41d0d10542bbc105" (lg/base-files "currency_crisis")) "t115's currency crises, replaced by t140's (nineteenth note)")
   (is (some #{"data/derived/rer-annual.tsv"} lg/inputs))
   (is (some #{"data/fast/series.tsv"} lg/inputs))
   (is (not= "b93e9f952d9c1312d6c11ce7d9c593e23e34633f4b2932ff00bd8dff01f1a36e" (lg/base-files "market_crash")) "t113's market crashes, replaced by t124's (twelfth note)")
@@ -284,7 +296,7 @@
     (is (= "true" (opt "--theory-offset")))
     (is (= "true" (opt "--theory-world")))
     (is (= "rows" (opt "--recession-hold")))
-    (is (= {"banking_crisis" {:frailty {:rhos [0.0]}}} (read-string (opt "--kind-set"))))
+    (is (= {:frailty {:rhos [0.0]}} (get (read-string (opt "--kind-set")) "banking_crisis")) "banking's, with currency crises' memory since t140")
     (is (nil? (opt "--clim-prior")) "bnm-56c.26 not adopted")
     (is (= {:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {}
             :discount-from :data :flow-std :stable :evidence-at :issue-joint}

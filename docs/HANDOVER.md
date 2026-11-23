@@ -2,7 +2,9 @@
 
 ## State as of 2026-11-14 (branch `structure`)
 
-**The base of record is t137-base** (eighteenth note to amendment L1, 23 November 2026): t136-base's command with coups' and inflation crises' theory stocks read against time since the last known onset (`--theory-decay coup,inflation_crisis`); each passed the fold rule (docs/CALIBRATION.md t137). Open: currency crises passed t137 on Brier but lost AUC (bead to diagnose).
+**The base of record is t140-base** (nineteenth note to amendment L1, 23 November 2026): t137-base's command with currency crises' theory stocks decaying and their averaging's memory at a ten-year half-life; it passed the fold rule (docs/CALIBRATION.md t140, after the year-node diagnosis with bnm.lattice's :tap).
+
+**Before it, t137-base** (eighteenth note to amendment L1, 23 November 2026): t136-base's command with coups' and inflation crises' theory stocks read against time since the last known onset (`--theory-decay coup,inflation_crisis`); each passed the fold rule (docs/CALIBRATION.md t137).
 
 **Before it, t136-base** (seventeenth note to amendment L1, 22 November 2026): t133-base's command with market crashes' quarter nodes reading the world's stress by its direction (`--direction-gauges market_crash --direction-at quarter-lead,quarter-w2`); it passed the fold rule (docs/CALIBRATION.md t136). t134 (the global layer as gauges) and t135 (direction at the year node) failed.
 

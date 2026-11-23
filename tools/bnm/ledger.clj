@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t137-base")
+(def base "t140-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -82,8 +82,12 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t137-base/<kind>/
-  forecasts.tsv (23 November 2026, the eighteenth note to L1: t136-base's
+  "The base of record's forecasts, data/runs/t140-base/<kind>/
+  forecasts.tsv (23 November 2026, the nineteenth note to L1: t137-base's
+  command with currency crises' theory stocks decaying from known onsets
+  and their averaging's memory at a ten-year half-life, t140's; the other
+  twelve t137-base's).
+  t137-base (23 November 2026, the eighteenth note to L1: t136-base's
   command with coups' and inflation crises' theory stocks read against
   time since the last known onset, t137's; the other eleven t136-base's).
   t136-base (22 November 2026, the seventeenth note to L1: t133-base's
@@ -116,7 +120,7 @@
   {"banking_crisis" "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b"
    "conflict_onset" "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442"
    "coup" "ae0ab8ce83321e0b36aac3897fb74875816116aea8af237b3304974ef46cb420"
-   "currency_crisis" "fec3f60f1738a3787a09b8c058a954f02d6a11126807775e41d0d10542bbc105"
+   "currency_crisis" "e5cf1d125c978744c7bd6df9f8432ebd709f1fff6dfed27e2ba057825c5c1ead"
    "fiscal_consolidation" "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d"
    "food_price_shock" "32a8c9c7a058a94c792bde3e94b8f6dc645ee33c833ec009dd4b6d12c7bc2fc3"
    "growth_collapse" "2a6ff8f0ed9c14c6ec94be0e2157d0b1df7559dc0c7b3cd3bed3a6744105d421"
@@ -454,7 +458,11 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t137-base's (eighteenth note to L1):
+  "The base's bnm.world-run arguments, t140-base's (nineteenth note to L1):
+  t137-base's with currency crises' theory stocks decaying from known
+  onsets and their nodes' averaging at a ten-year half-life (--theory-decay
+  ...,currency_crisis, --kind-set currency_crisis :forget-half-life 10,
+  t140). t137-base's (eighteenth note to L1):
   t136-base's with coups' and inflation crises' theories reading their
   legacy stocks against time since the kind's last known onset
   (--theory-decay coup,inflation_crisis, t137). t136-base's (seventeenth note to L1):
@@ -516,9 +524,9 @@
    "--global-theory" "market_crash" "--global-driver-precision" "10" "--impute" "inflation_crisis,sovereign_default"
    "--aftermath-gauges" "growth_collapse"
    "--direction-gauges" "market_crash" "--direction-at" "quarter-lead,quarter-w2"
-   "--theory-decay" "coup,inflation_crisis"
+   "--theory-decay" "coup,inflation_crisis,currency_crisis"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
-   "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}}}"])
+   "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}} \"currency_crisis\" {:forget-half-life 10}}"])
 
 (defn command-line
   "The shell command a manifest records for bnm.world-run `args`; an
