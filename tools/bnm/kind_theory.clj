@@ -378,6 +378,26 @@
 
 (defn decls "A kind's theory signals, or nil." [kind] (get by-kind kind))
 
+(def decay-stocks
+  "t137 (reports/Crisis aftermath and trend reversal.md, rank 2): each
+  theory's legacy stocks, the levels an onset leaves raised for years
+  (debt, reserves, inflation, the spread and balance, a military
+  executive), fixed before any run. Their slopes may change with time
+  since the kind's last onset (with-theory :decay)."
+  {"sovereign_default" [:external-debt :reserves :inflation]
+   "currency_crisis" [:reserves :external-debt :inflation]
+   "inflation_crisis" [:inflation]
+   "fiscal_consolidation" [:government-debt :external-debt :spread :balance]
+   "coup" [:military-executive :electoral-democracy]})
+
+(defn decay-levels
+  "The raw column indices of `decay-stocks` in theory `k`'s declarations,
+  or nil."
+  [k]
+  (when-let [names (decay-stocks (kind-of k))]
+    (let [ix (into {} (map-indexed (fn [i d] [(:name d) i]) (decls k)))]
+      (mapv #(or (ix %) (throw (ex-info (str "bnm.kind-theory: " k " declares no " %) {:kind k :name %}))) names))))
+
 (declare decl-vars)
 
 (defn vars
@@ -461,9 +481,16 @@
   b.z past the intercept, added to a country's year log odds through
   :offset-add; the level stays the lattice's. :raw true (t121): the
   slopes' priors on each column's own scale (bnm.theory/fits).
-  :penalties (t124): a precision multiplier per raw input."
+  :penalties (t124): a precision multiplier per raw input.
+  :decay {:d (fn [unit origin]) :levels [raw index]} (t137): after the
+  inputs, d (the decay since the kind's last known onset, 0 when none) and
+  each listed input's standardized value times d, so the slope on a legacy
+  stock changes with time since the onset (a non-proportional hazard) and
+  the aftermath has its own level."
   ([sp row width] (with-theory sp row width {}))
-  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw penalties]}]
+  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw penalties decay]}]
+  (when (and add decay)
+    (throw (ex-info "bnm.kind-theory: :decay goes with a theory that sets the offset, not :add" {})))
   (when (and add shapes)
     (throw (ex-info "bnm.kind-theory: :add takes no :shapes: the shape columns are not centred, so the dropped intercept lifts every row" {})))
   (let [countries (second (first levels))
@@ -476,6 +503,11 @@
         inputs (if shapes
                  (fn [u t] (let [r (row u t)] (vec (mapcat (fn [i z] (shape (some-> r (nth i)) (z u t))) (range width) zs))))
                  (fn [u t] (mapv #(% u t) zs)))
+        inputs (if-let [{:keys [d levels]} decay]
+                 (fn [u t] (let [dv (double (or (d u t) 0.0))]
+                             (into (inputs u t) (cons dv (map #(* dv (double (or ((zs %) u t) 0.0))) levels)))))
+                 inputs)
+        pens (if (and pens decay) (into pens (repeat (inc (count (:levels decay))) 1.0)) pens)
         args {:places countries :origins os :prior 1.0 :inputs inputs :raw (boolean raw) :penalties pens
               :target (fn [u t] (target :year u t))}]
     (if add
@@ -520,7 +552,8 @@
   ([specs kinds db add] (with-kind-theory specs kinds db add false))
   ([specs kinds db add impute] (with-kind-theory specs kinds db add impute false))
   ([specs kinds db add impute shapes] (with-kind-theory specs kinds db add impute shapes false))
-  ([specs kinds db add impute shapes raw]
+  ([specs kinds db add impute shapes raw] (with-kind-theory specs kinds db add impute shapes raw nil))
+  ([specs kinds db add impute shapes raw decay]
   (reduce (fn [acc k]
             (let [ds (or (decls k) (throw (ex-info (str "bnm.kind-theory: no theory declared for " k) {:kind k})))]
               (check-loaded ds db)
@@ -533,7 +566,8 @@
                     (assoc acc kd (with-theory sp row width
                                     {:add (contains? add kd) :impute (if (set? impute) (contains? impute kd) impute)
                                      :shapes (if (set? shapes) (contains? shapes kd) shapes)
-                                     :raw (if (set? raw) (contains? raw kd) raw)})))
+                                     :raw (if (set? raw) (contains? raw kd) raw)
+                                     :decay (when-let [d (get decay kd)] {:d d :levels (decay-levels k)})})))
                   acc))))
           specs kinds)))
 

@@ -1212,6 +1212,36 @@
     (do (when-not g (throw (ex-info "bnm.world-run: --direction-at needs --direction-gauges" {})))
         (mapv keyword (str/split v #",")))))
 
+(defn theory-decay-choice
+  "--theory-decay kind,... (docs/CALIBRATION.md t137): the kinds whose
+  theory (--kind-theory) reads its legacy stocks (bnm.kind-theory/
+  decay-stocks) against time since the kind's last known onset; nil when
+  off."
+  [{v :theory-decay kt-arg :kind-theory}]
+  (when v
+    (let [named (str/split v #",")
+          theories (set (map kt/kind-of (some-> kt-arg (str/split #","))))]
+      (when-let [bad (seq (remove theories named))]
+        (throw (ex-info (str "bnm.world-run: --theory-decay names a kind without a theory in --kind-theory: " (str/join "," bad)) {})))
+      (doseq [k named :when (not (kt/decay-stocks k))]
+        (throw (ex-info (str "bnm.world-run: --theory-decay: no stocks declared for " k) {:kind k})))
+      named)))
+
+(def ^:private decay-half-months
+  "t137: the decay's half-life, four years, so eight years after an onset
+  (the old gate's length, Reinhart and Rogoff's) it reads a quarter."
+  48.0)
+
+(defn onset-decay
+  "(fn [unit origin]) -> 2^(-(t - m)/48) for the country's latest onset m
+  known at t (m + `lag` <= t, `lag` the catalogue's :known-lag), 0 with
+  none known: time since the onset, read only once the onset is published."
+  [onsets lag]
+  (fn [u t]
+    (if-let [m (some->> (get onsets u) (filter #(<= (+ % lag) t)) seq (apply max))]
+      (Math/pow 0.5 (/ (- t m) decay-half-months))
+      0.0)))
+
 (defn with-aftermath-gauges
   "`specs` with bnm.aftermath's kernels as the year gauges of `ks`
   (`aftermath-gauges-choice`), each kind's onsets known after its
@@ -1278,7 +1308,9 @@
     finer-where-fresh
     (#(if-let [ks (kind-theory-choice opts)]
         (kt/with-kind-theory % ks (theory-db (kt/vars ks) (real-lags-choice opts))
-                            (kind-theory-add opts) (impute-choice opts) (shapes-choice opts) (raw-prior-choice opts))
+                            (kind-theory-add opts) (impute-choice opts) (shapes-choice opts) (raw-prior-choice opts)
+                            (into {} (for [k (theory-decay-choice opts)]
+                                       [k (onset-decay (:onsets (cats k)) (:known-lag (cats k) 0))])))
         %))
     (#(if-let [ks (global-theory-choice opts)]
         (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts) (global-shapes-choice opts) (global-raw-prior-choice opts) (global-driver-precision-choice opts))

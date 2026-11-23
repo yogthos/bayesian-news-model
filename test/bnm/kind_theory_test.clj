@@ -451,3 +451,34 @@
             :fx-momentum12 :private-credit-change36 :post-crisis]
            (mapv :name (kt/decls "banking_crisis@aftermath"))))
     (is (every? (kt/vars ["banking_crisis@aftermath"]) ["banks/npl" "banks/capital_assets" "trade/commodity_tot"]))))
+
+;; t137 (the aftermath plan's rank 2): a legacy stock's slope changes with
+;; time since the kind's last known onset
+
+(deftest a-stock-read-against-time-since-the-onset
+  (let [d (fn [u t] (if (= u "a1") 0.5 0.0))
+        sp2 (kt/with-theory sp row 2 {:decay {:d d :levels [0]}})
+        os (range 11 600 12)
+        z0 (th/place-z (fn [u t] (x [u t])) countries os 20)
+        t (nth os 30)
+        in (:inputs (:kind-theory sp2))]
+    (is (= 4 (count (in "a1" t))) "the two inputs, then the decay and the stock times it")
+    (is (= 0.5 (nth (in "a1" t) 2)))
+    (is (< (Math/abs (- (* 0.5 (z0 "a1" t)) (nth (in "a1" t) 3))) 1e-12))
+    (is (= [0.0 0.0] (subvec (in "b1" t) 2)) "no onset: both 0")
+    (is (some? ((:offset sp2) :year "a1" t)))
+    (is (= 12 (count ((:inputs (:kind-theory (kt/with-theory sp row 2 {:shapes true :decay {:d d :levels [0]}}))) "a1" t)))
+        "after the shape columns")
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #":decay"
+                          (kt/with-theory sp row 2 {:add true :decay {:d d :levels [0]}})))))
+
+(deftest the-stocks-each-theory-decays
+  (is (= {"sovereign_default" [:external-debt :reserves :inflation]
+          "currency_crisis" [:reserves :external-debt :inflation]
+          "inflation_crisis" [:inflation]
+          "fiscal_consolidation" [:government-debt :external-debt :spread :balance]
+          "coup" [:military-executive :electoral-democracy]}
+         kt/decay-stocks))
+  (is (= [0 1 2] (kt/decay-levels "sovereign_default")))
+  (is (= [0] (kt/decay-levels "inflation_crisis@monthly")))
+  (is (nil? (kt/decay-levels "war_onset"))))

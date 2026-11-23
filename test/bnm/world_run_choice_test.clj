@@ -116,6 +116,22 @@
   (is (= ["bnm.world-run: --direction-at needs --direction-gauges" {}]
          (refusal wr/direction-at-choice {:direction-at "quarter-lead"}))))
 
+(deftest the-theories'-stocks-decay-from-known-onsets
+  ;; --theory-decay (t137)
+  (is (nil? (wr/theory-decay-choice {})))
+  (is (= ["coup"] (wr/theory-decay-choice {:theory-decay "coup" :kind-theory "coup,fiscal_consolidation"})))
+  (is (= ["bnm.world-run: --theory-decay names a kind without a theory in --kind-theory: war_onset" {}]
+         (refusal wr/theory-decay-choice {:theory-decay "war_onset" :kind-theory "coup"})))
+  (is (= ["bnm.world-run: --theory-decay: no stocks declared for war_onset" {:kind "war_onset"}]
+         (refusal wr/theory-decay-choice {:theory-decay "war_onset" :kind-theory "war_onset"})))
+  (let [d (wr/onset-decay {"A" (sorted-set 100 200)} 18)]
+    (is (= 0.0 (d "A" 117)) "the onset at 100 known at 118")
+    (is (< (Math/abs (- (Math/pow 0.5 (/ 18 48.0)) (d "A" 118))) 1e-12) "time since the onset, once known")
+    (is (< (Math/abs (- 0.5 (d "A" 148))) 1e-12) "halved 48 months after the onset")
+    (is (< (Math/abs (- (Math/pow 0.5 (/ 117 48.0)) (d "A" 217))) 1e-12) "the onset at 200 not known until 218")
+    (is (< (Math/abs (- (Math/pow 0.5 (/ 18 48.0)) (d "A" 218))) 1e-12) "then the latest known")
+    (is (= 0.0 (d "B" 300)) "never")))
+
 (deftest the-node's-gauges-take-each-catalogue's-lag
   (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}
         sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]
