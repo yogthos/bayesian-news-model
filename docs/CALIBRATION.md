@@ -4054,3 +4054,9 @@ Written 22 November 2026, before any run, at the user's word after the diagnosis
 - At December 2020 the smoke spec reads vix12 +1.27 sd beside the VIX 2.73 sd below its peak; at December 2008 the VIX's 3-month change +2.33 and BAA's +5.
 
 Run t135: t133-base's command with `--out t135 --direction-gauges market_crash`. Only market crashes change; the other twelve must match t133-base byte for byte (checked). Rule, market crashes against t133-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r, rank 0's table and the post-wave origins' mean p against their rate (docs/studies/market_crash/mc_years.py). Adoption is the user's. No changes after the result.
+
+### Results (22 November 2026)
+
+Suite green (1656 tests), committed 702624e before the run. 61 min. The other twelve kinds match t133-base byte for byte. Market crashes against t133-base: pooled Brier -0.00234 [-0.00595, +0.00075] (folds: 2003-06 +0.00168 [+0.00046, +0.00287], 2007-09 +0.00335, 2010-12 -0.00400, 2013-19 -0.00419, 2020-22 -0.00467, none flagged); pooled AUC 0.743 -> 0.743, within-year 0.543 -> 0.546, level r +0.53 -> +0.52; alert cost 0.480 -> 0.472 (dcost +0.0075 [-0.0272, +0.0482]). Fail: pooled Brier worse, so no dominance.
+
+It does not do what it was for: the post-wave origins rise, not fall (2011 0.377 -> 0.399, 2020 0.554 -> 0.573; 2010-22 mean 0.231 -> 0.233 against 0.082). The year node gives the group no weight that matters: at 2011 and 2020 it puts 0.99 on `up`, what the quarter nodes pass up, as it did in t133-base (the diagnosis's point 2). The gauges move the year node's own models, which the averaging barely uses; the small changes come through those. The post-wave stress is read where the weight is, in the quarter nodes (quarter-w2's global gauges, about 0.9 of its weight), and a year gauge cannot reach it.
