@@ -4229,3 +4229,19 @@ Written 23 November 2026, before any run, at the user's request to set out a the
 - Smoke spec: Syria's conflict-onset decay columns at 2014 read d 3.6 sd (standardized) with physical integrity -5, repression +5, soldiers 3.4; Spain's banking columns at 2012 its credit, mortgage, house-price and debt overhang (2.7, 1.9, 1.1, 1.6) and loans to deposits 5; Iceland's near 0 (no Macrohistory stretches).
 
 Run t141: t140-base's command with `--out t141 --year-decay banking_crisis,conflict_onset,war_onset,violence_surge,protest_surge,food_price_shock,growth_collapse`. Those seven change; the other six must match t140-base byte for byte (checked). Rule, kind by kind against t140-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r, rank 0's table against the document's expectation, and the year node's weight on :decay. Where a kind passes, its decay slopes' signs are read from the node (bnm.lattice :tap) against the document before adoption. Adoption is the user's, kind by kind. No changes after the result.
+
+### Results (23 November 2026)
+
+Suite green (1670 tests), committed 12aba12 before the run. 40 min. The six other kinds match t140-base byte for byte. Kind by kind against t140-base (pooled Brier gain; verdict; pooled / within-year AUC; alert dcost; the year node's weight on :decay at 2005, 2010, 2015, 2020):
+
+| kind | Brier gain | verdict | AUC | dcost | weight on :decay |
+|---|---|---|---|---|---|
+| banking | -0.00001 [-0.00003, -0.00000] LOSS | fail | 0.550 / 0.575 -> 0.548 / 0.577 | +0.0000 | 0.01, 0.00, 0.00, 0.00 |
+| conflict onset | -0.00004 [-0.00050, +0.00032] | fail | 0.842 / 0.851 -> 0.841 / 0.853 | -0.0006 | 0 throughout |
+| food price shock | -0.00152 [-0.00454, +0.00075] | fail | 0.638 / 0.589 -> 0.634 / 0.597 | -0.0148 | 0 throughout |
+| growth collapse | +0.00008; 2003-06, 2020-22 LOSS | fail | 0.643 / 0.609 -> 0.642 / 0.609 | +0.0021 | 0 throughout |
+| protest surge | +0.00000 (unchanged) | pass, nothing moved | 0.785 / 0.828 -> 0.785 / 0.826 | +0.0000 | 0 throughout |
+| violence surge | -0.00039 [-0.00180, +0.00086] | fail | 0.719 / 0.734 -> 0.723 / 0.720 | -0.0074 | 0.99, 0.00, 0.00, 0.00 |
+| war onset | -0.00001 | fail | 0.866 / 0.878 -> 0.865 / 0.877 | -0.0024 | 0 throughout |
+
+**The theory was not tested: the averaging gave the :decay group no weight** at any kind after 2005. What moved came through the all-inputs model, which reads every gauge and is shrunk where they are not core. The year nodes are carried by models built on flows (up, contradiction) and gauge groups that do not see the new columns: the lesson of t135 (a year gauge cannot reach a node that weights other models), now at seven kinds. t137's decay worked because it went into the theory's offset, which every model reads. Rank 0 moves little; food price shocks' 9+ band moves away from its rate (0.143 -> 0.117 against 0.236), its 2-4 and 5-8 bands toward theirs. Nothing to adopt. A test of the theory needs the columns where every model reads them: the lattice's `:core` (gauges read by every model, unshrunk in the all-inputs model).
