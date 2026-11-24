@@ -151,6 +151,35 @@
   (is (= ["bnm.world-run: --theory-decay-level takes true or false, not no" {}]
          (refusal wr/theory-decay-level-choice {:theory-decay "coup" :theory-decay-level "no"}))))
 
+(deftest the-year-decay's-stocks
+  ;; --year-decay (docs/AFTERMATH-STOCKS.md): the stocks each kind's year
+  ;; node reads against time since its last known onset
+  (is (nil? (wr/year-decay-choice {} ["coup"])))
+  (is (= ["conflict_onset"] (wr/year-decay-choice {:year-decay "conflict_onset"} ["conflict_onset" "coup"])))
+  (is (= ["bnm.world-run: --year-decay: no stocks declared for market_crash" {:kind "market_crash"}]
+         (refusal #(wr/year-decay-choice % ["market_crash"]) {:year-decay "market_crash"})))
+  (is (= ["bnm.world-run: --year-decay names a kind not run: war_onset" {}]
+         (refusal #(wr/year-decay-choice % ["coup"]) {:year-decay "war_onset"})))
+  (is (= #{"banking_crisis" "conflict_onset" "war_onset" "violence_surge" "protest_surge" "food_price_shock" "growth_collapse"}
+         (set (keys wr/year-decay-stocks))))
+  (is (= {:ix [3 5 18 8] :level true} (wr/year-decay-layout "conflict_onset")) "physical-integrity, repression, soldiers-per-capita, military-executive")
+  (is (= {:ix [24 23] :level true} (wr/year-decay-layout "food_price_shock")))
+  (is (= {:ix [15 23] :level false} (wr/year-decay-layout "growth_collapse")) "t133's kernels carry the level")
+  (is (= {:ix [0 1 2 6 31] :level false} (wr/year-decay-layout "banking_crisis")) "the stretches and loans to deposits; its own kernels carry the level"))
+
+(deftest the-year-decay-joins-the-year-node
+  (let [sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]
+            :parent {"A" "world" "B" "world"} :start 0 :end 23
+            :gauges (fn [_ u _] [2.0 (if (= u "A") 3.0 nil)]) :gauge-width {:year 2}}
+        d (fn [u _] (if (= u "A") 0.5 0.0))
+        out (wr/with-year-decay {"x" sp "y" sp} ["x"] {"x" {:ix [1] :level true}} {"x" d} :stable)
+        row (wr/year-decay-row sp {:ix [1] :level true} d)]
+    (is (= [0.5 1.5] (row "A" 23)) "d, then the stock times d")
+    (is (= [0.0 0.0] (row "B" 23)) "a missing stock reads 0")
+    (is (= [1.5] ((wr/year-decay-row sp {:ix [1] :level false} d) "A" 23)))
+    (is (= [2 3] (get-in out ["x" :gauge-groups :year :decay])))
+    (is (= sp (out "y")))))
+
 (deftest the-node's-gauges-take-each-catalogue's-lag
   (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}
         sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]

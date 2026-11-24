@@ -1262,6 +1262,76 @@
       (Math/pow 0.5 (/ (- t m) decay-half-months))
       0.0)))
 
+(def year-decay-stocks
+  "docs/AFTERMATH-STOCKS.md, fixed before any run: each kind's year-node
+  stocks an onset leaves changed for years, by gauge name (the political
+  year node's bnm.lattice-political/year-names) or, at banking, its
+  stretches and stabilizers; :level false where the node already reads its
+  own onsets decaying (growth collapses' t133 kernels, banking's process
+  group). Market crashes are left out (their year node passes up the
+  quarters', t135)."
+  (let [pol (fn [names level] {:names names :level level})]
+    {"conflict_onset" (pol [:physical-integrity :repression :soldiers-per-capita :military-executive] true)
+     "war_onset" (pol [:physical-integrity :repression :soldiers-per-capita :military-executive] true)
+     "violence_surge" (pol [:physical-integrity :repression] true)
+     "protest_surge" (pol [:repression :participation :assembly] true)
+     "food_price_shock" (pol [:food-inflation :inflation] true)
+     "growth_collapse" (pol [:growth3 :inflation] false)
+     "banking_crisis" {:banking [:credit :mortgages :house-prices :public-debt :loans-to-deposits] :level false}}))
+
+(defn year-decay-layout
+  "{:ix [year gauge index] :level bool} for kind `k`'s `year-decay-stocks`."
+  [k]
+  (let [{:keys [names banking level]} (year-decay-stocks k)
+        ix-of (fn [v n] (let [i (.indexOf ^java.util.List v n)]
+                          (when (neg? i) (throw (ex-info (str "bnm.world-run: no year gauge " n " at " k) {:kind k :name n})))
+                          i))]
+    {:ix (if banking
+           (mapv #(if (= % :loans-to-deposits)
+                    (+ (first (:stabilizers lb/year-groups)) (ix-of lb/year-stabilizers %))
+                    (ix-of lb/year-specific %))
+                 banking)
+           (mapv #(ix-of lp/year-names %) names))
+     :level level}))
+
+(defn year-decay-choice
+  "--year-decay kind,... (docs/AFTERMATH-STOCKS.md): the kinds among those
+  run (`ks`) whose year node reads its stocks against time since the last
+  known onset; nil when off."
+  [{v :year-decay} ks]
+  (when v
+    (let [named (str/split v #",")]
+      (doseq [k named :when (not (year-decay-stocks k))]
+        (throw (ex-info (str "bnm.world-run: --year-decay: no stocks declared for " k) {:kind k})))
+      (when-let [bad (seq (remove (set ks) named))]
+        (throw (ex-info (str "bnm.world-run: --year-decay names a kind not run: " (str/join "," bad)) {})))
+      named)))
+
+(defn year-decay-row
+  "(fn [unit origin]) -> [d? stock x d ...]: the spec's own year gauges at
+  `ix` (as the node reads them, a missing value 0) times d (`d`, onset-
+  decay), d itself first when :level."
+  [sp {:keys [ix level]} d]
+  (let [gauges (:gauges sp)]
+    (fn [u t]
+      (let [dv (double (or (d u t) 0.0))
+            g (gauges :year u t)
+            xs (map #(* dv (double (or (nth g % nil) 0.0))) ix)]
+        (vec (if level (cons dv xs) xs))))))
+
+(defn with-year-decay
+  "`specs` with `year-decay-row` as the year gauge group :decay at `ks`
+  (`layouts` {kind layout}, `decays` {kind d}); the specs as they were when
+  `ks` is nil."
+  [specs ks layouts decays gauge-std]
+  (if-not ks
+    specs
+    (reduce (fn [acc k]
+              (let [lay (layouts k)
+                    names (into (if (:level lay) [:decay] []) (map #(keyword (str "stock" % "-x-decay")) (:ix lay)))]
+                (update acc k #(yg/with-group % (year-decay-row % lay (decays k)) (count names) :decay names gauge-std))))
+            specs ks)))
+
 (defn with-aftermath-gauges
   "`specs` with bnm.aftermath's kernels as the year gauges of `ks`
   (`aftermath-gauges-choice`), each kind's onsets known after its
@@ -1354,6 +1424,11 @@
     (#(if-let [gks (global-gauges-choice opts ks)]
         (with-global-gauges % gks (:row (sg/assemble (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) kt/global))
           (count kt/global) (some-> (:gauge-std opts) keyword))
+        %))
+    (#(if-let [yks (year-decay-choice opts ks)]
+        (with-year-decay % yks (into {} (for [k yks] [k (year-decay-layout k)]))
+          (into {} (for [k yks] [k (onset-decay (:onsets (cats k)) (:known-lag (cats k) 0))]))
+          (some-> (:gauge-std opts) keyword))
         %))
     (#(if-let [dks (direction-gauges-choice opts ks)]
         (let [[names row] (nm/direction (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
