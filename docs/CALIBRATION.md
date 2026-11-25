@@ -4353,3 +4353,19 @@ Written 25 November 2026, before any run, at the user's word ("do 1 and 2": t145
 - Smoke (no run): Colombia's conflict d at 2010 reads 0.84 (under way) where the onset clock reads 0.00 (onset 1964); Syria's war at 2014 0.84 against 0.72; Egypt's food at 2017 0.88 against 0.18.
 
 Run t146: t143's command with `--out t146 --year-decay-clock end`. Those five kinds change; the other eight must match t140-base byte for byte (checked). Rule, kind by kind against t140-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r, rank 0's table against t143's and the addendum's expected direction, the year node's weights, and against t143 (the clock's own effect). Adoption is the user's, kind by kind. No changes after the result.
+
+### Results (25 November 2026)
+
+Suite green (1690 tests: the runner now runs every test file, 17 tests it had left out among them), committed 9dad961 before the run. 43 min. The eight other kinds match t140-base byte for byte. Kind by kind against t140-base (pooled Brier gain; verdict; pooled / within-year AUC; alert dcost):
+
+| kind | Brier gain | verdict | AUC | dcost |
+|---|---|---|---|---|
+| conflict onset | -0.00088 [-0.00270, +0.00067] | fail | 0.842 / 0.851 -> 0.852 / 0.871 | -0.0242 LOSS |
+| food price shock | -0.02225 [-0.03683, -0.00957] LOSS; 2010-12, 2013-19 LOSS | fail | 0.638 / 0.589 -> 0.573 / 0.564 | -0.0810 LOSS |
+| protest surge | -0.00187 [-0.00363, -0.00040] LOSS; 2013-19, 2020-22 LOSS | fail | 0.785 / 0.828 -> 0.755 / 0.851 | -0.0220 LOSS |
+| violence surge | -0.00019 [-0.00176, +0.00141] | fail | 0.719 / 0.734 -> 0.716 / 0.711 | -0.0047 |
+| war onset | +0.00055 [-0.00028, +0.00145] | pass | 0.866 / 0.878 -> 0.837 / 0.851 | +0.0056 |
+
+Pooled over the five the alert cost loses (-0.0097 [-0.0146, -0.0054]). Against t143 (the clock's own effect): food price shocks lose in three folds and pooled (-0.01371 [-0.02121, -0.00621]); conflict onsets -0.00060; the others within ±0.00012.
+
+**The addendum's expectation is refuted where the clock changes d.** From the episode's end the post-onset level moves further the wrong way, not back: conflict onsets' 0-1 band 0.227 (t143) -> 0.209 against its rate 0.352, 2-4 0.222 -> 0.203 against 0.267; food price shocks' 2-4 band 0.383 -> 0.444 against 0.209, 9+ 0.159 -> 0.105 against 0.236. War onsets' 0-1 band falls below its rate (0.230 -> 0.175 against 0.222). Conflict onsets rank better within years again (0.871) while their level goes wrong (level r -0.57). Protest and violence surges barely move, as the smoke said. So neither the old history (t145) nor the onset clock (t146) explains the reversal: what the year nodes learn about a country's own recent episode, fitted on the rows they see, is the opposite of what 2003-2022 shows at conflict onsets and food price shocks, in every encoding tried (t141-t146). The aftermath decay at the kinds without a theory is not supported. War onsets pass a fourth time with both AUCs lower each time. Nothing is adopted unless the user decides otherwise; `--year-decay-clock` stays, onset by default.
