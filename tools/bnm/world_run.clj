@@ -1333,6 +1333,25 @@
       :onset (onset-decay (:onsets cat) (:known-lag cat 0))
       :end (es/end-decay (es/marks k annual db cat) decay-half-months))))
 
+(defn year-decay-net-choice
+  "--year-decay-net none|world (t147): d as it is, or less the mean of every
+  catalogue country's d at the same month (net-of-world); none by default."
+  [{v :year-decay-net g :year-decay}]
+  (if-not v
+    :none
+    (do (when-not g (throw (ex-info "bnm.world-run: --year-decay-net needs --year-decay" {})))
+        (case v "none" :none "world" :world
+          (throw (ex-info (str "bnm.world-run: --year-decay-net takes none or world, not " v) {}))))))
+
+(defn net-of-world
+  "d (fn [unit t]) less the mean of `units`' d at t: a country's aftermath
+  beyond the world's, so that a wave after which most countries read d high
+  at once is not read as each one's (diagnosis after t146). The mean is
+  computed once per t."
+  [d units]
+  (let [mean-at (memoize (fn [t] (/ (reduce + (map #(d % t) units)) (double (count units)))))]
+    (fn [u t] (- (d u t) (mean-at t)))))
+
 (defn year-decay-choice
   "--year-decay kind,... (docs/AFTERMATH-STOCKS.md): the kinds among those
   run (`ks`) whose year node reads its stocks against time since the last
@@ -1486,7 +1505,10 @@
                 [annual db] (when (= :end clock)
                               [(es/read-annual)
                                (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))])]
-            (into {} (for [k yks] [k (year-decay-fn clock k cats annual db)])))
+            (into {} (for [k yks :let [d (year-decay-fn clock k cats annual db)]]
+                       [k (case (year-decay-net-choice opts)
+                            :none d
+                            :world (net-of-world d (sort (keys (:onsets (cats k))))))])))
           (some-> (:gauge-std opts) keyword) (year-decay-core-choice opts))
         %))
     (#(if-let [dks (direction-gauges-choice opts ks)]

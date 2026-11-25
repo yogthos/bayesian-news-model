@@ -229,6 +229,23 @@
       (is (== (Math/pow 0.5 (/ 17 48.0)) (end "A" 160)))
       (is (== (Math/pow 0.5 (/ 7 48.0)) (end "A" 162))))))
 
+(deftest the-year-decay-net-of-the-world
+  ;; t147: --year-decay-net world, each country's d less the mean of every
+  ;; catalogue country's d at the same month (a world wave is not one
+  ;; country's aftermath)
+  (is (= :none (wr/year-decay-net-choice {})))
+  (is (= :world (wr/year-decay-net-choice {:year-decay "food_price_shock" :year-decay-net "world"})))
+  (is (= ["bnm.world-run: --year-decay-net takes none or world, not x" {}]
+         (refusal wr/year-decay-net-choice {:year-decay "food_price_shock" :year-decay-net "x"})))
+  (is (= ["bnm.world-run: --year-decay-net needs --year-decay" {}]
+         (refusal wr/year-decay-net-choice {:year-decay-net "world"})))
+  (let [d (fn [u t] ({"A" 0.9 "B" 0.3 "C" 0.0} u 0.0))
+        n (wr/net-of-world d ["A" "B" "C"])]
+    (is (< (Math/abs (- 0.5 (n "A" 10))) 1e-12))
+    (is (< (Math/abs (- -0.4 (n "C" 10))) 1e-12))
+    (testing "a place outside the catalogue reads the world's mean less"
+      (is (< (Math/abs (- -0.4 (n "Z" 10))) 1e-12)))))
+
 (deftest the-node's-gauges-take-each-catalogue's-lag
   (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}
         sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]
