@@ -1280,8 +1280,15 @@
      "banking_crisis" {:banking [:credit :mortgages :house-prices :public-debt :loans-to-deposits] :level false}}))
 
 (defn year-decay-layout
-  "{:ix [year gauge index] :level bool} for kind `k`'s `year-decay-stocks`."
-  [k]
+  "{:ix [year gauge index] :level bool} for kind `k`'s `year-decay-stocks`;
+  `form` :level (t143), d alone, refused where the node already reads its
+  own onsets decaying."
+  ([k] (year-decay-layout k :stocks))
+  ([k form]
+  (when (and (= :level form) (false? (:level (year-decay-stocks k))))
+    (throw (ex-info (str "bnm.world-run: --year-decay-form level: " k "'s year node already reads its onsets decaying") {:kind k})))
+  (if (= :level form)
+    {:ix [] :level true}
   (let [{:keys [names banking level]} (year-decay-stocks k)
         ix-of (fn [v n] (let [i (.indexOf ^java.util.List v n)]
                           (when (neg? i) (throw (ex-info (str "bnm.world-run: no year gauge " n " at " k) {:kind k :name n})))
@@ -1292,7 +1299,17 @@
                     (ix-of lb/year-specific %))
                  banking)
            (mapv #(ix-of lp/year-names %) names))
-     :level level}))
+     :level level}))))
+
+(defn year-decay-form-choice
+  "--year-decay-form stocks|level (t143): the stocks times d with d
+  (docs/AFTERMATH-STOCKS.md, t141-t142), or d alone; stocks by default."
+  [{v :year-decay-form g :year-decay}]
+  (if-not v
+    :stocks
+    (do (when-not g (throw (ex-info "bnm.world-run: --year-decay-form needs --year-decay" {})))
+        (case v "stocks" :stocks "level" :level
+          (throw (ex-info (str "bnm.world-run: --year-decay-form takes stocks or level, not " v) {}))))))
 
 (defn year-decay-choice
   "--year-decay kind,... (docs/AFTERMATH-STOCKS.md): the kinds among those
@@ -1442,7 +1459,7 @@
           (count kt/global) (some-> (:gauge-std opts) keyword))
         %))
     (#(if-let [yks (year-decay-choice opts ks)]
-        (with-year-decay % yks (into {} (for [k yks] [k (year-decay-layout k)]))
+        (with-year-decay % yks (into {} (for [k yks] [k (year-decay-layout k (year-decay-form-choice opts))]))
           (into {} (for [k yks] [k (onset-decay (:onsets (cats k)) (:known-lag (cats k) 0))]))
           (some-> (:gauge-std opts) keyword) (year-decay-core-choice opts))
         %))

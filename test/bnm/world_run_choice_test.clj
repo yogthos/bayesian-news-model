@@ -195,6 +195,21 @@
   (is (= ["bnm.world-run: --year-decay-core needs --year-decay" {}]
          (refusal wr/year-decay-core-choice {:year-decay-core "true"}))))
 
+(deftest the-year-decay's-level-alone
+  ;; t143: --year-decay-form level, the aftermath's own level only (d), no
+  ;; stock interactions; refused where the node already reads its onsets
+  ;; decaying (growth collapses, banking)
+  (is (= :stocks (wr/year-decay-form-choice {})))
+  (is (= :level (wr/year-decay-form-choice {:year-decay "war_onset" :year-decay-form "level"})))
+  (is (= ["bnm.world-run: --year-decay-form takes stocks or level, not x" {}]
+         (refusal wr/year-decay-form-choice {:year-decay "war_onset" :year-decay-form "x"})))
+  (is (= ["bnm.world-run: --year-decay-form needs --year-decay" {}]
+         (refusal wr/year-decay-form-choice {:year-decay-form "level"})))
+  (is (= {:ix [] :level true} (wr/year-decay-layout "conflict_onset" :level)))
+  (is (= {:ix [3 5 18 8] :level true} (wr/year-decay-layout "conflict_onset" :stocks)))
+  (is (= ["bnm.world-run: --year-decay-form level: growth_collapse's year node already reads its onsets decaying" {:kind "growth_collapse"}]
+         (refusal #(wr/year-decay-layout % :level) "growth_collapse"))))
+
 (deftest the-node's-gauges-take-each-catalogue's-lag
   (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}
         sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]
