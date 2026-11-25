@@ -1804,8 +1804,10 @@
    :resolutions (fn [place]) -> sorted-set of the months at which each
    onset at the place became known (none without),
    :tap (fn [row]) (bnm-7ny), for diagnosis only: called with each issued
-   row, {:scale :level :place :t :x :o :f :w}, its inputs, mean offset,
-   each model's log odds and the weights; nothing it returns is used,
+   row, {:scale :level :place :t :x :o :f :w :models}, its inputs, mean
+   offset, each model's log odds, the weights and the models as issued
+   (augur.dynamic), so a diagnosis can read a model at other inputs;
+   nothing it returns is used,
    :exposure (fn [scale place origin]) -> [exposures], :exposure-width n,
    :coupling, the strength levels share what they learn (none without),
    :forget, the model averaging's forgetting, per period, :forget-half-life
@@ -2236,7 +2238,8 @@
                                              _ (when-let [tap (:tap spec)]
                                                  (tap {:scale scale :level level :place place :t t :x x :o o
                                                        :f (into {} (for [[g mdl] (:models live)] [g (:f (d/predictive mdl x o))]))
-                                                       :w (d/weights live)}))]]
+                                                       :w (d/weights live)
+                                                       :models (:models live)}))]]
                                    (assoc e :o o :p p :target target :f pf :q pq :principal (when principal-of (principal-of x))
                                           :frailty zprior :ez (when ez (get ez place)) :rg (when rg (get rg place))
                                           ;; :state-from: the node's state, and the errors it feeds back,

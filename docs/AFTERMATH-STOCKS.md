@@ -51,3 +51,7 @@ t142 and t143 ran d from the onset. A conflict that lasts ten years then reads d
 d = 2^(-(t - e)/48), e the latest month known by t to be inside an episode, an onset's month among them; 0 with none known. While an episode is known to go on, d stays near 1 (0.84 at a December origin for an annual state, the year before known at the lag); after it ends, d decays from its last month. On the data: conflict onsets' d differs from the onset clock's by more than 0.1 in 2752 of 9006 country-years with either, war onsets' in 1446 of 7401, food price shocks' in 371 of 1424, protest and violence surges' in 26 and 83 (their surges last a month or a few). So the clock is a test at conflict, war and food; protest and violence surges barely change.
 
 Expected, if the reading after t143 is right: with the clock from the end, conflict onsets' post-onset level takes the recurrence sign (rank 0's 0-1 and 2-4 bands toward their rates, up), food price shocks' the refractory one (2-4 down toward its rate).
+
+## Erratum (25 November 2026, after t141-t146)
+
+The political year nodes read their own onsets decaying through their history group (bnm.lattice-political/year-names: since-last, own10, own30), not only growth collapses' kernels. By this document's own rule d should not have been added at any of them. conflict onsets' d correlates -0.93 with since-last on the rows with a known onset (docs/CALIBRATION.md, "Diagnosis: conflict onsets' slope on d").

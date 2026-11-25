@@ -2927,6 +2927,9 @@
         e (first (filter #(= :year (:scale %)) @taps))]
     (is (= (:forecasts a) (:forecasts b)))
     (is (= (count (filter #(= :year (:scale %)) (:forecasts b))) (count (filter #(= :year (:scale %)) @taps))))
-    (is (every? #(contains? e %) [:scale :level :place :t :x :o :f :w]))
+    (is (every? #(contains? e %) [:scale :level :place :t :x :o :f :w :models]))
     (is (contains? (:f e) :all))
+    ;; the node's models as issued: each one's predictive at the row is the :f tapped
+    (is (= (set (keys (:f e))) (set (keys (:models e)))))
+    (is (every? (fn [[g m]] (== (get (:f e) g) (:f (augur.dynamic/predictive m (:x e) (:o e))))) (:models e)))
     (is (< (Math/abs (- 1.0 (reduce + (vals (:w e))))) 1e-9))))
