@@ -10,6 +10,7 @@
             [bnm.slow-test]
             [bnm.stocks-test]
             [bnm.catalogue-through-test]
+            [bnm.release-calendar-test]
             [bnm.trade-test]
             [bnm.polecon-test]
             [bnm.invariants-test]
@@ -172,6 +173,7 @@
     bnm.slow-test
     bnm.stocks-test
     bnm.catalogue-through-test
+    bnm.release-calendar-test
     bnm.trade-test
     bnm.polecon-test
     bnm.invariants-test

@@ -1060,6 +1060,34 @@
   [args]
   (cli/opts args))
 
+(def release-calendars
+  "t150: the catalogues published once a year, {kind {:month r}}, a year's
+  onsets known at month r (0 January) of the next: UCDP/PRIO's Armed
+  Conflict Dataset, out by September in every release found (2005, 2008,
+  2020; docs/CALIBRATION.md), read at October."
+  {"conflict_onset" {:month 9} "war_onset" {:month 9}})
+
+(defn release-calendar-choice
+  "--release-calendar kind,... (t150): the kinds among `ks` whose onsets
+  are known at their catalogue's release (`release-calendars`), not at
+  their :known-lag; nil when off."
+  [{v :release-calendar} ks]
+  (when v
+    (let [named (str/split v #",")]
+      (doseq [k named :when (not (release-calendars k))]
+        (throw (ex-info (str "bnm.world-run: --release-calendar: no calendar declared for " k) {:kind k})))
+      (when-let [bad (seq (remove (set ks) named))]
+        (throw (ex-info (str "bnm.world-run: --release-calendar names a kind not run: " (str/join "," bad)) {})))
+      named)))
+
+(defn with-release-calendar
+  "`cats` with `release-calendars`' :release at `ks` (the inputs that read
+  known onsets through bnm.lattice-banking/known-month: the own history,
+  the others' counts and the world's share); as they were when `ks` is nil.
+  The targets stay known at the window's end plus :known-lag."
+  [cats ks]
+  (reduce (fn [acc k] (assoc-in acc [k :release] (release-calendars k))) cats ks))
+
 (defn run-catalogues
   "The catalogues a run with `opts` fits and scores on: --food-outcomes,
   --at-risk and --catalogue-through applied to bnm.kinds/catalogues. The
@@ -1072,7 +1100,8 @@
                 (growth-outcomes (:growth-outcomes opts) #(ee/quarterly-growth % cat-db))
                 (at-risk cat-db (:food-outcomes opts) (:at-risk opts) (:growth-outcomes opts)))
       (= "true" (:catalogue-through opts)) catalogues-through
-      (banking-spans-choice opts) (update lb/kind lb/with-spans (lb/read-spans lb/spans-path)))))
+      (banking-spans-choice opts) (update lb/kind lb/with-spans (lb/read-spans lb/spans-path))
+      (:release-calendar opts) (#(with-release-calendar % (release-calendar-choice opts (keys %)))))))
 
 (defn fresh-inputs-choice
   "--fresh-inputs true: the political and economic kinds' year row reads

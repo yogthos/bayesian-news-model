@@ -171,15 +171,30 @@
              (or (nil? grid) (possible-onset? cat unit lo hi)))
     (boolean (seq (subseq (onsets unit) > lo <= hi)))))
 
+(defn known-month
+  "The month onset month `m` of `cat` is known: its :known-lag after it, or,
+  for a catalogue published once a year (:release {:month r}, t150), month
+  r of the year after the onset's."
+  [cat m]
+  (if-let [{r :month} (:release cat)]
+    (+ r (* 12 (inc (quot m 12))))
+    (+ m (get cat :known-lag known-lag))))
+
+(defn known-onsets
+  "`unit`'s onsets of `cat` known by month t, in order (`known-month` rises
+  with the onset, so they are a prefix)."
+  [cat unit t]
+  (take-while #(<= (known-month cat %) t) (get-in cat [:onsets unit] (sorted-set))))
+
 (defn- history
-  "The own-history inputs at origin t from onsets known by then: log years
-  since the last, and the counts in the last 10 and 30 years; nil when the
-  catalogue does not reach t less its publication lag (:through, loop
-  audit Test 7, under the catalogue's :unknown-past-through, which a base
-  that predates it leaves off): its uncovered tail is unknown, not calm."
-  [{:keys [onsets from through unknown-past-through] :as cat} unit t]
+  "The own-history inputs at origin t from onsets known by then (known-month):
+  log years since the last, and the counts in the last 10 and 30 years; nil
+  when the catalogue does not reach t less its publication lag (:through,
+  loop audit Test 7, under the catalogue's :unknown-past-through, which a
+  base that predates it leaves off): its uncovered tail is unknown, not calm."
+  [{:keys [from through unknown-past-through] :as cat} unit t]
   (let [k (- t (get cat :known-lag known-lag))
-        known (subseq (get onsets unit (sorted-set)) <= k)
+        known (known-onsets cat unit t)
         last-m (last known)]
     (when (and (from unit) (<= (from unit) t)
                (or (not unknown-past-through) (nil? (get through unit)) (<= k (get through unit))))

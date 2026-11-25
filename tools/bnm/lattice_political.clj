@@ -170,7 +170,8 @@
         through (get-in cat [:through unit])
         k (- t (:known-lag cat))]
     (when (and from (<= (+ from months) t) (or (not (:unknown-past-through cat)) (nil? through) (<= k through)))
-      (double (count (subseq (get-in cat [:onsets unit] (sorted-set)) > (- k months) <= k))))))
+      ;; known by t (lb/known-month: at the lag, or a release calendar's month, t150)
+      (double (count (filter #(> % (- k months)) (lb/known-onsets cat unit t)))))))
 
 (defn world-share
   "The share of `countries` in the system at t (`in-system`) with an onset
