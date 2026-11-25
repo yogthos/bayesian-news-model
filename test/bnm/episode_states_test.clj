@@ -41,3 +41,17 @@
   (let [p (str (System/getProperty "java.io.tmpdir") "/episode-states-test.csv")]
     (spit p "kind,iso,year,source\nwar_onset,SYR,2012,UCDP 1\nwar_onset,SYR,2013,UCDP 1\nconflict_onset,SYR,2011,UCDP 2\n")
     (is (= {"war_onset" {"SYR" #{2012 2013}} "conflict_onset" {"SYR" #{2011}}} (es/read-annual p)))))
+
+(deftest violence-level-reads-the-published-months
+  ;; the 15 months t-17..t-3 (GDELT at a 3-month lag), at least 12 of them:
+  ;; log of their mean plus 0.1
+  (let [xs (into {} (for [m (range 0 200)] [m (if (< m 100) 1.0 4.0)]))]
+    (is (< (Math/abs (- (Math/log 4.1) (es/violence-level xs 120))) 1e-12) "months 103-117")
+    (is (< (Math/abs (- (Math/log (+ 0.1 (/ (+ (* 3 1.0) (* 12 4.0)) 15.0))) (es/violence-level xs 114))) 1e-12)
+        "months 97-111: three at 1, twelve at 4")
+    (testing "the months after t-3 are not read"
+      (is (= (es/violence-level xs 120) (es/violence-level (assoc xs 118 1000.0 119 1000.0 120 1000.0) 120))))
+    (testing "under 12 of the 15 months: none"
+      (is (nil? (es/violence-level (apply dissoc xs (range 103 107)) 120)))
+      (is (some? (es/violence-level (apply dissoc xs (range 103 106)) 120))))
+    (is (nil? (es/violence-level {} 120)))))

@@ -1397,6 +1397,31 @@
                  (update acc k add)))
              specs ks))))
 
+(defn year-events-choice
+  "--year-events kind,... (t148): the kinds among those run (`ks`) whose
+  year node reads GDELT violence's published level (bnm.episode-states/
+  violence-level); nil when off."
+  [{v :year-events} ks]
+  (when v
+    (let [named (str/split v #",")]
+      (when-let [bad (seq (remove (set ks) named))]
+        (throw (ex-info (str "bnm.world-run: --year-events names a kind not run: " (str/join "," bad)) {})))
+      named)))
+
+(defn with-year-events
+  "`specs` with `row` ((fn [unit origin]) -> [level] or nil) as the year
+  gauge group :events at `ks`, its column also in the year node's :core
+  (read by every model, as t142 found a group alone takes no weight); the
+  specs as they were when `ks` is nil."
+  [specs ks row gauge-std]
+  (if-not ks
+    specs
+    (reduce (fn [acc k]
+              (update acc k (fn [sp] (let [w (get-in sp [:gauge-width :year] 0)]
+                                       (-> (yg/with-group sp row 1 :events [:violence-level] gauge-std)
+                                           (update-in [:core :year] (fnil conj []) w))))))
+            specs ks)))
+
 (defn year-decay-core-choice
   "--year-decay-core true (t142): the decay columns in the year node's :core;
   false by default (t141's)."
@@ -1510,6 +1535,11 @@
                             :none d
                             :world (net-of-world d (sort (keys (:onsets (cats k))))))])))
           (some-> (:gauge-std opts) keyword) (year-decay-core-choice opts))
+        %))
+    (#(if-let [eks (year-events-choice opts ks)]
+        (with-year-events % eks (es/violence-row (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
+                                                                 {:real-lags (real-lags-choice opts)}))
+          (some-> (:gauge-std opts) keyword))
         %))
     (#(if-let [dks (direction-gauges-choice opts ks)]
         (let [[names row] (nm/direction (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")

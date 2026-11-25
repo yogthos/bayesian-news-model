@@ -195,6 +195,24 @@
   (is (= ["bnm.world-run: --year-decay-core needs --year-decay" {}]
          (refusal wr/year-decay-core-choice {:year-decay-core "true"}))))
 
+(deftest the-year-events-gauge
+  ;; t148: --year-events kind,...: GDELT violence's published level in the
+  ;; year node's :core and its own group :events
+  (is (nil? (wr/year-events-choice {} ["conflict_onset"])))
+  (is (= ["conflict_onset"] (wr/year-events-choice {:year-events "conflict_onset"} ["conflict_onset" "coup"])))
+  (is (= ["bnm.world-run: --year-events names a kind not run: war_onset" {}]
+         (refusal #(wr/year-events-choice % ["coup"]) {:year-events "war_onset"})))
+  (let [sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]
+            :parent {"A" "world" "B" "world"} :start 0 :end 23
+            :gauges (fn [_ _ _] [2.0 3.0]) :gauge-width {:year 2} :core {:year [0]}}
+        row (fn [u _] (when (= u "A") [1.5]))
+        out (wr/with-year-events {"x" sp "y" sp} ["x"] row :stable)]
+    (is (= [2] (get-in out ["x" :gauge-groups :year :events])))
+    (is (= [0 2] (get-in out ["x" :core :year])))
+    (is (= 3 (get-in out ["x" :gauge-width :year])))
+    (is (= sp (out "y")))
+    (is (= {"x" sp} (wr/with-year-events {"x" sp} nil row :stable)) "off: the specs as they were")))
+
 (deftest the-year-decay's-level-alone
   ;; t143: --year-decay-form level, the aftermath's own level only (d), no
   ;; stock interactions; refused where the node already reads its onsets

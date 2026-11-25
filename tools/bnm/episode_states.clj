@@ -81,6 +81,23 @@
                [(long (nth period i)) (cond-> (double (nth value i)) log1p Math/expm1)]))
     {}))
 
+(defn violence-level
+  "GDELT violence's published level at origin `t` from {month events per
+  1000} (untransformed): log of the mean over the 15 months t-17..t-3 (a
+  3-month lag, as violence surges'), plus 0.1; nil under 12 of them
+  (t148, after docs/studies/aftermath/conflict_fast_signal.clj)."
+  [xs t]
+  (let [vs (keep #(get xs %) (range (- t 17) (- t 2)))]
+    (when (>= (count vs) 12)
+      (Math/log (+ 0.1 (mean vs))))))
+
+(defn violence-row
+  "(fn [unit origin]) -> [violence-level] or nil, from the db's
+  politics/violence (stored log1p)."
+  [db]
+  (let [raw (memoize (fn [u] (raw-by-month db u "politics/violence" true)))]
+    (fn [u t] (when-let [v (violence-level (raw u) t)] [v]))))
+
 (def kinds #{"conflict_onset" "war_onset" "protest_surge" "violence_surge" "food_price_shock"})
 
 (defn marks

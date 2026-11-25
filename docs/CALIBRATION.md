@@ -4419,3 +4419,13 @@ No run of the world. Following the diagnosis above, at the user's word (options 
 - So the lag is the remedy for the recent rows, and GDELT violence is a separate candidate input for conflict onsets' year node; neither registered.
 
 Erratum to docs/AFTERMATH-STOCKS.md (25 November 2026, after t141-t146): the political year nodes (conflict and war onsets, protest and violence surges, food price shocks, growth collapses) read their own onsets decaying through the history group (since-last, own10, own30); the document's rule (no d where the node reads its own onsets decaying already) applies to all of them, not only to growth collapses and banking.
+
+## GDELT violence in conflict onsets' year node: t148 (bnm-7ny, after the fast-signal diagnosis)
+
+Written 25 November 2026, before any run, at the user's word (option 2 after the diagnosis above). Conflict onsets' year node reads no news-based input; GDELT violence's level, published at a 3-month lag, ranks next-year onsets beyond t140-base's p among the rows with no recent onset (2-3 times the onset rate above the median inside each tercile of p, docs/studies/aftermath/conflict_fast_signal.clj).
+
+- bnm.episode-states/violence-level: at origin t, log(0.1 + the mean of politics/violence, events per 1000 untransformed, over the 15 months t-17..t-3), none under 12 of them; violence-row reads it from the db (stored log1p).
+- bnm.world-run/year-events-choice (`--year-events kind,...`, off by default) and with-year-events: the column as the year gauge group :events, standardized as the node's gauges (`--gauge-std stable`, missing reads 0; GDELT starts in 1979), and in the year node's :core so every model reads it (t142: a group alone takes no weight). Conflict onsets' node had no :core, so the column is its whole core.
+- Smoke (no run): standardized at December 2012, Syria 2.76, Nigeria 1.67, Ukraine -0.08, Norway 0.41; 0 in 1975.
+
+Run t148: t140-base's command with `--out t148 --year-events conflict_onset`. Only conflict onsets change; the other twelve must match t140-base byte for byte (checked). Rule, conflict onsets against t140-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r, rank 0's table and recent_by_year.py's table. Adoption is the user's. No changes after the result.
