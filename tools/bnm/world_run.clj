@@ -124,6 +124,7 @@
             [bnm.lattice-banking :as lb]
             [bnm.aftermath :as af]
             [bnm.year-gauges :as yg]
+            [bnm.episode-states :as es]
             [bnm.signals :as sg]
             [bnm.lattice-political :as lp]
             [bnm.lattice-smoke :as smoke]
@@ -1311,6 +1312,27 @@
         (case v "stocks" :stocks "level" :level
           (throw (ex-info (str "bnm.world-run: --year-decay-form takes stocks or level, not " v) {}))))))
 
+(defn year-decay-clock-choice
+  "--year-decay-clock onset|end (rank 5): d from the latest known onset
+  (t141-t143's), or from the latest month known to be inside an episode
+  (bnm.episode-states); onset by default."
+  [{v :year-decay-clock g :year-decay}]
+  (if-not v
+    :onset
+    (do (when-not g (throw (ex-info "bnm.world-run: --year-decay-clock needs --year-decay" {})))
+        (case v "onset" :onset "end" :end
+          (throw (ex-info (str "bnm.world-run: --year-decay-clock takes onset or end, not " v) {}))))))
+
+(defn year-decay-fn
+  "Kind `k`'s d, (fn [unit t]), by `clock`: onset-decay from its catalogue
+  in `cats`, or bnm.episode-states/end-decay from its states (`annual`,
+  es/read-annual; `db`, the series the monthly states read)."
+  [clock k cats annual db]
+  (let [cat (cats k)]
+    (case clock
+      :onset (onset-decay (:onsets cat) (:known-lag cat 0))
+      :end (es/end-decay (es/marks k annual db cat) decay-half-months))))
+
 (defn year-decay-choice
   "--year-decay kind,... (docs/AFTERMATH-STOCKS.md): the kinds among those
   run (`ks`) whose year node reads its stocks against time since the last
@@ -1460,7 +1482,11 @@
         %))
     (#(if-let [yks (year-decay-choice opts ks)]
         (with-year-decay % yks (into {} (for [k yks] [k (year-decay-layout k (year-decay-form-choice opts))]))
-          (into {} (for [k yks] [k (onset-decay (:onsets (cats k)) (:known-lag (cats k) 0))]))
+          (let [clock (year-decay-clock-choice opts)
+                [annual db] (when (= :end clock)
+                              [(es/read-annual)
+                               (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))])]
+            (into {} (for [k yks] [k (year-decay-fn clock k cats annual db)])))
           (some-> (:gauge-std opts) keyword) (year-decay-core-choice opts))
         %))
     (#(if-let [dks (direction-gauges-choice opts ks)]

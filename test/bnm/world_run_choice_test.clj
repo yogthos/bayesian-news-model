@@ -2,7 +2,7 @@
   "Pins the world run's true/false and enum options (flag-choice,
   enum-choice): values, refusals and their messages."
   (:require [bnm.world-run :as wr]
-            [clojure.test :refer [deftest is]]))
+            [clojure.test :refer [deftest is testing]]))
 
 (defn- refusal [f opts] (try (f opts) nil (catch clojure.lang.ExceptionInfo e [(ex-message e) (ex-data e)])))
 
@@ -209,6 +209,25 @@
   (is (= {:ix [3 5 18 8] :level true} (wr/year-decay-layout "conflict_onset" :stocks)))
   (is (= ["bnm.world-run: --year-decay-form level: growth_collapse's year node already reads its onsets decaying" {:kind "growth_collapse"}]
          (refusal #(wr/year-decay-layout % :level) "growth_collapse"))))
+
+(deftest the-year-decay's-clock
+  ;; rank 5: --year-decay-clock end runs d from the latest month known to be
+  ;; inside an episode (bnm.episode-states), not from the onset
+  (is (= :onset (wr/year-decay-clock-choice {})))
+  (is (= :end (wr/year-decay-clock-choice {:year-decay "war_onset" :year-decay-clock "end"})))
+  (is (= ["bnm.world-run: --year-decay-clock takes onset or end, not x" {}]
+         (refusal wr/year-decay-clock-choice {:year-decay "war_onset" :year-decay-clock "x"})))
+  (is (= ["bnm.world-run: --year-decay-clock needs --year-decay" {}]
+         (refusal wr/year-decay-clock-choice {:year-decay-clock "end"})))
+  (testing "the onset clock is onset-decay's; the end clock reads the states"
+    (let [cats {"war_onset" {:onsets {"A" (sorted-set 120)} :known-lag 18}}
+          on (wr/year-decay-fn :onset "war_onset" cats nil nil)
+          end (wr/year-decay-fn :end "war_onset" cats {"war_onset" {"A" #{10 11 12}}} {})]
+      (is (== (Math/pow 0.5 (/ 30 48.0)) (on "A" 150)))
+      ;; year 11's last month 143 is the latest known at 160 (year 12's, 155,
+      ;; is known at 162)
+      (is (== (Math/pow 0.5 (/ 17 48.0)) (end "A" 160)))
+      (is (== (Math/pow 0.5 (/ 7 48.0)) (end "A" 162))))))
 
 (deftest the-node's-gauges-take-each-catalogue's-lag
   (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}

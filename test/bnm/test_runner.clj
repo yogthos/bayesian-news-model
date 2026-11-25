@@ -154,7 +154,13 @@
             [bnm.links-test]
             [bnm.alerts-test]
             [bnm.fast-score-test]
-            [bnm.episodes-test]))
+            [bnm.episodes-test]
+            [bnm.aftermath-test]
+            [bnm.episode-states-test]
+            [bnm.nq-score-test]
+            [bnm.year-gauges-test]
+            [clojure.java.io :as io]
+            [clojure.string :as str]))
 
 (def namespaces
   '[bnm.known-gap-test
@@ -310,9 +316,27 @@
     bnm.episodes-test
     bnm.stat-test
     bnm.table-test
-    bnm.world-run-choice-test])
+    bnm.world-run-choice-test
+    bnm.aftermath-test
+    bnm.episode-states-test
+    bnm.nq-score-test
+    bnm.year-gauges-test])
+
+(defn unlisted
+  "The test namespaces under `dir` (each *_test.clj's ns) not in
+  `namespaces`: a file left out here never runs in the gate."
+  ([] (unlisted "test"))
+  ([dir]
+   (sort (for [f (file-seq (io/file dir))
+               :when (str/ends-with? (.getName f) "_test.clj")
+               :let [ns (some->> (slurp f) (re-find #"\(ns\s+([^\s\)]+)") second symbol)]
+               :when (and ns (not (some #{ns} namespaces)))]
+           ns))))
 
 (defn -main [& _]
+  (when-let [missing (seq (unlisted))]
+    (println "bnm.test-runner: test namespaces not listed, never run:" missing)
+    (System/exit 1))
   (let [{:keys [fail error]} (apply t/run-tests namespaces)
         ;; known gaps (bnm.known-gap): reported, never silent; one that now
         ;; passes fails the suite until it is made a deftest again

@@ -36,3 +36,18 @@ The political year node (conflict and war onsets, protest and violence surges, f
 ## What would refute it
 
 Per kind, against the base: the interaction slopes take the sign the table expects (read from the node; the run's score does not show signs), rank 0's bands move toward their rates after an onset without loss where there was none, and the score passes the fold rule. A kind whose score passes while its band moves away from its rate, or the other way, is a kind the theory does not explain.
+
+## The clock from the episode's end (rank 5; added 25 November 2026, before t146)
+
+t142 and t143 ran d from the onset. A conflict that lasts ten years then reads d near 0 while it is still under way, and the same as a country at peace for ten years; a food price shock whose inflation stays high reads as one long over. The aftermath the theory describes starts when the episode ends. The catalogues do not hold ends (their busy months are the onset's date uncertainty; docs/CALIBRATION.md, "Before rank 5"), so each kind's state comes from its own source, by its onset rule without the cool-off (bnm.episode-states, scripts/episode-states.py):
+
+| kind | inside an episode | source | known |
+|---|---|---|---|
+| conflict onset | any armed conflict active in the year | COW intra-state wars before 1946 (each spell's years), UCDP/PRIO conflict-years after | the catalogue's lag (18 months after the year's first) |
+| war onset | a war active (1000 battle deaths) in the year | the same, UCDP intensity 2 | the same |
+| protest, violence surge | the GDELT channel at 1 or more per 1000 and three times its 36-month mean | data/slow/series.tsv | the catalogue's lag (3) |
+| food price shock | food inflation at 15% or more and 10 points over its 60-month mean | FAOSTAT food CPI | its publication lag (9) |
+
+d = 2^(-(t - e)/48), e the latest month known by t to be inside an episode, an onset's month among them; 0 with none known. While an episode is known to go on, d stays near 1 (0.84 at a December origin for an annual state, the year before known at the lag); after it ends, d decays from its last month. On the data: conflict onsets' d differs from the onset clock's by more than 0.1 in 2752 of 9006 country-years with either, war onsets' in 1446 of 7401, food price shocks' in 371 of 1424, protest and violence surges' in 26 and 83 (their surges last a month or a few). So the clock is a test at conflict, war and food; protest and violence surges barely change.
+
+Expected, if the reading after t143 is right: with the clock from the end, conflict onsets' post-onset level takes the recurrence sign (rank 0's 0-1 and 2-4 bands toward their rates, up), food price shocks' the refractory one (2-4 down toward its rate).

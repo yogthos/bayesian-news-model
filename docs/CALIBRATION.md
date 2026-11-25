@@ -4328,3 +4328,28 @@ No run. At the user's word after t144 (rank 5 of the aftermath plan: the decay's
 Written 25 November 2026, before any run, at the user's word after the rank 5 check above. t143's post-onset level, learned by the year nodes on their history from 1870 with a 138-year memory, took the sign opposite to 2003-2022's at conflict onsets, protest surges and food price shocks. This run gives those five kinds' year nodes t140's ten-year half-life (`:forget-half-life 10`, fixed by t63-issue-f from crisis waves, not chosen here), so the level's slope, and every other, follows the recent decades. The question: is the reversal the old history's?
 
 No new code. Run t145: t143's command with `--out t145` and `--kind-set '{"banking_crisis" {:frailty {:rhos [0.0]}} "currency_crisis" {:forget-half-life 10} "conflict_onset" {:forget-half-life 10} "war_onset" {:forget-half-life 10} "violence_surge" {:forget-half-life 10} "protest_surge" {:forget-half-life 10} "food_price_shock" {:forget-half-life 10}}'`. Those five change; the other eight must match t140-base byte for byte (checked). Rule, kind by kind against t140-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r, rank 0's table against t143's and the expected direction, the year node's weights, and against t143 (the memory's own effect). The memory alone, without the level, is not run here; where a kind passes, that control is run before any adoption. Adoption is the user's, kind by kind. No changes after the result.
+
+### Results (25 November 2026)
+
+45 min. The eight other kinds match t140-base byte for byte. Kind by kind against t140-base (pooled Brier gain; verdict; pooled / within-year AUC; alert dcost):
+
+| kind | Brier gain | verdict | AUC | dcost |
+|---|---|---|---|---|
+| conflict onset | -0.00034 [-0.00190, +0.00117] | fail | 0.842 / 0.851 -> 0.845 / 0.865 | -0.0109 |
+| food price shock | -0.00922 [-0.01864, -0.00153] LOSS; 2010-12, 2013-19 LOSS | fail | 0.638 / 0.589 -> 0.626 / 0.579 | -0.0172 |
+| protest surge | -0.00170 [-0.00345, -0.00018] LOSS; 2013-19 LOSS | fail | 0.785 / 0.828 -> 0.795 / 0.863 | -0.0205 LOSS |
+| violence surge | +0.00023 [-0.00137, +0.00182] | pass | 0.719 / 0.734 -> 0.730 / 0.721 | -0.0050 |
+| war onset | +0.00070 [-0.00004, +0.00160] | pass | 0.866 / 0.878 -> 0.852 / 0.863 | +0.0073 |
+
+Pooled over the five the alert cost loses (-0.0036 [-0.0081, -0.0001]). Against t143 (the memory's own effect) pooled Brier -0.00003, 2010-12 LOSS. **The memory does not turn the level's sign:** rank 0's bands sit where t143 put them (conflict 0-1 0.227 -> 0.224 against 0.352; food 2-4 0.383 -> 0.385 against 0.209; protest 2-4 0.239 -> 0.252 against 0.202). So the reversal is not the old history's: food and protest surges have no history before 1980 and 2000, and learning on recent decades leaves it as it was. Violence surges pass with mixed ranking (pooled AUC up, within-year down) and a losing alert cost; war onsets pass a third time and lose both AUCs a third time. The registration's control (the memory alone, without the level) is owed before any adoption of violence surges. Nothing is adopted unless the user decides otherwise.
+
+## The aftermath's level from the episode's end: t146 (aftermath plan rank 5)
+
+Written 25 November 2026, before any run, at the user's word ("do 1 and 2": t145, and building episode ends). The theory's addendum, docs/AFTERMATH-STOCKS.md "The clock from the episode's end", is written and fixed before this registration: each kind's episode state from its own source, d from the latest month known to be inside an episode.
+
+- scripts/episode-states.py: data/derived/episode-states.csv, the years each country has a conflict (any intensity) or a war active, COW intra-state wars before 1946 and UCDP/PRIO after (3457 rows).
+- bnm.episode-states: surge-months and food-shock-months (the onset rules without the cool-off), annual-marks and monthly-marks ([month known]), end-decay, marks per kind (the catalogue's onsets among them).
+- bnm.world-run/year-decay-clock-choice (`--year-decay-clock onset|end`, onset by default: t141-t143's) and year-decay-fn.
+- Smoke (no run): Colombia's conflict d at 2010 reads 0.84 (under way) where the onset clock reads 0.00 (onset 1964); Syria's war at 2014 0.84 against 0.72; Egypt's food at 2017 0.88 against 0.18.
+
+Run t146: t143's command with `--out t146 --year-decay-clock end`. Those five kinds change; the other eight must match t140-base byte for byte (checked). Rule, kind by kind against t140-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r, rank 0's table against t143's and the addendum's expected direction, the year node's weights, and against t143 (the clock's own effect). Adoption is the user's, kind by kind. No changes after the result.
