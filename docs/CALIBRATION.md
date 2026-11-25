@@ -4245,3 +4245,12 @@ Suite green (1670 tests), committed 12aba12 before the run. 40 min. The six othe
 | war onset | -0.00001 | fail | 0.866 / 0.878 -> 0.865 / 0.877 | -0.0024 | 0 throughout |
 
 **The theory was not tested: the averaging gave the :decay group no weight** at any kind after 2005. What moved came through the all-inputs model, which reads every gauge and is shrunk where they are not core. The year nodes are carried by models built on flows (up, contradiction) and gauge groups that do not see the new columns: the lesson of t135 (a year gauge cannot reach a node that weights other models), now at seven kinds. t137's decay worked because it went into the theory's offset, which every model reads. Rank 0 moves little; food price shocks' 9+ band moves away from its rate (0.143 -> 0.117 against 0.236), its 2-4 and 5-8 bands toward theirs. Nothing to adopt. A test of the theory needs the columns where every model reads them: the lattice's `:core` (gauges read by every model, unshrunk in the all-inputs model).
+
+## The decay read by every model: t142 (aftermath plan ranks 1-2, docs/AFTERMATH-STOCKS.md)
+
+Written 24 November 2026, before any run, at the user's word after t141, whose :decay group the year nodes' averaging gave no weight. The theory and its stocks are unchanged (docs/AFTERMATH-STOCKS.md); only where the columns sit changes.
+
+- with-year-decay `core`: the :decay columns also in the year node's `:core` (bnm.lattice: gauges every model reads beside its intercept, unshrunk in the all-inputs model), so the flow models that carry the year nodes (up, contradiction) read them, as every model reads a theory's offset in t137.
+- `--year-decay-core true` (world-run), false by default (t141's).
+
+Run t142: t140-base's command with `--out t142 --year-decay banking_crisis,conflict_onset,war_onset,violence_surge,protest_surge,food_price_shock,growth_collapse --year-decay-core true`. Those seven change; the other six must match t140-base byte for byte (checked). Rule, kind by kind against t140-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r, rank 0's table against the document's expectation, and the year node's weights. Where a kind passes, its decay slopes' signs are read from the node (bnm.lattice :tap) against the document before adoption. Adoption is the user's, kind by kind. No changes after the result.

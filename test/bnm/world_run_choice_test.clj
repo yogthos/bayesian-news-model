@@ -180,6 +180,21 @@
     (is (= [2 3] (get-in out ["x" :gauge-groups :year :decay])))
     (is (= sp (out "y")))))
 
+(deftest the-year-decay-read-by-every-model
+  ;; t142: --year-decay-core puts the decay columns in the year node's :core
+  (let [sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]
+            :parent {"A" "world" "B" "world"} :start 0 :end 23
+            :gauges (fn [_ _ _] [2.0 3.0]) :gauge-width {:year 2} :core {:year [0]}}
+        d (fn [_ _] 0.5)
+        lay {"x" {:ix [1] :level true}}]
+    (is (= [0 2 3] (get-in (wr/with-year-decay {"x" sp} ["x"] lay {"x" d} :stable true) ["x" :core :year])))
+    (is (= [2 3] (get-in (wr/with-year-decay {"x" (dissoc sp :core)} ["x"] lay {"x" d} :stable true) ["x" :core :year])))
+    (is (= [0] (get-in (wr/with-year-decay {"x" sp} ["x"] lay {"x" d} :stable) ["x" :core :year])) "t141's: not core"))
+  (is (false? (wr/year-decay-core-choice {})))
+  (is (true? (wr/year-decay-core-choice {:year-decay "coup" :year-decay-core "true"})))
+  (is (= ["bnm.world-run: --year-decay-core needs --year-decay" {}]
+         (refusal wr/year-decay-core-choice {:year-decay-core "true"}))))
+
 (deftest the-node's-gauges-take-each-catalogue's-lag
   (let [cats {"coup" {:onsets {"A" (sorted-set 100)} :known-lag 3} "food" {:onsets {"A" (sorted-set 100)} :known-lag 18}}
         sp {:scales [{:name :year :per 12 :horizon 12}] :levels [[:country ["A" "B"]] [:world ["world"]]]

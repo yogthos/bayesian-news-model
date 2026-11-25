@@ -1322,15 +1322,31 @@
 (defn with-year-decay
   "`specs` with `year-decay-row` as the year gauge group :decay at `ks`
   (`layouts` {kind layout}, `decays` {kind d}); the specs as they were when
-  `ks` is nil."
-  [specs ks layouts decays gauge-std]
-  (if-not ks
-    specs
-    (reduce (fn [acc k]
-              (let [lay (layouts k)
-                    names (into (if (:level lay) [:decay] []) (map #(keyword (str "stock" % "-x-decay")) (:ix lay)))]
-                (update acc k #(yg/with-group % (year-decay-row % lay (decays k)) (count names) :decay names gauge-std))))
-            specs ks)))
+  `ks` is nil. `core` (t142): the columns also in the year node's :core,
+  read by every model (t141's group alone took no weight)."
+  ([specs ks layouts decays gauge-std] (with-year-decay specs ks layouts decays gauge-std false))
+  ([specs ks layouts decays gauge-std core]
+   (if-not ks
+     specs
+     (reduce (fn [acc k]
+               (let [lay (layouts k)
+                     names (into (if (:level lay) [:decay] []) (map #(keyword (str "stock" % "-x-decay")) (:ix lay)))
+                     add (fn [sp] (let [w (get-in sp [:gauge-width :year] 0)
+                                        sp' (yg/with-group sp (year-decay-row sp lay (decays k)) (count names) :decay names gauge-std)]
+                                    (if core
+                                      (update-in sp' [:core :year] (fnil into []) (range w (+ w (count names))))
+                                      sp')))]
+                 (update acc k add)))
+             specs ks))))
+
+(defn year-decay-core-choice
+  "--year-decay-core true (t142): the decay columns in the year node's :core;
+  false by default (t141's)."
+  [{v :year-decay-core g :year-decay}]
+  (if-not v
+    false
+    (do (when-not g (throw (ex-info "bnm.world-run: --year-decay-core needs --year-decay" {})))
+        (= "true" v))))
 
 (defn with-aftermath-gauges
   "`specs` with bnm.aftermath's kernels as the year gauges of `ks`
@@ -1428,7 +1444,7 @@
     (#(if-let [yks (year-decay-choice opts ks)]
         (with-year-decay % yks (into {} (for [k yks] [k (year-decay-layout k)]))
           (into {} (for [k yks] [k (onset-decay (:onsets (cats k)) (:known-lag (cats k) 0))]))
-          (some-> (:gauge-std opts) keyword))
+          (some-> (:gauge-std opts) keyword) (year-decay-core-choice opts))
         %))
     (#(if-let [dks (direction-gauges-choice opts ks)]
         (let [[names row] (nm/direction (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv")
