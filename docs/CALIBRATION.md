@@ -4254,3 +4254,21 @@ Written 24 November 2026, before any run, at the user's word after t141, whose :
 - `--year-decay-core true` (world-run), false by default (t141's).
 
 Run t142: t140-base's command with `--out t142 --year-decay banking_crisis,conflict_onset,war_onset,violence_surge,protest_surge,food_price_shock,growth_collapse --year-decay-core true`. Those seven change; the other six must match t140-base byte for byte (checked). Rule, kind by kind against t140-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r, rank 0's table against the document's expectation, and the year node's weights. Where a kind passes, its decay slopes' signs are read from the node (bnm.lattice :tap) against the document before adoption. Adoption is the user's, kind by kind. No changes after the result.
+
+### Results (24 November 2026)
+
+Suite green (1671 tests), committed cb766ec before the run. 40 min. The six other kinds match t140-base byte for byte. In the core the columns reach every model and the forecasts move, mostly for the worse. Kind by kind against t140-base (pooled Brier gain; verdict; pooled / within-year AUC; alert dcost):
+
+| kind | Brier gain | verdict | AUC | dcost |
+|---|---|---|---|---|
+| banking | -0.00003 [-0.00027, +0.00018] | fail | 0.550 / 0.575 -> 0.551 / 0.547 | +0.0008 |
+| conflict onset | -0.00064 [-0.00255, +0.00106] | fail | 0.842 / 0.851 -> 0.848 / 0.865 | -0.0139 |
+| food price shock | -0.01566 [-0.03271, -0.00323] LOSS; 2010-12 LOSS | fail | 0.638 / 0.589 -> 0.624 / 0.578 | -0.0278 |
+| growth collapse | -0.00031; 2007-09, 2020-22 LOSS | fail | 0.643 / 0.609 -> 0.633 / 0.569 | -0.0003 |
+| protest surge | -0.00177 [-0.00342, -0.00010] LOSS; 2013-19 LOSS | fail | 0.785 / 0.828 -> 0.756 / 0.834 | -0.0240 LOSS |
+| violence surge | -0.00070 [-0.00231, +0.00087] | fail | 0.719 / 0.734 -> 0.706 / 0.725 | -0.0035 |
+| war onset | +0.00064 [-0.00014, +0.00156] | pass | 0.866 / 0.878 -> 0.849 / 0.860 | +0.0106 [+0.0000, +0.0259] |
+
+Pooled over kinds the alert cost loses (-0.0045 [-0.0087, -0.0007]).
+
+**Against docs/AFTERMATH-STOCKS.md, rank 0's bands move against the theory where it made a claim:** conflict onsets, expected to recur, fall further under their rate just after an onset (0-1 year 0.253 -> 0.207 against 0.352; 2-4 0.240 -> 0.202 against 0.267), though their within-year ranking improves (0.851 -> 0.865); protest surges, expected refractory, rise further over theirs (0-1 0.267 -> 0.289 against 0.208; 2-4 0.212 -> 0.242 against 0.202); food price shocks, expected refractory, rise most (2-4 0.258 -> 0.428 against 0.209). War onsets' 0-1 band rises toward its rate (0.210 -> 0.251 against 0.222) and 5-8 falls below (0.127 -> 0.083 against 0.121); banking, growth and violence barely move. The theory is not supported as encoded: in t141 the columns reached no model, in t142 every model reads them unshrunk and the fitted effects go the opposite way to the mechanism at the three kinds where it was clearest. Whether that refutes the mechanism or the encoding (seven to ten interactions in every averaged model, each refit from its own prior; the stocks as the node standardizes them) is not settled by these runs. War onsets pass the fold rule but lose both AUCs; their signs were not read (the registration reads them only before an adoption). Nothing is adopted unless the user decides otherwise.
