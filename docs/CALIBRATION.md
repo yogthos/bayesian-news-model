@@ -4290,3 +4290,17 @@ Written 25 November 2026, before any run, at the user's word after t142 (option 
 - `--year-decay-form stocks|level` (world-run), stocks by default (t141-t142's).
 
 Run t143: t140-base's command with `--out t143 --year-decay conflict_onset,war_onset,violence_surge,protest_surge,food_price_shock --year-decay-core true --year-decay-form level`. Those five change; the other eight must match t140-base byte for byte (checked). Rule, kind by kind against t140-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r, rank 0's table against the document's expected direction, and the year node's weights. Adoption is the user's, kind by kind. No changes after the result.
+
+### Results (25 November 2026)
+
+Suite green (1672 tests), committed 05c1973 before the run. 40 min. The eight other kinds match t140-base byte for byte. Kind by kind against t140-base (pooled Brier gain; verdict; pooled / within-year AUC; alert dcost):
+
+| kind | Brier gain | verdict | AUC | dcost |
+|---|---|---|---|---|
+| conflict onset | -0.00028 [-0.00173, +0.00105] | fail | 0.842 / 0.851 -> 0.847 / 0.861 | -0.0166 |
+| food price shock | -0.00854 [-0.01795, -0.00096] LOSS; 2010-12, 2013-19 LOSS | fail | 0.638 / 0.589 -> 0.630 / 0.581 | -0.0141 |
+| protest surge | -0.00183 [-0.00360, -0.00037] LOSS; 2013-19 LOSS | fail | 0.785 / 0.828 -> 0.754 / 0.851 | -0.0217 LOSS |
+| violence surge | -0.00018 [-0.00176, +0.00143] | fail | 0.719 / 0.734 -> 0.715 / 0.712 | -0.0035 |
+| war onset | +0.00067 [-0.00010, +0.00156] | pass | 0.866 / 0.878 -> 0.847 / 0.859 | +0.0076 |
+
+The level alone does what t142's interactions did, a little less: conflict onsets' post-onset bands fall further under their rates (0-1 0.253 -> 0.227 against 0.352), food price shocks' rise further over theirs (2-4 0.258 -> 0.383 against 0.209), protest surges' 2-4 band rises over its rate (0.212 -> 0.239 against 0.202); war onsets' 0-1 band rises toward its rate (0.210 -> 0.230 against 0.222) and 5-8 falls below it (0.127 -> 0.075 against 0.121). So the stocks were not what turned t142 against the theory: a post-onset level, learned by the year nodes on their whole history from 1870, takes the sign opposite to what 2003-2022 shows at three of five kinds. One reading, not tested here: the clock runs from the onset, while long episodes (wars, food price waves) keep a country out of the at-risk rows for years, so in the history a high d marks rows inside or just out of an episode, unlike 2003-2022's; the plan's rank 5 (the clock from the episode's point-in-time end) is that question. War onsets pass the fold rule twice (t142, t143) and lose both AUCs both times. Nothing is adopted unless the user decides otherwise.
