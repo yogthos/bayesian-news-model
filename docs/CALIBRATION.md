@@ -4429,3 +4429,9 @@ Written 25 November 2026, before any run, at the user's word (option 2 after the
 - Smoke (no run): standardized at December 2012, Syria 2.76, Nigeria 1.67, Ukraine -0.08, Norway 0.41; 0 in 1975.
 
 Run t148: t140-base's command with `--out t148 --year-events conflict_onset`. Only conflict onsets change; the other twelve must match t140-base byte for byte (checked). Rule, conflict onsets against t140-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it within-year AUC, level r, rank 0's table and recent_by_year.py's table. Adoption is the user's. No changes after the result.
+
+Result (25 November 2026). The twelve other kinds match t140-base byte for byte. **Fail at conflict onsets.**
+
+- Against t140-base: pooled Brier -0.00044 [-0.00143, +0.00060], log -0.00004; 2007-2009 Brier -0.00251 [-0.00455, -0.00039], a LOSS; 2020-2022 +0.00112 [-0.00019, +0.00287], no fold gains. Alert dcost at 4:1 -0.0039 [-0.0227, +0.0138] (hit 42.4%, false alarms 7.4%). Pooled AUC 0.848 (t140-base 0.842), within-year 0.857 (0.851), level r -0.20 (-0.08). Dominance fails: AUC gains, Brier and the alert cost do not. Rank 0: 20 of 20 caught, as t140-base.
+- Recent rows (rate 0.295): 0.256 against 0.244, a third of the way to the rate, as the recent-row gap is mostly the unpublished onsets the input cannot see (the diagnosis above). The rest (rate 0.049): 0.062 against 0.060, already above the rate and lifted further, which costs the Brier the ranking gains.
+- The input ranks (both AUCs up 0.006) but raises the level where the node already sits too high; the probe's gain inside terciles of p did not survive the node's refit. Not recommended as it stands.
