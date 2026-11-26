@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t149-base")
+(def base "t150-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -82,8 +82,12 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t149-base/<kind>/
-  forecasts.tsv (25 November 2026, the twentieth note to L1: t140-base's
+  "The base of record's forecasts, data/runs/t150-base/<kind>/
+  forecasts.tsv (25 November 2026, the twenty-first note to L1: t149-base's
+  command with conflict and war onsets known at UCDP's annual release,
+  t150's calendar; every kind but banking moves, through the others'
+  counts).
+  t149-base (25 November 2026, the twentieth note to L1: t140-base's
   command with violence surges' averaging memory at a ten-year half-life,
   t149's; the other twelve t140-base's).
   t140-base (23 November 2026, the nineteenth note to L1: t137-base's
@@ -121,18 +125,18 @@
   row's ratios held through recessions and banking's frailty at rho 0;
   banking is t104-rows-rho0's, the other ten t80-base's, t71-stack's."
   {"banking_crisis" "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b"
-   "conflict_onset" "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442"
-   "coup" "ae0ab8ce83321e0b36aac3897fb74875816116aea8af237b3304974ef46cb420"
-   "currency_crisis" "e5cf1d125c978744c7bd6df9f8432ebd709f1fff6dfed27e2ba057825c5c1ead"
-   "fiscal_consolidation" "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d"
-   "food_price_shock" "32a8c9c7a058a94c792bde3e94b8f6dc645ee33c833ec009dd4b6d12c7bc2fc3"
-   "growth_collapse" "2a6ff8f0ed9c14c6ec94be0e2157d0b1df7559dc0c7b3cd3bed3a6744105d421"
-   "inflation_crisis" "7882321e27116b1c13e39e3c02e72cbec622f59c2179ce013792232df2cce904"
-   "market_crash" "4c85afea2f6881c3303b9f48f506ea0f907c518e2a6f1d12025e8321a3432e69"
-   "protest_surge" "98f6a3d14855b3ba0f5eda59b4975de2a13e55b19d8963c36191e496a1dcd373"
-   "sovereign_default" "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111"
-   "violence_surge" "7cc5e43a2eb77e3def07b9b1b9595e930da66dbadb2233fb5d404b5e33cdbf77"
-   "war_onset" "25fafb6577491beb364e3809352ea2fb38bec4cc416b71596abba0f77e9c70b1"})
+   "conflict_onset" "7c9ab7cc0785543cb0ec8c27f58f71e8ed9491c33239a8e5eb4be68d84c8f649"
+   "coup" "e2516bf2118edd05243cddc3d695b725e276e8736a242d965ef1d436192306e6"
+   "currency_crisis" "a34827ccd2cb820757e7a2013af38e0bf264761e433c155df8fbc4f19ccce317"
+   "fiscal_consolidation" "bee45ac2b7b9463f296ee484e77ef188fa25b31b81aaa0496c7e9178fda17c0a"
+   "food_price_shock" "c09a133570f0ad87ed4064aab300e72787c18a2211e60bdcca7476c066e0cdc6"
+   "growth_collapse" "564185daaea97148940a7dfad27b3a1d0e58941b17a177d380eb793b304aaf4d"
+   "inflation_crisis" "934508bb0a1b8905505692830e8cfebbbe9dbfab35c88d3c36d44f05182aa94f"
+   "market_crash" "61908a866b1942375ee9fe179786d6ee1f5909b9f7cd3247bb559fcb1b16dd26"
+   "protest_surge" "8a8f8e2b0bc087a4e4e811a89701566d164d5186a7d2cc674d4fe3086f1e5c9d"
+   "sovereign_default" "2ec6b77fabecda209925d4a573a6b5492c17dff86721cada36c504f388c2199f"
+   "violence_surge" "0cf68a981f20cdf1cebc40afb0e37752bd109ce81ee4a22760002737ffeb77c1"
+   "war_onset" "678b8a6f7c839cafaf3eb859386393d145d840fb02330f085c818f1de46d2478"})
 
 (def base-inputs
   "The SHA-256 of every input t80-base was built on (t53-noclim's,
@@ -461,7 +465,10 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t149-base's (twentieth note to L1):
+  "The base's bnm.world-run arguments, t150-base's (twenty-first note to
+  L1): t149-base's with conflict and war onsets known at UCDP's annual
+  release (--release-calendar conflict_onset,war_onset, t150). t149-base's
+  (twentieth note to L1):
   t140-base's with violence surges' averaging at a ten-year half-life
   (--kind-set violence_surge :forget-half-life 10, t149). t140-base's
   (nineteenth note to L1):
@@ -532,7 +539,8 @@
    "--direction-gauges" "market_crash" "--direction-at" "quarter-lead,quarter-w2"
    "--theory-decay" "coup,inflation_crisis,currency_crisis"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
-   "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}} \"currency_crisis\" {:forget-half-life 10} \"violence_surge\" {:forget-half-life 10}}"])
+   "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}} \"currency_crisis\" {:forget-half-life 10} \"violence_surge\" {:forget-half-life 10}}"
+   "--release-calendar" "conflict_onset,war_onset"])
 
 (defn command-line
   "The shell command a manifest records for bnm.world-run `args`; an

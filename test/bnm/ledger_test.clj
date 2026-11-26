@@ -128,13 +128,27 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t149-with-violence-surges'-memory
+(deftest the-base-of-record-is-t150-with-ucdp's-release-calendar
+  ;; twenty-first note to L1, 25 November 2026: t149-base's command with
+  ;; conflict and war onsets known at UCDP's annual release (t150, a pass at
+  ;; both; it reaches every kind but banking through the others' counts).
+  ;; The earlier notes' pins on kinds other than banking read not= since:
+  ;; the calendar replaced every one of them.
+  (is (= "t150-base" lg/base))
+  (is (= "7c9ab7cc0785543cb0ec8c27f58f71e8ed9491c33239a8e5eb4be68d84c8f649" (lg/base-files "conflict_onset")) "t150's conflict onsets")
+  (is (= "678b8a6f7c839cafaf3eb859386393d145d840fb02330f085c818f1de46d2478" (lg/base-files "war_onset")) "t150's war onsets")
+  (is (= "0cf68a981f20cdf1cebc40afb0e37752bd109ce81ee4a22760002737ffeb77c1" (lg/base-files "violence_surge")) "t149's memory with t150's calendar")
+  (is (= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis")) "banking unchanged")
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "conflict_onset,war_onset" (opt "--release-calendar")))
+    (is (nil? (opt "--release-calendar-scope")) "t151's scope not adopted")))
+
+(deftest the-base-before-was-t149-with-violence-surges'-memory
   ;; twentieth note to L1, 25 November 2026: t140-base's command with
   ;; violence surges' averaging memory at a ten-year half-life (t149, a pass
   ;; on the fold rule; t145's post-onset level not adopted)
-  (is (= "t149-base" lg/base))
-  (is (= "7cc5e43a2eb77e3def07b9b1b9595e930da66dbadb2233fb5d404b5e33cdbf77" (lg/base-files "violence_surge")) "t149's violence surges")
-  (is (= "e5cf1d125c978744c7bd6df9f8432ebd709f1fff6dfed27e2ba057825c5c1ead" (lg/base-files "currency_crisis")) "currency crises t140-base's")
+  (is (str/starts-with? lg/base "t1"))
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (= "coup,inflation_crisis,currency_crisis" (opt "--theory-decay")))
@@ -147,8 +161,8 @@
   ;; currency crises' theory stocks decaying and their averaging's memory at
   ;; a ten-year half-life (t140, a pass on the fold rule)
   (is (str/starts-with? lg/base "t1"))
-  (is (= "e5cf1d125c978744c7bd6df9f8432ebd709f1fff6dfed27e2ba057825c5c1ead" (lg/base-files "currency_crisis")) "t140's currency crises")
-  (is (= "ae0ab8ce83321e0b36aac3897fb74875816116aea8af237b3304974ef46cb420" (lg/base-files "coup")) "coups t137-base's")
+  (is (not= "e5cf1d125c978744c7bd6df9f8432ebd709f1fff6dfed27e2ba057825c5c1ead" (lg/base-files "currency_crisis")) "t140's currency crises")
+  (is (not= "ae0ab8ce83321e0b36aac3897fb74875816116aea8af237b3304974ef46cb420" (lg/base-files "coup")) "coups t137-base's")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (= "coup,inflation_crisis,currency_crisis" (opt "--theory-decay")))
@@ -159,10 +173,10 @@
   ;; coups' and inflation crises' theory stocks read against time since
   ;; the last known onset (t137, each a pass on the fold rule)
   (is (str/starts-with? lg/base "t1"))
-  (is (= "ae0ab8ce83321e0b36aac3897fb74875816116aea8af237b3304974ef46cb420" (lg/base-files "coup")) "t137's coups")
-  (is (= "7882321e27116b1c13e39e3c02e72cbec622f59c2179ce013792232df2cce904" (lg/base-files "inflation_crisis")) "t137's inflation crises")
-  (is (= "4c85afea2f6881c3303b9f48f506ea0f907c518e2a6f1d12025e8321a3432e69" (lg/base-files "market_crash")) "market crashes t136-base's")
-  (is (= "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111" (lg/base-files "sovereign_default")) "sovereign defaults unchanged (failed t137)")
+  (is (not= "ae0ab8ce83321e0b36aac3897fb74875816116aea8af237b3304974ef46cb420" (lg/base-files "coup")) "t137's coups")
+  (is (not= "7882321e27116b1c13e39e3c02e72cbec622f59c2179ce013792232df2cce904" (lg/base-files "inflation_crisis")) "t137's inflation crises")
+  (is (not= "4c85afea2f6881c3303b9f48f506ea0f907c518e2a6f1d12025e8321a3432e69" (lg/base-files "market_crash")) "market crashes t136-base's")
+  (is (not= "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111" (lg/base-files "sovereign_default")) "sovereign defaults unchanged (failed t137)")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (re-find #"^coup,inflation_crisis" (opt "--theory-decay")))))
@@ -172,8 +186,8 @@
   ;; the world's stress by its direction in market crashes' quarter nodes
   ;; (t136, a pass on the fold rule)
   (is (str/starts-with? lg/base "t1"))
-  (is (= "4c85afea2f6881c3303b9f48f506ea0f907c518e2a6f1d12025e8321a3432e69" (lg/base-files "market_crash")) "t136's market crashes")
-  (is (= "2a6ff8f0ed9c14c6ec94be0e2157d0b1df7559dc0c7b3cd3bed3a6744105d421" (lg/base-files "growth_collapse")) "growth collapses t133-base's")
+  (is (not= "4c85afea2f6881c3303b9f48f506ea0f907c518e2a6f1d12025e8321a3432e69" (lg/base-files "market_crash")) "t136's market crashes")
+  (is (not= "2a6ff8f0ed9c14c6ec94be0e2157d0b1df7559dc0c7b3cd3bed3a6744105d421" (lg/base-files "growth_collapse")) "growth collapses t133-base's")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (= "market_crash" (opt "--direction-gauges")))
@@ -185,8 +199,8 @@
   ;; onset kernels from known onsets as year-node gauges at growth
   ;; collapses only (t133, a pass by dominance)
   (is (str/starts-with? lg/base "t1"))
-  (is (= "2a6ff8f0ed9c14c6ec94be0e2157d0b1df7559dc0c7b3cd3bed3a6744105d421" (lg/base-files "growth_collapse")) "t133's growth collapses")
-  (is (= "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111" (lg/base-files "sovereign_default")) "sovereign defaults t125-base's")
+  (is (not= "2a6ff8f0ed9c14c6ec94be0e2157d0b1df7559dc0c7b3cd3bed3a6744105d421" (lg/base-files "growth_collapse")) "t133's growth collapses")
+  (is (not= "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111" (lg/base-files "sovereign_default")) "sovereign defaults t125-base's")
   (is (not= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "market crashes unchanged, then t136's (seventeenth note)")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
@@ -198,13 +212,13 @@
   ;; t133); the base of record was t125-base again
   (is (not= "t131-base" lg/base))
   (is (not-any? #{"--aftermath" "--aftermath-net"} (lg/command "ledger-x" 24323)))
-  (is (= "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442" (lg/base-files "conflict_onset")) "t125-base's, not t130's"))
+  (is (not= "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442" (lg/base-files "conflict_onset")) "t125-base's, not t130's"))
 
 (deftest the-base-before-was-t125-with-sovereign-defaults-on-filled-inputs
   ;; note to L1, 20 November 2026 (thirteenth): t124-base's command with
   ;; sovereign defaults' theory on filled inputs (t125, a pass by dominance)
   (is (str/starts-with? lg/base "t1"))
-  (is (= "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111" (lg/base-files "sovereign_default")) "t125's sovereign defaults")
+  (is (not= "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111" (lg/base-files "sovereign_default")) "t125's sovereign defaults")
   (is (not= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "market crashes unchanged, then t136's (seventeenth note)")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
@@ -216,7 +230,7 @@
   ;; (t124, a pass by dominance under the fold rule as amended that day)
   (is (str/starts-with? lg/base "t1"))
   (is (not= "fe93fb09db109974a5b79a2f549279ee4a85b9f26123befff3daae98c1c35f42" (lg/base-files "market_crash")) "t124's market crashes, replaced by t136's (seventeenth note)")
-  (is (= "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d" (lg/base-files "fiscal_consolidation")) "fiscal unchanged")
+  (is (not= "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d" (lg/base-files "fiscal_consolidation")) "fiscal unchanged")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (= "market_crash" (opt "--global-theory")))
@@ -226,7 +240,7 @@
   ;; note to L1, 20 November 2026 (eleventh): t119-base's command with
   ;; fiscal consolidations' shaped theory (t120); growth collapses' and
   ;; banking's, which failed, left out
-  (is (= "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d" (lg/base-files "fiscal_consolidation")) "t120's fiscal consolidations")
+  (is (not= "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d" (lg/base-files "fiscal_consolidation")) "t120's fiscal consolidations")
   (is (not= "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c" (lg/base-files "growth_collapse")) "growth collapses unchanged, then t133's (sixteenth note)")
   (is (= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis")) "banking unchanged")
   (is (= "a9f63ae68d5a32dc6da723da1de8f1591576a620ba5750379c12f546444f960b" (lg/base-inputs "data/derived/fiscal-series.tsv")))
@@ -240,7 +254,7 @@
   ;; note to L1, 20 November 2026 (tenth): t118-base's command with coups'
   ;; shaped theory (t119); war onsets' theory, which failed, left out
   (is (not= "ec86c1a3afc93bf2aaf44e9c3a1aaa41c06868ab00a5a362970eddbff2c72f13" (lg/base-files "coup")) "t119's coups, replaced by t137's (eighteenth note)")
-  (is (= "25fafb6577491beb364e3809352ea2fb38bec4cc416b71596abba0f77e9c70b1" (lg/base-files "war_onset")) "war onsets unchanged")
+  (is (not= "25fafb6577491beb364e3809352ea2fb38bec4cc416b71596abba0f77e9c70b1" (lg/base-files "war_onset")) "war onsets unchanged")
   (is (= "f6aa7491f6d6da849e1d97e227c0d3c621aed64e617352520b38f8d1bdf274b6" (lg/base-inputs "data/derived/onset-history.tsv")))
   (is (some #{"data/derived/onset-history.tsv"} lg/inputs))
   (let [args (lg/command "ledger-x" 24323)
@@ -290,7 +304,7 @@
   ;; t71-stack's with the banking node's credit from the BIS (--dated-credit)
   (is (= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis"))
       "banking is t104-rows-rho0's, the only kind the options reach")
-  (is (= "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442" (lg/base-files "conflict_onset"))
+  (is (not= "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442" (lg/base-files "conflict_onset"))
       "the other twelve are t80-base's (t71-stack's)")
   (is (= "r7-at-fx" lg/known))
   (let [args (lg/command "ledger-x" 24323)

@@ -2,7 +2,9 @@
 
 ## State as of 2026-11-14 (branch `structure`)
 
-**The base of record is t149-base** (twentieth note to amendment L1, 25 November 2026): t140-base's command with violence surges' averaging memory at a ten-year half-life; it passed the fold rule, and t145's post-onset level added nothing beside it (docs/CALIBRATION.md t149).
+**The base of record is t150-base** (twenty-first note to amendment L1, 25 November 2026): t149-base's command with conflict and war onsets known at UCDP's annual release (`--release-calendar conflict_onset,war_onset`); both passed, and every kind but banking moves within noise through the others' counts (docs/CALIBRATION.md t150, t151).
+
+**Before it, t149-base** (twentieth note to amendment L1, 25 November 2026): t140-base's command with violence surges' averaging memory at a ten-year half-life; it passed the fold rule, and t145's post-onset level added nothing beside it (docs/CALIBRATION.md t149).
 
 **Before it, t140-base** (nineteenth note to amendment L1, 23 November 2026): t137-base's command with currency crises' theory stocks decaying and their averaging's memory at a ten-year half-life; it passed the fold rule (docs/CALIBRATION.md t140, after the year-node diagnosis with bnm.lattice's :tap).
 
