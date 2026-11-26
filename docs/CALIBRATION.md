@@ -4520,3 +4520,15 @@ Result of t153 and t154 (26 November 2026). **Both fail; the memory changes noth
 - So bnm-56c.26 stays a known bug: food's year node issues 0.495 before any outcome resolves, and every fix tried (t52a, t75-clim, t152, t154) loses 2020-22 by more than it can afford on the rule. Recommendation: neither run adopted; leave food as in t150-base and record the dependence. The user's decision.
 
 Decision (26 November 2026, the user): leave food as in t150-base. t152, t153 and t154 are not adopted; bnm-56c.26 stays open as a known bug with the dependence recorded above.
+
+## Diagnosis: banking's year node layer by layer on t150-base (26 November 2026, bnm-ris)
+
+No model change. docs/studies/banking/node_tap.clj runs banking alone on the base command with bnm.lattice's :tap; its issued year forecasts match t150-base's exactly (2,600 rows, largest difference 0.0). docs/studies/banking/node_tap.py scores each layer. On the JST countries 2003-2020 (310 rows, 28 onsets), where a plain refit logit on credit stretch and three-year credit growth ranks at AUC 0.699 (banking_credit_check.clj on t150-base):
+
+- Issued p: AUC 0.608, log score -0.0183 per row against a constant at the subset's rate.
+- The theory offset alone (--theory-offset, t104): AUC 0.492, at chance; its cross-country spread is 0.18 log odds in 2004, 0.30-0.35 in 2006-08 and 0.44-0.51 from 2012.
+- Each group's departure from the offset (its log odds less the offset) ranks well: funding 0.712, bank-equity 0.678, booms 0.671, household 0.596, stretches 0.579. Added to the offset, the same groups score 0.645, 0.567, 0.546, 0.555 and 0.558.
+- The averaging puts its weight on booms (0.31), process (0.31), fiscal (0.17) and funding (0.14); process's departure ranks at 0.467 and fiscal's at 0.511.
+- Outside JST (2,212 rows, 54 onsets) nothing ranks: issued 0.481, offset 0.462, every group 0.34-0.54.
+
+Reading: at the JST countries the groups learn the signal the reference logit finds, and the theory offset, which ranks at chance and spreads as much across countries as they do, buries it; the averaging then gives half its weight to groups without signal. Outside JST the inputs carry nothing the lattice can use.
