@@ -4,17 +4,19 @@
 ;; world) with the lattice's :tap, and writes, for country rows at December
 ;; origins 2003-2022: the outcome, the mean offset, each group's log odds and
 ;; weight. First checks the issued year forecasts against the world run's.
-;; Usage: jolt -Sdeps '{:paths ["src" "resources" "test" "tools"]}' docs/studies/banking/node_tap.clj <out.tsv> <check-run> [flag,...]
+;; Usage: jolt -Sdeps '{:paths ["src" "resources" "test" "tools"]}' docs/studies/banking/node_tap.clj <out.tsv> <check-run> [flag,...] [added args]
 ;; The optional third argument drops further flags from the base command,
-;; each with its value (t155: --theory-offset,--theory-world).
+;; each with its value (t155: --theory-offset,--theory-world; "" for none);
+;; the fourth adds arguments, space-separated (t156: "--theory-outside-panel true").
 (require '[bnm.world-run :as wr] '[bnm.ledger :as lg] '[bnm.lattice :as lt] '[clojure.string :as str])
 (def k "banking_crisis")
-(let [[out check extra] *command-line-args*
+(let [[out check extra added] *command-line-args*
       drop-flag (fn [args f] (let [i (.indexOf ^java.util.List args f)] (if (neg? i) args (into (subvec args 0 i) (subvec args (+ i 2))))))
-      args (reduce drop-flag (vec (lg/command "diag" lg/base-end))
-                   (concat ["--kind-theory" "--shapes" "--global-theory" "--global-driver-precision" "--impute" "--aftermath-gauges"
-                            "--direction-gauges" "--direction-at" "--theory-decay" "--release-calendar"]
-                           (when extra (str/split extra #","))))
+      args (into (reduce drop-flag (vec (lg/command "diag" lg/base-end))
+                         (concat ["--kind-theory" "--shapes" "--global-theory" "--global-driver-precision" "--impute" "--aftermath-gauges"
+                                  "--direction-gauges" "--direction-at" "--theory-decay" "--release-calendar"]
+                                 (when (seq extra) (str/split extra #","))))
+                 (when (seq added) (str/split added #" ")))
       opts (wr/options args)
       cats (wr/run-catalogues opts)
       ks [k]

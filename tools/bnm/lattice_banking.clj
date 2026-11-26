@@ -812,9 +812,18 @@
                   acc)))
             {} (line-seq r)))))
 
+(defn year-offset
+  "--theory-offset (bnm-ris): the year node's offset at `place` and origin
+  `t`, the chance any of its members has an onset by the theory; nil where
+  there is none. With `outside` (--theory-outside-panel, t156) a country in
+  `panel` reads none; aggregates are as before."
+  [theory members panel outside place t]
+  (when-not (and outside (contains? panel place))
+    (th/any-of (keep #(get theory [% t]) (members place)))))
+
 (defn spec
   "The lattice spec for banking crises."
-  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset theory-world world-db panel recession-growth recession-mode contagion]}]
+  [{:keys [db wc jst ext cat units end regimes known quarterly gauge-std dated-credit banking-gauges coverage-db theory-offset theory-world theory-outside-panel world-db panel recession-growth recession-mode contagion]}]
   (let [[_ fin] (nm/financial db wc)
         ;; --banking-gauges (bnm-cpv): the world's leading gauges after the
         ;; year node's own columns
@@ -887,7 +896,7 @@
                               :target year-target}))
         known-at (fn [scale place t]
                    (if (and theory (= :year scale))
-                     (th/any-of (keep #(get theory [% t]) (members place)))
+                     (year-offset theory members panel theory-outside-panel place t)
                    (let [w ({:quarter-lead "lead" :quarter-w2 "w2"} scale)
                          ps (when w (keep #(get known [w % (quot (- t 2) 3)]) (members place)))]
                      (when (seq ps)
@@ -1046,7 +1055,7 @@
   `coverage-decls` at the year node; :banking-spans, each crisis busy to its
   end (`spans-path`, bnm-suj)."
   ([end known-run] (build end known-run {}))
-  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit theory-offset theory-world credit-denominator recession-hold theory-contagion banking-spans]}]
+  ([end known-run {:keys [catalogue-through leak-fixes gauge-std real-lags dated-credit banking-gauges wide-credit wdi-editions banking-coverage long-baseline splice-credit theory-offset theory-world theory-outside-panel credit-denominator recession-hold theory-contagion banking-spans]}]
   (let [variables (st/read-variables "data/slow/variables.tsv")
         db (nm/load-series "data/slow/series.tsv" variables
                            (cond-> {:real-lags real-lags} wdi-editions (assoc :wdi-editions (nm/read-wdi-editions))))
@@ -1088,6 +1097,7 @@
            :banking-gauges banking-gauges
            :theory-offset theory-offset
            :theory-world theory-world
+           :theory-outside-panel theory-outside-panel
            ;; --theory-contagion (bnm-ris): the claims, GDP and bank returns it reads
            :contagion (when theory-contagion
                         (ct/read-data "data/derived/lbs-claims.csv" "data/slow/series.tsv" "data/derived/lattice-annual.csv"))

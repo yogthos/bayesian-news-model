@@ -61,3 +61,24 @@
   (let [z {["A" 11] [1.0 2.0]}
         row (lb/theory-row (fn [u t] (get z [u t])) ["A"] [[:c 0]] nil [(fn [t] (* 2.0 t)) (constantly nil)])]
     (is (= [1.0 22.0 nil] (row "A" 11)))))
+
+;; --theory-outside-panel true (bnm-ris, t156): with --theory-offset, the
+;; year node at a Macrohistory panel country reads no offset (its groups rank
+;; on their own there, t155); everywhere else, and at every aggregate, the
+;; offset is as before
+(deftest the-outside-panel-option
+  (is (false? (wr/theory-outside-panel-choice {})))
+  (is (true? (wr/theory-outside-panel-choice {:theory-offset "true" :theory-outside-panel "true"})))
+  (is (thrown-with-msg? Exception #"needs --theory-offset true"
+                        (wr/theory-outside-panel-choice {:theory-outside-panel "true"}))))
+
+(deftest the-year-offset-outside-the-panel
+  (let [theory {["USA" 11] -2.0 ["AGO" 11] -3.0}
+        members (fn [p] (if (= "world" p) ["USA" "AGO"] [p]))
+        off (fn [outside place] (lb/year-offset theory members #{"USA"} outside place 11))
+        near (fn [a b] (< (Math/abs (- a b)) 1e-9))]
+    (is (near -2.0 (off false "USA")) "off: as before")
+    (is (nil? (off true "USA")) "a panel country reads no offset")
+    (is (near -3.0 (off true "AGO")) "outside the panel: as before")
+    (is (= (off false "world") (off true "world")) "an aggregate: as before")
+    (is (nil? (off true "XXX")) "no theory, no offset")))
