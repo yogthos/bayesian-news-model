@@ -1,8 +1,10 @@
 # Handover
 
-## State as of 2026-11-14 (branch `structure`)
+## State as of 2026-11-26 (branch `banking-redesign`)
 
 **The base of record is t150-base** (twenty-first note to amendment L1, 25 November 2026): t149-base's command with conflict and war onsets known at UCDP's annual release (`--release-calendar conflict_onset,war_onset`); both passed, and every kind but banking moves within noise through the others' counts (docs/CALIBRATION.md t150, t151).
+
+t151 (the calendar on conflict and war onsets' own history only) added nothing and its `--release-calendar-scope` option is removed (78ff4ae); it reproduces from bfc25cb.
 
 **Before it, t149-base** (twentieth note to amendment L1, 25 November 2026): t140-base's command with violence surges' averaging memory at a ten-year half-life; it passed the fold rule, and t145's post-onset level added nothing beside it (docs/CALIBRATION.md t149).
 
