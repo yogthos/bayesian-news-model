@@ -4,14 +4,17 @@
 ;; world) with the lattice's :tap, and writes, for country rows at December
 ;; origins 2003-2022: the outcome, the mean offset, each group's log odds and
 ;; weight. First checks the issued year forecasts against the world run's.
-;; Usage: jolt -Sdeps '{:paths ["src" "resources" "test" "tools"]}' docs/studies/banking/node_tap.clj <out.tsv> <check-run>
+;; Usage: jolt -Sdeps '{:paths ["src" "resources" "test" "tools"]}' docs/studies/banking/node_tap.clj <out.tsv> <check-run> [flag,...]
+;; The optional third argument drops further flags from the base command,
+;; each with its value (t155: --theory-offset,--theory-world).
 (require '[bnm.world-run :as wr] '[bnm.ledger :as lg] '[bnm.lattice :as lt] '[clojure.string :as str])
 (def k "banking_crisis")
-(let [[out check] *command-line-args*
+(let [[out check extra] *command-line-args*
       drop-flag (fn [args f] (let [i (.indexOf ^java.util.List args f)] (if (neg? i) args (into (subvec args 0 i) (subvec args (+ i 2))))))
       args (reduce drop-flag (vec (lg/command "diag" lg/base-end))
-                   ["--kind-theory" "--shapes" "--global-theory" "--global-driver-precision" "--impute" "--aftermath-gauges"
-                    "--direction-gauges" "--direction-at" "--theory-decay" "--release-calendar"])
+                   (concat ["--kind-theory" "--shapes" "--global-theory" "--global-driver-precision" "--impute" "--aftermath-gauges"
+                            "--direction-gauges" "--direction-at" "--theory-decay" "--release-calendar"]
+                           (when extra (str/split extra #","))))
       opts (wr/options args)
       cats (wr/run-catalogues opts)
       ks [k]
