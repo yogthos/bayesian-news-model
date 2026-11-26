@@ -5432,7 +5432,7 @@ Not adopted. No L1 note, no ledger change, no forecast.
 - *What changed.* Violence surges only (docs/CALIBRATION.md t145, t149): their nodes' model averaging forgets at a ten-year half-life instead of 0.995 per period, as currency crises' since t140. t145 passed with the post-onset level and this memory together; t149, the memory alone, passes, and t145 against t149 fails, so the level is not adopted. The other twelve kinds stay t140-base's.
 - *The score* (year nodes, 2003-2022, + = better than t140-base): pooled Brier +0.00034 [-0.00004, +0.00084], log +0.00190, no fold lost; pooled AUC 0.719 -> 0.733, within-year 0.734 -> 0.740, level r +0.73 unchanged; alert dcost at 4:1 +0.0056 [-0.0047, +0.0163]. A pass on the fold rule as amended 18 and 20 November, with all three dominance measures gaining.
 - *Caveats.* No interval clears zero (Brier's lower bound -0.00004). The ten-year half-life is t63's, fixed before t145; it is set per kind, not lattice-wide (t63-issue-f).
-- *Reproduction.* Owed: the command run to a fresh directory (data/runs/t149-base) must give t149's violence surge forecasts.tsv and t140-base's other twelve byte for byte; queued behind t150 (one world run at a time). Until then bnm.ledger refuses an issue (check-base finds no data/runs/t149-base).
+- *Reproduction.* The command run to a fresh directory (data/runs/t149-base, 46 minutes, 25 November 2026) gives t149's violence surge forecasts.tsv and t140-base's other twelve byte for byte (ledger tests green, 44, the on-disk check included).
 
 ## Amendment to the fold rule, 20 November 2026: dominance overrides a fold loss
 
