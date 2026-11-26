@@ -2,7 +2,9 @@
 
 ## State as of 2026-11-26 (branch `banking-redesign`)
 
-**The base of record is t150-base** (twenty-first note to amendment L1, 25 November 2026): t149-base's command with conflict and war onsets known at UCDP's annual release (`--release-calendar conflict_onset,war_onset`); both passed, and every kind but banking moves within noise through the others' counts (docs/CALIBRATION.md t150, t151).
+**The base of record is t157-base** (twenty-second note to amendment L1, 26 November 2026): t150-base's command with banking's theory offset outside the JST panel only (`--theory-outside-panel true`, t156) and inflation crises' year country rows recalibrated by a rolling intercept (`--recalibrate-intercept inflation_crisis`, t157-recal); both passed (docs/CALIBRATION.md t156 and the 26 November review, bnm-7yg).
+
+**Before it, t150-base** (twenty-first note to amendment L1, 25 November 2026): t149-base's command with conflict and war onsets known at UCDP's annual release (`--release-calendar conflict_onset,war_onset`); both passed, and every kind but banking moves within noise through the others' counts (docs/CALIBRATION.md t150, t151).
 
 t151 (the calendar on conflict and war onsets' own history only) added nothing and its `--release-calendar-scope` option is removed (78ff4ae); it reproduces from bfc25cb.
 

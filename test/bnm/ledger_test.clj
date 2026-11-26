@@ -128,17 +128,33 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t150-with-ucdp's-release-calendar
+(deftest the-base-of-record-is-t157-with-banking's-offset-outside-the-panel
+  ;; twenty-second note to L1, 26 November 2026: t150-base's command with
+  ;; banking's theory offset outside the JST panel only (t156, a pass by
+  ;; dominance) and inflation crises' year country rows recalibrated by a
+  ;; rolling intercept (t157-recal, a pass); the other eleven t150-base's.
+  ;; The earlier notes' pins on banking read not= since.
+  (is (= "t157-base" lg/base))
+  (is (= "9f0219af0c38f1d0735e9e221607c1a1e5ae6698ff12a071f0b10957d9eb232a" (lg/base-files "banking_crisis")) "t156's banking crises")
+  (is (= "0013aef32c3b6e35da62abedffdd17bff3ad60ff61d46ce2394f6199adf72b3c" (lg/base-files "inflation_crisis")) "t157-recal's inflation crises")
+  (is (= "7c9ab7cc0785543cb0ec8c27f58f71e8ed9491c33239a8e5eb4be68d84c8f649" (lg/base-files "conflict_onset")) "conflict onsets t150-base's")
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "true" (opt "--theory-outside-panel")))
+    (is (= "true" (opt "--theory-offset")))
+    (is (= "inflation_crisis" (opt "--recalibrate-intercept")))))
+
+(deftest the-base-before-was-t150-with-ucdp's-release-calendar
   ;; twenty-first note to L1, 25 November 2026: t149-base's command with
   ;; conflict and war onsets known at UCDP's annual release (t150, a pass at
   ;; both; it reaches every kind but banking through the others' counts).
   ;; The earlier notes' pins on kinds other than banking read not= since:
   ;; the calendar replaced every one of them.
-  (is (= "t150-base" lg/base))
+  (is (str/starts-with? lg/base "t1"))
   (is (= "7c9ab7cc0785543cb0ec8c27f58f71e8ed9491c33239a8e5eb4be68d84c8f649" (lg/base-files "conflict_onset")) "t150's conflict onsets")
   (is (= "678b8a6f7c839cafaf3eb859386393d145d840fb02330f085c818f1de46d2478" (lg/base-files "war_onset")) "t150's war onsets")
   (is (= "0cf68a981f20cdf1cebc40afb0e37752bd109ce81ee4a22760002737ffeb77c1" (lg/base-files "violence_surge")) "t149's memory with t150's calendar")
-  (is (= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis")) "banking unchanged")
+  (is (not= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis")) "banking unchanged")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (= "conflict_onset,war_onset" (opt "--release-calendar")))
@@ -242,7 +258,7 @@
   ;; banking's, which failed, left out
   (is (not= "11ec93fe0c0b8820b7d05bca7b99d3e346c0214a5c0630dd02101a4826ceca4d" (lg/base-files "fiscal_consolidation")) "t120's fiscal consolidations")
   (is (not= "147e529a629df82a2f3205b7e1de464ec260c1dea9c8f893e1042a285066da1c" (lg/base-files "growth_collapse")) "growth collapses unchanged, then t133's (sixteenth note)")
-  (is (= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis")) "banking unchanged")
+  (is (not= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis")) "banking unchanged")
   (is (= "a9f63ae68d5a32dc6da723da1de8f1591576a620ba5750379c12f546444f960b" (lg/base-inputs "data/derived/fiscal-series.tsv")))
   (is (some #{"data/derived/fiscal-series.tsv"} lg/inputs))
   (let [args (lg/command "ledger-x" 24323)
@@ -302,7 +318,7 @@
   ;; row's ratios held through recessions, and banking's frailty at rho 0
   ;; (docs/CALIBRATION.md t100-t104, bnm-ris, bnm-5lr). t80-base (fifth):
   ;; t71-stack's with the banking node's credit from the BIS (--dated-credit)
-  (is (= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis"))
+  (is (not= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis"))
       "banking is t104-rows-rho0's, the only kind the options reach")
   (is (not= "e3828c32699e9f4acb84d2e9c2fd92e890f419ee4e302d52ef4ced39c0987442" (lg/base-files "conflict_onset"))
       "the other twelve are t80-base's (t71-stack's)")

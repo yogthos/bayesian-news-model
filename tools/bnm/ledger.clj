@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t150-base")
+(def base "t157-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -82,8 +82,12 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t150-base/<kind>/
-  forecasts.tsv (25 November 2026, the twenty-first note to L1: t149-base's
+  "The base of record's forecasts, data/runs/t157-base/<kind>/
+  forecasts.tsv (26 November 2026, the twenty-second note to L1: t150-base's
+  command with banking's theory offset outside the JST panel only, t156's,
+  and inflation crises' year country rows recalibrated by a rolling
+  intercept, t157-recal's; the other eleven t150-base's).
+  t150-base (25 November 2026, the twenty-first note to L1: t149-base's
   command with conflict and war onsets known at UCDP's annual release,
   t150's calendar; every kind but banking moves, through the others'
   counts).
@@ -124,14 +128,14 @@
   with banking's theory offset, its world funding and reserves, the year
   row's ratios held through recessions and banking's frailty at rho 0;
   banking is t104-rows-rho0's, the other ten t80-base's, t71-stack's."
-  {"banking_crisis" "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b"
+  {"banking_crisis" "9f0219af0c38f1d0735e9e221607c1a1e5ae6698ff12a071f0b10957d9eb232a"
    "conflict_onset" "7c9ab7cc0785543cb0ec8c27f58f71e8ed9491c33239a8e5eb4be68d84c8f649"
    "coup" "e2516bf2118edd05243cddc3d695b725e276e8736a242d965ef1d436192306e6"
    "currency_crisis" "a34827ccd2cb820757e7a2013af38e0bf264761e433c155df8fbc4f19ccce317"
    "fiscal_consolidation" "bee45ac2b7b9463f296ee484e77ef188fa25b31b81aaa0496c7e9178fda17c0a"
    "food_price_shock" "c09a133570f0ad87ed4064aab300e72787c18a2211e60bdcca7476c066e0cdc6"
    "growth_collapse" "564185daaea97148940a7dfad27b3a1d0e58941b17a177d380eb793b304aaf4d"
-   "inflation_crisis" "934508bb0a1b8905505692830e8cfebbbe9dbfab35c88d3c36d44f05182aa94f"
+   "inflation_crisis" "0013aef32c3b6e35da62abedffdd17bff3ad60ff61d46ce2394f6199adf72b3c"
    "market_crash" "61908a866b1942375ee9fe179786d6ee1f5909b9f7cd3247bb559fcb1b16dd26"
    "protest_surge" "8a8f8e2b0bc087a4e4e811a89701566d164d5186a7d2cc674d4fe3086f1e5c9d"
    "sovereign_default" "2ec6b77fabecda209925d4a573a6b5492c17dff86721cada36c504f388c2199f"
@@ -465,8 +469,12 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t150-base's (twenty-first note to
-  L1): t149-base's with conflict and war onsets known at UCDP's annual
+  "The base's bnm.world-run arguments, t157-base's (twenty-second note to
+  L1): t150-base's with banking's theory offset outside the JST panel only
+  (--theory-outside-panel, t156) and inflation crises' year country rows
+  recalibrated by a rolling intercept after the run
+  (--recalibrate-intercept inflation_crisis, t157-recal). t150-base's
+  (twenty-first note to L1): t149-base's with conflict and war onsets known at UCDP's annual
   release (--release-calendar conflict_onset,war_onset, t150). t149-base's
   (twentieth note to L1):
   t140-base's with violence surges' averaging at a ten-year half-life
@@ -532,7 +540,7 @@
    "--leak-fixes" "true" "--pwt-stale" "true" "--lag-stale" "true" "--gauge-std" "stable"
    "--leading" "true" "--leading-priors" "true" "--real-lags" "true" "--at-risk" "catalogue"
    "--lead-std" "history" "--frailty-gauges" "true" "--dated-credit" "true"
-   "--theory-offset" "true" "--theory-world" "true" "--recession-hold" "rows"
+   "--theory-offset" "true" "--theory-world" "true" "--theory-outside-panel" "true" "--recession-hold" "rows"
    "--kind-theory" "sovereign_default,inflation_crisis@monthly,currency_crisis,coup,fiscal_consolidation" "--shapes" "currency_crisis,coup,fiscal_consolidation"
    "--global-theory" "market_crash" "--global-driver-precision" "10" "--impute" "inflation_crisis,sovereign_default"
    "--aftermath-gauges" "growth_collapse"
@@ -540,7 +548,7 @@
    "--theory-decay" "coup,inflation_crisis,currency_crisis"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
    "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}} \"currency_crisis\" {:forget-half-life 10} \"violence_surge\" {:forget-half-life 10}}"
-   "--release-calendar" "conflict_onset,war_onset"])
+   "--release-calendar" "conflict_onset,war_onset" "--recalibrate-intercept" "inflation_crisis"])
 
 (defn command-line
   "The shell command a manifest records for bnm.world-run `args`; an
