@@ -4583,3 +4583,5 @@ Result of t156 (26 November 2026). **Pass by dominance: banking ranks at the JST
 - Tap, JST 2003-2020: issued AUC 0.672, log vs constant +0.0023 (t150-base 0.608 and -0.0183, t155 0.645 and -0.0012). Booms carries 0.67 of the weight, process 0.16.
 - Against t155: pooled +0.00051 [-0.00002, +0.00095], a pass; keeping the offset outside the panel recovers t155's loss there.
 - Recommendation: adopt. The user's decision.
+
+Decision (26 November 2026, the user): adopt t156. The base of record becomes t157-base: t150-base's command with `--theory-outside-panel true --recalibrate-intercept inflation_crisis`, once its build checks: banking crises byte for byte t156's, inflation crises t157-recal's on 2003-2022 (and differing from t150-base only in year country rows at December origins from 2003), every other kind byte for byte t150-base's.
