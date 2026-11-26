@@ -46,6 +46,9 @@
   --clim-prior kinds|k1,k2 (bnm-56c.26: a node with no resolved outcome
   reads the rate the other kinds' nodes at its scale and level have
   resolved, not 0.5; at every kind run, or at the kinds named, t152),
+  --recalibrate-intercept k1,k2 (bnm-7yg.4: the named kinds' year country
+  nodes moved by one intercept per December origin from 2003, fitted on
+  rows resolved 48 months before, before they are written; t157-recal),
   --fresh-frailty quarter-now (bnm-56c.35, recursive step 4: every kind
   whose catalogue dates onsets within the year gets bnm.lattice-political/
   quarter-now, a frailty-only scale, window three months, known three
@@ -132,6 +135,7 @@
             [bnm.named :as nm]
             [bnm.slow-train :as st]
             [bnm.stocks :as sk]
+            [bnm.recalibrate-intercept :as ri]
             [bnm.relations :as rl]
             [bnm.world :as w]
             [bnm.world-gauges :as wg]
@@ -767,6 +771,14 @@
     (when (and on (not (theory-offset-choice opts)))
       (throw (ex-info "bnm.world-run: --theory-contagion needs --theory-offset true" {})))
     on))
+
+(defn recalibrate-intercept-choice
+  "--recalibrate-intercept k1,k2 (bnm-7yg.4, t157-recal): the named kinds'
+  year country nodes recalibrated by one intercept per December origin
+  from 2003 (bnm.recalibrate-intercept) before they are written; nil
+  without the option."
+  [{v :recalibrate-intercept}]
+  (when v (set (str/split v #","))))
 
 (defn theory-outside-panel-choice
   "--theory-outside-panel true (bnm-ris, t156), with --theory-offset: the
@@ -1675,7 +1687,13 @@
                         (do (reset! books (into {} (for [[k s] states] [k (lt/book s)])))
                             (reset! clims (into {} (for [[k s] states] [k (get-in s [:st :clim])])))
                             (recur (into {} (pmap (fn [[k s]] [k (lt/step (specs k) s)]) states))))))))
-        finished (into {} (for [[k s] results] [k (lt/finish s)]))]
+        recal (or (recalibrate-intercept-choice opts) #{})
+        _ (when-let [bad (seq (remove (set (keys results)) recal))]
+            (throw (ex-info (str "bnm.world-run: --recalibrate-intercept names a kind not run: " (str/join "," (sort bad))) {})))
+        finished (into {} (for [[k s] results]
+                            [k (cond-> (lt/finish s)
+                                 ;; --recalibrate-intercept (bnm-7yg.4): the year level, after the run
+                                 (recal k) (update :forecasts ri/recalibrate 2003))]))]
     (if (= "true" smoke)
       (let [fails (into {} (for [[k r] (sort-by key finished)]
                              (do (println "==" k) [k (smoke/checks (specs k) r k end)])))

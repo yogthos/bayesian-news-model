@@ -12,6 +12,7 @@
             [bnm.catalogue-through-test]
             [bnm.release-calendar-test]
             [bnm.clim-prior-test]
+            [bnm.recalibrate-intercept-test]
             [bnm.trade-test]
             [bnm.polecon-test]
             [bnm.invariants-test]
@@ -176,6 +177,7 @@
     bnm.catalogue-through-test
     bnm.release-calendar-test
     bnm.clim-prior-test
+    bnm.recalibrate-intercept-test
     bnm.trade-test
     bnm.polecon-test
     bnm.invariants-test
