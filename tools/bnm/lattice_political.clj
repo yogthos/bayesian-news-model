@@ -173,6 +173,13 @@
       ;; known by t (lb/known-month: at the lag, or a release calendar's month, t150)
       (double (count (filter #(> % (- k months)) (lb/known-onsets cat unit t)))))))
 
+(defn others-counts
+  "The other kinds' onsets known at `unit` by t in the last ten years, in
+  the order of `others`, each catalogue as another kind reads it
+  (lb/as-other: a calendar scoped to the own history is not read here)."
+  [cats others unit t]
+  (map #(count-known (lb/as-other (cats %)) unit t 120) others))
+
 (defn world-share
   "The share of `countries` in the system at t (`in-system`) with an onset
   of `cat` known in the last three years, over those whose catalogue
@@ -406,7 +413,7 @@
                    (when (in-system u t)
                      (vec (concat (row u t)
                                   (hist u t)
-                                  (map #(count-known (cats %) u t 120) others)
+                                  (others-counts cats others u t)
                                   [(world3 t)]))))
         half-raw (fn [u t]
                    (when (in-system u t)

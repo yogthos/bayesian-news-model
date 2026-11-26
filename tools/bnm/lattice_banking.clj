@@ -180,6 +180,13 @@
     (+ r (* 12 (inc (quot m 12))))
     (+ m (get cat :known-lag known-lag))))
 
+(defn as-other
+  "`cat` as another kind's count reads it: without its release calendar
+  when the calendar is scoped to the own history (:release {:scope :own},
+  t151), so the others read the flat :known-lag; as it is otherwise."
+  [cat]
+  (if (= :own (get-in cat [:release :scope])) (dissoc cat :release) cat))
+
 (defn known-onsets
   "`unit`'s onsets of `cat` known by month t, in order (`known-month` rises
   with the onset, so they are a prefix)."
