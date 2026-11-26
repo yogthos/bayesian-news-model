@@ -1084,21 +1084,9 @@
   "`cats` with `release-calendars`' :release at `ks` (the inputs that read
   known onsets through bnm.lattice-banking/known-month: the own history,
   the others' counts and the world's share); as they were when `ks` is nil.
-  The targets stay known at the window's end plus :known-lag. With `scope`
-  :own (t151) the calendar is the kinds' own history and world share only;
-  the other kinds' counts read the flat lag (bnm.lattice-banking/as-other)."
-  ([cats ks] (with-release-calendar cats ks nil))
-  ([cats ks scope]
-   (reduce (fn [acc k] (assoc-in acc [k :release] (cond-> (release-calendars k) scope (assoc :scope scope)))) cats ks)))
-
-(defn release-scope-choice
-  "--release-calendar-scope own|all (t151): :own for the calendar on the
-  kinds' own history alone; nil for all (t150), the default."
-  [{v :release-calendar-scope rc :release-calendar}]
-  (when v
-    (when-not rc (throw (ex-info "bnm.world-run: --release-calendar-scope needs --release-calendar" {})))
-    (case v "own" :own "all" nil
-          (throw (ex-info (str "bnm.world-run: --release-calendar-scope own|all, not " v) {})))))
+  The targets stay known at the window's end plus :known-lag."
+  [cats ks]
+  (reduce (fn [acc k] (assoc-in acc [k :release] (release-calendars k))) cats ks))
 
 (defn run-catalogues
   "The catalogues a run with `opts` fits and scores on: --food-outcomes,
@@ -1113,8 +1101,8 @@
                 (at-risk cat-db (:food-outcomes opts) (:at-risk opts) (:growth-outcomes opts)))
       (= "true" (:catalogue-through opts)) catalogues-through
       (banking-spans-choice opts) (update lb/kind lb/with-spans (lb/read-spans lb/spans-path))
-      (or (:release-calendar opts) (:release-calendar-scope opts))
-      (#(with-release-calendar % (release-calendar-choice opts (keys %)) (release-scope-choice opts))))))
+      (:release-calendar opts)
+      (#(with-release-calendar % (release-calendar-choice opts (keys %)))))))
 
 (defn fresh-inputs-choice
   "--fresh-inputs true: the political and economic kinds' year row reads

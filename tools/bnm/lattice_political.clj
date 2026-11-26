@@ -175,10 +175,9 @@
 
 (defn others-counts
   "The other kinds' onsets known at `unit` by t in the last ten years, in
-  the order of `others`, each catalogue as another kind reads it
-  (lb/as-other: a calendar scoped to the own history is not read here)."
+  the order of `others`, each on its own release calendar if it has one."
   [cats others unit t]
-  (map #(count-known (lb/as-other (cats %)) unit t 120) others))
+  (map #(count-known (cats %) unit t 120) others))
 
 (defn world-share
   "The share of `countries` in the system at t (`in-system`) with an onset

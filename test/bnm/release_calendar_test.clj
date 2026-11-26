@@ -55,24 +55,10 @@
     (is (= cat (get (wr/with-release-calendar cats ["conflict_onset"]) "coup")))
     (is (= cats (wr/with-release-calendar cats nil)))))
 
-(deftest t151-the-calendar-on-the-own-history-alone
-  (let [own (assoc cat :release {:month 9 :scope :own})]
-    (testing "as another kind's count, a scoped catalogue reads the flat lag"
-      (is (= cat (lb/as-other own)))
-      (is (= (assoc cat :release {:month 9}) (lb/as-other (assoc cat :release {:month 9}))) "unscoped: the calendar everywhere (t150)")
-      (is (= cat (lb/as-other cat))))
-    (testing "its own history still reads the calendar"
-      (is (= 2.0 (nth (#'lb/history own "AAA" dec-2011) 1))))
-    (testing "the others' counts"
-      (is (= [1.0] (lp/others-counts {"conflict_onset" own} ["conflict_onset"] "AAA" dec-2011)))
-      (is (= [2.0] (lp/others-counts {"conflict_onset" (assoc cat :release {:month 9})} ["conflict_onset"] "AAA" dec-2011)))))
-  (testing "the option"
-    (is (nil? (wr/release-scope-choice {:release-calendar "conflict_onset"})))
-    (is (nil? (wr/release-scope-choice {:release-calendar "conflict_onset" :release-calendar-scope "all"})))
-    (is (= :own (wr/release-scope-choice {:release-calendar "conflict_onset" :release-calendar-scope "own"})))
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"--release-calendar-scope own\|all"
-                          (wr/release-scope-choice {:release-calendar "conflict_onset" :release-calendar-scope "x"})))
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"needs --release-calendar"
-                          (wr/release-scope-choice {:release-calendar-scope "own"}))))
-  (is (= {:month 9 :scope :own}
-         (get-in (wr/with-release-calendar {"conflict_onset" cat} ["conflict_onset"] :own) ["conflict_onset" :release]))))
+(deftest t151's-own-history-scope-is-removed
+  (testing "the others' counts read a catalogue's calendar as it is"
+    (is (= [2.0] (lp/others-counts {"conflict_onset" (assoc cat :release {:month 9})} ["conflict_onset"] "AAA" dec-2011)))
+    (is (= [2.0] (lp/others-counts {"conflict_onset" (assoc cat :release {:month 9 :scope :own})} ["conflict_onset"] "AAA" dec-2011)) "no scope key is honoured"))
+  (testing "no --release-calendar-scope option"
+    (is (nil? (resolve 'bnm.world-run/release-scope-choice)))
+    (is (nil? (resolve 'bnm.lattice-banking/as-other)))))
