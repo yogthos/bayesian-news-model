@@ -4585,3 +4585,9 @@ Result of t156 (26 November 2026). **Pass by dominance: banking ranks at the JST
 - Recommendation: adopt. The user's decision.
 
 Decision (26 November 2026, the user): adopt t156. The base of record becomes t157-base: t150-base's command with `--theory-outside-panel true --recalibrate-intercept inflation_crisis`, once its build checks: banking crises byte for byte t156's, inflation crises t157-recal's on 2003-2022 (and differing from t150-base only in year country rows at December origins from 2003), every other kind byte for byte t150-base's.
+
+## Step 5, the year's echo through the quarters removed: t159 (bnm-7yg.5)
+
+Written 26 November 2026, before any run. Every kind's quarter nodes take an offset from the year's latest forecast (:downscale, pool 0.5) and pass their states back up to the year, so the year reads its own forecast back (docs/LOOP-AUDIT.md L2, critical issue 1; the review's section 4). `:up-net-of-downscale` (bnm-56c.2) has a node with :downscale pass up its log odds less the part of its offset that came down; it exists and is tested but is off in the base. It cuts route L2 only, not the four others the audit lists.
+
+Run t159: t157-base's command with `:up-net-of-downscale true` added to its `--set` map. Checks fixed before the run: every kind's forecasts differ from t157-base (each has quarters with :downscale); if one does not, that is reported. Rule, each kind against t157-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it the scorecard (within-origin AUC, level r, log skill against clim and own), the alert table and rank 0's table. Adoption is the user's, kind by kind or as a whole. No changes after the result.
