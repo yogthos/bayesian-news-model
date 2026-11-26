@@ -43,9 +43,9 @@
   units the quarterly data cover are forecast for the kind, docs/
   GROWTH-QUARTERLY.md; annual-covered, the annual catalogue at those
   units, its comparison),
-  --clim-prior kinds (bnm-56c.26: a node with no resolved outcome reads
-  the rate the other kinds' nodes at its scale and level have resolved,
-  not 0.5),
+  --clim-prior kinds|k1,k2 (bnm-56c.26: a node with no resolved outcome
+  reads the rate the other kinds' nodes at its scale and level have
+  resolved, not 0.5; at every kind run, or at the kinds named, t152),
   --fresh-frailty quarter-now (bnm-56c.35, recursive step 4: every kind
   whose catalogue dates onsets within the year gets bnm.lattice-political/
   quarter-now, a frailty-only scale, window three months, known three
@@ -385,6 +385,26 @@
               (if (= k kind) [a b]
                   (let [[x y] (get c [scale level] [0 0])] [(+ a x) (+ b y)])))
             [0 0] @clims)))
+
+(defn clim-prior-kinds
+  "The kinds --clim-prior gives the cross-kind prior: every kind in `ks`
+  for kinds, the kinds named for a comma list (t152); nil without it.
+  A kind not run is refused."
+  [choice ks]
+  (when choice
+    (if (= "kinds" choice)
+      (set ks)
+      (let [named (set (str/split choice #","))
+            bad (sort (remove (set ks) named))]
+        (when (seq bad)
+          (throw (ex-info (str "bnm.world-run: --clim-prior names a kind not run: " (str/join "," bad)) {})))
+        named))))
+
+(defn with-clim-prior
+  "`specs` with bnm.lattice's :clim-prior (cross-kind-prior over `clims`)
+  at the kinds in `at`; as they were when `at` is nil."
+  [specs at clims]
+  (into {} (for [[k sp] specs] [k (cond-> sp (contains? at k) (assoc :clim-prior (cross-kind-prior clims k)))])))
 
 (defn food-outcomes
   "`cats` under --food-outcomes: monthly, food price shocks by month at the
@@ -1610,13 +1630,9 @@
         _ (println "building" (count ks) "kinds" (if (seq fresh) (str "; the fresh frailty scale at " (str/join "," (sort fresh))) ""))
         specs0 (pipeline-specs opts ks end cats {:fresh fresh :nq nq :nq-cats nq-cats})
         books (atom {})
-        ;; each kind's resolved counts by node, as of the month (--clim-prior kinds)
+        ;; each kind's resolved counts by node, as of the month (--clim-prior)
         clims (atom {})
-        _ (when (and clim-prior (not= "kinds" clim-prior))
-            (throw (ex-info (str "bnm.world-run: --clim-prior takes kinds, not " clim-prior) {})))
-        specs0 (if (= "kinds" clim-prior)
-                 (into {} (for [[k sp] specs0] [k (assoc sp :clim-prior (cross-kind-prior clims k))]))
-                 specs0)
+        specs0 (with-clim-prior specs0 (clim-prior-kinds clim-prior ks) clims)
         specs (into {} (for [[k sp] specs0]
                          [k (cond-> (if (= "true" without-relations) sp
                                       (with-relations sp (parents k) books cats
