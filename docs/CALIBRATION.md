@@ -4609,6 +4609,8 @@ Result of t158 (26 November 2026). **Conflict onsets pass; ten kinds fail. A fiv
 - Reading: the year averaging's long memory is not, in general, costing the lattice; shortening it loses at most kinds. Conflict onsets gain because the switch from own history to 'all' comes five years earlier, which is the reference's gap (step 2).
 - Recommendation: adopt the five-year memory at conflict onsets only (`--kind-set "conflict_onset" {:forget-half-life 5}`), as a base build checked against t158's conflict onsets byte for byte and every other kind t157-base's; nothing else from t158. The user's decision.
 
+Decision (26 November 2026, the user): adopt the five-year memory at conflict onsets only. The base of record becomes t158-base: t157-base's command with `"conflict_onset" {:forget-half-life 5}` added to its `--kind-set` map, once its build checks: conflict onsets byte for byte t158's, every other kind byte for byte t157-base's. It is built after t159, one run at a time.
+
 ## Step 5, the year's echo through the quarters removed: t159 (bnm-7yg.5)
 
 Written 26 November 2026, before any run. Every kind's quarter nodes take an offset from the year's latest forecast (:downscale, pool 0.5) and pass their states back up to the year, so the year reads its own forecast back (docs/LOOP-AUDIT.md L2, critical issue 1; the review's section 4). `:up-net-of-downscale` (bnm-56c.2) has a node with :downscale pass up its log odds less the part of its offset that came down; it exists and is tested but is off in the base. It cuts route L2 only, not the four others the audit lists.
