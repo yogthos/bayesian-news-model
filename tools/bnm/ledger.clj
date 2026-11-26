@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t140-base")
+(def base "t149-base")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -82,8 +82,11 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t140-base/<kind>/
-  forecasts.tsv (23 November 2026, the nineteenth note to L1: t137-base's
+  "The base of record's forecasts, data/runs/t149-base/<kind>/
+  forecasts.tsv (25 November 2026, the twentieth note to L1: t140-base's
+  command with violence surges' averaging memory at a ten-year half-life,
+  t149's; the other twelve t140-base's).
+  t140-base (23 November 2026, the nineteenth note to L1: t137-base's
   command with currency crises' theory stocks decaying from known onsets
   and their averaging's memory at a ten-year half-life, t140's; the other
   twelve t137-base's).
@@ -128,7 +131,7 @@
    "market_crash" "4c85afea2f6881c3303b9f48f506ea0f907c518e2a6f1d12025e8321a3432e69"
    "protest_surge" "98f6a3d14855b3ba0f5eda59b4975de2a13e55b19d8963c36191e496a1dcd373"
    "sovereign_default" "4a964aa054f0ba3b867c6fa01bf15d6e107a97721141c685e8a82b8ea5f59111"
-   "violence_surge" "ea2c590835d306a47e3891ae0de3dfdd16b916f53391182079c075f7d2cc3e86"
+   "violence_surge" "7cc5e43a2eb77e3def07b9b1b9595e930da66dbadb2233fb5d404b5e33cdbf77"
    "war_onset" "25fafb6577491beb364e3809352ea2fb38bec4cc416b71596abba0f77e9c70b1"})
 
 (def base-inputs
@@ -458,7 +461,10 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t140-base's (nineteenth note to L1):
+  "The base's bnm.world-run arguments, t149-base's (twentieth note to L1):
+  t140-base's with violence surges' averaging at a ten-year half-life
+  (--kind-set violence_surge :forget-half-life 10, t149). t140-base's
+  (nineteenth note to L1):
   t137-base's with currency crises' theory stocks decaying from known
   onsets and their nodes' averaging at a ten-year half-life (--theory-decay
   ...,currency_crisis, --kind-set currency_crisis :forget-half-life 10,
@@ -526,7 +532,7 @@
    "--direction-gauges" "market_crash" "--direction-at" "quarter-lead,quarter-w2"
    "--theory-decay" "coup,inflation_crisis,currency_crisis"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
-   "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}} \"currency_crisis\" {:forget-half-life 10}}"])
+   "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}} \"currency_crisis\" {:forget-half-life 10} \"violence_surge\" {:forget-half-life 10}}"])
 
 (defn command-line
   "The shell command a manifest records for bnm.world-run `args`; an

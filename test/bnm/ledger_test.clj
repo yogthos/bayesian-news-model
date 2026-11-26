@@ -128,17 +128,31 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t140-with-currency-crises'-decay-and-memory
+(deftest the-base-of-record-is-t149-with-violence-surges'-memory
+  ;; twentieth note to L1, 25 November 2026: t140-base's command with
+  ;; violence surges' averaging memory at a ten-year half-life (t149, a pass
+  ;; on the fold rule; t145's post-onset level not adopted)
+  (is (= "t149-base" lg/base))
+  (is (= "7cc5e43a2eb77e3def07b9b1b9595e930da66dbadb2233fb5d404b5e33cdbf77" (lg/base-files "violence_surge")) "t149's violence surges")
+  (is (= "e5cf1d125c978744c7bd6df9f8432ebd709f1fff6dfed27e2ba057825c5c1ead" (lg/base-files "currency_crisis")) "currency crises t140-base's")
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "coup,inflation_crisis,currency_crisis" (opt "--theory-decay")))
+    (is (nil? (opt "--year-decay")) "t145's level not adopted")
+    (is (= {"banking_crisis" {:frailty {:rhos [0.0]}} "currency_crisis" {:forget-half-life 10} "violence_surge" {:forget-half-life 10}}
+           (read-string (opt "--kind-set"))))))
+
+(deftest the-base-before-was-t140-with-currency-crises'-decay-and-memory
   ;; nineteenth note to L1, 23 November 2026: t137-base's command with
   ;; currency crises' theory stocks decaying and their averaging's memory at
   ;; a ten-year half-life (t140, a pass on the fold rule)
-  (is (= "t140-base" lg/base))
+  (is (str/starts-with? lg/base "t1"))
   (is (= "e5cf1d125c978744c7bd6df9f8432ebd709f1fff6dfed27e2ba057825c5c1ead" (lg/base-files "currency_crisis")) "t140's currency crises")
   (is (= "ae0ab8ce83321e0b36aac3897fb74875816116aea8af237b3304974ef46cb420" (lg/base-files "coup")) "coups t137-base's")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (= "coup,inflation_crisis,currency_crisis" (opt "--theory-decay")))
-    (is (= {"banking_crisis" {:frailty {:rhos [0.0]}} "currency_crisis" {:forget-half-life 10}} (read-string (opt "--kind-set"))))))
+    (is (= {:forget-half-life 10} (get (read-string (opt "--kind-set")) "currency_crisis")))))
 
 (deftest the-base-before-was-t137-with-coups'-and-inflation's-stocks-decaying
   ;; eighteenth note to L1, 23 November 2026: t136-base's command with

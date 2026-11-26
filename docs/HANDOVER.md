@@ -2,7 +2,9 @@
 
 ## State as of 2026-11-14 (branch `structure`)
 
-**The base of record is t140-base** (nineteenth note to amendment L1, 23 November 2026): t137-base's command with currency crises' theory stocks decaying and their averaging's memory at a ten-year half-life; it passed the fold rule (docs/CALIBRATION.md t140, after the year-node diagnosis with bnm.lattice's :tap).
+**The base of record is t149-base** (twentieth note to amendment L1, 25 November 2026): t140-base's command with violence surges' averaging memory at a ten-year half-life; it passed the fold rule, and t145's post-onset level added nothing beside it (docs/CALIBRATION.md t149).
+
+**Before it, t140-base** (nineteenth note to amendment L1, 23 November 2026): t137-base's command with currency crises' theory stocks decaying and their averaging's memory at a ten-year half-life; it passed the fold rule (docs/CALIBRATION.md t140, after the year-node diagnosis with bnm.lattice's :tap).
 
 **Before it, t137-base** (eighteenth note to amendment L1, 23 November 2026): t136-base's command with coups' and inflation crises' theory stocks read against time since the last known onset (`--theory-decay coup,inflation_crisis`); each passed the fold rule (docs/CALIBRATION.md t137).
 
