@@ -4625,3 +4625,10 @@ Result of t159 (26 November 2026). **Five kinds gain clearly with the echo cut: 
 - Scorecard pooled: AUC 0.721 -> 0.754, within-origin 0.722 -> 0.753, log skill against clim +0.0321 -> +0.0371, recall at the top 10% 0.324 -> 0.387.
 - Causality: the net state subtracts `down`, the offset the quarter took from the year's forecast as issued at the same origin (bnm.lattice, the book's :s), known at issue; the errors fed back still use the issued p. No new input enters.
 - Recommendation: adopt the cut at banking crises, conflict onsets, coups, violence surges and war onsets (`:up-net-of-downscale true` in each one's `--kind-set` entry). Conflict onsets then carry t158's memory too, a combination neither run scored, so the build is a candidate (t160) scored at conflict onsets against t158-base on the same rule, the other four checked byte for byte against t159. The user's decision.
+
+Decision (26 November 2026, the user): adopt the cut at banking crises, conflict onsets, coups, violence surges and war onsets.
+
+## The echo cut at five kinds on t158-base: t160 (bnm-7yg.5)
+
+Written 26 November 2026, before the run. Run t160: t158-base's command with `:up-net-of-downscale true` added to the `--kind-set` entries of banking crises, conflict onsets, coups, violence surges and war onsets (each kind's existing entry kept). Checks fixed before the run: banking crises, coups, violence surges and war onsets match t159 byte for byte; the other seven but conflict onsets match t158-base. Rule, conflict onsets (t158's memory with the cut, a combination not yet scored) against t158-base: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC), with the scorecard beside. If the checks hold and conflict onsets pass, t160 is the base of record (the user's decision above, given before the result); if conflict onsets fail, that is reported and the user decides. No changes after the result.
+
