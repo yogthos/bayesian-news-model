@@ -4765,3 +4765,13 @@ Result of t162 (27 November 2026, 41 minutes). Checks held: only sovereign defau
 - What it costs: the level is back up (p/rate 1.28 -> 1.54), and the alert cost is a little worse, within noise; the 2007-09 loss is that level in the calm years.
 - Recommendation: t162 fails the registered rule against the base, on one small fold and a within-noise alert cost; it passes against t160 and is best of the three on ranking, the level's correlation with the rate and log skill. Adoption is the user's.
 - Decision (27 November 2026, the user): adopt t162 over the rule's fail against t161; the base of record is t162 (twenty-fifth note to L1).
+
+### Sovereign defaults' own-history coding (bnm-7yg.6, 27 November 2026; a check before registering, no run)
+
+- Question: does lb/history's since-last, which counts a country with no known default from its catalogue's start (66 countries from 1800, 106 from 1970), cause the backward or chance ranking left after t162 (9+ years since the last default: AUC 0.489)?
+- Method: docs/studies/sovereign_history.clj taps the inputs on the ledger command at the December origins 2003-2022 (3217 rows, 101 onsets; its since-last equals lb/history's exactly); sovereign_history.py compares three codings: current; horizon (from the later of the last onset and January 1970); unknown (blank with no known onset). AUC of since-last alone (shorter riskier) and of a causal pooled logit on since-last, own10 and own30.
+- since-last alone, all / none / 0-8 / 9+: current 0.604 / 0.408 / 0.527 / 0.481; horizon 0.563 / 0.216 / 0.527 / 0.481; unknown 0.641 / 0.399 / 0.527 / 0.481.
+- Pooled logit: current 0.666 / 0.727 / 0.407 / 0.522; horizon 0.653 / 0.673 / 0.402 / 0.524; unknown 0.671 / 0.729 / 0.401 / 0.517.
+- No known onset, by catalogue start: from 1800, 0 defaults in 171 rows; from 1970, 33 in 1257 (rate 0.026, near the overall 0.031). Counting from the catalogue's start carries real information: the countries covered from 1800 with no default never default. The horizon coding throws it away.
+- The 9+ band ranks at chance under every coding: there the input is the onset gap itself, and a longer gap since an old default is not safer in 2003-22. No coding of the history input repairs it.
+- Conclusion: not a bug; nothing registered. Unknown's logit gain (+0.005 pooled) is within noise and not worth a run.
