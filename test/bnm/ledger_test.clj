@@ -128,14 +128,27 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t160-with-the-echo-cut
+(deftest the-base-of-record-is-t161-with-sovereign-defaults'-theory-memory
+  ;; twenty-fourth note to L1, 27 November 2026: t160's command with
+  ;; sovereign defaults' theory rows weighted at a ten-year half-life
+  ;; (--theory-half-life sovereign_default:10, t161, a pass on the fold
+  ;; rule at a pooled AUC cost of 0.027); the other twelve t160's.
+  (is (= "t161" lg/base))
+  (is (= "c660445e082e0cbce423750894072aad09e06dbc0909a31f1d993fdfab760f83" (lg/base-files "sovereign_default")) "t161's sovereign defaults")
+  (is (not= "2ec6b77fabecda209925d4a573a6b5492c17dff86721cada36c504f388c2199f" (lg/base-files "sovereign_default")) "t160's")
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "sovereign_default:10" (opt "--theory-half-life")))
+    (is (nil? (opt "--theory-signs")) "signs not run")))
+
+(deftest the-base-before-was-t160-with-the-echo-cut
   ;; twenty-third note to L1, 26 November 2026: t157-base's command with
   ;; conflict onsets' year averaging at a five-year half-life (t158) and
   ;; the year's echo through the quarters cut (:up-net-of-downscale, t159)
   ;; at banking crises, conflict onsets, coups, violence surges and war
   ;; onsets (t160); the other eight t157-base's. The earlier notes' pins on
   ;; those five read not= since.
-  (is (= "t160" lg/base))
+  (is (str/starts-with? lg/base "t1"))
   (is (= "a8efdfe199ead101071d334b15bafb76d561f3245b265c9647e3c5080952e227" (lg/base-files "banking_crisis")) "t159's banking crises")
   (is (= "0cd01bef5d08f184ef9b47f740fb37f9cbbca08e214f269b789627e4cf4bbbbf" (lg/base-files "conflict_onset")) "t160's conflict onsets")
   (is (= "b17a80aabf5a01ce0a1c0b4ae3a75312a5e4ed0915f42e323551b50894bd751d" (lg/base-files "coup")) "t159's coups")

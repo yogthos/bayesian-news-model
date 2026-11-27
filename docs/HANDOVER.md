@@ -2,7 +2,7 @@
 
 ## State as of 2026-11-26 (branch `banking-redesign`)
 
-**The base of record is t160** (twenty-third note to amendment L1, 26 November 2026): t157-base's command with the year's echo through the quarters cut (`:up-net-of-downscale`) at banking crises, conflict onsets, coups, violence surges and war onsets, and conflict onsets' year averaging at a five-year half-life; the last of the 26 November review's five steps (bnm-7yg; docs/CALIBRATION.md t158-t160).
+**The base of record is t161** (twenty-fourth note to amendment L1, 27 November 2026): t160's command with sovereign defaults' theory rows weighted at a ten-year half-life (`--theory-half-life sovereign_default:10`); a pass on calibration at a pooled AUC cost of 0.027 (docs/CALIBRATION.md t161). t160 (twenty-third note, 26 November 2026): t157-base's command with the year's echo through the quarters cut (`:up-net-of-downscale`) at banking crises, conflict onsets, coups, violence surges and war onsets, and conflict onsets' year averaging at a five-year half-life; the last of the 26 November review's five steps (bnm-7yg; docs/CALIBRATION.md t158-t160).
 
 **Before it, t157-base** (twenty-second note to amendment L1, 26 November 2026): t150-base's command with banking's theory offset outside the JST panel only (`--theory-outside-panel true`, t156) and inflation crises' year country rows recalibrated by a rolling intercept (`--recalibrate-intercept inflation_crisis`, t157-recal); both passed (docs/CALIBRATION.md t156 and the 26 November review, bnm-7yg).
 

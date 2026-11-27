@@ -5455,6 +5455,13 @@ Not adopted. No L1 note, no ledger change, no forecast.
 - *Caveats.* The cut was tested lattice-wide (t159) and fails at seven kinds (currency crises and protest surges with pooled losses clearing zero), so it is set per kind. Only route L2 is cut; the audit's other routes stay. The five-year memory failed at ten kinds (t158).
 - *Build.* data/runs/t160 (43 minutes, 26 November 2026): banking crises, coups, violence surges and war onsets match t159 byte for byte, the other seven but conflict onsets t158-base's (t157-base's), as registered. Ledger tests green, 47.
 
+**Twenty-fourth note to amendment L1, 27 November 2026** (bead bnm-7yg.6.2; decided by the user after seeing t161's result; written before any issue is made on it, L1 itself unchanged). The base of record is **t161**, not t160: t160's command with `--theory-half-life sovereign_default:10` added, on t160's inputs. Wherever L1 or the earlier notes name t160 (or earlier) as the base, read t161. The next issue (2027-Q1) runs this command (bnm.ledger/command, with `--end`).
+
+- *What changed.* Sovereign defaults' theory offset is refit at each December origin with each training row weighted 0.5^((origin - row's origin)/120 months), so the decades before 2003 count less.
+- *The score* (docs/CALIBRATION.md t161): against t160, pooled Brier +0.00028 [-0.00016, +0.00070], the three folds to 2012 each +0.0007 clear of zero, 2013-19 and 2020-22 losing within noise; alert cost +0.0006; mean p over the rate 1.65 -> 1.28; log skill against clim -0.0007 -> +0.0009.
+- *Caveats.* Pooled AUC falls 0.596 -> 0.569. The backward ranking among countries with a default history stays (0.476 with no default since 1970, 0.431 at 9+ years); the gain is the level, not the ranking.
+- *Build.* data/runs/t161 (40 minutes, 27 November 2026): the other twelve kinds match t160 byte for byte, as registered. Ledger tests green, 48.
+
 ## Amendment to the fold rule, 20 November 2026: dominance overrides a fold loss
 
 **Decided by the user after seeing t124** (docs/CALIBRATION.md, the market-crash global layer with its world drivers held tighter), so it is not blind to the candidate that prompted it: t124 gained on pooled Brier, the alert cost and AUC but lost two folds of 9 onsets each (2010-12, 2020-22).
