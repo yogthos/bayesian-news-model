@@ -4724,3 +4724,17 @@ Result of t161 (27 November 2026, 40 minutes). **A pass on the rule, by the leve
 - The backward ranking stays: t161's AUC with no default since 1970 0.476 (t160 0.497), at 9+ years 0.431 (0.459), with external debt alone 0.672 and 0.631 there. The gain is the level: the ten-year memory lowers an offset that the decades before 2003 had set too high; the 2003-2012 folds gain, the later ones lose within noise.
 - Recommendation: t161 passes the rule, so it is a candidate for its calibration (a fifth off an over-forecast, log skill against clim to positive), at a pooled AUC cost of 0.027; it does not do what it was built for. The user's decision. The ranking needs a different change: which part of the issued p carries inflation's and reserves' weight is the next question (the theory's coefficients under the memory, and the year models' weights).
 - Decision (27 November 2026, the user): adopt t161; the base of record is t161 (twenty-fourth note to L1). The ranking diagnosis follows.
+
+## Which part of sovereign defaults' issued forecast ranks backwards (bnm-7yg.6)
+
+Registered 27 November 2026, before any run. A diagnosis, no model change; nothing is adopted from it.
+
+Seen already (weights.tsv of t160 and t161): the year country node's averaging puts about all its weight on the `history` group from 2008 (`contradiction` in 2003). That group reads `:since-last :own10 :own30` on top of the mean offset (the theory's offset, plus what the node takes from above).
+
+Run: docs/studies/sovereign_parts.clj taps the year country rows at each December origin 2003-2022 on the ledger command (t161), and again without `--theory-half-life` (t160). Each row gets o, each group's log odds and weight, the three history inputs and the outcome. docs/studies/sovereign_parts.py then reports, for t160 and t161, pooled and within the bands of time since the last known default (none since 1970, 0-8, 9+ years; sovereign_backwards.py's bands):
+- AUC of the issued (weighted) log odds;
+- AUC of o alone;
+- AUC of the history group's departure from o (f_history - o);
+- AUC of each history input alone.
+
+Also the mean of each part by band and outcome. The question is which part reverses the order within the bands, and which part carries t161's AUC cost of 0.027 against t160 (o, or the departure). Any fix it suggests is registered as its own run.
