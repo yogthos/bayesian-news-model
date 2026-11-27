@@ -4653,3 +4653,22 @@ Result (26 November 2026). **Consistent, but the block tests little: most of the
 - Step by step: banking's offset outside the panel (t157-base) -0.00011 [-0.00047, +0.00017], the other sign from 2003-2022 but within noise; conflict's memory (t158-base) -0.00000; the echo cut (t160 against t158-base) +0.00033 [-0.00018, +0.00077], coups +0.00151, banking +0.00013, violence -0.00001, conflict and war +0.00000.
 - On the rule fixed above, no adoption fails to generalize. But at conflict onsets, war onsets and violence surges the runs barely differ before 2003, so the block is not evidence for them either way; only coups and banking were tested, and both hold. A real test of the five adoptions needs origins no decision has read: the 2027-Q1 issue on t160 (bnm.ledger), scored as its outcomes resolve.
 
+## Diagnosis: food price shocks' global wave and domestic part on t160 (bnm-7yg.6)
+
+Written 26 November 2026, before any result, at the user's word ("let's do food split first"). Food price shocks are a country's twelve-month food inflation at 15% or more and 10 points above its own previous five years' mean; in 2020-22 half of all countries had one at once and the year node issued 0.16-0.26 (t153). The review's item: split the global wave from the domestic part. Before any model change, docs/studies/food_split.py measures on t160's food year country rows at December origins 2003-2022:
+
+1. how much of the outcomes' variance is the origin's level (the share of countries in a shock, beyond binomial noise);
+2. whether the world FAO food index's twelve-month change, as published by the origin, tracks that level, and how well t160's mean p does (level r);
+3. the Brier gain if each origin's level were known (an oracle bound, ranking kept), and the gain from a causal level model: at each origin, the gap between the logit of the rate and of t160's mean p regressed on the world index's change over origins resolved 48 months before, and applied as a shift;
+4. the domestic part: t160's within-origin AUC, against a country's own food inflation known at the origin net of the world index's change.
+
+Reading fixed before the result: if (3)'s causal gain is a sizable part of the oracle bound, a global food node (the wave forecast once per origin from world prices and read by every country as an offset) is worth building as a candidate; if not, the wave is not predictable from world prices at the year's horizon, and the split is not pursued for level. Likewise for (4) and the domestic part. No model change and no adoption follow from the diagnosis alone.
+
+Result (26 November 2026, docs/studies/food_split.py on t160). **The global wave is real but not forecastable from world prices at the year's horizon, and the domestic ranking is about the country's own food inflation. The split is not pursued.**
+
+- (1) The origin's level carries 0.16 of the outcomes' variance beyond binomial noise; the waves are 2006-07 (rates 0.42, 0.31) and 2020-21 (0.49, 0.50), elsewhere 0.01-0.18.
+- (2) r(rate, world food index's twelve-month change published by the origin) +0.60 over the 20 origins; r(t160's mean p, the same) +0.39; t160's level r +0.34. The index read at December 2019 was +0.045 before the 2020 wave; the correlation rests on 2006-07 and 2021.
+- (3) Brier on these rows: t160 0.14467; with each origin's level known 0.11067 (an oracle bound of +0.034, ranking kept); with the causal level model on the world change 0.14654 (-0.00188, a loss). The model's intercept learns -0.9 to -1.4 from 2003-06, when t160's year node issues 0.42-0.55 against rates of 0.10-0.18 (bnm-56c.26, the prior before any outcome), and carries that into 2020-21; with ten to fifteen resolved origins the slope on world prices cannot be learned apart from it.
+- (4) Within-origin AUC: t160 0.591; the country's own food inflation known at the origin alone 0.603 (all 2913 rows); net of the world change 0.603. The lattice's ranking adds nothing over the latest food inflation reading.
+- Reading, as fixed: the causal gain is negative, not a sizable part of the oracle bound, so a global food node is not built; nor is a domestic split (own inflation net of world prices ranks as the raw reading). The world index already enters the year node with a theory prior (--leading); what is missing is the wave's timing, which the published world index does not give twelve months ahead. Recommendation: close the food split; leave food as in t160. The user's decision.
+
