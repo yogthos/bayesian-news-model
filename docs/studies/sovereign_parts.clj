@@ -5,7 +5,7 @@
 ;; On the ledger command; `drop` names flags whose pair is removed (t160:
 ;; --theory-half-life). Output TSV on stdout, analysed by sovereign_parts.py.
 ;; Usage: jolt -Sdeps '{:paths ["src" "resources" "test" "tools"]}' docs/studies/sovereign_parts.clj [flag,flag]
-(require '[bnm.world-run :as wr] '[bnm.ledger :as lg] '[bnm.lattice :as lt] '[clojure.string :as str])
+(require '[bnm.world-run :as wr] '[bnm.ledger :as lg] '[bnm.lattice :as lt] '[bnm.lattice-political :as lp] '[clojure.string :as str])
 
 (defn drop-flags [args flags]
   (loop [[a b & more :as xs] args out []]
@@ -21,7 +21,8 @@
       ks (vec (sort (keys cats)))
       specs (wr/pipeline-specs opts ks lg/base-end cats {:fresh (wr/fresh-kinds (:fresh-frailty opts) ks cats) :nq #{}})
       sp0 (get specs kind)
-      names (get-in sp0 [:gauge-names :year])
+      ;; the year row is bnm.lattice-political's year-names (then any leading gauges)
+      names (or (seq (get-in sp0 [:gauge-names :year])) lp/year-names)
       idx (fn [n] (.indexOf (vec names) n))
       hist [:since-last :own10 :own30]
       hi (mapv idx hist)
