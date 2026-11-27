@@ -4716,3 +4716,11 @@ Written 27 November 2026, before the run, after the coefficients above, at the u
 
 Run t161: t160's command with `--theory-half-life sovereign_default:10`. Checks fixed before the run: every kind but sovereign defaults matches t160 byte for byte. Rule, sovereign defaults against t160: the fold rule as amended 18 and 20 November (dominance on pooled Brier, the alert cost at 4:1 and pooled AUC); beside it the scorecard (pooled and within-origin AUC, level r, log skill against clim and own), the alert table and rank 0's table. Adoption is the user's. No changes after the result.
 
+Result of t161 (27 November 2026, 40 minutes). **A pass on the rule, by the level; the ranking is not fixed.**
+
+- Checks held: only sovereign defaults differ from t160.
+- Against t160, Brier by fold: 2003-06 +0.00071 [+0.00037, +0.00101], 2007-09 +0.00075 [+0.00053, +0.00099], 2010-12 +0.00074 [+0.00012, +0.00129], 2013-19 -0.00022 [-0.00109, +0.00054], 2020-22 -0.00028 [-0.00135, +0.00069]; pooled +0.00028 [-0.00016, +0.00070], log +0.00161. No fold lost: a pass. Alert cost +0.0006 [-0.0006, +0.0028]; pooled AUC 0.596 -> 0.569, within-origin 0.676 -> 0.681, level r -0.50 -> -0.46.
+- Scorecard: mean p over the rate 1.65 -> 1.28; log skill against clim -0.0007 -> +0.0009, against own +0.0084 -> +0.0100. Rank 0's table: every band's p falls by about a fifth (9+ years 0.055 -> 0.043 against a rate of 0.029, never 0.039 -> 0.029 against 0.023).
+- The backward ranking stays: t161's AUC with no default since 1970 0.476 (t160 0.497), at 9+ years 0.431 (0.459), with external debt alone 0.672 and 0.631 there. The gain is the level: the ten-year memory lowers an offset that the decades before 2003 had set too high; the 2003-2012 folds gain, the later ones lose within noise.
+- Recommendation: t161 passes the rule, so it is a candidate for its calibration (a fifth off an over-forecast, log skill against clim to positive), at a pooled AUC cost of 0.027; it does not do what it was built for. The user's decision. The ranking needs a different change: which part of the issued p carries inflation's and reserves' weight is the next question (the theory's coefficients under the memory, and the year models' weights).
+
