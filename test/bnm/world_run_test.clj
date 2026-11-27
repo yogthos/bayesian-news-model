@@ -491,3 +491,12 @@
   (is (thrown? Exception (wr/horizon-priors-choice {:horizon-priors "true" :leading "true" :leading-priors "true"})) "needs --next-quarter")
   (is (thrown? Exception (wr/horizon-priors-choice {:horizon-priors "true" :next-quarter "true" :leading "true"})) "needs --leading-priors")
   (is (thrown? Exception (wr/horizon-priors-choice {:horizon-priors "yes" :next-quarter "true" :leading "true" :leading-priors "true"}))))
+
+(deftest fiscal-outcomes-option
+  ;; t163: --fiscal-outcomes discretionary swaps in the D2 catalogue;
+  ;; without it nothing is read; any other value is refused
+  (let [cats {"fiscal_consolidation" {:from {"AAA" 0} :known-lag 18} "coup" {:known-lag 12}}
+        d {:onsets {"AAA" (sorted-set 24000)} :busy {"AAA" (sorted-set 24000)} :from {"AAA" 0} :through {"AAA" 24200} :known-lag 18}]
+    (is (= cats (wr/fiscal-outcomes cats nil (fn [_] (throw (ex-info "read" {}))))))
+    (is (= d (get (wr/fiscal-outcomes cats "discretionary" (fn [c] (is (= cats c)) d)) "fiscal_consolidation")))
+    (is (thrown? Exception (wr/fiscal-outcomes cats "cyclical" (fn [_] d))))))

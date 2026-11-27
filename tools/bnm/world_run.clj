@@ -43,6 +43,9 @@
   units the quarterly data cover are forecast for the kind, docs/
   GROWTH-QUARTERLY.md; annual-covered, the annual catalogue at those
   units, its comparison),
+  --fiscal-outcomes discretionary (t163: fiscal consolidations on the
+  discretionary label, the cyclically adjusted balance up 1.5 points and
+  real spending not up, bnm.economic-events/discretionary-fiscal),
   --clim-prior kinds|k1,k2 (bnm-56c.26: a node with no resolved outcome
   reads the rate the other kinds' nodes at its scale and level have
   resolved, not 0.5; at every kind run, or at the kinds named, t152),
@@ -456,6 +459,18 @@
                        (update cats "growth_collapse"
                                (fn [c] (reduce (fn [c' k] (update c' k select-keys us)) c [:onsets :busy :from :through]))))
     (throw (ex-info (str "bnm.world-run: --growth-outcomes takes quarterly, not " choice) {}))))
+
+(defn fiscal-outcomes
+  "`cats` under --fiscal-outcomes: discretionary, fiscal consolidations on
+  the discretionary label D2 (t163, bnm.economic-events/discretionary-fiscal:
+  the cyclically adjusted balance up 1.5 points, real spending not up) at
+  the current catalogue's units with an output gap; nil, the base's
+  catalogue. `read` gives the D2 catalogue from `cats`."
+  [cats choice read]
+  (case choice
+    nil cats
+    "discretionary" (ee/with-discretionary-fiscal cats (read cats))
+    (throw (ex-info (str "bnm.world-run: --fiscal-outcomes takes discretionary, not " choice) {}))))
 
 (defn catalogues-through
   "Every catalogue with its uncovered tail unknown (loop audit Test 7)."
@@ -1147,6 +1162,8 @@
     (cond-> (-> (food-outcomes (kinds/catalogues) cat-db (:food-outcomes opts))
                 ;; bnm-56c.38: the merge of growth-q left this out of run-catalogues
                 (growth-outcomes (:growth-outcomes opts) #(ee/quarterly-growth % cat-db))
+                (fiscal-outcomes (:fiscal-outcomes opts)
+                                 #(ee/discretionary-fiscal % (nm/load-series "data/slow/series.tsv" (st/read-variables "data/slow/variables.tsv"))))
                 (at-risk cat-db (:food-outcomes opts) (:at-risk opts) (:growth-outcomes opts)))
       (= "true" (:catalogue-through opts)) catalogues-through
       (banking-spans-choice opts) (update lb/kind lb/with-spans (lb/read-spans lb/spans-path))

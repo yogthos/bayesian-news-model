@@ -254,3 +254,57 @@
     (let [[u o] (first (for [[u ms] (sort (:onsets qcat)) o ms :when (>= (- o (get-in qcat [:from u])) 24)] [u o]))]
       (is (= 0.0 (#'lp/count-known qcat u (+ o 4) 12)))
       (is (= 1.0 (#'lp/count-known qcat u (+ o 5) 12))))))
+
+;; t163 (bnm-7yg.6): fiscal consolidations on the discretionary label D2 --
+;; the cyclically adjusted balance up 1.5 points and real spending not up,
+;; once in three years (docs/CALIBRATION.md, the discretionary check)
+
+(deftest hp-trend-keeps-a-line
+  (let [xs (mapv #(* 0.02 %) (range 30))]
+    (is (every? #(< (Math/abs (double %)) 1e-9) (map - (ee/hp-trend xs 100.0) xs)))))
+
+(deftest output-gap-of-a-bump
+  (let [g (assoc (zipmap (range 1980 2011) (repeat 2.0)) 1995 8.0)
+        gap (ee/output-gap g)]
+    (is (> (gap 1995) (gap 1994)))
+    (is (pos? (gap 1995)))
+    (testing "runs under ten years are not filtered; a break splits the runs"
+      (let [gap (ee/output-gap (zipmap (concat (range 1980 1990) (range 1992 2000)) (repeat 2.0)))]
+        (is (contains? gap 1985))
+        (is (not (contains? gap 1990)))
+        (is (not (contains? gap 1995)) "1992-1999 is eight years")))))
+
+(deftest discretionary-consolidations
+  (testing "a recovery year: the balance up 2 only because the gap closes 4"
+    (is (= #{} (ee/discretionary-consolidations {2000 -5.0 2001 -3.0} {2000 -4.0 2001 0.0} {2000 100.0 2001 99.0}))))
+  (testing "at a closed gap, spending-led"
+    (is (= #{2001} (ee/discretionary-consolidations {2000 -5.0 2001 -3.0} {2000 0.0 2001 0.0} {2000 100.0 2001 99.0})))
+    (is (= #{} (ee/discretionary-consolidations {2000 -5.0 2001 -3.0} {2000 0.0 2001 0.0} {2000 100.0 2001 101.0}))
+        "real spending grew: not spending-led"))
+  (testing "once in three years"
+    (let [bal {2000 0.0 2001 2.0 2002 4.0 2003 6.0}
+          gap (zipmap (range 2000 2004) (repeat 0.0))
+          rx (zipmap (range 2000 2004) (repeat 100.0))]
+      (is (= #{2001} (ee/discretionary-consolidations bal gap rx))))))
+
+(deftest a-discretionary-fiscal-catalogue
+  (let [growth (zipmap (range 1990 2011) (repeat 2.0))
+        bal (assoc (zipmap (range 1990 2011) (repeat -4.0)) 2005 -2.0)
+        rexp (zipmap (range 1990 2011) (repeat 100.0))
+        cat (ee/discretionary-fiscal-catalogue {"AAA" {:growth growth :balance bal :real-expenditure rexp}
+                                                "BBB" {:growth {} :balance bal :real-expenditure rexp}})]
+    (is (= {"AAA" #{(* 12 2005)}} (update-vals (:onsets cat) set)))
+    (is (= (set (range (* 12 2005) (+ 12 (* 12 2005)))) (set (get-in cat [:busy "AAA"]))))
+    (is (= (* 12 1991) (get-in cat [:from "AAA"])) "the first year with a year before to compare")
+    (is (= (+ 11 (* 12 2010)) (get-in cat [:through "AAA"])))
+    (is (not (contains? (:from cat) "BBB")) "no output gap: not covered")
+    (is (= 18 (:known-lag cat)))))
+
+(deftest the-flag-swaps-only-the-fiscal-catalogue
+  (let [cats {"fiscal_consolidation" {:from {"AAA" 0 "BBB" 0} :known-lag 18} "coup" {:known-lag 12}}
+        d {:onsets {"AAA" (sorted-set 24000)} :busy {"AAA" (sorted-set 24000)} :from {"AAA" 0} :through {"AAA" 24200} :known-lag 18}
+        out (ee/with-discretionary-fiscal cats d)]
+    (is (= d (out "fiscal_consolidation")))
+    (is (= {:known-lag 12} (out "coup")))
+    (is (= ["AAA"] (keys (get-in (ee/with-discretionary-fiscal cats (assoc-in d [:from "ZZZ"] 0)) ["fiscal_consolidation" :from])))
+        "a unit the current catalogue does not cover is left out")))

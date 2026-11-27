@@ -95,6 +95,90 @@
                    :when (and b0 e e0 (>= (- b b0) 1.5) (<= (- e e0) -1.0))]
                y)))
 
+(defn hp-trend
+  "The Hodrick-Prescott trend of `xs` at smoothing `lam`: (I + lam D'D)
+  tau = x, D the second difference, solved by banded Gaussian elimination."
+  [xs lam]
+  (let [n (count xs)]
+    (if (< n 3)
+      (vec xs)
+      (let [a (vec (for [_ (range n)] (double-array n)))
+            b (double-array (map double xs))
+            d [1.0 -2.0 1.0]]
+        (dotimes [i n] (aset ^doubles (a i) i 1.0))
+        (dotimes [r (- n 2)]
+          (doseq [p (range 3) q (range 3)]
+            (let [i (+ r p) j (+ r q)]
+              (aset ^doubles (a i) j (+ (aget ^doubles (a i) j) (* lam (d p) (d q)))))))
+        (dotimes [k n]
+          (let [piv (aget ^doubles (a k) k)]
+            (doseq [i (range (inc k) (min n (+ k 3)))]
+              (let [f (/ (aget ^doubles (a i) k) piv)]
+                (when-not (zero? f)
+                  (doseq [j (range k (min n (+ k 3)))]
+                    (aset ^doubles (a i) j (- (aget ^doubles (a i) j) (* f (aget ^doubles (a k) j)))))
+                  (aset b i (- (aget b i) (* f (aget b k)))))))))
+        (let [x (double-array n)]
+          (doseq [i (range (dec n) -1 -1)]
+            (aset x i (/ (- (aget b i) (reduce + 0.0 (for [j (range (inc i) (min n (+ i 3)))] (* (aget ^doubles (a i) j) (aget x j)))))
+                         (aget ^doubles (a i) i))))
+          (vec x))))))
+
+(defn output-gap
+  "{year gap, % of trend} from {year real GDP growth %}: 100 x the log
+  level less its HP(100) trend, over each run of ten or more consecutive
+  years (t163, the discretionary fiscal label)."
+  [growth]
+  (let [ys (sort (keys growth))
+        runs (reduce (fn [acc y] (if (and (seq acc) (= y (inc (peek (peek acc))))) (conj (pop acc) (conj (peek acc) y)) (conj acc [y])))
+                     [] ys)]
+    (into {} (for [r runs :when (>= (count r) 10)
+                   :let [lv (vec (reductions + (map #(Math/log (+ 1.0 (/ (double (growth %)) 100.0))) r)))
+                         tr (hp-trend lv 100.0)]
+                   [y a b] (map vector r lv tr)]
+               [y (* 100.0 (- a b))]))))
+
+(def ^:private cyclical-elasticity "The budget semi-elasticity (Price, Dang & Botev 2014)." 0.5)
+
+(defn discretionary-consolidations
+  "Years of discretionary, spending-led consolidation (D2, t163): the
+  cyclically adjusted balance (balance - 0.5 x gap) up 1.5 points or more
+  and real expenditure not above the year before, once in three years.
+  `bal` and `gap` in % of GDP, `rexp` real spending, each {year value}."
+  [bal gap rexp]
+  (let [cab (fn [y] (when-let [b (get bal y)] (when-let [g (get gap y)] (- b (* cyclical-elasticity g)))))]
+    (once-in 3 (for [y (keys bal)
+                     :let [c (cab y) c0 (cab (dec y)) e (get rexp y) e0 (get rexp (dec y))]
+                     :when (and c c0 e e0 (>= (- c c0) 1.5) (<= e e0))]
+                 y))))
+
+(defn discretionary-fiscal-catalogue
+  "The D2 catalogue from {unit {:growth :balance :real-expenditure}}: onsets
+  in January of the year, busy twelve months, each unit covered over the
+  years D2 can judge (a year and the one before with the adjusted balance
+  and real spending), known 18 months on, as the annual catalogues."
+  [by-unit]
+  (let [per (into {} (for [[u {:keys [growth balance real-expenditure]}] by-unit
+                           :let [gap (output-gap growth)
+                                 ok (fn [y] (and (get balance y) (get gap y) (get real-expenditure y)))
+                                 ys (filter #(and (ok %) (ok (dec %))) (keys balance))]
+                           :when (seq ys)]
+                       [u {:ys ys :on (discretionary-consolidations balance gap real-expenditure)}]))]
+    {:onsets (into {} (for [[u {:keys [on]}] per] [u (into (sorted-set) (map #(* 12 %) on))]))
+     :busy (into {} (for [[u {:keys [on]}] per] [u (into (sorted-set) (mapcat #(range (* 12 %) (+ 12 (* 12 %))) on))]))
+     :from (into {} (for [[u {:keys [ys]}] per] [u (* 12 (apply min ys))]))
+     :through (into {} (for [[u {:keys [ys]}] per] [u (+ 11 (* 12 (apply max ys)))]))
+     :known-lag 18}))
+
+(defn with-discretionary-fiscal
+  "`cats` with fiscal_consolidation the D2 catalogue `d` (world-run
+  --fiscal-outcomes discretionary, t163) at the units the current catalogue
+  covers; every other kind as it was."
+  [cats d]
+  (let [us (set (keys (get-in cats ["fiscal_consolidation" :from])))]
+    (assoc cats "fiscal_consolidation"
+           (reduce (fn [c k] (update c k #(select-keys % us))) d [:onsets :busy :from :through]))))
+
 (defn onsets-of-runs "The first year of each run of years." [ys] (runs-start (set ys)))
 
 (defn food-shocks
@@ -307,6 +391,20 @@
         annual (pg/read-annual)]
     (quarterly-growth-catalogue (select-keys (read-quarterly-growth) units)
                                 (into {} (for [u units] [u (log-growth (per-head-levels (get-in annual ["mad_gdppc" u] {}) db u))])))))
+
+(defn discretionary-fiscal
+  "The D2 catalogue (t163) at the current fiscal catalogue's units (`cats`),
+  from GMD's balance and real spending (data/derived/fiscal.csv) and WDI's
+  real GDP growth in `db`, read as -main reads the catalogues' series (no
+  publication lags: an outcome's definition, on revised data)."
+  [cats db]
+  (let [fiscal (pg/read-annual "data/derived/fiscal.csv")
+        units (keys (get-in cats ["fiscal_consolidation" :from]))]
+    (discretionary-fiscal-catalogue
+     (into {} (for [u units]
+                [u {:growth (by-year db u "economy/gdp_growth" false)
+                    :balance (get-in fiscal ["gov_bal_gdp" u] {})
+                    :real-expenditure (get-in fiscal ["gov_exp_real" u] {})}])))))
 
 (defn- read-rr-defaults
   "{iso #{years}} of sovereign default onsets and the years each country is
