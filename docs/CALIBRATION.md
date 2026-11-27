@@ -4764,3 +4764,4 @@ Result of t162 (27 November 2026, 41 minutes). Checks held: only sovereign defau
 - By time since the last default (sovereign_backwards), t161 -> t162: none since 1970 0.470 -> **0.617**; 0-8 years 0.563 -> 0.581; 9+ 0.427 -> 0.489. The backward ranking is gone with no default since 1970 and at chance at 9+.
 - What it costs: the level is back up (p/rate 1.28 -> 1.54), and the alert cost is a little worse, within noise; the 2007-09 loss is that level in the calm years.
 - Recommendation: t162 fails the registered rule against the base, on one small fold and a within-noise alert cost; it passes against t160 and is best of the three on ranking, the level's correlation with the rate and log skill. Adoption is the user's.
+- Decision (27 November 2026, the user): adopt t162 over the rule's fail against t161; the base of record is t162 (twenty-fifth note to L1).

@@ -128,13 +128,26 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t161-with-sovereign-defaults'-theory-memory
+(deftest the-base-of-record-is-t162-with-sovereign-defaults'-level-from-the-full-history
+  ;; twenty-fifth note to L1, 27 November 2026: t161's command with
+  ;; sovereign defaults' theory intercept from the full history's rate
+  ;; (--theory-half-life-level sovereign_default, t162; adopted by the user
+  ;; over a fail on the fold rule against t161, pooled AUC 0.569 -> 0.641);
+  ;; the other twelve t161's.
+  (is (= "t162" lg/base))
+  (is (= "2f38f831f585495083ed109f33c06508677f9077a4af62c0b878f82688d93a6e" (lg/base-files "sovereign_default")) "t162's sovereign defaults")
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))]
+    (is (= "sovereign_default" (opt "--theory-half-life-level")))
+    (is (= "sovereign_default:10" (opt "--theory-half-life")) "t161's half-life kept")))
+
+(deftest the-base-before-was-t161-with-sovereign-defaults'-theory-memory
   ;; twenty-fourth note to L1, 27 November 2026: t160's command with
   ;; sovereign defaults' theory rows weighted at a ten-year half-life
   ;; (--theory-half-life sovereign_default:10, t161, a pass on the fold
   ;; rule at a pooled AUC cost of 0.027); the other twelve t160's.
-  (is (= "t161" lg/base))
-  (is (= "c660445e082e0cbce423750894072aad09e06dbc0909a31f1d993fdfab760f83" (lg/base-files "sovereign_default")) "t161's sovereign defaults")
+  (is (str/starts-with? lg/base "t1"))
+  (is (not= "c660445e082e0cbce423750894072aad09e06dbc0909a31f1d993fdfab760f83" (lg/base-files "sovereign_default")) "t161's, replaced by t162's")
   (is (not= "2ec6b77fabecda209925d4a573a6b5492c17dff86721cada36c504f388c2199f" (lg/base-files "sovereign_default")) "t160's")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]

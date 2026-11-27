@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t161")
+(def base "t162")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -82,8 +82,12 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t161/<kind>/
-  forecasts.tsv (27 November 2026, the twenty-fourth note to L1: t160's
+  "The base of record's forecasts, data/runs/t162/<kind>/
+  forecasts.tsv (27 November 2026, the twenty-fifth note to L1: t161's
+  command with sovereign defaults' theory intercept from the full
+  history's rate, t162's, adopted by the user over a fail on the fold
+  rule against t161; the other twelve t161's).
+  t161 (27 November 2026, the twenty-fourth note to L1: t160's
   command with sovereign defaults' theory rows weighted at a ten-year
   half-life, t161's; the other twelve t160's).
   t160 (26 November 2026, the twenty-third note to L1: t157-base's
@@ -146,7 +150,7 @@
    "inflation_crisis" "0013aef32c3b6e35da62abedffdd17bff3ad60ff61d46ce2394f6199adf72b3c"
    "market_crash" "61908a866b1942375ee9fe179786d6ee1f5909b9f7cd3247bb559fcb1b16dd26"
    "protest_surge" "8a8f8e2b0bc087a4e4e811a89701566d164d5186a7d2cc674d4fe3086f1e5c9d"
-   "sovereign_default" "c660445e082e0cbce423750894072aad09e06dbc0909a31f1d993fdfab760f83"
+   "sovereign_default" "2f38f831f585495083ed109f33c06508677f9077a4af62c0b878f82688d93a6e"
    "violence_surge" "4ad439a5f0ad1e05c3aa4d29836a7d14839d708b1eeaba64d7653f38a38b15ea"
    "war_onset" "9c6f24bb523e9ce0743a951fccd5af0d191b9a939ea8e650064a023514ecbd5a"})
 
@@ -477,8 +481,11 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t161's (twenty-fourth note to L1):
-  t160's with sovereign defaults' theory rows weighted at a ten-year
+  "The base's bnm.world-run arguments, t162's (twenty-fifth note to L1):
+  t161's with sovereign defaults' theory intercept set from the full
+  history's rate under the half-life's slopes
+  (--theory-half-life-level sovereign_default, t162). t161's
+  (twenty-fourth note to L1): t160's with sovereign defaults' theory rows weighted at a ten-year
   half-life (--theory-half-life sovereign_default:10, t161). t160's
   (twenty-third note to L1): t157-base's with conflict onsets' year averaging at a five-year
   half-life (--kind-set conflict_onset :forget-half-life 5, t158) and
@@ -563,7 +570,7 @@
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
    "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]} :up-net-of-downscale true} \"currency_crisis\" {:forget-half-life 10} \"violence_surge\" {:forget-half-life 10 :up-net-of-downscale true} \"conflict_onset\" {:forget-half-life 5 :up-net-of-downscale true} \"coup\" {:up-net-of-downscale true} \"war_onset\" {:up-net-of-downscale true}}"
    "--release-calendar" "conflict_onset,war_onset" "--recalibrate-intercept" "inflation_crisis"
-   "--theory-half-life" "sovereign_default:10"])
+   "--theory-half-life" "sovereign_default:10" "--theory-half-life-level" "sovereign_default"])
 
 (defn command-line
   "The shell command a manifest records for bnm.world-run `args`; an

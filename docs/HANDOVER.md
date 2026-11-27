@@ -1,8 +1,10 @@
 # Handover
 
-## State as of 2026-11-26 (branch `banking-redesign`)
+## State as of 2026-11-27 (branch `banking-redesign`)
 
-**The base of record is t161** (twenty-fourth note to amendment L1, 27 November 2026): t160's command with sovereign defaults' theory rows weighted at a ten-year half-life (`--theory-half-life sovereign_default:10`); a pass on calibration at a pooled AUC cost of 0.027 (docs/CALIBRATION.md t161). t160 (twenty-third note, 26 November 2026): t157-base's command with the year's echo through the quarters cut (`:up-net-of-downscale`) at banking crises, conflict onsets, coups, violence surges and war onsets, and conflict onsets' year averaging at a five-year half-life; the last of the 26 November review's five steps (bnm-7yg; docs/CALIBRATION.md t158-t160).
+**The base of record is t162** (twenty-fifth note to amendment L1, 27 November 2026): t161's command with sovereign defaults' theory intercept set from the full history's rate under the half-life's slopes (`--theory-half-life-level sovereign_default`). t161's weighted intercept drifted down through the calm 2010s, ranking the 2016-21 defaults backwards; t162 lifts pooled AUC 0.569 -> 0.641 (t160 0.596). It fails the fold rule against t161 (a 2007-09 loss, alert cost within noise) and passes against t160; the user adopted it (docs/CALIBRATION.md t162). Open: lb/history codes no known default as calm since the catalogue's start; the 9+ band still ranks at chance (0.489).
+
+**Before it, t161** (twenty-fourth note to amendment L1, 27 November 2026): t160's command with sovereign defaults' theory rows weighted at a ten-year half-life (`--theory-half-life sovereign_default:10`); a pass on calibration at a pooled AUC cost of 0.027 (docs/CALIBRATION.md t161). t160 (twenty-third note, 26 November 2026): t157-base's command with the year's echo through the quarters cut (`:up-net-of-downscale`) at banking crises, conflict onsets, coups, violence surges and war onsets, and conflict onsets' year averaging at a five-year half-life; the last of the 26 November review's five steps (bnm-7yg; docs/CALIBRATION.md t158-t160).
 
 **Before it, t157-base** (twenty-second note to amendment L1, 26 November 2026): t150-base's command with banking's theory offset outside the JST panel only (`--theory-outside-panel true`, t156) and inflation crises' year country rows recalibrated by a rolling intercept (`--recalibrate-intercept inflation_crisis`, t157-recal); both passed (docs/CALIBRATION.md t156 and the 26 November review, bnm-7yg).
 
