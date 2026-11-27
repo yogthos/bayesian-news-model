@@ -4672,3 +4672,5 @@ Result (26 November 2026, docs/studies/food_split.py on t160). **The global wave
 - (4) Within-origin AUC: t160 0.591; the country's own food inflation known at the origin alone 0.603 (all 2913 rows); net of the world change 0.603. The lattice's ranking adds nothing over the latest food inflation reading.
 - Reading, as fixed: the causal gain is negative, not a sizable part of the oracle bound, so a global food node is not built; nor is a domestic split (own inflation net of world prices ranks as the raw reading). The world index already enters the year node with a theory prior (--leading); what is missing is the wave's timing, which the published world index does not give twelve months ahead. Recommendation: close the food split; leave food as in t160. The user's decision.
 
+Decision (26 November 2026, the user): close the food split; food stays as in t160.
+
