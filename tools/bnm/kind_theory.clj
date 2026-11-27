@@ -503,9 +503,10 @@
   its sign is held at zero (bnm.theory/fits :signs); the imputed missing
   share and the decay columns are free. Not with :shapes. :half-life h
   (bnm-7yg.6): the fit weights each row by 0.5^(age / h years)
-  (bnm.theory/fits)."
+  (bnm.theory/fits). :level :history (bnm-7yg.6), with :half-life: the
+  half-life sets the slopes, the full history the level (bnm.theory/fits)."
   ([sp row width] (with-theory sp row width {}))
-  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw penalties decay signs half-life]}]
+  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw penalties decay signs half-life level]}]
   (when (and signs shapes)
     (throw (ex-info "bnm.kind-theory: :signs takes no :shapes: each input is five shape columns" {})))
   (when (and signs (not= width (count signs)))
@@ -542,7 +543,8 @@
         args (cond-> {:places countries :origins os :prior 1.0 :inputs inputs :raw (boolean raw) :penalties pens
                       :target (fn [u t] (target :year u t))}
                sv (assoc :signs sv)
-               half-life (assoc :half-life half-life))]
+               half-life (assoc :half-life half-life)
+               level (assoc :level level))]
     (if add
       (let [_ (when (:offset-add sp)
                 (throw (ex-info "bnm.kind-theory: :add, but the spec already has an :offset-add" {})))
@@ -553,7 +555,7 @@
                              (when (and (= :year scale) (cs place))
                                (when-let [^doubles b (get fits t)]
                                  (reduce + 0.0 (map-indexed (fn [i z] (* (aget b (inc i)) (double (or z 0.0)))) (inputs place t))))))
-               :kind-theory {:fits fits :inputs inputs :add true :raw (boolean raw) :penalties pens :signs sv :half-life half-life}))
+               :kind-theory {:fits fits :inputs inputs :add true :raw (boolean raw) :penalties pens :signs sv :half-life half-life :level level}))
       (let [off (th/offsets args)
             members (members-fn sp)]
         (assoc sp
@@ -561,7 +563,7 @@
                          (if (= :year scale)
                            (th/any-of (keep #(get off [% t]) (members place)))
                            (when offset (offset scale place t))))
-               :kind-theory {:offsets off :inputs inputs :raw (boolean raw) :penalties pens :signs sv :half-life half-life}))))))
+               :kind-theory {:offsets off :inputs inputs :raw (boolean raw) :penalties pens :signs sv :half-life half-life :level level}))))))
 
 (defn with-own-inputs
   "[row width] for a spec whose year node already reads a theory
@@ -592,7 +594,7 @@
   ([specs kinds db add impute shapes raw decay] (with-kind-theory specs kinds db add impute shapes raw decay nil))
   ([specs kinds db add impute shapes raw decay decay-precision] (with-kind-theory specs kinds db add impute shapes raw decay decay-precision true))
   ([specs kinds db add impute shapes raw decay decay-precision decay-level] (with-kind-theory specs kinds db add impute shapes raw decay decay-precision decay-level {}))
-  ([specs kinds db add impute shapes raw decay decay-precision decay-level {:keys [signed half-lives] :or {signed #{} half-lives {}}}]
+  ([specs kinds db add impute shapes raw decay decay-precision decay-level {:keys [signed half-lives levels] :or {signed #{} half-lives {} levels #{}}}]
   (reduce (fn [acc k]
             (let [ds (or (decls k) (throw (ex-info (str "bnm.kind-theory: no theory declared for " k) {:kind k})))]
               (check-loaded ds db)
@@ -612,7 +614,8 @@
                                                 (false? decay-level) (assoc :level false)))
                                      :signs (when (contains? signed kd)
                                               (or (signs k) (throw (ex-info (str "bnm.kind-theory: no signs declared for " k) {:kind k}))))
-                                     :half-life (get half-lives kd)})))
+                                     :half-life (get half-lives kd)
+                                     :level (when (contains? levels kd) :history)})))
                   acc))))
           specs kinds)))
 

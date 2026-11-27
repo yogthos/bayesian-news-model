@@ -291,3 +291,11 @@
          (refusal wr/theory-half-life-choice {:theory-half-life "coup:10" :kind-theory "sovereign_default"})))
   (is (= ["bnm.world-run: --theory-half-life takes kind:years with years positive, not coup:x" {}]
          (refusal wr/theory-half-life-choice {:theory-half-life "coup:x" :kind-theory "coup"}))))
+
+(deftest theory-half-life-level-choice
+  ;; --theory-half-life-level kind,... (bnm-7yg.6): the kinds whose
+  ;; half-life fit takes its level from the full history
+  (is (= #{} (wr/theory-half-life-level-choice {})))
+  (is (= #{"sovereign_default"} (wr/theory-half-life-level-choice {:theory-half-life-level "sovereign_default" :theory-half-life "sovereign_default:10" :kind-theory "sovereign_default"})))
+  (is (= ["bnm.world-run: --theory-half-life-level names a kind without --theory-half-life: coup" {}]
+         (refusal wr/theory-half-life-level-choice {:theory-half-life-level "coup" :theory-half-life "sovereign_default:10" :kind-theory "sovereign_default,coup"}))))

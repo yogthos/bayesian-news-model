@@ -28,8 +28,18 @@
   precision multiplied by 1e9 until no slope is wrong-signed (an active
   set); 0 or nil leaves a slope free. :half-life h (bnm-7yg.6): at the fit
   for origin t each row weighted 0.5^((t - its origin) / (12 h)), so
-  drivers that change over the decades are tracked; nil, every row 1."
-  [{:keys [origins prior raw penalties signs half-life] :as args}]
+  drivers that change over the decades are tracked; nil, every row 1.
+  :level :history (bnm-7yg.6), with :half-life and no :base: the slopes
+  the weighted fit's, the intercept set so that at the weighted mean of
+  the training rows' slope terms the log odds are the logit of the
+  unweighted rate of those rows: the half-life re-learns which inputs
+  matter, the base rate stays the full history's (a weighted intercept
+  follows a quiet decade down into the next wave)."
+  [{:keys [origins prior raw penalties signs half-life level base] :as args}]
+  (when (and level (not= :history level))
+    (throw (ex-info "bnm.theory: :level takes :history" {:level level})))
+  (when (and level (or (nil? half-life) base))
+    (throw (ex-info "bnm.theory: :level :history sets the intercept of a :half-life fit without a :base" {})))
   (let [{:keys [rows k]} (design args)
         opts (fn [pens] (cond-> {:prior prior} raw (assoc :raw (set (range 1 k))) pens (assoc :penalties pens)))
         fit (fn [train]
@@ -48,7 +58,16 @@
                    :let [train (cond->> (filter #(<= (:known-at %) t) rows)
                                  half-life (map #(assoc % :w (Math/pow 0.5 (/ (- t (:t %)) (* 12.0 half-life))))))]
                    :when (and (some :y train) (some (complement :y) train))]
-               [t (fit train)]))))
+               [t (let [^doubles b (fit train)]
+                    (if level
+                      (let [slope (fn [{:keys [^doubles x]}] (loop [j 1 acc 0.0] (if (< j k) (recur (inc j) (+ acc (* (aget b j) (aget x j)))) acc)))
+                            wsum (reduce + (map :w train))
+                            xbar (/ (reduce + (map #(* (:w %) (slope %)) train)) wsum)
+                            rate (/ (count (filter :y train)) (double (count train)))
+                            out (aclone b)]
+                        (aset out 0 (- (m/logit rate) xbar))
+                        out)
+                      b))]))))
 
 (defn offsets
   "{[place origin] log odds}: at each origin, a logit fit on every earlier

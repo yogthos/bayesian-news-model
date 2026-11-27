@@ -137,3 +137,27 @@
     (is (pos? (aget ^doubles b0 1)) "unweighted, the older slope still holds")
     (is (neg? (aget ^doubles b1 1)) "weighted to recent rows, the new slope")
     (is (= (vec b0) (vec (get (th/fits (assoc args :half-life nil)) t))) "nil: as before")))
+
+(deftest theory-half-life-level-from-the-full-history
+  ;; bnm-7yg.6: :level :history with :half-life: the slopes are the weighted
+  ;; fit's, the intercept set so that at the weighted mean of the training
+  ;; rows' slope terms the log odds are the unweighted rate's; the half-life
+  ;; re-learns which inputs matter, not the base rate
+  (let [g (m/rng 7)
+        x (into {} (for [u places t origins] [[u t] (m/normal! g)]))
+        ;; the rate falls late, so a weighted intercept would follow it down
+        y (into {} (for [[[u t] v] x] [[u t] (< (m/next-double! g) (m/expit (- v (if (< t 240) 1.0 3.0))))]))
+        args {:places places :origins origins :prior 1.0 :inputs (fn [u t] [(x [u t])]) :half-life 3
+              :target (fn [u t] {:y (y [u t]) :known-at (+ t 24)})}
+        t (peek origins)
+        bw (get (th/fits args) t)
+        bl (get (th/fits (assoc args :level :history)) t)
+        train (for [u places o origins :when (<= (+ o 24) t)] [(x [u o]) (y [u o]) (Math/pow 0.5 (/ (- t o) 36.0))])
+        rate (/ (count (filter second train)) (double (count train)))
+        wsum (reduce + (map #(nth % 2) train))
+        xbar (/ (reduce + (map (fn [[v _ w]] (* w v)) train)) wsum)]
+    (is (= (aget ^doubles bw 1) (aget ^doubles bl 1)) "the weighted fit's slope")
+    (is (< (Math/abs (- (+ (aget ^doubles bl 0) (* (aget ^doubles bl 1) xbar)) (m/logit rate))) 1e-9) "the full history's rate at the weighted mean")
+    (is (> (aget ^doubles bl 0) (aget ^doubles bw 0)) "above the weighted intercept, which followed the late fall")
+    (is (thrown-with-msg? Exception #":level :history" (th/fits (-> args (dissoc :half-life) (assoc :level :history)))) "needs a half-life")
+    (is (thrown-with-msg? Exception #":level :history" (th/fits (assoc args :level :history :base (constantly 0.0)))) "not with a base")))

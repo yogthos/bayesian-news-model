@@ -41,7 +41,7 @@
                  (println (str "#penalties\t" (str/join "\t" (or penalties [])) "\traw\t" (boolean raw)))
                  (println (str/join "\t" (concat ["place" "t" "known_at" "y"] names)))
                  (doseq [{:keys [u t known-at y x]} rows]
-                   (println (str/join "\t" (concat [u t known-at (if y 1 0)] (seq x)))))))))
+                   (println (str/join "\t" (concat [u t known-at (if y 1 0)] (seq x))))))))
   (println kind "theory coefficients (inputs' own scale, place-z), columns:" (str/join " " names))
   (doseq [[label h] [["no half-life" nil] [(str "half-life " hl) hl]] :when (or (nil? h) hl)]
     (let [fits (into {} (for [t tests] [t (fit-at t h)]))]
