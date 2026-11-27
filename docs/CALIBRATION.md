@@ -4788,3 +4788,10 @@ Result of t162 (27 November 2026, 41 minutes). Checks held: only sovereign defau
 - Scored at origins 2003Q1-2022Q4: mean pinball loss, paired B - F (positive: F better), 90% intervals resampling years (block bootstrap, 2000 draws, seed 1); coverage (share of outcomes below each forecast quantile).
 - Rule, fixed now: build a growth-at-risk target (registered separately) only if F beats B at h = 4 with the interval clear of zero at both q = 0.05 and q = 0.10. Otherwise growth-at-risk is closed, citing this check. h = 8 is reported (the term structure, Adrian et al. 2022) but does not decide.
 - Code: docs/studies/growth_at_risk.py and its test.
+- Result (27 November 2026; 111 units with quarterly growth, 43 with the credit gap; origins 2003Q1-2022Q4). Pinball loss B / F, B - F [90%], coverage B / F:
+  - h 4, q 0.05: 0.008410 / 0.008261, +0.000148 [-0.000790, +0.001074]; 0.095 / 0.104.
+  - h 4, q 0.10: 0.011272 / 0.010877, +0.000396 [-0.000314, +0.001313]; 0.144 / 0.161.
+  - h 8, q 0.05: 0.008458 / 0.008675, -0.000217 [-0.000626, +0.000099]; 0.095 / 0.106.
+  - h 8, q 0.10: 0.011326 / 0.011445, -0.000119 [-0.000436, +0.000142]; 0.143 / 0.156.
+- At h 4 the NFCI takes the expected sign (tighter conditions, a lower tail: -0.018 per unit at q 0.05) and F's point gain is small and within noise at both quantiles; at h 8 F is worse at the point. The credit gap's coefficient is near zero. Both models' quantiles sit too high (coverage 0.10-0.16 for nominal 0.05-0.10), F's more so.
+- Verdict under the rule: F does not beat B clear of zero at h 4; growth-at-risk is closed, as Brownlees & Souza (2021) found on 24 OECD countries. The annual growth-collapse target stays.
