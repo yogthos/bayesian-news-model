@@ -120,3 +120,20 @@
       (let [off (th/offsets (assoc args :signs [0 -1]))
             vals (set (map #(Math/round (* 1e6 (double %))) (keep (fn [u] (get off [u t])) places)))]
         (is (= 1 (count vals)) "a zero slope: every place the same offset")))))
+
+(deftest theory-half-life-weights-recent-rows
+  ;; bnm-7yg.6: :half-life h years: each training row weighted
+  ;; 0.5^((t - its origin) / (12 h)) at the fit for origin t, so drivers
+  ;; that change are tracked; nil, every row 1
+  (let [g (m/rng 5)
+        ;; the slope flips sign at origin 240
+        x (into {} (for [u places t origins] [[u t] (m/normal! g)]))
+        y (into {} (for [[[u t] v] x] [[u t] (< (m/next-double! g) (m/expit (- (* (if (< t 240) 2.0 -2.0) v) 1.0)))]))
+        args {:places places :origins origins :prior 1.0 :inputs (fn [u t] [(x [u t])])
+              :target (fn [u t] {:y (y [u t]) :known-at (+ t 24)})}
+        t (peek origins)
+        b0 (get (th/fits args) t)
+        b1 (get (th/fits (assoc args :half-life 3)) t)]
+    (is (pos? (aget ^doubles b0 1)) "unweighted, the older slope still holds")
+    (is (neg? (aget ^doubles b1 1)) "weighted to recent rows, the new slope")
+    (is (= (vec b0) (vec (get (th/fits (assoc args :half-life nil)) t))) "nil: as before")))

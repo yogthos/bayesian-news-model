@@ -51,6 +51,8 @@
   rows resolved 48 months before, before they are written; t157-recal),
   --theory-signs k1,k2 (bnm-7yg.6: the named kinds' --kind-theory holds
   each slope fit against its declared sign at zero),
+  --theory-half-life k:years,... (bnm-7yg.6: the named kinds' --kind-theory
+  fit weights each row by 0.5^(age / years)),
   --fresh-frailty quarter-now (bnm-56c.35, recursive step 4: every kind
   whose catalogue dates onsets within the year gets bnm.lattice-political/
   quarter-now, a frailty-only scale, window three months, known three
@@ -1317,6 +1319,24 @@
         (throw (ex-info (str "bnm.world-run: --theory-signs: no signs declared for " k) {:kind k})))
       (set named))))
 
+(defn theory-half-life-choice
+  "--theory-half-life kind:years,... (bnm-7yg.6): {kind years}, the named
+  kinds' theory fit (--kind-theory) weighting each row by 0.5^(age /
+  years); {} when off."
+  [{v :theory-half-life kt-arg :kind-theory}]
+  (if-not v
+    {}
+    (let [theories (set (map kt/kind-of (some-> kt-arg (str/split #","))))
+          pairs (for [item (str/split v #",")
+                      :let [[k y] (str/split item #":")
+                            h (some-> y parse-double)]]
+                  (if (and h (pos? h))
+                    [k h]
+                    (throw (ex-info (str "bnm.world-run: --theory-half-life takes kind:years with years positive, not " item) {}))))]
+      (when-let [bad (seq (remove theories (map first pairs)))]
+        (throw (ex-info (str "bnm.world-run: --theory-half-life names a kind without a theory in --kind-theory: " (str/join "," bad)) {})))
+      (into {} pairs))))
+
 (defn theory-decay-precision-choice
   "--theory-decay-precision p (t138): the decay's interaction columns at p
   times the default prior precision; nil when off."
@@ -1590,7 +1610,8 @@
                             (kind-theory-add opts) (impute-choice opts) (shapes-choice opts) (raw-prior-choice opts)
                             (into {} (for [k (theory-decay-choice opts)]
                                        [k (onset-decay (:onsets (cats k)) (:known-lag (cats k) 0))]))
-                            (theory-decay-precision-choice opts) (theory-decay-level-choice opts) (theory-signs-choice opts))
+                            (theory-decay-precision-choice opts) (theory-decay-level-choice opts)
+                            {:signed (theory-signs-choice opts) :half-lives (theory-half-life-choice opts)})
         %))
     (#(if-let [ks (global-theory-choice opts)]
         (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts) (global-shapes-choice opts) (global-raw-prior-choice opts) (global-driver-precision-choice opts))

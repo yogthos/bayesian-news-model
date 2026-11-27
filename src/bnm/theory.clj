@@ -15,7 +15,7 @@
         bo (if base (fn [u t] (some-> (base u t) double)) (constantly 0.0))]
     {:xs xs :bo bo :k (alength ^doubles (val (first xs)))
      :rows (vec (for [u places t origins :let [tg (target u t) o (bo u t)] :when (and tg o)]
-                  {:x (xs [u t]) :y (boolean (:y tg)) :w 1.0 :o o :known-at (:known-at tg)}))}))
+                  {:x (xs [u t]) :y (boolean (:y tg)) :w 1.0 :o o :known-at (:known-at tg) :t t}))}))
 
 (defn fits
   "{origin coefficients}: `offsets`' logit at each origin (x[0] the
@@ -26,8 +26,10 @@
   :signs (bnm-7yg.6): one of -1, 0, +1 per column, x[0]'s ignored; a slope
   fit against its sign is held at zero: refit with that column's
   precision multiplied by 1e9 until no slope is wrong-signed (an active
-  set); 0 or nil leaves a slope free."
-  [{:keys [origins prior raw penalties signs] :as args}]
+  set); 0 or nil leaves a slope free. :half-life h (bnm-7yg.6): at the fit
+  for origin t each row weighted 0.5^((t - its origin) / (12 h)), so
+  drivers that change over the decades are tracked; nil, every row 1."
+  [{:keys [origins prior raw penalties signs half-life] :as args}]
   (let [{:keys [rows k]} (design args)
         opts (fn [pens] (cond-> {:prior prior} raw (assoc :raw (set (range 1 k))) pens (assoc :penalties pens)))
         fit (fn [train]
@@ -43,7 +45,8 @@
                                      j)))]
                   (if wrong (recur (into pinned wrong)) b))))]
     (into {} (for [t origins
-                   :let [train (filter #(<= (:known-at %) t) rows)]
+                   :let [train (cond->> (filter #(<= (:known-at %) t) rows)
+                                 half-life (map #(assoc % :w (Math/pow 0.5 (/ (- t (:t %)) (* 12.0 half-life))))))]
                    :when (and (some :y train) (some (complement :y) train))]
                [t (fit train)]))))
 

@@ -533,3 +533,15 @@
   ;; inflation and US tightening raise the risk, reserves and growth lower it
   (is (= [1 -1 1 -1 1] (kt/signs "sovereign_default")))
   (is (nil? (kt/signs "war_onset"))))
+
+(deftest theory-half-life
+  ;; bnm-7yg.6: :half-life passed to bnm.theory/fits
+  (let [os (range 11 600 12) t (last os)
+        sp2 (kt/with-theory sp row 2 {:half-life 10})
+        z0 (th/place-z (fn [u t] (x [u t])) countries os 20)
+        off (th/offsets {:places countries :origins os :prior 1.0 :half-life 10
+                         :inputs (fn [u t] [(z0 u t) nil])
+                         :target (fn [u t] ((:target sp) :year u t))})]
+    (is (< (Math/abs (- (get off ["a1" t]) ((:offset sp2) :year "a1" t))) 1e-12))
+    (is (= 10 (get-in sp2 [:kind-theory :half-life])))
+    (is (not= ((:offset sp2) :year "a1" t) ((:offset (kt/with-theory sp row 2)) :year "a1" t)))))

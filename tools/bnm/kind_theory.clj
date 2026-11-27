@@ -501,9 +501,11 @@
   gauges keep the aftermath's level and it is not counted twice.
   :signs (bnm-7yg.6): one of -1, 0, +1 per raw input; a slope fit against
   its sign is held at zero (bnm.theory/fits :signs); the imputed missing
-  share and the decay columns are free. Not with :shapes."
+  share and the decay columns are free. Not with :shapes. :half-life h
+  (bnm-7yg.6): the fit weights each row by 0.5^(age / h years)
+  (bnm.theory/fits)."
   ([sp row width] (with-theory sp row width {}))
-  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw penalties decay signs]}]
+  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw penalties decay signs half-life]}]
   (when (and signs shapes)
     (throw (ex-info "bnm.kind-theory: :signs takes no :shapes: each input is five shape columns" {})))
   (when (and signs (not= width (count signs)))
@@ -539,7 +541,8 @@
                           (when-let [{:keys [levels]} decay] (repeat (+ (count levels) (if level? 1 0)) 0)))))
         args (cond-> {:places countries :origins os :prior 1.0 :inputs inputs :raw (boolean raw) :penalties pens
                       :target (fn [u t] (target :year u t))}
-               sv (assoc :signs sv))]
+               sv (assoc :signs sv)
+               half-life (assoc :half-life half-life))]
     (if add
       (let [_ (when (:offset-add sp)
                 (throw (ex-info "bnm.kind-theory: :add, but the spec already has an :offset-add" {})))
@@ -550,7 +553,7 @@
                              (when (and (= :year scale) (cs place))
                                (when-let [^doubles b (get fits t)]
                                  (reduce + 0.0 (map-indexed (fn [i z] (* (aget b (inc i)) (double (or z 0.0)))) (inputs place t))))))
-               :kind-theory {:fits fits :inputs inputs :add true :raw (boolean raw) :penalties pens :signs sv}))
+               :kind-theory {:fits fits :inputs inputs :add true :raw (boolean raw) :penalties pens :signs sv :half-life half-life}))
       (let [off (th/offsets args)
             members (members-fn sp)]
         (assoc sp
@@ -558,7 +561,7 @@
                          (if (= :year scale)
                            (th/any-of (keep #(get off [% t]) (members place)))
                            (when offset (offset scale place t))))
-               :kind-theory {:offsets off :inputs inputs :raw (boolean raw) :penalties pens :signs sv}))))))
+               :kind-theory {:offsets off :inputs inputs :raw (boolean raw) :penalties pens :signs sv :half-life half-life}))))))
 
 (defn with-own-inputs
   "[row width] for a spec whose year node already reads a theory
@@ -577,7 +580,10 @@
 
 (defn with-kind-theory
   "The named kinds' specs with their declared theory (`decls`) read from
-  the slow table `db`; those in `add` on top of their offset (t112)."
+  the slow table `db`; those in `add` on top of their offset (t112). The
+  last argument, a map: :signed, the kinds whose slopes keep their
+  declared signs; :half-lives, {kind years} for the theory fit's memory
+  (bnm-7yg.6)."
   ([specs kinds db] (with-kind-theory specs kinds db #{}))
   ([specs kinds db add] (with-kind-theory specs kinds db add false))
   ([specs kinds db add impute] (with-kind-theory specs kinds db add impute false))
@@ -585,8 +591,8 @@
   ([specs kinds db add impute shapes raw] (with-kind-theory specs kinds db add impute shapes raw nil))
   ([specs kinds db add impute shapes raw decay] (with-kind-theory specs kinds db add impute shapes raw decay nil))
   ([specs kinds db add impute shapes raw decay decay-precision] (with-kind-theory specs kinds db add impute shapes raw decay decay-precision true))
-  ([specs kinds db add impute shapes raw decay decay-precision decay-level] (with-kind-theory specs kinds db add impute shapes raw decay decay-precision decay-level #{}))
-  ([specs kinds db add impute shapes raw decay decay-precision decay-level signed]
+  ([specs kinds db add impute shapes raw decay decay-precision decay-level] (with-kind-theory specs kinds db add impute shapes raw decay decay-precision decay-level {}))
+  ([specs kinds db add impute shapes raw decay decay-precision decay-level {:keys [signed half-lives] :or {signed #{} half-lives {}}}]
   (reduce (fn [acc k]
             (let [ds (or (decls k) (throw (ex-info (str "bnm.kind-theory: no theory declared for " k) {:kind k})))]
               (check-loaded ds db)
@@ -605,7 +611,8 @@
                                                 decay-precision (assoc :precision decay-precision)
                                                 (false? decay-level) (assoc :level false)))
                                      :signs (when (contains? signed kd)
-                                              (or (signs k) (throw (ex-info (str "bnm.kind-theory: no signs declared for " k) {:kind k}))))})))
+                                              (or (signs k) (throw (ex-info (str "bnm.kind-theory: no signs declared for " k) {:kind k}))))
+                                     :half-life (get half-lives kd)})))
                   acc))))
           specs kinds)))
 

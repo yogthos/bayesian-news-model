@@ -282,3 +282,12 @@
          (refusal wr/theory-signs-choice {:theory-signs "coup" :kind-theory "sovereign_default"})))
   (is (= ["bnm.world-run: --theory-signs: no signs declared for coup" {:kind "coup"}]
          (refusal wr/theory-signs-choice {:theory-signs "coup" :kind-theory "coup"}))))
+
+(deftest theory-half-life-choice
+  ;; --theory-half-life kind:years,... (bnm-7yg.6)
+  (is (= {} (wr/theory-half-life-choice {})))
+  (is (= {"sovereign_default" 10.0} (wr/theory-half-life-choice {:theory-half-life "sovereign_default:10" :kind-theory "sovereign_default,coup"})))
+  (is (= ["bnm.world-run: --theory-half-life names a kind without a theory in --kind-theory: coup" {}]
+         (refusal wr/theory-half-life-choice {:theory-half-life "coup:10" :kind-theory "sovereign_default"})))
+  (is (= ["bnm.world-run: --theory-half-life takes kind:years with years positive, not coup:x" {}]
+         (refusal wr/theory-half-life-choice {:theory-half-life "coup:x" :kind-theory "coup"}))))
