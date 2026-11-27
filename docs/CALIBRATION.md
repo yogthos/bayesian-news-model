@@ -4775,3 +4775,16 @@ Result of t162 (27 November 2026, 41 minutes). Checks held: only sovereign defau
 - No known onset, by catalogue start: from 1800, 0 defaults in 171 rows; from 1970, 33 in 1257 (rate 0.026, near the overall 0.031). Counting from the catalogue's start carries real information: the countries covered from 1800 with no default never default. The horizon coding throws it away.
 - The 9+ band ranks at chance under every coding: there the input is the onset gap itself, and a longer gap since an old default is not safer in 2003-22. No coding of the history input repairs it.
 - Conclusion: not a bug; nothing registered. Unknown's logit gain (+0.005 pooled) is within noise and not worth a run.
+
+### Growth-at-risk: do financial conditions move the lower tail out of sample? (bnm-7yg.6, registered 27 November 2026, before any result)
+
+- Why: the 26 November review's step 6 asks for a quarterly growth-at-risk target in place of the annual collapse binary (Adrian, Boyarchenko & Giannone 2019). Against it: t67-growthq (a quarterly-dated collapse target) lost at the year scale (Brier -0.0275) and was flat at quarter-lead (docs/GROWTH-QUARTERLY.md); out of sample, quantile regression on financial conditions does no better than a GARCH benchmark (Brownlees & Souza 2021), and financial variables add little beyond the mean (Plagborg-Møller et al. 2020). A target is built only if the tail signal survives out of sample on our data.
+- Data: data/derived/gdp-quarterly.csv per-head year-on-year growth (yoy_pc), 104 units; finance/conditions (Chicago Fed NFCI, monthly, from 1971) and finance/credit_gap (BIS, 43 units, quarterly) from data/slow/series.tsv.
+- Known at origin quarter t: growth to t-1 (one quarter's publication lag); the NFCI at t's last month; the credit gap whose quarter ended at least two quarters before t (missing: 0 with a missing flag).
+- Target: per-head growth h = 4 and h = 8 quarters after t; quantiles q = 0.05 and 0.10.
+- Models, pooled linear quantile regressions refit at each origin on pairs whose outcome is known by t (outcome quarter <= t-1), expanding from 1980:
+  - B (benchmark, Brownlees-Souza's spirit): last known growth, own volatility (sd of the last 12 known quarters' growth).
+  - F: B plus the NFCI, the credit gap and its missing flag.
+- Scored at origins 2003Q1-2022Q4: mean pinball loss, paired B - F (positive: F better), 90% intervals resampling years (block bootstrap, 2000 draws, seed 1); coverage (share of outcomes below each forecast quantile).
+- Rule, fixed now: build a growth-at-risk target (registered separately) only if F beats B at h = 4 with the interval clear of zero at both q = 0.05 and q = 0.10. Otherwise growth-at-risk is closed, citing this check. h = 8 is reported (the term structure, Adrian et al. 2022) but does not decide.
+- Code: docs/studies/growth_at_risk.py and its test.
