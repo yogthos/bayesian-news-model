@@ -4795,3 +4795,17 @@ Result of t162 (27 November 2026, 41 minutes). Checks held: only sovereign defau
   - h 8, q 0.10: 0.011326 / 0.011445, -0.000119 [-0.000436, +0.000142]; 0.143 / 0.156.
 - At h 4 the NFCI takes the expected sign (tighter conditions, a lower tail: -0.018 per unit at q 0.05) and F's point gain is small and within noise at both quantiles; at h 8 F is worse at the point. The credit gap's coefficient is near zero. Both models' quantiles sit too high (coverage 0.10-0.16 for nominal 0.05-0.10), F's more so.
 - Verdict under the rule: F does not beat B clear of zero at h 4; growth-at-risk is closed, as Brownlees & Souza (2021) found on 24 OECD countries. The annual growth-collapse target stays.
+
+### Discretionary fiscal consolidation: is the label cyclical, and is a cyclically adjusted one forecastable? (bnm-7yg.6, registered 27 November 2026, before any result)
+
+- Why: the 26 November review says the fiscal_consolidation label (balance up 1.5 points of GDP and expenditure down 1 point in the year, once in three years; GMD) mixes deliberate austerity with recovery-year accounting and post-recession spending normalization, and the theory reads the same series. The catalogue's onsets spike in 2010 (41) and 2021 (86), the years after the two global recessions.
+- Data: GMD's balance and expenditure (% of GDP) and real expenditure as in data/derived/fiscal.csv (gov_bal_gdp, gov_exp_gdp, gov_exp_real); real GDP growth (economy/gdp_growth, WDI) and the reference model's inputs from data/slow/series.tsv. Annual, 1975-2025.
+- Output gap: 100 x (log real GDP - its Hodrick-Prescott trend, lambda 100), on the full revised series (a target definition, read with revised data as the other catalogues are; HP's end-point bias in 2021-25 is reported, not corrected).
+- Cyclically adjusted balance: CAB = balance - 0.5 x gap (the budget semi-elasticity, Price, Dang & Botev 2014; no interest data, so overall rather than primary).
+- Candidate labels, once in three years like the current one:
+  - D1: CAB up 1.5 points or more (Alesina & Ardagna 2010's size threshold on the adjusted balance);
+  - D2: D1 and real expenditure growth of 0 or less (spending-led, the current label's intent).
+- Part A, anatomy 1990-2025: onsets by year for current, D1 and D2; the share of current onsets in recovery years (gap up 1 point or more); the share of current onsets D2 keeps, in recovery years and in others.
+- Part B, forecastability at 2003-2022: a causal pooled logit (ridge 1, refit each year on years up to Y-2) on inputs known at the end of Y-1 (balance, government debt and its 2-year change, growth, an election in Y-1, inflation): AUC and log skill against causal climatology for each label; and the same logit without the balance (the accounting-persistence channel).
+- Rule, fixed now: D2 becomes a registered build candidate (a replacement target scored on skill against its own climatology, like t67-growthq) only if all three hold: (1) D2 cuts the current label's recovery-year onsets by half or more; (2) D2 keeps 60% or more of the current label's non-recovery onsets; (3) the reference logit ranks D2 at AUC 0.60 or more at 2003-2022. Otherwise discretionary fiscal is closed with this check. D1 is reported, not decided on.
+- Code: docs/studies/fiscal_discretionary.py and its test.
