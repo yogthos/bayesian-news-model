@@ -49,6 +49,8 @@
   --recalibrate-intercept k1,k2 (bnm-7yg.4: the named kinds' year country
   nodes moved by one intercept per December origin from 2003, fitted on
   rows resolved 48 months before, before they are written; t157-recal),
+  --theory-signs k1,k2 (bnm-7yg.6: the named kinds' --kind-theory holds
+  each slope fit against its declared sign at zero),
   --fresh-frailty quarter-now (bnm-56c.35, recursive step 4: every kind
   whose catalogue dates onsets within the year gets bnm.lattice-political/
   quarter-now, a frailty-only scale, window three months, known three
@@ -1300,6 +1302,21 @@
         (throw (ex-info (str "bnm.world-run: --theory-decay: no stocks declared for " k) {:kind k})))
       named)))
 
+(defn theory-signs-choice
+  "--theory-signs kind,... (bnm-7yg.6): the kinds whose theory
+  (--kind-theory) holds each slope fit against its declared sign
+  (bnm.kind-theory/signs) at zero; #{} when off."
+  [{v :theory-signs kt-arg :kind-theory}]
+  (if-not v
+    #{}
+    (let [named (str/split v #",")
+          theories (set (map kt/kind-of (some-> kt-arg (str/split #","))))]
+      (when-let [bad (seq (remove theories named))]
+        (throw (ex-info (str "bnm.world-run: --theory-signs names a kind without a theory in --kind-theory: " (str/join "," bad)) {})))
+      (doseq [k named :when (not (kt/signs k))]
+        (throw (ex-info (str "bnm.world-run: --theory-signs: no signs declared for " k) {:kind k})))
+      (set named))))
+
 (defn theory-decay-precision-choice
   "--theory-decay-precision p (t138): the decay's interaction columns at p
   times the default prior precision; nil when off."
@@ -1573,7 +1590,7 @@
                             (kind-theory-add opts) (impute-choice opts) (shapes-choice opts) (raw-prior-choice opts)
                             (into {} (for [k (theory-decay-choice opts)]
                                        [k (onset-decay (:onsets (cats k)) (:known-lag (cats k) 0))]))
-                            (theory-decay-precision-choice opts) (theory-decay-level-choice opts))
+                            (theory-decay-precision-choice opts) (theory-decay-level-choice opts) (theory-signs-choice opts))
         %))
     (#(if-let [ks (global-theory-choice opts)]
         (kt/with-global-theory % ks (theory-db (kt/decl-vars kt/global) (real-lags-choice opts)) (impute-choice opts) (global-shapes-choice opts) (global-raw-prior-choice opts) (global-driver-precision-choice opts))

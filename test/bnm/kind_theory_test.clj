@@ -508,3 +508,28 @@
     (is (some? ((:offset sp2) :year "a1" t)))
     (is (= [1.0 1.0 1.0 10.0]
            (:penalties (:kind-theory (kt/with-theory sp row 2 {:decay {:d d :levels [0] :level false :precision 10.0}})))))))
+
+(deftest theory-signs
+  ;; bnm-7yg.6: :signs, one per raw input; a slope fit against its sign is
+  ;; held at zero (bnm.theory/fits :signs); the imputed missing share and
+  ;; the decay columns free
+  (let [os (range 11 600 12) t (last os)]
+    (testing "the planted slope is positive; signed against it, every country takes one offset"
+      (let [sp2 (kt/with-theory sp row 2 {:signs [-1 0]})
+            vals (set (map #(Math/round (* 1e6 ((:offset sp2) :year % t))) countries))]
+        (is (= 1 (count vals)))
+        (is (= [0 -1 0] (get-in sp2 [:kind-theory :signs])))))
+    (testing "signed with it: as without"
+      (is (= (map #((:offset (kt/with-theory sp row 2)) :year % t) countries)
+             (map #((:offset (kt/with-theory sp row 2 {:signs [1 0]})) :year % t) countries))))
+    (testing "the imputed missing share takes no sign"
+      (is (= [0 1 0 0] (get-in (kt/with-theory sp row 2 {:signs [1 0] :impute true}) [:kind-theory :signs]))))
+    (testing "refused with shapes, and when the signs do not match the inputs"
+      (is (thrown? clojure.lang.ExceptionInfo (kt/with-theory sp row 2 {:signs [1 0] :shapes true})))
+      (is (thrown? clojure.lang.ExceptionInfo (kt/with-theory sp row 2 {:signs [1]}))))))
+
+(deftest sovereign-defaults-declare-their-signs
+  ;; the theory's directions (Manasse and Roubini 2009; t109): debt,
+  ;; inflation and US tightening raise the risk, reserves and growth lower it
+  (is (= [1 -1 1 -1 1] (kt/signs "sovereign_default")))
+  (is (nil? (kt/signs "war_onset"))))

@@ -19,12 +19,13 @@
   the early-warning literature's country inputs (Manasse and Roubini 2009,
   rules of thumb: external debt, reserves, inflation, growth; Reinhart and
   Rogoff 2009) and the global push, US monetary tightening (the Volcker
-  defaults of 1982-83, 2022's)."
-  [{:name :external-debt :var "debt/external_gni" :read [:value] :stale 30}
-   {:name :reserves :var "debt/reserves_months" :read [:value] :stale 30}
-   {:name :inflation :var "economy/inflation" :read [:value] :stale 30}
-   {:name :growth :var "economy/gdp_growth" :read [:value] :stale 30}
-   {:name :us-rate-change24 :var "finance/policy_rate" :unit "USA" :read [:change 24] :stale 3}])
+  defaults of 1982-83, 2022's). :sign, each input's direction in that
+  literature, read only by --theory-signs (bnm-7yg.6)."
+  [{:name :external-debt :var "debt/external_gni" :read [:value] :stale 30 :sign 1}
+   {:name :reserves :var "debt/reserves_months" :read [:value] :stale 30 :sign -1}
+   {:name :inflation :var "economy/inflation" :read [:value] :stale 30 :sign 1}
+   {:name :growth :var "economy/gdp_growth" :read [:value] :stale 30 :sign -1}
+   {:name :us-rate-change24 :var "finance/policy_rate" :unit "USA" :read [:change 24] :stale 3 :sign 1}])
 
 (def ^:private currency-t110
   "Currency crises, fixed before any run (docs/CALIBRATION.md t110): the
@@ -378,6 +379,13 @@
 
 (defn decls "A kind's theory signals, or nil." [kind] (get by-kind kind))
 
+(defn signs
+  "A theory's declared sign per input (bnm-7yg.6, --theory-signs), or nil
+  unless every input declares one."
+  [kind]
+  (let [ds (decls kind)]
+    (when (and (seq ds) (every? :sign ds)) (mapv :sign ds))))
+
 (def decay-stocks
   "t137 (reports/Crisis aftermath and trend reversal.md, rank 2): each
   theory's legacy stocks, the levels an onset leaves raised for years
@@ -490,9 +498,16 @@
   prior precision p times the default's, so a few post-onset rows cannot
   give them a large slope; d and the inputs at the default. :level false
   (t139): no d column, only the stocks times d, so the year node's history
-  gauges keep the aftermath's level and it is not counted twice."
+  gauges keep the aftermath's level and it is not counted twice.
+  :signs (bnm-7yg.6): one of -1, 0, +1 per raw input; a slope fit against
+  its sign is held at zero (bnm.theory/fits :signs); the imputed missing
+  share and the decay columns are free. Not with :shapes."
   ([sp row width] (with-theory sp row width {}))
-  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw penalties decay]}]
+  ([{:keys [scales levels start end target offset parent] :as sp} row width {:keys [add impute shapes raw penalties decay signs]}]
+  (when (and signs shapes)
+    (throw (ex-info "bnm.kind-theory: :signs takes no :shapes: each input is five shape columns" {})))
+  (when (and signs (not= width (count signs)))
+    (throw (ex-info "bnm.kind-theory: one sign per raw input" {:width width :signs signs})))
   (when (and add decay)
     (throw (ex-info "bnm.kind-theory: :decay goes with a theory that sets the offset, not :add" {})))
   (when (and add shapes)
@@ -518,8 +533,13 @@
         pens (if (and pens decay)
                (into (cond-> pens level? (conj 1.0)) (repeat (count (:levels decay)) (double (or (:precision decay) 1.0))))
                pens)
-        args {:places countries :origins os :prior 1.0 :inputs inputs :raw (boolean raw) :penalties pens
-              :target (fn [u t] (target :year u t))}]
+        ;; x[0] the intercept's; the missing share and the decay's columns free
+        sv (when signs
+             (vec (concat [0] signs (when impute [0])
+                          (when-let [{:keys [levels]} decay] (repeat (+ (count levels) (if level? 1 0)) 0)))))
+        args (cond-> {:places countries :origins os :prior 1.0 :inputs inputs :raw (boolean raw) :penalties pens
+                      :target (fn [u t] (target :year u t))}
+               sv (assoc :signs sv))]
     (if add
       (let [_ (when (:offset-add sp)
                 (throw (ex-info "bnm.kind-theory: :add, but the spec already has an :offset-add" {})))
@@ -530,7 +550,7 @@
                              (when (and (= :year scale) (cs place))
                                (when-let [^doubles b (get fits t)]
                                  (reduce + 0.0 (map-indexed (fn [i z] (* (aget b (inc i)) (double (or z 0.0)))) (inputs place t))))))
-               :kind-theory {:fits fits :inputs inputs :add true :raw (boolean raw) :penalties pens}))
+               :kind-theory {:fits fits :inputs inputs :add true :raw (boolean raw) :penalties pens :signs sv}))
       (let [off (th/offsets args)
             members (members-fn sp)]
         (assoc sp
@@ -538,7 +558,7 @@
                          (if (= :year scale)
                            (th/any-of (keep #(get off [% t]) (members place)))
                            (when offset (offset scale place t))))
-               :kind-theory {:offsets off :inputs inputs :raw (boolean raw) :penalties pens}))))))
+               :kind-theory {:offsets off :inputs inputs :raw (boolean raw) :penalties pens :signs sv}))))))
 
 (defn with-own-inputs
   "[row width] for a spec whose year node already reads a theory
@@ -565,7 +585,8 @@
   ([specs kinds db add impute shapes raw] (with-kind-theory specs kinds db add impute shapes raw nil))
   ([specs kinds db add impute shapes raw decay] (with-kind-theory specs kinds db add impute shapes raw decay nil))
   ([specs kinds db add impute shapes raw decay decay-precision] (with-kind-theory specs kinds db add impute shapes raw decay decay-precision true))
-  ([specs kinds db add impute shapes raw decay decay-precision decay-level]
+  ([specs kinds db add impute shapes raw decay decay-precision decay-level] (with-kind-theory specs kinds db add impute shapes raw decay decay-precision decay-level #{}))
+  ([specs kinds db add impute shapes raw decay decay-precision decay-level signed]
   (reduce (fn [acc k]
             (let [ds (or (decls k) (throw (ex-info (str "bnm.kind-theory: no theory declared for " k) {:kind k})))]
               (check-loaded ds db)
@@ -582,7 +603,9 @@
                                      :decay (when-let [d (get decay kd)]
                                               (cond-> {:d d :levels (decay-levels k)}
                                                 decay-precision (assoc :precision decay-precision)
-                                                (false? decay-level) (assoc :level false)))})))
+                                                (false? decay-level) (assoc :level false)))
+                                     :signs (when (contains? signed kd)
+                                              (or (signs k) (throw (ex-info (str "bnm.kind-theory: no signs declared for " k) {:kind k}))))})))
                   acc))))
           specs kinds)))
 

@@ -22,13 +22,30 @@
   intercept's), for the origins it has one. :raw true (t121): every
   slope's prior on its input's own scale (augur.logit/fit's :raw), so a
   sparse column is held near zero. :penalties (t124): one precision
-  multiplier per column, x[0] the intercept's (augur.logit/fit's)."
-  [{:keys [origins prior raw penalties] :as args}]
-  (let [{:keys [rows k]} (design args)]
+  multiplier per column, x[0] the intercept's (augur.logit/fit's).
+  :signs (bnm-7yg.6): one of -1, 0, +1 per column, x[0]'s ignored; a slope
+  fit against its sign is held at zero: refit with that column's
+  precision multiplied by 1e9 until no slope is wrong-signed (an active
+  set); 0 or nil leaves a slope free."
+  [{:keys [origins prior raw penalties signs] :as args}]
+  (let [{:keys [rows k]} (design args)
+        opts (fn [pens] (cond-> {:prior prior} raw (assoc :raw (set (range 1 k))) pens (assoc :penalties pens)))
+        fit (fn [train]
+              (loop [pinned #{}]
+                (let [pens (when (or penalties (seq pinned))
+                             (vec (for [j (range k)]
+                                    (* (double (if penalties (nth penalties j) 1.0)) (if (pinned j) 1e9 1.0)))))
+                      ^doubles b (lgt/fit train k (opts pens))
+                      wrong (when signs
+                              (seq (for [j (range 1 k)
+                                         :let [s (double (or (get signs j) 0))]
+                                         :when (and (not (pinned j)) (neg? (* s (aget b j))))]
+                                     j)))]
+                  (if wrong (recur (into pinned wrong)) b))))]
     (into {} (for [t origins
                    :let [train (filter #(<= (:known-at %) t) rows)]
                    :when (and (some :y train) (some (complement :y) train))]
-               [t (lgt/fit train k (cond-> {:prior prior} raw (assoc :raw (set (range 1 k))) penalties (assoc :penalties penalties)))]))))
+               [t (fit train)]))))
 
 (defn offsets
   "{[place origin] log odds}: at each origin, a logit fit on every earlier

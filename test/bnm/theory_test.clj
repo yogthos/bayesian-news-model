@@ -98,3 +98,25 @@
         b1 (get (th/fits (assoc args :penalties [1.0 1000.0])) t)]
     (is (< (Math/abs (aget ^doubles b1 1)) (* 0.5 (Math/abs (aget ^doubles b0 1)))) "a strong prior holds the slope toward zero")
     (is (= (vec b0) (vec (get (th/fits (assoc args :penalties [1.0 1.0])) t))) "multipliers of 1: as before")))
+
+(deftest theory-signs-pin-wrong-signed-slopes-at-zero
+  ;; bnm-7yg.6: :signs, one of -1, 0, +1 per column (x[0] the intercept's,
+  ;; ignored): a slope fit against its sign is held at zero (an active set:
+  ;; refit with its precision at 1e9 until no slope is wrong-signed); 0 or
+  ;; nil leaves it free
+  (let [w (world 4)
+        args {:places places :origins origins :inputs (inputs w) :target (target w) :prior 1.0}
+        t (peek origins)
+        b0 (get (th/fits args) t)]
+    (is (pos? (aget ^doubles b0 1)) "the world's slope is positive")
+    (is (= (vec b0) (vec (get (th/fits (assoc args :signs [0 1])) t))) "a slope already of its sign: unchanged")
+    (is (= (vec b0) (vec (get (th/fits (assoc args :signs [0 0])) t))) "sign 0: free")
+    (let [b (get (th/fits (assoc args :signs [0 -1])) t)]
+      (is (< (Math/abs (aget ^doubles b 1)) 1e-6) "a slope against its sign is held at zero"))
+    (testing "with :penalties, the pinned column's precision goes to 1e9 and the others keep theirs"
+      (let [b (get (th/fits (assoc args :signs [0 -1] :penalties [1.0 2.0])) t)]
+        (is (< (Math/abs (aget ^doubles b 1)) 1e-6))))
+    (testing "offsets read the constrained fit"
+      (let [off (th/offsets (assoc args :signs [0 -1]))
+            vals (set (map #(Math/round (* 1e6 (double %))) (keep (fn [u] (get off [u t])) places)))]
+        (is (= 1 (count vals)) "a zero slope: every place the same offset")))))
