@@ -60,7 +60,7 @@
             [clojure.pprint]
             [clojure.string :as str]))
 
-(def base "t157-base")
+(def base "t160")
 (def base-end "The base of record's last origin, December 2025." (+ (* 12 2025) 11))
 (def ledger-dir "registered/ledger/")
 (def inputs-root "Where each issue's inputs are archived, read-only." "data/ledger-inputs/")
@@ -82,8 +82,13 @@
    "data/slow/series.tsv" "data/slow/variables.tsv"])
 
 (def base-files
-  "The base of record's forecasts, data/runs/t157-base/<kind>/
-  forecasts.tsv (26 November 2026, the twenty-second note to L1: t150-base's
+  "The base of record's forecasts, data/runs/t160/<kind>/
+  forecasts.tsv (26 November 2026, the twenty-third note to L1: t157-base's
+  command with conflict onsets' year averaging at a five-year half-life,
+  t158's, and the year's echo through the quarters cut at banking crises,
+  conflict onsets, coups, violence surges and war onsets, t159's and
+  t160's; the other eight t157-base's).
+  t157-base (26 November 2026, the twenty-second note to L1: t150-base's
   command with banking's theory offset outside the JST panel only, t156's,
   and inflation crises' year country rows recalibrated by a rolling
   intercept, t157-recal's; the other eleven t150-base's).
@@ -128,9 +133,9 @@
   with banking's theory offset, its world funding and reserves, the year
   row's ratios held through recessions and banking's frailty at rho 0;
   banking is t104-rows-rho0's, the other ten t80-base's, t71-stack's."
-  {"banking_crisis" "9f0219af0c38f1d0735e9e221607c1a1e5ae6698ff12a071f0b10957d9eb232a"
-   "conflict_onset" "7c9ab7cc0785543cb0ec8c27f58f71e8ed9491c33239a8e5eb4be68d84c8f649"
-   "coup" "e2516bf2118edd05243cddc3d695b725e276e8736a242d965ef1d436192306e6"
+  {"banking_crisis" "a8efdfe199ead101071d334b15bafb76d561f3245b265c9647e3c5080952e227"
+   "conflict_onset" "0cd01bef5d08f184ef9b47f740fb37f9cbbca08e214f269b789627e4cf4bbbbf"
+   "coup" "b17a80aabf5a01ce0a1c0b4ae3a75312a5e4ed0915f42e323551b50894bd751d"
    "currency_crisis" "a34827ccd2cb820757e7a2013af38e0bf264761e433c155df8fbc4f19ccce317"
    "fiscal_consolidation" "bee45ac2b7b9463f296ee484e77ef188fa25b31b81aaa0496c7e9178fda17c0a"
    "food_price_shock" "c09a133570f0ad87ed4064aab300e72787c18a2211e60bdcca7476c066e0cdc6"
@@ -139,8 +144,8 @@
    "market_crash" "61908a866b1942375ee9fe179786d6ee1f5909b9f7cd3247bb559fcb1b16dd26"
    "protest_surge" "8a8f8e2b0bc087a4e4e811a89701566d164d5186a7d2cc674d4fe3086f1e5c9d"
    "sovereign_default" "2ec6b77fabecda209925d4a573a6b5492c17dff86721cada36c504f388c2199f"
-   "violence_surge" "0cf68a981f20cdf1cebc40afb0e37752bd109ce81ee4a22760002737ffeb77c1"
-   "war_onset" "678b8a6f7c839cafaf3eb859386393d145d840fb02330f085c818f1de46d2478"})
+   "violence_surge" "4ad439a5f0ad1e05c3aa4d29836a7d14839d708b1eeaba64d7653f38a38b15ea"
+   "war_onset" "9c6f24bb523e9ce0743a951fccd5af0d191b9a939ea8e650064a023514ecbd5a"})
 
 (def base-inputs
   "The SHA-256 of every input t80-base was built on (t53-noclim's,
@@ -469,8 +474,12 @@
   "r7-at-fx")
 
 (defn command
-  "The base's bnm.world-run arguments, t157-base's (twenty-second note to
-  L1): t150-base's with banking's theory offset outside the JST panel only
+  "The base's bnm.world-run arguments, t160's (twenty-third note to L1):
+  t157-base's with conflict onsets' year averaging at a five-year
+  half-life (--kind-set conflict_onset :forget-half-life 5, t158) and
+  :up-net-of-downscale in the --kind-set entries of banking crises,
+  conflict onsets, coups, violence surges and war onsets (t159, t160).
+  t157-base's (twenty-second note to L1): t150-base's with banking's theory offset outside the JST panel only
   (--theory-outside-panel, t156) and inflation crises' year country rows
   recalibrated by a rolling intercept after the run
   (--recalibrate-intercept inflation_crisis, t157-recal). t150-base's
@@ -547,7 +556,7 @@
    "--direction-gauges" "market_crash" "--direction-at" "quarter-lead,quarter-w2"
    "--theory-decay" "coup,inflation_crisis,currency_crisis"
    "--set" "{:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {} :discount-from :data :flow-std :stable :evidence-at :issue-joint}"
-   "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]}} \"currency_crisis\" {:forget-half-life 10} \"violence_surge\" {:forget-half-life 10}}"
+   "--kind-set" "{\"banking_crisis\" {:frailty {:rhos [0.0]} :up-net-of-downscale true} \"currency_crisis\" {:forget-half-life 10} \"violence_surge\" {:forget-half-life 10 :up-net-of-downscale true} \"conflict_onset\" {:forget-half-life 5 :up-net-of-downscale true} \"coup\" {:up-net-of-downscale true} \"war_onset\" {:up-net-of-downscale true}}"
    "--release-calendar" "conflict_onset,war_onset" "--recalibrate-intercept" "inflation_crisis"])
 
 (defn command-line

@@ -128,16 +128,40 @@
     (is (not-any? #{"data/runs/r6-at/preds.tsv" "data/runs/r6-at-8ul/preds.tsv" "data/runs/r6-at-fx/preds.tsv"} lg/inputs)
         "r6-at was fit on the pre-fix catalogues, r6-at-8ul and r6-at-fx on leaky series.tsv")))
 
-(deftest the-base-of-record-is-t157-with-banking's-offset-outside-the-panel
+(deftest the-base-of-record-is-t160-with-the-echo-cut
+  ;; twenty-third note to L1, 26 November 2026: t157-base's command with
+  ;; conflict onsets' year averaging at a five-year half-life (t158) and
+  ;; the year's echo through the quarters cut (:up-net-of-downscale, t159)
+  ;; at banking crises, conflict onsets, coups, violence surges and war
+  ;; onsets (t160); the other eight t157-base's. The earlier notes' pins on
+  ;; those five read not= since.
+  (is (= "t160" lg/base))
+  (is (= "a8efdfe199ead101071d334b15bafb76d561f3245b265c9647e3c5080952e227" (lg/base-files "banking_crisis")) "t159's banking crises")
+  (is (= "0cd01bef5d08f184ef9b47f740fb37f9cbbca08e214f269b789627e4cf4bbbbf" (lg/base-files "conflict_onset")) "t160's conflict onsets")
+  (is (= "b17a80aabf5a01ce0a1c0b4ae3a75312a5e4ed0915f42e323551b50894bd751d" (lg/base-files "coup")) "t159's coups")
+  (is (= "4ad439a5f0ad1e05c3aa4d29836a7d14839d708b1eeaba64d7653f38a38b15ea" (lg/base-files "violence_surge")) "t159's violence surges")
+  (is (= "9c6f24bb523e9ce0743a951fccd5af0d191b9a939ea8e650064a023514ecbd5a" (lg/base-files "war_onset")) "t159's war onsets")
+  (is (= "0013aef32c3b6e35da62abedffdd17bff3ad60ff61d46ce2394f6199adf72b3c" (lg/base-files "inflation_crisis")) "inflation crises t157-base's")
+  (let [args (lg/command "ledger-x" 24323)
+        opt (fn [k] (second (drop-while #(not= k %) args)))
+        ks (read-string (opt "--kind-set"))]
+    (is (not (:up-net-of-downscale (read-string (opt "--set")))) "the cut per kind, not lattice-wide")
+    (is (= #{"banking_crisis" "conflict_onset" "coup" "violence_surge" "war_onset"}
+           (set (keep (fn [[k m]] (when (:up-net-of-downscale m) k)) ks))))
+    (is (= 5 (get-in ks ["conflict_onset" :forget-half-life])))
+    (is (= 10 (get-in ks ["violence_surge" :forget-half-life])))
+    (is (= {:rhos [0.0]} (get-in ks ["banking_crisis" :frailty])))))
+
+(deftest the-base-before-was-t157-with-banking's-offset-outside-the-panel
   ;; twenty-second note to L1, 26 November 2026: t150-base's command with
   ;; banking's theory offset outside the JST panel only (t156, a pass by
   ;; dominance) and inflation crises' year country rows recalibrated by a
   ;; rolling intercept (t157-recal, a pass); the other eleven t150-base's.
   ;; The earlier notes' pins on banking read not= since.
-  (is (= "t157-base" lg/base))
-  (is (= "9f0219af0c38f1d0735e9e221607c1a1e5ae6698ff12a071f0b10957d9eb232a" (lg/base-files "banking_crisis")) "t156's banking crises")
+  (is (str/starts-with? lg/base "t1"))
+  (is (not= "9f0219af0c38f1d0735e9e221607c1a1e5ae6698ff12a071f0b10957d9eb232a" (lg/base-files "banking_crisis")) "t156's banking crises")
   (is (= "0013aef32c3b6e35da62abedffdd17bff3ad60ff61d46ce2394f6199adf72b3c" (lg/base-files "inflation_crisis")) "t157-recal's inflation crises")
-  (is (= "7c9ab7cc0785543cb0ec8c27f58f71e8ed9491c33239a8e5eb4be68d84c8f649" (lg/base-files "conflict_onset")) "conflict onsets t150-base's")
+  (is (not= "7c9ab7cc0785543cb0ec8c27f58f71e8ed9491c33239a8e5eb4be68d84c8f649" (lg/base-files "conflict_onset")) "conflict onsets t150-base's")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (= "true" (opt "--theory-outside-panel")))
@@ -151,9 +175,9 @@
   ;; The earlier notes' pins on kinds other than banking read not= since:
   ;; the calendar replaced every one of them.
   (is (str/starts-with? lg/base "t1"))
-  (is (= "7c9ab7cc0785543cb0ec8c27f58f71e8ed9491c33239a8e5eb4be68d84c8f649" (lg/base-files "conflict_onset")) "t150's conflict onsets")
-  (is (= "678b8a6f7c839cafaf3eb859386393d145d840fb02330f085c818f1de46d2478" (lg/base-files "war_onset")) "t150's war onsets")
-  (is (= "0cf68a981f20cdf1cebc40afb0e37752bd109ce81ee4a22760002737ffeb77c1" (lg/base-files "violence_surge")) "t149's memory with t150's calendar")
+  (is (not= "7c9ab7cc0785543cb0ec8c27f58f71e8ed9491c33239a8e5eb4be68d84c8f649" (lg/base-files "conflict_onset")) "t150's conflict onsets")
+  (is (not= "678b8a6f7c839cafaf3eb859386393d145d840fb02330f085c818f1de46d2478" (lg/base-files "war_onset")) "t150's war onsets")
+  (is (not= "0cf68a981f20cdf1cebc40afb0e37752bd109ce81ee4a22760002737ffeb77c1" (lg/base-files "violence_surge")) "t149's memory with t150's calendar")
   (is (not= "d3bb74dc08a93f37b62cd50587ece6ac5dd524e9349a0817fcdb1b50f6be097b" (lg/base-files "banking_crisis")) "banking unchanged")
   (let [args (lg/command "ledger-x" 24323)
         opt (fn [k] (second (drop-while #(not= k %) args)))]
@@ -169,8 +193,11 @@
         opt (fn [k] (second (drop-while #(not= k %) args)))]
     (is (= "coup,inflation_crisis,currency_crisis" (opt "--theory-decay")))
     (is (nil? (opt "--year-decay")) "t145's level not adopted")
-    (is (= {"banking_crisis" {:frailty {:rhos [0.0]}} "currency_crisis" {:forget-half-life 10} "violence_surge" {:forget-half-life 10}}
-           (read-string (opt "--kind-set"))))))
+    (is (= {"banking_crisis" {:rhos [0.0]} "currency_crisis" 10 "violence_surge" 10}
+           (let [ks (read-string (opt "--kind-set"))]
+             {"banking_crisis" (get-in ks ["banking_crisis" :frailty])
+              "currency_crisis" (get-in ks ["currency_crisis" :forget-half-life])
+              "violence_surge" (get-in ks ["violence_surge" :forget-half-life])})) "kept since; t160 adds the cut")))
 
 (deftest the-base-before-was-t140-with-currency-crises'-decay-and-memory
   ;; nineteenth note to L1, 23 November 2026: t137-base's command with
@@ -340,7 +367,7 @@
     (is (= "true" (opt "--theory-offset")))
     (is (= "true" (opt "--theory-world")))
     (is (= "rows" (opt "--recession-hold")))
-    (is (= {:frailty {:rhos [0.0]}} (get (read-string (opt "--kind-set")) "banking_crisis")) "banking's, with currency crises' memory since t140")
+    (is (= {:rhos [0.0]} (get-in (read-string (opt "--kind-set")) ["banking_crisis" :frailty])) "banking's, with currency crises' memory since t140 and the cut since t160")
     (is (nil? (opt "--clim-prior")) "bnm-56c.26 not adopted")
     (is (= {:learn-offsets :mixture :flow-std-from :resolved :clim-learn :current :frailty {}
             :discount-from :data :flow-std :stable :evidence-at :issue-joint}

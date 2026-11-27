@@ -4634,3 +4634,10 @@ Written 26 November 2026, before the run. Run t160: t158-base's command with `:u
 
 The t158-base build (26 November 2026, 42 minutes): checks held. Conflict onsets match t158 byte for byte; the other twelve kinds match t157-base. The ledger stays at t157-base until t160 reports, since t160 would replace it at once.
 
+Result of t160 (26 November 2026, 43 minutes). **Checks held and conflict onsets pass; t160 is the base of record.**
+
+- Checks: banking crises, coups, violence surges and war onsets match t159 byte for byte; the other seven but conflict onsets match t158-base.
+- Conflict onsets against t158-base: every fold gains, each interval clearing zero (2003-06 +0.00005, 2007-09 +0.00470, 2010-12 +0.00716, 2013-19 +0.01254, 2020-22 +0.01192); pooled Brier +0.00793 [+0.00535, +0.01105], log +0.02983; AUC 0.845 -> 0.902, within-origin 0.859 -> 0.910; alert cost +0.0602 [+0.0295, +0.1008] GAIN. A pass. Against t159 (the cut without the memory): pooled +0.00077 [-0.00038, +0.00200], 2013-19 -0.00096 within noise; the memory adds a little on top of the cut.
+- Pooled alert cost against t158-base +0.0132 [+0.0086, +0.0184] GAIN. Scorecard pooled, kinds equal (t158-base -> t160): AUC 0.721 -> 0.756, within-origin 0.722 -> 0.749, log skill against clim +0.0323 -> +0.0408, against own history +0.0297 -> +0.0381, recall at the top 10% 0.323 -> 0.388. Conflict onsets' log skill against clim +0.0931, above step 2's reference (+0.0649).
+- By the user's decision given before the result, bnm.ledger's base is t160 (twenty-third note to L1). The 26 November review's five steps are done (bnm-7yg).
+
