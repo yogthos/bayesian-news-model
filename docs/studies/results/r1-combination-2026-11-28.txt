@@ -1,0 +1,300 @@
+
+== banking_crisis: rows 2558, onsets 82, groups 27, effective n of models 2.40; flags: selection holds
+   the models, weights and offsets rebuild the lattice's p: correlation 0.9999, mean |diff| 0.00043; rows where t162 issued a recalibrated p: 0
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)         2558 -0.12346 0.02874 0.764 0.751 0.92
+   log pool                2558 -0.13857 0.03075 0.641 0.662 1.03   -0.01511 [-0.02179, -0.00828]  -0.00201
+   median pool             2558 -0.14008 0.03087 0.583 0.654 1.03   -0.01662 [-0.02383, -0.00921]  -0.00213
+   stack                   2558 -0.13011 0.02836 0.684 0.674 1.46   -0.00665 [-0.01177, -0.00204]  +0.00038
+   reference               2558 -0.27076 0.03472 0.592 0.535 0.69   -0.14730 [-0.21504, -0.08104]  -0.00598
+   reference without 0/1   2558 -0.28748 0.07857 0.548 0.602 3.97   -0.16402 [-0.25449, -0.08116]  -0.04983
+   clim                    2558 -0.14611 0.03139 0.512 0.500 1.60   -0.02265 [-0.02965, -0.01545]  -0.00265
+   own                     2558 -0.16135 0.03263 0.542 0.536 1.75   -0.03788 [-0.04778, -0.02860]  -0.00389
+   log pool, no offsets         -0.13855 0.03074 0.641 0.662 1.09   -0.01509 [-0.02156, -0.00847]  -0.00200  (registered form, no flag)
+   median pool, no offsets       -0.14012 0.03087 0.583 0.654 1.08   -0.01666 [-0.02377, -0.00934]  -0.00213  (registered form, no flag)
+   stack, no offsets            -0.13347 0.02923 0.683 0.638 1.58   -0.01001 [-0.01557, -0.00434]  -0.00049  (registered form, no flag)
+   reference, no offsets        -0.28748 0.07857 0.548 0.602 3.97   -0.16402 [-0.25449, -0.08116]  -0.04983  (registered form, no flag)
+   group increments (log, 90%): all -0.00234 [-0.00867, +0.00400]; bank-equity -0.00121 [-0.00491, +0.00237]; base -0.00425 [-0.01011, +0.00161]; booms -0.00353 [-0.01142, +0.00472]; contradiction -0.00142 [-0.00472, +0.00187]; credit-wide -0.00106 [-0.00316, +0.00099]; debt -0.00277 [-0.00853, +0.00257]; distress +0.00413 [+0.00079, +0.00731]; down +0.00015 [-0.00041, +0.00074]; exposure -0.00222 [-0.00809, +0.00332]; external -0.00215 [-0.00471, +0.00054]; feedback -0.00169 [-0.00345, +0.00009]; fiscal -0.00364 [-0.01006, +0.00294]; funding +0.00036 [-0.00373, +0.00452]; history +0.01453 [+0.01012, +0.01868]; household -0.00231 [-0.00846, +0.00389]; inequality -0.00191 [-0.00351, -0.00043]; invariants -0.00242 [-0.00837, +0.00320]; process -0.01397 [-0.02117, -0.00686]; production -0.00239 [-0.00517, +0.00042]; profitability -0.00126 [-0.00341, +0.00093]; sectoral +0.00162 [-0.00446, +0.00745]; stabilizers -0.00222 [-0.00437, -0.00009]; stretches -0.00046 [-0.00254, +0.00165]; turn -0.00072 [-0.00223, +0.00081]; up +0.02365 [+0.01654, +0.03061]; valuation -0.00239 [-0.00525, +0.00037]
+   stack at 2012: largest CV 1.15; top booms 0.90 (cv 0.86), up 0.57 (cv 1.15), exposure 0.24 (cv 0.87)
+   stack at 2022: largest CV 1.19; top up 1.86 (cv 0.19), exposure 0.20 (cv 0.82), booms 0.18 (cv 1.19)
+   2020-22 log: selected -0.01962, stack -0.02349, stack without 2003-06 -0.02151, log pool -0.02894
+   halves at the median share of non-zero inputs: rich 949 rows, poor 1609
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 0/0, reference 0/0, reference without 0/1 0/0, clim 0/0, own 0/0
+   effective n by year: 2003:2.21 2004:3.19 2005:4.85 2006:6.69 2007:7.49 2008:6.18 2009:3.22 2010:1.46 2011:1.21 2012:1.29 2013:1.11 2014:1.06 2015:1.07 2016:1.00 2017:1.00 2018:1.00 2019:1.00 2020:1.00 2021:1.00 2022:1.00
+
+== conflict_onset: rows 3308, onsets 271, groups 19, effective n of models 1.04; flags: combination, target/coverage
+   the models, weights and offsets rebuild the lattice's p: correlation 0.9999, mean |diff| 0.00179; rows where t162 issued a recalibrated p: 0
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)         3308 -0.19150 0.05520 0.902 0.910 0.93
+   log pool                3308 -0.24722 0.06955 0.873 0.889 0.85   -0.05572 [-0.06848, -0.04316]  -0.01435
+   median pool             3308 -0.25360 0.07069 0.846 0.872 0.85   -0.06210 [-0.07573, -0.04876]  -0.01549
+   stack                   3308 -0.16958 0.04685 0.908 0.920 0.84   +0.02192 [+0.01506, +0.02942]  +0.00835  BEATS
+   reference               3308 -0.16025 0.04421 0.920 0.924 1.00   +0.03125 [+0.02308, +0.03891]  +0.01098  BEATS
+   reference without 0/1   3308 -0.16013 0.04424 0.920 0.924 1.02   +0.03137 [+0.02298, +0.03920]  +0.01096  BEATS
+   clim                    3308 -0.28459 0.07537 0.497 0.500 0.85   -0.09309 [-0.11069, -0.07606]  -0.02017
+   own                     3308 -0.22210 0.06466 0.844 0.847 0.91   -0.03060 [-0.04440, -0.01647]  -0.00946
+   log pool, no offsets         -0.24635 0.06926 0.881 0.889 0.89   -0.05484 [-0.06713, -0.04278]  -0.01406  (registered form, no flag)
+   median pool, no offsets       -0.25283 0.07045 0.861 0.872 0.90   -0.06133 [-0.07454, -0.04852]  -0.01525  (registered form, no flag)
+   stack, no offsets            -0.16570 0.04525 0.909 0.922 0.97   +0.02581 [+0.01807, +0.03400]  +0.00995  (registered form, no flag)
+   reference, no offsets        -0.16013 0.04424 0.920 0.924 1.02   +0.03137 [+0.02298, +0.03920]  +0.01096  (registered form, no flag)
+   group increments (log, 90%): all +0.00197 [+0.00113, +0.00291]; base -0.00009 [-0.00098, +0.00067]; contradiction -0.00084 [-0.00148, -0.00021]; demography -0.00158 [-0.00331, +0.00016]; down -0.00169 [-0.00372, +0.00026]; economy -0.00131 [-0.00289, +0.00026]; exposure -0.00084 [-0.00156, -0.00018]; feedback +0.00005 [-0.00049, +0.00057]; fiscal -0.00007 [-0.00063, +0.00045]; history +0.00076 [-0.00266, +0.00410]; inequality +0.00056 [-0.00016, +0.00128]; military -0.00045 [-0.00160, +0.00075]; others -0.00057 [-0.00104, -0.00015]; patronage +0.00014 [-0.00129, +0.00159]; regime +0.00058 [-0.00138, +0.00247]; society -0.00072 [-0.00239, +0.00108]; up +0.01991 [+0.01207, +0.02794]; violence -0.00150 [-0.00364, +0.00078]; world -0.00022 [-0.00190, +0.00140]
+   stack at 2012: largest CV 0.41; top up 2.27 (cv 0.26), history 0.75 (cv 0.10), violence 0.35 (cv 0.41)
+   stack at 2022: largest CV 0.40; top up 3.14 (cv 0.09), history 0.81 (cv 0.09), violence 0.30 (cv 0.40)
+   2020-22 log: selected -0.16231, stack -0.14373, stack without 2003-06 -0.14160, log pool -0.23973
+   halves at the median share of non-zero inputs: rich 1416 rows, poor 1892
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 1/1, reference 1/1, reference without 0/1 1/1, clim 0/0, own 0/0
+   effective n by year: 2003:1.00 2004:1.06 2005:1.18 2006:1.04 2007:1.25 2008:1.23 2009:1.06 2010:1.01 2011:1.00 2012:1.00 2013:1.00 2014:1.00 2015:1.00 2016:1.00 2017:1.00 2018:1.00 2019:1.00 2020:1.00 2021:1.00 2022:1.00
+
+== coup: rows 3481, onsets 157, groups 20, effective n of models 1.00; flags: selection holds
+   the models, weights and offsets rebuild the lattice's p: correlation 1.0000, mean |diff| 0.00046; rows where t162 issued a recalibrated p: 0
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)         3481 -0.14031 0.03686 0.858 0.866 0.89
+   log pool                3481 -0.16125 0.04120 0.791 0.799 1.27   -0.02094 [-0.02545, -0.01676]  -0.00434
+   median pool             3481 -0.16376 0.04159 0.779 0.788 1.29   -0.02345 [-0.02845, -0.01886]  -0.00473
+   stack                   3481 -0.13846 0.03556 0.861 0.876 0.69   +0.00185 [-0.00180, +0.00552]  +0.00130
+   reference               3481 -0.13857 0.03485 0.849 0.876 0.94   +0.00174 [-0.00519, +0.00847]  +0.00201
+   reference without 0/1   3481 -0.13619 0.03460 0.857 0.881 0.91   +0.00412 [-0.00297, +0.01121]  +0.00226
+   clim                    3481 -0.18966 0.04374 0.452 0.500 1.56   -0.04935 [-0.05426, -0.04445]  -0.00688
+   own                     3481 -0.19341 0.04751 0.681 0.685 1.79   -0.05310 [-0.05868, -0.04705]  -0.01065
+   log pool, no offsets         -0.17125 0.04382 0.792 0.799 1.82   -0.03094 [-0.03548, -0.02628]  -0.00696  (registered form, no flag)
+   median pool, no offsets       -0.17440 0.04443 0.780 0.788 1.85   -0.03409 [-0.03899, -0.02912]  -0.00757  (registered form, no flag)
+   stack, no offsets            -0.14482 0.03794 0.855 0.862 0.93   -0.00451 [-0.00614, -0.00290]  -0.00108  (registered form, no flag)
+   reference, no offsets        -0.13619 0.03460 0.857 0.881 0.91   +0.00412 [-0.00297, +0.01121]  +0.00226  (registered form, no flag)
+   group increments (log, 90%): all +0.00007 [-0.00015, +0.00029]; base +0.01161 [+0.00731, +0.01621]; contradiction +0.01023 [+0.00680, +0.01398]; demography +0.01267 [+0.00820, +0.01739]; down +0.01219 [+0.00780, +0.01697]; economy +0.00934 [+0.00572, +0.01338]; exposure +0.00690 [+0.00436, +0.00977]; feedback +0.01079 [+0.00662, +0.01525]; fiscal +0.01158 [+0.00738, +0.01611]; history +0.01032 [+0.00634, +0.01459]; inequality +0.01048 [+0.00633, +0.01483]; military +0.00751 [+0.00390, +0.01145]; others +0.01102 [+0.00699, +0.01540]; patronage +0.00480 [+0.00125, +0.00863]; regime +0.00243 [+0.00096, +0.00412]; society +0.00578 [+0.00315, +0.00875]; turn +0.01128 [+0.00714, +0.01578]; up +0.00049 [+0.00020, +0.00083]; violence +0.00897 [+0.00516, +0.01312]; world +0.01418 [+0.00945, +0.01923]
+   stack at 2012: largest CV 0.67; top up 1.13 (cv 0.17), patronage 0.58 (cv 0.67), all 0.18 (cv 0.56)
+   stack at 2022: largest CV 0.91; top up 1.52 (cv 0.13), patronage 0.31 (cv 0.91), all 0.23 (cv 0.51)
+   2020-22 log: selected -0.20368, stack -0.19116, stack without 2003-06 -0.19128, log pool -0.24670
+   halves at the median share of non-zero inputs: rich 1468 rows, poor 2013
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 0/0, reference 0/0, reference without 0/1 0/0, clim 0/0, own 0/0
+   effective n by year: 2003:1.01 2004:1.01 2005:1.00 2006:1.00 2007:1.00 2008:1.00 2009:1.00 2010:1.00 2011:1.00 2012:1.00 2013:1.00 2014:1.00 2015:1.00 2016:1.00 2017:1.00 2018:1.00 2019:1.00 2020:1.00 2021:1.00 2022:1.00
+
+== currency_crisis: rows 3149, onsets 117, groups 19, effective n of models 1.87; flags: target/coverage
+   the models, weights and offsets rebuild the lattice's p: correlation 1.0000, mean |diff| 0.00061; rows where t162 issued a recalibrated p: 0
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)         3149 -0.14213 0.03402 0.770 0.756 1.31
+   log pool                3149 -0.14247 0.03398 0.761 0.749 1.26   -0.00034 [-0.00145, +0.00073]  +0.00004
+   median pool             3149 -0.14287 0.03403 0.757 0.746 1.25   -0.00074 [-0.00225, +0.00072]  -0.00001
+   stack                   3149 -0.14272 0.03412 0.764 0.767 1.27   -0.00059 [-0.00195, +0.00071]  -0.00010
+   reference               3149 -0.14459 0.03421 0.735 0.739 0.99   -0.00247 [-0.00676, +0.00218]  -0.00018
+   reference without 0/1   3149 -0.14785 0.03490 0.718 0.775 1.17   -0.00572 [-0.01446, +0.00305]  -0.00088
+   clim                    3149 -0.16818 0.03680 0.401 0.500 1.80   -0.02606 [-0.03456, -0.01779]  -0.00277
+   own                     3149 -0.15053 0.03649 0.786 0.799 1.92   -0.00840 [-0.02062, +0.00347]  -0.00247
+   log pool, no offsets         -0.14640 0.03478 0.768 0.749 1.62   -0.00427 [-0.00944, +0.00017]  -0.00076  (registered form, no flag)
+   median pool, no offsets       -0.14672 0.03484 0.764 0.746 1.61   -0.00460 [-0.00967, -0.00029]  -0.00082  (registered form, no flag)
+   stack, no offsets            -0.16359 0.03634 0.740 0.781 2.08   -0.02146 [-0.02834, -0.01480]  -0.00232  (registered form, no flag)
+   reference, no offsets        -0.14785 0.03490 0.718 0.775 1.17   -0.00572 [-0.01446, +0.00305]  -0.00088  (registered form, no flag)
+   group increments (log, 90%): all -0.00214 [-0.00357, -0.00073]; base -0.00025 [-0.00054, +0.00007]; contradiction +0.00072 [+0.00031, +0.00112]; demography +0.00016 [-0.00014, +0.00048]; down -0.00272 [-0.00376, -0.00169]; economy -0.00019 [-0.00032, -0.00008]; exposure -0.00037 [-0.00071, -0.00008]; feedback -0.00002 [-0.00007, +0.00003]; fiscal -0.00018 [-0.00038, +0.00004]; history -0.00106 [-0.00139, -0.00071]; inequality -0.00004 [-0.00060, +0.00056]; military -0.00010 [-0.00018, -0.00003]; others -0.00027 [-0.00057, +0.00003]; patronage +0.00059 [+0.00021, +0.00097]; regime +0.00295 [+0.00174, +0.00410]; society +0.00005 [-0.00043, +0.00054]; up +0.00080 [+0.00055, +0.00105]; violence +0.00141 [+0.00033, +0.00250]; world -0.00008 [-0.00065, +0.00047]
+   stack at 2012: largest CV 0.95; top contradiction 0.86 (cv 0.20), regime 0.27 (cv 0.59), violence 0.19 (cv 0.95)
+   stack at 2022: largest CV 1.04; top contradiction 0.84 (cv 0.20), regime 0.44 (cv 0.44), violence 0.16 (cv 1.04)
+   2020-22 log: selected -0.15770, stack -0.16309, stack without 2003-06 -0.16230, log pool -0.16052
+   halves at the median share of non-zero inputs: rich 1430 rows, poor 1719
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 1/0, reference 1/0, reference without 0/1 0/0, clim 0/0, own 0/0
+   effective n by year: 2003:1.50 2004:1.32 2005:1.11 2006:1.09 2007:1.13 2008:1.21 2009:1.29 2010:1.39 2011:1.40 2012:1.59 2013:1.57 2014:1.86 2015:2.80 2016:2.65 2017:4.52 2018:2.47 2019:2.55 2020:2.31 2021:2.03 2022:1.62
+
+== fiscal_consolidation: rows 2944, onsets 801, groups 19, effective n of models 1.00; flags: selection holds
+   the models, weights and offsets rebuild the lattice's p: correlation 1.0000, mean |diff| 0.00026; rows where t162 issued a recalibrated p: 0
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)         2944 -0.56243 0.18831 0.642 0.632 0.99
+   log pool                2944 -0.56412 0.18899 0.641 0.636 1.08   -0.00168 [-0.00711, +0.00370]  -0.00068
+   median pool             2944 -0.56534 0.18949 0.637 0.635 1.08   -0.00290 [-0.00810, +0.00208]  -0.00118
+   stack                   2944 -0.56297 0.18855 0.641 0.635 1.07   -0.00053 [-0.00481, +0.00326]  -0.00024
+   reference               2944 -0.56767 0.18974 0.640 0.617 0.94   -0.00523 [-0.01439, +0.00426]  -0.00143
+   reference without 0/1   2944 -0.57955 0.19553 0.596 0.549 0.94   -0.01711 [-0.02757, -0.00585]  -0.00722
+   clim                    2944 -0.59820 0.20255 0.581 0.500 0.74   -0.03577 [-0.05006, -0.02074]  -0.01425
+   own                     2944 -0.60244 0.20092 0.565 0.571 0.89   -0.04001 [-0.05677, -0.02337]  -0.01261
+   log pool, no offsets         -0.58751 0.19903 0.639 0.636 1.34   -0.02507 [-0.04731, -0.00284]  -0.01072  (registered form, no flag)
+   median pool, no offsets       -0.58918 0.19977 0.635 0.635 1.34   -0.02674 [-0.04887, -0.00470]  -0.01146  (registered form, no flag)
+   stack, no offsets            -0.57362 0.19295 0.616 0.632 1.11   -0.01119 [-0.02272, -0.00031]  -0.00464  (registered form, no flag)
+   reference, no offsets        -0.57955 0.19553 0.596 0.549 0.94   -0.01711 [-0.02757, -0.00585]  -0.00722  (registered form, no flag)
+   group increments (log, 90%): all -0.00033 [-0.00090, +0.00014]; base -0.00033 [-0.00069, -0.00001]; contradiction +0.00135 [-0.00012, +0.00286]; demography -0.00103 [-0.00231, +0.00013]; down -0.00216 [-0.00439, -0.00034]; economy -0.00019 [-0.00088, +0.00042]; exposure +0.00037 [-0.00021, +0.00100]; feedback +0.00011 [-0.00039, +0.00056]; fiscal -0.00038 [-0.00077, -0.00005]; history -0.00030 [-0.00072, +0.00006]; inequality -0.00034 [-0.00076, +0.00003]; military -0.00038 [-0.00119, +0.00039]; others -0.00032 [-0.00092, +0.00021]; patronage -0.00038 [-0.00070, -0.00012]; regime -0.00047 [-0.00094, -0.00002]; society -0.00026 [-0.00056, -0.00000]; up -0.00022 [-0.00052, +0.00006]; violence -0.00019 [-0.00038, -0.00003]; world -0.00045 [-0.00084, -0.00010]
+   stack at 2012: largest CV 1.37; top up 0.35 (cv 0.60), contradiction 0.34 (cv 0.61), military 0.14 (cv 1.37)
+   stack at 2022: largest CV 1.13; top contradiction 0.47 (cv 0.41), up 0.40 (cv 0.60), military 0.23 (cv 1.13)
+   2020-22 log: selected -0.70753, stack -0.70088, stack without 2003-06 -0.70047, log pool -0.70280
+   halves at the median share of non-zero inputs: rich 1207 rows, poor 1737
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 0/0, reference 0/0, reference without 0/1 0/0, clim 0/0, own 0/0
+   effective n by year: 2003:1.00 2004:1.00 2005:1.00 2006:1.00 2007:1.00 2008:1.00 2009:1.00 2010:1.00 2011:1.00 2012:1.00 2013:1.00 2014:1.00 2015:1.00 2016:1.00 2017:1.00 2018:1.00 2019:1.00 2020:1.00 2021:1.00 2022:1.00
+
+== food_price_shock: rows 2913, onsets 450, groups 20, effective n of models 4.78; flags: selection holds
+   the models, weights and offsets rebuild the lattice's p: correlation 0.9872, mean |diff| 0.01982; rows where t162 issued a recalibrated p: 0
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)         2913 -0.45836 0.14467 0.639 0.591 1.47
+   log pool                2913 -0.45327 0.14475 0.637 0.600 1.38   +0.00509 [-0.00972, +0.02113]  -0.00008
+   median pool             2913 -0.45341 0.14434 0.630 0.577 1.35   +0.00495 [-0.01103, +0.02189]  +0.00032
+   stack                   2301 -0.48343 0.13726 0.674 0.624 0.65   -0.08161 [-0.14048, -0.02321]  -0.01769
+   reference               2301 -0.45969 0.12547 0.665 0.601 0.53   -0.05787 [-0.11421, -0.00569]  -0.00589
+   reference without 0/1   2301 -0.53079 0.15340 0.557 0.606 1.19   -0.12898 [-0.20326, -0.05547]  -0.03382
+   clim                    2913 -0.48311 0.15237 0.439 0.500 1.48   -0.02475 [-0.04444, -0.00503]  -0.00770
+   own                     2913 -0.49516 0.15536 0.574 0.588 1.49   -0.03679 [-0.06594, -0.00800]  -0.01069
+   latest                  2301 -0.42762 0.12606 0.406 0.573 1.09   -0.02581 [-0.05110, +0.00074]  -0.00649
+   log pool, no offsets         -0.47715 0.15011 0.547 0.600 1.46   -0.01878 [-0.03457, -0.00457]  -0.00545  (registered form, no flag)
+   median pool, no offsets       -0.47716 0.14964 0.525 0.577 1.43   -0.01880 [-0.03494, -0.00373]  -0.00497  (registered form, no flag)
+   stack, no offsets            -0.45489 0.12602 0.551 0.629 0.56   -0.05308 [-0.13449, +0.01866]  -0.00645  (registered form, no flag)
+   reference, no offsets        -0.53079 0.15340 0.557 0.606 1.19   -0.12898 [-0.20326, -0.05547]  -0.03382  (registered form, no flag)
+   group increments (log, 90%): all -0.02176 [-0.06338, +0.01431]; base -0.00026 [-0.01353, +0.01607]; contradiction -0.00641 [-0.01167, -0.00156]; demography -0.00396 [-0.01306, +0.00759]; down +0.00172 [-0.01549, +0.01950]; economy +0.00167 [-0.00679, +0.01074]; exposure -0.03720 [-0.10040, -0.00122]; feedback -0.00608 [-0.01110, -0.00164]; fiscal -0.00184 [-0.01213, +0.00953]; history +0.00145 [-0.01277, +0.01767]; inequality -0.00140 [-0.01053, +0.00868]; leading -0.02399 [-0.05338, +0.00997]; military -0.00175 [-0.01237, +0.00978]; others -0.00203 [-0.01142, +0.00799]; patronage -0.00220 [-0.01218, +0.00981]; regime +0.00059 [-0.00965, +0.01241]; society +0.00098 [-0.00924, +0.01256]; up -0.00844 [-0.01311, -0.00387]; violence -0.00173 [-0.01256, +0.01057]; world -0.02912 [-0.05933, -0.00422]
+   stack at 2012: largest CV 0.88; top leading 1.38 (cv 0.46), history 0.44 (cv 0.88), base 0.44 (cv 0.88)
+   stack at 2022: largest CV 0.52; top down 1.32 (cv 0.36), violence 0.45 (cv 0.52), all 0.28 (cv 0.51)
+   2020-22 log: selected -0.92792, stack -1.07584, stack without 2003-06 -1.01588, log pool -0.88085
+   halves at the median share of non-zero inputs: rich 1076 rows, poor 1837
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 0/0, reference 0/0, reference without 0/1 0/0, clim 0/0, own 0/0, latest 0/0
+   effective n by year: 2003:2.00 2004:3.00 2005:13.00 2006:14.00 2007:14.00 2008:18.39 2009:12.47 2010:1.05 2011:1.01 2012:1.05 2013:1.02 2014:1.02 2015:1.71 2016:1.51 2017:1.97 2018:1.92 2019:2.36 2020:2.00 2021:1.02 2022:1.01
+
+== growth_collapse: rows 2864, onsets 339, groups 21, effective n of models 1.68; flags: combination, estimation
+   the models, weights and offsets rebuild the lattice's p: correlation 0.9842, mean |diff| 0.00382; rows where t162 issued a recalibrated p: 0
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)         2864 -0.34658 0.09892 0.643 0.609 0.81
+   log pool                2864 -0.34181 0.09846 0.665 0.562 0.79   +0.00477 [+0.00024, +0.00976]  +0.00045  BEATS
+   median pool             2864 -0.34314 0.09874 0.662 0.521 0.77   +0.00344 [-0.00086, +0.00777]  +0.00018
+   stack                   2864 -0.37470 0.10363 0.596 0.584 0.59   -0.02812 [-0.05461, -0.00443]  -0.00471
+   reference               2864 -0.38704 0.10519 0.694 0.575 0.49   -0.04046 [-0.07702, -0.00847]  -0.00627
+   reference without 0/1   2864 -0.42153 0.11056 0.582 0.578 0.52   -0.07495 [-0.16580, -0.00416]  -0.01165
+   clim                    2864 -0.38876 0.10790 0.452 0.500 0.50   -0.04218 [-0.12267, +0.01315]  -0.00898
+   own                     2864 -0.42419 0.10978 0.502 0.515 0.53   -0.07761 [-0.17096, -0.01392]  -0.01086
+   log pool, no offsets         -0.36741 0.10529 0.476 0.562 1.20   -0.02083 [-0.06788, +0.03581]  -0.00637  (registered form, no flag)
+   median pool, no offsets       -0.36640 0.10501 0.477 0.521 1.17   -0.01982 [-0.06623, +0.03490]  -0.00610  (registered form, no flag)
+   stack, no offsets            -0.37998 0.10696 0.322 0.487 0.67   -0.03340 [-0.09886, +0.01450]  -0.00804  (registered form, no flag)
+   reference, no offsets        -0.42153 0.11056 0.582 0.578 0.52   -0.07495 [-0.16580, -0.00416]  -0.01165  (registered form, no flag)
+   group increments (log, 90%): aftermath -0.00639 [-0.01034, -0.00276]; all -0.00071 [-0.00377, +0.00225]; base -0.00242 [-0.00519, -0.00006]; contradiction -0.00049 [-0.00191, +0.00092]; demography +0.00071 [-0.00071, +0.00214]; down +0.00006 [-0.00866, +0.00884]; economy +0.00775 [+0.00335, +0.01285]; exposure -0.00334 [-0.00813, +0.00060]; feedback -0.00691 [-0.01395, -0.00137]; fiscal -0.00216 [-0.00445, -0.00013]; history -0.00263 [-0.00423, -0.00119]; inequality -0.00371 [-0.00725, -0.00075]; military -0.00292 [-0.00534, -0.00075]; others -0.00107 [-0.00309, +0.00055]; patronage -0.00284 [-0.00751, +0.00101]; regime -0.00564 [-0.01067, -0.00147]; society -0.00373 [-0.00886, +0.00042]; up -0.00083 [-0.00375, +0.00207]; violence -0.00599 [-0.01224, -0.00110]; world -0.00467 [-0.00790, -0.00181]
+   stack at 2012: largest CV 0.71; top economy 1.38 (cv 0.26), down 0.80 (cv 0.64), contradiction 0.30 (cv 0.71)
+   stack at 2022: largest CV 1.17; top economy 0.76 (cv 0.36), down 0.69 (cv 0.79), contradiction 0.03 (cv 1.17)
+   2020-22 log: selected -0.25492, stack -0.23154, stack without 2003-06 -0.23617, log pool -0.26394
+   halves at the median share of non-zero inputs: rich 1195 rows, poor 1669
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 0/0, reference 0/0, reference without 0/1 0/0, clim 0/0, own 0/0
+   effective n by year: 2003:2.87 2004:1.67 2005:1.78 2006:2.42 2007:2.87 2008:3.29 2009:3.73 2010:2.60 2011:1.04 2012:1.00 2013:1.00 2014:1.00 2015:1.00 2016:1.00 2017:1.01 2018:1.02 2019:1.03 2020:1.08 2021:1.11 2022:1.00
+
+== inflation_crisis: rows 3182, onsets 39, groups 19, effective n of models 1.65; flags: selection holds
+   the models, weights and offsets rebuild the lattice's p: correlation 0.9999, mean |diff| 0.00016; rows where t162 issued a recalibrated p: 3182
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)         3182 -0.06051 0.01154 0.738 0.828 0.76
+   log pool                3182 -0.05941 0.01183 0.832 0.849 0.39   +0.00110 [-0.00170, +0.00369]  -0.00029
+   median pool             3182 -0.06062 0.01186 0.830 0.849 0.32   -0.00011 [-0.00280, +0.00238]  -0.00033
+   stack                   3182 -0.05721 0.01168 0.811 0.844 0.89   +0.00330 [+0.00041, +0.00621]  -0.00014
+   reference               3182 -0.30402 0.08234 0.691 0.811 8.09   -0.24350 [-0.57151, -0.01169]  -0.07081
+   reference without 0/1   3182 -0.22481 0.06563 0.703 0.806 6.93   -0.16430 [-0.37898, -0.01014]  -0.05410
+   clim                    3182 -0.07236 0.01239 0.394 0.500 2.27   -0.01185 [-0.01648, -0.00732]  -0.00085
+   own                     3182 -0.07480 0.01454 0.726 0.746 2.50   -0.01429 [-0.02021, -0.00837]  -0.00301
+   log pool, no offsets         -0.06434 0.01201 0.837 0.849 0.24   -0.00383 [-0.00798, +0.00010]  -0.00047  (registered form, no flag)
+   median pool, no offsets       -0.06590 0.01203 0.844 0.849 0.19   -0.00539 [-0.00953, -0.00146]  -0.00050  (registered form, no flag)
+   stack, no offsets            -0.06490 0.01238 0.761 0.841 2.00   -0.00439 [-0.01168, +0.00202]  -0.00084  (registered form, no flag)
+   reference, no offsets        -0.22481 0.06563 0.703 0.806 6.93   -0.16430 [-0.37898, -0.01014]  -0.05410  (registered form, no flag)
+   group increments (log, 90%): all +0.00238 [+0.00140, +0.00346]; base +0.00030 [-0.00010, +0.00064]; contradiction +0.00119 [+0.00063, +0.00188]; demography +0.00053 [-0.00010, +0.00115]; down -0.00149 [-0.00238, -0.00045]; economy +0.00071 [-0.00020, +0.00153]; exposure -0.00032 [-0.00053, -0.00011]; feedback +0.00015 [-0.00008, +0.00034]; fiscal +0.00024 [-0.00009, +0.00054]; history +0.00062 [+0.00013, +0.00105]; inequality +0.00129 [+0.00050, +0.00206]; military +0.00093 [+0.00036, +0.00145]; others +0.00030 [-0.00004, +0.00060]; patronage +0.00118 [+0.00044, +0.00183]; regime +0.00134 [+0.00056, +0.00205]; society +0.00092 [+0.00031, +0.00146]; up +0.00067 [+0.00027, +0.00106]; violence +0.00096 [+0.00037, +0.00147]; world +0.00083 [+0.00040, +0.00128]
+   stack at 2012: largest CV 0.64; top all 0.15 (cv 0.64)
+   stack at 2022: largest CV 0.93; top all 0.15 (cv 0.93)
+   2020-22 log: selected -0.07681, stack -0.08259, stack without 2003-06 -0.08216, log pool -0.08873
+   halves at the median share of non-zero inputs: rich 1482 rows, poor 1700
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 0/0, reference 0/0, reference without 0/1 0/0, clim 0/0, own 0/0
+   effective n by year: 2003:1.00 2004:1.00 2005:1.00 2006:1.00 2007:1.00 2008:1.00 2009:1.01 2010:1.01 2011:1.02 2012:1.01 2013:1.01 2014:1.03 2015:1.11 2016:1.69 2017:2.72 2018:3.30 2019:3.54 2020:3.12 2021:2.68 2022:2.80
+
+== market_crash: rows 798, onsets 142, groups 20, effective n of models 1.34; flags: selection holds
+   the models, weights and offsets rebuild the lattice's p: correlation 1.0000, mean |diff| 0.00176; rows where t162 issued a recalibrated p: 0
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)          798 -0.41751 0.12590 0.743 0.538 1.52
+   log pool                 798 -0.43277 0.13176 0.739 0.487 1.50   -0.01527 [-0.03587, +0.00238]  -0.00586
+   median pool              798 -0.43317 0.13218 0.745 0.512 1.51   -0.01566 [-0.03753, +0.00268]  -0.00628
+   stack                    798 -0.43918 0.13410 0.731 0.521 1.54   -0.02168 [-0.04208, -0.00370]  -0.00820
+   reference                798 -0.50647 0.14132 0.695 0.367 1.56   -0.08897 [-0.16544, -0.02119]  -0.01542
+   reference without 0/1    798 -0.59080 0.18423 0.629 0.421 1.84   -0.17330 [-0.27613, -0.06875]  -0.05832
+   clim                     798 -0.50236 0.15924 0.433 0.500 1.59   -0.08486 [-0.18865, +0.00071]  -0.03334
+   own                      798 -0.52638 0.17087 0.530 0.633 1.72   -0.10888 [-0.21062, -0.02618]  -0.04497
+   log pool, no offsets         -0.52348 0.16330 0.560 0.487 1.62   -0.10597 [-0.18548, -0.03797]  -0.03740  (registered form, no flag)
+   median pool, no offsets       -0.52470 0.16396 0.560 0.512 1.63   -0.10720 [-0.18443, -0.03997]  -0.03806  (registered form, no flag)
+   stack, no offsets            -0.51204 0.16345 0.356 0.511 1.59   -0.09454 [-0.20329, -0.00832]  -0.03754  (registered form, no flag)
+   reference, no offsets        -0.59080 0.18423 0.629 0.421 1.84   -0.17330 [-0.27613, -0.06875]  -0.05832  (registered form, no flag)
+   group increments (log, 90%): all -0.00394 [-0.01698, +0.00617]; base -0.02120 [-0.04455, +0.00626]; contradiction -0.00883 [-0.01633, -0.00079]; demography -0.01494 [-0.02556, -0.00393]; down -0.02254 [-0.04141, -0.00382]; economy -0.00792 [-0.01725, +0.00399]; exposure +0.01234 [+0.00623, +0.01833]; feedback -0.01381 [-0.02450, -0.00338]; fiscal -0.01537 [-0.04242, +0.01683]; history -0.00497 [-0.01213, +0.00344]; inequality -0.01722 [-0.03504, +0.00325]; military -0.01097 [-0.02369, +0.00106]; others -0.01249 [-0.02639, +0.00273]; patronage -0.01888 [-0.03869, +0.00459]; regime -0.01513 [-0.02888, -0.00016]; society -0.01494 [-0.02911, +0.00167]; up +0.00652 [+0.00001, +0.01317]; violence -0.00961 [-0.01693, -0.00177]; world -0.03729 [-0.08078, +0.00789]
+   stack at 2012: largest CV 1.66; top fiscal 0.26 (cv 1.37), military 0.08 (cv 1.23), down 0.01 (cv 1.66)
+   stack at 2022: largest CV 1.08; top military 0.39 (cv 0.65), fiscal 0.33 (cv 1.08), up 0.29 (cv 0.92)
+   2020-22 log: selected -0.39680, stack -0.39716, stack without 2003-06 -0.41085, log pool -0.42218
+   halves at the median share of non-zero inputs: rich 0 rows, poor 798
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 0/0, reference 0/0, reference without 0/1 0/0, clim 0/0, own 0/0
+   effective n by year: 2003:2.85 2004:1.99 2005:1.74 2006:1.22 2007:1.22 2008:1.29 2009:1.10 2010:1.07 2011:1.10 2012:1.08 2013:1.22 2014:1.33 2015:1.35 2016:1.35 2017:1.31 2018:1.23 2019:1.18 2020:1.10 2021:1.06 2022:1.05
+
+== protest_surge: rows 3411, onsets 104, groups 19, effective n of models 1.02; flags: selection holds
+   the models, weights and offsets rebuild the lattice's p: correlation 1.0000, mean |diff| 0.00034; rows where t162 issued a recalibrated p: 0
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)         3411 -0.11256 0.02618 0.785 0.828 1.30
+   log pool                3411 -0.12664 0.02882 0.816 0.844 1.05   -0.01408 [-0.02004, -0.00777]  -0.00263
+   median pool             3411 -0.13240 0.02929 0.756 0.815 1.05   -0.01983 [-0.02692, -0.01258]  -0.00311
+   stack                   3411 -0.11837 0.02699 0.804 0.828 0.67   -0.00581 [-0.01362, +0.00165]  -0.00081
+   reference               3411 -0.12210 0.02959 0.800 0.816 1.16   -0.00954 [-0.01501, -0.00418]  -0.00341
+   reference without 0/1   3411 -0.12772 0.03147 0.792 0.813 1.64   -0.01516 [-0.02125, -0.01001]  -0.00529
+   clim                    3411 -0.13793 0.02967 0.527 0.500 1.35   -0.02537 [-0.03254, -0.01776]  -0.00348
+   own                     3411 -0.11236 0.02666 0.821 0.815 1.33   +0.00021 [-0.00254, +0.00291]  -0.00047
+   log pool, no offsets         -0.12645 0.02879 0.823 0.844 1.07   -0.01389 [-0.01980, -0.00764]  -0.00260  (registered form, no flag)
+   median pool, no offsets       -0.13227 0.02928 0.766 0.815 1.06   -0.01970 [-0.02676, -0.01252]  -0.00309  (registered form, no flag)
+   stack, no offsets            -0.11558 0.02776 0.822 0.831 0.81   -0.00301 [-0.00762, +0.00164]  -0.00158  (registered form, no flag)
+   reference, no offsets        -0.12772 0.03147 0.792 0.813 1.64   -0.01516 [-0.02125, -0.01001]  -0.00529  (registered form, no flag)
+   group increments (log, 90%): all +0.00277 [+0.00116, +0.00461]; base +0.00733 [+0.00426, +0.01034]; contradiction +0.00210 [+0.00148, +0.00273]; demography +0.00625 [+0.00325, +0.00907]; down +0.00508 [+0.00262, +0.00740]; economy +0.00578 [+0.00301, +0.00832]; exposure +0.00375 [+0.00276, +0.00478]; feedback +0.00584 [+0.00284, +0.00857]; fiscal +0.00722 [+0.00430, +0.01008]; history +0.00126 [+0.00089, +0.00165]; inequality +0.00683 [+0.00405, +0.00959]; military +0.00489 [+0.00267, +0.00700]; others +0.00218 [+0.00008, +0.00425]; patronage +0.00665 [+0.00380, +0.00940]; regime +0.00387 [+0.00171, +0.00588]; society +0.00270 [+0.00041, +0.00479]; up +0.00009 [-0.00188, +0.00192]; violence +0.00382 [+0.00091, +0.00637]; world +0.00772 [+0.00437, +0.01102]
+   stack at 2012: largest CV 0.56; top history 0.79 (cv 0.29), contradiction 0.38 (cv 0.56), all 0.35 (cv 0.45)
+   stack at 2022: largest CV 0.94; top history 0.76 (cv 0.29), all 0.35 (cv 0.45), contradiction 0.23 (cv 0.94)
+   2020-22 log: selected -0.11274, stack -0.12142, stack without 2003-06 -0.12144, log pool -0.13058
+   halves at the median share of non-zero inputs: rich 1466 rows, poor 1945
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 0/0, reference 0/0, reference without 0/1 0/0, clim 0/0, own 0/0
+   effective n by year: 2003:1.01 2004:1.00 2005:1.00 2006:1.00 2007:1.00 2008:1.00 2009:1.00 2010:1.00 2011:1.00 2012:1.02 2013:1.36 2014:1.07 2015:1.01 2016:1.00 2017:1.00 2018:1.00 2019:1.00 2020:1.00 2021:1.00 2022:1.00
+
+== sovereign_default: rows 3217, onsets 101, groups 19, effective n of models 1.14; flags: target/coverage
+   the models, weights and offsets rebuild the lattice's p: correlation 1.0000, mean |diff| 0.00032; rows where t162 issued a recalibrated p: 0
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)         3217 -0.13931 0.03067 0.641 0.680 1.54
+   log pool                3217 -0.13976 0.03060 0.647 0.675 1.54   -0.00045 [-0.00318, +0.00240]  +0.00007
+   median pool             3217 -0.14006 0.03059 0.635 0.647 1.51   -0.00075 [-0.00346, +0.00204]  +0.00008
+   stack                   3217 -0.14031 0.03064 0.579 0.675 1.22   -0.00100 [-0.00423, +0.00190]  +0.00003
+   reference               3217 -0.15483 0.03178 0.499 0.597 1.12   -0.01551 [-0.02661, -0.00559]  -0.00111
+   reference without 0/1   3217 -0.16226 0.03280 0.451 0.569 1.21   -0.02295 [-0.03552, -0.01131]  -0.00213
+   clim                    3217 -0.14228 0.03062 0.315 0.500 1.38   -0.00296 [-0.00610, +0.00028]  +0.00005
+   own                     3217 -0.15139 0.03147 0.578 0.620 1.29   -0.01207 [-0.02212, -0.00196]  -0.00080
+   log pool, no offsets         -0.14172 0.03088 0.652 0.675 1.70   -0.00241 [-0.00584, +0.00129]  -0.00021  (registered form, no flag)
+   median pool, no offsets       -0.14191 0.03085 0.640 0.647 1.67   -0.00259 [-0.00594, +0.00093]  -0.00018  (registered form, no flag)
+   stack, no offsets            -0.14305 0.03093 0.562 0.670 1.52   -0.00374 [-0.00530, -0.00213]  -0.00026  (registered form, no flag)
+   reference, no offsets        -0.16226 0.03280 0.451 0.569 1.21   -0.02295 [-0.03552, -0.01131]  -0.00213  (registered form, no flag)
+   group increments (log, 90%): all -0.00271 [-0.00483, -0.00056]; base -0.00005 [-0.00012, +0.00000]; contradiction +0.00014 [-0.00131, +0.00149]; demography -0.00079 [-0.00221, +0.00060]; down -0.00161 [-0.00228, -0.00100]; economy -0.00017 [-0.00070, +0.00031]; exposure -0.00069 [-0.00105, -0.00033]; feedback +0.00137 [-0.00028, +0.00289]; fiscal -0.00011 [-0.00016, -0.00006]; history +0.00221 [+0.00035, +0.00394]; inequality +0.00033 [-0.00074, +0.00136]; military +0.00016 [-0.00040, +0.00068]; others +0.00044 [-0.00016, +0.00104]; patronage +0.00055 [-0.00091, +0.00200]; regime -0.00275 [-0.00534, +0.00001]; society +0.00033 [+0.00002, +0.00063]; up -0.00004 [-0.00008, -0.00000]; violence +0.00026 [-0.00052, +0.00103]; world -0.00009 [-0.00013, -0.00004]
+   stack at 2012: largest CV 0.80; top history 0.37 (cv 0.55), contradiction 0.30 (cv 0.74), feedback 0.25 (cv 0.80)
+   stack at 2022: largest CV 0.70; top history 0.44 (cv 0.39), feedback 0.34 (cv 0.51), contradiction 0.30 (cv 0.70)
+   2020-22 log: selected -0.22503, stack -0.23453, stack without 2003-06 -0.23165, log pool -0.22473
+   halves at the median share of non-zero inputs: rich 1381 rows, poor 1836
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 0/1, reference 0/0, reference without 0/1 0/0, clim 0/0, own 0/0
+   effective n by year: 2003:1.04 2004:1.17 2005:1.41 2006:1.99 2007:1.63 2008:1.10 2009:1.09 2010:1.08 2011:1.04 2012:1.03 2013:1.02 2014:1.02 2015:1.01 2016:1.01 2017:1.01 2018:1.01 2019:1.00 2020:1.01 2021:1.01
+
+== violence_surge: rows 3387, onsets 271, groups 19, effective n of models 1.09; flags: selection holds
+   the models, weights and offsets rebuild the lattice's p: correlation 0.9992, mean |diff| 0.00433; rows where t162 issued a recalibrated p: 0
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)         3387 -0.22726 0.06445 0.833 0.836 1.15
+   log pool                3387 -0.26278 0.07084 0.723 0.792 1.13   -0.03551 [-0.04239, -0.02849]  -0.00638
+   median pool             3387 -0.26936 0.07200 0.670 0.723 1.16   -0.04210 [-0.04917, -0.03481]  -0.00754
+   stack                   3387 -0.22705 0.06506 0.840 0.848 0.66   +0.00022 [-0.00856, +0.00894]  -0.00061
+   reference               3387 -0.22797 0.06490 0.824 0.829 1.04   -0.00071 [-0.00326, +0.00152]  -0.00045
+   reference without 0/1   3387 -0.23086 0.06566 0.816 0.829 1.12   -0.00360 [-0.00733, -0.00019]  -0.00121
+   clim                    3387 -0.30675 0.08001 0.591 0.500 2.04   -0.07949 [-0.08638, -0.07236]  -0.01556
+   own                     3387 -0.28927 0.08106 0.739 0.733 2.09   -0.06201 [-0.07194, -0.05158]  -0.01661
+   log pool, no offsets         -0.27348 0.07218 0.790 0.792 1.59   -0.04622 [-0.05174, -0.04049]  -0.00773  (registered form, no flag)
+   median pool, no offsets       -0.28126 0.07393 0.718 0.723 1.63   -0.05400 [-0.05980, -0.04811]  -0.00947  (registered form, no flag)
+   stack, no offsets            -0.23311 0.06533 0.842 0.842 1.04   -0.00584 [-0.01012, -0.00161]  -0.00088  (registered form, no flag)
+   reference, no offsets        -0.23086 0.06566 0.816 0.829 1.12   -0.00360 [-0.00733, -0.00019]  -0.00121  (registered form, no flag)
+   group increments (log, 90%): all -0.00145 [-0.00178, -0.00113]; base +0.00606 [+0.00157, +0.01047]; contradiction -0.00069 [-0.00157, +0.00011]; demography +0.00608 [+0.00231, +0.00983]; down +0.00507 [+0.00211, +0.00796]; economy +0.00479 [+0.00129, +0.00822]; exposure +0.00340 [+0.00137, +0.00538]; feedback +0.00598 [+0.00362, +0.00830]; fiscal +0.00605 [+0.00156, +0.01051]; history -0.00970 [-0.01546, -0.00466]; inequality +0.00534 [+0.00095, +0.00963]; military +0.00338 [+0.00112, +0.00561]; others +0.00245 [+0.00100, +0.00393]; patronage +0.00301 [+0.00129, +0.00465]; regime +0.00287 [+0.00135, +0.00436]; society +0.00320 [+0.00164, +0.00483]; up +0.00145 [+0.00006, +0.00287]; violence -0.00112 [-0.00277, +0.00037]; world +0.00547 [+0.00149, +0.00940]
+   stack at 2012: largest CV 0.98; top up 0.94 (cv 0.17), world 0.85 (cv 0.98), history 0.81 (cv 0.18)
+   stack at 2022: largest CV 0.47; top up 1.16 (cv 0.15), history 0.75 (cv 0.16), violence 0.33 (cv 0.47)
+   2020-22 log: selected -0.16476, stack -0.17293, stack without 2003-06 -0.16766, log pool -0.21731
+   halves at the median share of non-zero inputs: rich 688 rows, poor 2699
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 0/0, reference 0/0, reference without 0/1 0/0, clim 0/0, own 0/0
+   effective n by year: 2003:2.35 2004:1.20 2005:1.04 2006:1.02 2007:1.01 2008:1.00 2009:1.00 2010:1.00 2011:1.00 2012:1.00 2013:1.00 2014:1.01 2015:1.06 2016:1.03 2017:1.05 2018:1.00 2019:1.00 2020:1.00 2021:1.00 2022:1.00
+
+== war_onset: rows 3402, onsets 85, groups 19, effective n of models 1.06; flags: combination, target/coverage
+   the models, weights and offsets rebuild the lattice's p: correlation 0.9993, mean |diff| 0.00139; rows where t162 issued a recalibrated p: 0
+   forecast                   n       log    Brier    AUC within p/rate   log gain vs selected [90%]      Brier gain
+   selected (t162)         3402 -0.08474 0.02018 0.911 0.916 1.41
+   log pool                3402 -0.10491 0.02350 0.885 0.896 1.23   -0.02016 [-0.03025, -0.01059]  -0.00332
+   median pool             3402 -0.10794 0.02375 0.838 0.869 1.26   -0.02320 [-0.03363, -0.01320]  -0.00357
+   stack                   3402 -0.07019 0.01597 0.899 0.923 0.97   +0.01455 [+0.00620, +0.02330]  +0.00421  BEATS
+   reference               3402 -0.07376 0.01790 0.910 0.916 1.04   +0.01099 [+0.00417, +0.01749]  +0.00228  BEATS
+   reference without 0/1   3402 -0.07389 0.01788 0.909 0.916 1.07   +0.01085 [+0.00404, +0.01735]  +0.00229  BEATS
+   clim                    3402 -0.12015 0.02458 0.455 0.500 1.58   -0.03541 [-0.04704, -0.02444]  -0.00441
+   own                     3402 -0.10278 0.02440 0.825 0.829 1.65   -0.01804 [-0.02818, -0.00857]  -0.00423
+   log pool, no offsets         -0.10489 0.02349 0.885 0.896 1.24   -0.02014 [-0.03022, -0.01058]  -0.00332  (registered form, no flag)
+   median pool, no offsets       -0.10793 0.02375 0.838 0.869 1.26   -0.02319 [-0.03361, -0.01319]  -0.00357  (registered form, no flag)
+   stack, no offsets            -0.07122 0.01612 0.893 0.922 0.93   +0.01353 [+0.00488, +0.02236]  +0.00405  (registered form, no flag)
+   reference, no offsets        -0.07389 0.01788 0.909 0.916 1.07   +0.01085 [+0.00404, +0.01735]  +0.00229  (registered form, no flag)
+   group increments (log, 90%): all +0.00369 [+0.00150, +0.00600]; base +0.00002 [-0.00025, +0.00029]; contradiction -0.00070 [-0.00106, -0.00036]; demography -0.00062 [-0.00199, +0.00074]; down -0.00219 [-0.00501, +0.00035]; economy -0.00104 [-0.00215, -0.00000]; exposure -0.00030 [-0.00100, +0.00038]; feedback +0.00053 [+0.00002, +0.00101]; fiscal +0.00019 [-0.00036, +0.00075]; history -0.00506 [-0.00874, -0.00180]; inequality -0.00031 [-0.00059, -0.00004]; military +0.00009 [-0.00055, +0.00073]; others -0.00358 [-0.00594, -0.00131]; patronage +0.00010 [-0.00114, +0.00135]; regime +0.00035 [-0.00106, +0.00169]; society -0.00059 [-0.00286, +0.00182]; up +0.01244 [+0.00411, +0.02079]; violence -0.00011 [-0.00428, +0.00396]; world +0.00016 [-0.00025, +0.00055]
+   stack at 2012: largest CV 0.31; top up 2.95 (cv 0.31), violence 0.83 (cv 0.18), history 0.44 (cv 0.31)
+   stack at 2022: largest CV 0.24; top up 3.21 (cv 0.15), violence 0.86 (cv 0.17), history 0.46 (cv 0.24)
+   2020-22 log: selected -0.09394, stack -0.10172, stack without 2003-06 -0.09659, log pool -0.13994
+   halves at the median share of non-zero inputs: rich 1485 rows, poor 1917
+   beats selected, rich/poor half: log pool 0/0, median pool 0/0, stack 1/1, reference 1/1, reference without 0/1 1/1, clim 0/0, own 0/0
+   effective n by year: 2003:1.00 2004:1.00 2005:1.00 2006:1.00 2007:1.00 2008:1.00 2009:1.00 2010:1.02 2011:1.47 2012:1.60 2013:1.10 2014:1.00 2015:1.00 2016:1.00 2017:1.00 2018:1.00 2019:1.00 2020:1.00 2021:1.00 2022:1.00

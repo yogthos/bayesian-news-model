@@ -4928,3 +4928,32 @@ Flags per kind, fixed now (a kind can carry more than one):
 Round 2's challenger is built at kinds flagged combination only; estimation leads to a fixed pooling rule; inputs and target/coverage open the deferred tracks. Every comparator, row count and interval is reported, whatever the flags. No changes after the result.
 - R1 amendment (27 November 2026, after market crashes' first tap and before any other kind's): the registered comparators were built from each group model's log odds at the node's mean offset, but t162's issued p is integrated over the frailty's offsets (the common per-origin shock; bnm.lattice, `osz`). At market crashes the models' weighted mixture without it gives a mean p of 0.184 at December 2008 against the issued 0.631 (correlation 0.54), so the registered comparison set pools without the per-origin level against a forecast with it, and selected won by +0.106 log (pools) for that reason, not shown to be the averaging's. Amendment: the tap records `osz` (tested: the models, weights and `osz` rebuild the issued p to 1e-9), and every comparator built from the node (log pool, median pool, stack, the group increments, and the reference logit) carries the node's offsets: fitted with the offset logit(sum w_j expit(o_j)) and issued integrated over `osz`. clim, own and the latest value are external baselines and stay as registered. The registered versions (no offsets) are reported beside, with no flag drawn from them. Market crashes' first numbers (selected log -0.41751; log pool -0.52348; stack -0.51204) are recorded here as seen before the amendment.
 - R1 second amendment (28 November 2026, after every kind's tap and its check against t162, before any kind's analysis but market crashes'): at inflation crises the tap's lattice p differs from t162's issued p by up to 0.40, an exact per-year logit shift from 2003 (sd 0 within each year: +0.45 in 2003, +1.69 in 2018), because t162 recalibrates inflation crises' year rows after the lattice (`--recalibrate-intercept inflation_crisis`, t157-recal). The registration's "selected" is t162's issued p, so it is read from data/runs/t162/<kind>/forecasts.tsv (`read_issued`, `with_issued`, tested); the rebuild check stays against the lattice's p. Every other kind's tap matched t162 exactly (max |diff| 0.0), so it changes inflation crises alone. The comparators built from the node are not recalibrated (their causal fits carry their own intercepts).
+
+### R1 result (bnm-7yg.8.6, 28 November 2026)
+
+Tap: scratchpad table of every kind on t162's command (docs/studies/combination_tap.clj, f99c21b); twelve kinds' issued p equal t162's exactly over 2003-2022, inflation crises' differ by t162's post-lattice recalibration (second amendment above). Analysis: `python3 -I docs/studies/combination.py . <tap>` at 999c5e7 (expit's overflow at extreme log odds fixed and tested first; it had stopped the first run at banking crises before any output).
+
+Rebuild check (models, weights and offsets against the lattice's p, 2003-22): correlation 0.9992-1.0000 at eleven kinds; food price shocks 0.9872 (mean |diff| 0.020) and growth collapses 0.9842 (0.004). The comparators built from f_g are therefore an approximation of the node's models at those two kinds (f_g is a model's point log odds; the lattice's predictive also carries the model's own uncertainty). Selected is unaffected.
+
+Flags, with the comparators that beat selected (log gain [90%], Brier gain):
+
+| kind | onsets | eff. n | flags | what beats selected |
+|---|---|---|---|---|
+| conflict onset | 271 | 1.04 | combination, target/coverage | stack +0.0219 [+0.0151, +0.0294], +0.0084 (CV ≤ 0.41); reference +0.0313 [+0.0231, +0.0389], +0.0110 |
+| war onset | 85 | 1.06 | combination, target/coverage | stack +0.0146 [+0.0062, +0.0233], +0.0042 (CV ≤ 0.31); reference +0.0110 [+0.0042, +0.0175], +0.0023 |
+| growth collapse | 339 | 1.68 | combination, estimation | log pool +0.0048 [+0.0002, +0.0098], +0.0005; the stack loses (-0.0281) |
+| currency crisis | 117 | 1.87 | target/coverage | none overall; the stack and the reference beat in the data-rich half only |
+| sovereign default | 101 | 1.14 | target/coverage | none overall; the stack beats in the data-poor half only |
+| banking, coup, fiscal, food, inflation, market crash, protest, violence | | 1.00-4.78 | selection holds | none |
+
+What it says about the root cause:
+- At conflict and war onsets the averaging puts all its weight on one model (effective n 1.0 from 2010), and a stable non-negative stack of three (up, history, violence) beats it in both data halves. These are the kinds where choosing one channel costs skill.
+- At eight kinds no combination of the node's models beats the averaging's choice, including banking crises, where the averaging collapses to one model (effective n 7.5 in 2007, 1.0 from 2016): the stack's weights there are unstable (CV up to 1.19), and history and up carry the increments.
+- No kind is flagged inputs: at every kind some group increment's interval is above 0.
+
+Disclosed, not acted on (no changes after the result):
+- Growth collapses' flag rests on a log-pool interval whose lower end is +0.0002, at the kind whose rebuild is weakest (0.984).
+- Currency crises' and sovereign defaults' flags come only from the halves rule; nothing beats selected overall.
+- Thirteen kinds by seven comparators were tested with no multiplicity adjustment; none was registered for R1.
+
+Per the registration: Round 2's challenger is built at conflict onsets, war onsets and growth collapses; growth collapses' estimation flag adds a fixed log pool as a comparator there; target/coverage opens the deferred track at conflict, war, currency and sovereign. Full output: docs/studies/results/r1-combination-2026-11-28.txt.
