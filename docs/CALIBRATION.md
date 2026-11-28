@@ -5056,3 +5056,13 @@ Decided by the user ("go with the recommendation") after R3's result, so it is a
 Port: bnm.stack's reference logit, tested against a fixture from combination.py to 1e-8; bnm.lattice's `:stack` with `:method :reference`, tested on the toy world (equal to a rebuild from the tap to 1e-12, nothing else changed). Check, registered now and run after t166 (one run at a time): docs/studies/stack_check.clj with `reference` at conflict onsets. December year country rows 2003-2022 must equal docs/studies/stack_forecasts.py's reference forecasts within 1e-6, and nothing but December year country rows may differ from t162.
 
 Also decided: after t166, food's weights are not tuned further (bnm-56c.26). Its problem reads as level and target, not combination: R1 put food in "selection holds", and t165 moved its weights without improving it.
+
+### Target audit at currency crises and sovereign defaults (bnm-7yg.8.11 step 1, registered 28 November 2026, before any number)
+
+Requested by the user ("go audit"). Read-only, no run and no model change. On R1's tap (December year country rows 2003-2022, t162's command) and the catalogues' sources:
+1. **Definitions and timing**, from the code (bnm.economic-events, bnm.kinds): rule, source, known-lag, dating grid, refractory months, coverage span.
+2. **Sovereign sources through the window.** Each 2003-2022 onset's dating sources: Laeven & Valencia 2018 (to 2017), Reinhart & Rogoff (to 2016), the Global Macro Database (to 2023). Onsets and rate by era, 2003-16 against 2017-22, the latter dated by GMD alone.
+3. **Currency rule against its inputs.** Which of the node's input groups carry the exchange rate the rule is computed from, and when that reading is known at a December origin.
+4. **Input coverage at onset rows**, both kinds: each row's share of non-zero inputs; the onsets at rows with almost none (under 10%); each group's presence at onset rows against all rows.
+
+Reported as found, with no flag. It decides which of the plan's later steps (scoring by source presence; latest-value baselines) are registered, and at which kind.
