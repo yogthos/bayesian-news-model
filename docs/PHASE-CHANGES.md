@@ -5462,6 +5462,14 @@ Not adopted. No L1 note, no ledger change, no forecast.
 - *Caveats.* Pooled AUC falls 0.596 -> 0.569. The backward ranking among countries with a default history stays (0.476 with no default since 1970, 0.431 at 9+ years); the gain is the level, not the ranking.
 - *Build.* data/runs/t161 (40 minutes, 27 November 2026): the other twelve kinds match t160 byte for byte, as registered. Ledger tests green, 48.
 
+**Twenty-fifth note to amendment L1, 27 November 2026** (bead bnm-7yg.6; decided by the user after seeing t162's result; written before any issue is made on it, L1 itself unchanged; entered here 27 November with the twenty-sixth, having been recorded only in docs/CALIBRATION.md and bnm.ledger). The base of record is **t162**, not t161: t161's command with `--out t162` and `--theory-half-life-level sovereign_default`, on t161's inputs. Wherever L1 or the earlier notes name t161 (or earlier) as the base, read t162.
+
+- *What changed.* Sovereign defaults' theory keeps t161's half-life slopes, and its intercept is set so that at the weighted mean of the training rows' slope terms the log odds are the logit of the unweighted rate of the rows known by the origin (bnm.theory/fits `:level :history`).
+- *The score* (docs/CALIBRATION.md t162): against t161 a fail on the rule (a 2007-09 fold loss -0.00021 [-0.00038, -0.00005], alert cost within noise); against t160 a pass. Pooled AUC 0.596 (t160) / 0.569 (t161) / 0.641; log skill against clim +0.0030.
+- *Build.* data/runs/t162 (41 minutes): only sovereign defaults differ from t161. Ledger tests green, 49.
+
+**Twenty-sixth note to amendment L1, 27 November 2026** (bead bnm-7yg.7; decided by the user the same day; written before the issue is made, L1 itself unchanged). Issue **2026-Q4-r3** is made on t162 and carries the verdicts for 2026-Q4; 2026-Q4-r2 (t80-base) stays on record unchanged and is reported beside it with no verdict, as r1 beside r2 under the sixth note. They forecast the same windows, so they count once, as r3's. Rows whose window opened before r3's issue date are not counted, as in every issue. Why: 2003-2022 is development data that every adoption since 18 November has read, and the 1990-2002 block tests only coups and banking (docs/CALIBRATION.md, held-back block); r3 freezes the 26-27 November adoptions a quarter before 2027-Q1 could. The 2027-Q1 issue reproduces r3 on its archive with r3's command.
+
 ## Amendment to the fold rule, 20 November 2026: dominance overrides a fold loss
 
 **Decided by the user after seeing t124** (docs/CALIBRATION.md, the market-crash global layer with its world drivers held tighter), so it is not blind to the candidate that prompted it: t124 gained on pooled Brier, the alert cost and AUC but lost two folds of 9 onsets each (2010-12, 2020-22).
