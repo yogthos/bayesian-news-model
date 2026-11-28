@@ -5038,3 +5038,4 @@ The question each answers:
 - t166: with that channel cut, does the prior still lose 2020-22?
 
 Both are shadows. Adoption is the user's decision, and t162 stays the base. t164-food's number is not reused.
+- Check result (28 November 2026). The lattice's stack equals the study's at every December year country row 2003-2022: conflict onsets 3308 rows, max |diff| 1.7e-15; war onsets 3402 rows, 7.8e-16. 192 and 58 December country rows in 2003-2022 have no study p because their outcomes are unresolved (the tap writes only resolved rows); the lattice stacks them too. Against t162, only December year country rows differ (conflict 4917, war 4556: those in 2003-2022 and the stacked origins before and after). No month-scale, region or other-month row differs. The port passes. The 2027-Q1 shadow is `bnm.ledger/shadow-command`.
