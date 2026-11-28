@@ -4957,3 +4957,31 @@ Disclosed, not acted on (no changes after the result):
 - Thirteen kinds by seven comparators were tested with no multiplicity adjustment; none was registered for R1.
 
 Per the registration: Round 2's challenger is built at conflict onsets, war onsets and growth collapses; growth collapses' estimation flag adds a fixed log pool as a comparator there; target/coverage opens the deferred track at conflict, war, currency and sovereign. Full output: docs/studies/results/r1-combination-2026-11-28.txt.
+
+### R2 and R3 registration (bnm-7yg.8.7 and bnm-7yg.8.8, 28 November 2026, before any challenger forecast)
+
+Requested by the user ("go R2") after the R1 result. Built at conflict onsets, war onsets and growth collapses only (R1's combination row). Both written now, so the challenger is made once and judged once with nothing seen between.
+
+**How R2 is built (changed from the plan's wording, decided now).** The challenger is a causal study on R1's tap (docs/studies/hierarchical.py, tested first), not a lattice option: the plan names R3 as the judgment and the 2027-Q1 issue as the first live use, and a study gives forecasts at every December origin 2003-2022 on the same rows as R1's comparators. If it joins the issue, it is ported to the lattice behind an option and checked against the study's forecasts before that issue. The tap adds each group model's input positions (<kind>.groups.tsv, from the lattice's models).
+
+**The model, fixed now:** logit p_it = a + l_it + b'w_it + c'm_t + g o~_it.
+- l_it, the common part, is the lattice's frailty, the per-origin shock it filters from past origins (world gauges enter only there): the issued p is integrated over the shifts osz_j - o, and the fit takes their mean as an offset.
+- w_it are the country inputs net of the origin's mean across countries; m_t, that mean, enters with its own slopes c (the between part, which centring would otherwise drop).
+- o~_it is the node's offset (the coarser scale's downscaled state) net of the origin's mean, with g ~ N(0, 0.1), reported.
+- Group shrinkage: each named group's inputs share a unit prior variance (N(0, 1/n_g) each); an input in several groups takes the smallest share; an input read by every group, or by none, takes N(0, 1). The same applies to c. a is free. Inputs are standardized on the training rows.
+- Shared defaults, the same at the three kinds: training rows weighted 0.5^(age / 10 years) (t161's half-life); refit at each December origin 2003-2022 on the rows known by it, from 1975 on, and only with at least 5 onsets. No named exceptions: the reporting delay at conflict and war is already in the rows' known-at dates.
+- Banking's JST rule, inflation's recalibration and the echo cut are untouched: the challenger is not built at those kinds.
+
+**R3, judged once** (docs/studies/judge.py, tested first), on year country rows at December origins 2003-2022:
+- Comparators: t162's issued p, and R1's stack, reference logit, median pool and log pool (with the frailty's offsets), plus clim and own.
+- Measures: log, Brier, AUC, within-origin AUC, p over the rate, and the alert cost (p >= 0.2, a miss costing 4); the challenger against each comparator with wave-block intervals (2000 draws over origin years).
+- Subgroups: 2003-12 and 2013-22, and the data-rich and data-poor halves (R1's split). Reported only. JST, debt-group and income-group subgroups do not apply to these kinds, or are not in the tap.
+- **Verdict per kind:** a forecast passes against t162 when all three hold:
+  - its log-score gain's interval at 1 - 0.10/3 (Bonferroni over the three kinds; R1 had no adjustment) is above 0;
+  - its Brier gain's point estimate is above 0;
+  - its alert cost is not significantly worse (the cost difference's 90% interval reaches 0 or below).
+
+  If the challenger passes, it joins the 2027-Q1 issue as a reported shadow. If R1's winner at the kind also passes the same test (the stack at conflict and war onsets, the log pool at growth collapses), the one with the higher pooled log score joins instead. If only R1's winner passes, it joins. If nothing passes, nothing joins and t162 stands.
+- t162 stays the base and 2026-Q4-r3 the primary issue whatever the verdict. Replacing t162 needs wins on forward issues, as the plan says.
+
+Disclosed: the tap's rows are only those with a resolved outcome, so an origin's mean m_t is taken over those rows. At 2003-2022 origins this is nearly every country.

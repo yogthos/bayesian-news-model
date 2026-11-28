@@ -140,14 +140,15 @@ def train_mask(origin, known, o):
 
 # --- scores ------------------------------------------------------------------
 
-def block_ci(d, years, draws=DRAWS, seed=1):
+def block_ci(d, years, draws=DRAWS, seed=1, level=0.90):
     if len(d) == 0:
         return (float("nan"),) * 3
     rng = np.random.default_rng(seed)
     ys = np.unique(years)
     by = {v: d[years == v] for v in ys}
     ms = [np.concatenate([by[v] for v in rng.choice(ys, len(ys))]).mean() for _ in range(draws)]
-    return float(d.mean()), float(np.percentile(ms, 5)), float(np.percentile(ms, 95))
+    tail = 50 * (1 - level)
+    return float(d.mean()), float(np.percentile(ms, tail)), float(np.percentile(ms, 100 - tail))
 
 
 def effective_n(w):

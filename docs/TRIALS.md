@@ -336,6 +336,8 @@ for this file.
 | t163 | 2026-11-27 | fiscal consolidations on the discretionary label D2 | fiscal (own target), growth | fail (rules 1 and 3; "not a candidate") | no | t163: fiscal consolidations on the discretionary label D2 |
 | t163-recal | 2026-11-27 | t163 with a rolling intercept at fiscal | fiscal (D2) | fail (rule 1) | no | t163-recal |
 | t162-recal-fiscal | 2026-11-27 | t162 with a rolling intercept at fiscal on the current label, for information | fiscal | information only | no | t163-recal |
+| R1-combination | 2026-11-28 | study on t162's tap: pools, causal stack, reference logit against the averaging's choice | 13 | combination at conflict, war, growth; selection holds at eight | no (diagnosis) | R1 result (bnm-7yg.8.6) |
+| R2-hierarchical | 2026-11-28 | study: the hierarchical challenger, judged once by R3 | conflict, war, growth | registered | pending | R2 and R3 registration |
 
 ### Registered and not run
 

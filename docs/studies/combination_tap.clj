@@ -6,12 +6,16 @@
 ;;   place origin y known-at o p osz f:<group>... w:<group>... x0 x1 ...
 ;; osz the offsets after the frailty, w:o;w:o (bnm-7yg.8.6's amendment).
 ;; First checks the issued year forecasts against <check-run>'s, 2003-2022.
-;; Usage: jolt -Sdeps '{:paths ["src" "resources" "test" "tools"]}' docs/studies/combination_tap.clj <out-dir> <check-run> [k1,k2]
+;; Also writes <out>/<kind>.groups.tsv, each group model's input positions in
+;; x (0 the intercept): group<TAB>i,j,... (bnm-7yg.8.7). With a fourth argument
+;; `groups` it writes only that, stopping at the first tapped row.
+;; Usage: jolt -Sdeps '{:paths ["src" "resources" "test" "tools"]}' docs/studies/combination_tap.clj <out-dir> <check-run> [k1,k2] [groups]
 (require '[bnm.world-run :as wr] '[bnm.ledger :as lg] '[bnm.lattice :as lt] '[clojure.string :as str] '[clojure.java.io :as io])
 
 (defn- num [v] (if (some? v) (str (double v)) ""))
 
-(let [[out check only] *command-line-args*
+(let [[out check only mode] *command-line-args*
+      groups-only (= "groups" mode)
       args (vec (lg/command "diag" lg/base-end))
       opts (wr/options args)
       cats (wr/run-catalogues opts)
@@ -24,18 +28,28 @@
                 rows (atom [])
                 sp (assoc sp0 :tap (fn [{:keys [scale level t] :as r}]
                                      (when (and (= :year scale) (= :country level) (= 11 (mod t 12)))
-                                       (swap! rows conj (select-keys r [:place :t :x :o :osz :f :w])))))
+                                       (swap! rows conj (cond-> (select-keys r [:place :t :x :o :osz :f :w])
+                                                         (empty? @rows) (assoc :inputs (into {} (for [[g m] (:models r)] [g (:inputs m)]))))))))
                 end (:end sp)
-                res (loop [s (lt/start sp)] (if (> (:t s) end) (lt/finish s) (recur (lt/step sp s))))
+                res (loop [s (lt/start sp)]
+                      (cond (and groups-only (seq @rows)) nil
+                            (> (:t s) end) (lt/finish s)
+                            :else (recur (lt/step sp s))))
+                _ (with-open [w (io/writer (str out "/" k ".groups.tsv"))]
+                    (doseq [[g ix] (sort-by (comp str key) (:inputs (first @rows)))]
+                      (.write w (str (name g) "\t" (str/join "," ix) "\n"))))
                 issued (into {} (for [{:keys [scale place origin p]} (:forecasts res)
                                       :when (and (= :year scale) (= 3 (count place)) (= 11 (mod origin 12)))]
                                   [[place origin] p]))
-                world (into {} (for [l (str/split-lines (slurp (str "data/runs/" check "/" k "/forecasts.tsv")))
+                world (if groups-only {} (into {} (for [l (str/split-lines (slurp (str "data/runs/" check "/" k "/forecasts.tsv")))
                                      :let [[s u o p] (str/split l #"\t")]
                                      :when (and (= "year" s) (= 3 (count u)))]
-                                 [[u (parse-long o)] (parse-double p)]))
+                                 [[u (parse-long o)] (parse-double p)])))
                 diffs (keep (fn [[[u o :as key] p]] (when (<= 2003 (quot o 12) 2022) (when-let [q (world key)] (Math/abs (- p q))))) issued)
                 groups (vec (sort-by str (distinct (mapcat #(keys (:f %)) @rows))))]]
+    (if groups-only
+      (println k "groups written")
+    (do
     (println k "rows" (count @rows) "groups" (count groups) "checked 2003-2022" (count diffs)
              "max |p - run p|" (if (seq diffs) (apply max diffs) "none"))
     (with-open [w (io/writer (str out "/" k ".tsv"))]
@@ -51,4 +65,4 @@
                                          (map #(num (get f %)) groups)
                                          (map #(num (get wt % 0.0)) groups)
                                          (map num x))))
-        (.write w "\n")))))
+        (.write w "\n")))))))

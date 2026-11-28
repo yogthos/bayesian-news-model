@@ -109,6 +109,14 @@ class Scores(unittest.TestCase):
         self.assertLess(lo, m)
         self.assertLess(m, hi)
 
+    def test_a_higher_level_widens_the_interval(self):
+        d = np.random.default_rng(5).normal(0.01, 0.02, 200)
+        years = np.repeat(np.arange(20), 10)
+        _, lo90, hi90 = cb.block_ci(d, years, draws=500)
+        _, lo, hi = cb.block_ci(d, years, draws=500, level=1 - 0.10 / 3)
+        self.assertLess(lo, lo90)
+        self.assertGreater(hi, hi90)
+
     def test_an_empty_set_has_no_interval_and_beats_nothing(self):
         c = cb.block_ci(np.array([]), np.array([]))
         self.assertTrue(all(math.isnan(v) for v in c))
