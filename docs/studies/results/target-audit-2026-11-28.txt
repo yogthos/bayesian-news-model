@@ -1,0 +1,28 @@
+
+== currency_crisis: input coverage, December year country rows 2003-2022 (3149 rows, 117 onsets)
+   share of non-zero inputs: all rows median 0.983, onset rows median 0.983
+   share 0.0-0.1: rows     0, onsets   0, rate nan
+   share 0.1-0.3: rows     0, onsets   0, rate nan
+   share 0.3-0.5: rows     2, onsets   0, rate 0.0000
+   share 0.5-1.0: rows  3147, onsets 117, rate 0.0372
+   (no groups file: group presence not reported)
+
+== sovereign_default: the run's catalogue onsets 2004-2024 by dating source
+   GMD: 38
+   LV+GMD: 9
+   LV+RR+GMD: 4
+   LV: 2
+   RR: 2
+   LV+RR: 1
+   by year (LV/RR-dated, GMD only): 2004:2,0 2005:2,1 2006:0,1 2007:1,0 2008:1,1 2009:1,0 2010:1,0 2011:0,1 2012:2,0 2013:3,0 2014:1,0 2015:1,0 2016:1,0 2017:2,0 2018:0,5 2019:0,3 2020:0,14 2021:0,1 2022:0,8 2023:0,3 2024:0,0
+   origins 2003-14 (onsets to 2016): rows 2040, positive rows 31, rate 0.0152
+   origin 2015 (onsets 2016-17): rows 171, positive rows 3, rate 0.0175
+   origins 2016-22 (onsets from 2017, GMD alone): rows 1006, positive rows 67, rate 0.0666
+
+== sovereign_default: input coverage, December year country rows 2003-2022 (3217 rows, 101 onsets)
+   share of non-zero inputs: all rows median 0.984, onset rows median 1.000
+   share 0.0-0.1: rows     0, onsets   0, rate nan
+   share 0.1-0.3: rows     0, onsets   0, rate nan
+   share 0.3-0.5: rows     0, onsets   0, rate nan
+   share 0.5-1.0: rows  3217, onsets 101, rate 0.0314
+   (no groups file: group presence not reported)
