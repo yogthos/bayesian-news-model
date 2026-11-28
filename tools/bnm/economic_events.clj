@@ -95,34 +95,50 @@
                    :when (and b0 e e0 (>= (- b b0) 1.5) (<= (- e e0) -1.0))]
                y)))
 
+(def ^:private band "Half-width of I + lam D'D's band." 3)
+
+(defn- hp-system
+  "I + lam D'D for n points, D the second difference, as rows of doubles."
+  [n lam]
+  (let [a (vec (for [i (range n)] (doto (double-array n) (aset i 1.0))))
+        d [1.0 -2.0 1.0]]
+    (doseq [r (range (- n 2)) p (range 3) q (range 3)]
+      (let [row ^doubles (a (+ r p)) j (+ r q)]
+        (aset row j (+ (aget row j) (* lam (d p) (d q))))))
+    a))
+
+(defn- eliminate
+  "Banded Gaussian elimination of a x = b in place; [a b], upper triangular."
+  [a ^doubles b]
+  (let [n (count a)]
+    (doseq [k (range n)
+            i (range (inc k) (min n (+ k band)))
+            :let [rk ^doubles (a k) ri ^doubles (a i)
+                  f (/ (aget ri k) (aget rk k))]
+            :when (not (zero? f))]
+      (doseq [j (range k (min n (+ k band)))]
+        (aset ri j (- (aget ri j) (* f (aget rk j)))))
+      (aset b i (- (aget b i) (* f (aget b k)))))
+    [a b]))
+
+(defn- back-substitute
+  "x from the upper-triangular banded a x = b."
+  [a ^doubles b]
+  (let [n (count a) x (double-array n)]
+    (doseq [i (range (dec n) -1 -1)
+            :let [ri ^doubles (a i)
+                  tail (reduce + 0.0 (for [j (range (inc i) (min n (+ i band)))] (* (aget ri j) (aget x j))))]]
+      (aset x i (/ (- (aget b i) tail) (aget ri i))))
+    (vec x)))
+
 (defn hp-trend
   "The Hodrick-Prescott trend of `xs` at smoothing `lam`: (I + lam D'D)
   tau = x, D the second difference, solved by banded Gaussian elimination."
   [xs lam]
-  (let [n (count xs)]
-    (if (< n 3)
-      (vec xs)
-      (let [a (vec (for [_ (range n)] (double-array n)))
-            b (double-array (map double xs))
-            d [1.0 -2.0 1.0]]
-        (dotimes [i n] (aset ^doubles (a i) i 1.0))
-        (dotimes [r (- n 2)]
-          (doseq [p (range 3) q (range 3)]
-            (let [i (+ r p) j (+ r q)]
-              (aset ^doubles (a i) j (+ (aget ^doubles (a i) j) (* lam (d p) (d q)))))))
-        (dotimes [k n]
-          (let [piv (aget ^doubles (a k) k)]
-            (doseq [i (range (inc k) (min n (+ k 3)))]
-              (let [f (/ (aget ^doubles (a i) k) piv)]
-                (when-not (zero? f)
-                  (doseq [j (range k (min n (+ k 3)))]
-                    (aset ^doubles (a i) j (- (aget ^doubles (a i) j) (* f (aget ^doubles (a k) j)))))
-                  (aset b i (- (aget b i) (* f (aget b k)))))))))
-        (let [x (double-array n)]
-          (doseq [i (range (dec n) -1 -1)]
-            (aset x i (/ (- (aget b i) (reduce + 0.0 (for [j (range (inc i) (min n (+ i 3)))] (* (aget ^doubles (a i) j) (aget x j)))))
-                         (aget ^doubles (a i) i))))
-          (vec x))))))
+  (if (< (count xs) 3)
+    (vec xs)
+    (let [[a b] (eliminate (hp-system (count xs) lam) (double-array (map double xs)))]
+      (back-substitute a b))))
 
 (defn output-gap
   "{year gap, % of trend} from {year real GDP growth %}: 100 x the log
