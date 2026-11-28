@@ -93,6 +93,7 @@
             [bnm.political-gauges-test]
             [bnm.reconcile-test]
             [bnm.economic-events-test]
+            [bnm.trials-test]
             [bnm.sequencing-test]
             [bnm.relations-test]
             [bnm.relation-diag-test]
@@ -258,6 +259,7 @@
     bnm.political-gauges-test
     bnm.reconcile-test
     bnm.economic-events-test
+    bnm.trials-test
     bnm.sequencing-test
     bnm.relations-test
     bnm.relation-diag-test
