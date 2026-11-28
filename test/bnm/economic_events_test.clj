@@ -268,11 +268,27 @@
         gap (ee/output-gap g)]
     (is (> (gap 1995) (gap 1994)))
     (is (pos? (gap 1995)))
-    (testing "runs under ten years are not filtered; a break splits the runs"
+    (testing "a gap needs ten consecutive years up to its own; a break restarts the count"
       (let [gap (ee/output-gap (zipmap (concat (range 1980 1990) (range 1992 2000)) (repeat 2.0)))]
-        (is (contains? gap 1985))
+        (is (contains? gap 1989))
+        (is (not (contains? gap 1988)) "nine years to 1988")
         (is (not (contains? gap 1990)))
         (is (not (contains? gap 1995)) "1992-1999 is eight years")))))
+
+(deftest output-gap-is-point-in-time
+  ;; bnm-7yg.8.1: each year's gap from the data up to that year only (a
+  ;; one-sided HP filter), so a later year's growth never moves it
+  (let [g (zipmap (range 1980 2011) (cycle [1.0 3.0 2.0 4.0 0.5]))
+        later (assoc g 2005 -6.0 2008 9.0)
+        a (ee/output-gap g)
+        b (ee/output-gap later)]
+    (doseq [y (range 1989 2005)]
+      (is (< (Math/abs (- (a y) (b y))) 1e-12) (str y)))
+    (is (not= (a 2005) (b 2005)) "the year itself does move")
+    (testing "a year's gap is the last point of the trend fitted to the years up to it"
+      (let [ys (range 1980 1996)
+            lv (vec (reductions + (map #(Math/log (+ 1.0 (/ (double (g %)) 100.0))) ys)))]
+        (is (< (Math/abs (- (a 1995) (* 100.0 (- (peek lv) (peek (ee/hp-trend lv 100.0)))))) 1e-12))))))
 
 (deftest discretionary-consolidations
   (testing "a recovery year: the balance up 2 only because the gap closes 4"
@@ -295,7 +311,8 @@
                                                 "BBB" {:growth {} :balance bal :real-expenditure rexp}})]
     (is (= {"AAA" #{(* 12 2005)}} (update-vals (:onsets cat) set)))
     (is (= (set (range (* 12 2005) (+ 12 (* 12 2005)))) (set (get-in cat [:busy "AAA"]))))
-    (is (= (* 12 1991) (get-in cat [:from "AAA"])) "the first year with a year before to compare")
+    (is (= (* 12 2000) (get-in cat [:from "AAA"]))
+        "the first year with a year before to compare, each gap from ten years up to it (1999 the first)")
     (is (= (+ 11 (* 12 2010)) (get-in cat [:through "AAA"])))
     (is (not (contains? (:from cat) "BBB")) "no output gap: not covered")
     (is (= 18 (:known-lag cat)))))

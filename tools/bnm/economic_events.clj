@@ -126,17 +126,19 @@
 
 (defn output-gap
   "{year gap, % of trend} from {year real GDP growth %}: 100 x the log
-  level less its HP(100) trend, over each run of ten or more consecutive
-  years (t163, the discretionary fiscal label)."
+  level less its HP(100) trend, one-sided (bnm-7yg.8.1): each year's gap is
+  the last point of the trend fitted to its run of consecutive years up to
+  it, so later data never move it; a year needs ten such years. (t163 used
+  the two-sided trend over each run; it reproduces from 8faaa2c.)"
   [growth]
   (let [ys (sort (keys growth))
         runs (reduce (fn [acc y] (if (and (seq acc) (= y (inc (peek (peek acc))))) (conj (pop acc) (conj (peek acc) y)) (conj acc [y])))
                      [] ys)]
     (into {} (for [r runs :when (>= (count r) 10)
-                   :let [lv (vec (reductions + (map #(Math/log (+ 1.0 (/ (double (growth %)) 100.0))) r)))
-                         tr (hp-trend lv 100.0)]
-                   [y a b] (map vector r lv tr)]
-               [y (* 100.0 (- a b))]))))
+                   :let [lv (vec (reductions + (map #(Math/log (+ 1.0 (/ (double (growth %)) 100.0))) r)))]
+                   i (range 9 (count r))
+                   :let [upto (subvec lv 0 (inc i))]]
+               [(r i) (* 100.0 (- (peek upto) (peek (hp-trend upto 100.0))))]))))
 
 (def ^:private cyclical-elasticity "The budget semi-elasticity (Price, Dang & Botev 2014)." 0.5)
 
