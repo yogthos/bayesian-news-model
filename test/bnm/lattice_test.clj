@@ -2983,3 +2983,23 @@
       (when fit (swap! stacked inc))
       (is (< (Math/abs (- want (issued [(:place r) (:t r)]))) 1e-12) (str (:place r) " " (:t r))))
     (is (pos? @stacked) "the stack is fitted at some origins")))
+
+(deftest rows-issued-uninformed-teach-the-models-but-not-the-weights
+  ;; bnm-56c.26: under :evidence-from :informed a row issued before its node
+  ;; had a resolved outcome (its forecast climatology's 0.5 or a prior) is
+  ;; learned with augur's :evidence false: the averaging does not score it.
+  ;; In the toy world the year outcomes start at origin 35, known at 47. A
+  ;; strong prior on the year gauge makes the models issue different p
+  ;; before anything resolves, as the theory priors do in the real nodes.
+  (let [pri (fn [sp] (assoc sp :prior (fn [scale _ _] (when (= :year scale) {1 [3.0 0.01]}))))
+        sp (assoc (pri (spec (world 5))) :evidence-from :informed)
+        k [:year :country]
+        upto (fn [sp t] (loop [s (lt/start sp)] (if (> (:t s) t) s (recur (lt/step sp s)))))
+        pend (fn [s] (get-in s [:st :pending k]))]
+    (is (every? #(and (= 35 (:origin %)) (:uninformed %)) (pend (upto sp 35))) "the first rows are issued uninformed")
+    (is (every? #(and (= 47 (:origin %)) (not (:uninformed %))) (pend (upto sp 47))) "once an outcome resolved, informed")
+    (testing "the weights after learning only uninformed rows stay even among the live models"
+      (let [w-at (fn [sp] (second (first (filter #(= 47 (first %)) (get (:weights (lt/finish (upto sp 47))) k)))))
+            even? (fn [w] (let [v (filter pos? (vals w))] (every? #(< (Math/abs (- % (first v))) 1e-9) v)))]
+        (is (even? (w-at sp)) (str (w-at sp)))
+        (is (not (even? (w-at (pri (spec (world 5)))))) "without the option they move")))))

@@ -338,6 +338,8 @@ for this file.
 | t162-recal-fiscal | 2026-11-27 | t162 with a rolling intercept at fiscal on the current label, for information | fiscal | information only | no | t163-recal |
 | R1-combination | 2026-11-28 | study on t162's tap: pools, causal stack, reference logit against the averaging's choice | 13 | combination at conflict, war, growth; selection holds at eight | no (diagnosis) | R1 result (bnm-7yg.8.6) |
 | R2-hierarchical | 2026-11-28 | study: the hierarchical challenger, judged once by R3 | conflict, war, growth | conflict pass, war fail, growth fail (badly); the stack carried at conflict and war | shadow only: the stack at conflict and war in 2027-Q1 | R2 and R3 result |
+| t165-informed | 2026-11-28 | `:evidence-from :informed` at every kind (uninformed rows not scored for the weights; augur v0.25.0) | 13 | registered | pending | Food's uninformed rows out of the weights' evidence |
+| t166-food-prior | 2026-11-28 | t165-informed plus `--clim-prior food_price_shock` | 13 | registered | pending | Food's uninformed rows out of the weights' evidence |
 
 ### Registered and not run
 

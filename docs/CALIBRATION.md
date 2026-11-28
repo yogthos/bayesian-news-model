@@ -5015,3 +5015,26 @@ Check (docs/studies/stack_check.clj, both kinds on the shadow command):
 - Every other row is compared with t162's and its differences are counted by type. Month-scale and region rows must not differ. Year country rows at other months may differ, because the stack issues at every origin of the node.
 
 If the check fails, the port is fixed, not the study.
+
+### Food's uninformed rows out of the weights' evidence: t165-informed and t166-food-prior (bnm-56c.26, registered 28 November 2026, before either run)
+
+Requested by the user ("port stack then fix food bug").
+
+**The bug.** A node with no resolved outcome issues at climatology's 0.5. At food's year country node that is 2001-2006, about 300 rows against a rate near 0.2. Every earlier fix (t52a, t75, t152, t154) set a better level for those rows and lost 2020-22. The traced channel: those rows are scored as evidence for the averaging's weights when they resolve, and food's averaging keeps that evidence through 2021. So any change to their level moves the weights fifteen years later, and the base's 2020-22 score depends on the bug.
+
+**The fix, at the root.** A row issued before its node had a resolved outcome is learned by the models, but not scored for the weights. In augur v0.25.0 a row with `:evidence false` is learned and not scored (tested in augur). In bnm.lattice, `:evidence-from :informed` marks such rows (tested: they are uninformed exactly until the node's first resolved outcome; the weights stay even after learning only uninformed rows; on augur v0.24 the test fails). With the fix on, the level issued before a node's first outcome can no longer set its weights, so a prior for that level (`--clim-prior`) can be judged on the level alone.
+
+**Runs**, each a full world run, one at a time:
+- **t165-informed**: t162's command with `:evidence-from :informed` added to `--set`, at every kind, since the principle is general. Kinds with no uninformed rows should match t162 byte for byte, and the differing kinds are listed.
+- **t166-food-prior**: t165-informed plus `--clim-prior food_price_shock`.
+
+**Reported** for each against t162, and t166 also against t165:
+- the fold rule as amended 18 and 20 November, at every kind that differs;
+- alerts, AUC, the scorecard and rank-0 tables;
+- at food: mean p over the rate at 2003-06, the year averaging's weights at 2010, 2015 and 2020, and the 2003-06 and 2020-22 folds.
+
+The question each answers:
+- t165: does removing the uninformed evidence alone change food's later weights?
+- t166: with that channel cut, does the prior still lose 2020-22?
+
+Both are shadows. Adoption is the user's decision, and t162 stays the base. t164-food's number is not reused.

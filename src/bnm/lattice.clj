@@ -1809,6 +1809,11 @@
    offset, each model's log odds, the weights and the models as issued
    (augur.dynamic), so a diagnosis can read a model at other inputs;
    nothing it returns is used,
+   :evidence-from :informed (bnm-56c.26): a row issued before its node had a
+   resolved outcome (climatology's 0.5, or :clim-prior's rate) is learned by
+   the models but not scored for the averaging's weights (augur's row
+   :evidence false), so the level issued before then cannot set the weights
+   later; all rows scored without,
    :stack {:scale :level :month :from} (bnm-7yg.8.8): at that node the forecast
    issued is R1's causal non-negative stack of its group models (bnm.stack),
    refit at each origin on the node's rows issued in `month` (0-11) from
@@ -1996,7 +2001,11 @@
                        clim-t (if rcp (clim-at ((:at rcp) t)) clim-now)
                        ;; :frailty (recursive step 3b): the node's common shock, one per origin
                        fcfg (some-> (frailty-config spec) (frailty-node spec level-ix places))
+                       _ (when-not (contains? #{nil :informed} (:evidence-from spec))
+                           (throw (ex-info "bnm.lattice: :evidence-from takes :informed" {:evidence-from (:evidence-from spec)})))
                        rows (learning-rows (map #(cond-> (select-keys % [:x :y :o :os]) (:lp %) (assoc :issued (:lp %))
+                                                   ;; bnm-56c.26: learned, not scored for the weights (augur's :evidence)
+                                                   (:uninformed %) (assoc :evidence false)
                                                    ;; bnm-e1y, :evidence-at :issue-joint: the models as they
                                                    ;; issued the row, one value for the origin's rows
                                                    (:ist %) (assoc :issue-state (:ist %))
@@ -2339,6 +2348,9 @@
                                                              (cond-> {:place place :origin t :x x :o o :p (if ref (:p ref) p) :y (:y target) :known-at (:known-at target)
                                                                       :regime-at-issue (when rp (second ((:at rp) t)))}
                                                                issued (assoc :lp issued)
+                                                               ;; bnm-56c.26, :evidence-from :informed: issued before the
+                                                               ;; node had a resolved outcome, so not scored for the weights
+                                                               (and (= :informed (:evidence-from spec)) (not (flows-informed? st k))) (assoc :uninformed true)
                                                                ;; bnm-e1y: the models' state at issue, for the
                                                                ;; origin's joint issued predictive
                                                                (= :issue-joint (:evidence-at spec)) (assoc :ist ist)
