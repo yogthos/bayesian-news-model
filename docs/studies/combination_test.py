@@ -28,7 +28,40 @@ class Pools(unittest.TestCase):
         self.assertTrue(math.isnan(cb.log_pool(F, live)[0]))
 
 
+class Offsets(unittest.TestCase):
+    def test_integrate_over_the_offsets(self):
+        osz = [[(0.5, -1.0), (0.5, 1.0)]]
+        e = np.array([0.0])
+        self.assertAlmostEqual(cb.integrate(e, osz)[0], 0.5 * cb.expit(-1.0) + 0.5 * cb.expit(1.0))
+
+    def test_the_mean_offset(self):
+        self.assertAlmostEqual(cb.mean_offset([(0.5, -1.0), (0.5, 1.0)]), 0.0)
+        self.assertAlmostEqual(cb.mean_offset([(1.0, 0.3)]), 0.3)
+
+    def test_parse_osz(self):
+        self.assertEqual(cb.parse_osz("0.25:-1.0;0.75:2.0"), [(0.25, -1.0), (0.75, 2.0)])
+
+    def test_pools_with_offsets_reduce_to_the_mixture_of_one_model(self):
+        # one live model: both pools are that model's p integrated over the offsets
+        E = np.array([[0.4]])
+        live = np.array([[True]])
+        osz = [[(0.5, -1.0), (0.5, 1.0)]]
+        want = 0.5 * cb.expit(-0.6) + 0.5 * cb.expit(1.4)
+        self.assertAlmostEqual(cb.log_pool_osz(E, live, osz)[0], want)
+        self.assertAlmostEqual(cb.median_pool_osz(E, live, osz)[0], want)
+
+
 class Stack(unittest.TestCase):
+    def test_an_offset_is_not_a_weight(self):
+        rng = np.random.default_rng(4)
+        n = 4000
+        off = rng.normal(-2, 1, n)
+        f = rng.normal(size=n)
+        y = (rng.random(n) < cb.expit(off + 0.8 * f)).astype(float)
+        a, b = cb.fit_stack(f[:, None], y, offset=off)
+        self.assertAlmostEqual(b[0], 0.8, delta=0.12)
+        self.assertAlmostEqual(a, 0.0, delta=0.12)
+
     def test_weights_are_never_negative(self):
         rng = np.random.default_rng(0)
         n = 3000
@@ -65,6 +98,11 @@ class Scores(unittest.TestCase):
         self.assertGreater(lo, 0)
         self.assertLess(lo, m)
         self.assertLess(m, hi)
+
+    def test_an_empty_set_has_no_interval_and_beats_nothing(self):
+        c = cb.block_ci(np.array([]), np.array([]))
+        self.assertTrue(all(math.isnan(v) for v in c))
+        self.assertFalse(cb.beats(c, float("nan")))
 
     def test_effective_number(self):
         self.assertAlmostEqual(cb.effective_n(np.array([0.5, 0.5, 0.0])), 2.0)

@@ -65,14 +65,46 @@ def median_pool(F, live):
     return out
 
 
+# --- the node's offsets (R1 amendment) ----------------------------------------
+
+def parse_osz(s):
+    return [(float(a), float(b)) for a, b in (t.split(":") for t in s.split(";") if t)]
+
+
+def mean_offset(osz):
+    """The offset whose probability is the offsets' average (as the lattice's o)."""
+    return float(logit(sum(w * expit(o) for w, o in osz)))
+
+
+def integrate(e, osz):
+    """p_i = sum_j w_ij expit(o_ij + e_i): log odds e_i beyond the offset,
+    integrated over row i's offsets after the frailty."""
+    return np.array([sum(w * expit(o + float(ei)) for w, o in oz) for ei, oz in zip(e, osz)])
+
+
+def log_pool_osz(E, live, osz):
+    n = live.sum(1)
+    m = np.where(live, E, 0.0).sum(1) / np.maximum(n, 1)
+    return np.where(n > 0, integrate(m, osz), np.nan)
+
+
+def median_pool_osz(E, live, osz):
+    out = np.full(len(E), np.nan)
+    for i in np.where(live.any(1))[0]:
+        out[i] = float(np.median([sum(w * expit(o + e) for w, o in osz[i]) for e in E[i][live[i]]]))
+    return out
+
+
 # --- fits --------------------------------------------------------------------
 
-def _ridge_logit(Z, y, pen, iters=60):
+def _ridge_logit(Z, y, pen, iters=60, offset=None):
     b = np.zeros(Z.shape[1])
-    rate = min(max(y.mean(), 1e-4), 1 - 1e-4)
-    b[0] = math.log(rate / (1 - rate))
+    off = np.zeros(len(y)) if offset is None else offset
+    if offset is None:
+        rate = min(max(y.mean(), 1e-4), 1 - 1e-4)
+        b[0] = math.log(rate / (1 - rate))
     for _ in range(iters):
-        p = expit(Z @ b)
+        p = expit(Z @ b + off)
         g = Z.T @ (p - y) + pen * b
         H = (Z * (p * (1 - p))[:, None]).T @ Z + np.diag(pen) + 1e-9 * np.eye(len(b))
         step = np.linalg.solve(H, g)
@@ -82,20 +114,21 @@ def _ridge_logit(Z, y, pen, iters=60):
     return b
 
 
-def fit_stack(F, y, lam=1.0):
-    """logit p = a + F b, b >= 0, ridge lam on b, by an active set: fit,
-    pin the negative weights to 0, refit the rest, until none is negative."""
+def fit_stack(F, y, lam=1.0, offset=None):
+    """logit p = offset + a + F b, b >= 0, ridge lam on b, by an active set:
+    fit, pin the negative weights to 0, refit the rest, until none is
+    negative."""
     k = F.shape[1]
     active = np.ones(k, bool)
     while active.any():
         Z = np.column_stack([np.ones(len(y)), F[:, active]])
-        b = _ridge_logit(Z, y, np.r_[0.0, np.full(int(active.sum()), lam)])
+        b = _ridge_logit(Z, y, np.r_[0.0, np.full(int(active.sum()), lam)], offset=offset)
         w = np.zeros(k)
         w[active] = b[1:]
         if (w >= 0).all():
             return float(b[0]), w
         active &= w > 0
-    return float(_ridge_logit(np.ones((len(y), 1)), y, np.zeros(1))[0]), np.zeros(k)
+    return float(_ridge_logit(np.ones((len(y), 1)), y, np.zeros(1), offset=offset)[0]), np.zeros(k)
 
 
 def train_mask(origin, known, o):
@@ -105,6 +138,8 @@ def train_mask(origin, known, o):
 # --- scores ------------------------------------------------------------------
 
 def block_ci(d, years, draws=DRAWS, seed=1):
+    if len(d) == 0:
+        return (float("nan"),) * 3
     rng = np.random.default_rng(seed)
     ys = np.unique(years)
     by = {v: d[years == v] for v in ys}
@@ -171,10 +206,16 @@ def read(path):
          "y": np.array([l[2] == "true" for l in lines]),
          "known": np.array([int(l[3]) for l in lines]),
          "p": np.array([num(l[5]) for l in lines]),
+         "o": np.array([num(l[4]) for l in lines]),
+         "osz": [parse_osz(l[6]) for l in lines],
          "F": np.array([[num(l[i]) for i in fcols] for l in lines]),
          "W": np.array([[num(l[i]) for i in wcols] for l in lines]),
          "X": np.array([[num(v) for v in l[x0:]] for l in lines])}
     d["live"] = (d["W"] > 0) & ~np.isnan(d["F"])
+    # each model's log odds beyond the node's mean offset, and the offset the
+    # issued p is integrated over, as one number for fitting
+    d["E"] = d["F"] - d["o"][:, None]
+    d["o_eff"] = np.array([mean_offset(oz) for oz in d["osz"]])
     return d
 
 
@@ -209,6 +250,28 @@ def stack_forecast(d, extra_train=None):
     return causal(d, fp, extra_train)
 
 
+def stack_forecast_osz(d, extra_train=None):
+    S, yf = np.where(d["live"], d["E"], 0.0), d["y"].astype(float)
+
+    def fp(tr, te):
+        a, b = fit_stack(S[tr], yf[tr], offset=d["o_eff"][tr])
+        return integrate(a + S[te] @ b, [d["osz"][i] for i in np.where(te)[0]])
+    return causal(d, fp, extra_train)
+
+
+def reference_forecast_osz(d):
+    X = np.nan_to_num(d["X"], nan=0.0)
+    yf = d["y"].astype(float)
+
+    def fp(tr, te):
+        Xtr, Xte = ref.standardize(X[tr], X[te])
+        Z = lambda M: np.column_stack([np.ones(len(M)), M])
+        pen = np.r_[0.0, np.full(Xtr.shape[1], ref.LAMBDA)]
+        b = _ridge_logit(Z(Xtr), yf[tr], pen, offset=d["o_eff"][tr])
+        return integrate(Z(Xte) @ b, [d["osz"][i] for i in np.where(te)[0]])
+    return causal(d, fp)
+
+
 def reference_forecast(d, drop_flags=False):
     X = np.nan_to_num(d["X"], nan=0.0)
     if drop_flags:
@@ -231,7 +294,7 @@ def increment(d, g):
     """Forecasts without and with group g's departure from the selected log
     odds, each a causal recalibration of the selected."""
     fs = logit(d["p"])
-    dep = np.where(d["live"][:, g], d["F"][:, g] - fs, 0.0)
+    dep = np.where(d["live"][:, g], d["E"][:, g] - (fs - d["o_eff"]), 0.0)
     one = np.ones(len(fs))
     base = _causal_logit(d, np.column_stack([one, fs]), np.array([0.0, 1e-3]))
     plus = _causal_logit(d, np.column_stack([one, fs, dep]), np.array([0.0, 1e-3, 1.0]))
@@ -242,8 +305,8 @@ def stability(d, year):
     """The largest CV of the stack's three largest weights over STAB_DRAWS
     refits on origin-resampled training rows, at December of `year`."""
     tr = np.where(train_mask(d["origin"], d["known"], year * 12 + 11))[0]
-    S, yf = stack_inputs(d), d["y"].astype(float)
-    _, full = fit_stack(S[tr], yf[tr])
+    S, yf, off = np.where(d["live"], d["E"], 0.0), d["y"].astype(float), d["o_eff"]
+    _, full = fit_stack(S[tr], yf[tr], offset=off[tr])
     top = [i for i in np.argsort(-full)[:3] if full[i] > 0]
     if not top:
         return 0.0, []
@@ -251,7 +314,7 @@ def stability(d, year):
     yrs = d["origin"][tr] // 12
     idx = {v: tr[yrs == v] for v in np.unique(yrs)}
     uy = list(idx)
-    ws = np.array([fit_stack(S[p], yf[p])[1][top]
+    ws = np.array([fit_stack(S[p], yf[p], offset=off[p])[1][top]
                    for p in (np.concatenate([idx[v] for v in rng.choice(uy, len(uy))]) for _ in range(STAB_DRAWS))])
     cv = ws.std(0) / np.maximum(np.abs(ws.mean(0)), 1e-9)
     return float(cv.max()), [(d["groups"][i], float(full[i]), float(c)) for i, c in zip(top, cv)]
@@ -261,7 +324,7 @@ def compare(q, d, sel, years, mask):
     m = mask & ~np.isnan(q)
     lg = row_log(q[m], d["y"][m]) - row_log(sel[m], d["y"][m])
     br = (sel[m] - d["y"][m]) ** 2 - (q[m] - d["y"][m]) ** 2
-    return block_ci(lg, years[m]), float(br.mean()), int(m.sum())
+    return block_ci(lg, years[m]), float(br.mean()) if m.any() else float("nan"), int(m.sum())
 
 
 def run_kind(tap_dir, kind, latest=None):
@@ -271,9 +334,17 @@ def run_kind(tap_dir, kind, latest=None):
     sel = d["p"]
     places = lambda m: [d["place"][i] for i in np.where(m)[0]]
     out = {"kind": kind, "rows": int(win.sum()), "onsets": int(d["y"][win].sum()), "groups": d["groups"]}
-    comps = {"log pool": log_pool(d["F"], d["live"]), "median pool": median_pool(d["F"], d["live"]),
-             "stack": stack_forecast(d), "reference": reference_forecast(d),
+    comps = {"log pool": log_pool_osz(d["E"], d["live"], d["osz"]),
+             "median pool": median_pool_osz(d["E"], d["live"], d["osz"]),
+             "stack": stack_forecast_osz(d), "reference": reference_forecast_osz(d),
              "reference without 0/1": reference_forecast(d, drop_flags=True)}
+    registered = {"log pool, no offsets": log_pool(d["F"], d["live"]), "median pool, no offsets": median_pool(d["F"], d["live"]),
+                  "stack, no offsets": stack_forecast(d), "reference, no offsets": reference_forecast(d)}
+    W = np.where(d["live"], d["W"], 0.0)
+    W = W / np.maximum(W.sum(1, keepdims=True), 1e-300)
+    rebuilt = np.array([sum(w * sum(wg * expit(o + e) for wg, e in zip(W[i], d["E"][i]) if wg > 0) for w, o in d["osz"][i])
+                        for i in range(len(d["p"]))])
+    out["rebuilt"] = (float(np.corrcoef(rebuilt[win], sel[win])[0, 1]), float(np.abs(rebuilt[win] - sel[win]).mean()))
     allrows = {(u, int(o)): (float(p), bool(y)) for u, o, p, y in zip(d["place"], d["origin"], d["p"], d["y"])}
     clim, own = sc.baselines(allrows)
     for nm, b in (("clim", clim), ("own", own)):
@@ -289,6 +360,11 @@ def run_kind(tap_dir, kind, latest=None):
         out["scores"][nm]["n"] = n
         res[nm] = (ci, brg)
     out["against selected"] = res
+    out["registered, no offsets"] = {}
+    for nm, q in registered.items():
+        m = win & ~np.isnan(q)
+        ci, brg, n = compare(q, d, sel, years, win)
+        out["registered, no offsets"][nm] = (summary(q[m], d["y"][m], d["origin"][m], places(m)), ci, brg)
     eff = defaultdict(list)
     for i in np.where(win)[0]:
         if d["live"][i].any():
@@ -307,13 +383,14 @@ def run_kind(tap_dir, kind, latest=None):
     out["stability"] = {y: stability(d, y) for y in (2012, 2022)}
     stable = all(cv <= 0.5 for cv, _ in out["stability"].values())
     late = win & (years >= 2020)
-    no_early = stack_forecast(d, extra_train=~((years >= 2003) & (years <= 2006)))
+    no_early = stack_forecast_osz(d, extra_train=~((years >= 2003) & (years <= 2006)))
     out["2020-22 log"] = {}
     for nm, q in (("selected", sel), ("stack", comps["stack"]), ("stack without 2003-06", no_early), ("log pool", comps["log pool"])):
         m = late & ~np.isnan(q)
         out["2020-22 log"][nm] = float(row_log(q[m], d["y"][m]).mean())
     share = (np.nan_to_num(d["X"], nan=0.0) != 0).mean(1)
     med = float(np.median(share[win]))
+    out["half rows"] = {"rich": int((win & (share > med)).sum()), "poor": int((win & (share <= med)).sum())}
     out["halves"] = {hn: {nm: beats(*compare(q, d, sel, years, win & hm)[:2]) for nm, q in comps.items()}
                      for hn, hm in (("rich", share > med), ("poor", share <= med))}
     differ = any(out["halves"]["rich"][nm] != out["halves"]["poor"][nm] for nm in comps)
@@ -350,6 +427,7 @@ def fmt_ci(c):
 def report(r):
     print(f"\n== {r['kind']}: rows {r['rows']}, onsets {r['onsets']}, groups {len(r['groups'])}, "
           f"effective n of models {r['effective n']:.2f}; flags: {', '.join(r['flags'])}")
+    print(f"   the models, weights and offsets rebuild t162's p: correlation {r['rebuilt'][0]:.4f}, mean |diff| {r['rebuilt'][1]:.5f}")
     print(f"   {'forecast':<22} {'n':>5} {'log':>9} {'Brier':>8} {'AUC':>6} {'within':>6} {'p/rate':>6}   log gain vs selected [90%]      Brier gain")
     s = r["scores"]["selected"]
     print(f"   {'selected (t162)':<22} {r['rows']:>5} {s['log']:+.5f} {s['brier']:.5f} {s['auc']:.3f} {s['within']:.3f} {s['p/rate']:.2f}")
@@ -357,10 +435,13 @@ def report(r):
         s = r["scores"][nm]
         print(f"   {nm:<22} {s['n']:>5} {s['log']:+.5f} {s['brier']:.5f} {s['auc']:.3f} {s['within']:.3f} {s['p/rate']:.2f}   "
               f"{fmt_ci(ci)}  {brg:+.5f}{'  BEATS' if beats(ci, brg) else ''}")
+    for nm, (s, ci, brg) in r["registered, no offsets"].items():
+        print(f"   {nm:<22} {'':>5} {s['log']:+.5f} {s['brier']:.5f} {s['auc']:.3f} {s['within']:.3f} {s['p/rate']:.2f}   {fmt_ci(ci)}  {brg:+.5f}  (registered form, no flag)")
     print("   group increments (log, 90%): " + "; ".join(f"{g} {fmt_ci(c)}" for g, c in r["increments"]))
     for y, (cv, top) in r["stability"].items():
         print(f"   stack at {y}: largest CV {cv:.2f}; top " + ", ".join(f"{g} {w:.2f} (cv {c:.2f})" for g, w, c in top))
     print("   2020-22 log: " + ", ".join(f"{k} {v:+.5f}" for k, v in r["2020-22 log"].items()))
+    print(f"   halves at the median share of non-zero inputs: rich {r['half rows']['rich']} rows, poor {r['half rows']['poor']}")
     print("   beats selected, rich/poor half: " + ", ".join(f"{nm} {int(r['halves']['rich'][nm])}/{int(r['halves']['poor'][nm])}" for nm in r["halves"]["rich"]))
     print("   effective n by year: " + " ".join(f"{y}:{v:.2f}" for y, v in r["effective n by year"].items()))
 
