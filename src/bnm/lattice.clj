@@ -1814,8 +1814,9 @@
    the models but not scored for the averaging's weights (augur's row
    :evidence false), so the level issued before then cannot set the weights
    later; all rows scored without,
-   :stack {:scale :level :month :from} (bnm-7yg.8.8): at that node the forecast
-   issued is R1's causal non-negative stack of its group models (bnm.stack),
+   :stack {:scale :level :month :from :method} (bnm-7yg.8.8): at that node the
+   forecast issued is R1's causal non-negative stack of its group models
+   (bnm.stack), or with :method :reference R1's reference logit on its inputs,
    refit at each origin on the node's rows issued in `month` (0-11) from
    month `from` (1975's January without) and known by then; the averaging's p where the stack cannot be fit yet. Only
    the forecast issued changes: the node's state, book, errors and learning
@@ -2223,7 +2224,8 @@
                        ;; :stack (bnm-7yg.8.8): the stack fitted on the rows known by t
                        stack? (let [sc (:stack spec)] (and sc (not fo?) (= scale (:scale sc)) (= level (:level sc))))
                        sgroups (when stack? (vec (sort-by str (keys (:models live)))))
-                       sfit (when stack? (stack/fit-at (get-in st [:stack k]) t (get-in spec [:stack :from] (* 12 1975))))
+                       sref? (= :reference (get-in spec [:stack :method]))
+                       sfit (when stack? ((if sref? stack/reference-at stack/fit-at) (get-in st [:stack k]) t (get-in spec [:stack :from] (* 12 1975))))
                        made (vec (for [{:keys [place x os] :as e} seen
                                        :let [;; :presence :per-place (bnm-ris): the groups with no
                                              ;; input at this place drop out of its mixture, the
@@ -2268,7 +2270,7 @@
                                                                     (d/weights live) o))]]
                                    (assoc e :o o :p p :target target :f pf :q pq
                                           :stack-e se :stack-off (when se (stack/mean-offset osz))
-                                          :stack-p (when (and se sfit) (stack/forecast sfit se osz)) :principal (when principal-of (principal-of x))
+                                          :stack-p (when (and se sfit) (if sref? (stack/forecast-reference sfit x osz) (stack/forecast sfit se osz))) :principal (when principal-of (principal-of x))
                                           :frailty zprior :ez (when ez (get ez place)) :rg (when rg (get rg place))
                                           ;; :state-from: the node's state, and the errors it feeds back,
                                           ;; from a fixed reference rather than the combination, which is
@@ -2333,8 +2335,8 @@
                        ;; :stack: this origin's rows in its month, learned from once known
                        st (if (and stack? (= (long (:month (:stack spec))) (long (mod t 12))))
                             (update-in st [:stack k] (fnil into [])
-                                       (for [{:keys [target stack-e stack-off]} made :when (some? (:y target))]
-                                         {:e stack-e :off stack-off :origin t :known-at (:known-at target)
+                                       (for [{:keys [target stack-e stack-off x]} made :when (some? (:y target))]
+                                         {:e stack-e :off stack-off :origin t :known-at (:known-at target) :x (when sref? x)
                                           :y (let [y (:y target)] (if (number? y) (double y) (if y 1.0 0.0)))}))
                             st)
                        st (-> st

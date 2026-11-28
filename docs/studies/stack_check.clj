@@ -3,14 +3,15 @@
 ;; compares its forecasts with <check-run>'s (t162) and with the study's
 ;; stack (docs/studies/stack_forecasts.py): December year country rows
 ;; 2003-2022 against the study's p, every other row against the run's.
-;; Usage: jolt -Sdeps '{:paths ["src" "resources" "test" "tools"]}' docs/studies/stack_check.clj <study-dir> <check-run> [k1,k2]
+;; With a fourth argument `reference`, on bnm.ledger/reference-shadow-command.
+;; Usage: jolt -Sdeps '{:paths ["src" "resources" "test" "tools"]}' docs/studies/stack_check.clj <study-dir> <check-run> [k1,k2] [reference]
 (require '[bnm.world-run :as wr] '[bnm.ledger :as lg] '[bnm.lattice :as lt] '[clojure.string :as str])
 
 (defn- read-tsv [path f]
   (into {} (keep f (str/split-lines (slurp path)))))
 
-(let [[study check only] *command-line-args*
-      opts (wr/options (vec (lg/shadow-command "diag" lg/base-end)))
+(let [[study check only method] *command-line-args*
+      opts (wr/options (vec ((if (= "reference" method) lg/reference-shadow-command lg/shadow-command) "diag" lg/base-end)))
       cats (wr/run-catalogues opts)
       ks (vec (sort (keys cats)))
       specs (wr/pipeline-specs opts ks lg/base-end cats {:fresh (wr/fresh-kinds (:fresh-frailty opts) ks cats) :nq #{}})]

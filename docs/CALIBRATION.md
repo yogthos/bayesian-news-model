@@ -5048,3 +5048,11 @@ Result of t165-informed (28 November 2026). **Every kind changed, not most: the 
 - Alerts, pooled cost difference -0.0015 [-0.0049, +0.0015]; food -0.0237 [-0.0669, +0.0121].
 - Rank 0: no bucket moves by more than 0.01 except food's. There the 2-4 and never buckets rise (0.256 -> 0.290 and 0.250 -> 0.261 against rates 0.209 and 0.130): more over-forecast after an onset and with none.
 - Reading: the channel is real. Removing the uninformed evidence changes food's later weights. But applied everywhere, the principle costs banking, violence and war through their own early uninformed stretches, and food is not better for it. t166 (the prior on top) runs as registered. A food-only version (`--kind-set` with `:evidence-from :informed` at food alone) is not registered.
+
+### A second shadow: the reference logit at conflict onsets (bnm-7yg.8.8, 28 November 2026)
+
+Decided by the user ("go with the recommendation") after R3's result, so it is an addition to R3's rule, disclosed here. R3's verdict let only the challenger or R1's winner join. The reference logit passed the same test at conflict onsets with the largest gain (+0.0313 [+0.0205, +0.0413] at the corrected level, Brier +0.0110, alert cost -0.032 [-0.052, -0.013]). It joins the 2027-Q1 issue as a second reported shadow at conflict onsets only (`bnm.ledger/reference-shadow-command`). At war its gain was smaller than the stack's, which stays.
+
+Port: bnm.stack's reference logit, tested against a fixture from combination.py to 1e-8; bnm.lattice's `:stack` with `:method :reference`, tested on the toy world (equal to a rebuild from the tap to 1e-12, nothing else changed). Check, registered now and run after t166 (one run at a time): docs/studies/stack_check.clj with `reference` at conflict onsets. December year country rows 2003-2022 must equal docs/studies/stack_forecasts.py's reference forecasts within 1e-6, and nothing but December year country rows may differ from t162.
+
+Also decided: after t166, food's weights are not tuned further (bnm-56c.26). Its problem reads as level and target, not combination: R1 put food in "selection holds", and t165 moved its weights without improving it.

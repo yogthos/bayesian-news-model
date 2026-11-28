@@ -2,7 +2,9 @@
 stack_forecast_osz) written per kind, place<TAB>origin<TAB>p, for
 docs/studies/stack_check.clj to compare with the lattice's :stack.
 
-  python3 -I docs/studies/stack_forecasts.py <tap-dir> <out-dir> [k1,k2]
+  python3 -I docs/studies/stack_forecasts.py <tap-dir> <out-dir> [k1,k2] [stack|reference]
+
+With `reference`, R1's reference logit (reference_forecast_osz) instead.
 """
 import importlib.util
 import math
@@ -20,7 +22,7 @@ if __name__ == "__main__":
     os.makedirs(out, exist_ok=True)
     for k in kinds:
         d = cb.read(os.path.join(tap, k + ".tsv"))
-        p = cb.stack_forecast_osz(d)
+        p = cb.reference_forecast_osz(d) if len(sys.argv) > 4 and sys.argv[4] == "reference" else cb.stack_forecast_osz(d)
         with open(os.path.join(out, k + ".tsv"), "w") as fh:
             for u, o, q in zip(d["place"], d["origin"], p):
                 if not math.isnan(q):

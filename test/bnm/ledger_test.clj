@@ -659,3 +659,11 @@
         "only the --kind-set differs")
     (is (= (-> (ks base) (assoc-in ["conflict_onset" :stack] st) (assoc-in ["war_onset" :stack] st))
            (ks shadow)))))
+
+(deftest the-reference-shadow-is-the-base-with-the-logit-at-conflict
+  ;; bnm-7yg.8.8: the second 2027-Q1 shadow, R1's reference logit at conflict
+  ;; onsets' year country nodes only
+  (let [ks (fn [args] (read-string (second (drop-while #(not= "--kind-set" %) args))))]
+    (is (= (assoc-in (ks (lg/command "x" lg/base-end)) ["conflict_onset" :stack]
+                     {:scale :year :level :country :month 11 :method :reference})
+           (ks (lg/reference-shadow-command "x" lg/base-end))))))

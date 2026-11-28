@@ -95,18 +95,60 @@
             (recur (mapv #(and %1 (> %2 0.0)) active w))))
         {:a (first (ridge-logit (mapv (fn [_] (double-array [1.0])) es) ys offs [0.0])) :b (vec (repeat k 0.0))}))))
 
+(defn- training
+  "The rows known by `t` issued from month `from` on; nil with fewer than
+  five onsets among them."
+  [rows t from]
+  (let [tr (filterv #(and (<= (long (:known-at %)) (long t)) (>= (long (:origin %)) (long from))) rows)]
+    (when (>= (reduce + (map :y tr)) min-onsets) tr)))
+
 (defn fit-at
   "The stack at origin `t` from `rows` ({:e :off :y :origin :known-at}): the
   rows known by t issued from month `from` on (1975's January without);
   nil with fewer than five onsets among them."
   ([rows t] (fit-at rows t train-from))
   ([rows t from]
-  (let [tr (filterv #(and (<= (long (:known-at %)) (long t)) (>= (long (:origin %)) (long from))) rows)]
-    (when (>= (reduce + (map :y tr)) min-onsets)
-      (fit (mapv :e tr) (mapv :y tr) (mapv :off tr))))))
+   (when-let [tr (training rows t from)]
+     (fit (mapv :e tr) (mapv :y tr) (mapv :off tr)))))
 
 (defn forecast
   "p for deviations `e` under the stack `{:a :b}`, integrated over `osz`."
   ^double [{:keys [a b]} e osz]
   (let [eta (+ (double a) (reduce + (map * b e)))]
+    (reduce + (for [[w o] osz] (* (double w) (expit (+ (double o) eta)))))))
+
+;; R1's reference logit (bnm-7yg.8.8, the second shadow): a ridge logit on
+;; the node's inputs, docs/studies/combination.py's reference_forecast_osz.
+
+(defn- clean ^double [v] (let [v (double (or v 0.0))] (if (Double/isNaN v) 0.0 v)))
+
+(defn fit-reference
+  "{:m :s :b}: the reference logit fitted to input rows `xs` (a missing
+  value read as 0), outcomes `ys` and offsets `offs`: each column
+  standardized on these rows (a constant column to 0), ridge 1 on each
+  slope, the intercept free."
+  [xs ys offs]
+  (let [xs (mapv #(mapv clean %) xs)
+        n (double (count xs))
+        k (count (first xs))
+        m (mapv (fn [j] (/ (reduce + (map #(nth % j) xs)) n)) (range k))
+        s (mapv (fn [j] (let [mj (nth m j)
+                              sd (Math/sqrt (/ (reduce + (map #(let [d (- (nth % j) mj)] (* d d)) xs)) n))]
+                          (if (pos? sd) sd 1.0)))
+                (range k))
+        z (fn [x] (double-array (cons 1.0 (map (fn [v mj sj] (/ (- v mj) sj)) x m s))))
+        b (ridge-logit (mapv z xs) ys offs (vec (cons 0.0 (repeat k lam))))]
+    {:m m :s s :b b}))
+
+(defn reference-at
+  "The reference logit at origin `t` from `rows` ({:x :off :y :origin
+  :known-at}), as `fit-at`."
+  [rows t from]
+  (when-let [tr (training rows t from)]
+    (fit-reference (mapv :x tr) (mapv :y tr) (mapv :off tr))))
+
+(defn forecast-reference
+  "p for inputs `x` under the reference logit, integrated over `osz`."
+  ^double [{:keys [m s b]} x osz]
+  (let [eta (+ (double (first b)) (reduce + (map (fn [v mj sj bj] (* bj (/ (- (clean v) mj) sj))) x m s (rest b))))]
     (reduce + (for [[w o] osz] (* (double w) (expit (+ (double o) eta)))))))

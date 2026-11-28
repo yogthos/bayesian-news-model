@@ -3003,3 +3003,23 @@
             even? (fn [w] (let [v (filter pos? (vals w))] (every? #(< (Math/abs (- % (first v))) 1e-9) v)))]
         (is (even? (w-at sp)) (str (w-at sp)))
         (is (not (even? (w-at (pri (spec (world 5)))))) "without the option they move")))))
+
+(deftest the-reference-method-issues-the-reference-logit
+  ;; bnm-7yg.8.8: :stack's :method :reference issues R1's reference logit on
+  ;; the node's inputs, refit at each origin; nothing else changes
+  (let [sp (spec (world 5))
+        taps (atom [])
+        a (lt/run (spec (world 5)))
+        b (lt/run (assoc sp :stack {:scale :year :level :country :month 11 :from 0 :method :reference} :tap #(swap! taps conj %)))
+        yc? #(and (= :year (:scale %)) (= 2 (count (:place %))))
+        rows (filterv #(and (= :year (:scale %)) (= :country (:level %))) @taps)
+        train (vec (for [r rows :let [tg ((:target sp) :year (:place r) (:t r))] :when (some? (:y tg))]
+                     {:x (:x r) :off (bnm.stack/mean-offset (:osz r)) :y (if (:y tg) 1.0 0.0) :origin (:t r) :known-at (:known-at tg)}))
+        issued (into {} (for [f (:forecasts b) :when (yc? f)] [[(:place f) (:origin f)] (:p f)]))
+        fitted (atom 0)]
+    (is (= (remove yc? (:forecasts a)) (remove yc? (:forecasts b))))
+    (is (= (:book a) (:book b)))
+    (doseq [r rows :let [fit (bnm.stack/reference-at train (:t r) 0)] :when fit]
+      (swap! fitted inc)
+      (is (< (Math/abs (- (bnm.stack/forecast-reference fit (:x r) (:osz r)) (issued [(:place r) (:t r)]))) 1e-12)))
+    (is (pos? @fitted))))
