@@ -42,8 +42,8 @@ EPS = 1e-6
 
 def expit(z):
     if np.ndim(z):
-        return 1 / (1 + np.exp(-np.asarray(z, float)))
-    return 1 / (1 + math.exp(-z))
+        return 1 / (1 + np.exp(-np.clip(np.asarray(z, float), -700, 700)))
+    return 1 / (1 + math.exp(-min(max(z, -700.0), 700.0)))
 
 
 def logit(p):

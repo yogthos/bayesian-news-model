@@ -28,6 +28,16 @@ class Pools(unittest.TestCase):
         self.assertTrue(math.isnan(cb.log_pool(F, live)[0]))
 
 
+class Expit(unittest.TestCase):
+    def test_extreme_log_odds_do_not_overflow(self):
+        self.assertAlmostEqual(cb.expit(-1000.0), 0.0, places=12)
+        self.assertEqual(cb.expit(1000.0), 1.0)
+        v = cb.expit(np.array([-1000.0, 1000.0]))
+        self.assertAlmostEqual(v[0], 0.0, places=12)
+        self.assertEqual(v[1], 1.0)
+        self.assertAlmostEqual(cb.expit(0.3), 1 / (1 + math.exp(-0.3)))
+
+
 class Offsets(unittest.TestCase):
     def test_integrate_over_the_offsets(self):
         osz = [[(0.5, -1.0), (0.5, 1.0)]]
