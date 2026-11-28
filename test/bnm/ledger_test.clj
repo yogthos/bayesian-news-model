@@ -434,8 +434,11 @@
   ;; verdicts, the others are reported beside it (sixth note to L1)
   (doseq [[q ids] (group-by lg/issue-quarter (keys lg/issued))]
     (is (= 1 (count (filter #(= :primary (:role (lg/issued %))) ids))) q))
-  (is (= :primary (:role (lg/issued "2026-Q4-r2"))))
-  (is (= "2026-Q4-r2" (lg/previous-issue lg/issued "2027-Q1"))))
+  ;; r3 on t162 carries 2026-Q4's verdicts (twenty-sixth note to L1)
+  (is (= :primary (:role (lg/issued "2026-Q4-r3"))))
+  (is (= :reported (:role (lg/issued "2026-Q4-r2"))))
+  (is (= "t162" (:base (lg/read-manifest "2026-Q4-r3"))))
+  (is (= "2026-Q4-r3" (lg/previous-issue lg/issued "2027-Q1"))))
 
 (deftest every-registered-scanner-ranking-is-intact
   (doseq [[q files] lg/scanners
