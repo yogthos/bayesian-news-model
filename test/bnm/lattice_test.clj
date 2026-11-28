@@ -2955,3 +2955,31 @@
                                   (* wj (get (:w r) g 0.0) (augur.dynamic/predict m (:x r) oj))))]]
       (is (< (Math/abs (- p mix)) 1e-9) (str (:place r) " " (:t r))))
     (is (some #(> (count (:osz %)) 1) rs) "the frailty integrates over several offsets")))
+
+(deftest the-stack-option-changes-only-the-forecast-issued
+  ;; bnm-7yg.8.8: under :stack the year country forecasts are R1's stack of
+  ;; the node's group models, refit at each origin on the rows known by it;
+  ;; every other forecast, the book and the weights are the averaging's
+  (let [sp (spec (world 5))
+        taps (atom [])
+        a (lt/run (spec (world 5)))
+        ;; each run its own world: the gauges draw from the world's generator
+        b (lt/run (assoc sp :stack {:scale :year :level :country :month 11 :from 0} :tap #(swap! taps conj %)))
+        yc? #(and (= :year (:scale %)) (= 2 (count (:place %))))
+        rows (filterv #(and (= :year (:scale %)) (= :country (:level %))) @taps)
+        dev (fn [r] (bnm.stack/deviations (vec (sort-by str (keys (:models r)))) (:f r) (:w r) (:o r)))
+        train (vec (for [r rows :let [tg ((:target sp) :year (:place r) (:t r))] :when (some? (:y tg))]
+                     {:e (dev r) :off (bnm.stack/mean-offset (:osz r)) :y (if (:y tg) 1.0 0.0)
+                      :origin (:t r) :known-at (:known-at tg)}))
+        issued (into {} (for [f (:forecasts b) :when (yc? f)] [[(:place f) (:origin f)] (:p f)]))
+        plain (into {} (for [f (:forecasts a) :when (yc? f)] [[(:place f) (:origin f)] (:p f)]))
+        stacked (atom 0)]
+    (is (= (remove yc? (:forecasts a)) (remove yc? (:forecasts b))))
+    (is (= (:book a) (:book b)))
+    (is (= (:weights a) (:weights b)))
+    (doseq [r rows
+            :let [fit (bnm.stack/fit-at train (:t r) 0)
+                  want (if fit (bnm.stack/forecast fit (dev r) (:osz r)) (plain [(:place r) (:t r)]))]]
+      (when fit (swap! stacked inc))
+      (is (< (Math/abs (- want (issued [(:place r) (:t r)]))) 1e-12) (str (:place r) " " (:t r))))
+    (is (pos? @stacked) "the stack is fitted at some origins")))

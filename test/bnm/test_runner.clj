@@ -28,6 +28,7 @@
             [bnm.precursors-test]
             [bnm.paired-test]
             [bnm.lattice-test]
+            [bnm.stack-test]
             [bnm.lattice-golden-test]
             [bnm.lattice-regional-test]
             [bnm.world-state-test]
@@ -194,6 +195,7 @@
     bnm.precursors-test
     bnm.paired-test
     bnm.lattice-test
+    bnm.stack-test
     bnm.lattice-golden-test
     bnm.lattice-regional-test
     bnm.world-state-test

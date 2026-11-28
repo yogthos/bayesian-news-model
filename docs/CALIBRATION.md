@@ -5005,3 +5005,13 @@ Reading:
 - The reference logit passes at conflict and war, with the largest gain at conflict (+0.0313), but under the rule only the challenger or R1's winner can join. It is recorded here, not carried.
 
 Joining the 2027-Q1 issue as reported shadows: R1's causal non-negative stack of the group models (with the frailty's offsets) at conflict onsets and at war onsets. t162 stays the base and 2026-Q4-r3 the primary issue. Before the issue, the stack is ported to the lattice behind an option and checked against the study's forecasts.
+
+### The stack in the lattice: check against the study (bnm-7yg.8.8, 28 November 2026, before the check)
+
+Port: bnm.stack (R1's fit, tested against a fixture from combination.py's fit_stack to 1e-8) and bnm.lattice's `:stack {:scale :level :month :from}`. At that node the forecast issued is the stack, refit at each origin on the node's December rows known by then; the averaging's p where it cannot be fit yet. Only the forecast issued changes, not the node's state, book, errors or weights (tested on the toy world, where each stack forecast equals one rebuilt from the tap to 1e-12). bnm.ledger/shadow-command is t162's command with `:stack` at conflict onsets and war onsets (tested).
+
+Check (docs/studies/stack_check.clj, both kinds on the shadow command):
+- December year country rows 2003-2022 must equal docs/studies/stack_forecasts.py's study stack within 1e-6.
+- Every other row is compared with t162's and its differences are counted by type. Month-scale and region rows must not differ. Year country rows at other months may differ, because the stack issues at every origin of the node.
+
+If the check fails, the port is fixed, not the study.

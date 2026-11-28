@@ -64,6 +64,7 @@
             [augur.hier :as hier]
             [bnm.relations :as rel]
             [bnm.sheaf :as sh]
+            [bnm.stack :as stack]
             [augur.math :as m]))
 
 (defn finer?
@@ -1808,6 +1809,12 @@
    offset, each model's log odds, the weights and the models as issued
    (augur.dynamic), so a diagnosis can read a model at other inputs;
    nothing it returns is used,
+   :stack {:scale :level :month :from} (bnm-7yg.8.8): at that node the forecast
+   issued is R1's causal non-negative stack of its group models (bnm.stack),
+   refit at each origin on the node's rows issued in `month` (0-11) from
+   month `from` (1975's January without) and known by then; the averaging's p where the stack cannot be fit yet. Only
+   the forecast issued changes: the node's state, book, errors and learning
+   stay the averaging's,
    :exposure (fn [scale place origin]) -> [exposures], :exposure-width n,
    :coupling, the strength levels share what they learn (none without),
    :forget, the model averaging's forgetting, per period, :forget-half-life
@@ -2204,6 +2211,10 @@
                             st)
                        live (if (seq out) (assoc model :w (live-weights (d/weights model) out)) model)
                        state-of (when-not fo? (state-fn spec))
+                       ;; :stack (bnm-7yg.8.8): the stack fitted on the rows known by t
+                       stack? (let [sc (:stack spec)] (and sc (not fo?) (= scale (:scale sc)) (= level (:level sc))))
+                       sgroups (when stack? (vec (sort-by str (keys (:models live)))))
+                       sfit (when stack? (stack/fit-at (get-in st [:stack k]) t (get-in spec [:stack :from] (* 12 1975))))
                        made (vec (for [{:keys [place x os] :as e} seen
                                        :let [;; :presence :per-place (bnm-ris): the groups with no
                                              ;; input at this place drop out of its mixture, the
@@ -2242,8 +2253,13 @@
                                                        :osz osz
                                                        :f (into {} (for [[g mdl] (:models live)] [g (:f (d/predictive mdl x o))]))
                                                        :w (d/weights live)
-                                                       :models (:models live)}))]]
-                                   (assoc e :o o :p p :target target :f pf :q pq :principal (when principal-of (principal-of x))
+                                                       :models (:models live)}))
+                                             se (when stack?
+                                                  (stack/deviations sgroups (into {} (for [[g mdl] (:models live)] [g (:f (d/predictive mdl x o))]))
+                                                                    (d/weights live) o))]]
+                                   (assoc e :o o :p p :target target :f pf :q pq
+                                          :stack-e se :stack-off (when se (stack/mean-offset osz))
+                                          :stack-p (when (and se sfit) (stack/forecast sfit se osz)) :principal (when principal-of (principal-of x))
                                           :frailty zprior :ez (when ez (get ez place)) :rg (when rg (get rg place))
                                           ;; :state-from: the node's state, and the errors it feeds back,
                                           ;; from a fixed reference rather than the combination, which is
@@ -2305,6 +2321,13 @@
                                                          ;; without it is the registered issues'
                                                          (and min-origins (seq made)) (assoc :origins (inc (long (:origins flow-std 0))))))
                             st)
+                       ;; :stack: this origin's rows in its month, learned from once known
+                       st (if (and stack? (= (long (:month (:stack spec))) (long (mod t 12))))
+                            (update-in st [:stack k] (fnil into [])
+                                       (for [{:keys [target stack-e stack-off]} made :when (some? (:y target))]
+                                         {:e stack-e :off stack-off :origin t :known-at (:known-at target)
+                                          :y (let [y (:y target)] (if (number? y) (double y) (if y 1.0 0.0)))}))
+                            st)
                        st (-> st
                               (assoc-in [:models k] model)
                               (assoc-in [:pending k] (into (vec waiting)
@@ -2343,8 +2366,8 @@
                    (if fo?
                      [st forecasts weights trace]
                    [st
-                    (into forecasts (for [{:keys [place p target]} made]
-                                              {:scale scale :place place :origin t :p p :y (:y target)}))
+                    (into forecasts (for [{:keys [place p target stack-p]} made]
+                                              {:scale scale :place place :origin t :p (or stack-p p) :y (:y target)}))
                     (update weights k (fnil conj [])
                             [t (cond-> (d/weights live)
                                  ;; :group-shrink: each group's scale beside the weights

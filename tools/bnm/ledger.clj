@@ -576,6 +576,19 @@
    "--release-calendar" "conflict_onset,war_onset" "--recalibrate-intercept" "inflation_crisis"
    "--theory-half-life" "sovereign_default:10" "--theory-half-life-level" "sovereign_default"])
 
+(defn shadow-command
+  "The stack shadow's bnm.world-run arguments (bnm-7yg.8.8, R3, 28 November
+  2026): the base's with R1's causal non-negative stack issued at conflict
+  onsets' and war onsets' year country nodes (bnm.lattice :stack), refit on
+  December rows. Reported beside the issue, never its primary."
+  [out end]
+  (let [args (command out end)
+        i (inc (.indexOf ^java.util.List args "--kind-set"))
+        st {:scale :year :level :country :month 11}]
+    (assoc args i (pr-str (-> (read-string (nth args i))
+                              (assoc-in ["conflict_onset" :stack] st)
+                              (assoc-in ["war_onset" :stack] st))))))
+
 (defn command-line
   "The shell command a manifest records for bnm.world-run `args`; an
   argument with a space or quote is single-quoted, so `manifest-args`

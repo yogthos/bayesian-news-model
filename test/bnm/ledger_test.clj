@@ -646,3 +646,16 @@
         "identical forecasts never claim")
     (let [r (lg/null-claim-rate issues :rate {:sims 40 :draws 100 :seed 1})]
       (is (<= 0.0 r 0.25) "outcomes drawn at the midpoint: few claims"))))
+
+(deftest the-stack-shadow-is-the-base-with-the-stack-at-conflict-and-war
+  ;; bnm-7yg.8.8 (R3): the 2027-Q1 shadow is t162's command with R1's stack
+  ;; issued at conflict onsets' and war onsets' year country nodes
+  (let [base (lg/command "x" lg/base-end)
+        shadow (lg/shadow-command "x" lg/base-end)
+        ks (fn [args] (read-string (second (drop-while #(not= "--kind-set" %) args))))
+        st {:scale :year :level :country :month 11}]
+    (is (= (remove #{(second (drop-while #(not= "--kind-set" %) base))} base)
+           (remove #{(second (drop-while #(not= "--kind-set" %) shadow))} shadow))
+        "only the --kind-set differs")
+    (is (= (-> (ks base) (assoc-in ["conflict_onset" :stack] st) (assoc-in ["war_onset" :stack] st))
+           (ks shadow)))))
