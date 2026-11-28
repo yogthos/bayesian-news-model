@@ -4985,3 +4985,23 @@ Requested by the user ("go R2") after the R1 result. Built at conflict onsets, w
 - t162 stays the base and 2026-Q4-r3 the primary issue whatever the verdict. Replacing t162 needs wins on forward issues, as the plan says.
 
 Disclosed: the tap's rows are only those with a resolved outcome, so an origin's mean m_t is taken over those rows. At 2003-2022 origins this is nearly every country.
+
+### R2 and R3 result (bnm-7yg.8.7 and bnm-7yg.8.8, 28 November 2026)
+
+The challenger was made once (docs/studies/hierarchical.py at 353cdca, plus a fix to its output format at the next commit: the forecasts had been written as numpy reprs and the judge stopped reading them before scoring anything) and judged once (docs/studies/judge.py). Full output: docs/studies/results/r3-judge-2026-11-28.txt.
+
+Against t162 (log gain at the 1 - 0.10/3 level; alert cost difference at 90%, below 0 is better):
+
+| kind | challenger | R1's winner | verdict |
+|---|---|---|---|
+| conflict onset | +0.0149 [+0.0011, +0.0291], Brier +0.0071, cost -0.028 [-0.048, -0.005]: passes | stack +0.0219 [+0.0132, +0.0321], Brier +0.0084, cost -0.015 [-0.031, +0.001]: passes | **stack joins** (higher pooled log, -0.1696 against -0.1766) |
+| war onset | +0.0038 [-0.0085, +0.0168]: fails | stack +0.0146 [+0.0043, +0.0256], Brier +0.0042, cost -0.014 [-0.025, -0.003]: passes | **stack joins** |
+| growth collapse | -0.5407 [-1.4829, -0.0608], cost +0.158: fails badly | log pool +0.0048 [-0.0011, +0.0110]: fails at the corrected level | **nothing joins** |
+
+Reading:
+- The hierarchical structure did not add what R1's simpler combinations did. At conflict onsets the challenger loses to the plain reference logit on the same inputs (-0.0164 [-0.0253, -0.0080]) and does not beat the stack. At war onsets it is not distinguishable from t162.
+- At growth collapses it is badly miscalibrated (mean p twice the rate; p up to 0.99999) across eras and both data halves. The likely cause is the between part: about 28 origins' mean inputs carrying 70 slopes. This is unconfirmed, and no change is made after the result.
+- Growth collapses' R1 flag does not survive the Bonferroni level: the log pool's gain was marginal, as R1 disclosed.
+- The reference logit passes at conflict and war, with the largest gain at conflict (+0.0313), but under the rule only the challenger or R1's winner can join. It is recorded here, not carried.
+
+Joining the 2027-Q1 issue as reported shadows: R1's causal non-negative stack of the group models (with the frailty's offsets) at conflict onsets and at war onsets. t162 stays the base and 2026-Q4-r3 the primary issue. Before the issue, the stack is ported to the lattice behind an option and checked against the study's forecasts.
