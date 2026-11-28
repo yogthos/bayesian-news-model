@@ -34,6 +34,9 @@
     (is (nil? (f :year "Europe" (month 2014 12))) "aggregates are left to their own climatology")))
 
 (deftest reads-the-derived-files
-  (let [d (bl/read-data "data/derived/alignment-annual.csv" "data/derived/alignment-tie.csv")]
-    (is (= 1.0 (get-in d [:tie "POL" 2013])))
-    (is (= 2014 (get-in d [:dep "POL" 2012 :known])))))
+  ;; data/ is not in git: without the files (CI) the test skips itself
+  (if-let [missing (seq (remove #(.exists (java.io.File. ^String %)) ["data/derived/alignment-annual.csv" "data/derived/alignment-tie.csv"]))]
+    (println "  (skipped:" (first missing) "not built)")
+    (let [d (bl/read-data "data/derived/alignment-annual.csv" "data/derived/alignment-tie.csv")]
+      (is (= 1.0 (get-in d [:tie "POL" 2013])))
+      (is (= 2014 (get-in d [:dep "POL" 2012 :known]))))))

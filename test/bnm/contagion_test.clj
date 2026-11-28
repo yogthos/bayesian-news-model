@@ -44,10 +44,13 @@
     (is (nil? (f "b" 8)))))
 
 (deftest reads-the-files
-  (let [d (ct/read-data "data/derived/lbs-claims.csv" "data/slow/series.tsv" "data/derived/lattice-annual.csv")]
-    (is (= 117711.0 (get-in d [:claims "IRL" (+ (* 12 2007) 5 5) "USA"])))
-    (is (number? (val (first (get-in d [:gdp "USA"])))))
-    (is (< (Math/abs (- -0.32008442282676697 (get-in d [:returns "USA" 2007]))) 1e-12))))
+  ;; data/ is not in git: without the files (CI) the test skips itself
+  (if-let [missing (seq (remove #(.exists (java.io.File. ^String %)) ["data/derived/lbs-claims.csv" "data/slow/series.tsv" "data/derived/lattice-annual.csv"]))]
+    (println "  (skipped:" (first missing) "not built)")
+    (let [d (ct/read-data "data/derived/lbs-claims.csv" "data/slow/series.tsv" "data/derived/lattice-annual.csv")]
+      (is (= 117711.0 (get-in d [:claims "IRL" (+ (* 12 2007) 5 5) "USA"])))
+      (is (number? (val (first (get-in d [:gdp "USA"])))))
+      (is (< (Math/abs (- -0.32008442282676697 (get-in d [:returns "USA" 2007]))) 1e-12)))))
 
 (deftest the-flag-needs-the-theory
   (require 'bnm.world-run)
