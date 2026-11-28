@@ -2932,4 +2932,26 @@
     ;; the node's models as issued: each one's predictive at the row is the :f tapped
     (is (= (set (keys (:f e))) (set (keys (:models e)))))
     (is (every? (fn [[g m]] (== (get (:f e) g) (:f (augur.dynamic/predictive m (:x e) (:o e))))) (:models e)))
-    (is (< (Math/abs (- 1.0 (reduce + (vals (:w e))))) 1e-9))))
+    (is (< (Math/abs (- 1.0 (reduce + (vals (:w e))))) 1e-9))
+    (testing "bnm-7yg.8.6: :osz, the offsets after the frailty, rebuild the issued p from the models and weights"
+      (doseq [r (filter #(= :year (:scale %)) @taps)
+              :let [p (some #(when (and (= (:scale %) :year) (= (:place %) (:place r)) (= (:origin %) (:t r))) (:p %))
+                            (:forecasts b))
+                    mix (reduce + (for [[wj oj] (:osz r) [g m] (:models r)]
+                                    (* wj (get (:w r) g 0.0) (augur.dynamic/predict m (:x r) oj))))]]
+        (is (< (Math/abs (- p mix)) 1e-9) (str (:place r) " " (:t r)))))))
+
+(deftest a-tap-carries-the-frailty-offsets
+  ;; with a frailty, the issued p is integrated over the common shock: :osz
+  ;; holds those offsets, and they are not the mean offset :o alone
+  (let [taps (atom [])
+        b (lt/run (assoc (spec (world 5)) :frailty {} :tap #(swap! taps conj %)))
+        rs (filter #(= :year (:scale %)) @taps)]
+    (is (seq rs))
+    (doseq [r rs
+            :let [p (some #(when (and (= (:scale %) :year) (= (:place %) (:place r)) (= (:origin %) (:t r))) (:p %))
+                          (:forecasts b))
+                  mix (reduce + (for [[wj oj] (:osz r) [g m] (:models r)]
+                                  (* wj (get (:w r) g 0.0) (augur.dynamic/predict m (:x r) oj))))]]
+      (is (< (Math/abs (- p mix)) 1e-9) (str (:place r) " " (:t r))))
+    (is (some #(> (count (:osz %)) 1) rs) "the frailty integrates over several offsets")))

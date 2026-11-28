@@ -2237,6 +2237,9 @@
                                              ;; :tap (bnm-7ny): each issued row to a diagnosis, nothing changed
                                              _ (when-let [tap (:tap spec)]
                                                  (tap {:scale scale :level level :place place :t t :x x :o o
+                                                       ;; the offsets after the frailty, [[w o] ...]: the issued p is
+                                                       ;; the models' mixture integrated over them (bnm-7yg.8.6)
+                                                       :osz osz
                                                        :f (into {} (for [[g mdl] (:models live)] [g (:f (d/predictive mdl x o))]))
                                                        :w (d/weights live)
                                                        :models (:models live)}))]]
