@@ -7,7 +7,10 @@ logit on the node's inputs, the latest food inflation (food only) and the
 clim/own baselines; group increments, the stack's stability, the 2003-06
 dependence and the data-rich/poor halves; then each kind's flags.
 
-  python3 -I docs/studies/combination.py <repo> <tap-dir> [k1,k2]
+  python3 -I docs/studies/combination.py <repo> <tap-dir> [k1,k2] [run]
+
+The selected is <run>'s (t162's) issued p, which differs from the lattice's
+where the run recalibrates a kind's year rows after (inflation crises).
 """
 import importlib.util
 import math
@@ -219,6 +222,27 @@ def read(path):
     return d
 
 
+def read_issued(path):
+    """A run's issued year country forecasts, {(place, origin): p}."""
+    out = {}
+    with open(path) as fh:
+        for l in fh:
+            c = l.rstrip("\n").split("\t")
+            if c[0] == "year" and len(c[1]) == 3:
+                out[(c[1], int(c[2]))] = float(c[3])
+    return out
+
+
+def with_issued(d, issued):
+    """d with p the run's issued forecast where it has one (a kind whose year
+    rows are recalibrated after the lattice issues a p different from the
+    lattice's), the lattice's kept as "lattice p" for the rebuild check."""
+    e = dict(d)
+    e["lattice p"] = d["p"]
+    e["p"] = np.array([issued.get((u, int(o)), p) for u, o, p in zip(d["place"], d["origin"], d["p"])])
+    return e
+
+
 # --- the study ----------------------------------------------------------------
 
 def causal(d, fit_predict, extra_train=None):
@@ -327,8 +351,9 @@ def compare(q, d, sel, years, mask):
     return block_ci(lg, years[m]), float(br.mean()) if m.any() else float("nan"), int(m.sum())
 
 
-def run_kind(tap_dir, kind, latest=None):
+def run_kind(tap_dir, kind, latest=None, issued=None):
     d = read(os.path.join(tap_dir, kind + ".tsv"))
+    d = with_issued(d, issued or {})
     years = d["origin"] // 12
     win = (years >= FROM) & (years <= TO)
     sel = d["p"]
@@ -344,7 +369,9 @@ def run_kind(tap_dir, kind, latest=None):
     W = W / np.maximum(W.sum(1, keepdims=True), 1e-300)
     rebuilt = np.array([sum(w * sum(wg * expit(o + e) for wg, e in zip(W[i], d["E"][i]) if wg > 0) for w, o in d["osz"][i])
                         for i in range(len(d["p"]))])
-    out["rebuilt"] = (float(np.corrcoef(rebuilt[win], sel[win])[0, 1]), float(np.abs(rebuilt[win] - sel[win]).mean()))
+    lp = d["lattice p"]
+    out["rebuilt"] = (float(np.corrcoef(rebuilt[win], lp[win])[0, 1]), float(np.abs(rebuilt[win] - lp[win]).mean()))
+    out["recalibrated rows"] = int((win & (np.abs(sel - lp) > 1e-12)).sum())
     allrows = {(u, int(o)): (float(p), bool(y)) for u, o, p, y in zip(d["place"], d["origin"], d["p"], d["y"])}
     clim, own = sc.baselines(allrows)
     for nm, b in (("clim", clim), ("own", own)):
@@ -427,7 +454,8 @@ def fmt_ci(c):
 def report(r):
     print(f"\n== {r['kind']}: rows {r['rows']}, onsets {r['onsets']}, groups {len(r['groups'])}, "
           f"effective n of models {r['effective n']:.2f}; flags: {', '.join(r['flags'])}")
-    print(f"   the models, weights and offsets rebuild t162's p: correlation {r['rebuilt'][0]:.4f}, mean |diff| {r['rebuilt'][1]:.5f}")
+    print(f"   the models, weights and offsets rebuild the lattice's p: correlation {r['rebuilt'][0]:.4f}, mean |diff| {r['rebuilt'][1]:.5f}"
+          f"; rows where t162 issued a recalibrated p: {r['recalibrated rows']}")
     print(f"   {'forecast':<22} {'n':>5} {'log':>9} {'Brier':>8} {'AUC':>6} {'within':>6} {'p/rate':>6}   log gain vs selected [90%]      Brier gain")
     s = r["scores"]["selected"]
     print(f"   {'selected (t162)':<22} {r['rows']:>5} {s['log']:+.5f} {s['brier']:.5f} {s['auc']:.3f} {s['within']:.3f} {s['p/rate']:.2f}")
@@ -449,8 +477,10 @@ def report(r):
 def main(argv):
     repo, tap = argv[0], argv[1]
     kinds = argv[2].split(",") if len(argv) > 2 else sorted(f[:-4] for f in os.listdir(tap) if f.endswith(".tsv"))
+    run = argv[3] if len(argv) > 3 else "t162"
     for k in kinds:
-        report(run_kind(tap, k, latest=food_latest(repo) if k == "food_price_shock" else None))
+        issued = read_issued(os.path.join(repo, "data/runs", run, k, "forecasts.tsv"))
+        report(run_kind(tap, k, latest=food_latest(repo) if k == "food_price_shock" else None, issued=issued))
         sys.stdout.flush()
 
 

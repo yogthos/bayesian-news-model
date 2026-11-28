@@ -114,6 +114,22 @@ class Scores(unittest.TestCase):
         self.assertFalse(cb.beats((0.01, 0.001, 0.02), -0.001))
 
 
+class Issued(unittest.TestCase):
+    def test_the_selected_is_what_the_run_issued_and_the_lattice_p_is_kept(self):
+        d = {"place": ["AAA", "BBB"], "origin": np.array([23999, 23999]), "p": np.array([0.1, 0.2])}
+        e = cb.with_issued(d, {("AAA", 23999): 0.3})
+        self.assertEqual(list(e["p"]), [0.3, 0.2])
+        self.assertEqual(list(e["lattice p"]), [0.1, 0.2])
+        self.assertEqual(list(d["p"]), [0.1, 0.2], "the input is not changed")
+
+    def test_read_issued_takes_country_year_rows(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False) as fh:
+            fh.write("year\tAAA\t23999\t0.25\nyear\tworld\t23999\t0.5\nmonth\tAAA\t23999\t0.7\n")
+        self.assertEqual(cb.read_issued(fh.name), {("AAA", 23999): 0.25})
+        os.unlink(fh.name)
+
+
 class Flags(unittest.TestCase):
     def test_flags(self):
         yes, no = (0.01, 0.001, 0.02), (0.0, -0.01, 0.01)
