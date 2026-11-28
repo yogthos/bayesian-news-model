@@ -4902,3 +4902,27 @@ The results stand as recorded; this narrows how far each reaches. Each rejected 
 docs/audits/point-in-time-2026-11-27.md (read-only audit; finding 1 checked again by hand: data/slow/events.tsv gives exact-dated UCDP conflict onsets their own date as the known date, and tools/bnm/onsets.clj/read-event-sets feeds that column to the named model's own-history features). No two-sided filter, centred window, full-sample standardization, full-sample threshold or backfill is on t162's path; the leaks are availability dates. High: (1) the `--known r7-at-fx` named model reads 647 of 759 conflict onsets and all 50 ESRB banking onsets as known the day they start; (2) WDI annual values dated 9 months on, where data years to 2003 came out about 16 months on (`--wdi-editions` exists, not in t162); (3) IRR's peg coding read 12 months on; (4) EPWT's profit rate ungated, partly undoing `--leak-fixes` at banking. Medium: derived tables outside `--real-lags`/`--wdi-editions`, BIS stored at 4 months against the code's own 6, banking's known-lag 12 against the catalogue's 18, the release calendar not reaching the aftermath kernels, labels and benchmarks, single revised vintages (GMD, V-Dem, WID, JST).
 
 Consequence for the record: t162's backtest scores, and every adoption judged on them, carry these leaks; conflict onsets' quarter nodes most (the named model is half their offset). The forward issue (2026-Q4-r3) is less exposed (onsets after the data's end are not in it), but its fitted coefficients learned on leaked features. Treatment, under the plan: r7-at-fx and t162 are hash-locked and stay; the fixes are built together as one shadow (a rebuilt named run r8 and t164-pit, every other option as t162), scored once in Round 3 beside t162 and joining the 2027-Q1 issue as a reported shadow; Round 1's comparators are read on both. No adoption follows from the audit.
+
+### R1 registration in detail (bnm-7yg.8.6, 27 November 2026, before any tap)
+
+Data: docs/studies/combination_tap.clj runs every kind's lattice on t162's command (bnm.ledger/command, relations off as in the world run) with bnm.lattice's :tap and writes, for each year country row at a December origin with a resolved outcome: place, origin, outcome, the month it became known, the offset, t162's issued p, each group model's predictive log odds f_g, the averaging's weights w_g, and the node's inputs x. It first checks its issued p against data/runs/t162 (2003-2022). Live models at a row are those with w_g > 0 (a group with no input at the origin is set to 0 by the lattice).
+
+Scored rows: December origins 2003-2022, year country nodes, every kind. Comparators (docs/studies/combination.py, tested first):
+- selected: t162's issued p;
+- median pool: the median of the live models' expit(f_g);
+- log pool: expit of the mean of the live models' f_g;
+- stack: logit p = a + sum b_g f_g, b_g >= 0, ridge (prior N(0, 1) on each b, a free), refit at each December origin on rows known by that origin (known-at <= origin) from 1975 on; absent groups enter at 0;
+- reference logit: docs/studies/reference.py's ridge logit on x, refit the same way;
+- latest value (food only): the country's own food inflation known at the origin (food_split.py's reading), mapped to p by a causal one-input logit;
+- clim and own: scorecard.py's causal baselines.
+
+Measures per kind: log score, Brier, AUC, within-origin AUC, mean p over the rate; each comparator minus selected, paired, with a 90% interval from 2000 draws resampling origin years (wave blocks); the effective number of models exp(entropy of w) averaged by origin; each group's increment: the causal log-score gain of logit p = a + c f_sel + b f_g over logit p = a + c f_sel (f_sel the selected log odds), with its year-block interval; the stack's stability: at each of 2012 and 2022, the coefficient of variation of its three largest weights over 200 refits on origin-resampled training rows; the 2003-06 dependence: the stack and the log pool refit with the 2003-06 rows left out of training, their 2020-22 log score reported beside (food first, every kind shown). Missingness: each comparator scored separately on the data-rich and data-poor halves of rows (split at the kind's median share of the node's inputs that are non-zero; the lattice sets a missing input to 0), and the reference logit refit without its 0/1 columns.
+
+Flags per kind, fixed now (a kind can carry more than one):
+- **combination**: the stack, the log pool or the median pool beats selected (log-score difference's 90% interval above 0 and the Brier difference's point estimate above 0), and if the stack is the only one that does, its weights are stable (every CV <= 0.5 at 2012 and 2022);
+- **estimation**: a fixed pool (log or median) beats selected while the stack does not, or the stack beats it with unstable weights;
+- **inputs**: no comparator beats selected and every group increment's interval contains 0;
+- **target/coverage**: the reference logit, the latest value or own beats selected by the same test, or a comparator's verdict against selected differs between the data-rich and data-poor halves;
+- none of these: **selection holds** (reported; no action in Round 2).
+
+Round 2's challenger is built at kinds flagged combination only; estimation leads to a fixed pooling rule; inputs and target/coverage open the deferred tracks. Every comparator, row count and interval is reported, whatever the flags. No changes after the result.
