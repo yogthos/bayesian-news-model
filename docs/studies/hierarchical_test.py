@@ -91,6 +91,15 @@ def toy(seed=2, n_per=40, years=range(1975, 2023)):
     return {"place": place, "origin": origin, "known": known, "X": X, "o": o, "osz": osz, "y": y}
 
 
+class Write(unittest.TestCase):
+    def test_forecasts_are_plain_numbers_and_nan_rows_are_left_out(self):
+        import tempfile
+        path = os.path.join(tempfile.mkdtemp(), "k.tsv")
+        hz.write_forecasts(path, ["AAA", "BBB"], np.array([24011, 24011]), np.array([np.float64(0.25), np.nan]))
+        with open(path) as fh:
+            self.assertEqual(fh.read(), "AAA\t24011\t0.25\n")
+
+
 class Challenger(unittest.TestCase):
     def test_forecasts_only_the_registered_origins(self):
         d = toy()

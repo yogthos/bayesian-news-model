@@ -140,6 +140,13 @@ def read_groups(path):
         return {g: [int(i) for i in ix.split(",") if i] for g, ix in (l.rstrip("\n").split("\t") for l in fh)}
 
 
+def write_forecasts(path, place, origin, p):
+    with open(path, "w") as fh:
+        for u, o, q in zip(place, origin, p):
+            if not math.isnan(q):
+                fh.write(f"{u}\t{int(o)}\t{float(q)!r}\n")
+
+
 def main(argv):
     tap, out = argv[0], argv[1]
     kinds = argv[2].split(",") if len(argv) > 2 else ["conflict_onset", "war_onset", "growth_collapse"]
@@ -149,10 +156,7 @@ def main(argv):
         d = cb.read(os.path.join(tap, k + ".tsv"))
         p = challenger(d, read_groups(os.path.join(tap, k + ".groups.tsv")))
         m = ~np.isnan(p)
-        with open(os.path.join(out, k + ".tsv"), "w") as fh:
-            for u, o, q in zip(d["place"], d["origin"], p):
-                if not math.isnan(q):
-                    fh.write(f"{u}\t{int(o)}\t{q!r}\n")
+        write_forecasts(os.path.join(out, k + ".tsv"), d["place"], d["origin"], p)
         print(k, "rows", int(m.sum()), "origins", len(set(d["origin"][m])), "p range", float(p[m].min()), float(p[m].max()))
 
 
