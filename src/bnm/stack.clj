@@ -40,36 +40,44 @@
               0.0)))
         groups))
 
+(defn- dot ^double [^doubles z ^doubles b ^double start]
+  (areduce z j s start (+ s (* (aget z j) (aget b j)))))
+
+(defn- add! [^doubles a ^long i ^double v] (aset a i (+ (aget a i) v)))
+
+(defn- newton-system
+  "[gradient hessian] of the penalized negative log likelihood at `b`."
+  [zs ys offs pen ^doubles b]
+  (let [k (alength b)
+        g (double-array k)
+        h (double-array (* k k))]
+    (doseq [[^doubles z y off] (map vector zs ys offs)
+            :let [p (expit (dot z b (double off)))
+                  r (- p (double y))
+                  v (* p (- 1.0 p))]
+            j (range k)
+            :let [zj (aget z j)]]
+      (add! g j (* zj r))
+      (dotimes [l k] (add! h (+ (* j k) l) (* v zj (aget z l)))))
+    (doseq [j (range k) :let [pj (double (nth pen j))]]
+      (add! g j (* pj (aget b j)))
+      (add! h (+ (* j k) j) (+ pj 1e-9)))
+    [g h]))
+
 (defn- ridge-logit
   "b for logit p = off + Z b, ridge `pen` per coefficient: Newton's method,
   60 steps at most, stopping when no step exceeds 1e-8."
   [zs ys offs pen]
-  (let [k (count pen)
-        n (count ys)]
+  (let [k (count pen)]
     (loop [b (double-array k) it 0]
       (if (= it 60)
         (vec b)
-        (let [g (double-array k)
-              h (double-array (* k k))]
-          (dotimes [i n]
-            (let [^doubles z (nth zs i)
-                  eta (loop [j 0 s (double (nth offs i))] (if (< j k) (recur (inc j) (+ s (* (aget z j) (aget b j)))) s))
-                  p (expit eta)
-                  r (- p (double (nth ys i)))
-                  v (* p (- 1.0 p))]
-              (dotimes [j k]
-                (aset g j (+ (aget g j) (* (aget z j) r)))
-                (dotimes [l k]
-                  (aset h (+ (* j k) l) (+ (aget h (+ (* j k) l)) (* v (aget z j) (aget z l))))))))
-          (dotimes [j k]
-            (aset g j (+ (aget g j) (* (double (nth pen j)) (aget b j))))
-            (aset h (+ (* j k) j) (+ (aget h (+ (* j k) j)) (double (nth pen j)) 1e-9)))
-          (let [step (am/solve-spd h g k)
-                nb (double-array k)]
-            (dotimes [j k] (aset nb j (- (aget b j) (aget step j))))
-            (if (< (reduce max (map #(Math/abs (double %)) step)) 1e-8)
-              (vec nb)
-              (recur nb (inc it)))))))))
+        (let [[g h] (newton-system zs ys offs pen b)
+              ^doubles step (am/solve-spd h g k)
+              nb (amap b j _ (- (aget b j) (aget step j)))]
+          (if (< (areduce step j m 0.0 (Math/max m (Math/abs (aget step j)))) 1e-8)
+            (vec nb)
+            (recur nb (inc it))))))))
 
 (defn fit
   "{:a :b}: the stack fitted to rows of deviations `es` (vectors), outcomes
