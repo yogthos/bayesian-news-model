@@ -12,7 +12,12 @@ solvency").
      (a group with under MIN_ONSETS training onsets takes the pooled fit),
      each scored beside the run on the rows all three have.
 
-  python3 -I docs/studies/sovereign_split.py <repo> <run>
+  python3 -I docs/studies/sovereign_split.py <repo> <run> [--half-life YEARS]
+
+With --half-life (bnm-7yg.6.2, after t162) each training row is weighted
+0.5^(age / half-life) and the intercept is set at the history's level
+(bnm.theory :level :history): at the weighted mean of the slope terms, the
+logit of the training rows' unweighted rate.
 """
 import importlib.util
 import math
@@ -65,18 +70,51 @@ def features(series, place, t):
     return out
 
 
-def predict(X, y, Xte):
+def weights(train_origins, origin, half_life):
+    return 0.5 ** ((origin - np.asarray(train_origins)) / 12.0 / half_life)
+
+
+def wfit(X, y, w, lam=ref.LAMBDA, iters=50):
+    """reference.py's ridge logit with row weights w."""
+    n, d = X.shape
+    A = np.hstack([np.ones((n, 1)), X])
+    b = np.zeros(d + 1)
+    rate = min(max(float((w * y).sum() / w.sum()), 1e-4), 1 - 1e-4)
+    b[0] = math.log(rate / (1 - rate))
+    pen = np.full(d + 1, lam)
+    pen[0] = 0.0
+    for _ in range(iters):
+        p = 1 / (1 + np.exp(-(A @ b)))
+        g = A.T @ (w * (p - y)) + pen * b
+        H = (A * (w * p * (1 - p))[:, None]).T @ A + np.diag(pen) + 1e-9 * np.eye(d + 1)
+        step = np.linalg.solve(H, g)
+        b -= step
+        if np.max(np.abs(step)) < 1e-8:
+            break
+    return b[0], b[1:]
+
+
+def history_intercept(X, y, w, b):
+    rate = min(max(float(y.mean()), 1e-4), 1 - 1e-4)
+    return math.log(rate / (1 - rate)) - float((w * (X @ b)).sum() / w.sum())
+
+
+def predict(X, y, Xte, w=None):
     Xtr, Xt = ref.standardize(X, Xte)
-    b0, b = ref.fit(Xtr, y)
+    if w is None:
+        b0, b = ref.fit(Xtr, y)
+    else:
+        _, b = wfit(Xtr, y, w)
+        b0 = history_intercept(Xtr, y, w, b)
     return 1 / (1 + np.exp(-(b0 + Xt @ b)))
 
 
-def predict_split(X, y, groups, Xte, gte):
-    out = predict(X, y, Xte)
+def predict_split(X, y, groups, Xte, gte, w=None):
+    out = predict(X, y, Xte, w)
     for g in set(gte):
         tr, te = groups == g, gte == g
         if y[tr].sum() >= MIN_ONSETS and (1 - y[tr]).sum() >= MIN_ONSETS:
-            out[te] = predict(X[tr], y[tr], Xte[te])
+            out[te] = predict(X[tr], y[tr], Xte[te], None if w is None else w[tr])
     return out
 
 
@@ -90,6 +128,7 @@ def scores(label, rows):
 
 def main(argv):
     repo, run = argv[0], argv[1]
+    hl = float(argv[argv.index("--half-life") + 1]) if "--half-life" in argv else None
     rows = sc.read(repo, run, KIND)
     rows = {k: v for k, v in rows.items() if k[1] // 12 >= TRAIN_FROM}
     series = fs.read_series(os.path.join(repo, "data/slow/series.tsv"), lambda u, v: v in VARS)
@@ -101,7 +140,8 @@ def main(argv):
     p_run = np.array([rows[k][0] for k in keys])
     win = (org // 12 >= FROM) & (org // 12 <= TO)
 
-    print(f"sovereign year country rows, December origins {FROM}-{TO}, run {run}; split at external debt {THRESHOLD:g}% of GNI")
+    print(f"sovereign year country rows, December origins {FROM}-{TO}, run {run}; split at external debt {THRESHOLD:g}% of GNI"
+          + (f"; half-life {hl:g} years at the history's level" if hl else ""))
     for g in ["low", "high", "unknown"]:
         m = win & (grp == g)
         if m.sum():
@@ -115,8 +155,9 @@ def main(argv):
         te = org == o
         if y[tr].sum() < MIN_ONSETS:
             continue
-        pp = predict(X[tr], y[tr], X[te])
-        sp = predict_split(X[tr], y[tr], grp[tr], X[te], grp[te])
+        w = None if hl is None else weights(org[tr], o, hl)
+        pp = predict(X[tr], y[tr], X[te], w)
+        sp = predict_split(X[tr], y[tr], grp[tr], X[te], grp[te], w)
         for i, a, b in zip(np.where(te)[0], pp, sp):
             pooled[i], split[i] = float(a), float(b)
     idx = sorted(pooled)

@@ -50,5 +50,38 @@ class SovereignSplit(unittest.TestCase):
         self.assertLess(p[1], 0.2)
 
 
+class HalfLife(unittest.TestCase):
+    def test_weights_halve_every_half_life(self):
+        w = ss.weights(np.array([2000 * 12 + 11, 1990 * 12 + 11, 1980 * 12 + 11]), 2000 * 12 + 11, 10.0)
+        np.testing.assert_allclose(w, [1.0, 0.5, 0.25])
+
+    def test_unit_weights_match_the_reference_fit(self):
+        rng = np.random.default_rng(2)
+        X = rng.normal(size=(300, 2))
+        y = (X[:, 0] + rng.normal(size=300) > 1.0).astype(float)
+        b0, b = ss.wfit(X, y, np.ones(300))
+        r0, r = ss.ref.fit(X, y)
+        self.assertAlmostEqual(b0, r0, places=6)
+        np.testing.assert_allclose(b, r, atol=1e-6)
+
+    def test_history_level(self):
+        """At the weighted mean of the slope terms the log odds are the
+        logit of the unweighted rate."""
+        X = np.array([[0.0], [1.0], [2.0], [3.0]])
+        y = np.array([0.0, 0.0, 1.0, 0.0])
+        w = np.array([0.1, 0.2, 0.3, 0.4])
+        b = np.array([0.7])
+        b0 = ss.history_intercept(X, y, w, b)
+        m = float((w * (X @ b)).sum() / w.sum())
+        self.assertAlmostEqual(b0 + m, np.log(0.25 / 0.75))
+
+    def test_predict_with_half_life_runs_at_the_history_level(self):
+        rng = np.random.default_rng(3)
+        X = rng.normal(size=(400, 1))
+        y = (rng.random(400) < 0.1).astype(float)
+        p = ss.predict(X, y, np.zeros((1, 1)), w=np.linspace(0.1, 1, 400))
+        self.assertAlmostEqual(float(p[0]), y.mean(), delta=0.03)
+
+
 if __name__ == "__main__":
     unittest.main()
